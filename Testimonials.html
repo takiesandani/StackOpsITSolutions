@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Testimonials</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+</head>
+<body>
+
+    <!-- Background -->
+    <div class="background"></div>
+
+    <!-- Header & Navigation -->
+    <header>
+        <a href="index.html" class="logo">Cyber<span>Shield</span></a>
+        <div class="hamburger" id="hamburger">
+            <i class="fas fa-bars"></i>
+        </div>
+        <ul class="nav-links" id="nav-links">
+            <li><a href="Home.html" class="active">Home</a></li>
+            <li><a href="about.html">About</a></li>
+            <li><a href="service.html">Services</a></li>
+            <li><a href="approach.html">Our Approach</a></li>
+            <li><a href="contact.html">Contact Us</a></li>
+            <li><a href="consultation.html">Book a consultation</a></li>
+            <li><a href="consultation.html" class="button-like">Client portal</a></li>
+        </ul>
+    </header>
+
+    
+    <main>
+        <section class="page-header">
+            <div class="container">
+                <h1>Customer Testimonials</h1>
+                <p>Read what our clients have to say or share your own experience with us.</p>
+            </div>
+        </section>
+
+        <section class="testimonials">
+            <div class="container">
+                <div class="section-title">
+                    <h2>Default Testimonials</h2>
+                    <p>These is just for testing purposes.</p>
+                </div>
+                <div class="testimonials-grid">
+                    <div class="testimonial-card">
+                        <div class="author-info">
+                            <img src="https://via.placeholder.com/150" alt="Client 1">
+                            <h3>Sandani Ndamulelo</h3>
+                        </div>
+                        <p class="quote">"This team delivered beyond my expectations. Their professional and creative approach made the entire process seamless. I highly recommend their services!"</p>
+                    </div>
+
+                    <div class="testimonial-card">
+                        <div class="author-info">
+                            <img src="https://via.placeholder.com/150" alt="Client 2">
+                            <h3>Sandani Takalani</h3>
+                        </div>
+                        <p class="quote">"I was amazed by the quality of work and the attention to detail. The results were fantastic, and their support team was incredibly helpful throughout."</p>
+                    </div>
+
+                    <div class="testimonial-card">
+                        <div class="author-info">
+                            <img src="https://via.placeholder.com/150" alt="Client 3">
+                            <h3>Ratshimolo Adivhaho</h3>
+                        </div>
+                        <p class="quote">"An outstanding experience from start to finish. The service was top-notch, and they were very communicative. I'll definitely be a returning customer."</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <section class="submit-testimonial">
+            <div class="container">
+                <div class="section-title">
+                    <h2>Share Your Experience</h2>
+                    <p>We'd love to hear about your experience! Fill out the form below to submit your testimonial.</p>
+                </div>
+
+                <form id="testimonial-form">
+                    <div class="form-group">
+                        <label for="name">Your Name</label>
+                        <input type="text" id="name" name="name" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="testimonial-text">Your Testimonial (Text)</label>
+                        <textarea id="testimonial-text" name="testimonial-text" rows="5" placeholder="Write your experience here..."></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Your Testimonial (Voice Note)</label>
+                        <div class="voice-note-recorder">
+                            <button type="button" id="start-record-btn"><i class="fas fa-microphone"></i> Start Recording</button>
+                            <button type="button" id="stop-record-btn" disabled><i class="fas fa-stop"></i> Stop Recording</button>
+                            <audio id="voice-note-preview" controls></audio>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="video-upload">Your Testimonial (Video)</label>
+                        <input type="file" id="video-upload" name="video-upload" accept="video/*">
+                        <video id="video-preview" controls></video>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="image-upload">Upload a Profile Picture</label>
+                        <input type="file" id="image-upload" name="image-upload" accept="image/*">
+                    </div>
+
+                    <button type="submit" class="btn">Submit Testimonial</button>
+                </form>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h3>CyberShield</h3>
+                    <p>Advanced cybersecurity solutions to protect your business from digital threats and vulnerabilities.</p>
+                </div>
+                <div class="footer-section">
+                    <h3>Quick Links</h3>
+                    <ul>
+                        <li><a href="Home.html">Home</a></li>
+                        <li><a href="service.html">Services</a></li>
+                        <li><a href="about.html">About</a></li>
+                        <li><a href="contact.html">Contact</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h3>Services</h3>
+                    <ul>
+                        <li><a href="service.html#web-development">Web Development</a></li>
+                        <li><a href="service.html#mobile-development">Mobile App Development</a></li>
+                        <li><a href="service.html#web-design">Web Design</a></li>
+                        <li><a href="service.html#cybersecurity">Cybersecurity Consulting</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h3>Connect With Us</h3>
+                    <div class="social-icons">
+                        <a href="#"><i class="fab fa-facebook"></i></a>
+                        <a href="#"><i class="fab fa-twitter"></i></a>
+                        <a href="https://www.linkedin.com/in/ndamulelo-sandani-0988289a/overlay/about-this-profile/?lipi=urn%3Ali%3Apage%3Ad_flagship3_profile_view_base%3BAO9qQ1ErRwqaNzIPO5obNA%3D%3D"><i class="fab fa-linkedin"></i></a>
+                        <a href="#"><i class="fab fa-instagram"></i></a>
+                    </div>
+                    <p>Email: <a href="mailto:sandanindamulelo@gmail.com" >sandanindamulelo@gmail.com</a></p>
+                    <p>Phone: +27 61 506 9734</p>
+                    <p>Phone: +27 67 914 9213</p>
+                </div>
+            </div>
+            <div class="copyright">
+                <p>&copy; <span id="copyright-year">2025</span> CyberShield. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="js/testimonials.js"></script>
+</body>
+</html>

@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- Required meta tags -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+
+    <title>Dependent Dropdown List</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+body{
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: #ddebfc;
+}
+
+
+.container{
+    width: 600px;
+    padding: 25px;
+    padding-top: 20px;
+    border-radius: 12px;
+    border: 3px solid #efa31d;
+    background: #ffffff;
+    box-shadow: 0px 7px 29px 0px rgba(100, 100, 111, 0.2);
+}
+
+
+.container h3{
+    margin-bottom: 25px;
+    font-family: 'Courier New', Courier, monospace;
+    position: relative;
+}
+
+.container h3::after{
+    content: "";
+    width: 80px;
+    height: 2px;
+    position: absolute;
+    bottom: -3px;
+    left: 0;
+    background: #efa31d;
+}
+
+
+.container .select_option select{
+    padding: 10px;
+    box-shadow: none !important;
+    cursor: pointer;
+    font-size: 20px;
+    border: none;
+    border: 2px solid #000;
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+.container .select_option select:first-child{
+    border-color: #1D5B79;
+}
+
+.container .select_option select:nth-child(2){
+    margin: 20px 0;
+    border-color: #1881d5;
+}
+
+.container .select_option select:last-child{
+    border-color: #0b9ed0;
+}
+    </style>
+  </head>
+  <body>
+
+
+    <div class="container">
+
+        <h3>Select Country State and City</h3>
+
+        <div class="select_option">
+            <select class="form-select country" aria-label="Default select example" onchange="loadStates()">
+                <option selected>Select Country</option>
+            </select>
+            <select class="form-select state" aria-label="Default select example" onchange="loadCities()">
+                <option selected>Select State</option>
+            </select>
+            <select class="form-select city" aria-label="Default select example">
+                <option selected>Select City</option>
+            </select>
+        </div>
+
+    </div>
+
+    <script src="app.js"></script>
+
+    <!-- Option 1: Bootstrap Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM" crossorigin="anonymous"></script>
+
+  </body>
+</html>

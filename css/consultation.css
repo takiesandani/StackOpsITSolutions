@@ -1,0 +1,512 @@
+
+/* Global Styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+:root {
+    --primary: #006eff; /* A professional blue tone */
+    --secondary: #f8f9fa; /* A light accent for contrast */
+    --dark: #1c1c1c; /* Deep charcoal*/
+    --light: #ffffff; /* White */
+    --gray: #4a4a4a; /* Medium gray for borders and accents */
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    color: var(--light);
+    background-color: var(--dark);
+    overflow-x: hidden;
+    line-height: 1.6;
+}
+
+a {
+    text-decoration: none;
+    color: var(--primary);
+    transition: all 0.3s ease;
+}
+
+.container {
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+.btn {
+    display: inline-block;
+    padding: 12px 30px;
+    background: var(--primary);
+    color: var(--dark);
+    font-weight: 600;
+    border-radius: 5px;
+    transition: all 0.3s ease;
+    border: 2px solid var(--primary);
+    cursor: pointer;
+    text-align: center;
+}
+
+.btn:hover {
+    background: transparent;
+    color: var(--primary);
+    transform: translateY(-3px);
+    box-shadow: 0 10px 20px rgba(0, 189, 252, 0.2);
+}
+
+.btn-outline {
+    background: transparent;
+    color: var(--primary);
+    margin-left: 15px;
+}
+
+.btn-outline:hover {
+    background: var(--primary);
+    color: var(--dark);
+}
+
+section {
+    padding: 100px 0;
+}
+
+.section-title {
+    text-align: center;
+    margin-bottom: 60px;
+}
+
+.section-title h2 {
+    font-size: 2.5rem;
+    margin-bottom: 20px;
+    color: var(--primary);
+}
+
+.section-title p {
+    max-width: 700px;
+    margin: 0 auto;
+    font-size: 1.1rem;
+    opacity: 0.8;
+}
+
+/* Background with overlay */
+.background {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 110%;
+    z-index: -1;
+    background: linear-gradient(rgba(0, 0, 0, 0.603), rgb(0, 0, 0)),
+        url('/Images/StackOpsBackgournd.png') no-repeat center center;
+    background-size: cover; /* Changed from 'cover' to 'contain' */
+}
+
+/* Header & Navigation */
+header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    padding: 15px 5%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 1000;
+    transition: 0.5s;
+    background: rgba(28, 28, 28, 0.5);
+    backdrop-filter: blur(10px);
+}
+
+header.sticky {
+    padding: 10px 5%;
+    background: var(--dark);
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+}
+
+/* Logo styles */
+.site-header .logo img {
+    /* Set height to 100% of the header height */
+    height: 100%; 
+    width: auto;
+    display: block;
+}
+
+/* New style to control the logo container height */
+.logo {
+    height: 60px; /* Adjust this value to control the overall header height */
+    display: flex;
+    align-items: center;
+}
+
+.nav-links {
+    display: flex;
+    list-style: none;
+}
+
+.nav-links li {
+    margin: 0 10px;
+}
+
+.nav-links a {
+    color: var(--light);
+    font-weight: 500;
+    font-size: 16px;
+    transition: 0.3s;
+    padding: 5px 10px;
+    border-radius: 5px;
+}
+
+.nav-links a:hover,
+.nav-links a.active {
+    color: var(--primary);
+    background: rgba(116, 140, 148, 0.1);
+}
+
+.hamburger {
+    display: none;
+    cursor: pointer;
+    font-size: 24px;
+    color: var(--light);
+}
+
+/* Styles for the button-like links */
+.nav-links li a.button-like {
+    padding: 8px 16px;
+    background-color: var(--primary-orange);
+    color: var(--white);
+    border-radius: 15px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    border: 2px solid var(--primary-orange);
+}
+
+.nav-links li a.button-like:hover {
+    background-color: transparent;
+    color: var(--primary-orange);
+    transform: translateY(-3px);
+}
+
+/* Consultation Page Specific Styles */
+.consultation-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 40px;
+    margin-top: 100px;
+}
+
+.calendar-section {
+    flex: 1;
+    min-width: 300px;
+    background: rgba(28, 28, 28, 0.7);
+    padding: 30px;
+    border-radius: 10px;
+}
+
+.calendar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.calendar-header h2 {
+    color: white;
+}
+
+.month-nav {
+    display: flex;
+    gap: 10px;
+}
+
+.month-nav button {
+    background: white;
+    color: var(--dark);
+    border: none;
+    padding: 8px 12px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.month-nav button:hover {
+    background: transparent;
+    color: var(--primary);
+    border: 1px solid var(--primary);
+}
+
+.weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 5px;
+    margin-bottom: 10px;
+    text-align: center;
+}
+
+.weekdays div {
+    font-weight: bold;
+    color: white;
+}
+
+.days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 5px;
+}
+
+.day {
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.day:hover {
+    background: var(--primary);
+}
+
+.day.available {
+    background: rgb(0, 189, 252);
+    color: var(--light);
+}
+
+.day.selected {
+    background: white;
+    color: var(--dark);
+    font-weight: bold;
+}
+
+.day.unavailable {
+    color: var(--gray);
+    cursor: not-allowed;
+}
+
+.day.weekend {
+    color: var(--gray);
+    cursor: not-allowed;
+}
+
+.time-selection {
+    margin-top: 30px;
+}
+
+.time-selection h3 {
+    color: var(--primary);
+    margin-bottom: 15px;
+}
+
+.time-slots {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+}
+
+.time-slot {
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 5px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.time-slot:hover {
+    background: rgba(0, 189, 252, 0.2);
+}
+
+.time-slot.selected {
+    background: var(--primary);
+    color: var(--dark);
+    font-weight: bold;
+}
+
+.booking-form {
+    margin-top: 30px;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+    color: var(--primary);
+}
+
+.form-group input, .form-group textarea, .form-group select {
+    width: 100%;
+    padding: 12px 15px;
+    background: var(--dark);
+    border: 1px solid var(--gray);
+    border-radius: 5px;
+    color: var(--light);
+    font-size: 16px;
+}
+
+.map-section {
+    flex: 1;
+    min-width: 300px;
+}
+
+.map-container {
+    height: 500px;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 5px 30px rgba(0, 0, 0, 0.3);
+}
+
+.map-container iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+
+.info-section {
+    width: 100%;
+    background: rgba(28, 28, 28, 0.7);
+    padding: 40px;
+    border-radius: 10px;
+    margin-top: 40px;
+}
+
+.info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 30px;
+}
+
+.info-card {
+    text-align: center;
+}
+
+.info-card i {
+    font-size: 40px;
+    color: var(--primary);
+    margin-bottom: 20px;
+}
+
+.info-card h3 {
+    font-size: 1.5rem;
+    margin-bottom: 15px;
+    color: var(--primary);
+}
+
+.info-card p {
+    opacity: 0.8;
+}
+
+/* Footer */
+footer {
+    background: var(--dark);
+    padding: 50px 0 20px;
+    text-align: center;
+    margin-top: 100px;
+}
+
+.footer-content {
+    display: flex;
+    justify-content: space-around;
+    flex-wrap: wrap;
+    margin-bottom: 40px;
+}
+
+.footer-section {
+    flex: 1;
+    min-width: 250px;
+    margin-bottom: 30px;
+    text-align: left;
+}
+
+.footer-section h3 {
+    color: var(--primary);
+    margin-bottom: 20px;
+    font-size: 1.5rem;
+}
+
+.footer-section p, .footer-section li {
+    margin-bottom: 10px;
+    opacity: 0.8;
+}
+
+.footer-section li {
+    list-style: none;
+}
+
+.footer-section a:hover {
+    color: var(--primary);
+}
+
+.social-icons a {
+    display: inline-block;
+    margin-right: 15px;
+    font-size: 1.5rem;
+    margin-bottom: 15px;
+}
+
+.copyright {
+    padding-top: 20px;
+    border-top: 1px solid var(--gray);
+    opacity: 0.7;
+}
+
+@media (max-width: 768px) {
+    .hamburger {
+        display: block;
+    }
+    
+    .nav-links {
+        position: fixed;
+        top: 80px;
+        left: -100%;
+        width: 100%;
+        height: calc(100vh - 80px);
+        background: var(--dark);
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        transition: 0.5s;
+    }
+    
+    .nav-links.active {
+        left: 0;
+    }
+    
+    .nav-links li {
+        margin: 15px 0;
+    }
+    
+    .consultation-container {
+        flex-direction: column;
+    }
+    
+    .time-slots {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+.page-header {
+    text-align: center;
+    background: rgba(28, 28, 28, 0.7);
+}
+
+.page-header h1 {
+    font-size: 3rem;
+    margin-bottom: 20px;
+    color: var(--primary);
+}
+
+.page-header p {
+    font-size: 1.2rem;
+    max-width: 700px;
+    margin: 0 auto;
+    opacity: 0.8;
+}
+

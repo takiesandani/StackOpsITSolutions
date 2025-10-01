@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Book Consultation | StackOps IT Solutions</title>
+    <link rel="stylesheet" href="css/consultation.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="background"></div>
+
+    <header class="site-header">
+        <a href="Home.html" class="logo">
+            <img src="Images/logos/RemovedStackOps.png" alt="Stackops IT Solutions Logo">
+        </a>
+        <div class="hamburger" id="hamburger">
+            <i class="fas fa-bars"></i>
+        </div>
+        <ul class="nav-links" id="nav-links">
+            <li><a href="Home.html" class="active">Home</a></li>
+            <li><a href="about.html">About</a></li>
+            <li><a href="service.html">Services</a></li>
+            <li><a href="approach.html">Our Approach</a></li>
+            <li><a href="contact.html">Contact Us</a></li>
+            <li><a href="consultation.html">Book a consultation</a></li>
+            <li><a href="#" id="client-portal-link" class="button-like">Client portal</a></li>
+        </ul>
+    </header>
+
+    <div class="container">
+        <div class="consultation-container">
+
+            <div class="calendar-section">
+                <div class="page-header">
+                    <h1>Book a Consultation</h1>
+                    <p>
+                        Schedule a time to speak with one of our cybersecurity experts. We're available to discuss your needs and provide tailored solutions.
+                    </p>
+                </div>
+                
+                <div id="calendar-container"></div>
+
+                <div class="time-selection">
+                    <h3>Select a Time</h3>
+                    <div class="time-slots" id="timeSlots">
+                        </div>
+                </div>
+            </div>
+            
+            <div class="booking-form">
+                <h3>Your Information</h3>
+                <form id="bookingForm" method="POST" action="http://localhost:8080/book">
+                    <input type="hidden" id="selectedDate" name="date">
+                    <input type="hidden" id="selectedTime" name="time">
+                    <div class="form-group">
+                        <label for="name">Full Name</label>
+                        <input type="text" id="name" name="name" placeholder="Enter your full name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="name">Company name</label>
+                        <input type="text" id="name" name="name" placeholder="Enter your Company" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="name">Title</label>
+                        <input type="text" id="name" name="name" placeholder="Enter your title" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="email">Email Address</label>
+                        <input type="email" id="email" name="email" placeholder="Enter your email" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="phone">Phone Number</label>
+                        <input type="tel" id="phone" name="phone" placeholder="Enter your phone number" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="service">Service Interested In</label>
+                        <select id="service" name="service" required>
+                            <option value="">Select a Service</option>
+                            <option value="Cybersecurity Consulting">Cybersecurity Consulting</option>
+                            <option value="Cloud Security">Cloud Security</option>
+                            <option value="Systems Implementation">Systems Implementation</option>
+                            <option value="IT Operations Support">IT Operations Support</option>
+                            <option value="End-user computing">End-user computing</option>
+                            <option value="Governance & Compliance">Governance & Compliance</option>
+                            <option value="Web Development">Web Development</option>
+                            <option value="Mobile App Development">Mobile App Development</option>
+                            <option value="AI Automations">AI Automations</option>
+                            <option value="Web Design">Web Design</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="message">Additional Notes</label>
+                        <textarea id="message" name="message" placeholder="Any specific concerns or questions?"></textarea>
+                    </div>
+                    <button class="btn" type="submit" style="width: 100%;">Book Consultation</button>
+                </form>
+            </div>
+        </div>
+        
+        <div class="info-section">
+            <div class="info-grid">
+                <div class="info-card">
+                    <i class="fas fa-video"></i>
+                    <h3>Virtual Consultations</h3>
+                    <p>Can't make it in person? We offer secure video consultations from anywhere.</p>
+                </div>
+                <div class="info-card">
+                    <i class="fas fa-clock"></i>
+                    <h3>60 Minute Sessions</h3>
+                    <p>Each consultation is a full hour to address all your cybersecurity concerns.</p>
+                </div>
+                <div class="info-card">
+                    <i class="fas fa-shield-alt"></i>
+                    <h3>Expert Advice</h3>
+                    <p>Our certified professionals will provide tailored solutions for your needs.</p>
+                </div>
+                <div class="info-card">
+                    <i class="fas fa-file-alt"></i>
+                    <h3>Follow-up Report</h3>
+                    <p>Receive a detailed report with recommendations after your consultation.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h3>StackOps IT Solutions</h3>
+                    <p>Advanced cybersecurity solutions to protect your business from digital threats and vulnerabilities.</p>
+                </div>
+                <div class="footer-section">
+                    <h3>Quick Links</h3>
+                    <ul>
+                        <li><a href="Home.html">Home</a></li>
+                        <li><a href="service.html">Services</a></li>
+                        <li><a href="about.html">About</a></li>
+                        <li><a href="contact.html">Contact</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h3>Services</h3>
+                    <ul>
+                        <li><a href="service.html#web-development">Web Development</a></li>
+                        <li><a href="service.html#mobile-development">Mobile App Development</a></li>
+                        <li><a href="service.html#web-design">Web Design</a></li>
+                        <li><a href="service.html#cybersecurity">Cybersecurity Consulting</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h3>Connect With Us</h3>
+                    <div class="social-icons">
+                        <a href="#"><i class="fab fa-facebook"></i></a>
+                        <a href="#"><i class="fab fa-twitter"></i></a>
+                        <a href="https://www.linkedin.com/in/ndamulelo-sandani-0988289a/overlay/about-this-profile/?lipi=urn%3Ali%3Apage%3Ad_flagship3_profile_view_base%3BAO9qQ1ErRwqaNzIPO5obNA%3D%3D"><i class="fab fa-linkedin"></i></a>
+                        <a href="#"><i class="fab fa-instagram"></i></a>
+                    </div>
+                    <p>Email: <a href="mailto:info@stackopsit.co.za" >info@stackopsit.co.za</a></p>
+                    <p>Phone: +27 61 506 9734</p>
+                    <p>Phone: +27 67 914 9213</p>
+                </div>
+            </div>
+            <div class="copyright">
+                <p>&copy; <span id="copyright-year">2025</span> StackOps IT Solutions. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+    <script src="js/consultation.js"></script>
+
+</body>
+</html>

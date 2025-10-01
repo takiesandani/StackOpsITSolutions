@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Register New Client</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <style>
+        /* Your existing CSS here */
+        body {
+            background: #1c1c1c;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            color: #bcbcbc;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .auth-container {
+            width: 100%;
+            max-width: 700px;
+            animation: fadeIn 0.5s ease-out;
+        }
+        .auth-box {
+            background: rgba(0, 0, 0, 0.145);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            padding: 40px;
+            width: 100%;
+        }
+        h2 {
+            text-align: center;
+            color: #bbbbbb;
+            margin-bottom: 25px;
+            font-size: 28px;
+        }
+        .form-section-title {
+            color: #666;
+            text-align: center;
+            margin: 20px 0 10px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+            position: relative;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        input, select {
+            width: 100%;
+            padding: 14px;
+            border: 2px solid #555;
+            border-radius: 8px;
+            font-size: 16px;
+            background: #2b2b2b;
+            color: #fff;
+            transition: border-color 0.3s;
+        }
+        input:focus, select:focus {
+            border-color: #4a86e8;
+            outline: none;
+        }
+        .password-group {
+            display: flex;
+            align-items: center;
+        }
+        .password-group input {
+            flex-grow: 1;
+        }
+        .password-group button {
+            background: #4a86e8;
+            color: white;
+            border: none;
+            padding: 14px 18px;
+            margin-left: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .password-group button:hover {
+            background: #2575fc;
+        }
+        .btn-primary {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(to right, #0033ff, #2575fc);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(38, 117, 252, 0.4);
+        }
+        .btn-primary:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        #notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 8px;
+            background: #fff;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            transform: translateX(100%);
+            transition: transform 0.3s ease-out;
+            z-index: 1000;
+        }
+        #notification.show {
+            transform: translateX(0);
+        }
+        .notification.success {
+            border-left: 4px solid #4caf50;
+            color: #4caf50;
+        }
+        .notification.error {
+            border-left: 4px solid #e53935;
+            color: #e53935;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+    <div class="background"></div>
+    <div id="notification"></div>
+    <div class="auth-container">
+        <div class="auth-box">
+            <h2>Register New Client</h2>
+            <form id="admin-register-form">
+                <p class="form-section-title">Client Details</p>
+                <div class="form-group">
+                    <label for="firstName">First Name</label>
+                    <input type="text" id="firstName" name="firstName" required>
+                </div>
+                <div class="form-group">
+                    <label for="lastName">Last Name</label>
+                    <input type="text" id="lastName" name="lastName" required>
+                </div>
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" required>
+                </div>
+                <div class="form-group">
+                    <label for="contact">Contact Number</label>
+                    <input type="tel" id="contact" name="contact" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <div class="password-group">
+                        <input type="text" id="password" name="password" required readonly>
+                        <button type="button" id="generate-password-btn">Generate Password</button>
+                    </div>
+                </div>
+                <hr style="border: none; border-top: 1px solid #444; margin: 30px 0;">
+                <p class="form-section-title">Company Details</p>
+                <div class="form-group">
+                    <label for="companyName">Company Name</label>
+                    <input type="text" id="companyName" name="companyName" required>
+                </div>
+                <div class="form-group">
+                    <label for="industry">Industry</label>
+                    <input type="text" id="industry" name="industry" required>
+                </div>
+                <div class="form-group">
+                    <label for="website">Company Website (Optional)</label>
+                    <input type="url" id="website" name="website">
+                </div>
+                <hr style="border: none; border-top: 1px solid #444; margin: 30px 0;">
+                <p class="form-section-title">Company Address</p>
+                <div class="form-group">
+                    <label for="country">Country</label>
+                    <select class="form-select country" id="country" name="country" aria-label="Default select example"></select>
+                </div>
+                <div class="form-group">
+                    <label for="state">State / Province</label>
+                    <select class="form-select state" id="state" name="state" aria-label="Default select example"></select>
+                </div>
+                <div class="form-group">
+                    <label for="city">City</label>
+                    <select class="form-select city" id="city" name="city" aria-label="Default select example"></select>
+                </div>
+                <div class="form-group">
+                    <label for="address">Street Address</label>
+                    <input type="text" id="address" name="address" required>
+                </div>
+                <div class="form-group">
+                    <label for="zipCode">Zip Code / Postal Code</label>
+                    <input type="text" id="zipCode" name="zipCode" required>
+                </div>
+                <button type="submit" class="btn-primary" id="register-btn">Register Client</button>
+            </form>
+        </div>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html>

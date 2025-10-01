@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign In</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: #1c1c1c;
+            min-height: 80vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 110%;
+            z-index: -1;
+            background: linear-gradient(rgba(0, 0, 0, 0.603), rgb(0, 0, 0)),
+                url('/Images/StackOpsBackgournd.png') no-repeat center center;
+            background-size: cover; /* Changed from 'cover' to 'contain' */
+        }
+        
+        .auth-container {
+            width: 100%;
+            max-width: 650px;
+            animation: fadeIn 0.5s ease-out;
+        }
+        
+        .auth-box {
+            background: rgba(0, 0, 0, 0.145);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            padding: 30px;
+            width: 100%;
+        }
+        
+        h2 {
+            text-align: center;
+            color: #bbbbbb;
+            margin-bottom: 25px;
+            font-size: 28px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+            position: relative;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #bcbcbc;
+        }
+        
+        input {
+            width: 100%;
+            padding: 14px;
+            border: 2px solid #bfbfbf;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus {
+            border-color: #4a86e8;
+            outline: none;
+        }
+        
+        .password-toggle {
+            position: absolute;
+            right: 15px;
+            top: 42px;
+            color: #777;
+            cursor: pointer;
+        }
+        
+        .error-message {
+            color: #e53935;
+            font-size: 14px;
+            margin-top: 5px;
+            display: none;
+        }
+        
+        .forgot-password {
+            text-align: right;
+            margin-top: 5px;
+        }
+        
+        .forgot-password a {
+            color: #4a86e8;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        
+        .forgot-password a:hover {
+            text-decoration: underline;
+        }
+        
+        .btn-primary {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(to right, #0033ff, #2575fc);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(38, 117, 252, 0.4);
+        }
+        
+        .btn-primary:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .mfa-section {
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            display: none;
+        }
+        
+        .mfa-section h3 {
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        
+        .resend-code {
+            text-align: center;
+            margin-top: 15px;
+            font-size: 14px;
+        }
+        
+        .resend-code a {
+            color: #4a86e8;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        
+        .resend-code a:hover {
+            text-decoration: underline;
+        }
+        
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 8px;
+            background: white;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            transform: translateX(100%);
+            transition: transform 0.3s ease-out;
+            z-index: 1000;
+        }
+        
+        .notification.show {
+            transform: translateX(0);
+        }
+        
+        .notification.success {
+            border-left: 4px solid #4caf50;
+        }
+        
+        .notification.error {
+            border-left: 4px solid #e53935;
+        }
+        
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @media (max-width: 500px) {
+            .auth-box {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="background"></div>
+    
+    <div class="notification" id="notification"></div>
+    
+    <div class="auth-container">
+        <div class="auth-box">
+            <h2>Sign In</h2>
+            <form id="signin-form">
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" required>
+                    <div class="error-message" id="email-error">Please enter a valid email address</div>
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required minlength="8">
+                    <i class="fas fa-eye password-toggle" id="toggle-password"></i>
+                    <div class="error-message" id="password-error">Password must be at least 8 characters long</div>
+
+                    <div class="forgot-password">
+                        <a href="forgot_password.html">Forgot Password?</a>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-primary" id="submit-btn">Sign In</button>
+            </form>
+            
+            <div class="mfa-section" id="mfa-section">
+                <h3>Enter MFA Code</h3>
+                <div class="form-group">
+                    <label for="mfa-code">6-Digit Code</label>
+                    <input type="text" id="mfa-code" name="mfa-code" maxlength="6" pattern="\d{6}">
+                    <div class="error-message" id="mfa-error">Invalid or expired code</div>
+                </div>
+                <div class="resend-code">
+                    <a id="resend-code">Resend Code</a>
+                </div>
+                <button type="button" class="btn-primary" id="verify-btn">Verify Code</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // DOM Elements
+            const signinForm = document.getElementById('signin-form');
+            const emailInput = document.getElementById('email');
+            const passwordInput = document.getElementById('password');
+            const mfaCodeInput = document.getElementById('mfa-code');
+            const mfaSection = document.getElementById('mfa-section');
+            const submitBtn = document.getElementById('submit-btn');
+            const verifyBtn = document.getElementById('verify-btn');
+            const resendCodeLink = document.getElementById('resend-code');
+            const emailError = document.getElementById('email-error');
+            const passwordError = document.getElementById('password-error');
+            const mfaError = document.getElementById('mfa-error');
+            const togglePassword = document.getElementById('toggle-password');
+            const notification = document.getElementById('notification');
+            
+            // This is the base URL of your backend server
+            const API_BASE_URL = 'http://localhost:8080/api/auth';
+            
+            let currentEmail = '';
+            
+            // Toggle password visibility
+            togglePassword.addEventListener('click', function() {
+                const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+                passwordInput.setAttribute('type', type);
+                this.classList.toggle('fa-eye');
+                this.classList.toggle('fa-eye-slash');
+            });
+            
+            // Show notification
+            function showNotification(message, isSuccess = true) {
+                notification.textContent = message;
+                notification.className = 'notification ' + (isSuccess ? 'success' : 'error');
+                notification.classList.add('show');
+                
+                setTimeout(() => {
+                    notification.classList.remove('show');
+                }, 3000);
+            }
+            
+            // Handle form submission for initial sign-in
+            signinForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                // Reset error messages
+                emailError.style.display = 'none';
+                passwordError.style.display = 'none';
+                mfaError.style.display = 'none';
+                
+                const email = emailInput.value.trim();
+                const password = passwordInput.value;
+                
+                // Basic validation
+                let isValid = true;
+                if (!validateEmail(email)) {
+                    emailError.style.display = 'block';
+                    isValid = false;
+                }
+                
+                if (password.length < 8) {
+                    passwordError.style.display = 'block';
+                    isValid = false;
+                }
+                
+                if (!isValid) return;
+                
+                currentEmail = email;
+                
+                try {
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = 'Signing in...';
+                    
+                    const response = await fetch(`${API_BASE_URL}/signin`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ email, password })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        showNotification('MFA code sent to your email', true);
+                        mfaSection.style.display = 'block';
+                        signinForm.style.display = 'none';
+                    } else {
+                        showNotification(data.message || 'Sign-in failed. Please try again.', false);
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    showNotification('An error occurred. Please try again.', false);
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Sign In';
+                }
+            });
+            
+            // Handle MFA verification
+            verifyBtn.addEventListener('click', async function() {
+                mfaError.style.display = 'none';
+                const code = mfaCodeInput.value.trim();
+                
+                if (code.length !== 6 || !/^\d+$/.test(code)) {
+                    mfaError.textContent = 'Please enter a valid 6-digit code.';
+                    mfaError.style.display = 'block';
+                    return;
+                }
+                
+                try {
+                    verifyBtn.disabled = true;
+                    verifyBtn.textContent = 'Verifying...';
+                    
+                    const response = await fetch(`${API_BASE_URL}/verify-mfa`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ email: currentEmail, code })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        showNotification('Authentication successful! Redirecting...', true);
+                        setTimeout(() => {
+                            window.location.href = data.redirect;
+                        }, 1500);
+                    } else {
+                        mfaError.textContent = data.message || 'Invalid code. Please try again.';
+                        mfaError.style.display = 'block';
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    mfaError.textContent = 'An error occurred. Please try again.';
+                    mfaError.style.display = 'block';
+                } finally {
+                    verifyBtn.disabled = false;
+                    verifyBtn.textContent = 'Verify Code';
+                }
+            });
+            
+            // Handle resend code
+            resendCodeLink.addEventListener('click', async function() {
+                try {
+                    const response = await fetch(`${API_BASE_URL}/send-mfa`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ email: currentEmail })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        showNotification('New MFA code sent to your email', true);
+                    } else {
+                        showNotification(data.message || 'Failed to resend code. Please try again.', false);
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    showNotification('An error occurred. Please try again.', false);
+                }
+            });
+            
+            // Email validation function
+            function validateEmail(email) {
+                const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                return re.test(email);
+            }
+        });
+    </script>
+</body>
+</html>

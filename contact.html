@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contact Us | CyberShield</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/mobile.css" media="screen and (max-width: 768px)">
+</head>
+<body>
+    <!-- Background -->
+    <div class="background"></div>
+
+    <!-- Header & Navigation -->
+    <header class="site-header">
+        <a href="Home.html" class="logo">
+            <img src="Images/logos/RemovedStackOps.png" alt="Stackops IT Solutions Logo">
+        </a>
+        <div class="hamburger" id="hamburger">
+            <i class="fas fa-bars"></i>
+        </div>
+        <ul class="nav-links" id="nav-links">
+            <li><a href="Home.html" class="active">Home</a></li>
+            <li><a href="about.html">About</a></li>
+            <li><a href="service.html">Services</a></li>
+            <li><a href="approach.html">Our Approach</a></li>
+            <li><a href="contact.html">Contact Us</a></li>
+            <li><a href="consultation.html">Book a consultation</a></li>
+            <li><a href="#" id="client-portal-link" class="button-like">Client portal</a></li>
+        </ul>
+    </header>
+
+    <section class="contact-us-header-image"></section>
+    <section class="contact">
+        <div class="container">
+            <div class="contact-grid">
+                <div class="contact-info">
+                    <h2>Get In Touch</h2>
+                    <p>Have questions about our services or ready to start a project? Reach out to us using the contact form or through our contact details.</p>
+                    <div class="contact-detail">
+                        <i class="fas fa-map-marker-alt"></i>
+                        <div>
+                            <h3>Address</h3>
+                            <p>Mia Road, Waterfall City, Gauteng, 1685</p>
+                        </div>
+                    </div>
+                    <div class="contact-detail">
+                        <i class="fas fa-phone"></i>
+                        <div>
+                            <h3>Phone</h3>
+                            <p>Phone: +27 67 914 9213</p>
+                        </div>
+                    </div>
+                    <div class="contact-detail">
+                        <i class="fas fa-envelope"></i>
+                        <div>
+                            <h3>Email</h3>
+                            <p>Email: <a href="mailto:info@stackopsit.co.za">info@stackopsit.co.za</a></p>
+                        </div>
+                    </div>
+                    <div class="social-icons">
+                        <a href="https://www.linkedin.com/in/ndamulelo-sandani-0988289a/overlay/about-this-profile/?lipi=urn%3Ali%3Apage%3Ad_flagship3_profile_view_base%3BAO9qQ1ErRwqaNzIPO5obNA%3D%3D"><i class="fab fa-linkedin"></i></a>
+                    </div>
+                </div>
+                <div class="contact-form">
+                    <h2>Send Us a Message</h2>
+                    <form id="contactForm">
+                        <div class="form-group">
+                            <label for="firstName">First Name</label>
+                            <input type="text" id="firstName" name="firstName" placeholder="Your First Name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="lastName">Last Name</label>
+                            <input type="text" id="lastName" name="lastName" placeholder="Your Last Name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="company">Company</label>
+                            <input type="text" id="company" name="company" placeholder="Your Company Name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="email">Email Address</label>
+                            <input type="email" id="email" name="email" placeholder="Your Email" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="contact">Contact</label>
+                            <input type="tel" id="contact" name="contact" placeholder="Contact details" required>
+                        </div>
+                        <div class="category">
+                            <label for="service">Service Interested In</label>
+                            <select id="service" name="service" required>
+                                <option value="">Select a Service</option>
+                                <option value="Cybersecurity Consulting">Cybersecurity Consulting</option>
+                                <option value="Cloud Security">Cloud Security</option>
+                                <option value="Systems Implementation">Systems Implementation</option>
+                                <option value="IT Operations Support">IT Operations Support</option>
+                                <option value="End-user computing">End-user computing</option>
+                                <option value="Governance & Compliance">Governance & Compliance</option>
+                                <option value="Web Development">Web Development</option>
+                                <option value="Mobile App Development">Mobile App Development</option>
+                                <option value="AI Automations">AI Automations</option>
+                                <option value="Web Design">Web Design</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="message">Your Message</label>
+                            <textarea id="message" name="message" placeholder="How can we help you?" rows="5" required></textarea>
+                        </div>
+                        <button type="submit" class="btn">Send Message</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Map Section 
+    <section class="map">
+        <div class="container">
+            <h2>Our Location</h2>
+            <div class="map-placeholder">
+                <i class="fas fa-map-marked-alt"></i>
+                <p>Interactive Map Would Appear Here</p>
+            </div>
+        </div>
+    </section>
+    
+
+     FAQ Section 
+    <section class="faq">
+        <div class="container">
+            <div class="section-title">
+                <h2>Frequently Asked Questions</h2>
+                <p>Find answers to common questions about our services</p>
+            </div>
+            
+            <div class="faq-item">
+                <div class="faq-question">
+                    <h3>How quickly can you start a new project?</h3>
+                    <i class="fas fa-chevron-down"></i>
+                </div>
+                <div class="faq-answer">
+                    <p>We can typically begin new projects within 1-2 weeks of initial contact, depending on the complexity and our current workload. We'll provide a specific timeline during our initial consultation.</p>
+                </div>
+            </div>
+            
+            <div class="faq-item">
+                <div class="faq-question">
+                    <h3>Do you offer ongoing support after project completion?</h3>
+                    <i class="fas fa-chevron-down"></i>
+                </div>
+                <div class="faq-answer">
+                    <p>Yes, we offer various support packages to ensure your solutions remain secure and up-to-date. Our support options include maintenance plans, security monitoring, and emergency response services.</p>
+                </div>
+            </div>
+            
+            <div class="faq-item">
+                <div class="faq-question">
+                    <h3>What industries do you specialize in?</h3>
+                    <i class="fas fa-chevron-down"></i>
+                </div>
+                <div class="faq-answer">
+                    <p>We have experience across multiple industries including healthcare, finance, e-commerce, education, and technology. Our cybersecurity solutions are tailored to meet the specific regulatory and security requirements of each industry.</p>
+                </div>
+            </div>
+            
+            <div class="faq-item">
+                <div class="faq-question">
+                    <h3>How do you ensure the security of our data during projects?</h3>
+                    <i class="fas fa-chevron-down"></i>
+                </div>
+                <div class="faq-answer">
+                    <p>We follow strict security protocols including encrypted communications, secure file transfer methods, and limited access principles. All our team members undergo regular security training and background checks.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- CTA Section 
+    <section class="cta">
+        <div class="container">
+            <h2>Ready to Secure Your Business?</h2>
+            <p>Contact us today for a free cybersecurity assessment</p>
+            <a href="contact.html" class="btn">Get Started</a>
+        </div>
+    </section>
+    -->
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h3>StackOps IT Solutions</h3>
+                    <p>Advanced cybersecurity solutions to protect your business from digital threats and vulnerabilities.</p>
+                </div>
+                <div class="footer-section">
+                    <h3>Quick Links</h3>
+                    <ul>
+                        <li><a href="Home.html">Home</a></li>
+                        <li><a href="service.html">Services</a></li>
+                        <li><a href="about.html">About</a></li>
+                        <li><a href="contact.html">Contact</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h3>Services</h3>
+                    <ul>
+                        <li><a href="service.html#web-development">Web Development</a></li>
+                        <li><a href="service.html#mobile-development">Mobile App Development</a></li>
+                        <li><a href="service.html#web-design">Web Design</a></li>
+                        <li><a href="service.html#cybersecurity">Cybersecurity Consulting</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h3>Connect With Us</h3>
+                    <div class="social-icons">
+
+                        <a href="https://www.linkedin.com/in/ndamulelo-sandani-0988289a/overlay/about-this-profile/?lipi=urn%3Ali%3Apage%3Ad_flagship3_profile_view_base%3BAO9qQ1ErRwqaNzIPO5obNA%3D%3D"><i class="fab fa-linkedin"></i></a>
+            
+                    </div>
+                    <p>Email: <a href="mailto:info@stackopsit.co.za" >info@stackopsit.co.za</a></p>
+                    <p>Phone: +27 61 506 9734</p>
+                    <p>Phone: +27 67 914 9213</p>
+                </div>
+            </div>
+            <div class="copyright">
+                <p>&copy; <span id="copyright-year">2025</span> StackOps IT Solutions. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="js/script.js"></script>
+</body>
+</html>

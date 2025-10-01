@@ -1,0 +1,118 @@
+/* Mobile Responsive */
+@media (max-width: 992px) {
+    .hero-content h1 {
+        font-size: 2.8rem;
+    }
+    
+    .service-content, .service-image {
+        flex: 100%;
+        padding: 0;
+        margin-bottom: 30px;
+    }
+    
+    .services-alt .service-content {
+        padding-left: 0;
+    }
+    
+    .about-content, .about-image {
+        flex: 100%;
+        padding: 0;
+        display: block;
+        margin-bottom: 30px;
+    }
+}
+
+@media (max-width: 768px) {
+    .nav-links {
+        position: fixed;
+        top: 70px;
+        left: -100%;
+        width: 100%;
+        height: calc(100vh - 70px);
+        background: rgba(0, 0, 0, 0.9);
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        transition: 0.5s;
+    }
+
+    .nav-links.active {
+        left: 0;
+    }
+
+    .nav-links li {
+        margin: 15px 0;
+    }
+
+    .hamburger {
+        display:inline-table;
+    }
+
+    .hero-content h1 {
+        font-size: 2.5rem;
+    }
+    
+    .hero-content p {
+        font-size: 1.1rem;
+    }
+    
+    .btn {
+        display: block;
+        margin: 10px 0;
+        width: 100%;
+    }
+    
+    .btn-outline {
+        margin-left: 0;
+    }
+    
+    .stat-item {
+        flex: 100%;
+        margin-bottom: 30px;
+    }
+    
+    .page-header h1 {
+        font-size: 2.5rem;
+    }
+    
+    .service-content h2 {
+        font-size: 2rem;
+    }
+    /* Center services-preview section and grid on mobile */
+    .services-preview {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+    }
+    .services-preview .container {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+    }
+    .services-grid {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1rem;
+    }
+    .service-card {
+        margin-left: auto;
+        margin-right: auto;
+    }
+    
+    .contact-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .contact-form {
+        padding: 20px;
+    }
+    
+    .footer-section {
+        text-align: center;
+    }
+}
