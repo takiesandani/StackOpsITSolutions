@@ -31,61 +31,56 @@
         </ul>
     </header>
 
-    <section class="contact-us-header-image"></section>
     <section class="contact">
-        <div class="container">
-            <div class="contact-grid">
-                <div class="contact-info">
-                    <h2>Get In Touch</h2>
+    <div class="containers">
+        <div class="contact-grid">
+
+            <div class="image-left">
+                <img src="Images/Calling.png" alt="Abstract image of hard drive components">
+            </div>
+
+            <div class="contact-right-side">
+
+                <div class="contact-header">
+                    <h2>Contact Us</h2>
                     <p>Have questions about our services or ready to start a project? Reach out to us using the contact form or through our contact details.</p>
-                    <div class="contact-detail">
-                        <i class="fas fa-map-marker-alt"></i>
-                        <div>
-                            <h3>Address</h3>
-                            <p>Mia Road, Waterfall City, Gauteng, 1685</p>
-                        </div>
-                    </div>
-                    <div class="contact-detail">
-                        <i class="fas fa-phone"></i>
-                        <div>
-                            <h3>Phone</h3>
-                            <p>Phone: +27 67 914 9213</p>
-                        </div>
-                    </div>
-                    <div class="contact-detail">
-                        <i class="fas fa-envelope"></i>
-                        <div>
-                            <h3>Email</h3>
-                            <p>Email: <a href="mailto:info@stackopsit.co.za">info@stackopsit.co.za</a></p>
-                        </div>
-                    </div>
+                    
+                    <p>email: info@stackopsit.co.za</p>
+                    <p>(+27) 67 914 9213</p>
+                    
                     <div class="social-icons">
                         <a href="https://www.linkedin.com/in/ndamulelo-sandani-0988289a/overlay/about-this-profile/?lipi=urn%3Ali%3Apage%3Ad_flagship3_profile_view_base%3BAO9qQ1ErRwqaNzIPO5obNA%3D%3D"><i class="fab fa-linkedin"></i></a>
                     </div>
                 </div>
+
+
                 <div class="contact-form">
-                    <h2>Send Us a Message</h2>
                     <form id="contactForm">
-                        <div class="form-group">
-                            <label for="firstName">First Name</label>
-                            <input type="text" id="firstName" name="firstName" placeholder="Your First Name" required>
+                        <div class="form-group-name">
+                            <div class="name-field">
+                                <label for="firstName">First Name (required)</label>
+                                <input type="text" id="firstName" name="firstName" placeholder="First Name" required>
+                            </div>
+                            <div class="name-field">
+                                <label for="lastName">Last Name</label>
+                                <input type="text" id="lastName" name="lastName" placeholder="Last Name" required>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label for="lastName">Last Name</label>
-                            <input type="text" id="lastName" name="lastName" placeholder="Your Last Name" required>
-                        </div>
+
                         <div class="form-group">
                             <label for="company">Company</label>
                             <input type="text" id="company" name="company" placeholder="Your Company Name" required>
                         </div>
                         <div class="form-group">
-                            <label for="email">Email Address</label>
-                            <input type="email" id="email" name="email" placeholder="Your Email" required>
-                        </div>
-                        <div class="form-group">
                             <label for="contact">Contact</label>
                             <input type="tel" id="contact" name="contact" placeholder="Contact details" required>
                         </div>
+
+                        <div class="form-group">
+                            <label for="email">Email (required)</label>
+                            <input type="email" id="email" name="email" placeholder="Your Email" required>
+                        </div>
+                        
                         <div class="category">
                             <label for="service">Service Interested In</label>
                             <select id="service" name="service" required>
@@ -102,88 +97,20 @@
                                 <option value="Web Design">Web Design</option>
                             </select>
                         </div>
+                        
                         <div class="form-group">
-                            <label for="message">Your Message</label>
+                            <label for="message">Message (required)</label>
                             <textarea id="message" name="message" placeholder="How can we help you?" rows="5" required></textarea>
                         </div>
-                        <button type="submit" class="btn">Send Message</button>
+                        
+                        <button type="submit" class="btn">SEND</button>
                     </form>
                 </div>
             </div>
         </div>
-    </section>
+    </div>
+</section>
 
-    <!-- Map Section 
-    <section class="map">
-        <div class="container">
-            <h2>Our Location</h2>
-            <div class="map-placeholder">
-                <i class="fas fa-map-marked-alt"></i>
-                <p>Interactive Map Would Appear Here</p>
-            </div>
-        </div>
-    </section>
-    
-
-     FAQ Section 
-    <section class="faq">
-        <div class="container">
-            <div class="section-title">
-                <h2>Frequently Asked Questions</h2>
-                <p>Find answers to common questions about our services</p>
-            </div>
-            
-            <div class="faq-item">
-                <div class="faq-question">
-                    <h3>How quickly can you start a new project?</h3>
-                    <i class="fas fa-chevron-down"></i>
-                </div>
-                <div class="faq-answer">
-                    <p>We can typically begin new projects within 1-2 weeks of initial contact, depending on the complexity and our current workload. We'll provide a specific timeline during our initial consultation.</p>
-                </div>
-            </div>
-            
-            <div class="faq-item">
-                <div class="faq-question">
-                    <h3>Do you offer ongoing support after project completion?</h3>
-                    <i class="fas fa-chevron-down"></i>
-                </div>
-                <div class="faq-answer">
-                    <p>Yes, we offer various support packages to ensure your solutions remain secure and up-to-date. Our support options include maintenance plans, security monitoring, and emergency response services.</p>
-                </div>
-            </div>
-            
-            <div class="faq-item">
-                <div class="faq-question">
-                    <h3>What industries do you specialize in?</h3>
-                    <i class="fas fa-chevron-down"></i>
-                </div>
-                <div class="faq-answer">
-                    <p>We have experience across multiple industries including healthcare, finance, e-commerce, education, and technology. Our cybersecurity solutions are tailored to meet the specific regulatory and security requirements of each industry.</p>
-                </div>
-            </div>
-            
-            <div class="faq-item">
-                <div class="faq-question">
-                    <h3>How do you ensure the security of our data during projects?</h3>
-                    <i class="fas fa-chevron-down"></i>
-                </div>
-                <div class="faq-answer">
-                    <p>We follow strict security protocols including encrypted communications, secure file transfer methods, and limited access principles. All our team members undergo regular security training and background checks.</p>
-                </div>
-            </div>
-        </div>
-    </section>
-    
-    <!-- CTA Section 
-    <section class="cta">
-        <div class="container">
-            <h2>Ready to Secure Your Business?</h2>
-            <p>Contact us today for a free cybersecurity assessment</p>
-            <a href="contact.html" class="btn">Get Started</a>
-        </div>
-    </section>
-    -->
     <!-- Footer -->
     <footer>
         <div class="container">

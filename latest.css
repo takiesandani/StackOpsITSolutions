@@ -759,3 +759,110 @@ footer a {
 footer a:hover {
     color: #7e7e7e;
 }
+
+/* ===================================Container for the contact section to span full width==================================== */
+
+
+.contact .container {
+    max-width: 1400px; /* Adjust to control the overall width of the layout */
+    margin: 0 auto;
+    padding: 0;
+}
+
+/* Two-column grid layout */
+.minimal-contact-grid {
+    display: flex;
+    flex-wrap: nowrap; /* Prevents wrapping on desktop */
+    min-height: 80vh; /* Ensure the grid takes up enough vertical space */
+}
+
+/* Left Column: Image Area */
+.contact-image {
+    flex: 1;
+    max-width: 50%;
+    background-color: white; /* White background for the image block */
+    padding: 50px;
+    display: flex; /* For centering the image if needed, though the image in the sample is slightly off-center */
+    justify-content: center;
+    align-items: center;
+}
+
+.contact-image img {
+    width: 100%;
+    max-width: 500px; /* Adjust max-width of the image for better aesthetics */
+    height: auto;
+    display: block;
+}
+
+/* Right Column: Form Area */
+.contact-form {
+    flex: 1;
+    max-width: 50%;
+    padding: 50px 100px; /* Add padding to replicate the spacing in the image */
+}
+
+.contact-form h2 {
+    font-weight: 400; /* Lighter font weight for "Contact Us" */
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+}
+
+/* Style for the two name inputs on one line */
+.form-field-group {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.form-field-group .form-group {
+    flex: 1; /* Makes first and last name fields share space equally */
+}
+
+/* Input/Textarea styling to match the image's look (thin border, white background) */
+.contact-form input[type="text"],
+.contact-form input[type="email"],
+.contact-form textarea,
+.contact-form select {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #c8c8c8; /* Light gray border */
+    background-color: white;
+    box-sizing: border-box;
+    font-size: 1rem;
+    margin-top: 5px; /* Space between label and input */
+}
+
+/* The small text labels beneath the input fields (First Name/Last Name) */
+.form-field-group .form-group span {
+    display: block;
+    font-size: 0.8rem;
+    color: #666;
+    margin-top: 5px;
+}
+
+/* The submit button style */
+.contact-form button.btn {
+    background-color: #333; /* Dark background */
+    color: white;
+    padding: 10px 30px;
+    border: none;
+    cursor: pointer;
+    text-transform: uppercase;
+    font-weight: bold;
+    font-size: 0.9rem;
+}
+
+/* Media query for mobile view (adjust as needed) */
+@media screen and (max-width: 768px) {
+    .minimal-contact-grid {
+        flex-wrap: wrap; /* Stacks columns on mobile */
+    }
+    .contact-image, .contact-form {
+        max-width: 100%;
+        padding: 30px;
+    }
+    .form-field-group {
+        flex-direction: column; /* Stack name fields on mobile */
+        gap: 0;
+    }
+}
