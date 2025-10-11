@@ -13,7 +13,10 @@
     --dark: #1c1c1c;
     --light: #ffffff;
     --gray: #4a4a4aa1;
+    --accent-glow: #1E90FF; /* Dodger Blue for the glow */
 }
+
+
 
 html {
     scroll-behavior: smooth;
@@ -119,7 +122,7 @@ header {
     align-items: center;
     z-index: 1000;
     transition: 0.5s;
-    background: rgba(28, 28, 28, 0.5);
+    background: rgba(28, 28, 28, 0.274);
     backdrop-filter: blur(10px);
 }
 
@@ -191,43 +194,96 @@ header.sticky {
     transform: translateY(-3px);
 }
 
-.welcome-header-image {
-    /* Set image as background for the full section */
-    margin-top: 1.6%;
-    background: url('/Images/welcomeeenee.png');
-    background-size: cover; /* Ensures the image covers the entire area */
-    width: 100%; /* Full width */
-    height: 500px; /* Minimal but professional height */
+.menu-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    background: var(--menu-bg);
+    padding: 40px;
+    border-radius: 12px;
+    
+    /* BLUE Container Border and Subtle Glow */
+    border: 2px solid var(--border-color);
+    box-shadow: 0 0 10px rgba(30, 144, 255, 0.5);
+    
+    width: 90%;
+    margin: 0 auto;
+}
+
+/* --- Menu Items - MODIFIED FOR BLUE HOVER + LIVE GLOW --- */
+.menu-item {
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    position: relative;
-    z-index: 1; /* Ensures it sits above the main fixed background */
-    box-shadow: 0 5px 30px rgba(0, 0, 0, 0.4); /* Optional: Adds a nice shadow for depth */
+    text-decoration: none;
+    color: var(--text-light);
+    padding: 20px 10px;
+    aspect-ratio: 1 / 1;
+    border-radius: 8px;
+    background: transparent; 
+    border: 1px solid transparent; 
+    transition: transform 0.4s ease-in-out, background-color 0.4s ease-in-out, border-color 0.4s ease-in-out;
+    transform: scale(1);
+    box-shadow: 0 0 0px transparent; 
 }
 
-.welcome-header-image::before {
-    /* Subtle overlay for better text contrast if we added text later, or just for mood */
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.105); /* Dark overlay */
+.menu-item:hover {
+    transform: scale(1.05) translateY(-5px); 
+    background: var(--accent-glow); /* Blue background */
+    border-color: var(--accent-glow);
+    animation: live-glow 1.5s ease-in-out infinite alternate;
 }
 
+.menu-item i {
+    font-size: 3em;
+    margin-bottom: 10px;
+    color: var(--text-light);
+    transition: color 0.4s ease-in-out;
+}
+
+.menu-item:hover i {
+    color: var(--light); /* Make icon white on blue hover for contrast */
+}
+
+.menu-item span {
+    font-size: 1em;
+    font-weight: bold;
+    transition: color 0.4s ease-in-out;
+    margin: -6px;
+}
+
+.menu-item:hover span {
+    color: var(--light); /* Text white on hover */
+}
+
+/* Keyframes for live blue glow */
+@keyframes live-glow {
+    0% {
+        box-shadow: 0 0 5px var(--accent-glow), 0 0 10px rgba(30, 144, 255, 0.5);
+    }
+    50% {
+        box-shadow: 0 0 15px var(--accent-glow), 0 0 30px var(--accent-glow), 0 10px 30px rgba(30, 144, 255, 0.7);
+    }
+    100% {
+        box-shadow: 0 0 5px var(--accent-glow), 0 0 10px rgba(30, 144, 255, 0.5);
+    }
+}
 
 
 /* =============================Hero Section======================== */
 .hero {
     min-height: 50vh; /* Fill half the screen height */
     display: flex;
+    height: 600px; /* Minimal but professional height */
+    margin-top: 1.6%;
+    margin-bottom: -10%;
+    display: flex;
     align-items: center;
-    padding: 5% 0 0 0;
-    margin-top: 0;
+    justify-content: center;
     position: relative;
-    z-index: 1;
+    z-index: 1; /* Ensures it sits above the main fixed background */
+    box-shadow: 0 5px 30px rgba(0, 0, 0, 0.4); 
 }
 
 /* Updated hero-flex to use standard flex behavior */
@@ -325,7 +381,7 @@ header.sticky {
 /* Service Page                                                  */
 /*======================================================================================================*/
 .services-preview {
-    background: rgba(28, 28, 28, 0.7);
+    background: rgba(28, 28, 28, 0.258);
     padding-top: 20px;
 }
 
