@@ -445,7 +445,7 @@ header.sticky {
     background-position: center;
     background-repeat: no-repeat; 
     
-    margin-top: 0; 
+    margin-top: 80px; /* Account for fixed header */
     margin-bottom: -48%;
 
     display: flex;
@@ -502,7 +502,8 @@ header.sticky {
     margin-bottom: 10px;
     margin-top: 5%;
     margin-left: -15%;
-    width: 800px;
+    max-width: 800px; /* Changed from fixed width to max-width for responsiveness */
+    width: 100%;
 }
 
 /* --- 3. Animation: Slide-in Effect --- */
@@ -535,30 +536,115 @@ header.sticky {
     padding-top: 60px;
 }
 
-/* --- Media Query Adjustment for Positioning --- */
+/* --- Tablet Media Query --- */
+@media (max-width: 992px) {
+    .our-story-header-image {
+        height: 70vh; /* Adjusted height for tablet */
+        margin-top: 90px; /* Account for header height (padding + logo) */
+    }
+    
+    .our-story-text-content {
+        margin-top: calc(70vh + 90px); /* Match the header image height + header */
+    }
+    
+    .about-content h1 {
+        font-size: 2.5rem; /* Slightly smaller on tablet */
+    }
+    
+    .about-content p {
+        font-size: 1.2rem; /* Adjust font for tablet */
+    }
+}
+
+/* --- Mobile Media Query Adjustment for Positioning --- */
 @media (max-width: 768px) {
     .our-story-header-image {
-        height: 250px; 
+        height: 40vh; /* Reduced height for mobile to prevent overlap */
+        margin-top: 90px; /* Account for mobile header height (padding + logo) */
+        min-height: 300px; /* Ensure minimum readable height */
     }
     
     /* FIX: Adjust the margin for mobile screens to match the mobile header height */
     .our-story-text-content {
-        margin-top: 250px; 
+        margin-top: calc(40vh + 90px); /* Match the header image height + header */
+    }
+
+    .about-content {
+        left: 5%; /* Reduce left positioning on mobile */
+        padding: 10px;
+        max-width: 90%; /* Ensure content doesn't overflow */
     }
 
     .about-content h1 {
-        font-size: 2.5rem; /* Smaller size on mobile */
+        font-size: 1.5rem; /* Smaller size on mobile */
+        margin-left: 0; /* Remove negative margin on mobile */
+        margin-bottom: 10px;
+    }
+
+    .about-content p {
+        font-size: 0.85rem; /* Smaller font for mobile */
+        margin-left: 0; /* Remove negative margin on mobile */
+        max-width: 100%;
+        margin-top: 10px;
+        line-height: 1.4;
     }
     
     /* Your existing mobile styles */
     .about-stats {
-        justify-content: space-around;
+        justify-content: center; /* Keep centered on mobile */
+        flex-wrap: wrap; /* Allow wrapping on mobile */
         width: 100%;
         padding: 15px 10px;
-        gap: 10px;
+        gap: 15px; /* Consistent gap */
+        margin: 5% auto 0; /* Ensure centering on mobile */
     }
     .stat-icon {
         font-size: 2.5rem;
+    }
+
+    /* Values section mobile responsiveness */
+    .values {
+        padding: 40px 0;
+    }
+
+    .values-grid {
+        grid-template-columns: 1fr;
+        gap: 15px;
+        padding: 0 15px;
+    }
+
+    .value-item {
+        padding: 20px;
+    }
+
+    .value-item h3 {
+        font-size: 1.3rem;
+    }
+
+    .value-item p {
+        font-size: 0.95rem;
+    }
+}
+
+/* --- Extra Small Mobile Devices --- */
+@media (max-width: 480px) {
+    .our-story-header-image {
+        height: 35vh; /* Even smaller for very small screens */
+        margin-top: 80px; /* Slightly less margin for small screens */
+        min-height: 280px;
+    }
+    
+    .our-story-text-content {
+        margin-top: calc(35vh + 80px);
+    }
+    
+    .about-content h1 {
+        font-size: 1.3rem; /* Even smaller heading */
+    }
+    
+    .about-content p {
+        font-size: 0.8rem; /* Smaller text for tiny screens */
+        line-height: 1.3;
     }
 }
 
@@ -599,11 +685,14 @@ header.sticky {
 .about-stats {
     display: flex;
     justify-content: center; 
-    margin-top: 3%;
+    align-items: center;
+    flex-wrap: wrap; /* Allow items to wrap if more are added */
+    margin: 3% auto 0; /* Center the container horizontally */
     padding: 10px 20px;
     gap: 20px; 
     border-radius: 8px;
-    width: fit-content;
+    width: 100%; /* Full width to allow proper centering */
+    max-width: 800px; /* Limit maximum width for better appearance */
 }
 
 .stat-item {
@@ -747,6 +836,62 @@ header.sticky {
         margin: 0 auto;
         border-radius: 30px;
     }
+
+    .image-left img {
+        width: 100%;
+        max-width: 100%;
+        height: auto;
+        min-height: 300px;
+        border-radius: 30px; /* Ensure all 4 corners are rounded on mobile */
+    }
+
+    .contact-right-side {
+        margin-top: 0;
+        padding-top: 0;
+    }
+
+    .contact-header h2 {
+        font-size: 2rem;
+    }
+
+    .contact-header p {
+        font-size: 0.9rem;
+    }
+}
+
+/* Additional mobile-specific fixes */
+@media (max-width: 768px) {
+    .contact {
+        padding: 40px 0;
+        margin-top: 80px; /* Account for fixed header */
+    }
+
+    .containers {
+        padding: 0 15px;
+    }
+
+    .image-left img {
+        min-height: 250px;
+        border-radius: 20px; /* Slightly smaller radius on small mobile */
+    }
+
+    .form-group-name {
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .contact-form input[type="text"], 
+    .contact-form input[type="email"], 
+    .contact-form input[type="tel"],
+    .contact-form select,
+    .contact-form textarea {
+        font-size: 16px; /* Prevent zoom on iOS */
+    }
+
+    .btn {
+        width: 100%;
+        padding: 12px 20px;
+    }
 }
 
 /* --- Left Side Image Styling --- */
@@ -760,10 +905,12 @@ header.sticky {
 
 .image-left img {
     /* Makes the image fully cover the height of its container */
-    border-radius: 30px;
-    width: 600px;
-    height: 600px;
-    object-fit: fill; /* Ensures the image covers the area without distortion */
+    border-radius: 30px; /* All 4 corners rounded */
+    width: 100%; /* Responsive width */
+    max-width: 600px; /* Maximum width on large screens */
+    height: auto; /* Maintain aspect ratio */
+    min-height: 400px; /* Minimum height for consistency */
+    object-fit: cover; /* Ensures the image covers the area without distortion */
     display: block;
     
 }
@@ -1563,9 +1710,36 @@ footer a:hover {
         flex-direction: column !important;
         align-items: center;
         margin-bottom: 40px;
-        opacity: 0; /* Ensure mobile also starts hidden */
+        opacity: 1; /* Show by default on mobile to prevent visibility issues */
     }
     .roadmap-node.is-visible {
         transform: translateY(0) !important;
+        opacity: 1;
+    }
+
+    .roadmap-logo {
+        width: 70px;
+        height: 70px;
+        margin: 0 0 15px 0;
+    }
+
+    .roadmap-logo img {
+        max-width: 45px;
+        max-height: 45px;
+    }
+
+    .roadmap-desc {
+        text-align: center;
+        min-width: auto;
+        width: 100%;
+        max-width: 300px;
+    }
+
+    .brands-roadmap {
+        padding: 40px 0;
+    }
+
+    .roadmap-trail {
+        padding: 20px 15px;
     }
 }

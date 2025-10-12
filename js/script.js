@@ -537,6 +537,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const nodes = document.querySelectorAll('.roadmap-node');
     const connectors = document.querySelectorAll('.roadmap-connector');
 
+    // Mobile fallback: Show all elements immediately on small screens
+    if (window.innerWidth <= 768) {
+        nodes.forEach(node => {
+            node.classList.add('is-visible');
+        });
+        connectors.forEach(connector => {
+            connector.classList.add('is-visible');
+        });
+        return; // Exit early, no need for observers on mobile
+    }
+
     // Create an Intersection Observer for the nodes
     const nodeObserver = new IntersectionObserver(entries => {
         entries.forEach(entry => {
@@ -548,8 +559,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }, {
-        // Options: start the animation when 20% of the element is visible
-        threshold: 0.2
+        // Options: start the animation when 10% of the element is visible (reduced for better mobile support)
+        threshold: 0.1
     });
 
     // Create an Intersection Observer for the connectors (optional, but nice)
@@ -561,8 +572,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }, {
-        // Options: start the animation when 50% of the element is visible
-        threshold: 0.5
+        // Options: start the animation when 10% of the element is visible (reduced for better mobile support)
+        threshold: 0.1
     });
 
     // Start observing all nodes and connectors
