@@ -467,6 +467,19 @@ header.sticky {
     background: rgba(0, 0, 0, 0.3);
 }
 
+/* --- 3. Our Story Stats Positioning --- */
+.our-story-stats {
+    position: absolute;
+    top: 430px;                /* ✅ Places stats at the bottom of the section */
+    left: 130%;
+    transform: translateX(-50%); /* ✅ Centers horizontally */
+    display: flex;               /* ✅ Aligns the two items side by side */
+    justify-content: center;
+    align-items: center;
+    gap: 60px;                   /* ✅ Spacing between icons */
+    z-index: 3;
+}
+
 /* --- 2. Content Placement and Styling --- */
 .about-content {
     /* Position text relative to its parent .our-story-header-image */
@@ -528,7 +541,7 @@ header.sticky {
 .our-story-text-content {
     /* The critical fix: Push this section down by the full height of the header image.
        This ensures the section starts *after* the 100vh banner ends. */
-    margin-top: 100vh; 
+    margin-top: 75vh; 
     
     background: rgba(28, 28, 28, 0.7); 
     margin-bottom: 10%;
@@ -672,13 +685,14 @@ header.sticky {
 .about-content h2 {
     font-size: 2.5rem;
     margin-bottom: 15px;
-    color: var(--primary);
+    color: white;
 }
 
 .about-content p {
     margin-bottom: 10px;
     opacity: 0.8;
     font-size: 1.1rem;
+    color: #ffffff;
 }
 
 
@@ -1422,7 +1436,7 @@ footer a:hover {
     width: 200px; 
     height: 200px;
     border-radius: 15%;
-    object-fit: cover;
+    object-fit: contain;
     box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
 }
 
@@ -1583,163 +1597,217 @@ footer a:hover {
     }
 }
 
-/*======================================================================================================*/
-/* Roadmap Page CSS (Modified)                                                                          */
-/*======================================================================================================*/
-.brands-roadmap {
-    background: linear-gradient(90deg, #006eff00 0%, #032cfa24);
-    padding: 80px 0;
-    color: #fff;
+/* Container for the entire section to apply the full-width dark background */
+.brands-logo-showcase {
+    /* Use the dark charcoal color from the image */
+    background-color: #24292e6b; 
+    /* REMOVE default top padding/margin that might exist on the section */
+    padding-top: 0; 
+    margin-top: 0;
+    padding-bottom: 50px; 
 }
-.roadmap-trail {
-    position: relative;
-    max-width: 800px;
+
+/* Standard container for the logo grid */
+.container {
+    max-width: 1200px; /* Standard website max width, adjust if needed */
     margin: 0 auto;
-    padding: 40px 0;
+    padding: 0 15px;
 }
-.roadmap-node {
+
+/* --- Section Title Styling (Full-Width 50/50 Split, Boxed) --- */
+
+.section-title-full-width {
+    /* Create the 50/50 split */
     display: flex;
-    align-items: center;
-    margin-bottom: 60px;
-    position: relative;
-    z-index: 2;
-    /* --- NEW: Default state and transition for animation --- */
-    opacity: 0;
-    transition: opacity 0.8s ease-out, transform 0.8s ease-out;
+    align-items: stretch; /* Makes sure the two columns have equal height */
+    justify-content: space-between;
+    min-height: 450px; 
+    width: 100%; 
+    
+    /* ADD: Outer border for the entire section */
+    border: 1px solid #3d454a; 
+    box-sizing: border-box; /* Include padding/border in the element's total width/height */
 }
 
-.roadmap-logo {
-    width: 90px;
-    height: 90px;
-    background: #fff;
-    /* This line creates the circle */
-    border-radius: 50%; 
-    box-shadow: 0 4px 18px rgba(0,0,0,0.12);
+.title-section-left {
+    width: 50%;
+    /* Key to centering: Use flexbox on the left container */
     display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0 24px;
-}
-.roadmap-logo img {
-    max-width: 60px;
-    max-height: 60px;
-    object-fit: contain;
+    flex-direction: column;
+    justify-content: center; /* Vertically center the content group */
+    align-items: center; /* Horizontally center the content group */
+    text-align: center; /* Ensures text lines are centered */
+
+    /* ADD: Inner border to divide the two halves */
+    border-right: 1px solid #3d454a2c; 
+    
+    /* Add internal padding to create space around the centered text */
+    padding: 20px; 
 }
 
-.roadmap-desc h3 {
-    color: #fff;
-    font-size: 1.2rem;
-    margin-bottom: 8px;
-}
-.roadmap-desc p {
-    color: #e0e0e0;
-    font-size: 1rem;
-    margin: 0;
+.title-section-right {
+    width: 50%;
+    height: 100%;
+    overflow: hidden; 
 }
 
-.roadmap-desc {
-    background: rgba(255,255,255,0.09);
-    border-radius: 12px;
-    padding: 22px 28px;
-    min-width: 220px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
-}
-.roadmap-desc h3 {
-    color: #fff;
-    font-size: 1.2rem;
-    margin-bottom: 8px;
-}
-.roadmap-desc p {
-    color: #e0e0e0;
-    font-size: 1rem;
-    margin: 0;
-}
-
-/* Initial states (hidden and offset) */
-.roadmap-node.left {
-    flex-direction: row;
-    justify-content: flex-start;
-    /* Slide from left */
-    transform: translateX(-50px);
-}
-.roadmap-node.right {
-    flex-direction: row-reverse;
-    justify-content: flex-end;
-    /* Slide from right */
-    transform: translateX(50px);
-}
-
-/* --- NEW: Visible state (final animated position) --- */
-.roadmap-node.is-visible {
-    opacity: 1;
-    transform: translateX(0); /* Move to final position */
-}
-/* The connector can also animate! Let's make it grow from the top. */
-.roadmap-connector {
-    position: relative;
-    height: 60px;
+/* Styling the image to fill its 50% container completely */
+.title-section-right img {
     width: 100%;
-    z-index: 1;
+    height: 100%;
+    object-fit: contain; /* Ensures the image fills the space and crops cleanly */
+    display: block; 
 }
-.roadmap-connector::before {
+
+/* Main Heading Style (The large white text) */
+.title-section-left h1 {
+    font-size: 6em; 
+    color: #c8c8c8; 
+    width: 190px;
+    margin: 0;
+    font-weight: 300; /* Bolder for "Our Valued Clients" style */
+    line-height: 1.1;
+    text-transform: none;
+    position: relative; /* needed so the pseudo-element can be positioned relative to the text */
+    display: block;
+    text-align: center;
+}
+
+
+.title-section-left h1 {
+    font-size: 6em; 
+    color: #c8c8c8; 
+    width: 190px;
+    margin: 0;
+    font-weight: 300; /* Bolder for "Our Valued Clients" style */
+    line-height: 1.1;
+    text-transform: none;
+    position: relative; 
+    /* The line will be centered with the text due to align-items: center on parent */
+}
+
+
+
+/* Horizontal line below the main heading text */
+.title-section-left h1::after {
     content: '';
     position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 4px;
-    height: 100%;
-    background: linear-gradient(180deg, #006eff 0%, #fff 100%);
-    border-radius: 2px;
-    /* --- NEW: Initial state and transition for connector animation --- */
-    transform-origin: top;
-    transform: scaleY(0) translateX(-50%); /* Initially height 0 */
-    transition: transform 0.8s ease-out 0.3s; /* Delay it slightly */
-}
-.roadmap-connector.is-visible::before {
-    transform: scaleY(1) translateX(-50%); /* Grow to full height */
+    bottom: -10px; 
+    /* Line is centered because its parent (h1) is centered in the box */
+    left: 49.5%; 
+    transform: translateX(-50%); 
+    width: 460px; 
+    height: 1px;
+    background-color: #ffffff; 
 }
 
-/* Media query adjustment for mobile */
-@media (max-width: 768px) {
-    /* ... (original mobile styles) ... */
-    .roadmap-node,
-    .roadmap-node.left,
-    .roadmap-node.right {
-        /* Reset mobile initial transform for a smoother center slide-up */
-        transform: translateY(30px) !important;
-        flex-direction: column !important;
-        align-items: center;
-        margin-bottom: 40px;
-        opacity: 1; /* Show by default on mobile to prevent visibility issues */
-    }
-    .roadmap-node.is-visible {
-        transform: translateY(0) !important;
-        opacity: 1;
-    }
+/* Subtext Style (The small white, uppercase text) */
+.title-section-left p {
+    font-size: 1.9em;
+    color: #777777; 
+    letter-spacing: 2px;
+    font-weight: 100;
+    width: 460px;
+    margin-top: 25px; 
+    padding: 0;
+    text-transform: uppercase;
+    position: static; 
+}
 
-    .roadmap-logo {
-        width: 70px;
-        height: 70px;
-        margin: 0 0 15px 0;
-    }
+/* --- LOGO GRID Styling --- */
+.logo-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 25px;
+    padding-bottom: 50px;
+    margin-top: 50px;
+    justify-items: center;
+}
 
-    .roadmap-logo img {
-        max-width: 45px;
-        max-height: 45px;
-    }
+.logo-item {
+    background: #ffffff; 
+    border: 0px solid #000000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    aspect-ratio: 1 / 1;
+    width: 80%;             /* ✅ Reduced container size slightly */
+    height: auto;
+    padding: 0; 
+    box-shadow: none;
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
 
-    .roadmap-desc {
-        text-align: center;
-        min-width: auto;
-        width: 100%;
-        max-width: 300px;
-    }
+.logo-item:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+}
 
-    .brands-roadmap {
-        padding: 40px 0;
-    }
+.logo-item img {
+    max-width: 100%;          /* ✅ Keeps image size but fills more of smaller box */
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    object-fit: contain;     /* ✅ Preserves proportions */
+    margin: 0;               /* ✅ Centers perfectly */
+    transition: opacity 0.2s ease-in-out;
+}
 
-    .roadmap-trail {
-        padding: 20px 15px;
+.logo-item:hover img {
+    opacity: 1;
+}
+
+/* --- Mobile Responsiveness --- */
+
+@media (max-width: 991px) {
+    .section-title-full-width {
+        flex-direction: column; 
+        min-height: auto;
+    }
+    .title-section-left {
+        width: 100%; 
+        padding: 40px 15px 15px; 
+        border-right: none; /* Remove right border on mobile stack */
+        border-bottom: 1px solid #3d454a; /* Add a bottom border instead */
+    }
+    .title-section-left h1 {
+        font-size: 3.5em; 
+    }
+    /* Center the line on mobile */
+    .title-section-left h1::after {
+        left: 50%;
+        transform: translateX(-50%);
+        width: 100px; 
+    }
+    .title-section-right {
+        width: 100%; 
+        height: 250px; 
+    }
+    
+    .logo-grid {
+        grid-template-columns: repeat(4, 1fr); 
+        gap: 25px;
+    }
+}
+
+@media (max-width: 767px) {
+    .logo-grid {
+        grid-template-columns: repeat(3, 1fr); 
+        gap: 20px;
+    }
+    .logo-item img {
+        max-height: 60%; 
+        max-width: 60%;
+    }
+}
+
+@media (max-width: 479px) {
+    .logo-grid {
+        grid-template-columns: repeat(2, 1fr); 
+        gap: 15px;
+    }
+    .logo-item img {
+        max-height: 70%;
+        max-width: 70%;
     }
 }

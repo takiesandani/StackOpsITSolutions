@@ -28,9 +28,7 @@ body {
 }
 
 .menu-icon {
-    /* REMOVED: margin-right: 0.5rem; */
-    /* REMOVED: color: #004ba3; (This was suppressing the SVG's white stroke) */
-    /* REMOVED: margin-bottom to prevent extra gap */
+
     display: block; /* Ensures proper centering */
     width: 48px; /* Fixed width for consistency */
     height: 48px; /* Fixed height for consistency */
@@ -169,7 +167,7 @@ body {
     border: 1px solid transparent;
     transition: transform 0.4s ease-in-out, background-color 0.4s ease-in-out, border-color 0.4s ease-in-out;
     transform: scale(1);
-    box-shadow: 0 0 0px transparent;
+    box-shadow: 0 0 10px rgba(30, 144, 255, 0.7);
     gap: clamp(0.25rem, 0.8vw, 0.5rem); /* Responsive gap between icon and text */
     min-width: 0; /* Allows items to shrink below content size */
 }
@@ -580,7 +578,7 @@ body {
 .slide img {
   width: 100%;
   height: clamp(150px, 15vw, 220px);
-  object-fit: cover;
+  object-fit:fill;
   border-top-left-radius: 16px;
   border-top-right-radius: 16px;
 }
@@ -749,8 +747,9 @@ body {
   justify-content: center;
   height: 100vh;
   padding: 0 5vw;
-  background: #e0e0e000;
+  background: #e0e0e009;
   position: relative; /* Anchors the logo to this section */
+  border: #005eff;
 }
 
 .about-image {
@@ -775,10 +774,24 @@ body {
 
 .about-content h1 {
   font-size: clamp(2rem, 4vw, 3rem);
-  font-weight: 600;
-  line-height: 1.2;
+  font-weight: 400;
+  line-height: 1.5;
   margin-bottom: 1.5rem;
   color: white;
+}
+
+/* Horizontal line below the main heading text */
+.about-content h1::after {
+    content: '';
+    position: absolute;
+    bottom: 360px; 
+    /* Line is centered because its parent (h1) is centered in the box */
+    left: 65.5%; 
+    transform: translateX(-50%); 
+    width: 400px; 
+    height: 1px;
+    background-color: #ffffff; 
+    
 }
 
 .about-content h1 span {
