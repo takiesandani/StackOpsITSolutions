@@ -338,7 +338,7 @@ header.sticky {
     display: block;
     margin-bottom: 8px;
     font-weight: 500;
-    color: var(--primary);
+    color: white;
 }
 
 .form-group input, .form-group textarea, .form-group select {
@@ -500,6 +500,7 @@ footer {
 .page-header h1 {
     font-size: 3rem;
     margin-bottom: 20px;
+    font-weight: 400;
     color: var(--primary);
 }
 

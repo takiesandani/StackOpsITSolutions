@@ -27,7 +27,8 @@ function formatDateToMySQL(date) {
     return date.toISOString().slice(0, 19).replace('T', ' ');
 }
 
-// Configure Nodemailer for email sending with Google Mail
+// Configure Nodemailer for email sending
+/*
 const transporter = nodemailer.createTransport({
     // Use the service name for Google Mail
     service: 'gmail', 
@@ -36,6 +37,17 @@ const transporter = nodemailer.createTransport({
         user: process.env.EMAIL_USER, 
         // The App Password you generated for this application
         pass: process.env.EMAIL_PASS 
+    }
+});
+*/
+
+const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST || 'smtpout.secureserver.net',
+    port: Number(process.env.SMTP_PORT) || 465,
+    secure: (process.env.SMTP_SECURE || 'true') === 'true', // true for 465, false for 587
+    auth: {
+        user: process.env.SMTP_USER || process.env.EMAIL_USER,
+        pass: process.env.SMTP_PASS || process.env.EMAIL_PASS
     }
 });
 
@@ -448,7 +460,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
         );
 
         // Create the password reset link
-        const resetLink = `http://localhost:8080/reset-password.html?token=${resetToken}`;
+        const resetLink = `https://stackopsit.co.za/reset-password.html?token=${resetToken}`;
 
         // Send the email
         const emailBody = `
