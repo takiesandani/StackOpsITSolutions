@@ -684,39 +684,28 @@ app.post('/api/contact-message', async (req, res) => {
     }
 });
 
-
-// ------------------------------------------------------------------
-// CRITICAL FIX FOR CLOUD RUN STARTUP PROBE
-// ------------------------------------------------------------------
+// MODIFIED Server.js startServer function (Fix B)
 
 const startServer = async () => {
-    let connection;
-    try {
-        // 1. Check Database Connection & Run Seed Logic
-        // Get a connection to explicitly ensure the DB is reachable via the Cloud SQL Proxy
-        connection = await pool.getConnection(); 
-        console.log("Database connection established successfully.");
-        connection.release(); // Release the connection back to the pool
+    const PORT = process.env.PORT || 8080;
 
-        // Now that connectivity is confirmed, run the seed logic
-        await seedAvailability(); 
-
-        // 2. Start the Express Server
-        // Use 8080 as the standard port for Cloud Run
-        const PORT = process.env.PORT || 8080; 
-        
-        app.listen(PORT, () => {
-            console.log(`Server successfully running on port ${PORT}`);
-        });
-
-    } catch (error) {
-        // If the server fails to connect to the DB or initialize, log it and exit
-        console.error("FATAL: Server failed to start due to error:", error);
-        if (connection) connection.release();
-        // Exiting with code 1 tells the container scheduler to treat this as a failed start
-        process.exit(1); 
-    }
+    // 1. Start the Express Server IMMEDIATELY
+    app.listen(PORT, () => {
+        console.log(`Server successfully running on port ${PORT}`);
+    });
+    
+    // 2. Perform connection checks and seeding in the background
+    try {
+        const connection = await pool.getConnection(); 
+        console.log("Database connection established successfully.");
+        connection.release();
+        
+        await seedAvailability(); // This can now run while the server is responding to probes
+    } catch (error) {
+        console.error("WARNING: Background DB connection or seeding failed:", error);
+        // The server is still running and ready to serve, but the DB is down.
+        // You should check logs for this, but the container will be 'Ready'.
+    }
 };
-
-// Start the sequence
+// ... rest of your code
 startServer();
