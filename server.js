@@ -38,6 +38,13 @@ const transporter = nodemailer.createTransport({
     }
 });
 
+// Add a simple health check route for Cloud Run startup probe
+app.get('/', (req, res) => {
+
+    res.sendFile(path.join(__dirname, 'Home.html')); 
+
+});
+
 // Helper function to send email
 const sendEmail = async (to, subject, body, isHtml = false) => {
     const mailOptions = {
