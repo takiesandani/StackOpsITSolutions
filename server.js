@@ -7,6 +7,12 @@ const path = require('path');
 const jwt = require('jsonwebtoken'); // New: Import jsonwebtoken
 require('dotenv').config();
 
+// Add a root route for the Cloud Run startup probe and for serving your main page
+app.get('/', (req, res) => {
+    // Assuming your main file is index.html. Change this if your main file is named differently.
+    res.sendFile(path.join(__dirname, 'Home.html'));
+});
+
 const app = express();
 app.use(express.json());
 app.use(cors());
@@ -38,12 +44,6 @@ const transporter = nodemailer.createTransport({
     }
 });
 
-// Add a simple health check route for Cloud Run startup probe
-app.get('/', (req, res) => {
-
-    res.sendFile(path.join(__dirname, 'Home.html')); 
-
-});
 
 // Helper function to send email
 const sendEmail = async (to, subject, body, isHtml = false) => {
