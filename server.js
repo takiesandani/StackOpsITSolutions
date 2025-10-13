@@ -208,7 +208,7 @@ app.post('/api/admin/availability', async (req, res) => {
     }
 });
 
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 3000;
 
 // NEW: JWT authentication middleware to protect routes
 const authenticateToken = (req, res, next) => {
