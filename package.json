@@ -1,12 +1,20 @@
 {
   "name": "stackops-booking",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Node.js application for StackOps IT Solutions booking and client portal.",
+  "main": "server.js",
   "scripts": {
+    "start": "node server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
+  "keywords": [
+    "Node.js",
+    "Express",
+    "MySQL",
+    "cloudrun",
+    "Booking",
+    "Client Portal"
+  ],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
