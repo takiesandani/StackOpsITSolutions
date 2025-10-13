@@ -684,28 +684,32 @@ app.post('/api/contact-message', async (req, res) => {
     }
 });
 
-// MODIFIED Server.js startServer function (Fix B)
+// Server.js - CORRECTED startServer Function
 
 const startServer = async () => {
     const PORT = process.env.PORT || 8080;
 
-    // 1. Start the Express Server IMMEDIATELY
+    // 1. Start the Express Server IMMEDIATELY to respond to Cloud Run health checks
     app.listen(PORT, () => {
         console.log(`Server successfully running on port ${PORT}`);
     });
     
-    // 2. Perform connection checks and seeding in the background
+    // 2. Perform heavy, blocking tasks (DB connection and seeding) in the background
+    // If this fails, the server is at least 'Ready' according to the HTTP probe, 
+    // and the failure is logged as a WARNING, not a fatal crash.
     try {
         const connection = await pool.getConnection(); 
         console.log("Database connection established successfully.");
         connection.release();
         
-        await seedAvailability(); // This can now run while the server is responding to probes
+        // Only run seeding once the connection is confirmed
+        await seedAvailability(); 
     } catch (error) {
         console.error("WARNING: Background DB connection or seeding failed:", error);
-        // The server is still running and ready to serve, but the DB is down.
-        // You should check logs for this, but the container will be 'Ready'.
+        // Do NOT exit the process (process.exit(1)) here, 
+        // as the server is already listening for the probe.
     }
 };
-// ... rest of your code
+
+// Start the sequence
 startServer();
