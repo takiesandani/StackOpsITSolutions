@@ -28,19 +28,6 @@ function formatDateToMySQL(date) {
 }
 
 // Configure Nodemailer for email sending
-/*
-const transporter = nodemailer.createTransport({
-    // Use the service name for Google Mail
-    service: 'gmail', 
-    auth: {
-        // Your Google email address
-        user: process.env.EMAIL_USER, 
-        // The App Password you generated for this application
-        pass: process.env.EMAIL_PASS 
-    }
-});
-*/
-
 const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtpout.secureserver.net',
     port: Number(process.env.SMTP_PORT) || 465,
@@ -101,8 +88,6 @@ const seedAvailability = async () => {
         console.error("Error seeding data:", error);
     }
 };
-
-seedAvailability();
 
 // Serve the signup.html file when the user visits /admin/register
 app.get('/admin/register', (req, res) => {
@@ -207,8 +192,6 @@ app.post('/api/admin/availability', async (req, res) => {
         res.status(500).send('Failed to update availability.');
     }
 });
-
-const PORT = process.env.PORT || 3000;
 
 // NEW: JWT authentication middleware to protect routes
 const authenticateToken = (req, res, next) => {
@@ -324,9 +307,6 @@ app.post('/api/auth/verify-mfa', async (req, res) => {
         res.status(500).json({ success: false, message: 'Server error. Please try again.' });
     }
 });
-
-// OLD: This endpoint is no longer necessary as it's part of the new sign-in flow
-// app.post('/api/auth/send-mfa', ...);
 
 // NEW: Protect the Client Portal route with the authentication middleware
 app.get('/ClientPortal.html', authenticateToken, (req, res) => {
@@ -678,4 +658,39 @@ app.post('/api/contact-message', async (req, res) => {
     }
 });
 
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+// ------------------------------------------------------------------
+// CRITICAL FIX FOR CLOUD RUN STARTUP PROBE
+// ------------------------------------------------------------------
+
+const startServer = async () => {
+    let connection;
+    try {
+        // 1. Check Database Connection & Run Seed Logic
+        // Get a connection to explicitly ensure the DB is reachable via the Cloud SQL Proxy
+        connection = await pool.getConnection(); 
+        console.log("Database connection established successfully.");
+        connection.release(); // Release the connection back to the pool
+
+        // Now that connectivity is confirmed, run the seed logic
+        await seedAvailability(); 
+
+        // 2. Start the Express Server
+        // Use 8080 as the standard port for Cloud Run
+        const PORT = process.env.PORT || 8080; 
+        
+        app.listen(PORT, () => {
+            console.log(`Server successfully running on port ${PORT}`);
+        });
+
+    } catch (error) {
+        // If the server fails to connect to the DB or initialize, log it and exit
+        console.error("FATAL: Server failed to start due to error:", error);
+        if (connection) connection.release();
+        // Exiting with code 1 tells the container scheduler to treat this as a failed start
+        process.exit(1); 
+    }
+};
+
+// Start the sequence
+startServer();
