@@ -10,8 +10,8 @@
   "keywords": [
     "Node.js",
     "Express",
-    "MySQL",
-    "cloudrun",
+    "PostgreSQL",
+    "Supabase",
     "Booking",
     "Client Portal"
   ],
@@ -19,14 +19,10 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "bcrypt": "^6.0.0",
     "bcryptjs": "^3.0.2",
-    "cors": "^2.8.5",
-    "country-state-city": "^3.2.1",
-    "dotenv": "^17.2.1",
-    "express": "^5.1.0",
+    "pg": "^8.11.3",
+    "nodemailer": "^7.0.6",
     "jsonwebtoken": "^9.0.2",
-    "mysql2": "^3.14.4",
-    "nodemailer": "^7.0.6"
+    "cors": "^2.8.5"
   }
 }
