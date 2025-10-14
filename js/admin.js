@@ -51,7 +51,7 @@ document.addEventListener("DOMContentLoaded", () => {
         selectedDateDisplay.textContent = formattedDate;
         timeSlotsEl.innerHTML = "";
 
-        const response = await fetch(`http://localhost:8080/api/schedule?date=${formattedDate}`);
+        const response = await fetch(`api/schedule?date=${formattedDate}`);
         const availableTimes = await response.json();
 
         const allTimes = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
@@ -69,7 +69,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const toggleAvailability = async (date, time, isAvailable) => {
         try {
-            const response = await fetch("http://localhost:8080/api/admin/availability", {
+            const response = await fetch("/api/admin/availability", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ date, time, isAvailable })
@@ -89,7 +89,7 @@ document.addEventListener("DOMContentLoaded", () => {
     
     const fetchBookings = async () => {
         try {
-            const response = await fetch("http://localhost:8080/api/admin/bookings");
+            const response = await fetch("/api/admin/bookings");
             const bookings = await response.json();
 
             bookingsListEl.innerHTML = '';
