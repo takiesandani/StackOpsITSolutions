@@ -49,6 +49,7 @@ a {
     max-width: 1200px;
     margin: 0 auto;
     padding: 0 20px;
+    
 }
 
 .btn {
@@ -162,6 +163,10 @@ header.sticky {
     list-style: none;
 }
 
+.nav-links .shop {
+    background-color: var(--primary);
+}
+
 .nav-links li {
     margin: 0 10px;
 }
@@ -253,7 +258,8 @@ header.sticky {
 
 .page-header h1 {
     font-size: 3rem;
-    margin-bottom: 0px;
+    line-height: 1;
+    margin-bottom: 8px;
     color: white;
 }
 
@@ -283,11 +289,18 @@ header.sticky {
     display: flex;
     flex-direction: column;
     box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+    border: 1px solid transparent;
+    transition: transform 0.4s ease-in-out, background-color 0.4s ease-in-out, border-color 0.4s ease-in-out;
+    transform: scale(1);
+    box-shadow: 0 0 10px rgba(30, 144, 255, 0.7);
+    gap: clamp(0.25rem, 0.8vw, 0.5rem); /* Responsive gap between icon and text */
+    min-width: 0; /* Allows items to shrink below content size */
+
 }
 
 .service-item:hover {
     transform: translateY(-10px);
-    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 15px 40px rgb(0, 132, 255);
 }
 
 .service-item img {
@@ -335,6 +348,7 @@ header.sticky {
 
 .service-content .btn {
     margin-top: auto;
+    margin-left: 29%;
 }
 
 .button {
@@ -508,6 +522,7 @@ header.sticky {
 .our-story-stats .stat-icon {
     font-size: clamp(1.05rem, 2.6vw, 1.35rem);
     margin-bottom: 0;
+    color: rgb(148, 148, 148);
 }
 
 .our-story-stats .stat-text {
@@ -758,17 +773,22 @@ header.sticky {
     width: clamp(88px, 10vw, 115px);
     height: clamp(88px, 10vw, 115px);
     border-radius: 50%;
-    border: 1px solid rgba(255, 255, 255, 0.6);
+    border: 1px solid rgba(1, 111, 255, 0.6);
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
     text-align: center;
-    color: #ffffff;
+    color: #0066ff;
     padding: clamp(8px, 2.2vw, 14px);
     background: transparent;
     backdrop-filter: none;
     gap: clamp(4px, 1.2vw, 8px);
+    transition: transform 0.4s ease-in-out, background-color 0.4s ease-in-out, border-color 0.4s ease-in-out;
+    transform: scale(1);
+    box-shadow: 0 0 10px rgba(30, 144, 255, 0.7);
+    gap: clamp(0.25rem, 0.8vw, 0.5rem); /* Responsive gap between icon and text */
+    min-width: 0; /* Allows items to shrink below content size */
 }
 
 .stat-icon {
@@ -799,7 +819,14 @@ header.sticky {
     border-radius: 10px;
     text-align: center;
     transition: 0.3s;
+    shape-margin: 10px;
+    transition: transform 0.4s ease-in-out, background-color 0.4s ease-in-out, border-color 0.4s ease-in-out;
+    transform: scale(1);
+    box-shadow: 0 0 10px rgba(30, 144, 255, 0.7);
+    gap: clamp(0.25rem, 0.8vw, 0.5rem); /* Responsive gap between icon and text */
+    min-width: 0; /* Allows items to shrink below content size */
 }
+
 
 .value-item:hover {
     transform: translateY(-10px);
@@ -809,7 +836,7 @@ header.sticky {
 
 .value-item i {
     font-size: 40px;
-    color: var(--primary);
+    color: gray;
     margin-bottom: 15px;
 }
 
@@ -1164,7 +1191,7 @@ textarea {
 .cta h2 {
     font-size: 2.5rem;
     margin-bottom: 15px;
-    color: var(--primary);
+    color: white;
 }
 
 .cta p {
@@ -1229,8 +1256,8 @@ textarea {
 }
 /* ===== FOOTER SECTION ===== */
 footer {
-    background: #0a0f1a;
-    color: #ccc;
+    background: #000000;
+    color: #ffffff;
     padding: 70px 0 40px;
     font-size: 15px;
 }
@@ -1245,7 +1272,7 @@ footer {
 }
 
 .footer-section h3 {
-    color: #fff;
+    color: #ffffff;
     margin-bottom: 20px;
     font-size: 1.2rem;
     position: relative;
@@ -1256,7 +1283,7 @@ footer {
     display: block;
     width: 40px;
     height: 3px;
-    background: #757575;
+    background: #ffffff;
     margin-top: 6px;
     border-radius: 5px;
 }
@@ -1272,13 +1299,13 @@ footer {
 }
 
 .footer-section ul li a {
-    color: #ccc;
+    color: #ffffff;
     text-decoration: none;
     transition: color 0.3s ease;
 }
 
 .footer-section ul li a:hover {
-    color: #515151;
+    color: #0077ff;
 }
 
 .social-icons {
@@ -1307,17 +1334,17 @@ footer {
 footer .copyright {
     text-align: center;
     padding-top: 25px;
-    color: #999;
+    color: #ffffff;
     font-size: 14px;
     letter-spacing: 0.5px;
 }
 
 footer a {
-    color: #474747;
+    color: #ffffff;
 }
 
 footer a:hover {
-    color: #7e7e7e;
+    color: #0479ff;
 }
 
 /* Category Dropdown */
@@ -1470,6 +1497,11 @@ footer a:hover {
     text-align: center;
     transition: all 0.3s ease;
     border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: transform 0.4s ease-in-out, background-color 0.4s ease-in-out, border-color 0.4s ease-in-out;
+    transform: scale(1);
+    box-shadow: 0 0 10px rgba(30, 144, 255, 0.7);
+    gap: clamp(0.25rem, 0.8vw, 0.5rem); /* Responsive gap between icon and text */
+    min-width: 0; /* Allows items to shrink below content size */
 }
 
 .approach-card:hover {
@@ -1767,7 +1799,7 @@ footer a:hover {
 /* --- LOGO GRID Styling --- */
 .logo-grid {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 25px;
     padding-bottom: 50px;
     margin-top: 50px;
@@ -1781,7 +1813,7 @@ footer a:hover {
     justify-content: center;
     align-items: center;
     aspect-ratio: 1 / 1;
-    width: 80%;             /* ✅ Reduced container size slightly */
+    width: 70%;             /* ✅ Reduced container size slightly */
     height: auto;
     padding: 0; 
     box-shadow: none;
@@ -1805,6 +1837,56 @@ footer a:hover {
 
 .logo-item:hover img {
     opacity: 1;
+}
+
+/* --- LOGO GRID Styling for Biliyon --- */
+.logo-items {
+    background:  #102331; 
+    border: 0px solid #00000000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    aspect-ratio: 1 / 1;
+    width: 70%;             /* ✅ Reduced container size slightly */
+    height: auto;
+    padding: 0; 
+    box-shadow: none;
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.logo-items img {
+    max-width: 100%;          /* ✅ Keeps image size but fills more of smaller box */
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    object-fit: cover;     /* ✅ Preserves proportions */
+    margin: 0;               /* ✅ Centers perfectly */
+    transition: opacity 0.2s ease-in-out;
+}
+
+/* --- LOGO GRID Styling for Apcoat --- */
+.logo-item-APCoat {
+    background:  #063846; 
+    border: 0px solid #00000000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    aspect-ratio: 1 / 1;
+    width: 70%;             /* ✅ Reduced container size slightly */
+    height: auto;
+    padding: 0; 
+    box-shadow: none;
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.logo-item-APCoat img {
+    max-width: 100%;          /* ✅ Keeps image size but fills more of smaller box */
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    object-fit: cover;     /* ✅ Preserves proportions */
+    margin: 0;               /* ✅ Centers perfectly */
+    transition: opacity 0.2s ease-in-out;
 }
 
 /* --- Mobile Responsiveness --- */

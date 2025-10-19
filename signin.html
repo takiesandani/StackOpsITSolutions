@@ -253,7 +253,7 @@
         </div>
     </div>
 
-    <script>
+ <script>
         document.addEventListener('DOMContentLoaded', function() {
             // DOM Elements
             const signinForm = document.getElementById('signin-form');
@@ -271,7 +271,7 @@
             const notification = document.getElementById('notification');
             
             // This is the base URL of your backend server
-            const API_BASE_URL = 'http://localhost:8080/api/auth';
+            const API_BASE_URL = 'https://stackops-backend-475222.appspot.com/api/auth';
             
             let currentEmail = '';
             
@@ -378,8 +378,18 @@
                     const data = await response.json();
                     
                     if (data.success) {
+                        // <<<<< CRITICAL FIX ADDED HERE >>>>>
+                        if (data.accessToken) {
+                            localStorage.setItem('accessToken', data.accessToken);
+                        } else {
+                            // Fallback alert if server didn't provide token (unlikely if sign-in works)
+                            console.error('MFA success but no token received.');
+                        }
+                        // <<<<< CRITICAL FIX ADDED HERE >>>>>
+                        
                         showNotification('Authentication successful! Redirecting...', true);
                         setTimeout(() => {
+                            // The token is now saved, so admin.js will work on the next page load
                             window.location.href = data.redirect;
                         }, 1500);
                     } else {
@@ -426,6 +436,6 @@
                 return re.test(email);
             }
         });
-    </script>
+</script>
 </body>
 </html>

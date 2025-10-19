@@ -9,6 +9,24 @@ document.addEventListener("DOMContentLoaded", () => {
     const timeSlotsEl = document.getElementById("admin-time-slots");
     const selectedDateDisplay = document.getElementById("selected-date-display");
     const bookingsListEl = document.getElementById("bookings-list");
+    // CRITICAL: Base URL set to 8080 as per your client-side usage
+    const BASE_URL = "https://stackops-backend-475222.appspot.com";
+
+    // Helper function to create authentication headers
+    const getAuthHeaders = (includeContentType = true) => {
+        const token = localStorage.getItem('accessToken');
+        const headers = {};
+        
+        if (includeContentType) {
+             headers["Content-Type"] = "application/json";
+        }
+        
+        if (token) {
+            headers["Authorization"] = `Bearer ${token}`;
+        }
+        return headers;
+    };
+
 
     const renderCalendar = () => {
         const oldDays = calendarGrid.querySelectorAll('.calendar-day');
@@ -39,57 +57,126 @@ document.addEventListener("DOMContentLoaded", () => {
             calendarGrid.appendChild(dayDiv);
         }
 
+        // Hide time slots until a date is selected
         timeSlotsContainer.style.display = 'none';
     };
 
     const selectDayToManage = async (date) => {
-        selectedDate = date;
-        renderCalendar(); // Re-render to highlight the selected day
+        // Remove previous selection highlight
+        calendarGrid.querySelectorAll('.calendar-day.selected').forEach(day => day.classList.remove('selected'));
 
+        selectedDate = date;
+        
         const formattedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
         
         selectedDateDisplay.textContent = formattedDate;
         timeSlotsEl.innerHTML = "";
 
-        const response = await fetch(`http://localhost:8080/api/schedule?date=${formattedDate}`);
-        const availableTimes = await response.json();
-
-        const allTimes = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
-        allTimes.forEach(time => {
-            const isAvailable = availableTimes.includes(time);
-            const button = document.createElement("button");
-            button.textContent = time;
-            button.className = isAvailable ? "available" : "unavailable";
-            button.onclick = () => toggleAvailability(formattedDate, time, !isAvailable);
-            timeSlotsEl.appendChild(button);
+        // Highlight the newly selected day 
+        const dayDivs = calendarGrid.querySelectorAll('.calendar-day');
+        dayDivs.forEach(div => {
+            if (parseInt(div.textContent) === date.getDate() && !div.classList.contains('empty')) {
+                div.classList.add('selected');
+            }
         });
 
+        // 1. Fetching schedule (public endpoint)
+        const response = await fetch(`${BASE_URL}/api/schedule?date=${formattedDate}`);
+        
+        if (!response.ok) {
+            console.error("Failed to fetch schedule:", response.statusText);
+            timeSlotsEl.innerHTML = "<p>Error loading schedule data. Check server console.</p>";
+            timeSlotsContainer.style.display = 'block';
+            return;
+        }
+        
+        try {
+            const availableTimes = await response.json(); // Data expected: ["09:00:00", "10:00:00", ...]
+
+            // Use the full time format (HH:MM:SS) to match the database
+            const allTimes = ["09:00:00", "10:00:00", "11:00:00", "12:00:00", "13:00:00", "14:00:00", "15:00:00", "16:00:00", "17:00:00"];
+            
+            allTimes.forEach(time => {
+                const timeDisplay = time.substring(0, 5); // Display as HH:MM
+                const isAvailable = availableTimes.includes(time);
+                const button = document.createElement("button");
+                
+                button.textContent = isAvailable ? `${timeDisplay} (Open)` : `${timeDisplay} (Blocked)`;
+                button.className = isAvailable ? "available" : "unavailable";
+                
+                // CRITICAL FIX: The toggle function must pass the *OPPOSITE* of the current state.
+                button.onclick = () => toggleAvailability(formattedDate, time, !isAvailable); 
+                
+                timeSlotsEl.appendChild(button);
+            });
+            
+        } catch (jsonError) {
+            // 2. FIXED: This block handles a JSON parsing error if the response was non-JSON text
+            console.error("Error parsing schedule JSON:", jsonError);
+            timeSlotsEl.innerHTML = "<p>Error processing schedule data. Server returned invalid format.</p>";
+        }
+
+        // Show the container now that the time slots (or an error message) are loaded
         timeSlotsContainer.style.display = 'block';
+        
+        // FIXED: Removed redundant renderCalendar() call here
     };
 
-    const toggleAvailability = async (date, time, isAvailable) => {
+    const toggleAvailability = async (date, time, newIsAvailable) => {
         try {
-            const response = await fetch("http://localhost:8080/api/admin/availability", {
+            const token = localStorage.getItem('accessToken'); 
+            if (!token) {
+                alert("Authentication required. Please ensure you are logged in to manage availability.");
+                return;
+            }
+
+            const response = await fetch(`${BASE_URL}/api/admin/availability`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ date, time, isAvailable })
+                headers: getAuthHeaders(), // Includes Content-Type and Authorization
+                body: JSON.stringify({ date, time, isAvailable: newIsAvailable }) 
             });
 
             if (response.ok) {
-                selectDayToManage(selectedDate);
-                fetchBookings();
+                selectDayToManage(selectedDate); 
+                fetchBookings(); 
+            } else if (response.status === 401 || response.status === 403) {
+                 alert("Session expired or unauthorized access. Please log in again.");
+                 localStorage.removeItem('accessToken'); 
             } else {
-                alert("Failed to update availability.");
+                const errorText = await response.text();
+                alert(`Failed to update availability: ${errorText}`);
             }
         } catch (error) {
             console.error("Error updating availability:", error);
-            alert("Failed to update availability.");
+            alert("Failed to update availability. Check console for details.");
         }
     };
     
     const fetchBookings = async () => {
         try {
-            const response = await fetch("http://localhost:8080/api/admin/bookings");
+            const token = localStorage.getItem('accessToken'); 
+            
+            if (!token) {
+                bookingsListEl.innerHTML = '<li>Please sign in to view bookings.</li>';
+                return;
+            }
+
+            const response = await fetch(`${BASE_URL}/api/admin/bookings`, {
+                method: "GET",
+                headers: getAuthHeaders(false) // Only need Authorization for GET
+            });
+
+            if (response.status === 401 || response.status === 403) {
+                 bookingsListEl.innerHTML = '<li>Access Denied. Please ensure you are logged in as an administrator.</li>';
+                 localStorage.removeItem('accessToken');
+                 return;
+            }
+            
+            if (!response.ok) {
+                 const errorText = await response.text();
+                 throw new Error(`Server returned status ${response.status}: ${errorText}`);
+            }
+
             const bookings = await response.json();
 
             bookingsListEl.innerHTML = '';
@@ -107,7 +194,7 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         } catch (error) {
             console.error("Failed to fetch bookings:", error);
-            bookingsListEl.innerHTML = '<li>Error loading bookings.</li>';
+            bookingsListEl.innerHTML = '<li>Error loading bookings.</li>'; 
         }
     };
     
