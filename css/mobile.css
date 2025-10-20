@@ -48,6 +48,30 @@
         display:inline-table;
     }
 
+    /* Mobile Shop Styling */
+    .Shop {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 2px solid var(--primary);
+        border-radius: 0;
+        margin-top: 4px;
+        padding: 0;
+        height: 26px;
+    }
+
+    .Shop li {
+        margin: 0;
+    }
+
+    .Shop a {
+        padding: 5px 8px;
+        color: var(--light);
+        font-size: 16px;
+        font-weight: 500;
+        text-decoration: none;
+    }
+
     .hero-content h1 {
         font-size: 2.5rem;
     }
@@ -106,10 +130,41 @@
     
     .contact-grid {
         grid-template-columns: 1fr;
+        gap: 20px;
+        overflow-x: hidden;
+    }
+
+    .contact {
+        overflow-x: hidden;
     }
     
     .contact-form {
-        padding: 20px;
+        padding: 15px 0;
+        width: 100%;
+        overflow-x: hidden;
+        max-width: 100%;
+    }
+
+    .contact-form input[type="text"], 
+    .contact-form input[type="email"], 
+    .contact-form input[type="tel"],
+    .contact-form select,
+    .contact-form textarea {
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+
+    .containers {
+        overflow-x: hidden;
+        width: 100%;
+        max-width: 100vw;
+    }
+
+    .image-left img {
+        width: 100%;
+        max-width: 100%;
+        height: auto;
     }
     
     .footer-section {
