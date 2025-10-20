@@ -5,13 +5,12 @@ const nodemailer = require('nodemailer');
 const cors = require('cors');
 const path = require('path');
 const jwt = require('jsonwebtoken');
-require('dotenv').config();
-
-console.log('SUPABASE_URL:', process.env.SUPABASE_URL);
-console.log('SUPABASE_SERVICE_ROLE_KEY:', process.env.SUPABASE_SERVICE_ROLE_KEY);
+// Removed: require('dotenv').config(); - GAE provides environment variables directly
 
 const app = express();
+// Removed: console.log() lines for sensitive keys
 app.use(express.json());
+// ... rest of the file
 app.use(cors());
 
 const { createClient } = require('@supabase/supabase-js');

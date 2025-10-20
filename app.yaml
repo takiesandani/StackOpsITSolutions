@@ -1,3 +1,32 @@
-runtime: nodejs24
+runtime: nodejs20  # Reverting to nodejs20 for stability, as nodejs24 may still be in preview
 env: standard
 instance_class: F1
+
+env_variables:
+  # Database Configuration (Essential for MySQL or Supabase)
+  USE_SUPABASE: 'true' # Set this to 'false' if you want to use MySQL
+  DB_HOST: 'localhost' # If not using Supabase, set to your Cloud SQL connection name
+  DB_USER: 'root' # MySQL user
+  DB_PASSWORD: '@TakalaniSandani2005' # MySQL password
+  DB_NAME: 'consultation_db' # Database name
+
+  # Supabase Credentials
+  SUPABASE_URL: 'https://mrubwknihpwlgreoroso.supabase.co'
+  SUPABASE_SERVICE_ROLE_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ydWJ3a25paHB3bGdyZW9yb3NvIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MDM5MjQ2NiwiZXhwIjoyMDc1OTY4NDY2fQ.ikGYNgHS3OY3JTBVN10sbPmwHSkeHwOf-gPNi5psEZs'
+  
+  # Email Credentials
+  EMAIL_USER: 'info@stackopsit.co.za'
+  EMAIL_PASS: '632685356nS$' # This should be an App Password/Token, not your account password
+  
+  # SMTP Configuration
+  SMTP_HOST: 'smtpout.secureserver.net'
+  SMTP_PORT: '465'
+  SMTP_SECURE: 'true'
+  SMTP_USER: 'info@stackopsit.co.za'
+  SMTP_PASS: '632685356nS$'
+  
+  # JWT Secret
+  ACCESS_TOKEN_SECRET: '7a076e42670cfe26193655fe5f48b776defe078754ca16fb9ae0a054b354d335'
+  
+  # Port (GAE uses this)
+  PORT: '8080'
