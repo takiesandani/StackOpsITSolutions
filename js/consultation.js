@@ -1,5 +1,3 @@
-// Hamburger Mini Tab Functionality
-// Hamburger Mini Tab Functionality
 function showMinimalMenu() {
     let minimalMenu = document.getElementById('minimal-menu');
     if (!minimalMenu) {
@@ -30,7 +28,6 @@ function showMinimalMenu() {
         minimalMenu.style.borderRadius = '8px';
         minimalMenu.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
         minimalMenu.style.overflowY = 'auto';
-        // Style links and button
         minimalMenu.querySelectorAll('a').forEach(a => {
             a.style.color = '#fff';
             a.style.textDecoration = 'none';
@@ -54,7 +51,6 @@ function showMinimalMenu() {
         closeBtn.onmouseover = function() { closeBtn.style.background = '#444'; };
         closeBtn.onmouseout = function() { closeBtn.style.background = '#222'; };
         closeBtn.onclick = function() { minimalMenu.remove(); };
-        // Client portal link logic
         const portalLink = minimalMenu.querySelector('#client-portal-link-mini');
         if (portalLink) {
             portalLink.onclick = function(e) {
@@ -70,12 +66,7 @@ function showMinimalMenu() {
         }
     }
 }
-// The old, procedural calendar code in this section needs to be removed.
-// The new class-based approach handles everything below.
 
-// ========================
-// Calendar Class
-// ========================
 class Calendar {
     constructor(containerId, timeSlotsId) {
         this.container = document.getElementById(containerId);
@@ -141,7 +132,6 @@ class Calendar {
             dayElem.classList.add("day");
             const fullDate = new Date(this.date.getFullYear(), this.date.getMonth(), day);
             
-            // Disable past dates
             if (fullDate < new Date().setHours(0,0,0,0)) {
                 dayElem.classList.add('unavailable');
             } else {
@@ -173,7 +163,7 @@ class Calendar {
 
     changeMonth(offset) {
         this.date.setMonth(this.date.getMonth() + offset);
-        this.selectedDate = null; // Clear selected date when month changes
+        this.selectedDate = null;
         this.generateCalendar();
         this.timeSlotsContainer.innerHTML = '';
         this.timeSlotsContainer.textContent = "Select a date to view available times.";
@@ -196,7 +186,10 @@ class Calendar {
         const formattedDate = `${this.selectedDate.getFullYear()}-${String(this.selectedDate.getMonth() + 1).padStart(2, "0")}-${String(this.selectedDate.getDate()).padStart(2, "0")}`;
         
         try {
-            const response = await fetch(`https://stackops-backend-475222.appspot.com/api/schedule?date=${formattedDate}`);
+            const response = await fetch(`http://localhost:8080/api/schedule?date=${formattedDate}`);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
             const availableTimes = await response.json();
 
             if (availableTimes.length === 0 || this.selectedDate.getDay() === 0 || this.selectedDate.getDay() === 6) {
@@ -251,7 +244,7 @@ class BookingForm {
         }
 
         try {
-            const response = await fetch("https://stackops-backend-475222.appspot.com/api/book", {
+            const response = await fetch("http://localhost:8080/api/book", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(data)
@@ -260,8 +253,6 @@ class BookingForm {
             if (response.ok) {
                 alert("Booking confirmed! Check your email for details.");
                 this.form.reset();
-                // A good practice would be to update the UI without a full reload
-                // For now, reload to see the new availability
                 window.location.reload();
             } else {
                 const errorText = await response.text();
@@ -274,18 +265,15 @@ class BookingForm {
     }
 }
 
-
 document.addEventListener("DOMContentLoaded", () => {
     const calendar = new Calendar("calendar-container", "timeSlots");
     const bookingForm = new BookingForm("bookingForm");
-    // Hamburger logic at the end to ensure it runs after all DOMContentLoaded handlers
     const hamburger = document.getElementById('hamburger');
     if (hamburger) {
         hamburger.addEventListener('click', function(e) {
             e.stopPropagation();
             showMinimalMenu();
         });
-        // Also attach to the icon inside hamburger for robustness
         const hamburgerIcon = hamburger.querySelector('i');
         if (hamburgerIcon) {
             hamburgerIcon.addEventListener('click', function(e) {

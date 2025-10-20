@@ -7,6 +7,9 @@ const path = require('path');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
+console.log('SUPABASE_URL:', process.env.SUPABASE_URL);
+console.log('SUPABASE_SERVICE_ROLE_KEY:', process.env.SUPABASE_SERVICE_ROLE_KEY);
+
 const app = express();
 app.use(express.json());
 app.use(cors());
@@ -14,13 +17,10 @@ app.use(cors());
 const { createClient } = require('@supabase/supabase-js');
 
 const supabaseUrl = process.env.SUPABASE_URL;
-// Use the Service Role Key for server-side operations
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY; 
 const supabase = createClient(supabaseUrl, supabaseKey);
-// CORRECT: Defined globally and used consistently (lowercase 'u')
 const useSupabase = process.env.USE_SUPABASE === 'true'; 
 
-// Create a connection pool to the database
 const pool = mysql.createPool({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
@@ -31,23 +31,20 @@ const pool = mysql.createPool({
     queueLimit: 0
 });
 
-// Helper function to format dates for MySQL in UTC
 function formatDateToMySQL(date) {
     return date.toISOString().slice(0, 19).replace('T', ' ');
 }
 
-// Configure Nodemailer for email sending
 const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtpout.secureserver.net',
     port: Number(process.env.SMTP_PORT) || 465,
-    secure: (process.env.SMTP_SECURE || 'true') === 'true', // true for 465, false for 587
+    secure: (process.env.SMTP_SECURE || 'true') === 'true',
     auth: {
         user: process.env.SMTP_USER || process.env.EMAIL_USER,
         pass: process.env.SMTP_PASS || process.env.EMAIL_PASS
     }
 });
 
-// Helper function to send email
 const sendEmail = async (to, subject, body, isHtml = false) => {
     const mailOptions = {
         from: process.env.EMAIL_USER,
@@ -69,161 +66,150 @@ const sendEmail = async (to, subject, body, isHtml = false) => {
     }
 };
 
-// Helper function to get user by email (works for MySQL and Supabase)
 async function getUserByEmail(email) {
-    if (useSupabase) { // FIXED: useSupabase
-        // Supabase version (using PascalCase for consistency)
-        const { data, error } = await supabase
-            .from('Users') 
-            .select('*')
-            .eq('Email', email) 
-            .maybeSingle(); 
+    try {
+        if (useSupabase) {
+            const { data, error } = await supabase
+                .from('users') 
+                .select('*')
+                .eq('email', email) 
+                .maybeSingle(); 
 
-        if (error && error.code !== 'PGRST116') { // Ignore 'no rows found' error
-            console.error('Supabase getUserByEmail error:', error);
-            throw error;
-        }
-        return data || null;
-    } else {
-        // MySQL version
-        try {
-            const [rows] = await pool.query('SELECT * FROM Users WHERE Email = ?', [email]);
+            if (error && error.code !== 'PGRST116') {
+                console.error('Supabase getUserByEmail error:', error);
+                throw error;
+            }
+            return data || null;
+        } else {
+            const [rows] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
             return rows[0] || null;
-        } catch (err) {
-            console.error('MySQL getUserByEmail error:', err);
-            throw err;
         }
+    } catch (err) {
+        console.error('getUserByEmail error:', err);
+        throw err;
     }
 }
 
-// NEW FUNCTION: Helper function to check MFA Code (works for MySQL and Supabase)
 async function checkMfaCode(user_id, code) {
-    const now = new Date().toISOString(); 
+    try {
+        const now = new Date().toISOString(); 
 
-    if (useSupabase) { // FIXED: useSupabase
-        // Supabase table mfa_codes: SELECT * FROM mfa_codes WHERE user_id = ? AND code = ? AND expires_at > NOW()
-        const { data, error } = await supabase
-            .from('mfa_codes')
-            .select('*')
-            .eq('user_id', user_id)
-            .eq('code', code)
-            .gt('expires_at', now) 
-            .maybeSingle(); 
+        if (useSupabase) {
+            const { data, error } = await supabase
+                .from('mfa_codes')
+                .select('*')
+                .eq('user_id', user_id)
+                .eq('code', code)
+                .gt('expires_at', now) 
+                .maybeSingle(); 
 
-        if (error) throw error;
-        return data; // Returns object or null
+            if (error) throw error;
+            return data;
 
-    } else {
-        // MySQL: SELECT * FROM mfa_codes WHERE user_id = ? AND code = ? AND expires_at > NOW()
-        const [codes] = await pool.query('SELECT * FROM mfa_codes WHERE user_id = ? AND code = ? AND expires_at > NOW()', [user_id, code]);
-        return codes[0]; 
+        } else {
+            const [codes] = await pool.query('SELECT * FROM mfa_codes WHERE user_id = ? AND code = ? AND expires_at > NOW()', [user_id, code]);
+            return codes[0]; 
+        }
+    } catch (err) {
+        console.error('checkMfaCode error:', err);
+        throw err;
     }
 }
 
-// Insert or update MFA code
 async function insertMfaCode(user_id, code, expires_at) {
-    if (useSupabase) { // FIXED: useSupabase
-        // Supabase: Upsert ensures either insert new or update existing
-        const { error } = await supabase
-            .from('mfa_codes')
-            .upsert({
-                user_id: user_id,
-                code: code,
-                expires_at: expires_at.toISOString() // Supabase uses ISO date
-            }, { onConflict: 'user_id' }); // column to check conflict
+    try {
+        if (useSupabase) {
+            const { error } = await supabase
+                .from('mfa_codes')
+                .upsert({
+                    user_id: user_id,
+                    code: code,
+                    expires_at: expires_at.toISOString()
+                }, { onConflict: 'user_id' });
 
-        if (error) {
-            console.error('Supabase insertMfaCode error:', error);
-            throw error;
-        }
-    } else {
-        // MySQL version
-        try {
+            if (error) {
+                console.error('Supabase insertMfaCode error:', error);
+                throw error;
+            }
+        } else {
             await pool.query(
                 'INSERT INTO mfa_codes (user_id, code, expires_at) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE code = VALUES(code), expires_at = VALUES(expires_at)',
                 [user_id, code, expires_at]
             );
-        } catch (err) {
-            console.error('MySQL insertMfaCode error:', err);
-            throw err;
         }
+    } catch (err) {
+        console.error('insertMfaCode error:', err);
+        throw err;
     }
 }
 
-// Seed initial availability data for the next 30 days
 async function seedAvailability() {
-    console.log('Checking for existing appointments...');
+    try {
+        console.log('Checking for existing appointments...');
 
-    let count = 0;
+        let count = 0;
 
-    if (useSupabase) { // FIXED: useSupabase
-        // Supabase: SELECT COUNT(*)
-        const { count: supabaseCount, error } = await supabase
-            .from('appointment')
-            .select('*', { count: 'exact' });
+        if (useSupabase) {
+            const { count: supabaseCount, error } = await supabase
+                .from('appointment')
+                .select('*', { count: 'exact' });
 
-        if (error) throw error;
-        count = supabaseCount;
+            if (error) throw error;
+            count = supabaseCount;
 
-    } else {
-        // MySQL: SELECT COUNT(*)
-        const [rows] = await pool.query('SELECT COUNT(*) AS count FROM appointment');
-        count = rows[0].count;
-    }
-
-    if (count === 0) {
-        console.log('No appointments found. Seeding availability data...');
-
-        // FULL LOGIC TO GENERATE DATES AND TIMES
-        const today = new Date();
-        const dates = [];
-        // Generate dates for the next 7 days
-        for (let i = 0; i < 7; i++) {
-            const date = new Date(today);
-            date.setDate(today.getDate() + i);
-            // Format to YYYY-MM-DD (important for MySQL/Supabase date fields)
-            dates.push(date.toISOString().split('T')[0]); 
+        } else {
+            const [rows] = await pool.query('SELECT COUNT(*) AS count FROM appointment');
+            count = rows[0].count;
         }
-        
-        // Define standard available times
-        const times = ['09:00:00', '10:00:00', '11:00:00', '14:00:00', '15:00:00']; 
 
-        const insertions = [];
+        if (count === 0) {
+            console.log('No appointments found. Seeding availability data...');
 
-        for (const date of dates) {
-            for (const time of times) {
-                if (useSupabase) { // FIXED: useSupabase
-                    // Supabase: INSERT INTO
-                    insertions.push({ date, time, isAvailable: true });
-                } else {
-                    // MySQL: INSERT INTO
-                    await pool.query('INSERT INTO appointment (date, time, isAvailable) VALUES (?, ?, ?)', [date, time, true]);
+            const today = new Date();
+            const dates = [];
+            for (let i = 0; i < 7; i++) {
+                const date = new Date(today);
+                date.setDate(today.getDate() + i);
+                dates.push(date.toISOString().split('T')[0]); 
+            }
+            
+            const times = ['09:00:00', '10:00:00', '11:00:00', '14:00:00', '15:00:00']; 
+
+            const insertions = [];
+
+            for (const date of dates) {
+                for (const time of times) {
+                    if (useSupabase) {
+                        insertions.push({ date, time, isavailable: true });
+                    } else {
+                        await pool.query('INSERT INTO appointment (date, time, is_available) VALUES (?, ?, ?)', [date, time, true]);
+                    }
                 }
             }
+
+            if (useSupabase && insertions.length > 0) {
+                const { error: insertError } = await supabase
+                    .from('appointment')
+                    .insert(insertions);
+
+                if (insertError) throw insertError;
+            }
+
+            console.log(`Seeded ${dates.length * times.length} available slots.`);
+        } else {
+            console.log(`Found ${count} existing appointments. Skipping seed.`);
         }
-
-        if (useSupabase && insertions.length > 0) {
-            const { error: insertError } = await supabase
-                .from('appointment')
-                .insert(insertions);
-
-            if (insertError) throw insertError;
-        }
-
-        console.log(`Seeded ${dates.length * times.length} available slots.`);
-    } else {
-        console.log(`Found ${count} existing appointments. Skipping seed.`);
+    } catch (err) {
+        console.error('seedAvailability error:', err);
+        throw err;
     }
 }
-// Run the seeding function on server startup
 seedAvailability(); 
 
-// Serve the signup.html file when the user visits /admin/register
 app.get('/admin/register', (req, res) => {
     res.sendFile(path.join(__dirname, 'signup.html'));
 });
 
-// API endpoint to get available time slots for a given date
 app.get('/api/schedule', async (req, res) => {
     const { date } = req.query;
 
@@ -234,22 +220,20 @@ app.get('/api/schedule', async (req, res) => {
     try {
         let availableTimes;
 
-        if (useSupabase) { // FIXED: useSupabase
-            // Supabase: SELECT time WHERE date = ? AND isAvailable = TRUE AND clientName IS NULL
+        if (useSupabase) {
             const { data, error } = await supabase
                 .from('appointment')
                 .select('time')
                 .eq('date', date)
-                .eq('isAvailable', true)
-                .is('clientName', null);
+                .eq('isavailable', true)
+                .is('clientname', null);
 
             if (error) throw error;
 
             availableTimes = data.map(row => row.time);
         } else {
-            // MySQL: SELECT time WHERE ...
             const [rows] = await pool.query(
-                'SELECT time FROM appointment WHERE date = ? AND isAvailable = TRUE AND clientName IS NULL',
+                'SELECT time FROM appointment WHERE date = ? AND is_available = TRUE AND clientName IS NULL',
                 [date]
             );
             availableTimes = rows.map(row => row.time);
@@ -259,56 +243,47 @@ app.get('/api/schedule', async (req, res) => {
 
     } catch (error) {
         console.error('Error fetching schedule:', error);
-        res.status(500).send('Server error.');
+        res.status(500).send('Failed to load time slots.');
     }
 })
 
-// API endpoint to book a consultation
 app.post('/api/book', async (req, res) => {
     const { date, time, name, email, service, message } = req.body;
     
-    // 💡 Declared outside conditional blocks
     let updateSuccessful = false;
     let result; 
 
     try {
-        if (useSupabase) { // FIXED: useSupabase
-            // NOTE: Supabase requires adding .select() to UPDATE calls 
-            // to reliably return the number of affected rows (data array).
+        if (useSupabase) {
             const { data, error } = await supabase
                 .from('appointment')
-                .update({ isAvailable: false, clientName: name, email, service, message })
+                .update({ isavailable: false, clientname: name, email, service, message })
                 .eq('date', date)
                 .eq('time', time)
-                .eq('isAvailable', true)
-                .select(); // Crucial for checking affected rows
+                .eq('isavailable', true)
+                .select();
 
             if (error) throw error;
             
-            // Supabase check: if data array is empty, no row was updated
             if (data && data.length > 0) {
                 updateSuccessful = true;
             }
 
         } else {
-            // MySQL block
             [result] = await pool.query(
-                'UPDATE appointment SET isAvailable = FALSE, clientName = ?, email = ?, service = ?, message = ? WHERE date = ? AND time = ? AND isAvailable = TRUE',
+                'UPDATE appointment SET is_available = FALSE, clientName = ?, email = ?, service = ?, message = ? WHERE date = ? AND time = ? AND is_available = TRUE',
                 [name, email, service, message, date, time]
             );
             
-            // Check MySQL affectedRows 
             if (result.affectedRows > 0) {
                 updateSuccessful = true;
             }
         }
         
-        // --- Centralized Conflict/Failure Check ---
         if (!updateSuccessful) {
             return res.status(409).send('The selected time slot is no longer available. Please choose another.');
         }
 
-        // --- Success Logic (Runs ONLY if updateSuccessful is true) ---
         const clientConfirmation = `
             <!DOCTYPE html>
             <html>
@@ -340,7 +315,14 @@ app.post('/api/book', async (req, res) => {
             </html>
         `;
         
-        const adminNotification = `New Consultation Booking:\n\n- Name: ${name}\n- Email: ${email}\n- Date: ${date}\n- Time: ${time}\n- Service: ${service}\n- Notes: ${message || 'N/A'}`;
+        const adminNotification = `New Consultation Booking:
+
+- Name: ${name}
+- Email: ${email}
+- Date: ${date}
+- Time: ${time}
+- Service: ${service}
+- Notes: ${message || 'N/A'}`;
         
         await sendEmail(email, 'Booking Confirmation', clientConfirmation, true);
         await sendEmail(process.env.EMAIL_USER, 'New Consultation Booking', adminNotification);
@@ -353,26 +335,21 @@ app.post('/api/book', async (req, res) => {
     }
 });
 
-// API endpoint for admin to get all bookings
 app.get('/api/admin/bookings', async (req, res) => {
-    // Admin authentication/authorization check should be here
-
     try {
         let bookings;
 
-        if (useSupabase) { // FIXED: useSupabase
-            // Supabase: SELECT date, time, clientName as name, email, service, message WHERE clientName IS NOT NULL ORDER BY date DESC, time ASC
+        if (useSupabase) {
             const { data, error } = await supabase
                 .from('appointment')
-                .select('date, time, clientName:clientName, email, service, message') 
-                .not('clientName', 'is', null)
+                .select('date, time, clientname, email, service, message') 
+                .not('clientname', 'is', null)
                 .order('date', { ascending: false })
                 .order('time', { ascending: true });
 
             if (error) throw error;
             bookings = data;
         } else {
-            // MySQL: SELECT ... WHERE clientName IS NOT NULL ORDER BY ...
             const [rows] = await pool.query('SELECT date, time, clientName as name, email, service, message FROM appointment WHERE clientName IS NOT NULL ORDER BY date DESC, time ASC');
             bookings = rows;
         }
@@ -384,17 +361,11 @@ app.get('/api/admin/bookings', async (req, res) => {
     }
 });
 
-// API endpoint for admin to manage availability
 app.post('/api/admin/availability', async (req, res) => {
-    // Admin authentication/authorization check should be here
-
     const { date, time } = req.body;
     let { isAvailable } = req.body; 
     
-    // CRITICAL FIX: Ensure isAvailable is a strict boolean, accounting for potential 
-    // string input (e.g., "true" or "false") from client-side JavaScript/AJAX.
     if (isAvailable !== undefined) {
-        // If it's the string "true" or the boolean true, set it to true. Otherwise, set it to false.
         isAvailable = (isAvailable === true || isAvailable === 'true');
     }
 
@@ -403,19 +374,17 @@ app.post('/api/admin/availability', async (req, res) => {
     }
 
     try {
-        if (useSupabase) { // FIXED: useSupabase
-            // Supabase: UPDATE appointment SET isAvailable = ?, clientName = NULL, ... WHERE date = ? AND time = ?
+        if (useSupabase) {
             const { error } = await supabase
                 .from('appointment')
-                .update({ isAvailable, clientName: null, email: null, service: null, message: null })
+                .update({ isavailable: isAvailable, clientname: null, email: null, service: null, message: null })
                 .eq('date', date)
                 .eq('time', time);
 
             if (error) throw error;
         } else {
-            // MySQL: UPDATE appointment SET ... WHERE date = ? AND time = ?
             await pool.query(
-                'UPDATE appointment SET isAvailable = ?, clientName = NULL, email = NULL, service = NULL, message = NULL WHERE date = ? AND time = ?',
+                'UPDATE appointment SET is_available = ?, clientName = NULL, email = NULL, service = NULL, message = NULL WHERE date = ? AND time = ?',
                 [isAvailable, date, time]
             );
         }
@@ -427,17 +396,14 @@ app.post('/api/admin/availability', async (req, res) => {
     }
 });
 
-// NEW: JWT authentication middleware to protect routes
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
 
     if (token == null) {
-        // Return 401 Unauthorized for API calls
         if (req.originalUrl.startsWith('/api')) {
              return res.status(401).json({ success: false, message: 'Unauthorized: No token provided.' });
         }
-        // Redirect for non-API routes (like HTML pages)
         return res.redirect('/signin.html');
     }
 
@@ -453,36 +419,30 @@ const authenticateToken = (req, res, next) => {
     });
 };
 
-// MODIFIED: Consolidated sign-in endpoint to handle password verification and MFA code sending
 app.post('/api/auth/signin', async (req, res) => {
     try {
         const { email, password } = req.body;
 
-        // Step 1: Check if user exists (using wrapped function)
         const user = await getUserByEmail(email);
         
         if (!user) {
             return res.status(400).json({ success: false, message: "Invalid email or password" });
         }
         
-        // Step 2: Compare password
-        const validPassword = await bcrypt.compare(password, user.passWord);
+        const validPassword = await bcrypt.compare(password, user.password);
         
         if (!validPassword) {
             return res.status(400).json({ success: false, message: "Invalid email or password" });
         }
         
-        // Step 3: Generate and store MFA code
         const mfaCode = Math.floor(100000 + Math.random() * 900000);
         const createdAt = new Date();
-        const expiresAt = new Date(createdAt.getTime() + 10 * 60000); // 10 minutes
+        const expiresAt = new Date(createdAt.getTime() + 10 * 60000);
         
-        await insertMfaCode(user.ID, mfaCode, expiresAt);
+        await insertMfaCode(user.id, mfaCode, expiresAt);
         
-        // Step 4: Send email with MFA code
-        await sendEmail(user.Email, 'Your MFA Code', `Your MFA code is ${mfaCode}. It will expire in 10 minutes.`);
+        await sendEmail(user.email, 'Your MFA Code', `Your MFA code is ${mfaCode}. It will expire in 10 minutes.`);
         
-        // Step 5: Respond to the client, telling them to verify the MFA code
         res.json({ success: true, message: "MFA code sent. Please check your email to verify your login." });
     } catch (err) {
         console.error("Server error:", err);
@@ -490,7 +450,6 @@ app.post('/api/auth/signin', async (req, res) => {
     }
 });
 
-// MODIFIED: MFA verification now issues the JWT token upon success
 app.post('/api/auth/verify-mfa', async (req, res) => {
     try {
         const { email, code } = req.body;
@@ -499,38 +458,33 @@ app.post('/api/auth/verify-mfa', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Email and code are required.' });
         }
         
-        // Step 1: Find user (using wrapped function)
         const user = await getUserByEmail(email);
         
         if (!user) {
             return res.status(404).json({ success: false, message: 'User not found.' });
         }
         
-        // Step 2: Check MFA code validity (using wrapped function)
-        const validCode = await checkMfaCode(user.ID, code);
+        const validCode = await checkMfaCode(user.id, code);
 
         if (!validCode) {
             return res.status(400).json({ success: false, message: 'Invalid or expired code.' });
         }
         
-        // Step 3: Delete MFA code upon successful verification
-        if (useSupabase) { // FIXED: useSupabase
+        if (useSupabase) {
             const { error } = await supabase
                 .from('mfa_codes')
                 .delete()
-                .eq('user_id', user.ID);
+                .eq('user_id', user.id);
 
             if (error) throw error;
         } else {
-            await pool.query('DELETE FROM mfa_codes WHERE user_id = ?', [user.ID]);
+            await pool.query('DELETE FROM mfa_codes WHERE user_id = ?', [user.id]);
         }
 
-        // Step 4: Issue JWT token
-        const accessToken = jwt.sign({ id: user.ID, email: user.Email, role: user.Role }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
+        const accessToken = jwt.sign({ id: user.id, email: user.email, role: user.role }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
 
-        // Step 5: Determine redirect and respond
         const adminEmails = ['takiesandani@gmail.com', 'info@stackopsit.co.za'];
-        const isAdmin = adminEmails.includes(user.Email.toLowerCase());
+        const isAdmin = adminEmails.includes(user.email.toLowerCase());
 
         res.json({
             success: true,
@@ -546,12 +500,10 @@ app.post('/api/auth/verify-mfa', async (req, res) => {
 });
 
 
-// NEW: Protect the Client Portal route with the authentication middleware
 app.get('/ClientPortal.html', authenticateToken, (req, res) => {
     res.sendFile(path.join(__dirname, 'ClientPortal.html'));
 });
 
-// CRITICAL FIX: Wrapped the entire transaction logic for dual-database support
 app.post('/api/admin/register-client', async (req, res) => {
     const {
         firstName, lastName, email, contact, password,
@@ -562,61 +514,55 @@ app.post('/api/admin/register-client', async (req, res) => {
         return res.status(400).json({ success: false, message: 'Missing required client or company details.' });
     }
     
-    // Step 1: Hash the password (common to both DBs)
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
     
     let registrationSuccessful = false;
 
     try {
-        if (useSupabase) { // FIXED: useSupabase Logic
-            // Step 2a: Insert the company
+        if (useSupabase) {
             const { data: companyData, error: companyError } = await supabase
-                .from('Companies')
-                .insert([{ CompanyName: companyName, Website: website, Industry: industry, Address: address, City: city, State: state, ZipCode: zipCode, Country: country }])
-                .select('ID') 
+                .from('companies')
+                .insert([{ companyname: companyName, website: website, industry: industry, address: address, city: city, state: state, zipcode: zipCode, country: country }])
+                .select('id') 
                 .single();
                 
             if (companyError) throw companyError;
             
-            const companyId = companyData.ID;
+            const companyId = companyData.id;
             
-            // Step 2b: Insert the user, linking to the new company
             const { error: userError } = await supabase
-                .from('Users')
+                .from('users')
                 .insert([{ 
-                    FirstName: firstName, 
-                    LastName: lastName, 
-                    Email: email, 
-                    Contact: contact, 
-                    passWord: hashedPassword, 
-                    isActive: true, 
-                    Role: 'client', 
-                    CompanyID: companyId 
+                    firstname: firstName, 
+                    lastname: lastName, 
+                    email: email, 
+                    contact: contact, 
+                    password: hashedPassword, 
+                    isactive: true, 
+                    role: 'client', 
+                    companyid: companyId 
                 }]);
                 
             if (userError) throw userError;
             registrationSuccessful = true;
 
         } else {
-            // MySQL Transaction Logic
             const connection = await pool.getConnection();
             
             try {
                 await connection.beginTransaction();
 
-                // Step 2a: Insert the company
                 const [companyResult] = await connection.query(
-                    `INSERT INTO Companies (CompanyName, Website, Industry, Address, City, State, ZipCode, Country)
+                    `INSERT INTO companies (companyname, website, industry, address, city, state, zipcode, country)
                      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
                     [companyName, website, industry, address, city, state, zipCode, country]
                 );
                 
                 const companyId = companyResult.insertId;
                 
-                // Step 2b: Insert the user, linking to the new company
                 await connection.query(
-                    `INSERT INTO Users (FirstName, LastName, Email, Contact, passWord, isActive, Role, CompanyID)
+                    `INSERT INTO users (firstname, lastname, email, contact, password, isactive, role, companyid)
                      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
                     [firstName, lastName, email, contact, hashedPassword, 1, 'client', companyId]
                 );
@@ -633,7 +579,6 @@ app.post('/api/admin/register-client', async (req, res) => {
         }
         
         if (registrationSuccessful) {
-            // Step 3: Send confirmation email to the new client (common to both DBs)
             const loginLink = "https://stackopsit.co.za/ClientPortal.html";
             const emailBody = `
                 <!DOCTYPE html>
@@ -684,18 +629,15 @@ app.post('/api/admin/register-client', async (req, res) => {
         }
         
     } catch (error) {
-        // The MySQL rollback/release is handled inside the try/catch/finally block for MySQL
         console.error('Registration failed:', error);
         res.status(500).json({ success: false, message: 'Failed to register client. Please check the provided information.' });
     }
 });
 
-// Add a new GET endpoint to serve the forgot-password page
 app.get('/forgot-password.html', (req, res) => {
     res.sendFile(path.join(__dirname, 'forgot-password.html'));
 });
 
-// Endpoint to handle the password reset request (Step 1: Send token)
 app.post('/api/auth/forgot-password', async (req, res) => {
     const { email } = req.body;
     if (!email) {
@@ -706,38 +648,32 @@ app.post('/api/auth/forgot-password', async (req, res) => {
         const user = await getUserByEmail(email);
 
         if (!user) {
-            // Send a generic message to prevent user enumeration
             return res.status(200).json({ success: true, message: 'If an account with that email exists, a password reset link has been sent.' });
         }
 
-        // Generate a password reset token
         const resetToken = Math.random().toString(36).substring(2) + Date.now().toString(36);
-        const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour expiration
+        const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
 
-        // WRAPPED: Store the token in the database (Insert/Update)
-        if (useSupabase) { // FIXED: useSupabase
+        if (useSupabase) {
             const { error } = await supabase
                 .from('password_resets')
                 .upsert({
-                    user_id: user.ID,
+                    user_id: user.id,
                     token: resetToken,
                     expires_at: expiresAt.toISOString()
                 }, { onConflict: 'user_id' });
 
             if (error) throw error;
         } else {
-            // MySQL version with ON DUPLICATE KEY UPDATE
             await pool.query(
                 `INSERT INTO password_resets (user_id, token, expires_at) VALUES (?, ?, ?)
                  ON DUPLICATE KEY UPDATE token = VALUES(token), expires_at = VALUES(expires_at)`,
-                [user.ID, resetToken, expiresAt] 
+                [user.id, resetToken, expiresAt] 
             );
         }
 
-        // Create the password reset link
         const resetLink = `https://stackopsit.co.za/reset-password.html?token=${resetToken}`;
 
-        // Send the email (common logic)
         const emailBody = `
             <!DOCTYPE html>
             <html>
@@ -776,7 +712,6 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     }
 });
 
-// Endpoint to verify the token and serve the password change page
 app.get('/reset-password.html', async (req, res) => {
     const { token } = req.query;
 
@@ -788,7 +723,7 @@ app.get('/reset-password.html', async (req, res) => {
         let tokens;
         const now = new Date().toISOString();
 
-        if (useSupabase) { // FIXED: useSupabase
+        if (useSupabase) {
             const { data, error } = await supabase
                 .from('password_resets')
                 .select('*')
@@ -799,7 +734,6 @@ app.get('/reset-password.html', async (req, res) => {
             if (error) throw error;
             tokens = data ? [data] : [];
         } else {
-            // MySQL version
             [tokens] = await pool.query(
                 'SELECT * FROM password_resets WHERE token = ? AND expires_at > NOW()',
                 [token]
@@ -810,7 +744,6 @@ app.get('/reset-password.html', async (req, res) => {
             return res.status(400).send('Invalid or expired password reset link.');
         }
 
-        // Token is valid, serve the password reset form
         res.sendFile(path.join(__dirname, 'reset-password.html'));
     } catch (error) {
         console.error('Token verification error:', error);
@@ -818,7 +751,6 @@ app.get('/reset-password.html', async (req, res) => {
     }
 });
 
-// Endpoint to handle the password update (Step 2: Update password)
 app.post('/api/auth/reset-password', async (req, res) => {
     const { token, newPassword } = req.body;
 
@@ -829,8 +761,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
     try {
         let userId;
 
-        if (useSupabase) { // FIXED: useSupabase
-            // Step 1: Find the user and token
+        if (useSupabase) {
             const now = new Date().toISOString();
             const { data: tokenData, error: tokenError } = await supabase
                 .from('password_resets')
@@ -846,19 +777,16 @@ app.post('/api/auth/reset-password', async (req, res) => {
             }
             userId = tokenData.user_id;
 
-            // Step 2: Hash the new password
             const salt = await bcrypt.genSalt(10);
             const hashedPassword = await bcrypt.hash(newPassword, salt);
 
-            // Step 3: Update the user's password
             const { error: updateError } = await supabase
-                .from('Users')
-                .update({ passWord: hashedPassword })
-                .eq('ID', userId);
+                .from('users')
+                .update({ password: hashedPassword })
+                .eq('id', userId);
 
             if (updateError) throw updateError;
 
-            // Step 4: Delete the used token
             const { error: deleteError } = await supabase
                 .from('password_resets')
                 .delete()
@@ -867,13 +795,11 @@ app.post('/api/auth/reset-password', async (req, res) => {
             if (deleteError) throw deleteError;
 
         } else {
-            // ORIGINAL MYSQL LOGIC (using transaction)
             const connection = await pool.getConnection();
 
             try {
                 await connection.beginTransaction();
 
-                // Find the user and token
                 const [tokens] = await connection.query(
                     'SELECT user_id FROM password_resets WHERE token = ? AND expires_at > NOW()',
                     [token]
@@ -886,14 +812,11 @@ app.post('/api/auth/reset-password', async (req, res) => {
 
                 userId = tokens[0].user_id;
 
-                // Hash the new password
                 const salt = await bcrypt.genSalt(10);
                 const hashedPassword = await bcrypt.hash(newPassword, salt);
 
-                // Update the user's password
-                await connection.query('UPDATE Users SET passWord = ? WHERE ID = ?', [hashedPassword, userId]);
+                await connection.query('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, userId]);
 
-                // Delete the used token
                 await connection.query('DELETE FROM password_resets WHERE token = ?', [token]);
 
                 await connection.commit();
@@ -917,7 +840,6 @@ app.post('/api/auth/reset-password', async (req, res) => {
 app.post('/api/contact-message', async (req, res) => {
     const { firstName, lastName, company, email, contact, service, message } = req.body;
 
-    // Trim all fields before validation
     if (
         !firstName?.trim() ||
         !lastName?.trim() ||
@@ -1008,8 +930,6 @@ app.post('/api/contact-message', async (req, res) => {
     `;
 
     try {
-        // Send to your admin email
-       // The fourth argument 'true' tells the helper function to use the 'html' property
         await sendEmail(process.env.EMAIL_USER, `New Inquiry: ${company} - ${service}`, emailBody, true);
 
         res.json({ success: true });
@@ -1019,9 +939,5 @@ app.post('/api/contact-message', async (req, res) => {
     }
 });
 
-
-// ------------------------------------------------------------------------
-// Server Startup
-// ------------------------------------------------------------------------
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}. Supabase mode: ${useSupabase ? 'ON' : 'OFF'}`));

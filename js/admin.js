@@ -9,10 +9,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const timeSlotsEl = document.getElementById("admin-time-slots");
     const selectedDateDisplay = document.getElementById("selected-date-display");
     const bookingsListEl = document.getElementById("bookings-list");
-    // CRITICAL: Base URL set to 8080 as per your client-side usage
-    const BASE_URL = "https://stackops-backend-475222.appspot.com";
+    const BASE_URL = "http://localhost:8080";
 
-    // Helper function to create authentication headers
     const getAuthHeaders = (includeContentType = true) => {
         const token = localStorage.getItem('accessToken');
         const headers = {};
@@ -26,7 +24,6 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         return headers;
     };
-
 
     const renderCalendar = () => {
         const oldDays = calendarGrid.querySelectorAll('.calendar-day');
@@ -57,12 +54,10 @@ document.addEventListener("DOMContentLoaded", () => {
             calendarGrid.appendChild(dayDiv);
         }
 
-        // Hide time slots until a date is selected
         timeSlotsContainer.style.display = 'none';
     };
 
     const selectDayToManage = async (date) => {
-        // Remove previous selection highlight
         calendarGrid.querySelectorAll('.calendar-day.selected').forEach(day => day.classList.remove('selected'));
 
         selectedDate = date;
@@ -72,7 +67,6 @@ document.addEventListener("DOMContentLoaded", () => {
         selectedDateDisplay.textContent = formattedDate;
         timeSlotsEl.innerHTML = "";
 
-        // Highlight the newly selected day 
         const dayDivs = calendarGrid.querySelectorAll('.calendar-day');
         dayDivs.forEach(div => {
             if (parseInt(div.textContent) === date.getDate() && !div.classList.contains('empty')) {
@@ -80,7 +74,6 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
 
-        // 1. Fetching schedule (public endpoint)
         const response = await fetch(`${BASE_URL}/api/schedule?date=${formattedDate}`);
         
         if (!response.ok) {
@@ -91,35 +84,29 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         
         try {
-            const availableTimes = await response.json(); // Data expected: ["09:00:00", "10:00:00", ...]
+            const availableTimes = await response.json();
 
-            // Use the full time format (HH:MM:SS) to match the database
             const allTimes = ["09:00:00", "10:00:00", "11:00:00", "12:00:00", "13:00:00", "14:00:00", "15:00:00", "16:00:00", "17:00:00"];
             
             allTimes.forEach(time => {
-                const timeDisplay = time.substring(0, 5); // Display as HH:MM
+                const timeDisplay = time.substring(0, 5);
                 const isAvailable = availableTimes.includes(time);
                 const button = document.createElement("button");
                 
                 button.textContent = isAvailable ? `${timeDisplay} (Open)` : `${timeDisplay} (Blocked)`;
                 button.className = isAvailable ? "available" : "unavailable";
                 
-                // CRITICAL FIX: The toggle function must pass the *OPPOSITE* of the current state.
                 button.onclick = () => toggleAvailability(formattedDate, time, !isAvailable); 
                 
                 timeSlotsEl.appendChild(button);
             });
             
         } catch (jsonError) {
-            // 2. FIXED: This block handles a JSON parsing error if the response was non-JSON text
             console.error("Error parsing schedule JSON:", jsonError);
             timeSlotsEl.innerHTML = "<p>Error processing schedule data. Server returned invalid format.</p>";
         }
 
-        // Show the container now that the time slots (or an error message) are loaded
         timeSlotsContainer.style.display = 'block';
-        
-        // FIXED: Removed redundant renderCalendar() call here
     };
 
     const toggleAvailability = async (date, time, newIsAvailable) => {
@@ -132,7 +119,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
             const response = await fetch(`${BASE_URL}/api/admin/availability`, {
                 method: "POST",
-                headers: getAuthHeaders(), // Includes Content-Type and Authorization
+                headers: getAuthHeaders(),
                 body: JSON.stringify({ date, time, isAvailable: newIsAvailable }) 
             });
 
@@ -163,7 +150,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
             const response = await fetch(`${BASE_URL}/api/admin/bookings`, {
                 method: "GET",
-                headers: getAuthHeaders(false) // Only need Authorization for GET
+                headers: getAuthHeaders(false)
             });
 
             if (response.status === 401 || response.status === 403) {
@@ -189,7 +176,7 @@ document.addEventListener("DOMContentLoaded", () => {
             
             bookings.forEach(booking => {
                 const li = document.createElement('li');
-                li.innerHTML = `<strong>${booking.name}</strong><br>Email: ${booking.email}<br>Date: ${booking.date}<br>Time: ${booking.time}<br>Service: ${booking.service || 'N/A'}<br>Notes: ${booking.message || 'N/A'}`;
+                li.innerHTML = `<strong>${booking.clientname}</strong><br>Email: ${booking.email}<br>Date: ${booking.date}<br>Time: ${booking.time}<br>Service: ${booking.service || 'N/A'}<br>Notes: ${booking.message || 'N/A'}`;
                 bookingsListEl.appendChild(li);
             });
         } catch (error) {

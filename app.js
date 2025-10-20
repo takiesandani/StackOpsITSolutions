@@ -143,7 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         try {
-            const response = await fetch('http://127.0.0.1:8080/api/admin/register-client', {
+            const response = await fetch('/api/admin/register-client', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)

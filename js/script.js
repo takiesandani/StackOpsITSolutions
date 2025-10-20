@@ -92,7 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             statusMessage.innerHTML = 'Sending... ⏳';
-            const response = await fetch('http://localhost:8080/api/contact-message', {
+            const response = await fetch('/api/contact-message', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
