@@ -49,7 +49,12 @@ if (!useSupabase) {
         database: process.env.DB_NAME,
         waitForConnections: true,
         connectionLimit: 10,
-        queueLimit: 0
+        queueLimit: 0,
+        
+        // ➡️ FINAL FIX: Adds explicit support for the required secure authentication plugin
+        authPlugins: {
+            'caching_sha2_password': () => require('mysql2/lib/auth_plugins/caching_sha2_password')
+        }
     };
 
     // ➡️ CRITICAL: Google Cloud Run connects via Unix Socket
