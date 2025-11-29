@@ -40,12 +40,9 @@ if (useSupabase) {
     }
 }
 
-// ... [Keep previous Supabase logic] ...
-
 let pool = null;
 
 if (!useSupabase) {
-    // We remove the strict check for DB_HOST because Cloud Run uses a socket
     const dbConfig = {
         user: process.env.DB_USER,
         password: process.env.DB_PASSWORD,
@@ -55,8 +52,7 @@ if (!useSupabase) {
         queueLimit: 0
     };
 
-    // Google Cloud Run connects via Unix Socket
-    // We will set INSTANCE_CONNECTION_NAME in the Cloud Run environment variables later
+    // ➡️ CRITICAL: Google Cloud Run connects via Unix Socket
     if (process.env.INSTANCE_CONNECTION_NAME) {
         console.log(`Connecting to Cloud SQL via Socket: /cloudsql/${process.env.INSTANCE_CONNECTION_NAME}`);
         dbConfig.socketPath = `/cloudsql/${process.env.INSTANCE_CONNECTION_NAME}`;
@@ -67,14 +63,13 @@ if (!useSupabase) {
     }
 
     try {
+        // Use mysql.createPool (promise-based) for modern Node.js
         pool = mysql.createPool(dbConfig);
     } catch (error) {
         console.error('Failed to create MySQL pool. Supabase mode enabled instead.', error);
         useSupabase = true;
     }
 }
-
-// ... [Rest of the file remains unchanged] ...
 
 if (!useSupabase && !pool) {
     console.warn('MySQL pool unavailable. Enabling Supabase mode.');
