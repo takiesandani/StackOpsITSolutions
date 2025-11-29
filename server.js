@@ -40,32 +40,41 @@ if (useSupabase) {
     }
 }
 
+// ... [Keep previous Supabase logic] ...
+
 let pool = null;
 
 if (!useSupabase) {
-    const requiredMySqlVars = ['DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME'];
-    const missingMySqlVars = requiredMySqlVars.filter((key) => !process.env[key]);
+    // We remove the strict check for DB_HOST because Cloud Run uses a socket
+    const dbConfig = {
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD,
+        database: process.env.DB_NAME,
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0
+    };
 
-    if (missingMySqlVars.length > 0) {
-        console.warn(`MySQL credentials incomplete (${missingMySqlVars.join(', ')}). Supabase mode will be used instead.`);
-        useSupabase = true;
+    // Google Cloud Run connects via Unix Socket
+    // We will set INSTANCE_CONNECTION_NAME in the Cloud Run environment variables later
+    if (process.env.INSTANCE_CONNECTION_NAME) {
+        console.log(`Connecting to Cloud SQL via Socket: /cloudsql/${process.env.INSTANCE_CONNECTION_NAME}`);
+        dbConfig.socketPath = `/cloudsql/${process.env.INSTANCE_CONNECTION_NAME}`;
     } else {
-        try {
-            pool = mysql.createPool({
-                host: process.env.DB_HOST,
-                user: process.env.DB_USER,
-                password: process.env.DB_PASSWORD,
-                database: process.env.DB_NAME,
-                waitForConnections: true,
-                connectionLimit: 10,
-                queueLimit: 0
-            });
-        } catch (error) {
-            console.error('Failed to create MySQL pool. Supabase mode enabled instead.', error);
-            useSupabase = true;
-        }
+        // Local development connects via TCP (Host)
+        console.log(`Connecting to MySQL via Host: ${process.env.DB_HOST || 'localhost'}`);
+        dbConfig.host = process.env.DB_HOST || 'localhost';
+    }
+
+    try {
+        pool = mysql.createPool(dbConfig);
+    } catch (error) {
+        console.error('Failed to create MySQL pool. Supabase mode enabled instead.', error);
+        useSupabase = true;
     }
 }
+
+// ... [Rest of the file remains unchanged] ...
 
 if (!useSupabase && !pool) {
     console.warn('MySQL pool unavailable. Enabling Supabase mode.');
