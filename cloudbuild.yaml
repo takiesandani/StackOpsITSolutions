@@ -1,7 +1,25 @@
 steps:
+- name: 'gcr.io/cloud-builders/npm'
+  entrypoint: 'npm'
+  args: ['install', '--omit=dev']
+- name: 'gcr.io/cloud-builders/npm'
+  entrypoint: 'npm'
+  args: ['run', 'build']
+  dir: '.'
+  id: 'optional-build'
+  allowFailure: true
+- name: 'gcr.io/cloud-builders/npm'
+  entrypoint: 'npm'
+  args: ['run', 'test']
+  dir: '.'
+  id: 'optional-tests'
+  allowFailure: true
+- name: 'gcr.io/cloud-builders/npm'
+  entrypoint: 'npm'
+  args: ['prune', '--omit=dev']
 - name: 'gcr.io/cloud-builders/gcloud'
   args: ['app', 'deploy', '--quiet']
 
-
 options:
   logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'

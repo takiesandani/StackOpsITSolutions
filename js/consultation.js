@@ -186,7 +186,7 @@ class Calendar {
         const formattedDate = `${this.selectedDate.getFullYear()}-${String(this.selectedDate.getMonth() + 1).padStart(2, "0")}-${String(this.selectedDate.getDate()).padStart(2, "0")}`;
         
         try {
-            const response = await fetch(`http://localhost:8080/api/schedule?date=${formattedDate}`);
+            const response = await fetch(`/api/schedule?date=${formattedDate}`);
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -244,7 +244,7 @@ class BookingForm {
         }
 
         try {
-            const response = await fetch("http://localhost:8080/api/book", {
+            const response = await fetch("/api/book", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(data)

@@ -8,8 +8,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const timeSlotsContainer = document.getElementById("time-slots-container");
     const timeSlotsEl = document.getElementById("admin-time-slots");
     const selectedDateDisplay = document.getElementById("selected-date-display");
-    const bookingsListEl = document.getElementById("bookings-list");
-    const BASE_URL = "http://localhost:8080";
+    const bookingsListEl = document.getElementById("bookings-list"); 
+    const BASE_URL = ""; // Use relative paths for API calls
 
     const getAuthHeaders = (includeContentType = true) => {
         const token = localStorage.getItem('accessToken');

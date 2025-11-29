@@ -191,7 +191,7 @@ function setActiveNavLink() {
     
     navLinks.forEach(link => {
         const linkPage = link.getAttribute('href');
-        if (linkPage === currentPage || (currentPage === '' && linkPage === 'index.html')) {
+        if (linkPage === currentPage || (currentPage === '' && linkPage === '/')) {
             link.classList.add('active');
         } else {
             link.classList.remove('active');
@@ -203,14 +203,6 @@ function setActiveNavLink() {
 document.addEventListener('DOMContentLoaded', function() {
     setActiveNavLink();
     checkScroll();
-});
-
-// Update copyright year automatically
-document.addEventListener('DOMContentLoaded', function() {
-    const yearSpan = document.querySelector('#copyright-year');
-    if (yearSpan) {
-        yearSpan.textContent = new Date().getFullYear();
-    }
 });
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -590,4 +582,12 @@ document.addEventListener('DOMContentLoaded', () => {
 document.addEventListener('DOMContentLoaded', () => {
     const calendar = new Calendar();
     const bookingForm = new BookingForm();
+});
+
+// Update copyright year automatically
+document.addEventListener('DOMContentLoaded', function() {
+    const yearSpan = document.querySelector('#copyright-year');
+    if (yearSpan) {
+        yearSpan.textContent = new Date().getFullYear();
+    }
 });

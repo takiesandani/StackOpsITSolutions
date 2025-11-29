@@ -137,6 +137,29 @@
     .contact {
         overflow-x: hidden;
     }
+
+    .contact-details-grid {
+        justify-content: flex-start;
+    }
+
+    .contact-details-column {
+        align-items: flex-start;
+        text-align: left;
+    }
+
+    .contact-details-column.contact-details-column--right {
+        margin-left: 0;
+    }
+
+    .contact-header .contact-detail {
+        justify-content: flex-start;
+        text-align: left;
+    }
+
+    .contact-header .contact-detail span,
+    .contact-header .contact-detail a {
+        text-align: left;
+    }
     
     .contact-form {
         padding: 15px 0;
@@ -161,10 +184,17 @@
         max-width: 100vw;
     }
 
+    .image-left {
+        max-height: calc(0.5 * 600px);
+        overflow: hidden;
+    }
+
     .image-left img {
         width: 100%;
         max-width: 100%;
         height: auto;
+        max-height: 200px;
+        object-fit: cover;
     }
     
     .footer-section {

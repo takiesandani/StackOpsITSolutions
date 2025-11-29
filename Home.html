@@ -5,7 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>StackOps IT Solutions | Your Complete IT Force</title>
   <link rel="stylesheet" href="latest.css" />
+  <link rel="stylesheet" href="css/ChatBot.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;900&display=swap" rel="stylesheet">
 </head>
+
 <body>
 
   <!-- Background -->
@@ -19,15 +22,117 @@
   </header>
   
   <main class="content">
+
+  <!-- CHATBOT LAUNCHER -->
+<div class="chatBot-logo" id="chatBots-logo">
+
+    <img src="Images/Logos/RemovedStackOpsONLY.png" alt="Chatbot Icon" class="chatbot-icon"/>
+
+    <p>Need any assistance?</p>
+</div>
+
+
+
+  <!-- CHATBOT PANEL -->
+  <aside class="ChatBot" id="ChatBot">
+      <header class="Chat-Header">
+          <div class="logo">
+            
+              <img src="Images/Logos/RemovedStackOps.png" alt="StackOps Logo" />
+          </div>
+
+          <h2>StackOps AI Assistant</h2>
+          <p>Your intelligent assistant – always ready to help.</p>
+
+          <button id="closeChatBot" class="close-btn">✕</button>
+      </header>
+
+      <section class="Chat-Body">
+
+          <!-- CHAT HISTORY -->
+          <div id="chatMessages" class="chat-messages"></div>
+
+          <!-- CHAT INPUT -->
+          <form id="chatForm" class="chat-form">
+              <input 
+                  type="text" 
+                  id="userInput"
+                  placeholder="Type your message..."
+                  autocomplete="off"
+                  class="chat-input"
+                  required 
+              />
+
+              <button type="submit" class="chat-send-btn">➤</button>
+          </form>
+
+      </section>
+  </aside>
+
     <section class="left-section">
-      <h1>Your Complete <span>IT</span> Force</h1>
-      <p>
-        As an adaptable MSP IT partner, Stack<span>O</span>ps IT Solutions integrates seamlessly into
-        your environment. Whether you're managing daily IT operations, leading a disaster
-        recovery effort, or coordinating an ad hoc penetration test, we support your vision
-        with expert-driven, end-to-end managed services. 
-      </p>
-  
+      <div class="cube-container">
+        <div class="cube">
+          <!-- face 2-->
+          <div class="face">
+
+            <div class="text-overlay">
+              <h1>Your Complete <span>IT</span> Force</h1>
+                <p>
+                  As an adaptable MSP IT partner, Stack<span>O</span>ps IT Solutions integrates seamlessly into
+                  your environment. Whether you're managing daily IT operations, leading a disaster
+                  recovery effort, or coordinating an ad hoc penetration test, we support your vision
+                  with expert-driven, end-to-end managed services. 
+                </p>
+
+            </div>
+          </div>
+
+          <!-- face 3 -->
+          <div class="face">
+            <img src="Images/TV1.png" alt="Cybersecurity Consulting">
+            <button class="cube-btn live-glow">Learn more</button>
+
+          </div>
+
+          <!-- face 4 
+          <div class="face ">
+            <video autoplay muted loop playsinline style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: -1;">
+              <source src="Images/DellVideos.mp4" type="video/mp4">
+            </video>
+            <div class="text-overlay">
+              <h2></h2>
+              <p></p>
+            </div>
+          </div> -->
+
+          <!-- face 5 -->
+          <div class="face top">
+            <img src="Images/Face5.png" alt="IT Solutions Provider">
+            <a href="about.html" class="Face-5btn">Learn more</a>
+            <div class="text-overlay5">
+              <h2>All-Round Managed Service Provider</h2>
+              <h1>WHY CLIENTS TRUST US</h1>
+              
+            </div>
+          </div>
+
+          <!-- face 6 -->
+          <div class="face bottom">
+            <img src="Images/HandTV.png" alt="IT Solutions Provider">
+            <button class="shop-now-btn">
+              <span>SHOP NOW</span>
+              <div class="arrow-circle">
+                <span class="arrow">→</span>
+              </div>
+            </button>
+
+            <div class="text-overlay">
+              <h3>Tech Gadgets 
+                <br>Center</h3>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
 
     <section class="right-section">
@@ -101,12 +206,9 @@
     </section>
 
   </main>
-
   
   <section class="about-section">
-      <div class="logo-containers">
-          <img src="Images/Logos/RemovedStackOpsONLY.png" alt="StackOps IT Solutions Logo" class="actual-logo-image">
-      </div>
+
     <div class="about-image">
       <img src="Images/two-men-wearing-full-suits-shaking-hands_679964-5230.jpg" alt="Company Product">
     </div>
@@ -226,11 +328,13 @@
     <!-- Footer -->
     <footer>
         <div class="container">
+
             <div class="footer-content">
-                <div class="footer-section">
-                    <h3>StackOps IT Solutions</h3>
-                    <p>Advanced cybersecurity solutions to protect your business from digital threats and vulnerabilities.</p>
-                </div>
+              <div class="footer-logo">
+                  <img src="Images/Logos/RemovedStackOps.png" alt="StackOps Logo" />
+                   <p>Advanced cybersecurity solutions to protect your business from digital threats and vulnerabilities.</p>
+              </div>
+
                 <div class="footer-section">
                     <h3>Quick Links</h3>
                     <ul>
@@ -253,11 +357,16 @@
                 <div class="footer-section">
                     <h3>Connect With Us</h3>
                     <div class="social-icons">
+                        <a href="#"><i class="fab fa-facebook"></i></a>
+                        <a href="#"><i class="fab fa-twitter"></i></a>
                         <a href="https://www.linkedin.com/in/ndamulelo-sandani-0988289a/overlay/about-this-profile/?lipi=urn%3Ali%3Apage%3Ad_flagship3_profile_view_base%3BAO9qQ1ErRwqaNzIPO5obNA%3D%3D"><i class="fab fa-linkedin"></i></a>
+                        <a href="#"><i class="fab fa-instagram"></i></a></div>
+                        <p>Email: <a href="mailto:info@stackopsit.co.za" >info@stackopsit.co.za</a></p>
+                        <p>Email: <a href="mailto:support@stackopsit.co.za" >support@stackopsit.co.za</a></p>
+                        <p>Email: <a href="mailto:support@stackopsit.co.za" >sales@stackopsit.co.za</a></p>
+                        <p>Address: Mia Drive, Waterfall City, Johannesburg, 1685</p>
+                        <p>Phone: 011 568 9337</p>
                     </div>
-                    <p>Email: <a href="mailto:info@stackopsit.co.za" >info@stackopsit.co.za</a></p>
-                    <p>Phone: +27 67 914 9213</p>
-                </div>
             </div>
             <div class="copyright">
                 <p>&copy; <span id="copyright-year">2025</span> StackOps IT Solutions. All rights reserved.</p>
@@ -299,9 +408,12 @@
     }, 5000);
 
     updateSlides();
+
+
     </script>
 
+  <script src="js/Chatbot.js"></script>
+  <script src="js/courosel.js"></script>
 
-<script src="js/courosel.js"></script>
 </body>
 </html>
