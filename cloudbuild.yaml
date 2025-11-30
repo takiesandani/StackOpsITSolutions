@@ -36,4 +36,4 @@ images:
 - 'us-central1-docker.pkg.dev/stackops-backend-475222/stackops-repo/stackops-app:$COMMIT_SHA'
 
 options:
-  logging: NONE
+  logging: CLOUD_LOGGING_ONLY
