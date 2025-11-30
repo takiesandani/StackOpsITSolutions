@@ -139,7 +139,7 @@ async function seedAvailability() {
         if (!pool) {
             throw new Error('MySQL pool is not available.');
         }
-        const [rows] = await pool.query('SELECT COUNT(*) AS count FROM Appointment');
+        const [rows] = await pool.query('SELECT COUNT(*) AS count FROM appointment');
         count = rows[0].count;
 
         if (count === 0) {
@@ -160,7 +160,7 @@ async function seedAvailability() {
                     if (!pool) {
                         throw new Error('MySQL pool is not available.');
                     }
-                    await pool.query('INSERT INTO Appointment (date, time, isavailable) VALUES (?, ?, ?)', [date, time, true]);
+                    await pool.query('INSERT INTO appointment (date, time, isavailable) VALUES (?, ?, ?)', [date, time, true]);
                 }
             }
 
