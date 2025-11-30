@@ -58,7 +58,7 @@ const main = async () => {
             // SQL query to insert the new user
             const sql = `
                 INSERT INTO Users 
-                (FirstName, LastName, Email, CompanyName, passWord, isActive, Role) 
+                (FirstName, LastName, Email, CompanyName, password, isActive, Role) 
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             `;
             const values = [
