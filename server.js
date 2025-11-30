@@ -37,7 +37,7 @@ if (!useSupabase) {
     };
 
     console.log(`Connecting to Cloud SQL via Socket: /cloudsql/backend-475222:us-central1:stackops-db`);
-    dbConfig.socketPath = `/cloudsql/backend-475222:us-central1:consultation_db`;
+    dbConfig.socketPath = `/cloudsql/stackops-backend-475222:us-central1:stackops-db`;
 
     try {
         // Use mysql.createPool (promise-based) for modern Node.js
