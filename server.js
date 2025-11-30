@@ -30,10 +30,10 @@ if (!useSupabase) {
         connectionLimit: 10,
         queueLimit: 0,
         
-        
+        /*
         authPlugins: {
             'caching_sha2_password': () => require('mysql2/lib/auth_plugins/caching_sha2_password')
-        }
+        } */
     };
 
     console.log(`Connecting to Cloud SQL via Socket: /cloudsql/backend-475222:us-central1:stackops-db`);
