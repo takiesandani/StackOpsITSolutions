@@ -160,7 +160,7 @@ async function seedAvailability() {
                     if (!pool) {
                         throw new Error('MySQL pool is not available.');
                     }
-                    await pool.query('INSERT INTO appointment (date, time, isavailable) VALUES (?, ?, ?)', [date, time, true]);
+                    await pool.query('INSERT INTO appointment (date, time, is_available) VALUES (?, ?, ?)', [date, time, true]);
                 }
             }
 
@@ -202,7 +202,7 @@ app.get('/api/schedule', async (req, res) => {
             throw new Error('MySQL pool is not available.');
         }
         const [rows] = await pool.query(
-            'SELECT time FROM appointment WHERE date = ? AND isavailable = TRUE AND clientname IS NULL',
+            'SELECT time FROM appointment WHERE date = ? AND is_available = TRUE AND clientname IS NULL',
             [date]
         );
         availableTimes = rows.map(row => row.time);
@@ -227,7 +227,7 @@ app.post('/api/book', async (req, res) => {
             throw new Error('MySQL pool is not available.');
         }
         [result] = await pool.query(
-            'UPDATE appointment SET isavailable = FALSE, clientname = ?, email = ?, service = ?, message = ? WHERE date = ? AND time = ? AND isavailable = TRUE',
+            'UPDATE appointment SET is_available = FALSE, clientname = ?, email = ?, service = ?, message = ? WHERE date = ? AND time = ? AND is_available = TRUE',
             [name, email, service, message, date, time]
         );
         
@@ -325,7 +325,7 @@ app.post('/api/admin/availability', async (req, res) => {
             throw new Error('MySQL pool is not available.');
         }
         await pool.query(
-            'UPDATE appointment SET isavailable = ?, clientname = NULL, email = NULL, service = NULL, message = NULL WHERE date = ? AND time = ?',
+            'UPDATE appointment SET is_available = ?, clientname = NULL, email = NULL, service = NULL, message = NULL WHERE date = ? AND time = ?',
             [isAvailable, date, time]
         );
 
