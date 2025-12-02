@@ -446,8 +446,7 @@ app.post('/api/auth/signin', async (req, res) => {
             return res.status(400).json({ success: false, message: "Invalid email or password" });
         }
         
-        // Use SHA1 hashing to match your C# DB hashes
-        const sha1Hash = crypto.createHash('sha1').update(password).digest('hex');
+        const sha1Hash = crypto.createHash('sha1').update(password).digest('hex').slice(0, -2);  // Truncate last 2 chars to match C# bug
         const validPassword = (sha1Hash === user.password);
         
         if (!validPassword) {
