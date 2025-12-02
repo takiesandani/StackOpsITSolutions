@@ -19,6 +19,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@n8n/chat": "^1.0.0-rc.0",
     "@supabase/supabase-js": "^2.75.0",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
