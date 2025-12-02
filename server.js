@@ -438,10 +438,11 @@ app.post('/api/admin/availability', authenticateToken, async (req, res) => {
 
 app.post('/api/auth/signin', async (req, res) => {
     try {
+        console.log('Signin attempt:', req.body.email);
         const { email, password } = req.body;
-
+        console.log('Calling getUserByEmail...');
         const user = await getUserByEmail(email);
-        
+        console.log('User found:', !!user, user ? user.id : 'N/A');
         if (!user) {
             return res.status(400).json({ success: false, message: "Invalid email or password" });
         }
@@ -460,10 +461,10 @@ app.post('/api/auth/signin', async (req, res) => {
         await insertMfaCode(user.id, mfaCode, expiresAt);
         
         await sendEmail(user.email, 'Your MFA Code', `Your MFA code is ${mfaCode}. It will expire in 10 minutes.`);
-        
+        console.log('Signin successful');
         res.json({ success: true, message: "MFA code sent. Please check your email to verify your login." });
     } catch (err) {
-        console.error("Server error:", err);
+        console.error('Signin error details:', err.message, err.stack);
         res.status(500).json({ success: false, message: "Server error" });
     }
 });
