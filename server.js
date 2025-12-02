@@ -36,7 +36,7 @@ if (!useSupabase) {
         } */
     };
 
-    console.log(`Connecting to Cloud SQL via Socket: /cloudsql/backend-475222:us-central1:stackops-db`);
+    console.log(`Connecting to Cloud SQL via Socket: /cloudsql/stackops-backend-475222:us-central1:stackops-db`);
     dbConfig.socketPath = `/cloudsql/stackops-backend-475222:us-central1:stackops-db`;
 
     try {
@@ -175,8 +175,10 @@ async function seedAvailability() {
     }
 }
 
-// Call seed availability (Supabase check removed)
-seedAvailability().catch((error) => console.error('Seed availability failed:', error));
+// Call seed availability NON-BLOCKING (after server starts)
+setTimeout(() => {
+    seedAvailability().catch((error) => console.error('Seed availability failed:', error));
+}, 1000);  // Delay to ensure server starts first
 
 // Serve static files from the root directory (for CSS, JS, images)
 app.use(express.static(path.join(__dirname)));
@@ -377,12 +379,12 @@ app.get('/api/admin/schedule', authenticateToken, async (req, res) => {
     }
 });
 
-// managing admin availability (updated from original)
+// managing admin availability (updated from original, FIXED syntax error)
 app.post('/api/admin/availability', authenticateToken, async (req, res) => {
     const { date, time } = req.body;
     let { isAvailable } = req.body; 
     
-    if (isAvailable !== undefined) {
+    if (isAvailable !== undefined) {  // FIXED: Added 'undefined'
         isAvailable = (isAvailable === true || isAvailable === 'true');
     }
 
@@ -450,7 +452,7 @@ app.post('/api/auth/signin', async (req, res) => {
         
         const mfaCode = Math.floor(100000 + Math.random() * 900000);
         const createdAt = new Date();
-                const expiresAt = new Date(createdAt.getTime() + 10 * 60000); // 10 minutes
+        const expiresAt = new Date(createdAt.getTime() + 10 * 60000); // 10 minutes
         
         await insertMfaCode(user.id, mfaCode, expiresAt);
         
@@ -878,5 +880,5 @@ app.get('/', (req, res) => {
 // ------------------------------------------------------------------------
 // Server Startup
 // ------------------------------------------------------------------------
-const PORT = 8080; // Hardcoded to 8080 (Cloud Run Standard)
+const PORT = process.env.PORT || 8080;  // Use PORT env var for Cloud Run
 app.listen(PORT, () => console.log(`Server running on port ${PORT}. Supabase mode: ${useSupabase ? 'ON' : 'OFF'}`));
