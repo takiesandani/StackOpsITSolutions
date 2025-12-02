@@ -12,7 +12,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const BASE_URL = ""; // Use relative paths for API calls
 
     const getAuthHeaders = (includeContentType = true) => {
-        const token = localStorage.getItem('accessToken');
+        // FIXED: Changed from 'accessToken' to 'authToken' for consistency with signin.html and consultation.html
+        const token = localStorage.getItem('authToken');
         const headers = {};
         
         if (includeContentType) {
@@ -67,13 +68,6 @@ document.addEventListener("DOMContentLoaded", () => {
         selectedDateDisplay.textContent = formattedDate;
         timeSlotsEl.innerHTML = "";
 
-        const dayDivs = calendarGrid.querySelectorAll('.calendar-day');
-        dayDivs.forEach(div => {
-            if (parseInt(div.textContent) === date.getDate() && !div.classList.contains('empty')) {
-                div.classList.add('selected');
-            }
-        });
-
         const response = await fetch(`${BASE_URL}/api/schedule?date=${formattedDate}`);
         
         if (!response.ok) {
@@ -111,7 +105,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const toggleAvailability = async (date, time, newIsAvailable) => {
         try {
-            const token = localStorage.getItem('accessToken'); 
+            // FIXED: Changed from 'accessToken' to 'authToken'
+            const token = localStorage.getItem('authToken'); 
             if (!token) {
                 alert("Authentication required. Please ensure you are logged in to manage availability.");
                 return;
@@ -128,7 +123,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 fetchBookings(); 
             } else if (response.status === 401 || response.status === 403) {
                  alert("Session expired or unauthorized access. Please log in again.");
-                 localStorage.removeItem('accessToken'); 
+                 // FIXED: Changed from 'accessToken' to 'authToken'
+                 localStorage.removeItem('authToken'); 
             } else {
                 const errorText = await response.text();
                 alert(`Failed to update availability: ${errorText}`);
@@ -141,7 +137,8 @@ document.addEventListener("DOMContentLoaded", () => {
     
     const fetchBookings = async () => {
         try {
-            const token = localStorage.getItem('accessToken'); 
+            // FIXED: Changed from 'accessToken' to 'authToken'
+            const token = localStorage.getItem('authToken'); 
             
             if (!token) {
                 bookingsListEl.innerHTML = '<li>Please sign in to view bookings.</li>';
@@ -155,7 +152,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
             if (response.status === 401 || response.status === 403) {
                  bookingsListEl.innerHTML = '<li>Access Denied. Please ensure you are logged in as an administrator.</li>';
-                 localStorage.removeItem('accessToken');
+                 // FIXED: Changed from 'accessToken' to 'authToken'
+                 localStorage.removeItem('authToken');
                  return;
             }
             
