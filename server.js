@@ -5,6 +5,7 @@ const nodemailer = require('nodemailer');
 const cors = require('cors');
 const path = require('path');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');  // ADDED: For SHA1 hashing
 
 // NOTE: dotenv check removed as credentials are now hardcoded
 
@@ -445,7 +446,9 @@ app.post('/api/auth/signin', async (req, res) => {
             return res.status(400).json({ success: false, message: "Invalid email or password" });
         }
         
-        const validPassword = await bcrypt.compare(password, user.password);
+        // Use SHA1 hashing to match your C# DB hashes
+        const sha1Hash = crypto.createHash('sha1').update(password).digest('hex');
+        const validPassword = (sha1Hash === user.password);
         
         if (!validPassword) {
             return res.status(400).json({ success: false, message: "Invalid email or password" });
@@ -466,7 +469,7 @@ app.post('/api/auth/signin', async (req, res) => {
     }
 });
 
-// MODIFIED: MFA verification now issues the JWT token upon success (from original)
+//  MFA issues the JWT token upon success (from original)
 app.post('/api/auth/verify-mfa', async (req, res) => {
     try {
         const { email, code } = req.body;
