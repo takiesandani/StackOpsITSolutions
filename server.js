@@ -57,7 +57,7 @@ function formatDateToMySQL(date) {
 }
 
 // connecting to nodemailer to send emails from contact form
-const transporter = nodemailer.createTransport({
+const transporter = nodemailer.createTransporter({
     host: 'smtpout.secureserver.net', // Default used (not provided in prompt)
     port: 465,                        // Default used
     secure: true,                     // Default used
@@ -130,6 +130,7 @@ async function insertMfaCode(user_id, code, expires_at) {
     }
 }
 
+// Seed initial availability data for the next 30 days (updated from original)
 async function seedAvailability() {
     try {
         console.log('Checking for existing appointments...');
@@ -147,7 +148,7 @@ async function seedAvailability() {
 
             const today = new Date();
             const dates = [];
-            for (let i = 0; i < 7; i++) {
+            for (let i = 0; i < 30; i++) {  // Updated to 30 days (from original)
                 const date = new Date(today);
                 date.setDate(today.getDate() + i);
                 dates.push(date.toISOString().split('T')[0]); 
@@ -188,6 +189,7 @@ app.get('/admin/register', (req, res) => {
     res.sendFile(path.join(__dirname, 'signup.html'));
 });
 
+// API endpoint to get available time slots for a given date (updated from original)
 app.get('/api/schedule', async (req, res) => {
     const { date } = req.query;
 
@@ -198,9 +200,28 @@ app.get('/api/schedule', async (req, res) => {
     try {
         let availableTimes;
 
+        // First, ensure default slots exist for the date (auto-create if missing, from original)
+        const standardTimes = ['09:00:00', '10:00:00', '11:00:00', '14:00:00', '15:00:00'];
         if (!pool) {
             throw new Error('MySQL pool is not available.');
         }
+        const [existingRows] = await pool.query(
+            'SELECT time FROM appointment WHERE date = ?',
+            [date]
+        );
+        const existingTimes = new Set(existingRows.map(row => row.time));
+        const slotsToInsert = standardTimes
+            .filter(time => !existingTimes.has(time))
+            .map(time => [date, time, true, null, null, null, null]);
+
+        if (slotsToInsert.length > 0) {
+            await pool.query(
+                'INSERT INTO appointment (date, time, is_available, clientname, email, service, message) VALUES ?',
+                [slotsToInsert]
+            );
+        }
+
+        // Now fetch available times
         const [rows] = await pool.query(
             'SELECT time FROM appointment WHERE date = ? AND is_available = TRUE AND clientname IS NULL',
             [date]
@@ -211,11 +232,11 @@ app.get('/api/schedule', async (req, res) => {
 
     } catch (error) {
         console.error('Error fetching schedule:', error);
-        res.status(500).send('Failed to load time slots.');
+        res.status(500).send('Server error.');
     }
-})
+});
 
-// function to book a consultation from consultation.html page 
+// function to book a consultation from consultation.html page (updated from original)
 app.post('/api/book', async (req, res) => {
     const { date, time, name, email, service, message } = req.body;
     
@@ -290,7 +311,8 @@ app.post('/api/book', async (req, res) => {
     }
 });
 
-app.get('/api/admin/bookings', async (req, res) => {
+// API endpoint for admin to get all bookings (updated from original)
+app.get('/api/admin/bookings', authenticateToken, async (req, res) => {
     try {
         let bookings;
 
@@ -307,8 +329,56 @@ app.get('/api/admin/bookings', async (req, res) => {
     }
 });
 
-// managing admin availability 
-app.post('/api/admin/availability', async (req, res) => {
+// API endpoint for admin to get schedule for a date (added from original)
+app.get('/api/admin/schedule', authenticateToken, async (req, res) => {
+    const { date } = req.query;
+
+    if (!date) {
+        return res.status(400).send('Date is required.');
+    }
+
+    try {
+        let bookings;
+
+        if (!pool) {
+            throw new Error('MySQL pool is not available.');
+        }
+        const [rows] = await pool.query(
+            'SELECT * FROM appointment WHERE date = ? ORDER BY time ASC',
+            [date]
+        );
+        bookings = rows;
+
+        // Standard times array for comparison to ensure all standard slots are present
+        const standardTimes = ['09:00:00', '10:00:00', '11:00:00', '14:00:00', '15:00:00'];
+        const existingTimes = new Set(bookings.map(b => b.time));
+        
+        // Add default available slots if they don't exist for the day
+        for (const time of standardTimes) {
+            if (!existingTimes.has(time)) {
+                // Insert new available slot
+                const newSlot = { date, time, is_available: true, clientname: null, email: null, service: null, message: null };
+                if (!pool) {
+                    throw new Error('MySQL pool is not available.');
+                }
+                await pool.query('INSERT INTO appointment (date, time, is_available) VALUES (?, ?, ?)', [date, time, true]);
+                bookings.push(newSlot); // Add to the array for the response
+            }
+        }
+        
+        // Sort the final list by time
+        bookings.sort((a, b) => a.time.localeCompare(b.time));
+
+        res.json(bookings);
+
+    } catch (error) {
+        console.error('Error fetching admin schedule:', error);
+        res.status(500).send('Server error.');
+    }
+});
+
+// managing admin availability (updated from original)
+app.post('/api/admin/availability', authenticateToken, async (req, res) => {
     const { date, time } = req.body;
     let { isAvailable } = req.body; 
     
@@ -380,7 +450,7 @@ app.post('/api/auth/signin', async (req, res) => {
         
         const mfaCode = Math.floor(100000 + Math.random() * 900000);
         const createdAt = new Date();
-        const expiresAt = new Date(createdAt.getTime() + 10 * 60000);
+                const expiresAt = new Date(createdAt.getTime() + 10 * 60000); // 10 minutes
         
         await insertMfaCode(user.id, mfaCode, expiresAt);
         
@@ -393,6 +463,7 @@ app.post('/api/auth/signin', async (req, res) => {
     }
 });
 
+// MODIFIED: MFA verification now issues the JWT token upon success (from original)
 app.post('/api/auth/verify-mfa', async (req, res) => {
     try {
         const { email, code } = req.body;
@@ -437,11 +508,12 @@ app.post('/api/auth/verify-mfa', async (req, res) => {
     }
 });
 
-
+// NEW: Protect the Client Portal route with the authentication middleware (from original)
 app.get('/ClientPortal.html', authenticateToken, (req, res) => {
     res.sendFile(path.join(__dirname, 'ClientPortal.html'));
 });
 
+// CRITICAL FIX: Wrapped the entire transaction logic for dual-database support (adapted for MySQL-only, from original)
 app.post('/api/admin/register-client', async (req, res) => {
     const {
         firstName, lastName, email, contact, password,
@@ -544,10 +616,12 @@ app.post('/api/admin/register-client', async (req, res) => {
     }
 });
 
+// Add a new GET endpoint to serve the forgot-password page (from original)
 app.get('/forgot-password.html', (req, res) => {
     res.sendFile(path.join(__dirname, 'forgot-password.html'));
 });
 
+// Endpoint to handle the password reset request (Step 1: Send token, from original)
 app.post('/api/auth/forgot-password', async (req, res) => {
     const { email } = req.body;
     if (!email) {
@@ -610,6 +684,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     }
 });
 
+// Endpoint to verify the token and serve the password change page (from original)
 app.get('/reset-password.html', async (req, res) => {
     const { token } = req.query;
 
@@ -639,6 +714,7 @@ app.get('/reset-password.html', async (req, res) => {
     }
 });
 
+// Endpoint to handle the password update (Step 2: Update password, from original)
 app.post('/api/auth/reset-password', async (req, res) => {
     const { token, newPassword } = req.body;
 
@@ -689,7 +765,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
     }
 });
 
-
+// Contact message endpoint (from original)
 app.post('/api/contact-message', async (req, res) => {
     const { firstName, lastName, company, email, contact, service, message } = req.body;
 
@@ -773,7 +849,6 @@ app.post('/api/contact-message', async (req, res) => {
                     </div>
 
                 </div>
-
                 <div class="footer">
                     <p>&copy; ${new Date().getFullYear()} StackOps IT Solutions. All rights reserved. | Automated Contact Alert</p>
                 </div>
@@ -792,6 +867,16 @@ app.post('/api/contact-message', async (req, res) => {
     }
 });
 
-// Hardcoded PORT to 8080 (Cloud Run Standard)
-const PORT = 8080;
+// Serve static files from the project root directory
+app.use(express.static(__dirname));
+
+// Fallback to signin.html for root requests
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'signin.html'));
+});
+
+// ------------------------------------------------------------------------
+// Server Startup
+// ------------------------------------------------------------------------
+const PORT = 8080; // Hardcoded to 8080 (Cloud Run Standard)
 app.listen(PORT, () => console.log(`Server running on port ${PORT}. Supabase mode: ${useSupabase ? 'ON' : 'OFF'}`));
