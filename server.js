@@ -57,7 +57,7 @@ function formatDateToMySQL(date) {
 }
 
 // connecting to nodemailer to send emails from contact form
-const transporter = nodemailer.createTransporter({
+const transporter = nodemailer.createTransport({
     host: 'smtpout.secureserver.net', // Default used (not provided in prompt)
     port: 465,                        // Default used
     secure: true,                     // Default used
