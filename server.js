@@ -313,6 +313,33 @@ app.post('/api/book', async (req, res) => {
     }
 });
 
+
+const authenticateToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (token == null) {
+        if (req.originalUrl.startsWith('/api')) {
+             return res.status(401).json({ success: false, message: 'Unauthorized: No token provided.' });
+        }
+        return res.redirect('/signin.html');
+    }
+
+    // Hardcoded ACCESS_TOKEN_SECRET
+    const ACCESS_TOKEN_SECRET = '7a076e42670cfe26193655fe5f48b776defe078754ca16fb9ae0a054b354d335';
+
+    jwt.verify(token, ACCESS_TOKEN_SECRET, (err, user) => {
+        if (err) {
+            if (req.originalUrl.startsWith('/api')) {
+                return res.status(403).json({ success: false, message: 'Forbidden: Invalid or expired token.' });
+            }
+            return res.redirect('/signin.html');
+        }
+        req.user = user;
+        next();
+    });
+};
+
 // API endpoint for admin to get all bookings (updated from original)
 app.get('/api/admin/bookings', authenticateToken, async (req, res) => {
     try {
@@ -407,32 +434,6 @@ app.post('/api/admin/availability', authenticateToken, async (req, res) => {
         res.status(500).send('Server error.');
     }
 });
-
-const authenticateToken = (req, res, next) => {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-
-    if (token == null) {
-        if (req.originalUrl.startsWith('/api')) {
-             return res.status(401).json({ success: false, message: 'Unauthorized: No token provided.' });
-        }
-        return res.redirect('/signin.html');
-    }
-
-    // Hardcoded ACCESS_TOKEN_SECRET
-    const ACCESS_TOKEN_SECRET = '7a076e42670cfe26193655fe5f48b776defe078754ca16fb9ae0a054b354d335';
-
-    jwt.verify(token, ACCESS_TOKEN_SECRET, (err, user) => {
-        if (err) {
-            if (req.originalUrl.startsWith('/api')) {
-                return res.status(403).json({ success: false, message: 'Forbidden: Invalid or expired token.' });
-            }
-            return res.redirect('/signin.html');
-        }
-        req.user = user;
-        next();
-    });
-};
 
 app.post('/api/auth/signin', async (req, res) => {
     try {
