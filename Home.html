@@ -23,51 +23,7 @@
   
   <main class="content">
 
-  <!-- CHATBOT LAUNCHER -->
-<div class="chatBot-logo" id="chatBots-logo">
 
-    <img src="Images/Logos/RemovedStackOpsONLY.png" alt="Chatbot Icon" class="chatbot-icon"/>
-
-    <p>Need any assistance?</p>
-</div>
-
-
-
-  <!-- CHATBOT PANEL -->
-  <aside class="ChatBot" id="ChatBot">
-      <header class="Chat-Header">
-          <div class="logo">
-            
-              <img src="Images/Logos/RemovedStackOps.png" alt="StackOps Logo" />
-          </div>
-
-          <h2>StackOps AI Assistant</h2>
-          <p>Your intelligent assistant – always ready to help.</p>
-
-          <button id="closeChatBot" class="close-btn">✕</button>
-      </header>
-
-      <section class="Chat-Body">
-
-          <!-- CHAT HISTORY -->
-          <div id="chatMessages" class="chat-messages"></div>
-
-          <!-- CHAT INPUT -->
-          <form id="chatForm" class="chat-form">
-              <input 
-                  type="text" 
-                  id="userInput"
-                  placeholder="Type your message..."
-                  autocomplete="off"
-                  class="chat-input"
-                  required 
-              />
-
-              <button type="submit" class="chat-send-btn">➤</button>
-          </form>
-
-      </section>
-  </aside>
 
     <section class="left-section">
       <div class="cube-container">
@@ -413,6 +369,29 @@
     </script>
 
   <script src="js/Chatbot.js"></script>
+  
+  <!-- Add this at the end of <body> (keep your other content like navbar, sections, etc.) -->
+  <link href="http://cdn.jsdelivr.net/npm/@n8n/chat/dist/style.css" rel="stylesheet" />
+  <script type="module">
+      import { createChat } from 'http://cdn.jsdelivr.net/npm/@n8n/chat/dist/chat.bundle.es.js';
+
+      createChat({
+          webhookUrl: 'http://stackconai.app.n8n.cloud/webhook/a0b7e8d0-1c69-4b5d-8065-39ddfcd762b1/chat',
+          mode: 'window',  // Default window mode: shows toggle button + chat window
+          showWelcomeScreen: false,
+          loadPreviousSession: false,
+          initialMessages: [
+              "Hi, I'm StackCon. How can I help you today?",
+              "Please choose:",
+              "1. Client Portal",
+              "2. General Questions"
+          ],
+          enableStreaming: true,
+          chatInputKey: 'chatInput',  // Default, but explicit
+           
+      });
+  </script>
+  
   <script src="js/courosel.js"></script>
 
 </body>
