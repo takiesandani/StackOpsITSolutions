@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>StackOps IT Solutions | Your Complete IT Force</title>
   <link rel="stylesheet" href="latest.css" />
-  <link rel="stylesheet" href="css/ChatBot.css" />
+  
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;900&display=swap" rel="stylesheet">
 </head>
 
@@ -368,26 +368,27 @@
 
     </script>
 
-    <link href="https://cdn.jsdelivr.net/npm/@n8n/chat/dist/style.css" rel="stylesheet" />
-    <script type="module">
+  <!-- Add this at the end of <body> (keep your other content like navbar, sections, etc.) -->
+  <link href="https://cdn.jsdelivr.net/npm/@n8n/chat/dist/style.css" rel="stylesheet" />
+  <script type="module">
       import { createChat } from 'https://cdn.jsdelivr.net/npm/@n8n/chat/dist/chat.bundle.es.js';
 
       createChat({
-        webhookUrl: 'https://stackconai.app.n8n.cloud/webhook/a0b7e8d0-1c69-4b5d-8065-39ddfcd762b1/chat',
-        mode: 'window',  // Docs default: window mode for toggle + chat
-        showWelcomeScreen: false,  // Docs default
-        loadPreviousSession: true,  // Docs default: true for session continuity
-        initialMessages: [
-          "Hi, I'm StackCon. How can I help you today?",
-          "Please choose:",
-          "1. Client Portal",
-          "2. General Questions"
-        ],
-        enableStreaming: false,  // Set to true only if your workflow supports streaming
-        chatInputKey: 'chatInput',  // Docs default for input
-        chatSessionKey: 'sessionId',  // Docs default for sessions
+          webhookUrl: 'https://stackconai.app.n8n.cloud/webhook/a0b7e8d0-1c69-4b5d-8065-39ddfcd762b1/chat',
+          mode: 'window',  // Default window mode: shows toggle button + chat window
+          showWelcomeScreen: false,
+          loadPreviousSession: false,
+          /*initialMessages: [
+              "Hi, I'm StackCon. How can I help you today?",
+              "Please choose:",
+              "1. Client Portal",
+              "2. General Questions"
+          ],  */
+          enableStreaming: false,
+          chatInputKey: 'chatInput',  // Default, but explicit
+           
       });
-    </script>
+  </script>
   
   <script src="js/courosel.js"></script>
 
