@@ -365,13 +365,24 @@
 
 
     </script>
+    <!-- Add this at the end of <body> (keep your other content like navbar, sections, etc.) -->
+    <link href="https://cdn.jsdelivr.net/npm/@n8n/chat/dist/style.css" rel="stylesheet" />
+    <script type="module">
+        import { createChat } from 'https://cdn.jsdelivr.net/npm/@n8n/chat/dist/chat.bundle.es.js';
 
-<!-- Add this at the end of <body> (keep your other content like navbar, sections, etc.) -->
-<link href="https://cdn.jsdelivr.net/npm/@n8n/chat/dist/style.css" rel="stylesheet" />
-<script type="module        import { createChat } from 'https://cdn.jsdelivr.net/npm/@n8n/chat/dist/chat.bundle.es.js';        createChat            webhookUrl: 'https://stackconai.app.n8n.cloud/webhook/a0b7e8d0-1c69-4b5d-8065-39ddfcd762b1/chat            mode: 'window',  // Default window mode: shows toggle button + chat wind            showWelcomeScreen: fals            loadPreviousSession: fals        initialMessages: [
-          "Hello, I'm StackOn. your virtual assistant.\nHow can I help you today?\nPlease choose: \n1. Client Portal\n 2. Support"
-        ]   ],            enableStreaming: fals            chatInputKey: 'chatInput',  // Default, but explic                    });
-</script>
+        createChat({
+            webhookUrl: 'https://stackconai.app.n8n.cloud/webhook/a0b7e8d0-1c69-4b5d-8065-39ddfcd762b1/chat',
+            mode: 'window',  // Default window mode: shows toggle button + chat window
+            showWelcomeScreen: false,
+            loadPreviousSession: false,
+            initialMessages: [
+            "Hello, I'm StackOn. your virtual assistant.\nHow can I help you today?\nPlease choose: \n1. Client Portal\n 2. Support"
+            ],  
+            enableStreaming: false,
+            chatInputKey: 'chatInput',  // Default, but explicit
+            
+        });
+    </script>
 
   <script src="js/courosel.js"></script>
 
