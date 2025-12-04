@@ -1,12 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
- <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>About Us | StackOps IT Solutions</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-<link rel="stylesheet" href="css/style.css">
-
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About Us | StackOps IT Solutions</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/ChatBot.css" />
 </head>
 <body>
 <div class="background"></div>
@@ -31,6 +31,27 @@
     </ul>
 </header>
 
+<section class="our-story-header-image">
+    <div class="about-content animated-content">
+         <h1>Our Story</h1>
+            <p> It takes wisdom to simplify complexity, and dedication to turn solutions into lasting impact. For over a decade, StackOps IT Solutions has been doing just that. As an all-rounder Managed Services Provider, we’ve spent the last 10 years refining our skills, learning from every challenge, and delivering solutions that not only meet expectations, they quietly exceed them. Our work speaks for itself. Behind every system we build is a team that cares deeply about quality, reliability, and the people we serve. We’re more than just an IT partner, we’re part of your journey, here to make sure technology empowers your growth.</p>
+    </div>
+
+    <div class="our-story-stats">
+            <div class="stat-item">
+                <i class="fas fa-calendar-alt stat-icon"></i>
+                <p class="stat-text">Est. 2016</p>
+            </div>
+            <div class="stat-item">
+                <i class="fas fa-award stat-icon"></i>
+                <p class="stat-text"> 
+                    L1
+                    B-BBEE
+                </p>
+            </div>
+    </div>
+
+</section>
 
 <section class="values">
     <div class="container">
@@ -196,6 +217,25 @@
             </div>
         </div>
     </footer>
+
+    <!-- Add this at the end of <body> (keep your other content like navbar, sections, etc.) -->
+    <link href="https://cdn.jsdelivr.net/npm/@n8n/chat/dist/style.css" rel="stylesheet" />
+    <script type="module">
+        import { createChat } from 'https://cdn.jsdelivr.net/npm/@n8n/chat/dist/chat.bundle.es.js';
+
+        createChat({
+            webhookUrl: 'https://stackconai.app.n8n.cloud/webhook/a0b7e8d0-1c69-4b5d-8065-39ddfcd762b1/chat',
+            mode: 'window',  // Default window mode: shows toggle button + chat window
+            showWelcomeScreen: false,
+            loadPreviousSession: false,
+            initialMessages: [
+            "Hello, I'm StackOn. your virtual assistant.\nHow can I help you today?\nPlease choose: \n1. Client Portal\n 2. Support"
+            ],  
+            enableStreaming: false,
+            chatInputKey: 'chatInput',  // Default, but explicit
+            
+        });
+    </script>
 
     <script src="js/script.js"></script>
     <script src="js/Chatbot.js"></script>
