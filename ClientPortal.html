@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client Portal | StackOps IT Solutions</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/clientportal.css">
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="background"></div>
+
+    <!-- LOGIN SECTION -->
+    <section id="login-section" class="login-section active">
+        <div class="login-container">
+            <div class="login-box">
+                <div class="login-header">
+                    <img src="Images/Logos/RemovedStackOps.png" alt="StackOps Logo" class="login-logo">
+                    <h1>Client Portal</h1>
+                    <p>Secure access to your IT projects and monitoring</p>
+                </div>
+
+                <form id="login-form" class="login-form">
+                    <div class="form-group">
+                        <label for="login-email">Email Address</label>
+                        <input type="email" id="login-email" required placeholder="Enter your email">
+                        <div class="error-message" id="login-email-error"></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="login-password">Password</label>
+                        <input type="password" id="login-password" required placeholder="Enter your password">
+                        <i class="fas fa-eye password-toggle" id="password-toggle"></i>
+                        <div class="error-message" id="login-password-error"></div>
+                    </div>
+
+                    <button type="submit" class="btn-login">
+                        <span>Sign In</span>
+                        <i class="fas fa-arrow-right"></i>
+                    </button>
+
+                    <div class="login-footer">
+                        <p>Don't have an account? <a href="signup.html">Sign up here</a></p>
+                        <a href="forgot_password.html" class="forgot-link">Forgot password?</a>
+                    </div>
+                </form>
+
+                <div class="login-info">
+                    <p><i class="fas fa-shield-alt"></i> Secure login with encryption</p>
+                    <p><i class="fas fa-check-circle"></i> 24/7 Portal Access</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- DASHBOARD SECTION -->
+    <section id="dashboard-section" class="dashboard-section">
+        <!-- Header with Logo and Navigation -->
+        <header class="site-header">
+            
+                <a href="Home.html" class="logo">
+                    <img src="Images/Logos/RemovedStackOps.png" alt="StackOps Logo">
+                </a>
+                <div class="header-info">
+                    <h1>Stackon Client Portal Dashboard</h1>
+                </div>
+                <div class="header-user">
+                    <span class="user-name" id="user-name">Client</span>
+                    <button class="btn-logout" id="btn-logout">
+                        <i class="fas fa-sign-out-alt"></i> Logout
+                    </button>
+                </div>
+            
+        </header>
+
+        <!-- PROJECTS VIEW -->
+        <div id="projects-view" class="projects-view">
+            <div class="container">
+
+
+                <div class="projects-nav">
+                    <div class="nav-counter">
+                        <span id="project-current">1</span> / <span id="project-total">0</span> Projects
+                    </div>
+                    <div class="nav-buttons">
+                        <button class="nav-btn nav-prev" id="nav-prev" title="Previous Project">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
+                        <button class="nav-btn nav-next" id="nav-next" title="Next Project">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="projects-grid" id="projects-grid">
+                    <!-- Projects will be dynamically inserted here -->
+                </div>
+
+                <div id="project-preview-section" class="project-preview-section">
+                    <!-- Preview will be dynamically inserted here -->
+                </div>
+
+                <div class="dashboard-cards-section">
+                    <div id="billing-card" class="dashboard-card billing-card">
+                        
+                    </div>
+                    <div class="dashboard-card-vertical-container">
+                        <div id="governance-card" class="dashboard-card governance-card">
+                            <!-- Governance card will be populated by JS -->
+                        </div>
+                        <div id="support-card" class="dashboard-card secondary-card">
+                            <!-- Support card will be populated by JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- DASHBOARD VIEW -->
+        <div id="dashboard-view" class="dashboard-view" style="display: none;">
+            <div class="container-fluid">
+                <div class="dashboard-title">
+                    <button class="btn-back" id="btn-back">
+                        <i class="fas fa-arrow-left"></i> Back to Projects
+                    </button>
+                    <h2 id="project-name"></h2>
+                    <span class="project-status" id="project-status">Active</span>
+                </div>
+
+                <!-- Quick Stats -->
+                <div class="stats-grid">
+                    <div class="stat-card danger">
+                        <div class="stat-icon">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="stat-risks">0</h3>
+                            <p>Critical Risks</p>
+                        </div>
+                    </div>
+
+                    <div class="stat-card warning">
+                        <div class="stat-icon">
+                            <i class="fas fa-shield-alt"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="stat-security">88%</h3>
+                            <p>Security Score</p>
+                        </div>
+                    </div>
+
+                    <div class="stat-card success">
+                        <div class="stat-icon">
+                            <i class="fas fa-server"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="stat-uptime">99.8%</h3>
+                            <p>System Uptime</p>
+                        </div>
+                    </div>
+
+                    <div class="stat-card info">
+                        <div class="stat-icon">
+                            <i class="fas fa-check-circle"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="stat-last-update">2 hrs ago</h3>
+                            <p>Last Update</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Section -->
+                <div class="charts-section">
+                    <!-- Risk Overview Chart -->
+                    <div class="chart-card full-width">
+                        <h3><i class="fas fa-chart-line"></i> Risk Assessment Overview</h3>
+                        <div class="chart-container">
+                            <canvas id="riskChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Security Status -->
+                    <div class="chart-card">
+                        <h3><i class="fas fa-pie-chart"></i> Security Status</h3>
+                        <div class="chart-container">
+                            <canvas id="securityChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- System Health -->
+                    <div class="chart-card">
+                        <h3><i class="fas fa-heartbeat"></i> System Health</h3>
+                        <div class="chart-container">
+                            <canvas id="healthChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Threat Timeline -->
+                    <div class="chart-card full-width">
+                        <h3><i class="fas fa-history"></i> Threat Detection Timeline (Last 7 Days)</h3>
+                        <div class="chart-container">
+                            <canvas id="threatChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Monitoring Details -->
+                <div class="monitoring-section">
+                    <!-- Vulnerabilities -->
+                    <div class="monitor-card">
+                        <h3><i class="fas fa-bug"></i> Vulnerabilities</h3>
+                        <div class="vulnerability-list" id="vulnerability-list">
+                            <div class="vulnerability-item critical">
+                                <span class="vuln-level">CRITICAL</span>
+                                <p>SQL Injection vulnerability in login form</p>
+                                <small>Updated: 2 hours ago</small>
+                            </div>
+                            <div class="vulnerability-item high">
+                                <span class="vuln-level">HIGH</span>
+                                <p>Outdated SSL certificate detected</p>
+                                <small>Updated: 5 hours ago</small>
+                            </div>
+                            <div class="vulnerability-item medium">
+                                <span class="vuln-level">MEDIUM</span>
+                                <p>Cross-site scripting (XSS) exposure</p>
+                                <small>Updated: 8 hours ago</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- System Alerts -->
+                    <div class="monitor-card">
+                        <h3><i class="fas fa-bell"></i> System Alerts</h3>
+                        <div class="alerts-list" id="alerts-list">
+                            <div class="alert-item danger">
+                                <i class="fas fa-circle"></i>
+                                <div class="alert-content">
+                                    <p>Unusual login attempt detected</p>
+                                    <small>10 minutes ago - Location: Unknown</small>
+                                </div>
+                            </div>
+                            <div class="alert-item warning">
+                                <i class="fas fa-circle"></i>
+                                <div class="alert-content">
+                                    <p>Disk usage at 85%</p>
+                                    <small>30 minutes ago</small>
+                                </div>
+                            </div>
+                            <div class="alert-item success">
+                                <i class="fas fa-circle"></i>
+                                <div class="alert-content">
+                                    <p>Security patch applied successfully</p>
+                                    <small>2 hours ago</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Network Status -->
+                    <div class="monitor-card">
+                        <h3><i class="fas fa-network-wired"></i> Network Status</h3>
+                        <div class="network-status">
+                            <div class="status-item">
+                                <div class="status-header">
+                                    <span class="status-name">External Firewall</span>
+                                    <span class="status-badge online">Online</span>
+                                </div>
+                                <div class="status-bar">
+                                    <div class="status-fill" style="width: 95%"></div>
+                                </div>
+                                <small>Latency: 2.5ms | Packets: 98.9% delivered</small>
+                            </div>
+
+                            <div class="status-item">
+                                <div class="status-header">
+                                    <span class="status-name">Internal Network</span>
+                                    <span class="status-badge online">Online</span>
+                                </div>
+                                <div class="status-bar">
+                                    <div class="status-fill" style="width: 92%"></div>
+                                </div>
+                                <small>Latency: 1.2ms | Packets: 99.5% delivered</small>
+                            </div>
+
+                            <div class="status-item">
+                                <div class="status-header">
+                                    <span class="status-name">VPN Connection</span>
+                                    <span class="status-badge online">Online</span>
+                                </div>
+                                <div class="status-bar">
+                                    <div class="status-fill" style="width: 88%"></div>
+                                </div>
+                                <small>Latency: 5.8ms | Packets: 97.2% delivered</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Compliance Status -->
+                    <div class="monitor-card">
+                        <h3><i class="fas fa-certificate"></i> Compliance Status</h3>
+                        <div class="compliance-list">
+                            <div class="compliance-item compliant">
+                                <i class="fas fa-check-circle"></i>
+                                <div>
+                                    <p>POPIA Compliance</p>
+                                    <small>Last audit: 15 days ago</small>
+                                </div>
+                            </div>
+                            <div class="compliance-item compliant">
+                                <i class="fas fa-check-circle"></i>
+                                <div>
+                                    <p>ISO 27001</p>
+                                    <small>Last audit: 30 days ago</small>
+                                </div>
+                            </div>
+                            <div class="compliance-item non-compliant">
+                                <i class="fas fa-times-circle"></i>
+                                <div>
+                                    <p>PCI DSS</p>
+                                    <small>Requires attention</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Backup Status -->
+                    <div class="monitor-card">
+                        <h3><i class="fas fa-database"></i> Backup Status</h3>
+                        <div class="backup-status">
+                            <div class="backup-item">
+                                <div class="backup-info">
+                                    <p>Daily Backup</p>
+                                    <small>Last: Today at 02:00 AM</small>
+                                </div>
+                                <span class="backup-status-badge success">Completed</span>
+                            </div>
+                            <div class="backup-item">
+                                <div class="backup-info">
+                                    <p>Weekly Archive</p>
+                                    <small>Last: Sunday at 03:00 AM</small>
+                                </div>
+                                <span class="backup-status-badge success">Completed</span>
+                            </div>
+                            <div class="backup-item">
+                                <div class="backup-info">
+                                    <p>Cloud Sync</p>
+                                    <small>Last: 1 hour ago</small>
+                                </div>
+                                <span class="backup-status-badge success">Active</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+
+    <script src="js/script.js"></script>
+    <script src="js/chatbot.js"></script>
+    <script src="js/clientportal.js"></script>
+</body>
+</html>

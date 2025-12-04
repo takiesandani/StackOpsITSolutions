@@ -23,11 +23,19 @@
   
   <main class="content">
 
-
-
     <section class="left-section">
       <div class="cube-container">
         <div class="cube">
+
+          <!-- face 4 -->
+          <div class="face ">
+            <iframe src="https://www.youtube.com/embed/beGDCqoifs8?autoplay=1&mute=1&loop=1&playlist=beGDCqoifs8&modestbranding=1&controls=0&showinfo=0&rel=0" frameborder="0" allowfullscreen></iframe>
+            <div class="text-overlay">
+              <h2></h2>
+              <p></p>
+            </div>
+          </div> 
+
           <!-- face 2-->
           <div class="face">
 
@@ -50,16 +58,6 @@
 
           </div>
 
-          <!-- face 4 
-          <div class="face ">
-            <video autoplay muted loop playsinline style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: -1;">
-              <source src="Images/DellVideos.mp4" type="video/mp4">
-            </video>
-            <div class="text-overlay">
-              <h2></h2>
-              <p></p>
-            </div>
-          </div> -->
 
           <!-- face 5 -->
           <div class="face top">
@@ -125,6 +123,15 @@
                 <span>Shop</span>
             </a>
 
+            <a href="contact.html" class="menu-item">
+                <svg class="menu-icon" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 64 64" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="20" y="8" width="24" height="48" rx="4" ry="4"/>
+                    <line x1="28" y1="12" x2="36" y2="12"/>
+                    <circle cx="32" cy="50" r="2"/>
+                </svg>
+                <span>Contact us</span>
+            </a>
+
             <a href="consultation.html" class="menu-item">
                 <svg class="menu-icon" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 64 64" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="8" y="12" width="48" height="40" rx="4" ry="4"/>
@@ -133,27 +140,19 @@
                     <line x1="32" y1="37" x2="32" y2="30"/>
                     <line x1="32" y1="37" x2="36" y2="34"/>
                 </svg>
-                <span>Book a consulation</span>
+                <span>Book a consultation</span>
             </a>
 
-            <a href="approach.html" class="menu-item">
-                <svg class="menu-icon" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 64 64" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="32" cy="16" r="6"/>
-                    <circle cx="16" cy="48" r="6"/>
-                    <circle cx="48" cy="48" r="6"/>
-                    <line x1="32" y1="22" x2="16" y2="42"/>
-                    <line x1="32" y1="22" x2="48" y2="42"/>
-                </svg>
-                <span>Our approach</span>
-            </a>
-
-            <a href="contact.html" class="menu-item">
-                <svg class="menu-icon" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 64 64" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="20" y="8" width="24" height="48" rx="4" ry="4"/>
-                    <line x1="28" y1="12" x2="36" y2="12"/>
-                    <circle cx="32" cy="50" r="2"/>
-                </svg>
-                <span>Contact us</span>
+            <a href="ClientPortal.html" id="client-portal-link" class="menu-item"> 
+                <svg class="menu-icon" xmlns="http://www.w3.org/2000/svg" 
+                  width="48" height="48" viewBox="0 0 64 64" fill="none" 
+                  stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  
+                  <path d="M12 44a20 20 0 1 1 40 0" />
+                  <line x1="32" y1="44" x2="32" y2="28" />
+                  <circle cx="32" cy="44" r="3" fill="white" stroke="none" />
+              </svg>
+                <span>Client Dashboard</span>
             </a>
         <div class="logo-container">
           <img src="Images/Logos/RemovedStackOpsONLY.png" alt="StackOps IT Solutions Logo" class="actual-logo-image">
@@ -370,21 +369,9 @@
 
 <!-- Add this at the end of <body> (keep your other content like navbar, sections, etc.) -->
 <link href="https://cdn.jsdelivr.net/npm/@n8n/chat/dist/style.css" rel="stylesheet" />
-<script type="module">
-    import { createChat } from 'https://cdn.jsdelivr.net/npm/@n8n/chat/dist/chat.bundle.es.js';
-
-    createChat({
-        webhookUrl: 'https://stackconai.app.n8n.cloud/webhook/a0b7e8d0-1c69-4b5d-8065-39ddfcd762b1/chat',
-        mode: 'window',  // Default window mode: shows toggle button + chat window
-        showWelcomeScreen: false,
-        loadPreviousSession: false,
-        initialMessages: [
+<script type="module        import { createChat } from 'https://cdn.jsdelivr.net/npm/@n8n/chat/dist/chat.bundle.es.js';        createChat            webhookUrl: 'https://stackconai.app.n8n.cloud/webhook/a0b7e8d0-1c69-4b5d-8065-39ddfcd762b1/chat            mode: 'window',  // Default window mode: shows toggle button + chat wind            showWelcomeScreen: fals            loadPreviousSession: fals        initialMessages: [
           "Hello, I'm StackOn. your virtual assistant.\nHow can I help you today?\nPlease choose: \n1. Client Portal\n 2. Support"
-        ],  
-        enableStreaming: false,
-        chatInputKey: 'chatInput',  // Default, but explicit
-          
-    });
+        ]   ],            enableStreaming: fals            chatInputKey: 'chatInput',  // Default, but explic                    });
 </script>
 
   <script src="js/courosel.js"></script>
