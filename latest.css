@@ -2098,7 +2098,7 @@ footer a:hover {
     opacity: 0;
     transition: opacity 0.6s ease-in-out;
     /* Animation for sliding */
-    animation: slideShow 15 s infinite;
+    animation: slideShow 30s infinite;
 }
 
 /* Animation delays for each face */
@@ -2106,6 +2106,8 @@ footer a:hover {
 .face:nth-child(2) { animation-delay: 6s; pointer-events: auto !important; }
 .face:nth-child(3) { animation-delay: 12s; pointer-events: auto !important; }
 .face:nth-child(4) { animation-delay: 18s; pointer-events: none; }
+.face:nth-child(5) { animation-delay: 24s; pointer-events: none; }
+.face:nth-child(6) { animation-delay: 30s; pointer-events: none; }
 
 @keyframes slideShow {
     0% {
@@ -3108,7 +3110,6 @@ footer a:hover {
 
 .glow-wrap:hover {
   transform: translate(-50%, -50%) scale(1.05);
-  animation: live-glow-button 1.5s infinite alternate;
 }
 
 .glowing-border-layer {
@@ -3141,8 +3142,9 @@ footer a:hover {
   border-radius: 16px;
   background: #000000;
   color: #008cff;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 14px;
+  
+  font-weight: bold;
   letter-spacing: 1px;
   cursor: pointer;
   z-index: 2;
@@ -3150,9 +3152,7 @@ footer a:hover {
 }
 
 .link-content:hover {
-  color: #0066ff;
-  font-size: 12px;
-  animation: live-glow 1.5s infinite alternate;
+  color: #ffffff;
 }
 
 @keyframes spin {
