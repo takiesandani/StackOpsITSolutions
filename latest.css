@@ -2955,6 +2955,11 @@ footer a:hover {
     z-index: 4 !important;
     pointer-events: none !important; /* overlays remain decorative */
   }
+  
+  /* Allow button inside text-overlay5 to be interactive */
+  .text-overlay5 .glow-wrap-face3 {
+    pointer-events: auto !important;
+  }
 
   .text-overlay5 h1 {
     font-family: 'Orbitron', sans-serif !important;
@@ -2981,12 +2986,11 @@ footer a:hover {
     letter-spacing: 1.5px !important;
   }
 
-  /* Glow-wrap button for Face 3 - Same column as h1/h2, positioned lower */
+  /* Glow-wrap button for Face 3 - Inside text-overlay5, aligned with h1/h2 */
   .glow-wrap-face3 {
-    top: 75% !important; /* About 5 rows down from h1/h2 */
-    /* Position scales with zoom: 53% base + viewport-relative offset */
-    left: calc(53% - 28% + clamp(10vw, 12.5vw, 15vw)) !important;
-    transform: translate(0, -50%) !important; /* Align left edge with h1/h2, center vertically */
+    position: relative !important; /* Relative to text-overlay5 container */
+    margin-left: 240px !important; /* Same as h1/h2 - perfect alignment */
+    margin-top: clamp(60px, 4vw, 80px) !important; /* Positioned lower down */
     display: block !important;
     z-index: 10 !important;
   }
@@ -3199,9 +3203,9 @@ footer a:hover {
   }
 }
 
-/* Glow-wrap button for Face 3 - Positioned in same column as h1 and h2, but lower down */
+/* Glow-wrap button for Face 3 - Now inside text-overlay5, aligned with h1/h2 using same margin-left */
 .glow-wrap-face3 {
-  position: absolute;
+  position: relative; /* Changed from absolute - now relative to text-overlay5 */
   width: clamp(160px, 10.4vw, 200px); /* Scales with zoom: 200px at 1920px = 10.4vw */
   height: clamp(40px, 2.6vw, 50px); /* Scales with zoom: 50px at 1920px = 2.6vw */
   border-radius: clamp(20px, 1.3vw, 25px); /* Scales proportionally */
@@ -3209,16 +3213,14 @@ footer a:hover {
   box-shadow: 0 clamp(3px, 0.2vw, 4px) clamp(12px, 0.78vw, 15px) rgba(183, 0, 255, 0.199);
   transition: transform 0.2s ease;
   z-index: 10;
-  top: 75%; /* Positioned lower down - about 5 rows below h1/h2 */
-  /* Position scales with zoom: 53% base + viewport-relative offset (12.5vw ≈ 240px at 1920px) */
-  left: calc(53% - 28% + clamp(10vw, 12.5vw, 15vw));
-  transform: translate(0, -50%); /* Align left edge with h1/h2, center vertically */
+  margin-left: 2px; /* Same as h1/h2 - aligns perfectly in same column */
+  margin-top: clamp(60px, 4vw, 80px); /* Positioned lower down - about 5 rows below h1/h2 */
   pointer-events: auto;
   display: block; /* Ensure it's visible */
 }
 
 .glow-wrap-face3:hover {
-  transform: translate(0, -50%) scale(1.05);
+  
   animation: live-glow 1.5s infinite alternate;
 }
 
@@ -3372,8 +3374,8 @@ footer a:hover {
     width: clamp(144px, 9.4vw, 180px); /* Scales with zoom */
     height: clamp(36px, 2.35vw, 45px); /* Scales with zoom */
     border-radius: clamp(18px, 1.15vw, 22px); /* Scales proportionally */
-    left: calc(53% - 28% + clamp(10vw, 12.5vw, 15vw)) !important; /* Scales with zoom */
-    transform: translate(0, -50%) !important;
+    margin-left: 240px !important; /* Same as h1/h2 - maintains alignment */
+    margin-top: clamp(50px, 3.5vw, 70px) !important; /* Scales with zoom */
   }
 
   .glowing-border-layer-face3 {
@@ -3399,8 +3401,8 @@ footer a:hover {
     width: clamp(104px, 6.77vw, 130px); /* Scales with zoom */
     height: clamp(26px, 1.67vw, 32px); /* Scales with zoom */
     border-radius: clamp(13px, 0.83vw, 16px); /* Scales proportionally */
-    left: calc(53% - 28% + clamp(8vw, 10vw, 12vw)) !important; /* Scales with zoom on mobile */
-    transform: translate(0, -50%) !important;
+    margin-left: clamp(140px, 18vw, 240px) !important; /* Responsive margin, scales with zoom */
+    margin-top: clamp(40px, 3vw, 60px) !important; /* Scales with zoom on mobile */
   }
 
   .glowing-border-layer-face3 {
@@ -3426,9 +3428,8 @@ footer a:hover {
     width: clamp(72px, 4.69vw, 90px); /* Scales with zoom */
     height: clamp(19px, 1.25vw, 24px); /* Scales with zoom */
     border-radius: clamp(11px, 0.73vw, 14px); /* Scales proportionally */
-    left: calc(53% - 28% + clamp(6vw, 8vw, 10vw)) !important; /* Scales with zoom on small mobile */
-    transform: translate(0, -50%) !important;
-    top: clamp(160px, 10.42vw, 200px); /* Scales with zoom */
+    margin-left: clamp(100px, 15vw, 190px) !important; /* Responsive margin, scales with zoom */
+    margin-top: clamp(30px, 2.5vw, 50px) !important; /* Scales with zoom on small mobile */
   }
 
   .glowing-border-layer-face3 {
@@ -3454,8 +3455,8 @@ footer a:hover {
     width: clamp(76px, 4.95vw, 95px); /* Scales with zoom */
     height: clamp(19px, 1.25vw, 24px); /* Scales with zoom */
     border-radius: clamp(10px, 0.63vw, 12px); /* Scales proportionally */
-    left: calc(53% - 28% + clamp(5vw, 7vw, 9vw)) !important; /* Scales with zoom on very small mobile */
-    transform: translate(0, -50%) !important;
+    margin-left: clamp(80px, 12vw, 140px) !important; /* Responsive margin, scales with zoom */
+    margin-top: clamp(25px, 2vw, 40px) !important; /* Scales with zoom on very small mobile */
   }
 
   .glowing-border-layer-face3 {
