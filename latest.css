@@ -2731,7 +2731,7 @@ footer a:hover {
       }
 
     .text-overlay5 h2 {
-        font-size: 0.41rem !important;
+        font-size: 0.35rem !important;  /* Decreased font size for small mobile */
         font-weight: 400 !important;
         position: relative !important;
         
@@ -3530,6 +3530,43 @@ footer a:hover {
     border-radius: clamp(10px, 0.65vw, 13px); /* Scales proportionally */
     font-size: clamp(8px, 0.52vw, 10px); /* Scales with zoom */
     letter-spacing: clamp(0.8px, 0.05vw, 1px); /* Scales with zoom */
+  }
+}
+
+/* iPhone SE (375px) - Specific positioning for link-content-face3 */
+@media (max-width: 375px) {
+  .link-content-face3 {
+    position: absolute !important;
+    /* Positioning controls for iPhone SE - adjust these values to position the button */
+    top: clamp(0.8px, 0.05vw, 1px) !important;     /* Move UP/DOWN: decrease to move up, increase to move down */
+    left: clamp(0.8px, 0.05vw, 1px) !important;   /* Move LEFT/RIGHT: decrease to move left, increase to move right */
+    width: calc(100% - clamp(1.6px, 0.1vw, 2px)) !important;
+    height: calc(100% - clamp(1.6px, 0.1vw, 2px)) !important;
+    border-radius: clamp(10px, 0.65vw, 13px) !important;
+    font-size: clamp(8px, 0.52vw, 10px) !important;
+    letter-spacing: clamp(0.8px, 0.05vw, 1px) !important;
+  }
+
+  /* iPhone SE (375px) - Specific positioning for text-overlay5 h1 and h2 */
+  .text-overlay5 h1 {
+    position: relative !important;
+    /* Positioning controls for iPhone SE h1 - adjust these values to position the heading */
+    top: 0 !important;                    /* Move UP/DOWN: negative moves up, positive moves down */
+    left: 180px !important;                   /* Move LEFT/RIGHT: negative moves left, positive moves right */
+    margin-top: clamp(12px, 1.5vw, 20px) !important; /* Vertical spacing from top */
+    margin-left: 0 !important;            /* Horizontal offset - adjust to move left/right */
+    margin-bottom: clamp(8px, 1vw, 12px) !important; /* Space between h1 and h2 */
+  }
+
+  .text-overlay5 h2 {
+    position: relative !important;
+    /* Positioning controls for iPhone SE h2 - adjust these values to position the heading */
+    top: 30px !important;                    /* Move UP/DOWN: negative moves up, positive moves down */
+    left: 180px !important;                   /* Move LEFT/RIGHT: negative moves left, positive moves right */
+    margin-top: clamp(10px, 1.2vw, 18px) !important; /* Vertical spacing from h1 */
+    margin-left: 0 !important;            /* Horizontal offset - adjust to move left/right */
+    margin-bottom: clamp(6px, 0.8vw, 10px) !important; /* Space below h2 */
+    font-size: 0.3rem !important;
   }
 }
 
