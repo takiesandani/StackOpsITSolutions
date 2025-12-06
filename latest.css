@@ -2097,17 +2097,17 @@ footer a:hover {
     overflow: visible;
     opacity: 0;
     transition: opacity 0.6s ease-in-out;
-    /* Animation for sliding */
-    animation: slideShow 30s infinite;
+    /* Animation for sliding - 20s cycle for 4 faces with 5s intervals */
+    animation: slideShow 15s infinite;
     /* Default: disable pointer events - will be enabled per face */
     pointer-events: none;
 }
 
-/* Animation delays for each face - Updated for 4 faces (30s cycle = 7.5s per face) */
+/* Animation delays for each face - Updated for 4 faces, 5s intervals (20s cycle) */
 .face:nth-child(1) { animation-delay: 0s; pointer-events: none; }
-.face:nth-child(2) { animation-delay: 7.5s; }
-.face:nth-child(3) { animation-delay: 15s; } /* Face 3 has glow-wrap-face3 button */
-.face:nth-child(4) { animation-delay: 22.5s; } /* Face 5 has shop-now-btn */
+.face:nth-child(2) { animation-delay: 3.4s; }
+.face:nth-child(3) { animation-delay: 6.8s; } /* Face 3 has glow-wrap-face3 button */
+.face:nth-child(4) { animation-delay: 10.2s; } /* Face 5 has shop-now-btn */
 
 /* Enable pointer events only during visible phase (when opacity is 1) */
 /* This ensures buttons work consistently when face is visible */
@@ -2130,11 +2130,11 @@ footer a:hover {
         opacity: 0;
         transform: translateX(100%);
     }
-    5% {
+    8% {
         opacity: 1;
         transform: translateX(0);
     }
-    20% {
+    17% {
         opacity: 1;
         transform: translateX(0);
     }
@@ -3204,7 +3204,7 @@ footer a:hover {
   height: 50px;
   border-radius: 25px;
   overflow: hidden;
-  box-shadow: 0 4px 15px rgba(0, 162, 255, 0.199);
+  box-shadow: 0 4px 15px rgba(183, 0, 255, 0.199);
   transition: transform 0.2s ease;
   z-index: 10;
   top: 75%; /* Positioned lower down - about 5 rows below h1/h2 */
@@ -3226,11 +3226,11 @@ footer a:hover {
   height: 210px;
   z-index: 1;
   background: conic-gradient(
-    #0068e0 0%,
+    #7b00e0 0%,
     hsla(207, 100%, 50%, 0) 25%,
     #0084ff00 50%,
     #0077ff00 75%,
-    #005ae0 100%
+    #a000e0 100%
   );
   animation: spin 3s linear infinite;
 }
@@ -3247,7 +3247,7 @@ footer a:hover {
   text-decoration: none;
   border-radius: 23px;
   background: #000000;
-  color: #008cff;
+  color: #9900ff;
   font-size: 15px;
   font-weight: 400;
   letter-spacing: 2px;
