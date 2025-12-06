@@ -2099,15 +2099,31 @@ footer a:hover {
     transition: opacity 0.6s ease-in-out;
     /* Animation for sliding */
     animation: slideShow 30s infinite;
+    /* Default: disable pointer events - will be enabled per face */
+    pointer-events: none;
 }
 
-/* Animation delays for each face */
+/* Animation delays for each face - Updated for 4 faces (30s cycle = 7.5s per face) */
 .face:nth-child(1) { animation-delay: 0s; pointer-events: none; }
-.face:nth-child(2) { animation-delay: 6s; pointer-events: auto !important; }
-.face:nth-child(3) { animation-delay: 12s; pointer-events: auto !important; }
-.face:nth-child(4) { animation-delay: 18s; pointer-events: none; }
-.face:nth-child(5) { animation-delay: 24s; pointer-events: none; }
-.face:nth-child(6) { animation-delay: 30s; pointer-events: none; }
+.face:nth-child(2) { animation-delay: 7.5s; }
+.face:nth-child(3) { animation-delay: 15s; } /* Face 3 has glow-wrap-face3 button */
+.face:nth-child(4) { animation-delay: 22.5s; } /* Face 5 has shop-now-btn */
+
+/* Enable pointer events only during visible phase (when opacity is 1) */
+/* This ensures buttons work consistently when face is visible */
+.face:nth-child(2),
+.face:nth-child(3),
+.face:nth-child(4) {
+    pointer-events: auto;
+}
+
+/* But ensure buttons always have pointer-events enabled with higher z-index */
+.glow-wrap,
+.glow-wrap-face3,
+.shop-now-btn {
+    pointer-events: auto !important;
+    z-index: 15 !important; /* Higher than face z-index */
+}
 
 @keyframes slideShow {
     0% {
@@ -2964,6 +2980,15 @@ footer a:hover {
     letter-spacing: 1.5px !important;
   }
 
+  /* Glow-wrap button for Face 3 - Same column as h1/h2, positioned lower */
+  .glow-wrap-face3 {
+    top: 75% !important; /* About 5 rows down from h1/h2 */
+    left: calc(50% + 240px) !important; /* Same column position as h1 and h2 (50% center + 240px offset) */
+    transform: translate(-50%, -50%) !important;
+    display: block !important;
+    z-index: 10 !important;
+  }
+
   /* Buttons inside each face: fixed, centered by default */
   .face .cube-btn {
     top: 50% !important;
@@ -3096,16 +3121,17 @@ footer a:hover {
 
 .glow-wrap {
   position: absolute;
-  width: 150px;
-  height: 36px;
-  border-radius: 18px;
-  overflow: hidden;
-  box-shadow: 0 4px 15px rgba(0, 162, 255, 0.199);
+  width: 200px;
+  height: 50px;
+  border-radius: 25px;
+  overflow: hidden; /* CRUCIAL: This clips the moving gradient */
+  box-shadow: 0 4px 15px rgba(0, 162, 255, 0.199); /* Subtle lift */
   transition: transform 0.2s ease;
   z-index: 10;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
+  pointer-events: auto; /* Ensure it's interactive */
 }
 
 .glow-wrap:hover {
@@ -3114,10 +3140,90 @@ footer a:hover {
 
 .glowing-border-layer {
   position: absolute;
-  top: -60px;
-  left: -60px;
-  width: 270px;
-  height: 156px;
+  top: -80px; /* Start the gradient far up and left */
+  left: -80px;
+  width: 360px; /* Make the layer much bigger than the button */
+  height: 210px;
+  z-index: 1;
+  /* The Moving Conic Gradient (Purple Trail) */
+  background: conic-gradient(
+    #0068e0 0%,         /* Transparent start */
+    hsla(207, 100%, 50%, 0) 25%,          /* Bright Purple 1 (Visible Trail Head) */
+    #0084ff00 50%,          /* Darker Purple 2 */
+    #0077ff00 75%,          /* Bright Purple 1 */
+    #005ae0 100%        /* Transparent end */
+  );
+  
+  /* Apply the continuous rotation */
+  animation: spin 3s linear infinite; /* Faster spin for a dynamic look */
+}
+
+.link-content {
+  /* Base positioning and size to create the border gap */
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
+  
+  /* Styling the link appearance */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-decoration: none;
+  
+  border-radius: 23px;
+  background: #000000; /* Dark inner color to mask the center of the glow */
+  color: #008cff; /* Light purple text color */
+  font-size: 15px;
+  font-weight: 400; /* Changed from bold to 300 */
+  letter-spacing: 2px;
+  cursor: pointer;
+  z-index: 2; /* Ensure link content is on top of the glow */
+  transition: color 0.3s;
+  pointer-events: auto; /* Ensure it's interactive */
+}
+
+.link-content:hover {
+  color: #ffffff; /* White text on hover for contrast */
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Glow-wrap button for Face 3 - Positioned in same column as h1 and h2, but lower down */
+.glow-wrap-face3 {
+  position: absolute;
+  width: 200px;
+  height: 50px;
+  border-radius: 25px;
+  overflow: hidden;
+  box-shadow: 0 4px 15px rgba(0, 162, 255, 0.199);
+  transition: transform 0.2s ease;
+  z-index: 10;
+  top: 75%; /* Positioned lower down - about 5 rows below h1/h2 */
+  left: calc(37% + 240px); /* Same column position as h1 and h2 (50% center + 240px offset) */
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  display: block; /* Ensure it's visible */
+}
+
+.glow-wrap-face3:hover {
+  transform: translate(-50%, -50%) scale(1.05);
+}
+
+.glowing-border-layer-face3 {
+  position: absolute;
+  top: -80px;
+  left: -80px;
+  width: 360px;
+  height: 210px;
   z-index: 1;
   background: conic-gradient(
     #0068e0 0%,
@@ -3129,7 +3235,7 @@ footer a:hover {
   animation: spin 3s linear infinite;
 }
 
-.link-content {
+.link-content-face3 {
   position: absolute;
   top: 2px;
   left: 2px;
@@ -3139,27 +3245,225 @@ footer a:hover {
   justify-content: center;
   align-items: center;
   text-decoration: none;
-  border-radius: 16px;
+  border-radius: 23px;
   background: #000000;
   color: #008cff;
-  font-size: 14px;
-  
-  font-weight: bold;
-  letter-spacing: 1px;
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 2px;
   cursor: pointer;
   z-index: 2;
   transition: color 0.3s;
+  pointer-events: auto;
 }
 
-.link-content:hover {
+.link-content-face3:hover {
   color: #ffffff;
 }
 
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
+/* Responsive Styles for glow-wrap button - Scales across all devices */
+@media (max-width: 1200px) {
+  .glow-wrap {
+    width: 180px;
+    height: 45px;
+    border-radius: 22px;
   }
-  to {
-    transform: rotate(360deg);
+
+  .glowing-border-layer {
+    top: -72px;
+    left: -72px;
+    width: 324px;
+    height: 189px;
+  }
+
+  .link-content {
+    top: 1.8px;
+    left: 1.8px;
+    width: calc(100% - 3.6px);
+    height: calc(100% - 3.6px);
+    border-radius: 20px;
+    font-size: 14px;
+    letter-spacing: 1.8px;
+  }
+}
+
+@media (max-width: 768px) {
+  .glow-wrap {
+    width: 130px;
+    height: 32px;
+    border-radius: 16px;
+  }
+
+  .glowing-border-layer {
+    top: -52px;
+    left: -52px;
+    width: 234px;
+    height: 136px;
+  }
+
+  .link-content {
+    top: 1.2px;
+    left: 1.2px;
+    width: calc(100% - 2.4px);
+    height: calc(100% - 2.4px);
+    border-radius: 15px;
+    font-size: 11px;
+    letter-spacing: 1.2px;
+  }
+}
+
+@media (max-width: 480px) {
+  .glow-wrap {
+    width: 110px;
+    height: 28px;
+    border-radius: 14px;
+  }
+
+  .glowing-border-layer {
+    top: -44px;
+    left: -44px;
+    width: 198px;
+    height: 116px;
+  }
+
+  .link-content {
+    top: 1px;
+    left: 1px;
+    width: calc(100% - 2px);
+    height: calc(100% - 2px);
+    border-radius: 13px;
+    font-size: 10px;
+    letter-spacing: 1px;
+  }
+}
+
+@media (max-width: 360px) {
+  .glow-wrap {
+    width: 95px;
+    height: 24px;
+    border-radius: 12px;
+  }
+
+  .glowing-border-layer {
+    top: -38px;
+    left: -38px;
+    width: 171px;
+    height: 100px;
+  }
+
+  .link-content {
+    top: 0.8px;
+    left: 0.8px;
+    width: calc(100% - 1.6px);
+    height: calc(100% - 1.6px);
+    border-radius: 11px;
+    font-size: 9px;
+    letter-spacing: 0.8px;
+  }
+}
+
+/* Responsive styles for glow-wrap-face3 button */
+@media (max-width: 1200px) {
+  .glow-wrap-face3 {
+    width: 180px;
+    height: 45px;
+    border-radius: 22px;
+    left: calc(50% + clamp(180px, 20vw, 240px)) !important; /* Responsive but maintains column alignment */
+  }
+
+  .glowing-border-layer-face3 {
+    top: -72px;
+    left: -72px;
+    width: 324px;
+    height: 189px;
+  }
+
+  .link-content-face3 {
+    top: 1.8px;
+    left: 1.8px;
+    width: calc(100% - 3.6px);
+    height: calc(100% - 3.6px);
+    border-radius: 20px;
+    font-size: 14px;
+    letter-spacing: 1.8px;
+  }
+}
+
+@media (max-width: 768px) {
+  .glow-wrap-face3 {
+    width: 130px;
+    height: 32px;
+    border-radius: 16px;
+    left: calc(50% + clamp(30px, 20vw, 60px)) !important; /* Same as h1/h2 on mobile */
+  }
+
+  .glowing-border-layer-face3 {
+    top: -52px;
+    left: -52px;
+    width: 234px;
+    height: 136px;
+  }
+
+  .link-content-face3 {
+    top: 1.2px;
+    left: 1.2px;
+    width: calc(100% - 2.4px);
+    height: calc(100% - 2.4px);
+    border-radius: 15px;
+    font-size: 11px;
+    letter-spacing: 1.2px;
+  }
+}
+
+@media (max-width: 480px) {
+  .glow-wrap-face3 {
+    width: 90px;
+    height: 24px;
+    border-radius: 14px;
+    left: calc(50% + clamp(25px, 18vw, 50px)) !important; /* Same as h1/h2 on mobile */
+    top: 200px;
+  }
+
+  .glowing-border-layer-face3 {
+    top: -44px;
+    left: -44px;
+    width: 198px;
+    height: 116px;
+  }
+
+  .link-content-face3 {
+    top: 1px;
+    left: 1px;
+    width: calc(100% - 2px);
+    height: calc(100% - 2px);
+    border-radius: 13px;
+    font-size: 10px;
+    letter-spacing: 1px;
+  }
+}
+
+@media (max-width: 360px) {
+  .glow-wrap-face3 {
+    width: 95px;
+    height: 24px;
+    border-radius: 12px;
+    left: calc(50% + clamp(20px, 15vw, 40px)) !important; /* Same as h1/h2 on small mobile */
+  }
+
+  .glowing-border-layer-face3 {
+    top: -38px;
+    left: -38px;
+    width: 171px;
+    height: 100px;
+  }
+
+  .link-content-face3 {
+    top: 0.8px;
+    left: 0.8px;
+    width: calc(100% - 1.6px);
+    height: calc(100% - 1.6px);
+    border-radius: 11px;
+    font-size: 9px;
+    letter-spacing: 0.8px;
   }
 }
