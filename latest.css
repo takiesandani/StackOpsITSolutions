@@ -2984,8 +2984,9 @@ footer a:hover {
   /* Glow-wrap button for Face 3 - Same column as h1/h2, positioned lower */
   .glow-wrap-face3 {
     top: 75% !important; /* About 5 rows down from h1/h2 */
-    left: calc(50% + 240px) !important; /* Same column position as h1 and h2 (50% center + 240px offset) */
-    transform: translate(-50%, -50%) !important;
+    /* Position scales with zoom: 53% base + viewport-relative offset */
+    left: calc(53% - 28% + clamp(10vw, 12.5vw, 15vw)) !important;
+    transform: translate(0, -50%) !important; /* Align left edge with h1/h2, center vertically */
     display: block !important;
     z-index: 10 !important;
   }
@@ -3201,22 +3202,24 @@ footer a:hover {
 /* Glow-wrap button for Face 3 - Positioned in same column as h1 and h2, but lower down */
 .glow-wrap-face3 {
   position: absolute;
-  width: 200px;
-  height: 50px;
-  border-radius: 25px;
+  width: clamp(160px, 10.4vw, 200px); /* Scales with zoom: 200px at 1920px = 10.4vw */
+  height: clamp(40px, 2.6vw, 50px); /* Scales with zoom: 50px at 1920px = 2.6vw */
+  border-radius: clamp(20px, 1.3vw, 25px); /* Scales proportionally */
   overflow: hidden;
-  box-shadow: 0 4px 15px rgba(183, 0, 255, 0.199);
+  box-shadow: 0 clamp(3px, 0.2vw, 4px) clamp(12px, 0.78vw, 15px) rgba(183, 0, 255, 0.199);
   transition: transform 0.2s ease;
   z-index: 10;
   top: 75%; /* Positioned lower down - about 5 rows below h1/h2 */
-  left: calc(37% + 240px); /* Same column position as h1 and h2 (50% center + 240px offset) */
-  transform: translate(-50%, -50%);
+  /* Position scales with zoom: 53% base + viewport-relative offset (12.5vw ≈ 240px at 1920px) */
+  left: calc(53% - 28% + clamp(10vw, 12.5vw, 15vw));
+  transform: translate(0, -50%); /* Align left edge with h1/h2, center vertically */
   pointer-events: auto;
   display: block; /* Ensure it's visible */
 }
 
 .glow-wrap-face3:hover {
-  transform: translate(-50%, -50%) scale(1.05);
+  transform: translate(0, -50%) scale(1.05);
+  animation: live-glow 1.5s infinite alternate;
 }
 
 .glowing-border-layer-face3 {
@@ -3238,20 +3241,20 @@ footer a:hover {
 
 .link-content-face3 {
   position: absolute;
-  top: 2px;
-  left: 2px;
-  width: calc(100% - 4px);
-  height: calc(100% - 4px);
+  top: clamp(1.6px, 0.1vw, 2px); /* Scales with zoom */
+  left: clamp(1.6px, 0.1vw, 2px); /* Scales with zoom */
+  width: calc(100% - clamp(3.2px, 0.2vw, 4px));
+  height: calc(100% - clamp(3.2px, 0.2vw, 4px));
   display: flex;
   justify-content: center;
   align-items: center;
   text-decoration: none;
-  border-radius: 23px;
+  border-radius: clamp(18px, 1.2vw, 23px); /* Scales proportionally */
   background: #000000;
   color: #9900ff;
-  font-size: 15px;
+  font-size: clamp(12px, 0.78vw, 15px); /* Scales with zoom: 15px at 1920px = 0.78vw */
   font-weight: 400;
-  letter-spacing: 2px;
+  letter-spacing: clamp(1.6px, 0.1vw, 2px); /* Scales with zoom */
   cursor: pointer;
   z-index: 2;
   transition: color 0.3s;
@@ -3366,105 +3369,109 @@ footer a:hover {
 /* Responsive styles for glow-wrap-face3 button */
 @media (max-width: 1200px) {
   .glow-wrap-face3 {
-    width: 180px;
-    height: 45px;
-    border-radius: 22px;
-    left: calc(50% + clamp(180px, 20vw, 240px)) !important; /* Responsive but maintains column alignment */
+    width: clamp(144px, 9.4vw, 180px); /* Scales with zoom */
+    height: clamp(36px, 2.35vw, 45px); /* Scales with zoom */
+    border-radius: clamp(18px, 1.15vw, 22px); /* Scales proportionally */
+    left: calc(53% - 28% + clamp(10vw, 12.5vw, 15vw)) !important; /* Scales with zoom */
+    transform: translate(0, -50%) !important;
   }
 
   .glowing-border-layer-face3 {
-    top: -72px;
-    left: -72px;
-    width: 324px;
-    height: 189px;
+    top: clamp(-58px, -3.75vw, -72px); /* Scales with zoom */
+    left: clamp(-58px, -3.75vw, -72px); /* Scales with zoom */
+    width: clamp(259px, 16.9vw, 324px); /* Scales with zoom */
+    height: clamp(151px, 9.84vw, 189px); /* Scales with zoom */
   }
 
   .link-content-face3 {
-    top: 1.8px;
-    left: 1.8px;
-    width: calc(100% - 3.6px);
-    height: calc(100% - 3.6px);
-    border-radius: 20px;
-    font-size: 14px;
-    letter-spacing: 1.8px;
+    top: clamp(1.4px, 0.09vw, 1.8px); /* Scales with zoom */
+    left: clamp(1.4px, 0.09vw, 1.8px); /* Scales with zoom */
+    width: calc(100% - clamp(2.8px, 0.18vw, 3.6px));
+    height: calc(100% - clamp(2.8px, 0.18vw, 3.6px));
+    border-radius: clamp(16px, 1.04vw, 20px); /* Scales proportionally */
+    font-size: clamp(11px, 0.73vw, 14px); /* Scales with zoom */
+    letter-spacing: clamp(1.4px, 0.09vw, 1.8px); /* Scales with zoom */
   }
 }
 
 @media (max-width: 768px) {
   .glow-wrap-face3 {
-    width: 130px;
-    height: 32px;
-    border-radius: 16px;
-    left: calc(50% + clamp(30px, 20vw, 60px)) !important; /* Same as h1/h2 on mobile */
+    width: clamp(104px, 6.77vw, 130px); /* Scales with zoom */
+    height: clamp(26px, 1.67vw, 32px); /* Scales with zoom */
+    border-radius: clamp(13px, 0.83vw, 16px); /* Scales proportionally */
+    left: calc(53% - 28% + clamp(8vw, 10vw, 12vw)) !important; /* Scales with zoom on mobile */
+    transform: translate(0, -50%) !important;
   }
 
   .glowing-border-layer-face3 {
-    top: -52px;
-    left: -52px;
-    width: 234px;
-    height: 136px;
+    top: clamp(-42px, -2.71vw, -52px); /* Scales with zoom */
+    left: clamp(-42px, -2.71vw, -52px); /* Scales with zoom */
+    width: clamp(187px, 12.19vw, 234px); /* Scales with zoom */
+    height: clamp(109px, 7.08vw, 136px); /* Scales with zoom */
   }
 
   .link-content-face3 {
-    top: 1.2px;
-    left: 1.2px;
-    width: calc(100% - 2.4px);
-    height: calc(100% - 2.4px);
-    border-radius: 15px;
-    font-size: 11px;
-    letter-spacing: 1.2px;
+    top: clamp(1px, 0.06vw, 1.2px); /* Scales with zoom */
+    left: clamp(1px, 0.06vw, 1.2px); /* Scales with zoom */
+    width: calc(100% - clamp(2px, 0.12vw, 2.4px));
+    height: calc(100% - clamp(2px, 0.12vw, 2.4px));
+    border-radius: clamp(12px, 0.78vw, 15px); /* Scales proportionally */
+    font-size: clamp(9px, 0.57vw, 11px); /* Scales with zoom */
+    letter-spacing: clamp(1px, 0.06vw, 1.2px); /* Scales with zoom */
   }
 }
 
 @media (max-width: 480px) {
   .glow-wrap-face3 {
-    width: 90px;
-    height: 24px;
-    border-radius: 14px;
-    left: calc(50% + clamp(25px, 18vw, 50px)) !important; /* Same as h1/h2 on mobile */
-    top: 200px;
+    width: clamp(72px, 4.69vw, 90px); /* Scales with zoom */
+    height: clamp(19px, 1.25vw, 24px); /* Scales with zoom */
+    border-radius: clamp(11px, 0.73vw, 14px); /* Scales proportionally */
+    left: calc(53% - 28% + clamp(6vw, 8vw, 10vw)) !important; /* Scales with zoom on small mobile */
+    transform: translate(0, -50%) !important;
+    top: clamp(160px, 10.42vw, 200px); /* Scales with zoom */
   }
 
   .glowing-border-layer-face3 {
-    top: -44px;
-    left: -44px;
-    width: 198px;
-    height: 116px;
+    top: clamp(-35px, -2.29vw, -44px); /* Scales with zoom */
+    left: clamp(-35px, -2.29vw, -44px); /* Scales with zoom */
+    width: clamp(158px, 10.31vw, 198px); /* Scales with zoom */
+    height: clamp(93px, 6.04vw, 116px); /* Scales with zoom */
   }
 
   .link-content-face3 {
-    top: 1px;
-    left: 1px;
-    width: calc(100% - 2px);
-    height: calc(100% - 2px);
-    border-radius: 13px;
-    font-size: 10px;
-    letter-spacing: 1px;
+    top: clamp(0.8px, 0.05vw, 1px); /* Scales with zoom */
+    left: clamp(0.8px, 0.05vw, 1px); /* Scales with zoom */
+    width: calc(100% - clamp(1.6px, 0.1vw, 2px));
+    height: calc(100% - clamp(1.6px, 0.1vw, 2px));
+    border-radius: clamp(10px, 0.65vw, 13px); /* Scales proportionally */
+    font-size: clamp(8px, 0.52vw, 10px); /* Scales with zoom */
+    letter-spacing: clamp(0.8px, 0.05vw, 1px); /* Scales with zoom */
   }
 }
 
 @media (max-width: 360px) {
   .glow-wrap-face3 {
-    width: 95px;
-    height: 24px;
-    border-radius: 12px;
-    left: calc(50% + clamp(20px, 15vw, 40px)) !important; /* Same as h1/h2 on small mobile */
+    width: clamp(76px, 4.95vw, 95px); /* Scales with zoom */
+    height: clamp(19px, 1.25vw, 24px); /* Scales with zoom */
+    border-radius: clamp(10px, 0.63vw, 12px); /* Scales proportionally */
+    left: calc(53% - 28% + clamp(5vw, 7vw, 9vw)) !important; /* Scales with zoom on very small mobile */
+    transform: translate(0, -50%) !important;
   }
 
   .glowing-border-layer-face3 {
-    top: -38px;
-    left: -38px;
-    width: 171px;
-    height: 100px;
+    top: clamp(-30px, -1.98vw, -38px); /* Scales with zoom */
+    left: clamp(-30px, -1.98vw, -38px); /* Scales with zoom */
+    width: clamp(137px, 8.91vw, 171px); /* Scales with zoom */
+    height: clamp(80px, 5.21vw, 100px); /* Scales with zoom */
   }
 
   .link-content-face3 {
-    top: 0.8px;
-    left: 0.8px;
-    width: calc(100% - 1.6px);
-    height: calc(100% - 1.6px);
-    border-radius: 11px;
-    font-size: 9px;
-    letter-spacing: 0.8px;
+    top: clamp(0.6px, 0.04vw, 0.8px); /* Scales with zoom */
+    left: clamp(0.6px, 0.04vw, 0.8px); /* Scales with zoom */
+    width: calc(100% - clamp(1.2px, 0.08vw, 1.6px));
+    height: calc(100% - clamp(1.2px, 0.08vw, 1.6px));
+    border-radius: clamp(9px, 0.57vw, 11px); /* Scales proportionally */
+    font-size: clamp(7px, 0.47vw, 9px); /* Scales with zoom */
+    letter-spacing: clamp(0.6px, 0.04vw, 0.8px); /* Scales with zoom */
   }
 }
