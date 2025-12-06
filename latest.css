@@ -2640,7 +2640,7 @@ footer a:hover {
         height: 250px !important;
         padding: 0 !important;
         margin: 0 !important;
-        box-sizing: border-box !important;
+        box-sizing: content-box !important;
     }
 
     .text-overlay{
@@ -2686,10 +2686,16 @@ footer a:hover {
         border-radius: 20px !important;
     }
 
-    .shop-now-btn {
-        top: 85% !important;
+    .glow-wrap-shop {
+        top: 80% !important;
         left: 30% !important;
         transform: translate(-50%, -50%) !important;
+    }
+
+    .shop-now-btn {
+        top: 10% !important;
+        left: 0 !important;
+        transform: none !important;
         font-size: 7px !important;
     }
 
@@ -2721,18 +2727,47 @@ footer a:hover {
 
           position: relative !important;
           left: 50px !important;   /* move RIGHT */
-          top: 30px !important;    /* move DOWN */
+          top: 20px !important;    /* move DOWN */
       }
-
 
     .text-overlay5 h2 {
         font-size: 0.41rem !important;
         font-weight: 400 !important;
-        margin-left: 140px !important; /* ⬅ Move LEFT to center */ 
+        position: relative !important;
+        
+        /* Positioning controls - adjust these values to move h2 */
+        top: 25px !important;           /* Move UP/DOWN: negative moves up, positive moves down */
+        left: 55px !important;          /* Move LEFT/RIGHT: negative moves left, positive moves right */
+        margin-top: clamp(10px, 1.2vw, 18px) !important; /* Vertical spacing from h1 */
+        margin-left: 0 !important;   /* Horizontal offset - adjust to move left/right */
+        margin-bottom: clamp(6px, 0.8vw, 10px) !important; /* Space below h2 */
+        
         max-width: 70% !important;   /* ⬅ Reduces width by 30% */
         letter-spacing: 1px !important;
         text-align: center !important;
-        
+        width: auto !important;
+    }
+
+    /* Positioning controls for glow-wrap-face3 button container */
+    .glow-wrap-face3 {
+        position: absolute !important;
+        top: 60% !important;         /* Move UP/DOWN: decrease to move up, increase to move down */
+        left: 50% !important;        /* Move LEFT/RIGHT: decrease to move left, increase to move right */
+        transform: translate(-50%, -50%) !important;
+        width: clamp(72px, 4.69vw, 90px) !important;
+        height: clamp(19px, 1.25vw, 24px) !important;
+        border-radius: clamp(11px, 0.73vw, 14px) !important;
+        z-index: 10 !important;
+    }
+
+    /* Positioning controls for link-content-face3 button */
+    .link-content-face3 {
+        position: absolute !important;
+        top: clamp(0.8px, 0.05vw, 1px) !important;  /* Fine-tune vertical position within container */
+        left: clamp(0.8px, 0.05vw, 1px) !important; /* Fine-tune horizontal position within container */
+        width: calc(100% - clamp(1.6px, 0.1vw, 2px)) !important;
+        height: calc(100% - clamp(1.6px, 0.1vw, 2px)) !important;
+        border-radius: clamp(10px, 0.65vw, 13px) !important;
     }
 
     .text-overlay p {
@@ -2740,7 +2775,7 @@ footer a:hover {
         padding: 0 !important;
         text-align: left !important;
         max-width: none !important;
-        width: 100% !important;
+        width: 98% !important;
         box-sizing: border-box !important;
         word-wrap: break-word !important;
         overflow-wrap: break-word !important;
@@ -3468,11 +3503,16 @@ footer a:hover {
 
 @media (max-width: 480px) {
   .glow-wrap-face3 {
-    width: clamp(72px, 4.69vw, 90px); /* Scales with zoom */
-    height: clamp(19px, 1.25vw, 24px); /* Scales with zoom */
-    border-radius: clamp(11px, 0.73vw, 14px); /* Scales proportionally */
-    margin-left: clamp(100px, 15vw, 190px) !important; /* Responsive margin, scales with zoom */
-    margin-top: clamp(10px, 1.2vw, 18px) !important; /* Reduced - closer to h1/h2 on small mobile */
+    position: absolute !important;
+    /* Positioning controls - adjust these values to move button */
+    top: 110% !important;              /* Move UP/DOWN: decrease to move up, increase to move down */
+    left: 63% !important;              /* Move LEFT/RIGHT: decrease to move left, increase to move right */
+    transform: translate(-50%, -50%) !important;
+    width: clamp(72px, 4.69vw, 90px) !important;
+    height: clamp(19px, 1.25vw, 24px) !important;
+    border-radius: clamp(11px, 0.73vw, 14px) !important;
+    margin: 0 !important;              /* Reset margins - use top/left instead */
+    z-index: 10 !important;
   }
 
   .glowing-border-layer-face3 {
