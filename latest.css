@@ -2117,6 +2117,7 @@ footer a:hover {
 /* But ensure buttons always have pointer-events enabled with higher z-index */
 .glow-wrap,
 .glow-wrap-face3,
+.glow-wrap-shop,
 .shop-now-btn {
     pointer-events: auto !important; /* Critical: Enable interactions from first round */
     z-index: 15 !important; /* Higher than face z-index */
@@ -2402,24 +2403,65 @@ footer a:hover {
 }
 
 /* Shop Now Button */
-.shop-now-btn {
+/* Glow-wrap container for shop-now-btn - matches button position and size */
+.glow-wrap-shop {
     position: absolute;
     top: clamp(65%, 75%, 80%);
     left: clamp(18%, 20%, 2%);
+    width: auto; /* Will size to content */
+    height: auto; /* Will size to content */
+    border-radius: 40px;
+    overflow: hidden; /* CRUCIAL: This clips the moving gradient */
+    box-shadow: 0 4px 15px rgba(0, 162, 255, 0.199);
+    transition: transform 0.2s ease;
+    z-index: 10;
+    pointer-events: auto !important;
+}
+
+.glow-wrap-shop:hover {
+    transform: scale(1.05);
+    animation: live-glow 1.5s infinite alternate;
+}
+
+/* Glowing border layer for shop-now-btn */
+.glowing-border-layer-shop {
+    position: absolute;
+    top: -80px;
+    left: -80px;
+    width: 360px;
+    height: 210px;
+    z-index: 1;
+    background: conic-gradient(
+        #0068e0 0%,
+        hsla(207, 100%, 50%, 0) 25%,
+        #0084ff00 50%,
+        #0077ff00 75%,
+        #005ae0 100%
+    );
+    animation: spin 3s linear infinite;
+}
+
+.shop-now-btn {
+    position: relative; /* Changed from absolute - now relative to glow-wrap-shop */
+    top: 0; /* Reset positioning */
+    left: 0; /* Reset positioning */
     font-family: 'Orbitron', sans-serif;
     font-weight: 600;
     display: flex;
     align-items: center;
     gap: clamp(0.5rem, 1vw, 1rem);
-    background: #061cff;
+    background: #000000;
     color: #ffffff;
     padding: clamp(0.5rem, 1.5vw, 1rem) clamp(1rem, 2vw, 1.5rem);
     font-size: clamp(0.75rem, 1.5vw, 1rem);
     border: none;
     border-radius: 40px;
     cursor: pointer;
+    box-shadow: 0 0 10px rgba(0, 68, 255, 0.541);
     letter-spacing: 2px;
     transition: transform 0.3s ease, box-shadow 0.3s ease;
+    z-index: 2; /* Above the glowing border layer */
+    margin: 2px; /* Small gap for the glow effect */
 }
 
 .arrow-circle {
@@ -2441,11 +2483,16 @@ footer a:hover {
 }
 
 .shop-now-btn:hover {
-    transform: scale(1.05);
-    box-shadow: 0 0 15px rgba(0, 89, 255, 0.8);
+    transform: scale(1);
+    animation: live-glow 1.5s infinite alternate;
 }
 
-.shop-now-btn:hover .arrow-circle {
+.glow-wrap-shop:hover .shop-now-btn {
+    animation: live-glow 1.5s infinite alternate;
+}
+
+.shop-now-btn:hover .arrow-circle,
+.glow-wrap-shop:hover .shop-now-btn .arrow-circle {
     transform: translateX(5px);
 }
 
