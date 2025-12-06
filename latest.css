@@ -2097,17 +2097,18 @@ footer a:hover {
     overflow: visible;
     opacity: 0;
     transition: opacity 0.6s ease-in-out;
-    /* Animation for sliding - 20s cycle for 4 faces with 5s intervals */
-    animation: slideShow 15s infinite;
+    /* Animation for sliding - 30s cycle: each face visible 6s with overlapping transitions */
+    /* Face 4 starts at 21s, finishes at 21s + 9s = 30s, then face 1 starts seamlessly at 30s */
+    animation: slideShow 30s infinite;
     /* Default: disable pointer events - will be enabled per face */
     pointer-events: none;
 }
 
-/* Animation delays for each face - Updated for 4 faces, 5s intervals (20s cycle) */
+/* Animation delays for each face - 7s intervals for seamless 6s visible time */
 .face:nth-child(1) { animation-delay: 0s; pointer-events: none; }
-.face:nth-child(2) { animation-delay: 3.4s; }
-.face:nth-child(3) { animation-delay: 6.8s; } /* Face 3 has glow-wrap-face3 button */
-.face:nth-child(4) { animation-delay: 10.2s; } /* Face 5 has shop-now-btn */
+.face:nth-child(2) { animation-delay: 7s; }
+.face:nth-child(3) { animation-delay: 14s; } /* Face 3 has glow-wrap-face3 button */
+.face:nth-child(4) { animation-delay: 21s; } /* Face 5 has shop-now-btn */
 
 /* Enable pointer events only during visible phase (when opacity is 1) */
 /* This ensures buttons work consistently when face is visible */
@@ -2130,15 +2131,15 @@ footer a:hover {
         opacity: 0;
         transform: translateX(100%);
     }
-    8% {
-        opacity: 1;
-        transform: translateX(0);
-    }
-    17% {
+    5% {
         opacity: 1;
         transform: translateX(0);
     }
     25% {
+        opacity: 1;
+        transform: translateX(0);
+    }
+    30% {
         opacity: 0;
         transform: translateX(-100%);
     }
