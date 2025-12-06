@@ -2280,10 +2280,10 @@ footer a:hover {
 
 .text-overlay h3 {
     font-family: 'Orbitron', sans-serif;
-    margin-left: clamp(0.25rem, 1vw, 0.5rem);
+    margin-left: clamp(2.9rem, 1vw, 0.5rem);
     margin-top: clamp(-2rem, -3vw, -3.5rem);
-    font-weight: 600;
-    font-size: clamp(1rem, 4vw, 4.8rem);
+    font-weight: 400;
+    font-size: clamp(0.8rem, 4vw, 4.8rem);
     color: #ffffff;
     letter-spacing: 2px;
     width: 100%;
@@ -2409,7 +2409,7 @@ footer a:hover {
 .shop-now-btn {
     position: absolute;
     top: clamp(65%, 75%, 80%);
-    left: clamp(15%, 20%, 25%);
+    left: clamp(18%, 20%, 2%);
     font-family: 'Orbitron', sans-serif;
     font-weight: 600;
     display: flex;
