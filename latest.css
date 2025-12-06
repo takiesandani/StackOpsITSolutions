@@ -3184,6 +3184,7 @@ footer a:hover {
 
 .glow-wrap:hover {
   transform: translate(-50%, -50%) scale(1.05);
+  animation: live-glow 1.5s infinite alternate;
 }
 
 .glowing-border-layer {
