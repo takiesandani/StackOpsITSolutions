@@ -2168,8 +2168,8 @@ footer a:hover {
     text-align: left;
     color: #ffffff;
     z-index: 2;
-    width: clamp(70%, 80%, 80%);
-    max-width: clamp(200px, 80%, 650px);
+    width: clamp(60%, 80%, 80%);
+    max-width: clamp(190px, 80%, 650px);
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     pointer-events: none;
 }
@@ -2194,14 +2194,14 @@ footer a:hover {
     font-family: 'Orbitron', sans-serif;
     margin: 0;
     padding: 0;
-    font-weight: 600;
-    font-size: clamp(0.6rem, 0.95vw, 0.72rem);
+    font-weight: 400;
+    font-size: clamp(0.5rem, 0.95vw, 0.72rem);
     color: #ffffff;
     letter-spacing: 0.5px;
     line-height: 1.2;
     text-transform: capitalize;
     text-align: left;
-    max-width: clamp(200px, 32vw, 380px);
+    max-width: clamp(190px, 32vw, 380px);
     white-space: normal;
 }
 
@@ -2209,7 +2209,7 @@ footer a:hover {
     font-family: 'Orbitron', sans-serif;
     margin: 0;
     padding: 0;
-    font-weight: 900;
+    font-weight: 600;
     font-size: clamp(1.4rem, 4vw, 2.8rem);
     color: #ffffff;
     letter-spacing: 1px;
@@ -2441,7 +2441,7 @@ footer a:hover {
     font-size: clamp(1rem, 2vw, 1.5rem);
     color: black;
     margin-top: clamp(-0.25rem, -0.5vw, -0.5rem);
-    font-weight: 700;
+    font-weight: 500;
 }
 
 .shop-now-btn:hover {
@@ -2519,6 +2519,7 @@ footer a:hover {
     .text-overlay5 h1 {
         font-size: 1.99rem !important;
         margin-left: 0 !important;
+        margin-top: clamp(15px, 2vw, 25px) !important; /* Move down, closer to button */
         width: 100% !important;
         text-align: left !important;
     }
@@ -2528,6 +2529,8 @@ footer a:hover {
         font-size: 0.75rem !important;
         width: 100% !important;
         margin-left: 0 !important;
+        margin-top: clamp(10px, 1.5vw, 20px) !important; /* Move down, closer to h1 */
+        margin-bottom: clamp(8px, 1vw, 12px) !important; /* Space between h2 and h1 */
     }
 
     .text-overlay h3 {
@@ -2656,7 +2659,7 @@ footer a:hover {
     
     .text-overlay5 h1 {
         font-size: 1.45rem !important;
-        font-weight: 800 !important;
+        font-weight: 500 !important;
         line-height: 1.2 !important;
 
         max-width: 50% !important;   /* ⬅ Reduces width by 50% */
@@ -2664,7 +2667,8 @@ footer a:hover {
         white-space: normal !important; /* allow breaking words */
         left: 1000px !important;   /* ⬅ Move RIGHT (adjust value) */
         margin-left: 190px !important; /* ⬅ Move LEFT to center */
-        margin-bottom: -50px !important;
+        margin-top: clamp(12px, 1.5vw, 20px) !important; /* Move down, closer to button */
+        margin-bottom: clamp(8px, 1vw, 12px) !important; /* Space between h1 and h2 */
       }
 
       .text-overlay h3 {
@@ -2727,8 +2731,8 @@ footer a:hover {
   }
 
       .text-overlay5 h1 {
-        font-size: 1.45rem !important;
-        font-weight: 800 !important;
+        font-size: 1.4rem !important;
+        font-weight: 500 !important;
         line-height: 1.2 !important;
 
         max-width: 50% !important;   /* ⬅ Reduces width by 50% */
@@ -2736,13 +2740,16 @@ footer a:hover {
         white-space: normal !important; /* allow breaking words */
         left: 1000px !important;   /* ⬅ Move RIGHT (adjust value) */
         margin-left: 200px !important; /* ⬅ Move LEFT to center */
-        margin-bottom: -50px !important;
+        margin-top: clamp(12px, 1.5vw, 20px) !important; /* Move down, closer to button */
+        margin-bottom: clamp(8px, 1vw, 12px) !important; /* Space between h1 and h2 */
       }
 
           .text-overlay5 h2 {
         font-size: 0.41rem !important;
         font-weight: 400 !important;
         margin-left: 145px !important; /* ⬅ Move LEFT to center */ 
+        margin-top: clamp(10px, 1.2vw, 18px) !important; /* Move down, closer to h1 */
+        margin-bottom: clamp(6px, 0.8vw, 10px) !important; /* Space between h2 and h1 */
         max-width: 70% !important;   /* ⬅ Reduces width by 30% */
         letter-spacing: 1px !important;
         text-align: center !important;
@@ -2964,7 +2971,7 @@ footer a:hover {
   .text-overlay5 h1 {
     font-family: 'Orbitron', sans-serif !important;
     margin-left: 240px !important;
-
+    margin-top: clamp(20px, 2vw, 30px) !important; /* Move h1 down, closer to button */
     width: 340px;
     text-align: left !important;
     padding: 0 !important;
@@ -2973,14 +2980,15 @@ footer a:hover {
     font-size: clamp(2.6rem, 2.2vw, 3.6rem) !important; /* easy to adjust */
     line-height: 1.06 !important;
 
-    font-weight: 1000 !important;
+    font-weight: 500 !important;
     letter-spacing: 1px !important;
   }
 
   .text-overlay5 h2 {
     font-size: clamp(0.55rem, 1.4vw, 0.04rem) !important; /* easy to adjust */
     margin-left: 240px !important;
-    margin-top: 170px;
+    margin-top: clamp(15px, 1.5vw, 25px) !important; /* Reduced from 170px - much closer to h1 */
+    margin-bottom: clamp(10px, 1vw, 15px) !important; /* Space between h2 and h1 */
     font-weight: 700 !important;
     text-transform: uppercase !important;
     letter-spacing: 1.5px !important;
@@ -3214,7 +3222,7 @@ footer a:hover {
   transition: transform 0.2s ease;
   z-index: 10;
   margin-left: 2px; /* Same as h1/h2 - aligns perfectly in same column */
-  margin-top: clamp(60px, 4vw, 80px); /* Positioned lower down - about 5 rows below h1/h2 */
+  margin-top: clamp(20px, 2vw, 30px) !important; /* Reduced - closer to h1/h2 */
   pointer-events: auto;
   display: block; /* Ensure it's visible */
 }
@@ -3375,7 +3383,7 @@ footer a:hover {
     height: clamp(36px, 2.35vw, 45px); /* Scales with zoom */
     border-radius: clamp(18px, 1.15vw, 22px); /* Scales proportionally */
     margin-left: 240px !important; /* Same as h1/h2 - maintains alignment */
-    margin-top: clamp(50px, 3.5vw, 70px) !important; /* Scales with zoom */
+    margin-top: clamp(15px, 2vw, 25px) !important; /* Reduced - closer to h1/h2 */
   }
 
   .glowing-border-layer-face3 {
@@ -3402,7 +3410,7 @@ footer a:hover {
     height: clamp(26px, 1.67vw, 32px); /* Scales with zoom */
     border-radius: clamp(13px, 0.83vw, 16px); /* Scales proportionally */
     margin-left: clamp(140px, 18vw, 240px) !important; /* Responsive margin, scales with zoom */
-    margin-top: clamp(40px, 3vw, 60px) !important; /* Scales with zoom on mobile */
+    margin-top: clamp(12px, 1.5vw, 20px) !important; /* Reduced - closer to h1/h2 on mobile */
   }
 
   .glowing-border-layer-face3 {
@@ -3429,7 +3437,7 @@ footer a:hover {
     height: clamp(19px, 1.25vw, 24px); /* Scales with zoom */
     border-radius: clamp(11px, 0.73vw, 14px); /* Scales proportionally */
     margin-left: clamp(100px, 15vw, 190px) !important; /* Responsive margin, scales with zoom */
-    margin-top: clamp(30px, 2.5vw, 50px) !important; /* Scales with zoom on small mobile */
+    margin-top: clamp(10px, 1.2vw, 18px) !important; /* Reduced - closer to h1/h2 on small mobile */
   }
 
   .glowing-border-layer-face3 {
@@ -3456,7 +3464,7 @@ footer a:hover {
     height: clamp(19px, 1.25vw, 24px); /* Scales with zoom */
     border-radius: clamp(10px, 0.63vw, 12px); /* Scales proportionally */
     margin-left: clamp(80px, 12vw, 140px) !important; /* Responsive margin, scales with zoom */
-    margin-top: clamp(25px, 2vw, 40px) !important; /* Scales with zoom on very small mobile */
+    margin-top: clamp(8px, 1vw, 15px) !important; /* Reduced - closer to h1/h2 on very small mobile */
   }
 
   .glowing-border-layer-face3 {
