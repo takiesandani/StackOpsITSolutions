@@ -129,26 +129,82 @@
     display: none;
 }
 
+/* Glow-wrap-face3 for Login Button */
+.login-form .glow-wrap-face3 {
+    position: relative;
+    width: 60%;
+    max-width: 100%;
+    height: 50px;
+    border-radius: 25px;
+    overflow: hidden;
+    box-shadow: 0 4px 15px rgba(0, 110, 255, 0.199);
+    transition: transform 0.2s ease;
+    margin: 10px auto 0;
+}
+
+.login-form .glow-wrap-face3:hover {
+    transform: scale(1.05);
+    animation: live-glow 1.5s infinite alternate;
+}
+
+.login-form .glow-wrap-face3 .glowing-border-layer-face3 {
+    position: absolute;
+    top: -80px;
+    left: -80px;
+    width: 360px;
+    height: 210px;
+    z-index: 1;
+    background: conic-gradient(
+        #0267ff 0%,
+        hsla(207, 100%, 50%, 0) 25%,
+        #0084ff00 50%,
+        #0077ff00 75%,
+        #0077ff 100%
+    );
+    animation: spin 3s linear infinite;
+}
+
 .btn-login {
-    width: 100%;
-    padding: 12px 20px;
-    background: linear-gradient(135deg, var(--primary) 0%, #0056b3 100%);
-    color: var(--light);
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: calc(100% - 4px);
+    height: calc(100% - 4px);
+    padding: 0;
+    background: #000000;
+    color: #ffffff !important;
     border: none;
-    border-radius: 8px;
-    font-size: 1rem;
+    box-shadow: none;
+    border-radius: 23px;
+    font-size: 15px;
     font-weight: 400;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: color 0.3s;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
+    letter-spacing: 2px;
+    z-index: 2;
+    pointer-events: auto;
+}
+
+.btn-login,
+.btn-login span,
+.btn-login i {
+    color: #ffffff !important;
 }
 
 .btn-login:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(0, 110, 255, 0.3);
+    color: #ffffff !important;
+    transform: none;
+    box-shadow: none;
+    animation: none;
+}
+
+.btn-login:hover span,
+.btn-login:hover i {
+    color: #ffffff !important;
 }
 
 .login-footer {
@@ -2858,8 +2914,13 @@
         font-size: 14px;
     }
 
+    .login-form .glow-wrap-face3 {
+        height: 45px;
+    }
+    
     .btn-login {
-        padding: 10px 16px;
+        width: calc(100% - 4px);
+        height: calc(100% - 4px);
         font-size: 0.9rem;
     }
 
