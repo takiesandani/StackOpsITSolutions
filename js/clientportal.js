@@ -107,6 +107,10 @@ function setupEventListeners() {
     const passwordToggle = document.getElementById('password-toggle');
     const navPrev = document.getElementById('nav-prev');
     const navNext = document.getElementById('nav-next');
+    const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
+    const mobileNavClose = document.getElementById('mobile-nav-close');
+    const mobileNav = document.getElementById('mobile-nav');
+    const btnLogoutMobile = document.getElementById('btn-logout-mobile');
 
     if (loginForm) {
         loginForm.addEventListener('submit', handleLogin);
@@ -131,6 +135,79 @@ function setupEventListeners() {
     if (navNext) {
         navNext.addEventListener('click', goToNextProject);
     }
+
+    // Mobile menu toggle
+    if (mobileMenuToggle) {
+        mobileMenuToggle.addEventListener('click', toggleMobileMenu);
+    }
+
+    if (mobileNavClose) {
+        mobileNavClose.addEventListener('click', closeMobileMenu);
+    }
+
+    // Close mobile menu when clicking outside
+    if (mobileNav) {
+        document.addEventListener('click', (e) => {
+            if (mobileNav.classList.contains('active') && 
+                !mobileNav.contains(e.target) && 
+                !mobileMenuToggle.contains(e.target)) {
+                closeMobileMenu();
+            }
+        });
+    }
+
+    // Mobile logout button
+    if (btnLogoutMobile) {
+        btnLogoutMobile.addEventListener('click', () => {
+            closeMobileMenu();
+            handleLogout();
+        });
+    }
+
+    // Sync user name in mobile nav
+    if (document.getElementById('user-name-mobile')) {
+        const userName = document.getElementById('user-name');
+        const userNameMobile = document.getElementById('user-name-mobile');
+        if (userName && userNameMobile) {
+            userNameMobile.textContent = userName.textContent;
+        }
+    }
+}
+
+function toggleMobileMenu() {
+    const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
+    const mobileNav = document.getElementById('mobile-nav');
+    const overlay = document.querySelector('.mobile-nav-overlay') || createMobileOverlay();
+
+    if (mobileNav && mobileMenuToggle) {
+        mobileNav.classList.toggle('active');
+        mobileMenuToggle.classList.toggle('active');
+        overlay.classList.toggle('active');
+        document.body.style.overflow = mobileNav.classList.contains('active') ? 'hidden' : '';
+    }
+}
+
+function closeMobileMenu() {
+    const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
+    const mobileNav = document.getElementById('mobile-nav');
+    const overlay = document.querySelector('.mobile-nav-overlay');
+
+    if (mobileNav && mobileMenuToggle) {
+        mobileNav.classList.remove('active');
+        mobileMenuToggle.classList.remove('active');
+        if (overlay) {
+            overlay.classList.remove('active');
+        }
+        document.body.style.overflow = '';
+    }
+}
+
+function createMobileOverlay() {
+    const overlay = document.createElement('div');
+    overlay.className = 'mobile-nav-overlay';
+    overlay.addEventListener('click', closeMobileMenu);
+    document.body.appendChild(overlay);
+    return overlay;
 }
 
 function togglePasswordVisibility() {
@@ -173,7 +250,12 @@ function handleLogin(e) {
         sessionStorage.setItem('loginTime', new Date().getTime());
         
         // Update UI
-        document.getElementById('user-name').textContent = email.split('@')[0];
+        const userName = email.split('@')[0];
+        document.getElementById('user-name').textContent = userName;
+        const userNameMobile = document.getElementById('user-name-mobile');
+        if (userNameMobile) {
+            userNameMobile.textContent = userName;
+        }
         
         // Switch to dashboard
         document.getElementById('login-section').classList.remove('active');
@@ -204,7 +286,12 @@ function setupSessionManagement() {
     if (isLoggedIn === 'true' && userEmail) {
         document.getElementById('login-section').classList.remove('active');
         document.getElementById('dashboard-section').classList.add('active');
-        document.getElementById('user-name').textContent = userEmail.split('@')[0];
+        const userName = userEmail.split('@')[0];
+        document.getElementById('user-name').textContent = userName;
+        const userNameMobile = document.getElementById('user-name-mobile');
+        if (userNameMobile) {
+            userNameMobile.textContent = userName;
+        }
     }
 }
 
@@ -302,13 +389,7 @@ function showProjectPreview(project) {
     let previewSection = document.getElementById('project-preview-section');
     previewSection.classList.add('visible');
     
-    const isMobile = window.innerWidth <= 768;
-    
     previewSection.innerHTML = `
-        ${isMobile ? `<button class="preview-flip-toggle" onclick="togglePreviewFlip(event)">
-            <i class="fas fa-sync-alt"></i> Flip for Details
-        </button>` : ''}
-        
         <div class="preview-container" id="preview-container">
             <div class="preview-header">
                 <h3><i class="fas fa-info-circle"></i> ${project.name}</h3>
@@ -372,9 +453,12 @@ function showProjectPreview(project) {
                 </div>
             </div>
             
-            <button class="btn-view-full-dashboard" onclick="viewProjectDashboard(mockProjects.find(p => p.id === ${project.id}))">
-                <i class="fas fa-arrow-right"></i> View Full Dashboard
-            </button>
+            <div class="glow-wrap">
+                <div class="glowing-border-layer"></div>
+                <button class="btn-view-full-dashboard" onclick="viewProjectDashboard(mockProjects.find(p => p.id === ${project.id}))">
+                    <i class="fas fa-arrow-right"></i> View Full Dashboard
+                </button>
+            </div>
         </div>
     `;
 }
@@ -383,20 +467,6 @@ function hideProjectPreview() {
     const previewSection = document.getElementById('project-preview-section');
     if (previewSection) {
         previewSection.classList.remove('visible');
-    }
-}
-
-function togglePreviewFlip(event) {
-    event.preventDefault();
-    const container = document.getElementById('preview-container');
-    if (container) {
-        container.classList.toggle('flipped');
-        const button = event.target.closest('.preview-flip-toggle');
-        if (button) {
-            button.innerHTML = container.classList.contains('flipped') 
-                ? '<i class="fas fa-sync-alt"></i> Show Front' 
-                : '<i class="fas fa-sync-alt"></i> Flip for Details';
-        }
     }
 }
 

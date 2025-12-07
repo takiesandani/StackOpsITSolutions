@@ -59,21 +59,42 @@
     <section id="dashboard-section" class="dashboard-section">
         <!-- Header with Logo and Navigation -->
         <header class="site-header">
-            
-                <a href="Home.html" class="logo">
-                    <img src="Images/Logos/RemovedStackOps.png" alt="StackOps Logo">
-                </a>
-                <div class="header-info">
-                    <h1>Stackon Client Portal Dashboard</h1>
-                </div>
-                <div class="header-user">
-                    <span class="user-name" id="user-name">Client</span>
-                    <button class="btn-logout" id="btn-logout">
-                        <i class="fas fa-sign-out-alt"></i> Logout
-                    </button>
-                </div>
-            
+            <a href="Home.html" class="logo">
+                <img src="Images/Logos/RemovedStackOps.png" alt="StackOps Logo">
+            </a>
+            <div class="header-info">
+                <h1>Stackon Client Portal Dashboard</h1>
+            </div>
+            <div class="header-user">
+                <span class="user-name" id="user-name">Client</span>
+                <button class="btn-logout" id="btn-logout">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </button>
+            </div>
+            <!-- Mobile Hamburger Menu -->
+            <button class="mobile-menu-toggle" id="mobile-menu-toggle" aria-label="Toggle menu">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
         </header>
+        
+        <!-- Mobile Navigation Panel -->
+        <div class="mobile-nav-overlay"></div>
+        <nav class="mobile-nav" id="mobile-nav">
+            <div class="mobile-nav-header">
+                <span class="user-name-mobile" id="user-name-mobile">Client</span>
+                <button class="mobile-nav-close" id="mobile-nav-close" aria-label="Close menu">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="mobile-nav-content">
+                <div class="mobile-nav-title">Stackon Client Portal Dashboard</div>
+                <button class="btn-logout-mobile" id="btn-logout-mobile">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </button>
+            </div>
+        </nav>
 
         <!-- PROJECTS VIEW -->
         <div id="projects-view" class="projects-view">
