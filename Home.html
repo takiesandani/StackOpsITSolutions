@@ -5,8 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>StackOps IT Solutions | Your Complete IT Force</title>
   <link rel="stylesheet" href="latest.css" />
-  <link rel="stylesheet" href="css/ChatBot.css" />
-  
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;900&display=swap" rel="stylesheet">
 </head>
 
@@ -390,95 +388,24 @@
 
     </script>
     
-    <!-- JavaScript solution for button interactivity - works regardless of CSS animation state -->
-    <script>
-    // Force button interactivity from first round - bypasses CSS pointer-events issues
-    (function() {
-        // Wait for DOM to be fully loaded
-        function initButtonHandlers() {
-            // Face 2 button - Services
-            const glowWrap2 = document.querySelector('.glow-wrap');
-            const linkContent2 = document.querySelector('.glow-wrap .link-content');
-            
-            if (glowWrap2 && linkContent2) {
-                // Add click handler to the button wrapper
-                glowWrap2.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    window.location.href = linkContent2.getAttribute('href') || 'service.html';
-                });
-                
-                // Also handle direct link clicks
-                linkContent2.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    window.location.href = this.getAttribute('href') || 'service.html';
-                });
-                
-                // Force pointer-events via JavaScript
-                glowWrap2.style.pointerEvents = 'auto';
-                glowWrap2.style.cursor = 'pointer';
-                linkContent2.style.pointerEvents = 'auto';
-                linkContent2.style.cursor = 'pointer';
-            }
-            
-            // Face 3 button - Learn More
-            const glowWrap3 = document.querySelector('.glow-wrap-face3');
-            const linkContent3 = document.querySelector('.glow-wrap-face3 .link-content-face3');
-            
-            if (glowWrap3 && linkContent3) {
-                // Add click handler to the button wrapper
-                glowWrap3.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    window.location.href = linkContent3.getAttribute('href') || 'about.html';
-                });
-                
-                // Also handle direct link clicks
-                linkContent3.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    window.location.href = this.getAttribute('href') || 'about.html';
-                });
-                
-                // Force pointer-events via JavaScript
-                glowWrap3.style.pointerEvents = 'auto';
-                glowWrap3.style.cursor = 'pointer';
-                linkContent3.style.pointerEvents = 'auto';
-                linkContent3.style.cursor = 'pointer';
-            }
-        }
-        
-        // Initialize immediately and also on DOMContentLoaded
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initButtonHandlers);
-        } else {
-            initButtonHandlers();
-        }
-        
-        // Also re-initialize after a short delay to catch any dynamic changes
-        setTimeout(initButtonHandlers, 100);
-        setTimeout(initButtonHandlers, 500);
-    })();
-    </script>
     <!-- Add this at the end of <body> (keep your other content like navbar, sections, etc.) -->
-    <link href="https://cdn.jsdelivr.net/npm/@n8n/chat/dist/style.css" rel="stylesheet" />
-    <script type="module">
-        import { createChat } from 'https://cdn.jsdelivr.net/npm/@n8n/chat/dist/chat.bundle.es.js';
-
-        createChat({
-            webhookUrl: 'https://stackconai.app.n8n.cloud/webhook/c510670c-08a2-41fe-b2e8-6eb7d5c0efae/chat',
-            mode: 'window',  // Default window mode: shows toggle button + chat window
-            showWelcomeScreen: false,
-            loadPreviousSession: false,
-            initialMessages: [
-            "Hello, I'm StackOn. your virtual assistant.\nHow can I help you today?\nPlease choose: \n1. Client Portal\n 2. Support"
-            ],  
-            enableStreaming: false,
-            chatInputKey: 'chatInput',  // Default, but explicit
-            
-        });
-    </script>
+      <link href="https://cdn.jsdelivr.net/npm/@n8n/chat/dist/style.css" rel="stylesheet" />
+      <script type="module">
+          import { createChat } from 'https://cdn.jsdelivr.net/npm/@n8n/chat/dist/chat.bundle.es.js';
+  
+          createChat({
+              webhookUrl: 'https://stackconai.app.n8n.cloud/webhook/c510670c-08a2-41fe-b2e8-6eb7d5c0efae/chat',
+              mode: 'window',  // Default window mode: shows toggle button + chat window
+              showWelcomeScreen: false,
+              loadPreviousSession: false,
+              initialMessages: [
+              "Hello, I'm StackOn. your virtual assistant.\nHow can I help you today?\nPlease choose: \n1. Client Portal\n 2. Support"
+              ],  
+              enableStreaming: false,
+              chatInputKey: 'chatInput',  // Default, but explicit
+              
+          });
+      </script>
 
   <script src="js/courosel.js"></script>
 
