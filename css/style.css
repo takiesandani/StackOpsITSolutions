@@ -1365,6 +1365,8 @@ header.sticky {
     width: 100%;
     max-width: 100%;
     overflow-x: hidden;
+    overflow-y: visible !important; /* Allow vertical overflow for glow effect */
+    padding-bottom: 30px !important; /* Add extra padding at bottom to prevent button overlap */
 }
 
 .contact-form form {
@@ -1373,6 +1375,8 @@ header.sticky {
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
+    overflow: visible !important; /* Prevent scrollbar on hover */
+    padding-bottom: 20px !important; /* Extra padding to prevent button from overlapping */
 }
 
 /* Group for First Name and Last Name to be on the same line */
@@ -1456,14 +1460,14 @@ textarea {
 
 /* ... (rest of the CSS for the button is unchanged) ... */
 
-/* Styling for the 'SEND' button */
+/* Styling for buttons - updated to glow-wrap style */
 .btn {
     display: inline-block;
     padding: 12px 30px;
-    background: rgba(0, 0, 0, 0.206);
+    background: rgb(0, 0, 0);
     color: white;
     font-weight: 600;
-    border-radius: 5px;
+    border-radius: 45px;
     border: 2px solid var(--primary);
     cursor: pointer;
     text-align: center;
@@ -1479,6 +1483,74 @@ textarea {
     transform: translateY(-3px);
     box-shadow: 0 0 10px rgba(26, 130, 255, 0.35), 0 10px 20px rgba(5, 36, 105, 0.3);
     animation: btn-border-heartbeat 2.8s ease-in-out infinite;
+}
+
+/* Service content buttons - maintain bottom position with glow-wrap styling */
+.service-content .btn {
+    margin-top: auto !important; /* Keep at bottom of service item */
+    align-self: center;
+    background: #000000;
+    color: #ffffff !important;
+    border: 2px solid transparent;
+    border-radius: 25px;
+    padding: 0.625rem 1.5rem;
+    font-size: 15px;
+    font-weight: 400;
+    letter-spacing: 2px;
+    position: relative;
+    overflow: hidden; /* Important for clipping the animated border */
+    box-shadow: 0 4px 15px rgba(0, 119, 255, 0.322);
+    transition: all 0.3s ease;
+    isolation: isolate;
+}
+
+.service-content .btn::before {
+    content: '';
+    position: absolute;
+    top: -80px;
+    left: -80px;
+    width: 360px;
+    height: 210px;
+    z-index: 0;
+    background: conic-gradient(
+        #0068e0 0%,
+        hsla(207, 100%, 50%, 0) 25%,
+        #0084ff00 50%,
+        #0077ff00 75%,
+        #005ae0 100%
+    );
+    animation: spin 3s linear infinite;
+    border-radius: 25px;
+}
+
+/* Black background mask - creates the border effect by covering center, showing only border */
+.service-content .btn::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: calc(100% - 4px);
+    height: calc(100% - 4px);
+    background: #000000; /* Solid background to mask the center, showing only border */
+    border-radius: 23px;
+    z-index: 1; /* On top of the animated border, behind text */
+}
+
+.service-content .btn {
+    z-index: 2; /* Button text/content on top */
+    position: relative;
+}
+
+.service-content .btn:hover {
+    color: #ffffff !important;
+    background: #000000;
+    transform: scale(1.05);
+    animation: live-glow 1.5s infinite alternate;
+    box-shadow: 0 0 15px var(--accent-glow), 0 0 30px var(--accent-glow), 0 10px 30px rgba(30, 144, 255, 0.7);
+}
+
+.service-content .btn:hover::after {
+    background: #000000; /* Keep black background on hover */
 }
 
 
@@ -2336,4 +2408,296 @@ footer a:hover {
         max-height: 70%;
         max-width: 70%;
     }
+}
+
+/* ===== GLOW-WRAP BUTTON STYLES ===== */
+/* Glow-wrap buttons in CTA sections - maintain original position */
+.cta .glow-wrap {
+  position: relative !important;
+  display: inline-block !important;
+  width: 200px !important;
+  height: 50px !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  transform: none !important;
+  top: auto !important;
+  left: auto !important;
+  border-radius: 25px;
+  overflow: hidden;
+  box-shadow: 0 4px 15px rgba(0, 162, 255, 0.199);
+  transition: transform 0.2s ease;
+}
+
+.cta .glow-wrap:hover {
+  transform: scale(1.05) !important;
+  animation: live-glow 1.5s infinite alternate;
+}
+
+.cta .glow-wrap .glowing-border-layer {
+  position: absolute;
+  top: -80px;
+  left: -80px;
+  width: 360px;
+  height: 210px;
+  z-index: 1;
+  background: conic-gradient(
+    #0068e0 0%,
+    hsla(207, 100%, 50%, 0) 25%,
+    #0084ff00 50%,
+    #0077ff00 75%,
+    #005ae0 100%
+  );
+  animation: spin 3s linear infinite;
+}
+
+.cta .glow-wrap .link-content {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-decoration: none;
+  border-radius: 23px;
+  background: #000000;
+  color: #008cff;
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 2px;
+  cursor: pointer;
+  z-index: 2;
+  transition: color 0.3s;
+  pointer-events: auto;
+  padding: 0;
+  border: none;
+}
+
+.cta .glow-wrap .link-content:hover {
+  color: #ffffff;
+}
+
+/* Glow-wrap buttons in service items - maintain original position */
+.service-content .glow-wrap,
+.service-item .glow-wrap {
+  position: relative !important;
+  display: inline-block !important;
+  width: 180px !important;
+  height: 45px !important;
+  margin-top: auto !important; /* Push to bottom of service item */
+  margin-bottom: 0 !important;
+  align-self: center !important; /* Center horizontally */
+  transform: none !important;
+  top: auto !important;
+  left: auto !important;
+  border-radius: 25px;
+  overflow: hidden;
+  box-shadow: 0 4px 15px rgba(0, 162, 255, 0.199);
+  transition: transform 0.2s ease;
+}
+
+.service-content .glow-wrap:hover,
+.service-item .glow-wrap:hover {
+  transform: scale(1.05) !important;
+  animation: live-glow 1.5s infinite alternate;
+}
+
+.service-content .glow-wrap .glowing-border-layer,
+.service-item .glow-wrap .glowing-border-layer {
+  position: absolute;
+  top: -80px;
+  left: -80px;
+  width: 360px;
+  height: 210px;
+  z-index: 1;
+  background: conic-gradient(
+    #0068e0 0%,
+    hsla(207, 100%, 50%, 0) 25%,
+    #0084ff00 50%,
+    #0077ff00 75%,
+    #005ae0 100%
+  );
+  animation: spin 3s linear infinite;
+}
+
+.service-content .glow-wrap .link-content,
+.service-item .glow-wrap .link-content {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-decoration: none;
+  border-radius: 23px;
+  background: #000000;
+  color: #ffffff !important;
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 2px;
+  cursor: pointer;
+  z-index: 2;
+  transition: color 0.3s;
+  pointer-events: auto;
+  padding: 0;
+  border: none;
+}
+
+.service-content .glow-wrap .link-content:hover,
+.service-item .glow-wrap .link-content:hover {
+  color: #ffffff;
+}
+
+/* Glow-wrap buttons in forms - maintain original position */
+form .glow-wrap {
+  position: relative !important;
+  display: block !important;
+  width: 200px !important;
+  height: 50px !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  transform: none !important;
+  top: auto !important;
+  left: auto !important;
+  border-radius: 25px;
+  overflow: hidden;
+  box-shadow: 0 4px 15px rgba(0, 162, 255, 0.199);
+  transition: transform 0.2s ease;
+}
+
+/* Full-width form buttons */
+form .glow-wrap[style*="width: 100%"] {
+  width: 100% !important;
+}
+
+/* Contact form button - width reduced by 70% (30% of original width), height unchanged */
+.contact-form-btn {
+  width: 60px !important; /* 30% of 200px - width reduced by 70% */
+  height: 50px !important; /* Keep original height for better proportions */
+  margin-left: 20px !important; /* Add space from left edge - removes wall effect */
+  margin-bottom: 40px !important; /* Increased space from bottom edge - prevents overlap with wall */
+  margin-top: 10px !important; /* Add some top spacing */
+  margin-right: 0 !important;
+  overflow: hidden !important; /* Prevent scrollbar on hover */
+  position: relative !important;
+}
+
+/* Glow layer - large enough to wrap around the whole button */
+.contact-form-btn .glowing-border-layer {
+  position: absolute;
+  top: -800px;
+  left: -80px;
+  width: 360px; /* Keep large enough to create proper border effect */
+  height: 210px; /* Keep large enough to create proper border effect */
+  z-index: 1;
+  background: conic-gradient(
+    #0068e0 0%,
+    hsla(207, 100%, 50%, 0) 25%,
+    #0084ff00 50%,
+    #0077ff00 75%,
+    #005ae0 100%
+  );
+  animation: spin 3s linear infinite;
+}
+
+.contact-form-btn .link-content {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-decoration: none;
+  border-radius: 23px;
+  background: #000000 !important;
+  color: #ffffff !important;
+  font-size: 13px !important; /* Increased from 9px for better readability */
+  font-weight: 400;
+  letter-spacing: 1.5px !important; /* Increased letter spacing */
+  cursor: pointer;
+  z-index: 2;
+  transition: color 0.3s;
+  pointer-events: auto;
+  padding: 0;
+  border: none;
+}
+
+form .glow-wrap:hover {
+  transform: scale(1.05) !important;
+  animation: live-glow 1.5s infinite alternate;
+}
+
+form .glow-wrap .glowing-border-layer {
+  position: absolute;
+  top: -80px;
+  left: -80px;
+  width: 360px;
+  height: 210px;
+  z-index: 1;
+  background: conic-gradient(
+    #0068e0 0%,
+    hsla(207, 100%, 50%, 0) 25%,
+    #0084ff00 50%,
+    #0077ff00 75%,
+    #005ae0 100%
+  );
+  animation: spin 3s linear infinite;
+}
+
+form .glow-wrap .link-content {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-decoration: none;
+  border-radius: 23px;
+  background: #000000;
+  color: #ffffff !important;
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 2px;
+  cursor: pointer;
+  z-index: 2;
+  transition: color 0.3s;
+  pointer-events: auto;
+  padding: 0;
+  border: none;
+  width: 100%;
+  height: 100%;
+}
+
+form .glow-wrap .link-content:hover {
+  color: #ffffff;
+}
+
+/* Animation for spinning border */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Live glow animation */
+@keyframes live-glow {
+  0% {
+    box-shadow: 0 0 5px var(--accent-glow), 0 0 10px rgba(30, 144, 255, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 15px var(--accent-glow), 0 0 30px var(--accent-glow), 0 10px 30px rgba(30, 144, 255, 0.7);
+  }
+  100% {
+    box-shadow: 0 0 5px var(--accent-glow), 0 0 10px rgba(30, 144, 255, 0.5);
+  }
 }
