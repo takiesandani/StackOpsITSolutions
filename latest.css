@@ -4995,7 +4995,7 @@ footer a:hover {
   .text-overlay-warranty p {
     font-size: 0.5rem !important;
     line-height: 1.25 !important;
-    margin-bottom: 0.42rem !important;
+    margin-bottom: 0.2rem !important;
     margin-top: 0 !important;
     word-wrap: break-word !important;
     overflow-wrap: break-word !important;
@@ -5016,11 +5016,11 @@ footer a:hover {
 
   /* Face 8 - Stackon.png */
   .glow-wrap-stackcon {
-    bottom: 9% !important;
+    bottom: 7% !important;
     right: 4% !important;
     top: auto !important;
     left: auto !important;
-    width: 68px !important;
+    width: 108px !important;
     height: 24px !important;
     transform: none !important;
     max-width: calc(100% - 8%) !important;
@@ -5126,11 +5126,12 @@ footer a:hover {
   }
 
   .text-overlay-audit p {
-    font-size: 0.75rem !important;
+    font-size: 0.55rem !important;
     line-height: 1.5 !important;
     margin-bottom: 0.9rem !important;
     word-wrap: break-word !important;
     overflow-wrap: break-word !important;
+    width: 65% !important;
   }
 
   .glow-wrap-audit {
