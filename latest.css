@@ -4457,6 +4457,7 @@ footer a:hover {
     font-size: 0.46rem !important;
     letter-spacing: 0.5px !important;
     padding: 0.18rem 0.38rem !important;
+    width: 100%;
   }
   
   /* Face 8 (Stackon.png) - ensure image is fully visible */
@@ -4629,28 +4630,36 @@ footer a:hover {
 
   /* Face 8 - Stackon.png */
   .glow-wrap-stackcon {
-    bottom: 7% !important;
+    bottom: 11% !important;
     right: 4% !important;
     top: auto !important;
     left: auto !important;
-    width: 64px !important;
-    height: 21px !important;
+    width: 80px !important;
+    height: 22px !important;
     transform: none !important;
     max-width: calc(100% - 8%) !important;
   }
 
   .link-content-stackcon {
-    font-size: 0.47rem !important;
-    letter-spacing: 0.5px !important;
-    padding: 0.19rem 0.4rem !important;
+    font-size: 0.48rem !important;
+    letter-spacing: 0.4px !important;
+    padding: 0.2rem 0.5rem !important;
+    white-space: nowrap !important;
   }
   
-  /* Face 8 (Stackon.png) - ensure image is fully visible */
-  .face:nth-child(8) img {
+  /* Face 8 (Stackon.png) - ensure image fills container without omission */
+  .face:nth-child(7) img {
     object-fit: contain !important;
-    object-position: center center !important;
+    width: 100% !important;
+    height: 100% !important;
   }
   
+  .face:nth-child(9) img {
+    object-fit: contain !important;
+    width: 100% !important;
+    height: 100% !important;
+  }
+
   /* Face 8 text overlay - lower it and reduce width to avoid button */
   .text-overlay-stackcon {
     bottom: 10.5% !important;
@@ -4667,25 +4676,26 @@ footer a:hover {
 
   /* Face 9 - Consult.png */
   .glow-wrap-consultation {
-    bottom: 8% !important;
-    left: 6% !important;
+    bottom: 14% !important;
+    left: 4% !important;
     right: auto !important;
     top: auto !important;
     transform: none !important;
-    width: 142px !important;
-    height: 23px !important;
+    width: 120px !important;
+    height: 22px !important;
+    max-width: calc(100% - 8%) !important;
   }
 
   .link-content-consultation {
-    font-size: 0.52rem !important;
-    letter-spacing: 0.6px !important;
-    padding: 0.21rem 0.42rem !important;
+    font-size: 0.5rem !important;
+    letter-spacing: 0.55px !important;
+    padding: 0.2rem 0.38rem !important;
     white-space: nowrap !important;
   }
 
   /* Face 10 - SAPBusiness.png */
   .text-overlay-sap {
-    bottom: 8% !important;
+    bottom: 12% !important;
     left: 3.8% !important;
     top: auto !important;
     width: 75% !important;
@@ -4701,7 +4711,7 @@ footer a:hover {
   }
 
   .glow-wrap-sap {
-    bottom: 8% !important;
+    bottom: 12% !important;
     right: 5% !important;
     left: auto !important;
     top: auto !important;
@@ -4771,11 +4781,7 @@ footer a:hover {
     box-sizing: border-box !important;
   }
   
-  /* Face 7 (WarrantySupport.png) - ensure illustrations are visible */
-  .face:nth-child(7) img {
-    object-fit: cover !important;
-    object-position: center center !important;
-  }
+
   
   /* Face 8 (Stackon.png) - ensure image is fully visible */
   .face:nth-child(8) img {
@@ -4783,17 +4789,7 @@ footer a:hover {
     object-position: center center !important;
   }
   
-  /* Face 9 (Consult.png) - ensure 3D character is fully visible */
-  .face:nth-child(9) img {
-    object-fit: cover !important;
-    object-position: center top !important;
-  }
-  
-  /* Face 11 (Consult 2.png) - ensure image is visible */
-  .face:nth-child(11) img {
-    object-fit: cover !important;
-    object-position: right center !important;
-  }
+
 }
 
 /* ===== iPhone XR (414px) - Base Reference ===== */
