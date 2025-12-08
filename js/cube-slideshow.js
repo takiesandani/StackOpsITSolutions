@@ -109,9 +109,31 @@
         // Start auto-play
         startAutoPlay();
 
-        // Pause on hover (optional - uncomment if desired)
-        // cube.addEventListener('mouseenter', pauseAutoPlay);
-        // cube.addEventListener('mouseleave', resumeAutoPlay);
+        // Pause on hover over cube container
+        cube.addEventListener('mouseenter', pauseAutoPlay);
+        cube.addEventListener('mouseleave', resumeAutoPlay);
+
+        // Pause on hover over individual faces
+        faces.forEach(face => {
+            face.addEventListener('mouseenter', pauseAutoPlay);
+            face.addEventListener('mouseleave', resumeAutoPlay);
+        });
+
+        // Pause on interaction with buttons and links
+        const interactiveElements = cube.querySelectorAll('a, button, .glow-wrap, .link-content, .warranty-buy-btn, .shop-now-btn');
+        interactiveElements.forEach(element => {
+            // Pause on hover
+            element.addEventListener('mouseenter', pauseAutoPlay);
+            element.addEventListener('mouseleave', resumeAutoPlay);
+            
+            // Pause on focus (for keyboard navigation)
+            element.addEventListener('focus', pauseAutoPlay);
+            element.addEventListener('blur', resumeAutoPlay);
+            
+            // Pause on click/touch
+            element.addEventListener('mousedown', pauseAutoPlay);
+            element.addEventListener('touchstart', pauseAutoPlay);
+        });
 
         // Expose controls globally (optional - for external control)
         window.cubeSlideshow = {

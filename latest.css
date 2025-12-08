@@ -2760,11 +2760,12 @@ footer a:hover {
 
 
 
-/* Glow-wrap for StackCon Sign Up Button - Bottom Right Positioned */
+/* Glow-wrap for StackCon Sign Up Button - Bottom Left Positioned */
 .glow-wrap-stackcon {
     position: absolute;
     top: clamp(91%, 8%, 12%);
-    left: clamp(76%, 5%, 8%);
+    left: clamp(71%, 71%, 71%);
+    right: auto;
     width: clamp(140px, 12vw, 180px);
     height: clamp(40px, 3.5vw, 50px);
     border-radius: 50px;
@@ -3029,7 +3030,7 @@ footer a:hover {
 }
 
 .text-overlay-audit h1 {
-    font-size: clamp(2rem, 5vw, 4.5rem);
+    font-size: clamp(2rem, 5vw, 3.5rem);
     font-weight: 900;
     line-height: 1.2;
     color: #000000;
