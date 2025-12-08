@@ -93,7 +93,7 @@ body {
 ---------------------------------*/
 .navbar {
   width: 100%;
-  background-color: #0000008c;
+  background-color: rgba(28, 28, 28, 0.822);
   padding: 1rem 3vw;
   display: flex;
   align-items: center;
@@ -401,6 +401,8 @@ body {
     border: 1px solid transparent;
     transition: transform 0.4s ease-in-out, background-color 0.4s ease-in-out, border-color 0.4s ease-in-out;
     transform: scale(1);
+    overflow: visible;
+    box-sizing: border-box;
     box-shadow: 0 0 10px rgba(30, 144, 255, 0.7);
     gap: clamp(0.25rem, 0.8vw, 0.5rem); /* Responsive gap between icon and text */
     min-width: clamp(60px, 8vw, 120px);
@@ -926,7 +928,7 @@ body {
 
   .logo img {
     width: clamp(120px, 48vw, 150px);
-    max-width: 50vw;
+    max-width: 20vw;
   }
 
   .content {
@@ -999,7 +1001,7 @@ body {
   .logo-container {
     top: clamp(0.35rem, 1.3vw, 0.55rem);
     right: clamp(0.35rem, 1.3vw, 0.55rem);
-    width: clamp(26px, 14vw, 52px);
+    width: clamp(26px, 14vw, 38px);
     padding: clamp(0.14rem, 0.75vw, 0.28rem);
     transform: translate(18%, -18%);
   }
@@ -1314,22 +1316,12 @@ body {
   display: inline-block;
   font-size: clamp(2rem, 4vw, 3rem);
   font-weight: 400;
-  line-height: 1;
+
   color: white;
   padding-bottom: 0.75rem; /* Makes room for underline */
   margin-bottom: 1.5rem;
 }
 
-/* Horizontal line below the main heading text */
-.about-content h1::after {
-    content: '';
-    position: absolute;
-    left: 0;
-    bottom: 0;
-    width: 100%;
-    height: 2px;
-    background-color: currentColor;
-}
 
 .about-content h1 span {
   color: #005eff;
@@ -2242,31 +2234,41 @@ footer a:hover {
     height: 100%;
     overflow: visible;
     opacity: 0;
-    transition: opacity 0.6s ease-in-out;
-    /* Animation for sliding - 30s cycle: each face visible 6s with overlapping transitions */
-    /* Face 4 starts at 21s, finishes at 21s + 9s = 30s, then face 1 starts seamlessly at 30s */
-    animation: slideShow 30s infinite;
+    transform: translateX(100%);
+    /* Smooth transitions controlled by JavaScript */
+    transition: opacity 0.8s ease-in-out, transform 0.8s ease-in-out;
     pointer-events: auto; /* Allow interactions on all faces */
+    z-index: 1;
 }
 
-/* Animation delays for each face - 7s intervals for seamless 6s visible time */
+/* Initial state - first face visible */
 .face:nth-child(1) { 
-    animation-delay: 0s;
-    opacity: 1; /* Make face 1 visible immediately on page load */
-    transform: translateX(0); /* Start in visible position */
+    opacity: 1;
+    transform: translateX(0);
+    z-index: 10;
 }
-.face:nth-child(2) { animation-delay: 7s; }
-.face:nth-child(3) { animation-delay: 14s; } /* Face 3 has glow-wrap-face3 button */
-.face:nth-child(4) { animation-delay: 21s; } /* Face 5 has shop-now-btn */
 
 
 /* But ensure buttons always have pointer-events enabled with higher z-index */
 .glow-wrap,
 .glow-wrap-face3,
 .glow-wrap-shop,
-.shop-now-btn {
-    pointer-events: auto !important; /* Critical: Enable interactions from first round */
-    z-index: 15 !important; /* Higher than face z-index */
+.glow-wrap-warranty,
+.glow-wrap-stackcon,
+.glow-wrap-consultation,
+.glow-wrap-sap,
+.glow-wrap-audit,
+.shop-now-btn,
+.warranty-buy-btn,
+.link-content,
+.link-content-face3,
+.link-content-stackcon,
+.link-content-consultation,
+.link-content-sap,
+.link-content-audit {
+    pointer-events: auto !important; /* Critical: Enable interactions at all times */
+    z-index: 20 !important; /* Higher than face z-index to ensure clickability */
+    position: relative; /* Ensure z-index works */
 }
 
 @keyframes slideShow {
@@ -2274,15 +2276,15 @@ footer a:hover {
         opacity: 0;
         transform: translateX(100%);
     }
-    5% {
+    2.4% {
         opacity: 1;
         transform: translateX(0);
     }
-    25% {
+    11.1% {
         opacity: 1;
         transform: translateX(0);
     }
-    30% {
+    14.3% {
         opacity: 0;
         transform: translateX(-100%);
     }
@@ -2642,6 +2644,498 @@ footer a:hover {
     transform: translateX(5px);
 }
 
+/* Warranty Support Text Overlay - Bottom Left Positioned */
+.text-overlay-warranty {
+    position: absolute;
+    bottom: clamp(8%, 10%, 15%);
+    left: clamp(7%, 5%, 8%);
+    text-align: left;
+    color: #2c2c2c;
+    z-index: 2;
+    width: clamp(45%, 50%, 55%);
+    max-width: clamp(280px, 45%, 450px);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.text-overlay-warranty p {
+    font-size: clamp(0.65rem, 0.95vw, 0.8rem);
+    line-height: 1.5;
+    color: #2c2c2c;
+    margin-bottom: clamp(0.8rem, 1.2vw, 1rem);
+    max-width: 100%;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+/* Glow-wrap for Warranty BUY Button */
+.glow-wrap-warranty {
+    position: relative;
+    display: inline-block;
+    width: 150px;
+    height: auto;
+    border-radius: 100px;
+    overflow: hidden;
+    box-shadow: 0 4px 15px rgba(247, 168, 103, 0.3);
+    transition: transform 0.2s ease;
+    z-index: 10;
+    pointer-events: auto !important;
+    margin-top: 0.2rem;
+}
+
+.glow-wrap-warranty:hover {
+    transform: scale(1.05);
+    animation: live-glow-warranty 1.5s infinite alternate;
+}
+
+/* Glowing border layer for warranty button - Orange/Peach colors */
+.glowing-border-layer-warranty {
+    position: absolute;
+    top: -80px;
+    left: -80px;
+    width: 360px;
+    height: 210px;
+    z-index: 1;
+    background: conic-gradient(
+        #ffffff 0%,
+        rgba(255, 255, 255, 0) 25%,
+        rgba(247, 168, 103, 0) 50%,
+        rgba(255, 180, 120, 0) 75%,
+        #ffffff 100%
+    );
+    animation: spin 3s linear infinite;
+}
+
+.warranty-buy-btn {
+    position: relative;
+    top: 0;
+    left: 0;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 600;
+    font-size: clamp(0.9rem, 1.2vw, 1.1rem);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #ffffff !important;
+    background: #F7A867;
+    border: none;
+    padding: clamp(0.7rem, 1.2vw, 1rem) clamp(1.5rem, 2.5vw, 2.5rem);
+    border-radius: 70px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    z-index: 2;
+    pointer-events: auto !important;
+    width: calc(100% - 4px);
+    height: calc(100% - 4px);
+    margin: 2px;
+    box-sizing: border-box;
+}
+
+.warranty-buy-btn:hover {
+    background: #F4A261;
+    transform: scale(1);
+    animation: live-glow-warranty 1.5s infinite alternate;
+}
+
+.glow-wrap-warranty:hover .warranty-buy-btn {
+    animation: live-glow-warranty 1.5s infinite alternate;
+}
+
+@keyframes live-glow-warranty {
+    0% {
+        box-shadow: 0 0 5px rgba(247, 168, 103, 0.5), 0 0 15px rgba(247, 168, 103, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 15px rgba(247, 168, 103, 0.8), 0 0 25px rgba(247, 168, 103, 0.6), 0 0 35px rgba(247, 168, 103, 0.4);
+    }
+    100% {
+        box-shadow: 0 0 5px rgba(247, 168, 103, 0.5), 0 0 15px rgba(247, 168, 103, 0.3);
+    }
+}
+
+/* Ensure warranty buttons are interactive */
+.glow-wrap-warranty,
+.warranty-buy-btn {
+    pointer-events: auto !important;
+    z-index: 15 !important;
+}
+
+
+
+/* Glow-wrap for StackCon Sign Up Button - Bottom Right Positioned */
+.glow-wrap-stackcon {
+    position: absolute;
+    top: clamp(91%, 8%, 12%);
+    left: clamp(76%, 5%, 8%);
+    width: clamp(140px, 12vw, 180px);
+    height: clamp(40px, 3.5vw, 50px);
+    border-radius: 50px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(255, 255, 255, 0.2);
+    transition: transform 0.2s ease;
+    z-index: 10;
+    pointer-events: auto !important;
+}
+
+.glow-wrap-stackcon:hover {
+    transform: scale(1.05);
+    animation: live-glow 1.5s infinite alternate;
+}
+
+/* Glowing border layer for StackCon button - Subtle white glow */
+.glowing-border-layer-stackcon {
+    position: absolute;
+    top: -80px;
+    left: -80px;
+    width: 360px;
+    height: 210px;
+    z-index: 1;
+    background: conic-gradient(
+        rgb(0, 110, 255) 0%,
+        rgba(255, 153, 1, 0.603) 25%,
+        rgba(255, 255, 255, 0) 50%,
+        rgba(255, 187, 0, 0.719) 75%,
+        rgb(0, 102, 255) 100%
+    );
+    animation: spin 3s linear infinite;
+}
+
+.link-content-stackcon {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: calc(100% - 4px);
+    height: calc(100% - 4px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-decoration: none;
+    border-radius: 48px;
+    background: #000000;
+    color: #ffffff !important;
+    font-size: clamp(0.85rem, 1.1vw, 1rem);
+    font-weight: 400;
+    letter-spacing: 1px;
+    cursor: pointer;
+    z-index: 2;
+    transition: all 0.3s;
+    pointer-events: auto;
+    padding: 0;
+    text-transform: none;
+}
+
+.link-content-stackcon:hover {
+    color: #ffffff !important;
+    background: #1a1a1a;
+}
+
+/* Ensure StackCon buttons are interactive */
+.glow-wrap-stackcon,
+.link-content-stackcon {
+    pointer-events: auto !important;
+    z-index: 15 !important;
+}
+
+/* Glow-wrap for Consultation Button - Teal Background with White Glow */
+.glow-wrap-consultation {
+    position: absolute;
+    top: clamp(85%, 12%, 16%);
+    left: 18%;
+    transform: translateX(-50%);
+    width: calc(25% - 4px);
+    height: clamp(45px, 4.5vw, 60px);
+    border-radius: 50px;
+    overflow: hidden;
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.4), 0 0 30px rgba(255, 255, 255, 0.2);
+    transition: transform 0.2s ease;
+    z-index: 10;
+    pointer-events: auto !important;
+}
+
+.glow-wrap-consultation:hover {
+    transform: translateX(-50%) scale(1.05);
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.6), 0 0 40px rgba(255, 255, 255, 0.3);
+    animation: live-glow 1.5s infinite alternate;
+}
+
+/* Glowing border layer for consultation button - White glow effect */
+.glowing-border-layer-consultation {
+    position: absolute;
+    top: -80px;
+    left: -80px;
+    width: 360px;
+    height: 210px;
+    z-index: 1;
+    background: conic-gradient(
+        rgb(255, 255, 255) 0%,
+        rgba(255, 255, 255, 0.5) 25%,
+        rgba(255, 255, 255, 0) 50%,
+        rgba(255, 255, 255, 0) 75%,
+        rgb(255, 255, 255) 100%
+    );
+    animation: spin 3s linear infinite;
+}
+
+.link-content-consultation {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: calc(100% - 4px);
+    height: calc(100% - 4px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-decoration: none;
+    border-radius: 48px;
+    background: #1ABC9C;
+    color: #000000 !important;
+    font-size: clamp(0.9rem, 1.2vw, 1.1rem);
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    cursor: pointer;
+    z-index: 2;
+    transition: all 0.3s;
+    pointer-events: auto;
+    padding: 0;
+    text-transform: uppercase;
+    border: 2px solid #ffffff00;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+.link-content-consultation:hover {
+    color: #000000 !important;
+    background: #16a085;
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.7);
+}
+
+/* Ensure consultation buttons are interactive */
+.glow-wrap-consultation,
+.link-content-consultation {
+    pointer-events: auto !important;
+    z-index: 15 !important;
+}
+
+/* SAP Text Overlay - Bottom Left Positioned */
+.text-overlay-sap {
+    position: absolute;
+    top: clamp(85%, 12%, 16%);
+    left: clamp(3%, 5%, 8%);
+    text-align: left;
+    color: #ffffff;
+    z-index: 2;
+    width: auto;
+    max-width: clamp(400px, 75%, 600px);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.text-overlay-sap p {
+    font-size: clamp(0.4rem, 2.5vw, 1.2rem);
+    line-height: 1.4;
+    color: #ffffff;
+    margin: 0;
+    font-weight: 400;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Glow-wrap for SAP BOOK A DEMO Button - Bottom Right Positioned */
+.glow-wrap-sap {
+    position: absolute;
+    top: clamp(86%, 12%, 16%);
+    right: clamp(3%, 5%, 8%);
+    width: clamp(180px, 18vw, 240px);
+    height: clamp(45px, 4.5vw, 60px);
+    border-radius: 250px;
+    overflow: hidden;
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.4), 0 0 30px rgba(255, 255, 255, 0.2);
+    transition: transform 0.2s ease;
+    z-index: 10;
+    pointer-events: auto !important;
+}
+
+.glow-wrap-sap:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.6), 0 0 40px rgba(255, 255, 255, 0.3);
+    animation: live-glow 1.5s infinite alternate;
+}
+
+/* Glowing border layer for SAP button - White glow effect */
+.glowing-border-layer-sap {
+    position: absolute;
+    top: -80px;
+    left: -80px;
+    width: 360px;
+    height: 210px;
+    z-index: 1;
+    background: conic-gradient(
+        rgba(255, 255, 255, 0) 0%,
+        rgba(255, 255, 255, 0) 25%,
+        rgba(255, 255, 255, 0) 50%,
+        rgba(255, 255, 255, 0) 75%,
+        rgba(255, 255, 255, 0) 100%
+    );
+    animation: spin 3s linear infinite;
+}
+
+.link-content-sap {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: calc(100% - 4px);
+    height: calc(100% - 4px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-decoration: none;
+    border-radius: 48px;
+    background: transparent;
+    color: #ffffff !important;
+    font-size: clamp(0.9rem, 1.2vw, 1.1rem);
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    cursor: pointer;
+    z-index: 2;
+    transition: all 0.3s;
+    pointer-events: auto;
+    padding: 0;
+    text-transform: uppercase;
+    border: 2px solid #ffffff;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+.link-content-sap:hover {
+    color: #ffffff !important;
+    background: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.7);
+    animation: live-glow 1.5s infinite alternate;
+}
+
+/* Ensure SAP buttons are interactive */
+.glow-wrap-sap,
+.link-content-sap {
+    pointer-events: auto !important;
+    z-index: 15 !important;
+}
+
+/* IT Audit Text Overlay - Left Positioned */
+.text-overlay-audit {
+    position: absolute;
+    top: 50%;
+    left: clamp(5%, 8%, 12%);
+    transform: translateY(-50%);
+    text-align: left;
+    color: #000000;
+    z-index: 2;
+    width: auto;
+    max-width: clamp(400px, 55%, 700px);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.text-overlay-audit h1 {
+    font-size: clamp(2rem, 5vw, 4.5rem);
+    font-weight: 900;
+    line-height: 1.2;
+    color: #000000;
+    margin: 0 0 clamp(1.5rem, 3vw, 2.5rem) 0;
+    font-family: 'Arial Black', 'Helvetica', sans-serif;
+    text-transform: none;
+    letter-spacing: -1px;
+}
+
+.text-overlay-audit p {
+    font-size: clamp(0.9rem, 1.5vw, 1.2rem);
+    line-height: 1.6;
+    color: #000000;
+    margin: 0 0 clamp(1.5rem, 3vw, 2rem) 0;
+    font-weight: 400;
+    max-width: clamp(350px, 50%, 600px);
+}
+
+/* Glow-wrap for Audit Book a consult Button */
+.glow-wrap-audit {
+    position: relative;
+    display: inline-block;
+    width: calc(40% - 4px);
+    height: clamp(45px, 5vw, 55px);
+    border-radius: 250px;
+    overflow: hidden;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    transition: transform 0.2s ease;
+    z-index: 10;
+    pointer-events: auto !important;
+    margin-top: 0;
+}
+
+.glow-wrap-audit:hover {
+    transform: scale(1.05);
+    animation: live-glow-black 1.5s infinite alternate;
+}
+
+/* Glowing border layer for audit button - Black glow effect */
+.glowing-border-layer-audit {
+    position: absolute;
+    top: -80px;
+    left: -80px;
+    width: 360px;
+    height: 210px;
+    z-index: 1;
+    background: conic-gradient(
+        #000000 0%,
+        rgba(0, 0, 0, 0) 25%,
+        rgba(0, 0, 0, 0) 50%,
+        rgba(0, 0, 0, 0) 75%,
+        #000000 100%
+    );
+    animation: spin 3s linear infinite;
+}
+
+.link-content-audit {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: calc(100% - 4px);
+    height: calc(100% - 4px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-decoration: none;
+    border-radius: 100px;
+    background: #ffffff;
+    color: #000000 !important;
+    font-size: clamp(0.9rem, 1.2vw, 1.1rem);
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    z-index: 2;
+    transition: all 0.3s;
+    pointer-events: auto;
+    padding: 0;
+    text-transform: none;
+    border: none;
+    box-shadow: none;
+}
+
+.link-content-audit:hover {
+    color: #000000 !important;
+    background: #f5f5f5;
+}
+
+@keyframes live-glow-black {
+    0% {
+        box-shadow: 0 0 5px rgba(0, 0, 0, 0.3), 0 0 15px rgba(0, 0, 0, 0.2);
+    }
+    50% {
+        box-shadow: 0 0 15px rgba(0, 0, 0, 0.6), 0 0 25px rgba(0, 0, 0, 0.4), 0 0 35px rgba(0, 0, 0, 0.3);
+    }
+    100% {
+        box-shadow: 0 0 5px rgba(0, 0, 0, 0.3), 0 0 15px rgba(0, 0, 0, 0.2);
+    }
+}
+
+/* Ensure audit buttons are interactive */
+.glow-wrap-audit,
+.link-content-audit {
+    pointer-events: auto !important;
+    z-index: 15 !important;
+}
+
 /* Hover glow effects */
 .cube-btn:hover,
 .Face-5btn:hover,
@@ -2985,6 +3479,167 @@ footer a:hover {
     line-height: 1.2 !important;
     margin: 0.2rem 0 !important;
   }
+
+  /* Warranty Support Mobile Styles */
+  .text-overlay-warranty {
+    bottom: clamp(11.5%, 12%, 12.5%) !important;
+    left: clamp(6%, 6.5%, 7%) !important;
+    width: clamp(50%, 54%, 55%) !important;
+    max-width: 235px !important;
+    padding: 0 !important;
+  }
+
+  .text-overlay-warranty h1 {
+    font-size: clamp(1.4rem, 4vw, 2rem) !important;
+    margin-bottom: clamp(0.5rem, 1vw, 0.8rem) !important;
+  }
+
+  .text-overlay-warranty p {
+    font-size: clamp(0.43rem, 0.48rem, 0.5rem) !important;
+    line-height: 1.25 !important;
+    margin-bottom: clamp(0.35rem, 0.4rem, 0.42rem) !important;
+    margin-top: 0 !important;
+  }
+
+  .glow-wrap-warranty {
+    width: clamp(70px, 75px, 77px) !important;
+    height: clamp(24px, 26px, 28px) !important;
+    margin-top: 0 !important;
+    margin-left: 0 !important;
+  }
+
+  .warranty-buy-btn {
+    font-size: clamp(0.52rem, 0.54rem, 0.56rem) !important;
+    padding: clamp(0.32rem, 0.34rem, 0.38rem) clamp(0.65rem, 0.68rem, 0.72rem) !important;
+    letter-spacing: clamp(0.9px, 0.9px, 1px) !important;
+  }
+
+  /* StackCon Mobile Styles */
+  .text-overlay-stackcon {
+    bottom: clamp(10%, 10.5%, 11%) !important;
+    left: clamp(3%, 3%, 3%) !important;
+    max-width: clamp(68%, 69%, 71%) !important;
+    padding-right: 2% !important;
+  }
+
+  .text-overlay-stackcon p {
+    font-size: clamp(0.58rem, 0.6rem, 0.64rem) !important;
+    line-height: 1.3 !important;
+    margin-bottom: clamp(0.45rem, 0.48rem, 0.5rem) !important;
+  }
+
+  .glow-wrap-stackcon {
+    bottom: clamp(8%, 8%, 8%) !important;
+    right: clamp(4%, 4%, 4%) !important;
+    width: clamp(62px, 64px, 68px) !important;
+    height: clamp(20px, 21px, 24px) !important;
+    border-radius: 40px !important;
+    max-width: calc(100% - 8%) !important;
+  }
+
+  .link-content-stackcon {
+    font-size: clamp(0.46rem, 0.47rem, 0.5rem) !important;
+    letter-spacing: clamp(0.5px, 0.5px, 0.55px) !important;
+    border-radius: 38px !important;
+    padding: clamp(0.18rem, 0.19rem, 0.2rem) clamp(0.38rem, 0.4rem, 0.42rem) !important;
+  }
+  
+  /* Face 8 (Stackon.png) - ensure image is fully visible */
+  .face:nth-child(8) img {
+    object-fit: contain !important;
+    object-position: center center !important;
+  }
+
+  /* Consultation Button Mobile Styles */
+  .glow-wrap-consultation {
+    bottom: clamp(8%, 8%, 8%) !important;
+    left: clamp(3%, 3%, 3%) !important;
+    right: auto !important;
+    transform: none !important;
+    width: clamp(140px, 145px, 150px) !important;
+    height: clamp(22px, 23px, 26px) !important;
+    border-radius: 40px !important;
+  }
+
+  .link-content-consultation {
+    font-size: clamp(0.5rem, 0.52rem, 0.55rem) !important;
+    letter-spacing: 0.6px !important;
+    border-radius: 38px !important;
+    border-width: 1.5px !important;
+    padding: clamp(0.2rem, 0.21rem, 0.24rem) clamp(0.4rem, 0.42rem, 0.45rem) !important;
+    white-space: nowrap !important;
+  }
+
+  /* SAP Section Mobile Styles */
+  .text-overlay-sap {
+    bottom: clamp(8%, 8%, 8%) !important;
+    left: clamp(3.5%, 3.8%, 4.2%) !important;
+    width: clamp(75%, 75%, 75%) !important;
+    max-width: clamp(280px, 295px, 325px) !important;
+  }
+
+  .text-overlay-sap p {
+    font-size: clamp(0.55rem, 0.57rem, 0.63rem) !important;
+    line-height: 1.3 !important;
+  }
+
+  .glow-wrap-sap {
+    bottom: clamp(8%, 8%, 8%) !important;
+    right: clamp(5%, 5%, 5%) !important;
+    left: auto !important;
+    transform: none !important;
+    width: clamp(95px, 98px, 105px) !important;
+    height: clamp(24px, 25px, 28px) !important;
+    border-radius: 40px !important;
+    max-width: calc(100% - 10%) !important;
+  }
+
+  .link-content-sap {
+    font-size: clamp(0.52rem, 0.54rem, 0.58rem) !important;
+    letter-spacing: clamp(0.65px, 0.7px, 0.75px) !important;
+    border-radius: 38px !important;
+    border-width: 1.5px !important;
+    padding: clamp(0.2rem, 0.21rem, 0.23rem) clamp(0.4rem, 0.42rem, 0.45rem) !important;
+    white-space: nowrap !important;
+  }
+
+  /* IT Audit Section Mobile Styles */
+  .text-overlay-audit {
+    top: 50% !important;
+    left: clamp(3%, 5%, 8%) !important;
+    transform: translateY(-50%) !important;
+    max-width: clamp(280px, 85%, 95%) !important;
+  }
+
+  .text-overlay-audit h1 {
+    font-size: clamp(1.5rem, 6vw, 2.5rem) !important;
+    margin-bottom: clamp(1rem, 2vw, 1.5rem) !important;
+    line-height: 1.1 !important;
+  }
+
+  .text-overlay-audit p {
+    font-size: clamp(0.8rem, 2.5vw, 1rem) !important;
+    line-height: 1.5 !important;
+    margin-bottom: clamp(1rem, 2vw, 1.5rem) !important;
+    max-width: 100% !important;
+  }
+
+  .glow-wrap-audit {
+    width: clamp(150px, 45vw, 200px) !important;
+    height: clamp(40px, 8vw, 50px) !important;
+    border-radius: 100px !important;
+  }
+
+  .link-content-audit {
+    font-size: clamp(0.8rem, 2vw, 1rem) !important;
+    letter-spacing: 0.3px !important;
+    border-radius: 100px !important;
+    border: none !important;
+    top: 1.5px !important;
+    left: 1.5px !important;
+    width: calc(100% - 3px) !important;
+    height: calc(100% - 3px) !important;
+  }
 }
 
 /* --------------------------------------------------
@@ -3147,7 +3802,7 @@ footer a:hover {
     width: 100% !important;
     height: 100% !important;
     /* Unzoomed: show the full media while fitting the face area */
-    object-fit: fill !important;
+    object-fit: contain !important;
     object-position: center center !important;
     background: transparent !important;
     max-width: 110% !important;
@@ -3740,5 +4395,769 @@ footer a:hover {
     border-radius: clamp(9px, 0.57vw, 11px); /* Scales proportionally */
     font-size: clamp(7px, 0.47vw, 9px); /* Scales with zoom */
     letter-spacing: clamp(0.6px, 0.04vw, 0.8px); /* Scales with zoom */
+  }
+}
+
+/* ============================================================
+   iPhone-Specific Mobile Optimization
+   Separate media queries for each iPhone model with custom scaling
+   Optimizes: Face 7, Face 8, Face 9, Face 10, Face 11 (Lines 34-105)
+   ============================================================ */
+
+/* ===== iPhone 12 Mini (375px) - Smallest ===== */
+@media (max-width: 375px) {
+  
+  /* Face 7 - WarrantySupport.png */
+  .text-overlay-warranty {
+    bottom: 11.5% !important;
+    left: 6.5% !important;
+    width: 52% !important;
+    max-width: 195px !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  .text-overlay-warranty p {
+    font-size: 0.43rem !important;
+    line-height: 1.25 !important;
+    margin-bottom: 0.35rem !important;
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+
+  .glow-wrap-warranty {
+    width: 70px !important;
+    height: 24px !important;
+    margin-top: 0 !important;
+    margin-left: 0 !important;
+  }
+
+  .warranty-buy-btn {
+    font-size: 0.52rem !important;
+    padding: 0.32rem 0.65rem !important;
+    letter-spacing: 0.9px !important;
+  }
+
+  /* Face 8 - Stackon.png */
+  .glow-wrap-stackcon {
+    bottom: 9% !important;
+    right: 4% !important;
+    top: auto !important;
+    left: auto !important;
+    width: 62px !important;
+    height: 20px !important;
+    transform: none !important;
+    max-width: calc(100% - 8%) !important;
+  }
+
+  .link-content-stackcon {
+    font-size: 0.46rem !important;
+    letter-spacing: 0.5px !important;
+    padding: 0.18rem 0.38rem !important;
+  }
+  
+  /* Face 8 (Stackon.png) - ensure image is fully visible */
+  .face:nth-child(8) img {
+    object-fit: contain !important;
+    object-position: center center !important;
+  }
+  
+  /* Face 8 text overlay - lower it and reduce width to avoid button */
+  .text-overlay-stackcon {
+    bottom: 10% !important;
+    left: 3% !important;
+    max-width: 68% !important;
+    padding-right: 2% !important;
+  }
+  
+  .text-overlay-stackcon p {
+    font-size: 0.58rem !important;
+    line-height: 1.3 !important;
+    margin-bottom: 0.45rem !important;
+  }
+
+  /* Face 9 - Consult.png */
+  .glow-wrap-consultation {
+    bottom: 8% !important;
+    left: 6% !important;
+    right: auto !important;
+    top: auto !important;
+    transform: none !important;
+    width: 140px !important;
+    height: 22px !important;
+  }
+
+  .link-content-consultation {
+    font-size: 0.5rem !important;
+    letter-spacing: 0.6px !important;
+    padding: 0.2rem 0.4rem !important;
+    white-space: nowrap !important;
+  }
+
+  /* Face 10 - SAPBusiness.png */
+  .text-overlay-sap {
+    bottom: 8% !important;
+    left: 3.5% !important;
+    top: auto !important;
+    width: 75% !important;
+    max-width: 280px !important;
+    padding: 0 !important;
+  }
+
+  .text-overlay-sap p {
+    font-size: 0.55rem !important;
+    line-height: 1.3 !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+
+  .glow-wrap-sap {
+    bottom: 8% !important;
+    right: 5% !important;
+    left: auto !important;
+    top: auto !important;
+    width: 95px !important;
+    height: 24px !important;
+    transform: none !important;
+    max-width: calc(100% - 10%) !important;
+  }
+
+  .link-content-sap {
+    font-size: 0.52rem !important;
+    letter-spacing: 0.65px !important;
+    padding: 0.2rem 0.4rem !important;
+    border-width: 1.5px !important;
+    white-space: nowrap !important;
+  }
+
+  /* Face 11 - Consult (2).png */
+  .text-overlay-audit {
+    top: 50% !important;
+    left: 4.5% !important;
+    transform: translateY(-50%) !important;
+    width: 55% !important;
+    max-width: 200px !important;
+    padding: 0 2% !important;
+    box-sizing: border-box !important;
+  }
+
+  .text-overlay-audit h1 {
+    font-size: 1.2rem !important;
+    line-height: 1.15 !important;
+    margin-bottom: 0.65rem !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+
+  .text-overlay-audit p {
+    font-size: 0.6rem !important;
+    line-height: 1.4 !important;
+    margin-bottom: 0.65rem !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+
+  .glow-wrap-audit {
+    width: 135px !important;
+    height: 34px !important;
+    margin-top: 0 !important;
+  }
+
+  .link-content-audit {
+    font-size: 0.65rem !important;
+    letter-spacing: 0.35px !important;
+    padding: 0 !important;
+  }
+
+  /* General */
+  .face img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+    object-position: center !important;
+  }
+
+  .face {
+    overflow: visible !important;
+    box-sizing: border-box !important;
+  }
+  
+  /* Ensure image is visible in Face 11 (Consult 2.png) */
+  .face:nth-child(11) img {
+    object-fit: cover !important;
+    object-position: right center !important;
+  }
+}
+
+/* ===== iPhone 13 (390px) - Smaller than XR ===== */
+@media (min-width: 376px) and (max-width: 390px) {
+  
+  /* Face 7 - WarrantySupport.png */
+  .text-overlay-warranty {
+    bottom: 11.8% !important;
+    left: 6.5% !important;
+    width: 53% !important;
+    max-width: 207px !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  .text-overlay-warranty p {
+    font-size: 0.45rem !important;
+    line-height: 1.25 !important;
+    margin-bottom: 0.38rem !important;
+    margin-top: 0 !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+
+  .glow-wrap-warranty {
+    width: 73px !important;
+    height: 25px !important;
+    margin-top: 0 !important;
+    margin-left: 0 !important;
+  }
+
+  .warranty-buy-btn {
+    font-size: 0.54rem !important;
+    padding: 0.34rem 0.68rem !important;
+    letter-spacing: 0.9px !important;
+  }
+
+  /* Face 8 - Stackon.png */
+  .glow-wrap-stackcon {
+    bottom: 7% !important;
+    right: 4% !important;
+    top: auto !important;
+    left: auto !important;
+    width: 64px !important;
+    height: 21px !important;
+    transform: none !important;
+    max-width: calc(100% - 8%) !important;
+  }
+
+  .link-content-stackcon {
+    font-size: 0.47rem !important;
+    letter-spacing: 0.5px !important;
+    padding: 0.19rem 0.4rem !important;
+  }
+  
+  /* Face 8 (Stackon.png) - ensure image is fully visible */
+  .face:nth-child(8) img {
+    object-fit: contain !important;
+    object-position: center center !important;
+  }
+  
+  /* Face 8 text overlay - lower it and reduce width to avoid button */
+  .text-overlay-stackcon {
+    bottom: 10.5% !important;
+    left: 3% !important;
+    max-width: 69% !important;
+    padding-right: 2% !important;
+  }
+  
+  .text-overlay-stackcon p {
+    font-size: 0.6rem !important;
+    line-height: 1.3 !important;
+    margin-bottom: 0.48rem !important;
+  }
+
+  /* Face 9 - Consult.png */
+  .glow-wrap-consultation {
+    bottom: 8% !important;
+    left: 6% !important;
+    right: auto !important;
+    top: auto !important;
+    transform: none !important;
+    width: 142px !important;
+    height: 23px !important;
+  }
+
+  .link-content-consultation {
+    font-size: 0.52rem !important;
+    letter-spacing: 0.6px !important;
+    padding: 0.21rem 0.42rem !important;
+    white-space: nowrap !important;
+  }
+
+  /* Face 10 - SAPBusiness.png */
+  .text-overlay-sap {
+    bottom: 8% !important;
+    left: 3.8% !important;
+    top: auto !important;
+    width: 75% !important;
+    max-width: 295px !important;
+    padding: 0 !important;
+  }
+
+  .text-overlay-sap p {
+    font-size: 0.57rem !important;
+    line-height: 1.3 !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+
+  .glow-wrap-sap {
+    bottom: 8% !important;
+    right: 5% !important;
+    left: auto !important;
+    top: auto !important;
+    width: 98px !important;
+    height: 25px !important;
+    transform: none !important;
+    max-width: calc(100% - 10%) !important;
+  }
+
+  .link-content-sap {
+    font-size: 0.54rem !important;
+    letter-spacing: 0.7px !important;
+    padding: 0.21rem 0.42rem !important;
+    border-width: 1.5px !important;
+    white-space: nowrap !important;
+  }
+
+  /* Face 11 - Consult (2).png */
+  .text-overlay-audit {
+    top: 50% !important;
+    left: 4.8% !important;
+    transform: translateY(-50%) !important;
+    width: 55% !important;
+    max-width: 210px !important;
+    padding: 0 2% !important;
+    box-sizing: border-box !important;
+  }
+
+  .text-overlay-audit h1 {
+    font-size: 1.25rem !important;
+    line-height: 1.15 !important;
+    margin-bottom: 0.7rem !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+
+  .text-overlay-audit p {
+    font-size: 0.62rem !important;
+    line-height: 1.4 !important;
+    margin-bottom: 0.7rem !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+
+  .glow-wrap-audit {
+    width: 138px !important;
+    height: 35px !important;
+    margin-top: 0 !important;
+  }
+
+  .link-content-audit {
+    font-size: 0.67rem !important;
+    letter-spacing: 0.38px !important;
+    padding: 0 !important;
+  }
+
+  /* General */
+  .face img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+    object-position: center !important;
+  }
+
+  .face {
+    overflow: visible !important;
+    box-sizing: border-box !important;
+  }
+  
+  /* Face 7 (WarrantySupport.png) - ensure illustrations are visible */
+  .face:nth-child(7) img {
+    object-fit: cover !important;
+    object-position: center center !important;
+  }
+  
+  /* Face 8 (Stackon.png) - ensure image is fully visible */
+  .face:nth-child(8) img {
+    object-fit: contain !important;
+    object-position: center center !important;
+  }
+  
+  /* Face 9 (Consult.png) - ensure 3D character is fully visible */
+  .face:nth-child(9) img {
+    object-fit: cover !important;
+    object-position: center top !important;
+  }
+  
+  /* Face 11 (Consult 2.png) - ensure image is visible */
+  .face:nth-child(11) img {
+    object-fit: cover !important;
+    object-position: right center !important;
+  }
+}
+
+/* ===== iPhone XR (414px) - Base Reference ===== */
+@media (min-width: 391px) and (max-width: 414px) {
+  
+  /* Face 7 - WarrantySupport.png */
+  .text-overlay-warranty {
+    bottom: 12% !important;
+    left: 6.5% !important;
+    width: 54% !important;
+    max-width: 224px !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  .text-overlay-warranty p {
+    font-size: 0.48rem !important;
+    line-height: 1.25 !important;
+    margin-bottom: 0.4rem !important;
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+
+  .glow-wrap-warranty {
+    width: 75px !important;
+    height: 26px !important;
+    margin-top: 0 !important;
+    margin-left: 0 !important;
+  }
+
+  .warranty-buy-btn {
+    font-size: 0.55rem !important;
+    padding: 0.35rem 0.7rem !important;
+    letter-spacing: 0.9px !important;
+  }
+
+  /* Face 8 - Stackon.png */
+  .glow-wrap-stackcon {
+    bottom: 9% !important;
+    right: 4% !important;
+    top: auto !important;
+    left: auto !important;
+    width: 65px !important;
+    height: 22px !important;
+    transform: none !important;
+    max-width: calc(100% - 8%) !important;
+  }
+
+  .link-content-stackcon {
+    font-size: 0.48rem !important;
+    letter-spacing: 0.5px !important;
+    padding: 0.2rem 0.4rem !important;
+  }
+  
+  /* Face 8 (Stackon.png) - ensure image is fully visible */
+  .face:nth-child(8) img {
+    object-fit: contain !important;
+    object-position: center center !important;
+  }
+  
+  /* Face 8 text overlay - lower it and reduce width to avoid button */
+  .text-overlay-stackcon {
+    bottom: 11% !important;
+    left: 3% !important;
+    max-width: 70% !important;
+    padding-right: 2% !important;
+  }
+  
+  .text-overlay-stackcon p {
+    font-size: 0.6rem !important;
+    line-height: 1.3 !important;
+    margin-bottom: 0.5rem !important;
+  }
+
+  /* Face 9 - Consult.png */
+  .glow-wrap-consultation {
+    bottom: 8% !important;
+    left: 6% !important;
+    right: auto !important;
+    top: auto !important;
+    transform: none !important;
+    width: 135px !important;
+    height: 24px !important;
+  }
+
+  .link-content-consultation {
+    font-size: 0.53rem !important;
+    letter-spacing: 0.6px !important;
+    padding: 0.22rem 0.43rem !important;
+    white-space: nowrap !important;
+  }
+
+  /* Face 10 - SAPBusiness.png */
+  .text-overlay-sap {
+    bottom: 8% !important;
+    left: 4% !important;
+    top: auto !important;
+    width: 75% !important;
+    max-width: 310px !important;
+    padding: 0 !important;
+  }
+
+  .text-overlay-sap p {
+    font-size: 0.6rem !important;
+    line-height: 1.3 !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+
+  .glow-wrap-sap {
+    bottom: 8% !important;
+    right: 5% !important;
+    left: auto !important;
+    top: auto !important;
+    width: 100px !important;
+    height: 26px !important;
+    transform: none !important;
+    max-width: calc(100% - 10%) !important;
+  }
+
+  .link-content-sap {
+    font-size: 0.56rem !important;
+    letter-spacing: 0.72px !important;
+    padding: 0.22rem 0.44rem !important;
+    border-width: 1.5px !important;
+    white-space: nowrap !important;
+  }
+
+  /* Face 11 - Consult (2).png */
+  .text-overlay-audit {
+    top: 50% !important;
+    left: 5% !important;
+    transform: translateY(-50%) !important;
+    width: 55% !important;
+    max-width: 220px !important;
+    padding: 0 2% !important;
+    box-sizing: border-box !important;
+  }
+
+  .text-overlay-audit h1 {
+    font-size: 1.3rem !important;
+    line-height: 1.15 !important;
+    margin-bottom: 0.7rem !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+
+  .text-overlay-audit p {
+    font-size: 0.65rem !important;
+    line-height: 1.4 !important;
+    margin-bottom: 0.7rem !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+
+  .glow-wrap-audit {
+    width: 145px !important;
+    height: 37px !important;
+    margin-top: 0 !important;
+  }
+
+  .link-content-audit {
+    font-size: 0.72rem !important;
+    letter-spacing: 0.4px !important;
+    padding: 0 !important;
+  }
+
+  /* General */
+  .face img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+    object-position: center !important;
+  }
+
+  .face {
+    overflow: visible !important;
+    box-sizing: border-box !important;
+  }
+  
+  /* Ensure image is visible in Face 11 (Consult 2.png) */
+  .face:nth-child(11) img {
+    object-fit: cover !important;
+    object-position: right center !important;
+  }
+}
+
+/* ===== iPhone Pro Max (428px) - Largest ===== */
+@media (min-width: 415px) and (max-width: 428px) {
+  
+  /* Face 7 - WarrantySupport.png */
+  .text-overlay-warranty {
+    bottom: 12.5% !important;
+    left: 6.5% !important;
+    width: 55% !important;
+    max-width: 235px !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  .text-overlay-warranty p {
+    font-size: 0.5rem !important;
+    line-height: 1.25 !important;
+    margin-bottom: 0.42rem !important;
+    margin-top: 0 !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+
+  .glow-wrap-warranty {
+    width: 77px !important;
+    height: 28px !important;
+    margin-top: 0 !important;
+    margin-left: 0 !important;
+  }
+
+  .warranty-buy-btn {
+    font-size: 0.56rem !important;
+    padding: 0.38rem 0.72rem !important;
+    letter-spacing: 1px !important;
+  }
+
+  /* Face 8 - Stackon.png */
+  .glow-wrap-stackcon {
+    bottom: 9% !important;
+    right: 4% !important;
+    top: auto !important;
+    left: auto !important;
+    width: 68px !important;
+    height: 24px !important;
+    transform: none !important;
+    max-width: calc(100% - 8%) !important;
+  }
+
+  .link-content-stackcon {
+    font-size: 0.5rem !important;
+    letter-spacing: 0.55px !important;
+    padding: 0.2rem 0.42rem !important;
+  }
+  
+  /* Face 8 (Stackon.png) - ensure image is fully visible */
+  .face:nth-child(8) img {
+    object-fit: contain !important;
+    object-position: center center !important;
+  }
+  
+  /* Face 8 text overlay - lower it and reduce width to avoid button */
+  .text-overlay-stackcon {
+    bottom: 11% !important;
+    left: 3% !important;
+    max-width: 71% !important;
+    padding-right: 2% !important;
+  }
+  
+  .text-overlay-stackcon p {
+    font-size: 0.64rem !important;
+    line-height: 1.3 !important;
+    margin-bottom: 0.5rem !important;
+  }
+
+  /* Face 9 - Consult.png */
+  .glow-wrap-consultation {
+    bottom: 8% !important;
+    left: 3% !important;
+    right: auto !important;
+    top: auto !important;
+    transform: none !important;
+    width: 150px !important;
+    height: 26px !important;
+  }
+
+  .link-content-consultation {
+    font-size: 0.55rem !important;
+    letter-spacing: 0.65px !important;
+    padding: 0.24rem 0.45rem !important;
+    white-space: nowrap !important;
+  }
+
+  /* Face 10 - SAPBusiness.png */
+  .text-overlay-sap {
+    bottom: 8% !important;
+    left: 4.2% !important;
+    top: auto !important;
+    width: 75% !important;
+    max-width: 325px !important;
+    padding: 0 !important;
+  }
+
+  .text-overlay-sap p {
+    font-size: 0.63rem !important;
+    line-height: 1.3 !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+
+  .glow-wrap-sap {
+    bottom: 8% !important;
+    right: 5% !important;
+    left: auto !important;
+    top: auto !important;
+    width: 105px !important;
+    height: 28px !important;
+    transform: none !important;
+    max-width: calc(100% - 10%) !important;
+  }
+
+  .link-content-sap {
+    font-size: 0.58rem !important;
+    letter-spacing: 0.75px !important;
+    padding: 0.23rem 0.45rem !important;
+    border-width: 1.5px !important;
+    white-space: nowrap !important;
+  }
+
+  /* Face 11 - Consult (2).png */
+  .text-overlay-audit {
+    top: 50% !important;
+    left: 5.2% !important;
+    transform: translateY(-50%) !important;
+    width: 91% !important;
+    max-width: none !important;
+    padding: 0 3.2% !important;
+    box-sizing: border-box !important;
+  }
+
+  .text-overlay-audit h1 {
+    font-size: 1.5rem !important;
+    line-height: 1.14 !important;
+    margin-bottom: 0.9rem !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+
+  .text-overlay-audit p {
+    font-size: 0.75rem !important;
+    line-height: 1.5 !important;
+    margin-bottom: 0.9rem !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+
+  .glow-wrap-audit {
+    width: 152px !important;
+    height: 39px !important;
+    margin-top: 0 !important;
+  }
+
+  .link-content-audit {
+    font-size: 0.75rem !important;
+    letter-spacing: 0.42px !important;
+    padding: 0 !important;
+  }
+
+  /* General */
+  .face img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+    object-position: center !important;
+  }
+
+  .face {
+    overflow: hidden !important;
+    box-sizing: border-box !important;
   }
 }
