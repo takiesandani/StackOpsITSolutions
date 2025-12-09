@@ -5184,4 +5184,30 @@ footer a:hover {
     overflow: hidden !important;
     box-sizing: border-box !important;
   }
+
+      .text-overlay5 h1 {
+        font-size: 1.2rem !important;
+        font-weight: 600 !important;
+        line-height: 1.2 !important;
+
+        max-width: 40% !important;   /* ⬅ Reduces width by 50% */
+        display: block !important;   /* Ensure wrapping works */
+        white-space: normal !important; /* allow breaking words */
+       
+        margin-left: 212px !important; /* ⬅ Move LEFT to center */
+        margin-top: clamp(12px, 1.5vw, 20px) !important; /* Move down, closer to button */
+        margin-bottom: clamp(8px, 1vw, 12px) !important; /* Space between h1 and h2 */
+      }
+
+      .text-overlay5 h2 {
+        font-size: 0.33rem !important;
+        font-weight: 400 !important;
+        margin-left: 158px !important; /* ⬅ Move LEFT to center */ 
+        margin-top: clamp(10px, 1.2vw, 18px) !important; /* Move down, closer to h1 */
+        margin-bottom: clamp(6px, 0.8vw, 10px) !important; /* Space between h2 and h1 */
+        max-width: 70% !important;   /* ⬅ Reduces width by 30% */
+        letter-spacing: 1px !important;
+        text-align: center !important;
+    
+    }
 }
