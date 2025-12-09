@@ -4831,10 +4831,10 @@ footer a:hover {
   /* Face 8 - Stackon.png */
   .glow-wrap-stackcon {
     bottom: 9% !important;
-    right: 4% !important;
+    right: 5% !important;
     top: auto !important;
     left: auto !important;
-    width: 65px !important;
+    width: 100px !important;
     height: 22px !important;
     transform: none !important;
     max-width: calc(100% - 8%) !important;
@@ -4977,6 +4977,32 @@ footer a:hover {
     object-fit: cover !important;
     object-position: right center !important;
   }
+
+  .text-overlay5 h1 {
+    font-size: 1.4rem !important;
+    font-weight: 500 !important;
+    line-height: 1.2 !important;
+
+    max-width: 50% !important;   /* ⬅ Reduces width by 50% */
+    display: block !important;   /* Ensure wrapping works */
+    white-space: normal !important; /* allow breaking words */
+    left: 1000px !important;   /* ⬅ Move RIGHT (adjust value) */
+    margin-left: 200px !important; /* ⬅ Move LEFT to center */
+    margin-top: clamp(12px, 1.5vw, 20px) !important; /* Move down, closer to button */
+    margin-bottom: clamp(8px, 1vw, 12px) !important; /* Space between h1 and h2 */
+  }
+
+      .text-overlay5 h2 {
+    font-size: 0.33rem !important;
+    font-weight: 400 !important;
+    margin-left: 145px !important; /* ⬅ Move LEFT to center */ 
+    margin-top: clamp(10px, 1.2vw, 18px) !important; /* Move down, closer to h1 */
+    margin-bottom: clamp(6px, 0.8vw, 10px) !important; /* Space between h2 and h1 */
+    max-width: 70% !important;   /* ⬅ Reduces width by 30% */
+    letter-spacing: 1px !important;
+    text-align: center !important;
+    
+}
 }
 
 /* ===== iPhone Pro Max (428px) - Largest ===== */
@@ -4984,7 +5010,7 @@ footer a:hover {
   
   /* Face 7 - WarrantySupport.png */
   .text-overlay-warranty {
-    bottom: 12.5% !important;
+    bottom: 9.5% !important;
     left: 6.5% !important;
     width: 55% !important;
     max-width: 235px !important;
