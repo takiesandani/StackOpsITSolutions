@@ -95,7 +95,24 @@ async function getUserByEmail(email) {
         if (!pool) {
             throw new Error('MySQL pool is not available.');
         }
-        const [rows] = await pool.query('SELECT * FROM Users WHERE Email = ?', [email]);
+        // Normalize column names so we can reliably use user.id, user.email, user.role in code
+        const [rows] = await pool.query(
+            `SELECT 
+                ID        AS id,
+                FirstName AS firstName,
+                LastName  AS lastName,
+                Email     AS email,
+                Contact   AS contact,
+                Position  AS position,
+                password,
+                isActive  AS isActive,
+                Role      AS role,
+                CompanyID AS companyId,
+                CreatedAt AS createdAt
+             FROM Users
+             WHERE Email = ?`,
+            [email]
+        );
         return rows[0] || null;
     } catch (err) {
         console.error('getUserByEmail error:', err);
@@ -515,7 +532,7 @@ app.post('/api/auth/verify-mfa', async (req, res) => {
         const accessToken = jwt.sign({ id: user.id, email: user.email, role: user.role }, ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
 
         // Use role from Users table instead of hard-coded email list
-        const isAdmin = (user.Role && user.Role.toLowerCase() === 'admin');
+        const isAdmin = (user.role && user.role.toLowerCase() === 'admin');
 
         res.json({
             success: true,
