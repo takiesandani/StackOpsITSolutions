@@ -446,9 +446,9 @@ app.post('/api/auth/signin', async (req, res) => {
         if (!user) {
             return res.status(400).json({ success: false, message: "Invalid email or password" });
         }
-        
-        const sha1Hash = crypto.createHash('sha1').update(password).digest('hex').slice(0, -2);  // Truncate last 2 chars to match C# bug
-        const validPassword = (sha1Hash === user.password);
+
+        // Compare supplied password with bcrypt hash stored in MySQL (Node.js-native, replaces old C# SHA1 logic)
+        const validPassword = await bcrypt.compare(password, user.password);
         
         if (!validPassword) {
             return res.status(400).json({ success: false, message: "Invalid email or password" });
