@@ -447,8 +447,24 @@ app.post('/api/auth/signin', async (req, res) => {
             return res.status(400).json({ success: false, message: "Invalid email or password" });
         }
 
-        // Compare supplied password with bcrypt hash stored in MySQL (Node.js-native, replaces old C# SHA1 logic)
-        const validPassword = await bcrypt.compare(password, user.password);
+        // Hybrid password verification:
+        // 1) Prefer bcrypt (new Node.js hashing, hashes start with `$2`)
+        // 2) Fallback to legacy C# SHA1 (40-char hex, sometimes truncated) for older accounts
+        let validPassword = false;
+        try {
+            if (user.password && user.password.startsWith('$2')) {
+                // New bcrypt-based accounts
+                validPassword = await bcrypt.compare(password, user.password);
+            } else if (user.password) {
+                // Legacy SHA1-based accounts (old C# logic we had before)
+                const sha1Hash = crypto.createHash('sha1').update(password).digest('hex').slice(0, -2);
+                validPassword = (sha1Hash === user.password);
+            }
+        } catch (compareErr) {
+            console.error('Password compare error:', compareErr);
+            // Treat as invalid credentials instead of 500
+            validPassword = false;
+        }
         
         if (!validPassword) {
             return res.status(400).json({ success: false, message: "Invalid email or password" });
@@ -498,8 +514,8 @@ app.post('/api/auth/verify-mfa', async (req, res) => {
 
         const accessToken = jwt.sign({ id: user.id, email: user.email, role: user.role }, ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
 
-        const adminEmails = ['takiesandani@gmail.com', 'info@stackopsit.co.za'];
-        const isAdmin = adminEmails.includes(user.email.toLowerCase());
+        // Use role from Users table instead of hard-coded email list
+        const isAdmin = (user.Role && user.Role.toLowerCase() === 'admin');
 
         res.json({
             success: true,
