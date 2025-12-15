@@ -207,6 +207,18 @@
                 padding: 20px;
             }
         }
+
+        .register-hint {
+            margin-top: 18px;
+            text-align: center;
+            font-size: 0.9rem;
+            color: #bcbcbc;
+        }
+
+        .register-hint a {
+            color: #4a86e8;
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
@@ -231,15 +243,15 @@
                     <div class="error-message" id="password-error">Password must be at least 8 characters long</div>
 
                     <div class="forgot-password">
-                        <a href="forgot_password.html">Forgot Password?</a>
+                        <a href="forgot-password.html">Forgot Password?</a>
                     </div>
                 </div>
 
                 <button type="submit" class="btn-primary" id="submit-btn">Sign In</button>
             </form>
-            <p style="margin-top: 16px; text-align: center; font-size: 0.9rem;">
-                Need to onboard a new client user? 
-                <a href="signup.html" style="color:#4a86e8;text-decoration:underline;">Register here</a>
+            <p class="register-hint">
+                Need to onboard a new client user?
+                <a href="signup.html">Register here</a>
             </p>
             
             <div class="mfa-section" id="mfa-section">

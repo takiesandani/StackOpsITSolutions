@@ -267,16 +267,29 @@ function handleLogin(e) {
 }
 
 function handleLogout() {
-    if (confirm('Are you sure you want to logout?')) {
-        sessionStorage.removeItem('userEmail');
-        sessionStorage.removeItem('isLoggedIn');
-        sessionStorage.removeItem('loginTime');
-        
-        document.getElementById('dashboard-section').classList.remove('active');
-        document.getElementById('login-section').classList.add('active');
-        
+    if (!confirm('Are you sure you want to logout?')) {
+        return;
+    }
+
+    // Clear any local session state used by the client portal
+    sessionStorage.removeItem('userEmail');
+    sessionStorage.removeItem('isLoggedIn');
+    sessionStorage.removeItem('loginTime');
+
+    // Clear JWT auth token issued by the backend
+    localStorage.removeItem('authToken');
+
+    // Reset UI (for safety if we stay on the page)
+    const dashboardSection = document.getElementById('dashboard-section');
+    const loginSection = document.getElementById('login-section');
+    if (dashboardSection && loginSection) {
+        dashboardSection.classList.remove('active');
+        loginSection.classList.add('active');
         resetDashboard();
     }
+
+    // Redirect to public home page so protected views aren't visible
+    window.location.href = 'Home.html';
 }
 
 function setupSessionManagement() {

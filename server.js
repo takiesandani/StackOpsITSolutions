@@ -575,13 +575,28 @@ app.post('/api/admin/register-client', async (req, res) => {
         try {
             await connection.beginTransaction();
 
-            const [companyResult] = await connection.query(
-                `INSERT INTO Companies (companyname, website, industry, address, city, state, zipcode, country)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                [companyName, website, industry, address, city, state, zipCode, country]
+            // Check if company already exists (case-insensitive match on company name)
+            const [existingCompany] = await connection.query(
+                `SELECT ID FROM Companies WHERE LOWER(companyname) = LOWER(?) LIMIT 1`,
+                [companyName]
             );
+
+            let companyId;
             
-            const companyId = companyResult.insertId;
+            if (existingCompany && existingCompany.length > 0) {
+                // Company exists - reuse its ID
+                companyId = existingCompany[0].ID;
+                console.log(`Reusing existing company ID ${companyId} for "${companyName}"`);
+            } else {
+                // Company doesn't exist - create new one
+                const [companyResult] = await connection.query(
+                    `INSERT INTO Companies (companyname, website, industry, address, city, state, zipcode, country)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [companyName, website, industry, address, city, state, zipCode, country]
+                );
+                companyId = companyResult.insertId;
+                console.log(`Created new company ID ${companyId} for "${companyName}"`);
+            }
             
             await connection.query(
                 `INSERT INTO Users (firstname, lastname, email, contact, password, isactive, role, companyid)
@@ -657,7 +672,7 @@ app.post('/api/admin/register-client', async (req, res) => {
 
 // Add a new GET endpoint to serve the forgot-password page (from original)
 app.get('/forgot-password.html', (req, res) => {
-    res.sendFile(path.join(__dirname, 'forgot-password.html'));
+    res.sendFile(path.join(__dirname, 'forgot_password.html'));
 });
 
 // Endpoint to handle the password reset request (Step 1: Send token, from original)
@@ -784,7 +799,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
             const salt = await bcrypt.genSalt(10);
             const hashedPassword = await bcrypt.hash(newPassword, salt);
 
-            await connection.query('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, userId]);
+            await connection.query('UPDATE Users SET password = ? WHERE ID = ?', [hashedPassword, userId]);
 
             await connection.query('DELETE FROM password_resets WHERE token = ?', [token]);
 

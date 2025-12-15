@@ -1,0 +1,623 @@
+/* Admin.css - Consistent design with other pages */
+
+/* Global Styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+:root {
+    --primary: #006eff;
+    --secondary: #000000;
+    --dark: #1c1c1c;
+    --light: #ffffff;
+    --gray: #4a4a4aa1;
+    --accent-glow: #1E90FF;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    color: var(--light);
+    background-color: white;
+    overflow-x: hidden;
+    line-height: 1.6;
+}
+
+/* Background */
+.background {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 110%;
+    z-index: -1;
+    background: linear-gradient(rgba(0, 0, 0, 0.219), rgb(0, 0, 0)),
+        url('/Images/Website.png') no-repeat center center;
+    background-size: cover;
+}
+
+/* Header & Navigation */
+header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    padding: 15px 5%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 1000;
+    transition: 0.5s;
+    background: rgba(28, 28, 28, 0.5);
+    backdrop-filter: blur(10px);
+}
+
+header.sticky {
+    padding: 10px 5%;
+    background: var(--dark);
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+}
+
+/* Logo styles */
+.site-header .logo {
+    display: flex;
+    align-items: center;
+}
+
+.site-header .logo img {
+    width: 130px;
+    height: auto;
+    display: block;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+}
+
+.nav-links {
+    display: flex;
+    list-style: none;
+    align-items: center;
+}
+
+.nav-links li {
+    margin: 0 10px;
+}
+
+.nav-links a {
+    position: relative;
+    color: var(--light);
+    font-weight: 500;
+    font-size: 16px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    transition: color 0.3s ease, transform 0.3s ease;
+    text-decoration: none;
+}
+
+.nav-links a::after {
+    content: "";
+    position: absolute;
+    bottom: 4px;
+    left: 50%;
+    transform: translateX(-50%) scaleX(0);
+    transform-origin: center;
+    width: 70%;
+    height: 2px;
+    background: var(--primary);
+    transition: transform 0.35s ease;
+    border-radius: 2px;
+}
+
+.nav-links a:hover {
+    color: var(--primary);
+    transform: translateY(-2px);
+    text-shadow: 0 0 10px rgba(0, 191, 255, 0.3);
+}
+
+.nav-links a:hover::after {
+    transform: translateX(-50%) scaleX(1);
+}
+
+.nav-links a.active {
+    color: var(--primary);
+}
+
+.hamburger {
+    display: none;
+    cursor: pointer;
+    font-size: 24px;
+    color: var(--light);
+}
+
+/* Container */
+.container {
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 clamp(16px, 5vw, 32px);
+}
+
+/* Admin Panel Styles */
+.admin-panel {
+    margin-top: 100px;
+    padding: 40px 0;
+}
+
+.admin-panel h1 {
+    font-size: clamp(1.75rem, 5vw, 2.5rem);
+    font-weight: 400;
+    margin-bottom: 10px;
+    color: white;
+}
+
+.admin-panel > p {
+    font-size: clamp(0.9rem, 3.5vw, 1.1rem);
+    opacity: 0.8;
+    margin-bottom: 30px;
+}
+
+.calendar-section {
+    background: rgba(28, 28, 28, 0.7);
+    padding: 30px;
+    border-radius: 10px;
+    margin-bottom: 30px;
+}
+
+.calendar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    font-size: clamp(1.2rem, 4vw, 1.5rem);
+    color: var(--primary);
+}
+
+.month-nav {
+    display: flex;
+    gap: 10px;
+}
+
+.month-nav button {
+    background: rgba(255, 255, 255, 0.1);
+    border: 2px solid var(--primary);
+    color: var(--light);
+    padding: 8px 15px;
+    cursor: pointer;
+    border-radius: 5px;
+    transition: all 0.3s ease;
+    font-size: 16px;
+}
+
+.month-nav button:hover {
+    background-color: var(--primary);
+    color: var(--dark);
+    transform: translateY(-2px);
+}
+
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.weekday-name {
+    font-weight: bold;
+    text-align: center;
+    padding: 10px 5px;
+    color: var(--primary);
+    font-size: clamp(0.85rem, 2.5vw, 1rem);
+}
+
+.calendar-day {
+    text-align: center;
+    padding: clamp(10px, 3vw, 15px) 5px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.2s;
+    position: relative;
+    color: var(--light);
+    font-size: clamp(0.9rem, 2.5vw, 1rem);
+}
+
+.calendar-day.empty {
+    visibility: hidden;
+    border: none;
+    cursor: default;
+}
+
+.calendar-day:hover:not(.empty) {
+    background-color: rgba(0, 110, 255, 0.2);
+    transform: scale(1.05);
+}
+
+.calendar-day.selected {
+    background-color: var(--primary);
+    color: var(--dark);
+    font-weight: bold;
+}
+
+.time-slots-container {
+    margin-top: 20px;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+}
+
+.time-slots-container h3 {
+    margin-bottom: 15px;
+    color: var(--primary);
+    font-size: clamp(1rem, 3vw, 1.2rem);
+}
+
+.time-slots {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.time-slots button {
+    padding: 10px 15px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: all 0.3s ease;
+    font-size: clamp(0.85rem, 2.5vw, 1rem);
+}
+
+.time-slots button.available {
+    background-color: #33aaff;
+    color: #fff;
+}
+
+.time-slots button.available:hover {
+    background-color: #1e8cd8;
+    transform: translateY(-2px);
+}
+
+.time-slots button.unavailable {
+    background-color: #ff3333;
+    color: #fff;
+}
+
+.time-slots button.unavailable:hover {
+    background-color: #cc0000;
+    transform: translateY(-2px);
+}
+
+.booking-list {
+    background: rgba(28, 28, 28, 0.7);
+    padding: 30px;
+    border-radius: 10px;
+}
+
+.booking-list h2 {
+    margin-bottom: 20px;
+    color: white;
+    font-size: clamp(1.5rem, 4vw, 2rem);
+    font-weight: 400;
+}
+
+.booking-list ul {
+    list-style: none;
+    padding: 0;
+}
+
+.booking-list li {
+    background: rgba(255, 255, 255, 0.05);
+    margin-bottom: 15px;
+    padding: 20px;
+    border-radius: 8px;
+    border-left: 3px solid var(--primary);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.booking-list li:hover {
+    transform: translateX(5px);
+    box-shadow: 0 5px 15px rgba(0, 110, 255, 0.2);
+}
+
+/* Tablet navigation (hamburger menu) */
+@media (max-width: 1024px) {
+    header {
+        padding: 14px 5%;
+    }
+
+    .nav-links {
+        position: fixed;
+        top: 72px;
+        right: 5%;
+        width: min(340px, 80vw);
+        background: rgba(28, 28, 28, 0.95);
+        flex-direction: column;
+        align-items: flex-start;
+        padding: 18px 20px;
+        gap: 8px;
+        border-radius: 12px;
+        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+        transform: translateX(110%);
+        opacity: 0;
+        transition: transform 0.35s ease, opacity 0.35s ease;
+        z-index: 999;
+    }
+
+    .nav-links.active {
+        transform: translateX(0);
+        opacity: 1;
+    }
+
+    .nav-links li {
+        width: 100%;
+        margin: 4px 0;
+    }
+
+    .nav-links a {
+        display: block;
+        width: 100%;
+        padding: 10px 12px;
+    }
+
+    .hamburger {
+        display: block;
+    }
+}
+
+/* Mobile Responsive - 480px to 600px */
+@media (max-width: 600px) {
+    .container {
+        padding: 0 15px;
+    }
+
+    header {
+        padding: 10px 4%;
+    }
+
+    .site-header .logo img {
+        width: clamp(100px, 25vw, 130px);
+    }
+
+    .admin-panel {
+        margin-top: 80px;
+        padding: 20px 0;
+    }
+
+    .calendar-section,
+    .booking-list {
+        padding: 20px;
+    }
+
+    .calendar-grid {
+        gap: 5px;
+    }
+
+    .calendar-day {
+        padding: 8px 3px;
+        font-size: 0.85rem;
+    }
+
+    .weekday-name {
+        padding: 8px 3px;
+        font-size: 0.8rem;
+    }
+
+    .time-slots {
+        gap: 8px;
+    }
+
+    .time-slots button {
+        padding: 8px 12px;
+        font-size: 0.85rem;
+    }
+}
+
+/* Mobile Responsive - 414px to 480px */
+@media (max-width: 480px) {
+    header {
+        padding: 8px 3%;
+    }
+
+    .site-header .logo img {
+        width: clamp(90px, 22vw, 120px);
+    }
+
+    .hamburger {
+        font-size: 20px;
+        padding: 0;
+        margin: 0;
+        line-height: 1;
+    }
+
+    .nav-links a {
+        padding: 4px 8px;
+        font-size: 14px;
+    }
+
+    .admin-panel {
+        margin-top: 70px;
+        padding: 15px 0;
+    }
+
+    .admin-panel h1 {
+        font-size: 1.5rem;
+    }
+
+    .admin-panel > p {
+        font-size: 0.9rem;
+    }
+
+    .calendar-section,
+    .booking-list {
+        padding: 15px;
+    }
+
+    .calendar-header {
+        font-size: 1.1rem;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .month-nav button {
+        padding: 6px 12px;
+        font-size: 14px;
+    }
+
+    .calendar-grid {
+        gap: 4px;
+    }
+
+    .calendar-day {
+        padding: 6px 2px;
+        font-size: 0.8rem;
+    }
+
+    .weekday-name {
+        padding: 6px 2px;
+        font-size: 0.75rem;
+    }
+
+    .time-slots-container {
+        padding: 15px;
+    }
+
+    .time-slots-container h3 {
+        font-size: 1rem;
+    }
+
+    .time-slots {
+        gap: 6px;
+    }
+
+    .time-slots button {
+        padding: 6px 10px;
+        font-size: 0.8rem;
+    }
+
+    .booking-list h2 {
+        font-size: 1.3rem;
+    }
+
+    .booking-list li {
+        padding: 15px;
+    }
+}
+
+/* Mobile Responsive - 339px to 380px */
+@media (max-width: 380px) {
+    header {
+        padding: 6px 2%;
+    }
+
+    .site-header .logo img {
+        width: clamp(80px, 20vw, 100px);
+    }
+
+    .admin-panel {
+        margin-top: 60px;
+        padding: 10px 0;
+    }
+
+    .admin-panel h1 {
+        font-size: 1.3rem;
+    }
+
+    .admin-panel > p {
+        font-size: 0.85rem;
+    }
+
+    .calendar-section,
+    .booking-list {
+        padding: 12px;
+    }
+
+    .calendar-header {
+        font-size: 1rem;
+    }
+
+    .month-nav button {
+        padding: 5px 10px;
+        font-size: 12px;
+    }
+
+    .calendar-grid {
+        gap: 3px;
+    }
+
+    .calendar-day {
+        padding: 5px 1px;
+        font-size: 0.75rem;
+    }
+
+    .weekday-name {
+        padding: 5px 1px;
+        font-size: 0.7rem;
+    }
+
+    .time-slots-container {
+        padding: 12px;
+    }
+
+    .time-slots-container h3 {
+        font-size: 0.9rem;
+    }
+
+    .time-slots {
+        gap: 5px;
+    }
+
+    .time-slots button {
+        padding: 5px 8px;
+        font-size: 0.75rem;
+    }
+
+    .booking-list h2 {
+        font-size: 1.1rem;
+    }
+
+    .booking-list li {
+        padding: 12px;
+        font-size: 0.85rem;
+    }
+}
+
+/* Mobile Responsive - 339px and below */
+@media (max-width: 339px) {
+    header {
+        padding: 5px 1%;
+    }
+
+    .site-header .logo img {
+        width: clamp(70px, 18vw, 90px);
+    }
+
+    .hamburger {
+        font-size: 18px;
+    }
+
+    .admin-panel {
+        margin-top: 55px;
+    }
+
+    .admin-panel h1 {
+        font-size: 1.2rem;
+    }
+
+    .calendar-day,
+    .weekday-name {
+        font-size: 0.7rem;
+    }
+
+    .time-slots button {
+        padding: 4px 6px;
+        font-size: 0.7rem;
+    }
+}
+

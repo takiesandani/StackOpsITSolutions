@@ -3,161 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Panel | CyberShield</title>
-    <link rel="stylesheet" href="css/consultation.css">
+    <title>Admin Panel | StackOps IT Solutions</title>
+    <link rel="stylesheet" href="css/admin.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        /* Admin-specific Styles for a proper calendar look */
-        .admin-panel {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-            padding: 20px;
-        }
-
-        .calendar-section {
-            background: rgba(0, 0, 0, 0.2);
-            padding: 20px;
-            border-radius: 8px;
-        }
-
-        .calendar-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            font-size: 1.5rem;
-            color: var(--primary);
-        }
-
-        .month-nav button {
-            background: none;
-            border: 1px solid var(--gray);
-            color: var(--light);
-            padding: 5px 10px;
-            cursor: pointer;
-            border-radius: 5px;
-            transition: background-color 0.3s;
-        }
-        
-        .month-nav button:hover {
-            background-color: var(--primary);
-            color: var(--dark);
-        }
-
-        .calendar-grid {
-            display: grid;
-            grid-template-columns: repeat(7, 1fr);
-            gap: 10px;
-        }
-
-        .weekday-name {
-            font-weight: bold;
-            text-align: center;
-            padding: 5px;
-            color: var(--primary);
-        }
-        
-        .calendar-day {
-            text-align: center;
-            padding: 15px 5px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 5px;
-            cursor: pointer;
-            transition: background-color 0.2s, transform 0.2s;
-            position: relative;
-        }
-
-        .calendar-day.empty {
-            visibility: hidden;
-            border: none;
-        }
-
-        .calendar-day:hover {
-            background-color: rgba(255, 255, 255, 0.1);
-            transform: scale(1.05);
-        }
-
-        .calendar-day.selected {
-            background-color: var(--primary);
-            color: var(--dark);
-            font-weight: bold;
-        }
-
-        .time-slots-container {
-            margin-top: 20px;
-            padding: 20px;
-            background: rgba(0, 0, 0, 0.2);
-            border-radius: 8px;
-        }
-
-        .time-slots-container h3 {
-            margin-bottom: 10px;
-            color: var(--primary);
-        }
-
-        .time-slots {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-        
-        .time-slots button {
-            padding: 10px 15px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: bold;
-            transition: background-color 0.3s;
-        }
-
-        .time-slots button.available {
-            background-color: #33aaff; /* A friendly blue */
-            color: #fff;
-        }
-
-        .time-slots button.unavailable {
-            background-color: #ff3333; /* A friendly red */
-            color: #fff;
-        }
-        
-        .booking-list {
-            background: rgba(0, 0, 0, 0.2);
-            padding: 20px;
-            border-radius: 8px;
-        }
-
-        .booking-list h2 {
-            margin-bottom: 15px;
-        }
-
-        .booking-list ul {
-            list-style: none;
-            padding: 0;
-        }
-
-        .booking-list li {
-            background: rgba(255, 255, 255, 0.05);
-            margin-bottom: 10px;
-            padding: 15px;
-            border-radius: 5px;
-        }
-    </style>
 </head>
 <body>
-        
     <div class="background"></div>
-    <header  class="site-header">
+    
+    <header class="site-header">
         <a href="/" class="logo">
-            <picture>
-                <source srcset="Images/Logos/RemovedStackOps.webp" type="image/webp">
-                <img src="Images/Logos/RemovedStackOps.png" alt="Stackops IT Solutions Logo" style="width: 200px; height: auto;">
-            </picture>
+            <img src="Images/Logos/RemovedStackOps.png" alt="StackOps IT Solutions Logo">
         </a>
-        <ul class="nav-links">
-            <li><a href="admin.html">Admin Panel</a></li>
+        <div class="hamburger" id="hamburger">
+            <i class="fas fa-bars"></i>
+        </div>
+        <ul class="nav-links" id="nav-links">
+            <li><a href="Admin.html" class="active">Admin Panel</a></li>
             <li><a href="signup.html">Register Client</a></li>
-            <li><a href="signin.html">Sign Out</a></li>
+            <li><a href="#" id="admin-signout">Sign Out</a></li>
         </ul>
     </header>
 
@@ -168,9 +31,13 @@
 
             <div class="calendar-section">
                 <div class="calendar-header">
-                    <button id="prev-month-btn"><i class="fas fa-chevron-left"></i></button>
+                    <div class="month-nav">
+                        <button id="prev-month-btn"><i class="fas fa-chevron-left"></i></button>
+                    </div>
                     <span id="current-month-year"></span>
-                    <button id="next-month-btn"><i class="fas fa-chevron-right"></i></button>
+                    <div class="month-nav">
+                        <button id="next-month-btn"><i class="fas fa-chevron-right"></i></button>
+                    </div>
                 </div>
                 
                 <div class="calendar-grid" id="calendar-grid">
@@ -181,23 +48,72 @@
                     <div class="weekday-name">Thu</div>
                     <div class="weekday-name">Fri</div>
                     <div class="weekday-name">Sat</div>
-                    </div>
+                </div>
 
                 <div class="time-slots-container" id="time-slots-container" style="display: none;">
                     <h3>Manage Times for <span id="selected-date-display"></span></h3>
                     <div class="time-slots" id="admin-time-slots">
-                        </div>
+                    </div>
                 </div>
             </div>
 
             <div class="booking-list">
                 <h2>Current Bookings</h2>
                 <ul id="bookings-list">
-                    </ul>
+                </ul>
             </div>
         </div>
     </div>
     
+    <script>
+        // Hamburger menu toggle
+        const hamburger = document.getElementById('hamburger');
+        const navLinks = document.getElementById('nav-links');
+
+        if (hamburger && navLinks) {
+            hamburger.addEventListener('click', () => {
+                navLinks.classList.toggle('active');
+                hamburger.innerHTML = navLinks.classList.contains('active') ? 
+                    '<i class="fas fa-times"></i>' : '<i class="fas fa-bars"></i>';
+            });
+
+            // Close mobile menu when clicking on a link
+            document.querySelectorAll('.nav-links a').forEach(link => {
+                link.addEventListener('click', () => {
+                    if (navLinks.classList.contains('active')) {
+                        navLinks.classList.remove('active');
+                        hamburger.innerHTML = '<i class="fas fa-bars"></i>';
+                    }
+                });
+            });
+        }
+
+        // Admin sign-out: clear auth token and redirect home
+        const adminSignout = document.getElementById('admin-signout');
+        if (adminSignout) {
+            adminSignout.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (!confirm('Are you sure you want to sign out?')) return;
+
+                // Clear backend JWT token
+                localStorage.removeItem('authToken');
+
+                // Clear any session storage used elsewhere
+                sessionStorage.clear();
+
+                // Redirect to public home page
+                window.location.href = 'Home.html';
+            });
+        }
+
+        // Sticky header on scroll
+        window.addEventListener('scroll', function() {
+            const header = document.querySelector('header');
+            if (header) {
+                header.classList.toggle('sticky', window.scrollY > 0);
+            }
+        });
+    </script>
     <script src="js/admin.js"></script>
 </body>
 </html>
