@@ -281,6 +281,14 @@
     box-sizing: border-box;
 }
 
+/* Compact header on small phones */
+@media (max-width: 600px) {
+    .site-header {
+        padding: 8px 16px;
+        gap: 16px;
+    }
+}
+
 .site-header .logo {
     flex-shrink: 0;
 }
@@ -288,6 +296,14 @@
 .site-header .logo img {
     width: 130px;
     height: auto;
+}
+
+/* Match Home page logo sizing on small phones */
+@media (max-width: 600px) {
+    .site-header .logo img {
+        width: clamp(96px, 28vw, 132px);
+        max-width: 48vw;
+    }
 }
 
 .site-header .header-info {

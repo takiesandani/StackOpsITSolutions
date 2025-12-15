@@ -190,11 +190,31 @@ header.sticky {
     box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
 }
 
+/* Compact header on small phones */
+@media (max-width: 600px) {
+    header {
+        padding: 8px 5%;
+    }
+
+    .nav-links a {
+        padding: 4px 8px;
+        font-size: 14px;
+    }
+}
+
 /* Logo styles */
 .site-header .logo img {
     width: 130px;
     height: auto;
     display: block;
+}
+
+/* Match Home page logo sizing on small phones */
+@media (max-width: 600px) {
+    .site-header .logo img {
+        width: clamp(96px, 28vw, 132px);
+        max-width: 48vw;
+    }
 }
 
 /* New style to control the logo container height */
@@ -730,36 +750,54 @@ footer a:hover {
     opacity: 0.7;
 }
 
-@media (max-width: 768px) {
+/* Tablet & mobile navigation: show hamburger and slide-in menu */
+@media (max-width: 1024px) {
     .hamburger {
         display: block;
     }
-    
+
     .nav-links {
         position: fixed;
-        top: 80px;
-        left: -100%;
-        width: 100%;
-        height: calc(100vh - 80px);
-        background: var(--dark);
+        top: 72px;
+        right: 5%;
+        width: min(340px, 80vw);
+        height: auto;
+        max-height: calc(100vh - 90px);
+        background: rgba(0, 0, 0, 0.95);
         flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        transition: 0.5s;
+        justify-content: flex-start;
+        align-items: flex-start;
+        padding: 16px 20px;
+        gap: 6px;
+        border-radius: 12px;
+        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+        transform: translateX(110%);
+        opacity: 0;
+        transition: transform 0.35s ease, opacity 0.35s ease;
+        z-index: 999;
     }
-    
+
     .nav-links.active {
-        left: 0;
+        transform: translateX(0);
+        opacity: 1;
+        left: auto;
     }
-    
+
     .nav-links li {
-        margin: 15px 0;
+        margin: 4px 0;
+        width: 100%;
     }
-    
+
+    .nav-links a {
+        display: block;
+        width: 100%;
+        padding: 10px 12px;
+    }
+
     .consultation-container {
         flex-direction: column;
     }
-    
+
     .time-slots {
         grid-template-columns: repeat(2, 1fr);
     }
@@ -802,9 +840,18 @@ form .glow-wrap {
   transition: transform 0.2s ease;
 }
 
-/* Full-width form buttons */
+/* Full-width form buttons (default for desktop and mobile) */
 form .glow-wrap[style*="width: 100%"] {
   width: 100% !important;
+}
+
+/* Tablet-only: shrink consultation CTA to 40% and center it */
+@media (min-width: 768px) and (max-width: 1024px) {
+  form .glow-wrap[style*="width: 100%"] {
+    width: 25% !important;
+    margin-left: 0 !important;
+    margin-right: auto !important;
+  }
 }
 
 form .glow-wrap:hover {
