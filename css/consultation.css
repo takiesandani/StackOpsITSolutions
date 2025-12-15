@@ -191,29 +191,34 @@ header.sticky {
 }
 
 /* Compact header on small phones */
-@media (max-width: 600px) {
+@media (max-width: 480px) {
     header {
-        padding: 8px 5%;
+        padding: 0.8rem 1.2rem;
     }
 
     .nav-links a {
         padding: 4px 8px;
         font-size: 14px;
     }
+
+    .Shop {
+        height: 22px;
+        margin-top: 0;
+    }
+    .hamburger {
+        font-size: 20px;
+        padding: 0;
+        margin: 0;
+        line-height: 1;
+      }
 }
 
-/* Logo styles */
-.site-header .logo img {
-    width: 130px;
-    height: auto;
-    display: block;
-}
 
 /* Match Home page logo sizing on small phones */
-@media (max-width: 600px) {
+@media (max-width: 480px) {
     .site-header .logo img {
-        width: clamp(96px, 28vw, 132px);
-        max-width: 48vw;
+        width: clamp(120px, 48vw, 150px);
+        max-width: 20vw;
     }
 }
 
