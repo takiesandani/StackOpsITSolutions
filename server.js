@@ -616,6 +616,7 @@ app.post('/api/admin/register-client', async (req, res) => {
         
         if (registrationSuccessful) {
             const loginLink = "https://stackopsit.co.za/ClientPortal.html";
+            const forgotPasswordLink = "https://stackopsit.co.za/forgot-password.html";
             const emailBody = `
                 <!DOCTYPE html>
                 <html>
@@ -628,9 +629,13 @@ app.post('/api/admin/register-client', async (req, res) => {
                     .content { padding: 20px 0; }
                     .credentials { background-color: #e9e9e9; padding: 15px; border-left: 5px solid #007bff; margin: 20px 0; }
                     .credentials p { margin: 5px 0; }
+                    .password-display { font-family: monospace; font-size: 1.1em; font-weight: bold; color: #007bff; }
+                    .important-note { background-color: #fff3cd; padding: 15px; border-left: 5px solid #ffc107; margin: 20px 0; border-radius: 4px; }
+                    .important-note p { margin: 5px 0; }
                     .footer { text-align: center; font-size: 0.8em; color: #888; margin-top: 20px; border-top: 1px solid #eee; padding-top: 10px; }
                     a { color: #007bff; text-decoration: none; }
                     .button { display: inline-block; padding: 10px 20px; margin-top: 15px; background-color: #007bff; color: white !important; text-decoration: none; border-radius: 5px; }
+                    .button-secondary { display: inline-block; padding: 10px 20px; margin-top: 15px; background-color: #6c757d; color: white !important; text-decoration: none; border-radius: 5px; }
                     </style>
                 </head>
                 <body>
@@ -644,10 +649,15 @@ app.post('/api/admin/register-client', async (req, res) => {
                             <p>You can use the following credentials to log in:</p>
                             <div class="credentials">
                                 <p><strong>Email:</strong> ${email}</p>
-                                <p><strong>Password:</strong> The password you provided during registration (please change it immediately after first login).</p>
+                                <p><strong>Password:</strong> <span class="password-display">${password}</span></p>
+                            </div>
+                            <div class="important-note">
+                                <p><strong>Important:</strong> Your password has been auto-generated. For security reasons, we strongly recommend that you reset your password after your first login using the "Forgot Password" feature.</p>
                             </div>
                             <p>Click here to get started:</p>
                             <p><a href="${loginLink}" class="button">Client Portal Login</a></p>
+                            <p style="margin-top: 20px;">To reset your password, you can use the forgot password feature:</p>
+                            <p><a href="${forgotPasswordLink}" class="button-secondary">Reset Password</a></p>
                             <p>If you have any questions, please do not hesitate to contact us.</p>
                             <p>Best regards,<br>The StackOps IT Team</p>
                         </div>
@@ -918,6 +928,345 @@ app.post('/api/contact-message', async (req, res) => {
     } catch (error) {
         console.error('Contact message error:', error);
         res.status(500).json({ success: false, message: 'Failed to send message.' });
+    }
+});
+
+// ============================================
+// ADMIN API ENDPOINTS - INVOICES & MANAGEMENT
+// ============================================
+
+// Get all companies
+app.get('/api/admin/companies', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        const [companies] = await pool.query('SELECT * FROM Companies ORDER BY CompanyName');
+        res.json(companies);
+    } catch (error) {
+        console.error('Error fetching companies:', error);
+        res.status(500).json({ error: 'Failed to fetch companies' });
+    }
+});
+
+// Get company by ID
+app.get('/api/admin/companies/:id', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        const [companies] = await pool.query('SELECT * FROM Companies WHERE ID = ?', [req.params.id]);
+        if (companies.length === 0) {
+            return res.status(404).json({ error: 'Company not found' });
+        }
+        res.json(companies[0]);
+    } catch (error) {
+        console.error('Error fetching company:', error);
+        res.status(500).json({ error: 'Failed to fetch company' });
+    }
+});
+
+// Get clients (users) - optionally filtered by company
+app.get('/api/admin/clients', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        let query = `
+            SELECT u.id, u.firstname, u.lastname, u.email, u.contact, u.role, u.isactive, 
+                   c.CompanyName, c.ID as CompanyID
+            FROM Users u
+            LEFT JOIN Companies c ON u.companyid = c.ID
+        `;
+        const params = [];
+        
+        if (req.query.companyId) {
+            query += ' WHERE u.companyid = ?';
+            params.push(req.query.companyId);
+        }
+        
+        query += ' ORDER BY u.lastname, u.firstname';
+        const [clients] = await pool.query(query, params);
+        res.json(clients);
+    } catch (error) {
+        console.error('Error fetching clients:', error);
+        res.status(500).json({ error: 'Failed to fetch clients' });
+    }
+});
+
+// Get invoices - optionally filtered by company or client
+app.get('/api/admin/invoices', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        let query = `
+            SELECT i.*, 
+                   c.CompanyName
+            FROM Invoices i
+            LEFT JOIN Companies c ON i.CompanyID = c.ID
+            WHERE 1=1
+        `;
+        const params = [];
+        
+        if (req.query.companyId) {
+            query += ' AND i.CompanyID = ?';
+            params.push(req.query.companyId);
+        }
+        
+        query += ' ORDER BY i.InvoiceDate DESC';
+        const [invoices] = await pool.query(query, params);
+        
+        // Get client names for each invoice (from Users table based on CompanyID)
+        for (let invoice of invoices) {
+            const [users] = await pool.query(
+                'SELECT CONCAT(firstname, " ", lastname) as ClientName FROM Users WHERE companyid = ? LIMIT 1',
+                [invoice.CompanyID]
+            );
+            invoice.ClientName = users[0]?.ClientName || '-';
+        }
+        
+        res.json(invoices);
+    } catch (error) {
+        console.error('Error fetching invoices:', error);
+        res.status(500).json({ error: 'Failed to fetch invoices' });
+    }
+});
+
+// Create invoice
+app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        const { CompanyID, InvoiceDate, DueDate, TotalAmount, Status } = req.body;
+        
+        // Get next invoice number
+        const [maxInvoice] = await pool.query('SELECT MAX(InvoiceNumber) as maxNum FROM Invoices');
+        const nextInvoiceNumber = (maxInvoice[0]?.maxNum || 0) + 1;
+        
+        const [result] = await pool.query(
+            `INSERT INTO Invoices (CompanyID, InvoiceDate, DueDate, TotalAmount, Status, InvoiceNumber)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [CompanyID, InvoiceDate, DueDate, TotalAmount, Status || 'Pending', nextInvoiceNumber]
+        );
+        
+        res.json({ InvoiceID: result.insertId, InvoiceNumber: nextInvoiceNumber });
+    } catch (error) {
+        console.error('Error creating invoice:', error);
+        res.status(500).json({ error: 'Failed to create invoice' });
+    }
+});
+
+// Get invoice items
+app.get('/api/admin/invoice-items/:invoiceId', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        const [items] = await pool.query(
+            'SELECT * FROM InvoiceItems WHERE InvoiceID = ?',
+            [req.params.invoiceId]
+        );
+        res.json(items);
+    } catch (error) {
+        console.error('Error fetching invoice items:', error);
+        res.status(500).json({ error: 'Failed to fetch invoice items' });
+    }
+});
+
+// Create invoice item
+app.post('/api/admin/invoice-items', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        const { InvoiceID, Description, Quantity, UnitPrice } = req.body;
+        
+        const [result] = await pool.query(
+            `INSERT INTO InvoiceItems (InvoiceID, Description, Quantity, UnitPrice)
+             VALUES (?, ?, ?, ?)`,
+            [InvoiceID, Description, Quantity, UnitPrice]
+        );
+        
+        // Update invoice total
+        const [items] = await pool.query(
+            'SELECT SUM(Amount) as total FROM InvoiceItems WHERE InvoiceID = ?',
+            [InvoiceID]
+        );
+        const totalAmount = items[0]?.total || 0;
+        await pool.query(
+            'UPDATE Invoices SET TotalAmount = ? WHERE InvoiceID = ?',
+            [totalAmount, InvoiceID]
+        );
+        
+        res.json({ ItemID: result.insertId });
+    } catch (error) {
+        console.error('Error creating invoice item:', error);
+        res.status(500).json({ error: 'Failed to create invoice item' });
+    }
+});
+
+// Get payments
+app.get('/api/admin/payments', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        let query = `
+            SELECT p.*, i.InvoiceNumber, i.CompanyID,
+                   CONCAT(u.firstname, ' ', u.lastname) as ClientName,
+                   c.CompanyName
+            FROM Payments p
+            LEFT JOIN Invoices i ON p.InvoiceID = i.InvoiceID
+            LEFT JOIN Companies c ON i.CompanyID = c.ID
+            LEFT JOIN Users u ON i.CompanyID = (SELECT companyid FROM Users WHERE id = u.id LIMIT 1)
+            WHERE 1=1
+        `;
+        const params = [];
+        
+        if (req.query.invoiceId) {
+            query += ' AND p.InvoiceID = ?';
+            params.push(req.query.invoiceId);
+        }
+        
+        query += ' ORDER BY p.PaymentDate DESC';
+        const [payments] = await pool.query(query, params);
+        res.json(payments);
+    } catch (error) {
+        console.error('Error fetching payments:', error);
+        res.status(500).json({ error: 'Failed to fetch payments' });
+    }
+});
+
+// Create payment
+app.post('/api/admin/payments', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        const { InvoiceID, AmountPaid, PaymentDate, Method } = req.body;
+        
+        const [result] = await pool.query(
+            `INSERT INTO Payments (InvoiceID, AmountPaid, PaymentDate, Method)
+             VALUES (?, ?, ?, ?)`,
+            [InvoiceID, AmountPaid, PaymentDate || new Date().toISOString().split('T')[0], Method]
+        );
+        
+        // Check if invoice is fully paid
+        const [invoice] = await pool.query('SELECT TotalAmount FROM Invoices WHERE InvoiceID = ?', [InvoiceID]);
+        const [payments] = await pool.query(
+            'SELECT SUM(AmountPaid) as totalPaid FROM Payments WHERE InvoiceID = ?',
+            [InvoiceID]
+        );
+        
+        const totalPaid = parseFloat(payments[0]?.totalPaid || 0);
+        const totalAmount = parseFloat(invoice[0]?.TotalAmount || 0);
+        
+        // Update invoice status
+        let status = 'Pending';
+        if (totalPaid >= totalAmount) {
+            status = 'Paid';
+        } else if (totalPaid > 0) {
+            status = 'Partially Paid';
+        }
+        
+        await pool.query('UPDATE Invoices SET Status = ? WHERE InvoiceID = ?', [status, InvoiceID]);
+        
+        res.json({ PaymentID: result.insertId });
+    } catch (error) {
+        console.error('Error creating payment:', error);
+        res.status(500).json({ error: 'Failed to create payment' });
+    }
+});
+
+// Get projects (if Projects table exists)
+app.get('/api/admin/projects', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        // Check if Projects table exists
+        const [tables] = await pool.query(
+            "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'Projects'",
+            ['consultation_db']
+        );
+        
+        if (tables.length === 0) {
+            return res.json([]); // Return empty array if table doesn't exist
+        }
+        
+        let query = `
+            SELECT p.*, c.CompanyName,
+                   CONCAT(u.firstname, ' ', u.lastname) as AssignedToName
+            FROM Projects p
+            LEFT JOIN Companies c ON p.CompanyID = c.ID
+            LEFT JOIN Users u ON p.AssignedTo = u.id
+            WHERE 1=1
+        `;
+        const params = [];
+        
+        if (req.query.companyId) {
+            query += ' AND p.CompanyID = ?';
+            params.push(req.query.companyId);
+        }
+        
+        query += ' ORDER BY p.DueDate DESC';
+        const [projects] = await pool.query(query, params);
+        res.json(projects);
+    } catch (error) {
+        console.error('Error fetching projects:', error);
+        res.status(500).json({ error: 'Failed to fetch projects' });
+    }
+});
+
+// Get company details with all related data
+app.get('/api/admin/companies/:id/details', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        const companyId = req.params.id;
+        
+        // Get company info
+        const [companies] = await pool.query('SELECT * FROM Companies WHERE ID = ?', [companyId]);
+        if (companies.length === 0) {
+            return res.status(404).json({ error: 'Company not found' });
+        }
+        
+        const company = companies[0];
+        
+        // Get clients
+        const [clients] = await pool.query(
+            'SELECT * FROM Users WHERE companyid = ?',
+            [companyId]
+        );
+        
+        // Get invoices
+        const [invoices] = await pool.query(
+            'SELECT * FROM Invoices WHERE CompanyID = ? ORDER BY InvoiceDate DESC',
+            [companyId]
+        );
+        
+        // Get payments
+        const [payments] = await pool.query(
+            `SELECT p.*, i.InvoiceNumber 
+             FROM Payments p
+             JOIN Invoices i ON p.InvoiceID = i.InvoiceID
+             WHERE i.CompanyID = ?
+             ORDER BY p.PaymentDate DESC`,
+            [companyId]
+        );
+        
+        res.json({
+            company,
+            clients,
+            invoices,
+            payments
+        });
+    } catch (error) {
+        console.error('Error fetching company details:', error);
+        res.status(500).json({ error: 'Failed to fetch company details' });
     }
 });
 

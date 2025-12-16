@@ -18,7 +18,8 @@
             <i class="fas fa-bars"></i>
         </div>
         <ul class="nav-links" id="nav-links">
-            <li><a href="Admin.html" class="active">Admin Panel</a></li>
+            <li><a href="Admin.html" class="active">Calendar</a></li>
+            <li><a href="admin-dashboard.html">Dashboard</a></li>
             <li><a href="signup.html">Register Client</a></li>
             <li><a href="#" id="admin-signout">Sign Out</a></li>
         </ul>
@@ -26,8 +27,15 @@
 
     <div class="container">
         <div class="admin-panel">
-            <h1>Admin Panel</h1>
-            <p>Manage consultation availability and view booked appointments.</p>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px;">
+                <div>
+                    <h1>Admin Panel - Calendar</h1>
+                    <p>Manage consultation availability and view booked appointments.</p>
+                </div>
+                <a href="admin-dashboard.html" class="btn btn-primary" style="text-decoration: none;">
+                    <i class="fas fa-chart-line"></i> Go to Dashboard
+                </a>
+            </div>
 
             <div class="calendar-section">
                 <div class="calendar-header">

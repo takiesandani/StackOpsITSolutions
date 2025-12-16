@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Invoice - Step 3 | StackOps IT Solutions</title>
+    <link rel="stylesheet" href="css/admin.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="background"></div>
+    
+    <header class="site-header">
+        <a href="/" class="logo">
+            <img src="Images/Logos/RemovedStackOps.png" alt="StackOps IT Solutions Logo">
+        </a>
+        <div class="hamburger" id="hamburger">
+            <i class="fas fa-bars"></i>
+        </div>
+        <ul class="nav-links" id="nav-links">
+            <li><a href="Admin.html">Calendar</a></li>
+            <li><a href="admin-dashboard.html">Dashboard</a></li>
+            <li><a href="signup.html">Register Client</a></li>
+            <li><a href="#" id="admin-signout">Sign Out</a></li>
+        </ul>
+    </header>
+
+    <div class="admin-container">
+        <aside class="admin-sidebar" id="admin-sidebar">
+            <div class="sidebar-header">
+                <h2>Admin Panel</h2>
+                <button class="sidebar-toggle" id="sidebar-toggle">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="admin-dashboard.html" class="nav-item">
+                    <i class="fas fa-chart-line"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="admin-companies.html" class="nav-item">
+                    <i class="fas fa-building"></i>
+                    <span>Companies</span>
+                </a>
+                <a href="admin-clients.html" class="nav-item">
+                    <i class="fas fa-users"></i>
+                    <span>Clients</span>
+                </a>
+                <a href="admin-projects.html" class="nav-item">
+                    <i class="fas fa-project-diagram"></i>
+                    <span>Projects</span>
+                </a>
+                <a href="admin-invoices.html" class="nav-item active">
+                    <i class="fas fa-file-invoice-dollar"></i>
+                    <span>Invoices</span>
+                </a>
+                <a href="admin-payments.html" class="nav-item">
+                    <i class="fas fa-credit-card"></i>
+                    <span>Payments</span>
+                </a>
+            </nav>
+        </aside>
+
+        <main class="admin-main">
+            <div class="mobile-sidebar-toggle" id="mobile-sidebar-toggle">
+                <i class="fas fa-bars"></i>
+            </div>
+            
+            <div class="admin-content">
+                <div class="page-header">
+                    <button class="btn btn-secondary" onclick="window.location.href='admin-invoice-create-step2.html'">
+                        <i class="fas fa-arrow-left"></i> Back
+                    </button>
+                </div>
+
+                <div class="form-card">
+                    <div class="step-indicator">
+                        <div class="step completed">
+                            <div class="step-number"><i class="fas fa-check"></i></div>
+                            <div class="step-label">Select Client</div>
+                        </div>
+                        <div class="step completed">
+                            <div class="step-number"><i class="fas fa-check"></i></div>
+                            <div class="step-label">Invoice Details</div>
+                        </div>
+                        <div class="step active">
+                            <div class="step-number">3</div>
+                            <div class="step-label">Add Items</div>
+                        </div>
+                    </div>
+
+                    <h2>Step 3: Add Invoice Items</h2>
+                    <div id="invoice-info" class="info-box"></div>
+
+                    <div class="invoice-items-section">
+                        <div class="table-container">
+                            <table class="data-table" id="items-table">
+                                <thead>
+                                    <tr>
+                                        <th>Description</th>
+                                        <th>Quantity</th>
+                                        <th>Unit Price</th>
+                                        <th>Amount</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="items-tbody">
+                                    <tr>
+                                        <td colspan="5" class="text-center">No items added yet. Click "Add Item" to get started.</td>
+                                    </tr>
+                                </tbody>
+                                <tfoot>
+                                    <tr>
+                                        <td colspan="3" class="text-right"><strong>Total Amount:</strong></td>
+                                        <td><strong id="total-amount">R0.00</strong></td>
+                                        <td></td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+
+                        <button type="button" class="btn btn-secondary" id="add-item-btn">
+                            <i class="fas fa-plus"></i> Add Item
+                        </button>
+                    </div>
+
+                    <form id="invoice-items-form">
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-secondary" onclick="window.location.href='admin-invoice-create-step2.html'">Back</button>
+                            <button type="submit" class="btn btn-primary">Create Invoice</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Add Item Modal -->
+    <div id="add-item-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add Invoice Item</h3>
+                <button class="modal-close" id="close-modal">&times;</button>
+            </div>
+            <form id="add-item-form">
+                <div class="form-group">
+                    <label for="item-description">Description *</label>
+                    <input type="text" id="item-description" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label for="item-quantity">Quantity *</label>
+                    <input type="number" id="item-quantity" class="form-input" min="1" step="1" required>
+                </div>
+                <div class="form-group">
+                    <label for="item-unit-price">Unit Price *</label>
+                    <input type="number" id="item-unit-price" class="form-input" min="0" step="0.01" required>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="cancel-item-btn">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Add Item</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="js/admin-invoice-create.js"></script>
+    <script>
+        // Load invoice data from sessionStorage
+        const invoiceData = JSON.parse(sessionStorage.getItem('invoiceData') || '{}');
+        if (!invoiceData.companyId) {
+            window.location.href = 'admin-invoice-create-step1.html';
+        } else {
+            document.getElementById('invoice-info').innerHTML = `
+                <strong>Client:</strong> ${invoiceData.clientName || ''}<br>
+                <strong>Company:</strong> ${invoiceData.companyName || ''}<br>
+                <strong>Invoice Date:</strong> ${invoiceData.invoiceDate || ''}<br>
+                <strong>Due Date:</strong> ${invoiceData.dueDate || ''}
+            `;
+        }
+
+        // Sidebar toggle functionality
+        const sidebar = document.getElementById('admin-sidebar');
+        const sidebarToggle = document.getElementById('sidebar-toggle');
+        const mobileSidebarToggle = document.getElementById('mobile-sidebar-toggle');
+
+        if (sidebarToggle) {
+            sidebarToggle.addEventListener('click', () => {
+                sidebar.classList.toggle('collapsed');
+            });
+        }
+
+        if (mobileSidebarToggle) {
+            mobileSidebarToggle.addEventListener('click', () => {
+                sidebar.classList.toggle('mobile-open');
+            });
+        }
+
+        // Close mobile sidebar when clicking outside
+        document.addEventListener('click', (e) => {
+            if (window.innerWidth <= 1024 && 
+                sidebar.classList.contains('mobile-open') &&
+                !sidebar.contains(e.target) &&
+                !mobileSidebarToggle.contains(e.target)) {
+                sidebar.classList.remove('mobile-open');
+            }
+        });
+
+        // Hamburger menu toggle
+        const hamburger = document.getElementById('hamburger');
+        const navLinks = document.getElementById('nav-links');
+
+        if (hamburger && navLinks) {
+            hamburger.addEventListener('click', () => {
+                navLinks.classList.toggle('active');
+                hamburger.innerHTML = navLinks.classList.contains('active') ? 
+                    '<i class="fas fa-times"></i>' : '<i class="fas fa-bars"></i>';
+            });
+        }
+
+        // Admin sign-out
+        const adminSignout = document.getElementById('admin-signout');
+        if (adminSignout) {
+            adminSignout.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (!confirm('Are you sure you want to sign out?')) return;
+                localStorage.removeItem('authToken');
+                sessionStorage.clear();
+                window.location.href = 'Home.html';
+            });
+        }
+
+        // Sticky header on scroll
+        window.addEventListener('scroll', function() {
+            const header = document.querySelector('header');
+            if (header) {
+                header.classList.toggle('sticky', window.scrollY > 0);
+            }
+        });
+    </script>
+</body>
+</html>
+
