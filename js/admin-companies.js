@@ -49,8 +49,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     window.editCompany = (companyId) => {
-        // TODO: Implement edit company
-        alert('Edit company functionality coming soon');
+        window.location.href = `admin-company-form.html?id=${companyId}`;
     };
 
     loadCompanies();

@@ -90,8 +90,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     window.viewProject = (projectId) => {
-        // TODO: Implement view project
-        alert('View project functionality coming soon');
+        window.location.href = `admin-project-details.html?id=${projectId}`;
     };
 
     if (companyFilter) companyFilter.addEventListener('change', loadProjects);

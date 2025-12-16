@@ -71,8 +71,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     window.viewPayment = (paymentId) => {
-        // TODO: Implement view payment
-        alert('View payment functionality coming soon');
+        // Payment details can be viewed from invoice
+        alert('Payment details are shown in the invoice view. Please view the related invoice.');
     };
 
     if (invoiceFilter) {

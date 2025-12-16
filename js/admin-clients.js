@@ -73,13 +73,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     window.viewClient = (clientId) => {
-        // TODO: Implement view client
-        alert('View client functionality coming soon');
+        window.location.href = `admin-client-view.html?id=${clientId}`;
     };
 
     window.editClient = (clientId) => {
-        // TODO: Implement edit client
-        alert('Edit client functionality coming soon');
+        window.location.href = `admin-client-form.html?id=${clientId}`;
     };
 
     window.createInvoice = (userId, companyId) => {

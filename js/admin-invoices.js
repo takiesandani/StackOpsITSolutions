@@ -93,8 +93,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     window.viewInvoice = (invoiceId) => {
-        // TODO: Implement view invoice details
-        alert('View invoice functionality coming soon');
+        window.location.href = `admin-invoice-view.html?id=${invoiceId}`;
     };
 
     window.addPayment = (invoiceId) => {

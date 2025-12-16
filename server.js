@@ -966,6 +966,77 @@ app.get('/api/admin/companies/:id', authenticateToken, async (req, res) => {
     }
 });
 
+// Get client by ID
+app.get('/api/admin/clients/:id', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        const [clients] = await pool.query(
+            `SELECT u.*, c.CompanyName, c.ID as CompanyID
+             FROM Users u
+             LEFT JOIN Companies c ON u.companyid = c.ID
+             WHERE u.id = ?`,
+            [req.params.id]
+        );
+        if (clients.length === 0) {
+            return res.status(404).json({ error: 'Client not found' });
+        }
+        res.json(clients[0]);
+    } catch (error) {
+        console.error('Error fetching client:', error);
+        res.status(500).json({ error: 'Failed to fetch client' });
+    }
+});
+
+// Create client
+app.post('/api/admin/clients', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        const { companyId, firstName, lastName, email, contact, role, isActive } = req.body;
+        
+        // Generate a default password (user should reset it)
+        const defaultPassword = `@${firstName.substring(0, 3)}${lastName.substring(0, 3)}${new Date().getFullYear()}!`;
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(defaultPassword, salt);
+        
+        const [result] = await pool.query(
+            `INSERT INTO Users (firstname, lastname, email, contact, password, isactive, role, companyid)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [firstName, lastName, email, contact, hashedPassword, isActive || 1, role || 'client', companyId]
+        );
+        
+        res.json({ id: result.insertId });
+    } catch (error) {
+        console.error('Error creating client:', error);
+        res.status(500).json({ error: 'Failed to create client' });
+    }
+});
+
+// Update client
+app.put('/api/admin/clients/:id', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        const { companyId, firstName, lastName, email, contact, role, isActive } = req.body;
+        
+        await pool.query(
+            `UPDATE Users 
+             SET firstname = ?, lastname = ?, email = ?, contact = ?, role = ?, isactive = ?, companyid = ?
+             WHERE id = ?`,
+            [firstName, lastName, email, contact, role, isActive, companyId, req.params.id]
+        );
+        
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error updating client:', error);
+        res.status(500).json({ error: 'Failed to update client' });
+    }
+});
+
 // Get clients (users) - optionally filtered by company
 app.get('/api/admin/clients', authenticateToken, async (req, res) => {
     try {
@@ -1217,6 +1288,217 @@ app.get('/api/admin/projects', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error('Error fetching projects:', error);
         res.status(500).json({ error: 'Failed to fetch projects' });
+    }
+});
+
+// Get project by ID
+app.get('/api/admin/projects/:id', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        // Check if Projects table exists
+        const [tables] = await pool.query(
+            "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'Projects'",
+            ['consultation_db']
+        );
+        
+        if (tables.length === 0) {
+            return res.status(404).json({ error: 'Projects table does not exist' });
+        }
+        
+        const [projects] = await pool.query(
+            `SELECT p.*, c.CompanyName,
+                    CONCAT(u.firstname, ' ', u.lastname) as AssignedToName
+             FROM Projects p
+             LEFT JOIN Companies c ON p.CompanyID = c.ID
+             LEFT JOIN Users u ON p.AssignedTo = u.id
+             WHERE p.ProjectID = ?`,
+            [req.params.id]
+        );
+        
+        if (projects.length === 0) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+        
+        res.json(projects[0]);
+    } catch (error) {
+        console.error('Error fetching project:', error);
+        res.status(500).json({ error: 'Failed to fetch project' });
+    }
+});
+
+// Create project
+app.post('/api/admin/projects', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        // Check if Projects table exists
+        const [tables] = await pool.query(
+            "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'Projects'",
+            ['consultation_db']
+        );
+        
+        if (tables.length === 0) {
+            return res.status(400).json({ error: 'Projects table does not exist. Please create it first.' });
+        }
+        
+        const { ProjectName, CompanyID, AssignedTo, Status, DueDate, Description } = req.body;
+        
+        const [result] = await pool.query(
+            `INSERT INTO Projects (ProjectName, CompanyID, AssignedTo, Status, DueDate, Description)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [ProjectName, CompanyID, AssignedTo, Status || 'Active', DueDate, Description]
+        );
+        
+        res.json({ ProjectID: result.insertId });
+    } catch (error) {
+        console.error('Error creating project:', error);
+        res.status(500).json({ error: 'Failed to create project' });
+    }
+});
+
+// Update project
+app.put('/api/admin/projects/:id', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        const { ProjectName, CompanyID, AssignedTo, Status, DueDate, Description } = req.body;
+        
+        await pool.query(
+            `UPDATE Projects 
+             SET ProjectName = ?, CompanyID = ?, AssignedTo = ?, Status = ?, DueDate = ?, Description = ?
+             WHERE ProjectID = ?`,
+            [ProjectName, CompanyID, AssignedTo, Status, DueDate, Description, req.params.id]
+        );
+        
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error updating project:', error);
+        res.status(500).json({ error: 'Failed to update project' });
+    }
+});
+
+// Get project updates
+app.get('/api/admin/project-updates', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        // Check if ProjectUpdates table exists
+        const [tables] = await pool.query(
+            "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'ProjectUpdates'",
+            ['consultation_db']
+        );
+        
+        if (tables.length === 0) {
+            return res.json([]); // Return empty array if table doesn't exist
+        }
+        
+        let query = 'SELECT * FROM ProjectUpdates WHERE 1=1';
+        const params = [];
+        
+        if (req.query.projectId) {
+            query += ' AND ProjectID = ?';
+            params.push(req.query.projectId);
+        }
+        
+        query += ' ORDER BY UpdateDate DESC';
+        const [updates] = await pool.query(query, params);
+        res.json(updates);
+    } catch (error) {
+        console.error('Error fetching project updates:', error);
+        res.status(500).json({ error: 'Failed to fetch project updates' });
+    }
+});
+
+// Create project update
+app.post('/api/admin/project-updates', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        // Check if ProjectUpdates table exists
+        const [tables] = await pool.query(
+            "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'ProjectUpdates'",
+            ['consultation_db']
+        );
+        
+        if (tables.length === 0) {
+            return res.status(400).json({ error: 'ProjectUpdates table does not exist. Please create it first.' });
+        }
+        
+        const { ProjectID, UpdateText, UpdateDate } = req.body;
+        
+        const [result] = await pool.query(
+            `INSERT INTO ProjectUpdates (ProjectID, UpdateText, UpdateDate)
+             VALUES (?, ?, ?)`,
+            [ProjectID, UpdateText, UpdateDate || new Date().toISOString().split('T')[0]]
+        );
+        
+        res.json({ UpdateID: result.insertId });
+    } catch (error) {
+        console.error('Error creating project update:', error);
+        res.status(500).json({ error: 'Failed to create project update' });
+    }
+});
+
+// Delete project update
+app.delete('/api/admin/project-updates/:id', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        await pool.query('DELETE FROM ProjectUpdates WHERE UpdateID = ?', [req.params.id]);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error deleting project update:', error);
+        res.status(500).json({ error: 'Failed to delete project update' });
+    }
+});
+
+// Get invoice by ID with items
+app.get('/api/admin/invoices/:id', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        const [invoices] = await pool.query(
+            `SELECT i.*, c.CompanyName
+             FROM Invoices i
+             LEFT JOIN Companies c ON i.CompanyID = c.ID
+             WHERE i.InvoiceID = ?`,
+            [req.params.id]
+        );
+        
+        if (invoices.length === 0) {
+            return res.status(404).json({ error: 'Invoice not found' });
+        }
+        
+        const invoice = invoices[0];
+        
+        // Get invoice items
+        const [items] = await pool.query(
+            'SELECT * FROM InvoiceItems WHERE InvoiceID = ?',
+            [req.params.id]
+        );
+        
+        // Get payments
+        const [payments] = await pool.query(
+            'SELECT * FROM Payments WHERE InvoiceID = ? ORDER BY PaymentDate DESC',
+            [req.params.id]
+        );
+        
+        res.json({
+            ...invoice,
+            items,
+            payments
+        });
+    } catch (error) {
+        console.error('Error fetching invoice:', error);
+        res.status(500).json({ error: 'Failed to fetch invoice' });
     }
 });
 

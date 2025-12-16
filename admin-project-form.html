@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Project | StackOps IT Solutions</title>
+    <link rel="stylesheet" href="css/admin.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="background"></div>
+    
+    <header class="site-header">
+        <a href="/" class="logo">
+            <img src="Images/Logos/RemovedStackOps.png" alt="StackOps IT Solutions Logo">
+        </a>
+        <div class="hamburger" id="hamburger">
+            <i class="fas fa-bars"></i>
+        </div>
+        <ul class="nav-links" id="nav-links">
+            <li><a href="Admin.html">Calendar</a></li>
+            <li><a href="admin-dashboard.html">Dashboard</a></li>
+            <li><a href="signup.html">Register Client</a></li>
+            <li><a href="#" id="admin-signout">Sign Out</a></li>
+        </ul>
+    </header>
+
+    <div class="admin-container">
+        <aside class="admin-sidebar" id="admin-sidebar">
+            <div class="sidebar-header">
+                <h2>Admin Panel</h2>
+                <button class="sidebar-toggle" id="sidebar-toggle">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="admin-dashboard.html" class="nav-item">
+                    <i class="fas fa-chart-line"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="admin-companies.html" class="nav-item">
+                    <i class="fas fa-building"></i>
+                    <span>Companies</span>
+                </a>
+                <a href="admin-clients.html" class="nav-item">
+                    <i class="fas fa-users"></i>
+                    <span>Clients</span>
+                </a>
+                <a href="admin-projects.html" class="nav-item active">
+                    <i class="fas fa-project-diagram"></i>
+                    <span>Projects</span>
+                </a>
+                <a href="admin-invoices.html" class="nav-item">
+                    <i class="fas fa-file-invoice-dollar"></i>
+                    <span>Invoices</span>
+                </a>
+                <a href="admin-payments.html" class="nav-item">
+                    <i class="fas fa-credit-card"></i>
+                    <span>Payments</span>
+                </a>
+            </nav>
+        </aside>
+
+        <main class="admin-main">
+            <div class="mobile-sidebar-toggle" id="mobile-sidebar-toggle">
+                <i class="fas fa-bars"></i>
+            </div>
+            
+            <div class="admin-content">
+                <div class="page-header">
+                    <button class="btn btn-secondary" onclick="window.location.href='admin-projects.html'">
+                        <i class="fas fa-arrow-left"></i> Back to Projects
+                    </button>
+                </div>
+
+                <div class="form-card">
+                    <h2 id="form-title">Create Project</h2>
+
+                    <form id="project-form">
+                        <div class="form-group">
+                            <label for="project-name">Project Name *</label>
+                            <input type="text" id="project-name" name="projectName" class="form-input" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="company-select">Company *</label>
+                            <select id="company-select" name="companyId" class="form-select" required>
+                                <option value="">Select a company...</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="assigned-to">Assign To</label>
+                            <select id="assigned-to" name="assignedTo" class="form-select">
+                                <option value="">Select a user...</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="status">Status *</label>
+                            <select id="status" name="status" class="form-select" required>
+                                <option value="Active" selected>Active</option>
+                                <option value="On Hold">On Hold</option>
+                                <option value="Completed">Completed</option>
+                                <option value="Cancelled">Cancelled</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="due-date">Due Date</label>
+                            <input type="date" id="due-date" name="dueDate" class="form-input">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="description">Description</label>
+                            <textarea id="description" name="description" class="form-input" rows="4"></textarea>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-secondary" onclick="window.location.href='admin-projects.html'">Cancel</button>
+                            <button type="submit" class="btn btn-primary">Save Project</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            const token = localStorage.getItem('authToken');
+            if (!token) {
+                window.location.href = 'signin.html';
+                return;
+            }
+
+            const headers = {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            };
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const projectId = urlParams.get('id');
+            const companySelect = document.getElementById('company-select');
+            const assignedToSelect = document.getElementById('assigned-to');
+            const projectForm = document.getElementById('project-form');
+            const formTitle = document.getElementById('form-title');
+
+            // Load companies
+            try {
+                const response = await fetch('/api/admin/companies', { headers });
+                if (response.ok) {
+                    const companies = await response.json();
+                    companies.forEach(company => {
+                        const option = document.createElement('option');
+                        option.value = company.ID;
+                        option.textContent = company.CompanyName;
+                        companySelect.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading companies:', error);
+            }
+
+            // Load users when company is selected
+            companySelect.addEventListener('change', async (e) => {
+                const companyId = e.target.value;
+                assignedToSelect.innerHTML = '<option value="">Select a user...</option>';
+                assignedToSelect.disabled = !companyId;
+
+                if (companyId) {
+                    try {
+                        const response = await fetch(`/api/admin/clients?companyId=${companyId}`, { headers });
+                        if (response.ok) {
+                            const users = await response.json();
+                            users.forEach(user => {
+                                const option = document.createElement('option');
+                                option.value = user.id;
+                                option.textContent = `${user.firstname} ${user.lastname} (${user.email})`;
+                                assignedToSelect.appendChild(option);
+                            });
+                            assignedToSelect.disabled = false;
+                        }
+                    } catch (error) {
+                        console.error('Error loading users:', error);
+                    }
+                }
+            });
+
+            // Load project data if editing
+            if (projectId) {
+                formTitle.textContent = 'Edit Project';
+                try {
+                    const response = await fetch(`/api/admin/projects/${projectId}`, { headers });
+                    if (response.ok) {
+                        const project = await response.json();
+                        document.getElementById('project-name').value = project.ProjectName || '';
+                        companySelect.value = project.CompanyID || '';
+                        if (project.CompanyID) {
+                            companySelect.dispatchEvent(new Event('change'));
+                            setTimeout(() => {
+                                assignedToSelect.value = project.AssignedTo || '';
+                            }, 500);
+                        }
+                        document.getElementById('status').value = project.Status || 'Active';
+                        document.getElementById('due-date').value = project.DueDate ? project.DueDate.split('T')[0] : '';
+                        document.getElementById('description').value = project.Description || '';
+                    }
+                } catch (error) {
+                    console.error('Error loading project:', error);
+                }
+            }
+
+            // Form submission
+            projectForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const projectData = {
+                    ProjectName: formData.get('projectName'),
+                    CompanyID: formData.get('companyId'),
+                    AssignedTo: formData.get('assignedTo') || null,
+                    Status: formData.get('status'),
+                    DueDate: formData.get('dueDate') || null,
+                    Description: formData.get('description') || null
+                };
+
+                try {
+                    const url = projectId ? `/api/admin/projects/${projectId}` : '/api/admin/projects';
+                    const method = projectId ? 'PUT' : 'POST';
+                    
+                    const response = await fetch(url, {
+                        method,
+                        headers,
+                        body: JSON.stringify(projectData)
+                    });
+
+                    if (response.ok) {
+                        alert(projectId ? 'Project updated successfully!' : 'Project created successfully!');
+                        window.location.href = 'admin-projects.html';
+                    } else {
+                        const error = await response.json();
+                        alert(`Failed to save project: ${error.error || 'Unknown error'}`);
+                    }
+                } catch (error) {
+                    console.error('Error saving project:', error);
+                    alert('Failed to save project. Please try again.');
+                }
+            });
+        });
+
+        // Sidebar toggle functionality
+        const sidebar = document.getElementById('admin-sidebar');
+        const sidebarToggle = document.getElementById('sidebar-toggle');
+        const mobileSidebarToggle = document.getElementById('mobile-sidebar-toggle');
+
+        if (sidebarToggle) {
+            sidebarToggle.addEventListener('click', () => {
+                sidebar.classList.toggle('collapsed');
+            });
+        }
+
+        if (mobileSidebarToggle) {
+            mobileSidebarToggle.addEventListener('click', () => {
+                sidebar.classList.toggle('mobile-open');
+            });
+        }
+
+        // Close mobile sidebar when clicking outside
+        document.addEventListener('click', (e) => {
+            if (window.innerWidth <= 1024 && 
+                sidebar.classList.contains('mobile-open') &&
+                !sidebar.contains(e.target) &&
+                !mobileSidebarToggle.contains(e.target)) {
+                sidebar.classList.remove('mobile-open');
+            }
+        });
+
+        // Hamburger menu toggle
+        const hamburger = document.getElementById('hamburger');
+        const navLinks = document.getElementById('nav-links');
+
+        if (hamburger && navLinks) {
+            hamburger.addEventListener('click', () => {
+                navLinks.classList.toggle('active');
+                hamburger.innerHTML = navLinks.classList.contains('active') ? 
+                    '<i class="fas fa-times"></i>' : '<i class="fas fa-bars"></i>';
+            });
+        }
+
+        // Admin sign-out
+        const adminSignout = document.getElementById('admin-signout');
+        if (adminSignout) {
+            adminSignout.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (!confirm('Are you sure you want to sign out?')) return;
+                localStorage.removeItem('authToken');
+                sessionStorage.clear();
+                window.location.href = 'Home.html';
+            });
+        }
+
+        // Sticky header on scroll
+        window.addEventListener('scroll', function() {
+            const header = document.querySelector('header');
+            if (header) {
+                header.classList.toggle('sticky', window.scrollY > 0);
+            }
+        });
+    </script>
+</body>
+</html>
+

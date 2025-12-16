@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoice Details | StackOps IT Solutions</title>
+    <link rel="stylesheet" href="css/admin.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="background"></div>
+    
+    <header class="site-header">
+        <a href="/" class="logo">
+            <img src="Images/Logos/RemovedStackOps.png" alt="StackOps IT Solutions Logo">
+        </a>
+        <div class="hamburger" id="hamburger">
+            <i class="fas fa-bars"></i>
+        </div>
+        <ul class="nav-links" id="nav-links">
+            <li><a href="Admin.html">Calendar</a></li>
+            <li><a href="admin-dashboard.html">Dashboard</a></li>
+            <li><a href="signup.html">Register Client</a></li>
+            <li><a href="#" id="admin-signout">Sign Out</a></li>
+        </ul>
+    </header>
+
+    <div class="admin-container">
+        <aside class="admin-sidebar" id="admin-sidebar">
+            <div class="sidebar-header">
+                <h2>Admin Panel</h2>
+                <button class="sidebar-toggle" id="sidebar-toggle">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="admin-dashboard.html" class="nav-item">
+                    <i class="fas fa-chart-line"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="admin-companies.html" class="nav-item">
+                    <i class="fas fa-building"></i>
+                    <span>Companies</span>
+                </a>
+                <a href="admin-clients.html" class="nav-item">
+                    <i class="fas fa-users"></i>
+                    <span>Clients</span>
+                </a>
+                <a href="admin-projects.html" class="nav-item">
+                    <i class="fas fa-project-diagram"></i>
+                    <span>Projects</span>
+                </a>
+                <a href="admin-invoices.html" class="nav-item active">
+                    <i class="fas fa-file-invoice-dollar"></i>
+                    <span>Invoices</span>
+                </a>
+                <a href="admin-payments.html" class="nav-item">
+                    <i class="fas fa-credit-card"></i>
+                    <span>Payments</span>
+                </a>
+            </nav>
+        </aside>
+
+        <main class="admin-main">
+            <div class="mobile-sidebar-toggle" id="mobile-sidebar-toggle">
+                <i class="fas fa-bars"></i>
+            </div>
+            
+            <div class="admin-content">
+                <div class="page-header">
+                    <button class="btn btn-secondary" onclick="window.location.href='admin-invoices.html'">
+                        <i class="fas fa-arrow-left"></i> Back to Invoices
+                    </button>
+                    <button class="btn btn-primary" onclick="addPayment()">
+                        <i class="fas fa-plus"></i> Add Payment
+                    </button>
+                </div>
+
+                <div id="invoice-info" class="company-info-card">
+                    <h2>Invoice #<span id="invoice-number">-</span></h2>
+                    <div class="info-grid" style="margin-top: 20px;">
+                        <div class="info-item">
+                            <label>Company:</label>
+                            <span id="invoice-company">-</span>
+                        </div>
+                        <div class="info-item">
+                            <label>Invoice Date:</label>
+                            <span id="invoice-date">-</span>
+                        </div>
+                        <div class="info-item">
+                            <label>Due Date:</label>
+                            <span id="invoice-due-date">-</span>
+                        </div>
+                        <div class="info-item">
+                            <label>Status:</label>
+                            <span id="invoice-status">-</span>
+                        </div>
+                        <div class="info-item">
+                            <label>Total Amount:</label>
+                            <span id="invoice-total">-</span>
+                        </div>
+                        <div class="info-item">
+                            <label>Amount Paid:</label>
+                            <span id="invoice-paid">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dashboard-section">
+                    <h2>Invoice Items</h2>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Description</th>
+                                    <th>Quantity</th>
+                                    <th>Unit Price</th>
+                                    <th>Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody id="items-tbody">
+                                <tr><td colspan="4" class="text-center">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="dashboard-section">
+                    <h2>Payment History</h2>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Payment Date</th>
+                                    <th>Amount Paid</th>
+                                    <th>Method</th>
+                                </tr>
+                            </thead>
+                            <tbody id="payments-tbody">
+                                <tr><td colspan="3" class="text-center">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            const token = localStorage.getItem('authToken');
+            if (!token) {
+                window.location.href = 'signin.html';
+                return;
+            }
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const invoiceId = urlParams.get('id');
+
+            if (!invoiceId) {
+                window.location.href = 'admin-invoices.html';
+                return;
+            }
+
+            const headers = {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            };
+
+            const loadInvoice = async () => {
+                try {
+                    const response = await fetch(`/api/admin/invoices/${invoiceId}`, { headers });
+                    if (!response.ok) throw new Error('Failed to load invoice');
+
+                    const invoice = await response.json();
+                    document.getElementById('invoice-number').textContent = invoice.InvoiceNumber || invoice.InvoiceID;
+                    document.getElementById('invoice-company').textContent = invoice.CompanyName || '-';
+                    document.getElementById('invoice-date').textContent = invoice.InvoiceDate ? new Date(invoice.InvoiceDate).toLocaleDateString() : '-';
+                    document.getElementById('invoice-due-date').textContent = invoice.DueDate ? new Date(invoice.DueDate).toLocaleDateString() : '-';
+                    document.getElementById('invoice-status').innerHTML = `<span class="status-badge status-${(invoice.Status || 'Pending').toLowerCase()}">${invoice.Status || 'Pending'}</span>`;
+                    document.getElementById('invoice-total').textContent = `R${parseFloat(invoice.TotalAmount || 0).toFixed(2)}`;
+
+                    // Items
+                    const itemsTbody = document.getElementById('items-tbody');
+                    itemsTbody.innerHTML = '';
+                    if (invoice.items && invoice.items.length > 0) {
+                        invoice.items.forEach(item => {
+                            const row = document.createElement('tr');
+                            row.innerHTML = `
+                                <td>${item.Description || '-'}</td>
+                                <td>${item.Quantity || '-'}</td>
+                                <td>R${parseFloat(item.UnitPrice || 0).toFixed(2)}</td>
+                                <td>R${parseFloat(item.Amount || 0).toFixed(2)}</td>
+                            `;
+                            itemsTbody.appendChild(row);
+                        });
+                    } else {
+                        itemsTbody.innerHTML = '<tr><td colspan="4" class="text-center">No items found</td></tr>';
+                    }
+
+                    // Payments
+                    const totalPaid = invoice.payments ? invoice.payments.reduce((sum, p) => sum + parseFloat(p.AmountPaid || 0), 0) : 0;
+                    document.getElementById('invoice-paid').textContent = `R${totalPaid.toFixed(2)}`;
+
+                    const paymentsTbody = document.getElementById('payments-tbody');
+                    paymentsTbody.innerHTML = '';
+                    if (invoice.payments && invoice.payments.length > 0) {
+                        invoice.payments.forEach(payment => {
+                            const row = document.createElement('tr');
+                            row.innerHTML = `
+                                <td>${payment.PaymentDate ? new Date(payment.PaymentDate).toLocaleDateString() : '-'}</td>
+                                <td>R${parseFloat(payment.AmountPaid || 0).toFixed(2)}</td>
+                                <td>${payment.Method || '-'}</td>
+                            `;
+                            paymentsTbody.appendChild(row);
+                        });
+                    } else {
+                        paymentsTbody.innerHTML = '<tr><td colspan="3" class="text-center">No payments yet</td></tr>';
+                    }
+                } catch (error) {
+                    console.error('Error loading invoice:', error);
+                }
+            };
+
+            window.addPayment = () => {
+                window.location.href = `admin-payment-form.html?invoiceId=${invoiceId}`;
+            };
+
+            await loadInvoice();
+        });
+
+        // Sidebar toggle functionality
+        const sidebar = document.getElementById('admin-sidebar');
+        const sidebarToggle = document.getElementById('sidebar-toggle');
+        const mobileSidebarToggle = document.getElementById('mobile-sidebar-toggle');
+
+        if (sidebarToggle) {
+            sidebarToggle.addEventListener('click', () => {
+                sidebar.classList.toggle('collapsed');
+            });
+        }
+
+        if (mobileSidebarToggle) {
+            mobileSidebarToggle.addEventListener('click', () => {
+                sidebar.classList.toggle('mobile-open');
+            });
+        }
+
+        // Close mobile sidebar when clicking outside
+        document.addEventListener('click', (e) => {
+            if (window.innerWidth <= 1024 && 
+                sidebar.classList.contains('mobile-open') &&
+                !sidebar.contains(e.target) &&
+                !mobileSidebarToggle.contains(e.target)) {
+                sidebar.classList.remove('mobile-open');
+            }
+        });
+
+        // Hamburger menu toggle
+        const hamburger = document.getElementById('hamburger');
+        const navLinks = document.getElementById('nav-links');
+
+        if (hamburger && navLinks) {
+            hamburger.addEventListener('click', () => {
+                navLinks.classList.toggle('active');
+                hamburger.innerHTML = navLinks.classList.contains('active') ? 
+                    '<i class="fas fa-times"></i>' : '<i class="fas fa-bars"></i>';
+            });
+        }
+
+        // Admin sign-out
+        const adminSignout = document.getElementById('admin-signout');
+        if (adminSignout) {
+            adminSignout.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (!confirm('Are you sure you want to sign out?')) return;
+                localStorage.removeItem('authToken');
+                sessionStorage.clear();
+                window.location.href = 'Home.html';
+            });
+        }
+
+        // Sticky header on scroll
+        window.addEventListener('scroll', function() {
+            const header = document.querySelector('header');
+            if (header) {
+                header.classList.toggle('sticky', window.scrollY > 0);
+            }
+        });
+    </script>
+</body>
+</html>
+

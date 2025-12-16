@@ -41,13 +41,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             const clientsTbody = document.querySelector('#clients-table tbody');
             clientsTbody.innerHTML = '';
             if (clients.length === 0) {
-                clientsTbody.innerHTML = '<tr><td colspan="5" class="text-center">No clients found</td></tr>';
+                clientsTbody.innerHTML = '<tr><td colspan="6" class="text-center">No clients found</td></tr>';
             } else {
                 clients.forEach(client => {
                     const row = document.createElement('tr');
                     row.innerHTML = `
                         <td>${client.firstname} ${client.lastname}</td>
                         <td>${client.email}</td>
+                        <td>${company.CompanyName || '-'}</td>
                         <td>${client.role || '-'}</td>
                         <td><span class="status-badge">${client.isactive ? 'Active' : 'Inactive'}</span></td>
                         <td>
@@ -98,30 +99,34 @@ document.addEventListener('DOMContentLoaded', async () => {
                 });
             }
 
-            // Update projects table (if exists)
+            // Update projects table
             const projectsTbody = document.querySelector('#projects-table tbody');
             if (projectsTbody) {
-                projectsTbody.innerHTML = '<tr><td colspan="5" class="text-center">Projects feature coming soon</td></tr>';
-            }
-
-            // Update employees table
-            const employeesTbody = document.querySelector('#employees-table tbody');
-            if (employeesTbody) {
-                const employees = clients.filter(c => c.role === 'Admin' || c.role === 'Employee');
-                employeesTbody.innerHTML = '';
-                if (employees.length === 0) {
-                    employeesTbody.innerHTML = '<tr><td colspan="4" class="text-center">No employees found</td></tr>';
-                } else {
-                    employees.forEach(emp => {
-                        const row = document.createElement('tr');
-                        row.innerHTML = `
-                            <td>${emp.firstname} ${emp.lastname}</td>
-                            <td>${emp.email}</td>
-                            <td>${emp.role || '-'}</td>
-                            <td><span class="status-badge">${emp.isactive ? 'Active' : 'Inactive'}</span></td>
-                        `;
-                        employeesTbody.appendChild(row);
-                    });
+                try {
+                    const projectsRes = await fetch(`/api/admin/projects?companyId=${companyId}`, { headers });
+                    if (projectsRes.ok) {
+                        const projects = await projectsRes.json();
+                        projectsTbody.innerHTML = '';
+                        if (projects.length === 0) {
+                            projectsTbody.innerHTML = '<tr><td colspan="5" class="text-center">No projects found</td></tr>';
+                        } else {
+                            projects.forEach(project => {
+                                const row = document.createElement('tr');
+                                row.innerHTML = `
+                                    <td>${project.ProjectName || '-'}</td>
+                                    <td><span class="status-badge">${project.Status || 'Active'}</span></td>
+                                    <td>${project.AssignedToName || '-'}</td>
+                                    <td>${project.DueDate ? new Date(project.DueDate).toLocaleDateString() : '-'}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-secondary" onclick="viewProject(${project.ProjectID})">View</button>
+                                    </td>
+                                `;
+                                projectsTbody.appendChild(row);
+                            });
+                        }
+                    }
+                } catch (error) {
+                    projectsTbody.innerHTML = '<tr><td colspan="5" class="text-center">No projects found</td></tr>';
                 }
             }
         } catch (error) {
@@ -130,13 +135,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     window.editClient = (clientId) => {
-        // TODO: Implement edit client
-        alert('Edit client functionality coming soon');
+        window.location.href = `admin-client-form.html?id=${clientId}`;
     };
 
     window.viewInvoice = (invoiceId) => {
-        // TODO: Implement view invoice
-        alert('View invoice functionality coming soon');
+        window.location.href = `admin-invoice-view.html?id=${invoiceId}`;
+    };
+
+    window.viewProject = (projectId) => {
+        window.location.href = `admin-project-details.html?id=${projectId}`;
     };
 
     loadCompanyDetails();
