@@ -2305,16 +2305,19 @@ footer a:hover {
 
 .logo-item {
     background: #ffffff; 
-    border: 0px solid #000000;
+    border: 0px solid #ffffff;
     display: flex;
     justify-content: center;
     align-items: center;
     aspect-ratio: 1 / 1;
     width: 70%;             /* ✅ Reduced container size slightly */
     height: auto;
+    border-radius: 50%;     /* ✅ Make default logo containers circular */
+    overflow: hidden;       /* ✅ Ensure logos stay within the circle */
     padding: 0; 
     box-shadow: none;
     transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 1.6);
 }
 
 .logo-item:hover {
@@ -2323,6 +2326,38 @@ footer a:hover {
 }
 
 .logo-item img {
+    max-width: 100%;          /* ✅ Keeps image size but fills more of smaller box */
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    object-fit: contain;     /* ✅ Preserves proportions */
+    margin: 0;               /* ✅ Centers perfectly */
+    transition: opacity 0.2s ease-in-out;
+}
+
+.logos-item {
+    background: #ffffff00; 
+    border: 0px solid #ffffff;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    aspect-ratio: 1 / 1;
+    width: 70%;             /* ✅ Reduced container size slightly */
+    height: auto;
+    border-radius: 50%;     /* ✅ Make default logo containers circular */
+    overflow: hidden;       /* ✅ Ensure logos stay within the circle */
+    padding: 0; 
+    box-shadow: none;
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 1.6);
+}
+
+.logos-item:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+}
+
+.logos-item img {
     max-width: 100%;          /* ✅ Keeps image size but fills more of smaller box */
     max-height: 100%;
     width: auto;
@@ -2346,9 +2381,12 @@ footer a:hover {
     aspect-ratio: 1 / 1;
     width: 70%;             /* ✅ Reduced container size slightly */
     height: auto;
+    border-radius: 50%;     /* ✅ Make Biliyon container circular while keeping background */
+    overflow: hidden;
     padding: 0; 
     box-shadow: none;
     transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 1.6);
 }
 
 .logo-items img {
@@ -2371,9 +2409,12 @@ footer a:hover {
     aspect-ratio: 1 / 1;
     width: 70%;             /* ✅ Reduced container size slightly */
     height: auto;
+    border-radius: 50%;     /* ✅ Make APCoat container circular while keeping background */
+    overflow: hidden;
     padding: 0; 
     box-shadow: none;
     transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 1.6);
 }
 
 .logo-item-APCoat img {
@@ -2384,6 +2425,43 @@ footer a:hover {
     object-fit: cover;     /* ✅ Preserves proportions */
     margin: 0;               /* ✅ Centers perfectly */
     transition: opacity 0.2s ease-in-out;
+}
+
+/* --- LOGO GRID Styling for Ramawa --- */
+.logo-item-ramawa {
+    background: #ffffff; 
+    border: 0px solid #ffffff;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    aspect-ratio: 1 / 1;
+    width: 70%;             /* ✅ Reduced container size slightly */
+    height: auto;
+    border-radius: 50%;     /* ✅ Make Ramawa container circular */
+    overflow: visible;      /* ✅ Allow image to show fully without clipping */
+    padding: 8px;           /* ✅ Add padding to prevent image from being cut off */
+    box-shadow: none;
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 1.6);
+}
+
+.logo-item-ramawa:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+}
+
+.logo-item-ramawa img {
+    max-width: 75%;          /* ✅ Slightly smaller to ensure nothing gets cut off */
+    max-height: 75%;
+    width: auto;
+    height: auto;
+    object-fit: contain;     /* ✅ Preserves proportions and shows full image */
+    margin: 0;               /* ✅ Centers perfectly */
+    transition: opacity 0.2s ease-in-out;
+}
+
+.logo-item-ramawa:hover img {
+    opacity: 1;
 }
 
 /* --- Mobile Responsiveness --- */
