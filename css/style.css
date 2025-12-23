@@ -134,7 +134,7 @@ section {
 .section-title p {
     max-width: 700px;
     margin: 0 auto;
-    font-size: clamp(0.9rem, 3.5vw, 1.1rem);
+    font-size: clamp(0.7rem, 2.5vw, 1.1rem);
     opacity: 0.8;
 }
 
@@ -814,11 +814,11 @@ header.sticky {
     }
 
     .value-item h3 {
-        font-size: clamp(1.2rem, 4vw, 1.4rem);
+        font-size: clamp(0.8rem, 3vw, 0.8rem);
     }
 
     .value-item p {
-        font-size: clamp(0.95rem, 3vw, 1.05rem);
+        font-size: clamp(0.85rem, 2vw, 0.95rem);
     }
 
     /* Center "Connect With Us" icons on tablets and below */
@@ -2098,7 +2098,17 @@ footer a:hover {
     }
 
     .section-title h2 {
-        font-size: 2rem;
+        font-size: 0.9rem;
+    }
+
+    .value-item h3 {
+        font-size: 0.9rem;
+        margin-bottom: 10px;
+    }
+
+    .value-item p {
+        font-size: 0.7rem;
+        margin-bottom: 10px;
     }
 
     /* Service Detail Page */
@@ -3097,7 +3107,7 @@ form .glow-wrap .link-content:hover {
 /* Mobile Responsive */
 @media (max-width: 768px) {
     .testimonials-orb-container {
-        height: 450px;
+        height: 550px;
         padding: 0 20px;
     }
 
@@ -3114,7 +3124,7 @@ form .glow-wrap .link-content:hover {
 
     .testimonials-hero {
         min-height: auto;
-        padding: 100px 20px 60px;
+        padding: 330px 20px 110px;
     }
 }
 
