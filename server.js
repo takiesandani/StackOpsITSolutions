@@ -168,10 +168,12 @@ const sendEmail = async (to, subject, body, isHtml = false, attachments = []) =>
     }
     
     try {
+        console.log(`Attempting to send email to ${to}...`);
         await transporter.sendMail(mailOptions);
-        console.log(`Email sent to ${to}`);
+        console.log(`Email successfully sent to ${to}`);
     } catch (error) {
         console.error(`Failed to send email to ${to}:`, error);
+        throw error; // Rethrow so the caller knows it failed
     }
 };
 
@@ -1234,9 +1236,6 @@ app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
             const clientData = clientRows[0];
 
             await connection.commit();
-            connection.release();
-
-            // Generate PDF
             const invoiceData = {
                 InvoiceNumber: nextInvoiceNumber,
                 InvoiceDate,
@@ -1244,14 +1243,15 @@ app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
                 TotalAmount
             };
             
+            // Generate PDF
             const pdfBuffer = await generateInvoicePDF(invoiceData, Items, companyData, clientData);
 
             // Send Email
             const emailBody = `
                 <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-                    <h2>Invoice #${nextInvoiceNumber}</h2>
-                    <p>Dear ${clientData.firstname},</p>
-                    <p>Please find attached your invoice from StackOps IT Solutions.</p>
+                    <p>Good day ${clientData.firstname},</p>
+                    <p>I hope this email finds you well.</p>
+                    <p>Please find the attached document below as your invoice.</p>
                     <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
                         <tr>
                             <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 150px;">Invoice Number:</td>
@@ -1275,22 +1275,32 @@ app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
                 </div>
             `;
 
-            await sendEmail(
-                clientData.email, 
-                `Invoice #${nextInvoiceNumber} from StackOps IT Solutions`, 
-                emailBody, 
-                true,
-                [{
-                    filename: `Invoice_${nextInvoiceNumber}.pdf`,
-                    content: pdfBuffer
-                }]
-            );
-
-            res.json({ InvoiceID: invoiceId, InvoiceNumber: nextInvoiceNumber, message: 'Invoice created and sent successfully' });
+            try {
+                await sendEmail(
+                    clientData.email, 
+                    `Invoice #${nextInvoiceNumber} from StackOps IT Solutions`, 
+                    emailBody, 
+                    true,
+                    [{
+                        filename: `Invoice_${nextInvoiceNumber}.pdf`,
+                        content: pdfBuffer
+                    }]
+                );
+                res.json({ InvoiceID: invoiceId, InvoiceNumber: nextInvoiceNumber, message: 'Invoice created and sent successfully' });
+            } catch (emailError) {
+                console.error('Invoice created but email failed:', emailError);
+                res.json({ 
+                    InvoiceID: invoiceId, 
+                    InvoiceNumber: nextInvoiceNumber, 
+                    message: 'Invoice created successfully, but there was an error sending the email. Please send it manually.',
+                    emailError: emailError.message 
+                });
+            }
         } catch (innerError) {
-            await connection.rollback();
-            connection.release();
+            if (connection) await connection.rollback();
             throw innerError;
+        } finally {
+            if (connection) connection.release();
         }
     } catch (error) {
         console.error('Error creating invoice:', error);
