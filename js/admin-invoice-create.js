@@ -194,46 +194,51 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             const invoiceData = JSON.parse(sessionStorage.getItem('invoiceData') || '{}');
+            const clientData = JSON.parse(sessionStorage.getItem('invoiceClientData') || '{}');
             const totalAmount = invoiceItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
 
+            // Disable button to prevent double submission
+            const submitBtn = invoiceItemsForm.querySelector('button[type="submit"]');
+            const originalText = submitBtn.textContent;
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Creating & Sending...';
+
             try {
-                // Create invoice
-                const invoiceResponse = await fetch('/api/admin/invoices', {
+                // Create invoice with all items and trigger PDF/Email
+                const response = await fetch('/api/admin/invoices', {
                     method: 'POST',
                     headers,
                     body: JSON.stringify({
                         CompanyID: invoiceData.companyId,
+                        UserID: clientData.userId,
                         InvoiceDate: invoiceData.invoiceDate,
                         DueDate: invoiceData.dueDate,
                         TotalAmount: totalAmount,
-                        Status: invoiceData.status
-                    })
-                });
-
-                if (!invoiceResponse.ok) throw new Error('Failed to create invoice');
-                const invoice = await invoiceResponse.json();
-
-                // Add invoice items
-                for (const item of invoiceItems) {
-                    await fetch('/api/admin/invoice-items', {
-                        method: 'POST',
-                        headers,
-                        body: JSON.stringify({
-                            InvoiceID: invoice.InvoiceID,
+                        Status: invoiceData.status,
+                        Items: invoiceItems.map(item => ({
                             Description: item.description,
                             Quantity: item.quantity,
                             UnitPrice: item.unitPrice
-                        })
-                    });
-                }
+                        }))
+                    })
+                });
 
-                alert('Invoice created successfully!');
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to create invoice');
+                }
+                
+                const result = await response.json();
+                alert(`Invoice #${result.InvoiceNumber} created and sent successfully!`);
+                
                 sessionStorage.removeItem('invoiceData');
                 sessionStorage.removeItem('invoiceClientData');
                 window.location.href = 'admin-invoices.html';
             } catch (error) {
                 console.error('Error creating invoice:', error);
-                alert('Failed to create invoice. Please try again.');
+                alert(`Error: ${error.message}`);
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalText;
             }
         });
     }

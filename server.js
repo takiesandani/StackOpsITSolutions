@@ -6,6 +6,8 @@ const cors = require('cors');
 const path = require('path');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');  // ADDED: For SHA1 hashing
+const PDFDocument = require('pdfkit');
+const fs = require('fs');
 
 // NOTE: dotenv check removed as credentials are now hardcoded
 
@@ -68,12 +70,95 @@ const transporter = nodemailer.createTransport({
     }
 });
 
+// function to generate invoice PDF
+async function generateInvoicePDF(invoiceData, items, companyData, clientData) {
+    return new Promise((resolve, reject) => {
+        const doc = new PDFDocument({ margin: 50 });
+        let buffers = [];
+        doc.on('data', buffers.push.bind(buffers));
+        doc.on('end', () => {
+            let pdfData = Buffer.concat(buffers);
+            resolve(pdfData);
+        });
+
+        const logoPath = path.join(__dirname, 'Images', 'Logos', 'RemovedStackOps.png');
+        if (fs.existsSync(logoPath)) {
+            doc.image(logoPath, 50, 45, { width: 100 });
+        }
+
+        doc.fillColor('#444444')
+           .fontSize(20)
+           .text('INVOICE', 50, 120);
+
+        doc.fontSize(10)
+           .text(`Invoice Number: ${invoiceData.InvoiceNumber}`, 200, 50, { align: 'right' })
+           .text(`Invoice Date: ${new Date(invoiceData.InvoiceDate).toLocaleDateString()}`, 200, 65, { align: 'right' })
+           .text(`Due Date: ${new Date(invoiceData.DueDate).toLocaleDateString()}`, 200, 80, { align: 'right' })
+           .moveDown();
+
+        // From details
+        doc.fontSize(12).text('FROM:', 50, 160);
+        doc.fontSize(10)
+           .text('StackOps IT Solutions', 50, 175)
+           .text('Mia Drive, Waterfall City', 50, 190)
+           .text('Johannesburg, 1685', 50, 205)
+           .text('011 568 9337', 50, 220)
+           .text('billing@stackopsit.co.za', 50, 235);
+
+        // To details
+        doc.fontSize(12).text('TO:', 300, 160);
+        doc.fontSize(10)
+           .text(companyData.CompanyName, 300, 175)
+           .text(`${clientData.firstname} ${clientData.lastname}`, 300, 190)
+           .text(companyData.address || '', 300, 205)
+           .text(`${companyData.city || ''} ${companyData.state || ''} ${companyData.zipcode || ''}`, 300, 220)
+           .text(clientData.email, 300, 235);
+
+        // Table Header
+        const tableTop = 280;
+        doc.rect(50, tableTop, 510, 20).fill('#eeeeee');
+        doc.fillColor('#000000')
+           .fontSize(10)
+           .text('Description', 60, tableTop + 5)
+           .text('Quantity', 250, tableTop + 5)
+           .text('Unit Price', 350, tableTop + 5)
+           .text('Amount', 450, tableTop + 5);
+
+        // Items
+        let i = 0;
+        items.forEach((item, index) => {
+            const y = tableTop + 25 + (i * 25);
+            doc.text(item.Description, 60, y)
+               .text(item.Quantity.toString(), 250, y)
+               .text(`R${parseFloat(item.UnitPrice).toFixed(2)}`, 350, y)
+               .text(`R${(item.Quantity * item.UnitPrice).toFixed(2)}`, 450, y);
+            i++;
+        });
+
+        const totalY = tableTop + 35 + (i * 25);
+        doc.moveTo(50, totalY - 5).lineTo(560, totalY - 5).stroke();
+        doc.fontSize(12).text('TOTAL:', 350, totalY);
+        doc.text(`R${parseFloat(invoiceData.TotalAmount).toFixed(2)}`, 450, totalY);
+
+        // Payment Details Space
+        doc.fontSize(10)
+           .moveDown(2)
+           .text('PAYMENT DETAILS:', 50, doc.y)
+           .text('Bank Name: [To be updated]', 50, doc.y + 15)
+           .text('Account Number: [To be updated]', 50, doc.y + 30)
+           .text('Reference: ' + invoiceData.InvoiceNumber, 50, doc.y + 45);
+
+        doc.end();
+    });
+}
+
 // function to send email to admin email 
-const sendEmail = async (to, subject, body, isHtml = false) => {
+const sendEmail = async (to, subject, body, isHtml = false, attachments = []) => {
     const mailOptions = {
         from: 'info@stackopsit.co.za', // Hardcoded EMAIL_USER
         to: to,
         subject: subject,
+        attachments: attachments
     };
     
     if (isHtml) {
@@ -1110,19 +1195,103 @@ app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
         if (!pool) {
             return res.status(500).json({ error: 'Database connection unavailable' });
         }
-        const { CompanyID, InvoiceDate, DueDate, TotalAmount, Status } = req.body;
+        const { CompanyID, UserID, InvoiceDate, DueDate, TotalAmount, Status, Items } = req.body;
         
         // Get next invoice number
         const [maxInvoice] = await pool.query('SELECT MAX(InvoiceNumber) as maxNum FROM Invoices');
         const nextInvoiceNumber = (maxInvoice[0]?.maxNum || 0) + 1;
         
-        const [result] = await pool.query(
-            `INSERT INTO Invoices (CompanyID, InvoiceDate, DueDate, TotalAmount, Status, InvoiceNumber)
-             VALUES (?, ?, ?, ?, ?, ?)`,
-            [CompanyID, InvoiceDate, DueDate, TotalAmount, Status || 'Pending', nextInvoiceNumber]
-        );
-        
-        res.json({ InvoiceID: result.insertId, InvoiceNumber: nextInvoiceNumber });
+        // Use a transaction
+        const connection = await pool.getConnection();
+        await connection.beginTransaction();
+
+        try {
+            const [result] = await connection.query(
+                `INSERT INTO Invoices (CompanyID, InvoiceDate, DueDate, TotalAmount, Status, InvoiceNumber)
+                 VALUES (?, ?, ?, ?, ?, ?)`,
+                [CompanyID, InvoiceDate, DueDate, TotalAmount, Status || 'Pending', nextInvoiceNumber]
+            );
+            
+            const invoiceId = result.insertId;
+
+            // Insert items if provided
+            if (Items && Items.length > 0) {
+                // Bulk insert items
+                for (const item of Items) {
+                    await connection.query(
+                        `INSERT INTO InvoiceItems (InvoiceID, Description, Quantity, UnitPrice)
+                         VALUES (?, ?, ?, ?)`,
+                        [invoiceId, item.Description, item.Quantity, item.UnitPrice]
+                    );
+                }
+            }
+
+            // Fetch company and client details for PDF and Email
+            const [companyRows] = await connection.query('SELECT * FROM Companies WHERE ID = ?', [CompanyID]);
+            const [clientRows] = await connection.query('SELECT * FROM Users WHERE ID = ?', [UserID]);
+            
+            const companyData = companyRows[0];
+            const clientData = clientRows[0];
+
+            await connection.commit();
+            connection.release();
+
+            // Generate PDF
+            const invoiceData = {
+                InvoiceNumber: nextInvoiceNumber,
+                InvoiceDate,
+                DueDate,
+                TotalAmount
+            };
+            
+            const pdfBuffer = await generateInvoicePDF(invoiceData, Items, companyData, clientData);
+
+            // Send Email
+            const emailBody = `
+                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                    <h2>Invoice #${nextInvoiceNumber}</h2>
+                    <p>Dear ${clientData.firstname},</p>
+                    <p>Please find attached your invoice from StackOps IT Solutions.</p>
+                    <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 150px;">Invoice Number:</td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">#${nextInvoiceNumber}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold;">Invoice Date:</td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">${new Date(InvoiceDate).toLocaleDateString()}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold;">Due Date:</td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">${new Date(DueDate).toLocaleDateString()}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold;">Total Amount:</td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">R${parseFloat(TotalAmount).toFixed(2)}</td>
+                        </tr>
+                    </table>
+                    <p style="margin-top: 20px;">If you have any questions, please contact us at billing@stackopsit.co.za or 011 568 9337.</p>
+                    <p>Best regards,<br><b>StackOps IT Solutions Team</b></p>
+                </div>
+            `;
+
+            await sendEmail(
+                clientData.email, 
+                `Invoice #${nextInvoiceNumber} from StackOps IT Solutions`, 
+                emailBody, 
+                true,
+                [{
+                    filename: `Invoice_${nextInvoiceNumber}.pdf`,
+                    content: pdfBuffer
+                }]
+            );
+
+            res.json({ InvoiceID: invoiceId, InvoiceNumber: nextInvoiceNumber, message: 'Invoice created and sent successfully' });
+        } catch (innerError) {
+            await connection.rollback();
+            connection.release();
+            throw innerError;
+        }
     } catch (error) {
         console.error('Error creating invoice:', error);
         res.status(500).json({ error: 'Failed to create invoice' });
