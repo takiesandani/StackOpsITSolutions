@@ -1048,6 +1048,7 @@ app.get('/api/admin/clients', authenticateToken, async (req, res) => {
                    c.CompanyName, c.ID as CompanyID
             FROM Users u
             LEFT JOIN Companies c ON u.companyid = c.ID
+            WHERE u.role = 'client' AND u.isactive = 1
         `;
         const params = [];
         
