@@ -73,28 +73,39 @@ const transporter = nodemailer.createTransport({
 // function to generate invoice PDF
 async function generateInvoicePDF(invoiceData, items, companyData, clientData) {
     return new Promise((resolve, reject) => {
-        const doc = new PDFDocument({ margin: 50 });
-        let buffers = [];
-        doc.on('data', buffers.push.bind(buffers));
-        doc.on('end', () => {
-            let pdfData = Buffer.concat(buffers);
-            resolve(pdfData);
-        });
+        try {
+            const doc = new PDFDocument({ margin: 50 });
+            let buffers = [];
+            
+            doc.on('data', buffers.push.bind(buffers));
+            doc.on('end', () => {
+                let pdfData = Buffer.concat(buffers);
+                resolve(pdfData);
+            });
+            
+            doc.on('error', (err) => {
+                reject(err);
+            });
 
-        const logoPath = path.join(__dirname, 'Images', 'Logos', 'RemovedStackOps.png');
-        if (fs.existsSync(logoPath)) {
-            doc.image(logoPath, 50, 45, { width: 100 });
-        }
+            const logoPath = path.join(__dirname, 'Images', 'Logos', 'RemovedStackOps.png');
+            if (fs.existsSync(logoPath)) {
+                doc.image(logoPath, 50, 45, { width: 100 });
+            }
 
-        doc.fillColor('#444444')
-           .fontSize(20)
-           .text('INVOICE', 50, 120);
+            doc.fillColor('#444444')
+               .fontSize(20)
+               .text('INVOICE', 50, 120);
 
-        doc.fontSize(10)
-           .text(`Invoice Number: ${invoiceData.InvoiceNumber}`, 200, 50, { align: 'right' })
-           .text(`Invoice Date: ${new Date(invoiceData.InvoiceDate).toLocaleDateString()}`, 200, 65, { align: 'right' })
-           .text(`Due Date: ${new Date(invoiceData.DueDate).toLocaleDateString()}`, 200, 80, { align: 'right' })
-           .moveDown();
+            const formatDate = (dateStr) => {
+                const date = new Date(dateStr);
+                return isNaN(date.getTime()) ? 'N/A' : date.toLocaleDateString();
+            };
+
+            doc.fontSize(10)
+               .text(`Invoice Number: ${invoiceData.InvoiceNumber || 'N/A'}`, 200, 50, { align: 'right' })
+               .text(`Invoice Date: ${formatDate(invoiceData.InvoiceDate)}`, 200, 65, { align: 'right' })
+               .text(`Due Date: ${formatDate(invoiceData.DueDate)}`, 200, 80, { align: 'right' })
+               .moveDown();
 
         // From details
         doc.fontSize(12).text('FROM:', 50, 160);
@@ -149,6 +160,9 @@ async function generateInvoicePDF(invoiceData, items, companyData, clientData) {
            .text('Reference: ' + invoiceData.InvoiceNumber, 50, doc.y + 45);
 
         doc.end();
+        } catch (err) {
+            reject(err);
+        }
     });
 }
 
@@ -1229,11 +1243,24 @@ app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
             }
 
             // Fetch company and client details for PDF and Email
-            const [companyRows] = await connection.query('SELECT * FROM Companies WHERE ID = ?', [CompanyID]);
-            const [clientRows] = await connection.query('SELECT * FROM Users WHERE ID = ?', [UserID]);
+            const [companyRows] = await connection.query(
+                'SELECT companyname AS CompanyName, address, city, state, zipcode FROM Companies WHERE ID = ?', 
+                [CompanyID]
+            );
+            const [clientRows] = await connection.query(
+                'SELECT firstname, lastname, email FROM Users WHERE ID = ?', 
+                [UserID]
+            );
             
             const companyData = companyRows[0];
             const clientData = clientRows[0];
+
+            if (!clientData) {
+                throw new Error(`Client with ID ${UserID} not found`);
+            }
+            if (!companyData) {
+                throw new Error(`Company with ID ${CompanyID} not found`);
+            }
 
             await connection.commit();
             const invoiceData = {
