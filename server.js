@@ -386,7 +386,7 @@ async function runInvoiceAutomation() {
             console.log('[Automation] Checking for overdue invoices...');
             // Find Pending invoices where DueDate <= current date
             const [pendingInvoices] = await pool.query(
-                "SELECT InvoiceID, InvoiceNumber FROM Invoices WHERE LOWER(Status) = 'pending' AND DueDate <= CURDATE()"
+                "SELECT InvoiceID, InvoiceNumber FROM Invoices WHERE Status = 'Pending' AND DueDate <= CURDATE()"
             );
 
             for (const invoice of pendingInvoices) {
