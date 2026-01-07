@@ -1205,6 +1205,59 @@ app.get('/api/admin/invoices', authenticateToken, async (req, res) => {
     }
 });
 
+// Preview invoice PDF
+app.post('/api/admin/invoices/preview', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        const { CompanyID, UserID, InvoiceDate, DueDate, TotalAmount, Items } = req.body;
+        
+        // Fetch company and client details for PDF
+        const [companyRows] = await pool.query(
+            'SELECT companyname AS CompanyName, address, city, state, zipcode FROM Companies WHERE ID = ?', 
+            [CompanyID]
+        );
+        const [clientRows] = await pool.query(
+            'SELECT firstname, lastname, email FROM Users WHERE ID = ?', 
+            [UserID]
+        );
+        
+        const companyData = companyRows[0];
+        const clientData = clientRows[0];
+
+        if (!clientData) {
+            return res.status(404).json({ error: `Client with ID ${UserID} not found` });
+        }
+        if (!companyData) {
+            return res.status(404).json({ error: `Company with ID ${CompanyID} not found` });
+        }
+
+        // Get temporary invoice number (last + 1)
+        const [maxInvoice] = await pool.query('SELECT MAX(InvoiceNumber) as maxNum FROM Invoices');
+        const nextInvoiceNumber = (maxInvoice[0]?.maxNum || 0) + 1;
+
+        const invoiceData = {
+            InvoiceNumber: nextInvoiceNumber,
+            InvoiceDate,
+            DueDate,
+            TotalAmount
+        };
+        
+        // Generate PDF
+        const pdfBuffer = await generateInvoicePDF(invoiceData, Items, companyData, clientData);
+
+        // Return PDF as base64
+        res.json({ 
+            pdf: pdfBuffer.toString('base64'),
+            InvoiceNumber: nextInvoiceNumber
+        });
+    } catch (error) {
+        console.error('Error previewing invoice:', error);
+        res.status(500).json({ error: 'Failed to generate invoice preview' });
+    }
+});
+
 // Create invoice
 app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
     try {

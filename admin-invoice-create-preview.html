@@ -3,9 +3,58 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Create Invoice - Step 2 | StackOps IT Solutions</title>
+    <title>Preview Invoice | StackOps IT Solutions</title>
     <link rel="stylesheet" href="css/admin.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .preview-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .pdf-preview {
+            width: 100%;
+            height: 600px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+        }
+        .preview-actions {
+            display: flex;
+            justify-content: space-between;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        .loading-overlay.active {
+            display: flex;
+        }
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #007bff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
 </head>
 <body>
     <div class="background"></div>
@@ -68,8 +117,8 @@
             
             <div class="admin-content">
                 <div class="page-header">
-                    <button class="btn btn-secondary" onclick="window.location.href='admin-invoice-create-step1.html'">
-                        <i class="fas fa-arrow-left"></i> Back
+                    <button class="btn btn-secondary" id="preview-back-btn">
+                        <i class="fas fa-arrow-left"></i> Edit Items
                     </button>
                 </div>
 
@@ -79,94 +128,54 @@
                             <div class="step-number"><i class="fas fa-check"></i></div>
                             <div class="step-label">Select Client</div>
                         </div>
-                        <div class="step active">
-                            <div class="step-number">2</div>
+                        <div class="step completed">
+                            <div class="step-number"><i class="fas fa-check"></i></div>
                             <div class="step-label">Invoice Details</div>
                         </div>
-                        <div class="step">
-                            <div class="step-number">3</div>
+                        <div class="step completed">
+                            <div class="step-number"><i class="fas fa-check"></i></div>
                             <div class="step-label">Add Items</div>
                         </div>
-                        <div class="step">
+                        <div class="step active">
                             <div class="step-number">4</div>
                             <div class="step-label">Preview</div>
                         </div>
                     </div>
 
-                    <h2>Step 2: Invoice Details</h2>
-                    <div id="client-info" class="info-box"></div>
+                    <h2>Step 4: Preview Invoice</h2>
+                    <p>Review the invoice details below before sending it to the client.</p>
 
-                    <form id="invoice-details-form">
-                        <input type="hidden" id="company-id" name="companyId">
-                        <input type="hidden" id="user-id" name="userId">
-
-                        <div class="form-group">
-                            <label for="invoice-date">Invoice Date *</label>
-                            <input type="date" id="invoice-date" name="invoiceDate" class="form-input" required>
+                    <div class="preview-container">
+                        <div id="pdf-viewer-container">
+                            <iframe id="pdf-preview" class="pdf-preview" src=""></iframe>
                         </div>
 
-                        <div class="form-group">
-                            <label for="due-date">Due Date *</label>
-                            <input type="date" id="due-date" name="dueDate" class="form-input" required>
+                        <div class="preview-actions">
+                            <div class="left-actions">
+                                <button type="button" class="btn btn-danger" id="preview-cancel-btn">
+                                    <i class="fas fa-times"></i> Cancel
+                                </button>
+                                <button type="button" class="btn btn-secondary" id="preview-edit-btn">
+                                    <i class="fas fa-edit"></i> Edit Details
+                                </button>
+                            </div>
+                            <button type="button" class="btn btn-primary" id="preview-send-btn">
+                                <i class="fas fa-paper-plane"></i> Send to Client
+                            </button>
                         </div>
-
-                        <div class="form-group">
-                            <label for="status">Status *</label>
-                            <select id="status" name="status" class="form-select" required>
-                                <option value="Pending" selected>Pending</option>
-                                <option value="Paid">Paid</option>
-                                <option value="Overdue">Overdue</option>
-                                <option value="Cancelled">Cancelled</option>
-                            </select>
-                        </div>
-
-                        <div class="form-actions">
-                            <button type="button" class="btn btn-secondary" onclick="window.location.href='admin-invoice-create-step1.html'">Back</button>
-                            <button type="submit" class="btn btn-primary">Next: Add Items</button>
-                        </div>
-                    </form>
+                    </div>
                 </div>
             </div>
         </main>
     </div>
 
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="spinner"></div>
+        <p id="loading-text">Generating preview...</p>
+    </div>
+
     <script src="js/admin-invoice-create.js"></script>
     <script>
-        // Load client info from sessionStorage
-        const clientData = JSON.parse(sessionStorage.getItem('invoiceClientData') || '{}');
-        if (clientData.clientName) {
-            document.getElementById('client-info').innerHTML = `
-                <strong>Client:</strong> ${clientData.clientName}<br>
-                <strong>Company:</strong> ${clientData.companyName}
-            `;
-            document.getElementById('company-id').value = clientData.companyId || '';
-            document.getElementById('user-id').value = clientData.userId || '';
-        } else {
-            window.location.href = 'admin-invoice-create-step1.html';
-        }
-
-        // Set default dates or load from sessionStorage
-        const existingInvoiceData = JSON.parse(sessionStorage.getItem('invoiceData') || '{}');
-        
-        if (existingInvoiceData.invoiceDate) {
-            document.getElementById('invoice-date').value = existingInvoiceData.invoiceDate;
-        } else {
-            const today = new Date().toISOString().split('T')[0];
-            document.getElementById('invoice-date').value = today;
-        }
-
-        if (existingInvoiceData.dueDate) {
-            document.getElementById('due-date').value = existingInvoiceData.dueDate;
-        } else {
-            const dueDate = new Date();
-            dueDate.setDate(dueDate.getDate() + 30);
-            document.getElementById('due-date').value = dueDate.toISOString().split('T')[0];
-        }
-
-        if (existingInvoiceData.status) {
-            document.getElementById('status').value = existingInvoiceData.status;
-        }
-
         // Sidebar toggle functionality
         const sidebar = document.getElementById('admin-sidebar');
         const sidebarToggle = document.getElementById('sidebar-toggle');
@@ -228,4 +237,3 @@
     </script>
 </body>
 </html>
-
