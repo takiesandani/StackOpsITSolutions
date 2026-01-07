@@ -364,11 +364,11 @@ setTimeout(() => {
  */
 const AUTOMATION_CONFIG = {
     ENABLED: true,
-    CHECK_HOUR: 0,             // 00:00 for status updates (Pending -> Overdue)
-    EMAIL_HOUR: 8,             // 08:00 for email reminders (8 hours after check)
-    FINE_DAYS_THRESHOLD: 3,     // 3 days overdue for fine message
-    TEST_MODE: false,          // If true, ignores hour checks and allows repeat emails
-    INTERVAL_MS: 60 * 60 * 1000 // Check frequency (default: 1 hour)
+    CHECK_HOUR: 0,
+    EMAIL_HOUR: 8,
+    FINE_DAYS_THRESHOLD: 3,
+    TEST_MODE: true,  // Change to true temporarily
+    INTERVAL_MS: 10000  // Change to 10000 (10 seconds) for faster testing
 };
 
 async function runInvoiceAutomation() {
@@ -476,6 +476,27 @@ async function runInvoiceAutomation() {
 
 // Start the automation loop
 setInterval(runInvoiceAutomation, AUTOMATION_CONFIG.INTERVAL_MS);
+
+// Temporary: Force status update on startup
+setTimeout(async () => {
+    console.log('[Manual] Forcing overdue status update...');
+    try {
+        const [pendingInvoices] = await pool.query(
+            "SELECT InvoiceID, InvoiceNumber FROM Invoices WHERE LOWER(Status) = 'pending' AND DueDate <= CURDATE()"
+        );
+        for (const invoice of pendingInvoices) {
+            console.log(`[Manual] Marking Invoice #${invoice.InvoiceNumber} as Overdue`);
+            await pool.query(
+                "UPDATE Invoices SET Status = 'Overdue' WHERE InvoiceID = ?",
+                [invoice.InvoiceID]
+            );
+        }
+        console.log('[Manual] Status update complete.');
+    } catch (error) {
+        console.error('[Manual] Error:', error);
+    }
+}, 10000);  // Runs 10 seconds after startup
+
 // Also run once on startup after a delay
 setTimeout(runInvoiceAutomation, 5000);
 
