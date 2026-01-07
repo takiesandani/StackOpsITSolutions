@@ -191,6 +191,31 @@ const sendEmail = async (to, subject, body, isHtml = false, attachments = []) =>
     }
 };
 
+// function to send email from the billing email 
+const sendBillingEmail = async (to, subject, body, isHtml = false, attachments = []) => {
+    const mailOptions = {
+        from: 'billing@stackopsit.co.za', // Hardcoded EMAIL_USER
+        to: to,
+        subject: subject,
+        attachments: attachments
+    };
+    
+    if (isHtml) {
+        mailOptions.html = body;
+    } else {
+        mailOptions.text = body;
+    }
+    
+    try {
+        console.log(`Attempting to send email to ${to}...`);
+        await transporter.sendMail(mailOptions);
+        console.log(`Email successfully sent to ${to}`);
+    } catch (error) {
+        console.error(`Failed to send email to ${to}:`, error);
+        throw error; // Rethrow so the caller knows it failed
+    }
+};
+
 async function getUserByEmail(email) {
     try {
         if (!pool) {
@@ -1356,7 +1381,7 @@ app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
             `;
 
             try {
-                await sendEmail(
+                await sendBillingEmail(
                     clientData.email, 
                     `Invoice #${nextInvoiceNumber} from StackOps IT Solutions`, 
                     emailBody, 
