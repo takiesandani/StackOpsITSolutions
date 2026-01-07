@@ -319,10 +319,167 @@ async function seedAvailability() {
     }
 }
 
-// Call seed availability NON-BLOCKING (after server starts)
+// Function to ensure database schema is up to date for automation
+async function ensureDatabaseSchema() {
+    try {
+        if (!pool) return;
+        console.log('Ensuring database schema for automation...');
+        
+        // Add PaidEmailSent column if it doesn't exist
+        const [columns] = await pool.query("SHOW COLUMNS FROM Invoices LIKE 'PaidEmailSent'");
+        if (columns.length === 0) {
+            console.log('Adding PaidEmailSent column to Invoices table...');
+            await pool.query("ALTER TABLE Invoices ADD COLUMN PaidEmailSent BOOLEAN DEFAULT FALSE");
+        }
+        
+        // Add LastReminderDate column to track daily reminders
+        const [columns2] = await pool.query("SHOW COLUMNS FROM Invoices LIKE 'LastReminderDate'");
+        if (columns2.length === 0) {
+            console.log('Adding LastReminderDate column to Invoices table...');
+            await pool.query("ALTER TABLE Invoices ADD COLUMN LastReminderDate DATE DEFAULT NULL");
+        }
+    } catch (err) {
+        console.error('ensureDatabaseSchema error:', err);
+    }
+}
+
+// Call seed availability and schema check NON-BLOCKING (after server starts)
 setTimeout(() => {
     seedAvailability().catch((error) => console.error('Seed availability failed:', error));
+    ensureDatabaseSchema().catch((error) => console.error('Schema update failed:', error));
 }, 1000);  // Delay to ensure server starts first
+
+// --- INVOICE AUTOMATION ---
+
+/**
+ * CONFIGURATION FOR TESTING:
+ * To test immediately, set:
+ * - TEST_MODE: true
+ * - INTERVAL_MS: 10000 (10 seconds)
+ * This will ignore the hour checks and send emails every 10 seconds.
+ * 
+ * FOR PRODUCTION:
+ * - TEST_MODE: false
+ * - INTERVAL_MS: 3600000 (1 hour)
+ */
+const AUTOMATION_CONFIG = {
+    ENABLED: true,
+    CHECK_HOUR: 0,             // 00:00 for status updates (Pending -> Overdue)
+    EMAIL_HOUR: 8,             // 08:00 for email reminders (8 hours after check)
+    FINE_DAYS_THRESHOLD: 3,     // 3 days overdue for fine message
+    TEST_MODE: false,          // If true, ignores hour checks and allows repeat emails
+    INTERVAL_MS: 60 * 60 * 1000 // Check frequency (default: 1 hour)
+};
+
+async function runInvoiceAutomation() {
+    if (!AUTOMATION_CONFIG.ENABLED || !pool) return;
+
+    const now = new Date();
+    const currentHour = now.getHours();
+    const todayStr = now.toISOString().split('T')[0];
+
+    console.log(`[Automation] Running check at ${now.toLocaleString()}${AUTOMATION_CONFIG.TEST_MODE ? ' (TEST MODE)' : ''}`);
+
+    try {
+        // 1. STATUS UPDATES (Runs at 00:00 or in TEST_MODE)
+        if (currentHour === AUTOMATION_CONFIG.CHECK_HOUR || AUTOMATION_CONFIG.TEST_MODE) {
+            console.log('[Automation] Checking for overdue invoices...');
+            // Find Pending invoices where DueDate <= current date
+            const [pendingInvoices] = await pool.query(
+                "SELECT InvoiceID, InvoiceNumber FROM Invoices WHERE LOWER(Status) = 'pending' AND DueDate <= CURDATE()"
+            );
+
+            for (const invoice of pendingInvoices) {
+                console.log(`[Automation] Marking Invoice #${invoice.InvoiceNumber} as Overdue`);
+                await pool.query(
+                    "UPDATE Invoices SET Status = 'Overdue' WHERE InvoiceID = ?",
+                    [invoice.InvoiceID]
+                );
+            }
+        }
+
+        // 2. EMAIL REMINDERS (Runs at 08:00 or in TEST_MODE)
+        if (currentHour === AUTOMATION_CONFIG.EMAIL_HOUR || AUTOMATION_CONFIG.TEST_MODE) {
+            console.log('[Automation] Processing email reminders...');
+
+            // A. Handle PAID confirmations
+            const [paidInvoices] = await pool.query(
+                `SELECT i.*, c.companyname as CompanyName, u.firstname, u.lastname, u.email 
+                 FROM Invoices i
+                 JOIN Companies c ON i.CompanyID = c.ID
+                 JOIN Users u ON c.ID = u.CompanyID
+                 WHERE LOWER(i.Status) = 'paid' AND (i.PaidEmailSent = FALSE OR ? = TRUE)`,
+                [AUTOMATION_CONFIG.TEST_MODE]
+            );
+            
+            for (const invoice of paidInvoices) {
+                console.log(`[Automation] Sending payment confirmation for Invoice #${invoice.InvoiceNumber}`);
+                const emailBody = `
+                    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                        <p>Good day ${invoice.lastname},</p>
+                        <p>This is a confirmation that your payment for <b>Invoice #${invoice.InvoiceNumber}</b> has been received and confirmed.</p>
+                        <p>Thank you for your business!</p>
+                        <p>Best regards,<br><b>StackOps IT Solutions Team</b></p>
+                    </div>
+                `;
+                await sendBillingEmail(invoice.email, `Payment Confirmed - Invoice #${invoice.InvoiceNumber}`, emailBody, true);
+                await pool.query("UPDATE Invoices SET PaidEmailSent = TRUE WHERE InvoiceID = ?", [invoice.InvoiceID]);
+            }
+
+            // B. Handle OVERDUE reminders
+            const [overdueInvoices] = await pool.query(
+                `SELECT i.*, c.companyname as CompanyName, u.firstname, u.lastname, u.email 
+                 FROM Invoices i
+                 JOIN Companies c ON i.CompanyID = c.ID
+                 JOIN Users u ON c.ID = u.CompanyID
+                 WHERE LOWER(i.Status) = 'overdue' AND (i.LastReminderDate IS NULL OR i.LastReminderDate < ? OR ? = TRUE)`,
+                [todayStr, AUTOMATION_CONFIG.TEST_MODE]
+            );
+
+            for (const invoice of overdueInvoices) {
+                const dueDate = new Date(invoice.DueDate);
+                const diffTime = Math.abs(now - dueDate);
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                
+                let subject = `Overdue Payment Reminder - Invoice #${invoice.InvoiceNumber}`;
+                let messagePrefix = `<p>This is a reminder that your payment for <b>Invoice #${invoice.InvoiceNumber}</b> was due on ${dueDate.toLocaleDateString()}.</p>`;
+                
+                if (diffDays >= AUTOMATION_CONFIG.FINE_DAYS_THRESHOLD) {
+                    subject = `URGENT: Overdue Payment & Fine Warning - Invoice #${invoice.InvoiceNumber}`;
+                    messagePrefix = `
+                        <p style="color: red; font-weight: bold;">URGENT NOTICE</p>
+                        <p>This is a final reminder that your payment for <b>Invoice #${invoice.InvoiceNumber}</b> is now ${diffDays} days overdue.</p>
+                        <p>Please note that as per our terms, a fine is now being applied to your account due to the delay.</p>
+                    `;
+                }
+
+                console.log(`[Automation] Sending overdue reminder for Invoice #${invoice.InvoiceNumber} (${diffDays} days)`);
+                const emailBody = `
+                    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                        <p>Good day ${invoice.lastname},</p>
+                        ${messagePrefix}
+                        <p>Amount Due: R${parseFloat(invoice.TotalAmount).toFixed(2)}</p>
+                        <p>Please settle this amount as soon as possible to avoid further action.</p>
+                        <p>If you have already made payment, please ignore this email.</p>
+                        <p>Best regards,<br><b>StackOps IT Solutions Team</b></p>
+                    </div>
+                `;
+                
+                await sendBillingEmail(invoice.email, subject, emailBody, true);
+                await pool.query("UPDATE Invoices SET LastReminderDate = ? WHERE InvoiceID = ?", [todayStr, invoice.InvoiceID]);
+            }
+        }
+    } catch (error) {
+        console.error('[Automation] Error during invoice automation:', error);
+    }
+}
+
+// Start the automation loop
+setInterval(runInvoiceAutomation, AUTOMATION_CONFIG.INTERVAL_MS);
+// Also run once on startup after a delay
+setTimeout(runInvoiceAutomation, 5000);
+
+// --- END INVOICE AUTOMATION ---
 
 // Serve static files from the root directory (for CSS, JS, images)
 app.use(express.static(path.join(__dirname)));
@@ -1354,7 +1511,7 @@ app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
             // Send Email
             const emailBody = `
                 <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-                    <p>Good day ${clientData.firstname},</p>
+                    <p>Good day ${clientData.lastname},</p>
                     <p>I hope this email finds you well.</p>
                     <p>Please find the attached document below as your invoice.</p>
                     <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
@@ -1381,7 +1538,7 @@ app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
             `;
 
             try {
-                await sendBillingEmail(
+                await sendBillingEmail( // email is sent from the billing email not the general email
                     clientData.email, 
                     `Invoice #${nextInvoiceNumber} from StackOps IT Solutions`, 
                     emailBody, 
