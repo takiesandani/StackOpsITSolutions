@@ -243,202 +243,189 @@
         </div>
     </footer>
 
-    <!-- Add this at the end of <body> (keep your other content like navbar, sections, etc.) -->
-    <link href="https://cdn.jsdelivr.net/npm/@n8n/chat/dist/style.css" rel="stylesheet" />
+  
     <script type="module">
-        import { createChat } from 'https://cdn.jsdelivr.net/npm/@n8n/chat/dist/chat.bundle.es.js';
 
-        createChat({
-            webhookUrl: 'https://stackconai.app.n8n.cloud/webhook/c510670c-08a2-41fe-b2e8-6eb7d5c0efae/chat',
-            mode: 'window',  // Default window mode: shows toggle button + chat window
-            showWelcomeScreen: false,
-            loadPreviousSession: false,
-            initialMessages: [
-            "Hello, I'm StackOn. your virtual assistant.\nHow can I help you today?\nPlease choose: \n1. Client Portal\n 2. Support"
-            ],  
-            enableStreaming: false,
-            chatInputKey: 'chatInput',  // Default, but explicit
-            
-        });
+       
         // Sample testimonials data - This will be replaced with API call later
-const testimonials = [
-    {
-        quote: "We are currently waiting for our clients to issue their testimonials based on the work we have done for them.",
-        author: "Christian MT, CEO"
-    },
-    {
-        quote: "We are currently waiting for our clients to issue their testimonials based on the work we have done for them .",
-        author: "Michael John, CTO"
-    },
-    {
-        quote: "We are currently waiting for our clients to issue their testimonials based on the work we have done for them .",
-        author: "David Williams, Operations Manager"
-    },
-    {
-        quote: "We are currently waiting for our clients to issue their testimonials based on the work we have done for them .",
-        author: "Emma Davis, Business Owner"
-    },
-    {
-        quote: "We are currently waiting for our clients to issue their testimonials based on the work we have done for them.",
-        author: "Mudau Takalani, IT Director"
-    },
-    {
-        quote: "We are currently waiting for our clients to issue their testimonials based on the work we have done for them .",
-        author: "Lisa Anderson, Finance Director"
-    }
-];
+        const testimonials = [
+            {
+                quote: "We are currently waiting for our clients to issue their testimonials based on the work we have done for them.",
+                author: "Christian MT, CEO"
+            },
+            {
+                quote: "We are currently waiting for our clients to issue their testimonials based on the work we have done for them .",
+                author: "Michael John, CTO"
+            },
+            {
+                quote: "We are currently waiting for our clients to issue their testimonials based on the work we have done for them .",
+                author: "David Williams, Operations Manager"
+            },
+            {
+                quote: "We are currently waiting for our clients to issue their testimonials based on the work we have done for them .",
+                author: "Emma Davis, Business Owner"
+            },
+            {
+                quote: "We are currently waiting for our clients to issue their testimonials based on the work we have done for them.",
+                author: "Mudau Takalani, IT Director"
+            },
+            {
+                quote: "We are currently waiting for our clients to issue their testimonials based on the work we have done for them .",
+                author: "Lisa Anderson, Finance Director"
+            }
+        ];
 
-// Testimonials Slideshow
-let currentTestimonial = 0;
-let testimonialInterval;
+        // Testimonials Slideshow
+        let currentTestimonial = 0;
+        let testimonialInterval;
 
-function initTestimonials() {
-    const slider = document.getElementById('testimonials-slider');
-    const nav = document.getElementById('testimonials-nav');
-    
-    // Create testimonial orbs
-    testimonials.forEach((testimonial, index) => {
-        const orb = document.createElement('div');
-        orb.className = 'testimonial-orb';
-        orb.dataset.index = index;
-        
-        orb.innerHTML = `
-            <div class="testimonial-quote">${testimonial.quote}</div>
-            <div class="testimonial-author">${testimonial.author}</div>
-        `;
-        
-        slider.appendChild(orb);
-
-        // Create navigation dots
-        const dot = document.createElement('div');
-        dot.className = 'nav-dot';
-        dot.dataset.index = index;
-        dot.addEventListener('click', () => goToTestimonial(index));
-        nav.appendChild(dot);
-    });
-
-    // Initialize first testimonial immediately
-    setTimeout(() => {
-        updateTestimonials();
-    }, 50);
-    
-    // Auto-rotate testimonials every 4 seconds for more dynamic feel
-    testimonialInterval = setInterval(() => {
-        nextTestimonial();
-    }, 4000);
-}
-
-function updateTestimonials() {
-    const orbs = document.querySelectorAll('.testimonial-orb');
-    const dots = document.querySelectorAll('.nav-dot');
-    
-    // Remove all classes first for smooth transition
-    orbs.forEach((orb) => {
-        orb.classList.remove('active', 'prev', 'next');
-    });
-    
-    // Use requestAnimationFrame for smoother transitions
-    requestAnimationFrame(() => {
-        orbs.forEach((orb, index) => {
-            // Clear inline styles first
-            orb.style.opacity = '';
-            orb.style.transform = '';
+        function initTestimonials() {
+            const slider = document.getElementById('testimonials-slider');
+            const nav = document.getElementById('testimonials-nav');
             
-            if (index === currentTestimonial) {
-                orb.classList.add('active');
-            } else if (index === currentTestimonial - 1 || (currentTestimonial === 0 && index === testimonials.length - 1)) {
-                orb.classList.add('prev');
-            } else if (index === currentTestimonial + 1 || (currentTestimonial === testimonials.length - 1 && index === 0)) {
-                orb.classList.add('next');
+            // Create testimonial orbs
+            testimonials.forEach((testimonial, index) => {
+                const orb = document.createElement('div');
+                orb.className = 'testimonial-orb';
+                orb.dataset.index = index;
+                
+                orb.innerHTML = `
+                    <div class="testimonial-quote">${testimonial.quote}</div>
+                    <div class="testimonial-author">${testimonial.author}</div>
+                `;
+                
+                slider.appendChild(orb);
+
+                // Create navigation dots
+                const dot = document.createElement('div');
+                dot.className = 'nav-dot';
+                dot.dataset.index = index;
+                dot.addEventListener('click', () => goToTestimonial(index));
+                nav.appendChild(dot);
+            });
+
+            // Initialize first testimonial immediately
+            setTimeout(() => {
+                updateTestimonials();
+            }, 50);
+            
+            // Auto-rotate testimonials every 4 seconds for more dynamic feel
+            testimonialInterval = setInterval(() => {
+                nextTestimonial();
+            }, 4000);
+        }
+
+        function updateTestimonials() {
+            const orbs = document.querySelectorAll('.testimonial-orb');
+            const dots = document.querySelectorAll('.nav-dot');
+            
+            // Remove all classes first for smooth transition
+            orbs.forEach((orb) => {
+                orb.classList.remove('active', 'prev', 'next');
+            });
+            
+            // Use requestAnimationFrame for smoother transitions
+            requestAnimationFrame(() => {
+                orbs.forEach((orb, index) => {
+                    // Clear inline styles first
+                    orb.style.opacity = '';
+                    orb.style.transform = '';
+                    
+                    if (index === currentTestimonial) {
+                        orb.classList.add('active');
+                    } else if (index === currentTestimonial - 1 || (currentTestimonial === 0 && index === testimonials.length - 1)) {
+                        orb.classList.add('prev');
+                    } else if (index === currentTestimonial + 1 || (currentTestimonial === testimonials.length - 1 && index === 0)) {
+                        orb.classList.add('next');
+                    }
+                    // Other testimonials will remain hidden with default opacity: 0
+                });
+            });
+
+            dots.forEach((dot, index) => {
+                dot.classList.toggle('active', index === currentTestimonial);
+            });
+        }
+
+        function nextTestimonial() {
+            currentTestimonial = (currentTestimonial + 1) % testimonials.length;
+            updateTestimonials();
+        }
+
+        function prevTestimonial() {
+            currentTestimonial = (currentTestimonial - 1 + testimonials.length) % testimonials.length;
+            updateTestimonials();
+        }
+
+        function goToTestimonial(index) {
+            currentTestimonial = index;
+            updateTestimonials();
+            // Reset auto-rotate timer
+            clearInterval(testimonialInterval);
+            testimonialInterval = setInterval(() => {
+                nextTestimonial();
+            }, 4000);
+        }
+
+        // Keep auto-rotate running even on hover - testimonials move continuously
+        // Auto-rotation continues regardless of hover state
+
+        // Create particle background
+        function createParticles() {
+            const particlesContainer = document.getElementById('particles');
+            const particleCount = 9;
+
+            for (let i = 0; i < particleCount; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                particlesContainer.appendChild(particle);
             }
-            // Other testimonials will remain hidden with default opacity: 0
-        });
-    });
+        }
 
-    dots.forEach((dot, index) => {
-        dot.classList.toggle('active', index === currentTestimonial);
-    });
-}
+        // Hamburger menu toggle
+        const hamburger = document.getElementById('hamburger');
+        const navLinks = document.getElementById('nav-links');
 
-function nextTestimonial() {
-    currentTestimonial = (currentTestimonial + 1) % testimonials.length;
-    updateTestimonials();
-}
+        if (hamburger && navLinks) {
+            hamburger.addEventListener('click', () => {
+                navLinks.classList.toggle('active');
+                hamburger.innerHTML = navLinks.classList.contains('active') ? 
+                    '<i class="fas fa-times"></i>' : '<i class="fas fa-bars"></i>';
+            });
 
-function prevTestimonial() {
-    currentTestimonial = (currentTestimonial - 1 + testimonials.length) % testimonials.length;
-    updateTestimonials();
-}
+            document.querySelectorAll('.nav-links a').forEach(link => {
+                link.addEventListener('click', () => {
+                    if (navLinks.classList.contains('active')) {
+                        navLinks.classList.remove('active');
+                        hamburger.innerHTML = '<i class="fas fa-bars"></i>';
+                    }
+                });
+            });
+        }
 
-function goToTestimonial(index) {
-    currentTestimonial = index;
-    updateTestimonials();
-    // Reset auto-rotate timer
-    clearInterval(testimonialInterval);
-    testimonialInterval = setInterval(() => {
-        nextTestimonial();
-    }, 4000);
-}
-
-// Keep auto-rotate running even on hover - testimonials move continuously
-// Auto-rotation continues regardless of hover state
-
-// Create particle background
-function createParticles() {
-    const particlesContainer = document.getElementById('particles');
-    const particleCount = 9;
-
-    for (let i = 0; i < particleCount; i++) {
-        const particle = document.createElement('div');
-        particle.className = 'particle';
-        particlesContainer.appendChild(particle);
-    }
-}
-
-// Hamburger menu toggle
-const hamburger = document.getElementById('hamburger');
-const navLinks = document.getElementById('nav-links');
-
-if (hamburger && navLinks) {
-    hamburger.addEventListener('click', () => {
-        navLinks.classList.toggle('active');
-        hamburger.innerHTML = navLinks.classList.contains('active') ? 
-            '<i class="fas fa-times"></i>' : '<i class="fas fa-bars"></i>';
-    });
-
-    document.querySelectorAll('.nav-links a').forEach(link => {
-        link.addEventListener('click', () => {
-            if (navLinks.classList.contains('active')) {
-                navLinks.classList.remove('active');
-                hamburger.innerHTML = '<i class="fas fa-bars"></i>';
+        // Sticky header on scroll
+        window.addEventListener('scroll', function() {
+            const header = document.querySelector('header');
+            if (header) {
+                header.classList.toggle('sticky', window.scrollY > 0);
             }
         });
-    });
-}
 
-// Sticky header on scroll
-window.addEventListener('scroll', function() {
-    const header = document.querySelector('header');
-    if (header) {
-        header.classList.toggle('sticky', window.scrollY > 0);
-    }
-});
-
-// Initialize on page load
-document.addEventListener('DOMContentLoaded', () => {
-    createParticles();
-    
-    // Small delay to ensure DOM is fully ready
-    setTimeout(() => {
-        initTestimonials();
-    }, 100);
-    
-    // Update copyright year
-    const yearElement = document.getElementById('copyright-year');
-    if (yearElement) {
-        yearElement.textContent = new Date().getFullYear();
-    }
-});
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            createParticles();
+            
+            // Small delay to ensure DOM is fully ready
+            setTimeout(() => {
+                initTestimonials();
+            }, 100);
+            
+            // Update copyright year
+            const yearElement = document.getElementById('copyright-year');
+            if (yearElement) {
+                yearElement.textContent = new Date().getFullYear();
+            }
+        });
     </script>
 
     <script src="js/script.js"></script>
