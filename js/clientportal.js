@@ -123,17 +123,30 @@ function setupEventListeners() {
         verifyMfaBtn.addEventListener('click', handleMfaVerification);
     }
 
+    // Handle resend code (same as signin.html)
     if (resendCodeLink) {
-        resendCodeLink.addEventListener('click', function(e) {
+        resendCodeLink.addEventListener('click', async function(e) {
             e.preventDefault();
-            handleResendCode();
-        });
-    }
-
-    if (backToLoginLink) {
-        backToLoginLink.addEventListener('click', function(e) {
-            e.preventDefault();
-            handleBackToLogin();
+            try {
+                const response = await fetch('/api/auth/send-mfa', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ email: currentEmail })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification('New MFA code sent to your email', true);
+                } else {
+                    showNotification(data.message || 'Failed to resend code. Please try again.', false);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showNotification('An error occurred. Please try again.', false);
+            }
         });
     }
 
@@ -265,6 +278,20 @@ function togglePasswordVisibility() {
 /* AUTHENTICATION */
 let currentEmail = '';
 
+// Show notification (same as signin.html)
+function showNotification(message, isSuccess = true) {
+    const notification = document.getElementById('notification');
+    if (!notification) return;
+    
+    notification.textContent = message;
+    notification.className = 'notification ' + (isSuccess ? 'success' : 'error');
+    notification.classList.add('show');
+    
+    setTimeout(() => {
+        notification.classList.remove('show');
+    }, 3000);
+}
+
 function handleLogin(e) {
     e.preventDefault();
     
@@ -275,30 +302,27 @@ function handleLogin(e) {
     const loginForm = document.getElementById('login-form');
     const mfaSection = document.getElementById('mfa-section');
     const submitBtn = document.getElementById('login-submit-btn');
+    const mfaError = document.getElementById('mfa-error');
     
     // Reset error messages
     emailError.style.display = 'none';
     passwordError.style.display = 'none';
-    emailError.textContent = '';
-    passwordError.textContent = '';
+    if (mfaError) mfaError.style.display = 'none';
     
-    if (!email || !password) {
-        showError('Please fill in all fields');
-        return;
-    }
-
+    // Basic validation
+    let isValid = true;
     if (!validateEmail(email)) {
-        emailError.textContent = 'Please enter a valid email address';
         emailError.style.display = 'block';
-        return;
+        isValid = false;
     }
-
+    
     if (password.length < 8) {
-        passwordError.textContent = 'Password must be at least 8 characters long';
         passwordError.style.display = 'block';
-        return;
+        isValid = false;
     }
-
+    
+    if (!isValid) return;
+    
     currentEmail = email;
     
     // Disable submit button
@@ -306,7 +330,7 @@ function handleLogin(e) {
     const originalText = submitBtn.querySelector('span').textContent;
     submitBtn.querySelector('span').textContent = 'Signing in...';
     
-    // Call signin API
+    // Call signin API (same as signin.html)
     fetch('/api/auth/signin', {
         method: 'POST',
         headers: {
@@ -317,20 +341,25 @@ function handleLogin(e) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            // Hide login form and show MFA section
-            loginForm.style.display = 'none';
-            mfaSection.style.display = 'block';
-            mfaSection.classList.add('active');
             showNotification('MFA code sent to your email', true);
+            mfaSection.style.display = 'block';
+            loginForm.style.display = 'none';
         } else {
-            showNotification(data.message || 'Sign-in failed. Please try again.', false);
-            emailError.textContent = data.message || 'Invalid email or password';
+            // Display error message in email field for invalid credentials
+            const errorMessage = data.message || 'Invalid email or password. Please check your credentials and try again.';
+            emailError.textContent = errorMessage;
             emailError.style.display = 'block';
+            passwordError.textContent = errorMessage;
+            passwordError.style.display = 'block';
+            showNotification(errorMessage, false);
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        showNotification('An error occurred. Please try again.', false);
+        const errorMessage = 'An error occurred. Please try again.';
+        emailError.textContent = errorMessage;
+        emailError.style.display = 'block';
+        showNotification(errorMessage, false);
     })
     .finally(() => {
         submitBtn.disabled = false;
@@ -342,25 +371,23 @@ function handleMfaVerification() {
     const mfaCodeInput = document.getElementById('mfa-code');
     const mfaError = document.getElementById('mfa-error');
     const verifyBtn = document.getElementById('verify-mfa-btn');
+    const loginForm = document.getElementById('login-form');
+    const mfaSection = document.getElementById('mfa-section');
     const code = mfaCodeInput.value.trim();
     
-    // Reset error
     mfaError.style.display = 'none';
-    mfaError.textContent = '';
     
-    // Validate code
     if (code.length !== 6 || !/^\d+$/.test(code)) {
         mfaError.textContent = 'Please enter a valid 6-digit code.';
         mfaError.style.display = 'block';
         return;
     }
     
-    // Disable verify button
     verifyBtn.disabled = true;
     const originalText = verifyBtn.querySelector('span').textContent;
     verifyBtn.querySelector('span').textContent = 'Verifying...';
     
-    // Call verify-mfa API
+    // Call verify-mfa API (same as signin.html)
     fetch('/api/auth/verify-mfa', {
         method: 'POST',
         headers: {
@@ -371,7 +398,6 @@ function handleMfaVerification() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            // Store auth token
             if (data.accessToken) {
                 localStorage.setItem('authToken', data.accessToken);
             }
@@ -391,17 +417,16 @@ function handleMfaVerification() {
             
             showNotification('Authentication successful! Redirecting...', true);
             
-            // Switch to dashboard after a short delay
+            // Switch to dashboard
             setTimeout(() => {
                 document.getElementById('login-section').classList.remove('active');
                 document.getElementById('dashboard-section').classList.add('active');
                 
-                // Clear forms
-                document.getElementById('login-form').reset();
+                // Reset forms
+                if (loginForm) loginForm.reset();
                 mfaCodeInput.value = '';
-                loginForm.style.display = 'block';
-                mfaSection.style.display = 'none';
-                mfaSection.classList.remove('active');
+                if (loginForm) loginForm.style.display = 'block';
+                if (mfaSection) mfaSection.style.display = 'none';
             }, 1500);
         } else {
             mfaError.textContent = data.message || 'Invalid code. Please try again.';
@@ -417,66 +442,6 @@ function handleMfaVerification() {
         verifyBtn.disabled = false;
         verifyBtn.querySelector('span').textContent = originalText;
     });
-}
-
-function handleResendCode() {
-    const resendLink = document.getElementById('resend-code-link');
-    
-    fetch('/api/auth/send-mfa', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ email: currentEmail })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            showNotification('New MFA code sent to your email', true);
-        } else {
-            showNotification(data.message || 'Failed to resend code. Please try again.', false);
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        showNotification('An error occurred. Please try again.', false);
-    });
-}
-
-function handleBackToLogin() {
-    const loginForm = document.getElementById('login-form');
-    const mfaSection = document.getElementById('mfa-section');
-    const mfaCodeInput = document.getElementById('mfa-code');
-    const mfaError = document.getElementById('mfa-error');
-    
-    // Reset MFA section
-    mfaCodeInput.value = '';
-    mfaError.style.display = 'none';
-    mfaError.textContent = '';
-    
-    // Show login form, hide MFA section
-    loginForm.style.display = 'block';
-    mfaSection.style.display = 'none';
-    mfaSection.classList.remove('active');
-}
-
-function showNotification(message, isSuccess = true) {
-    // Create notification element if it doesn't exist
-    let notification = document.getElementById('notification');
-    if (!notification) {
-        notification = document.createElement('div');
-        notification.id = 'notification';
-        notification.className = 'notification';
-        document.body.appendChild(notification);
-    }
-    
-    notification.textContent = message;
-    notification.className = 'notification ' + (isSuccess ? 'success' : 'error');
-    notification.classList.add('show');
-    
-    setTimeout(() => {
-        notification.classList.remove('show');
-    }, 3000);
 }
 
 function handleLogout() {

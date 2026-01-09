@@ -252,7 +252,7 @@
     color: var(--primary);
 }
 
-/* MFA SECTION */
+/* MFA SECTION (same as signin.html) */
 .mfa-section {
     margin-top: 25px;
     padding-top: 20px;
@@ -260,25 +260,12 @@
     display: none;
 }
 
-.mfa-section.active {
-    display: block;
-}
-
-.mfa-header {
-    text-align: center;
-    margin-bottom: 25px;
-}
-
-.mfa-header h3 {
+.mfa-section h3 {
+    font-size: 1.2rem;
     color: var(--light);
-    font-size: 1.3rem;
-    margin-bottom: 8px;
+    margin-bottom: 15px;
+    text-align: center;
     font-weight: 300;
-}
-
-.mfa-header p {
-    color: #bdbdbd;
-    font-size: 0.9rem;
 }
 
 .mfa-section .form-group {
@@ -287,13 +274,8 @@
 
 .mfa-section .form-group input {
     text-align: center;
-    font-size: 1.2rem;
-    letter-spacing: 8px;
-    font-weight: 400;
-}
-
-.mfa-section .glow-wrap-face3 {
-    margin-top: 20px;
+    font-size: 1.1rem;
+    letter-spacing: 4px;
 }
 
 .resend-code {
@@ -305,29 +287,13 @@
 .resend-code a {
     color: var(--primary);
     text-decoration: none;
-    transition: color 0.3s ease;
     cursor: pointer;
+    transition: color 0.3s ease;
 }
 
 .resend-code a:hover {
     color: #66b3ff;
     text-decoration: underline;
-}
-
-.mfa-back {
-    text-align: center;
-    margin-top: 20px;
-}
-
-.mfa-back a {
-    color: #bdbdbd;
-    text-decoration: none;
-    font-size: 0.9rem;
-    transition: color 0.3s ease;
-}
-
-.mfa-back a:hover {
-    color: var(--primary);
 }
 
 /* NOTIFICATION */

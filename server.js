@@ -743,15 +743,17 @@ app.post('/api/auth/signin', async (req, res) => {
         console.log('Calling getUserByEmail...');
         const user = await getUserByEmail(email);
         console.log('User found:', !!user, user ? user.id : 'N/A');
+        
+        // Security: Don't reveal if email exists - use same message for both cases
         if (!user) {
-            return res.status(400).json({ success: false, message: "Invalid email or password" });
+            return res.status(400).json({ success: false, message: "Invalid email or password. Please check your credentials and try again." });
         }
 
         // Check if user is a client (for Client Portal access)
         // Allow both 'client' role and 'admin' role to sign in
         const userRole = user.role ? user.role.toLowerCase() : '';
         if (userRole !== 'client' && userRole !== 'admin') {
-            return res.status(403).json({ success: false, message: "Access denied. Only clients and admins can access this portal." });
+            return res.status(403).json({ success: false, message: "Access denied. This portal is only available for authorized clients and administrators." });
         }
 
         // Hybrid password verification:
@@ -773,8 +775,9 @@ app.post('/api/auth/signin', async (req, res) => {
             validPassword = false;
         }
         
+        // Security: Use same message for invalid password (don't reveal if email exists)
         if (!validPassword) {
-            return res.status(400).json({ success: false, message: "Invalid email or password" });
+            return res.status(400).json({ success: false, message: "Invalid email or password. Please check your credentials and try again." });
         }
         
         const mfaCode = Math.floor(100000 + Math.random() * 900000);
@@ -788,7 +791,7 @@ app.post('/api/auth/signin', async (req, res) => {
         res.json({ success: true, message: "MFA code sent. Please check your email to verify your login." });
     } catch (err) {
         console.error('Signin error details:', err.message, err.stack);
-        res.status(500).json({ success: false, message: "Server error" });
+        res.status(500).json({ success: false, message: "An error occurred during sign-in. Please try again later." });
     }
 });
 
@@ -798,13 +801,13 @@ app.post('/api/auth/send-mfa', async (req, res) => {
         const { email } = req.body;
         
         if (!email) {
-            return res.status(400).json({ success: false, message: 'Email is required.' });
+            return res.status(400).json({ success: false, message: 'Email address is required.' });
         }
         
         const user = await getUserByEmail(email);
         
         if (!user) {
-            return res.status(404).json({ success: false, message: 'User not found.' });
+            return res.status(400).json({ success: false, message: 'Unable to send verification code. Please check your email address and try again.' });
         }
         
         // Generate new MFA code
@@ -816,10 +819,10 @@ app.post('/api/auth/send-mfa', async (req, res) => {
         
         await sendEmail(user.email, 'Your MFA Code', `Your MFA code is ${mfaCode}. It will expire in 10 minutes.`);
         
-        res.json({ success: true, message: 'New MFA code sent to your email.' });
+        res.json({ success: true, message: 'A new verification code has been sent to your email address.' });
     } catch (error) {
         console.error('Send MFA error:', error);
-        res.status(500).json({ success: false, message: 'Server error. Please try again.' });
+        res.status(500).json({ success: false, message: 'An error occurred while sending the verification code. Please try again later.' });
     }
 });
 
@@ -829,19 +832,19 @@ app.post('/api/auth/verify-mfa', async (req, res) => {
         const { email, code } = req.body;
         
         if (!email || !code) {
-            return res.status(400).json({ success: false, message: 'Email and code are required.' });
+            return res.status(400).json({ success: false, message: 'Email and verification code are required.' });
         }
         
         const user = await getUserByEmail(email);
         
         if (!user) {
-            return res.status(404).json({ success: false, message: 'User not found.' });
+            return res.status(400).json({ success: false, message: 'Invalid verification code. Please try again.' });
         }
         
         const validCode = await checkMfaCode(user.id, code);
 
         if (!validCode) {
-            return res.status(400).json({ success: false, message: 'Invalid or expired code.' });
+            return res.status(400).json({ success: false, message: 'Invalid or expired verification code. Please request a new code.' });
         }
         
         // MySQL Delete MFA
@@ -864,7 +867,7 @@ app.post('/api/auth/verify-mfa', async (req, res) => {
         
     } catch (error) {
         console.error('MFA verification error:', error);
-        res.status(500).json({ success: false, message: 'Server error. Please try again.' });
+        res.status(500).json({ success: false, message: 'An error occurred during verification. Please try again later.' });
     }
 });
 

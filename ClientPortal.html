@@ -52,14 +52,11 @@
 
                 <!-- MFA Section -->
                 <div class="mfa-section" id="mfa-section" style="display: none;">
-                    <div class="mfa-header">
-                        <h3>Enter MFA Code</h3>
-                        <p>We've sent a 6-digit code to your email. Please enter it below.</p>
-                    </div>
+                    <h3>Enter MFA Code</h3>
                     <div class="form-group">
                         <label for="mfa-code">6-Digit Code</label>
-                        <input type="text" id="mfa-code" name="mfa-code" maxlength="6" pattern="\d{6}" placeholder="000000">
-                        <div class="error-message" id="mfa-error"></div>
+                        <input type="text" id="mfa-code" name="mfa-code" maxlength="6" pattern="\d{6}">
+                        <div class="error-message" id="mfa-error">Invalid or expired code</div>
                     </div>
                     <div class="resend-code">
                         <a href="#" id="resend-code-link">Resend Code</a>
@@ -70,9 +67,6 @@
                             <span>Verify Code</span>
                             <i class="fas fa-check"></i>
                         </button>
-                    </div>
-                    <div class="mfa-back">
-                        <a href="#" id="back-to-login">Back to login</a>
                     </div>
                 </div>
 
@@ -407,6 +401,9 @@
             </div>
         </div>
     </section>
+
+    <!-- Notification element -->
+    <div class="notification" id="notification"></div>
 
     <script src="js/script.js"></script>
     <script src="js/clientportal.js"></script>
