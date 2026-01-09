@@ -436,10 +436,16 @@ class Calendar {
 class BookingForm {
     constructor() {
         this.form = document.getElementById('bookingForm');
+        if (!this.form) {
+            return;
+        }
         this.setupForm();
     }
 
     setupForm() {
+        if (!this.form) {
+            return;
+        }
         this.form.addEventListener('submit', (e) => {
             e.preventDefault();
             if (this.validateForm()) {
@@ -597,7 +603,12 @@ document.addEventListener('DOMContentLoaded', () => {
 // Initialize calendar and booking form
 document.addEventListener('DOMContentLoaded', () => {
     const calendar = new Calendar();
-    const bookingForm = new BookingForm();
+    
+    // Only initialize BookingForm if the form exists
+    const bookingFormElement = document.getElementById('bookingForm');
+    if (bookingFormElement) {
+        const bookingForm = new BookingForm();
+    }
 });
 
 // Update copyright year automatically
