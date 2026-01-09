@@ -211,6 +211,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const prevMonthBtn = document.getElementById('prevMonth');
     const nextMonthBtn = document.getElementById('nextMonth');
 
+    // Only initialize calendar if elements exist
+    if (!calendarDays || !currentMonthEl || !prevMonthBtn || !nextMonthBtn) {
+        return;
+    }
+
     let currentDate = new Date();
     let selectedDate = null;
 
@@ -282,8 +287,15 @@ class Calendar {
 
     init() {
         // Set up event listeners
-        document.getElementById('prevMonth').addEventListener('click', () => this.previousMonth());
-        document.getElementById('nextMonth').addEventListener('click', () => this.nextMonth());
+        const prevMonth = document.getElementById('prevMonth');
+        const nextMonth = document.getElementById('nextMonth');
+        
+        if (!prevMonth || !nextMonth) {
+            return;
+        }
+        
+        prevMonth.addEventListener('click', () => this.previousMonth());
+        nextMonth.addEventListener('click', () => this.nextMonth());
         
         // Generate mock available dates
         this.generateMockDates();
@@ -505,6 +517,10 @@ class BookingForm {
 
 document.addEventListener('DOMContentLoaded', () => {
     const clientPortalLink = document.getElementById('client-portal-link');
+
+    if (!clientPortalLink) {
+        return;
+    }
 
     clientPortalLink.addEventListener('click', (e) => {
         e.preventDefault(); // Prevent the default link behavior

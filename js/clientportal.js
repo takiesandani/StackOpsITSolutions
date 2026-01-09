@@ -436,6 +436,9 @@ function handleMfaVerification() {
                 mfaCodeInput.value = '';
                 if (loginForm) loginForm.style.display = 'block';
                 if (mfaSection) mfaSection.style.display = 'none';
+                
+                // Reload billing card with new token
+                initializeBillingCard();
             }, 1500);
         } else {
             mfaError.textContent = data.message || 'Invalid code. Please try again.';
@@ -484,8 +487,9 @@ function setupSessionManagement() {
     const userEmail = sessionStorage.getItem('userEmail');
     const userFirstName = sessionStorage.getItem('userFirstName');
     const userLastName = sessionStorage.getItem('userLastName');
+    const token = localStorage.getItem('authToken');
     
-    if (isLoggedIn === 'true' && userEmail) {
+    if (isLoggedIn === 'true' && userEmail && token) {
         document.getElementById('login-section').classList.remove('active');
         document.getElementById('dashboard-section').classList.add('active');
         
@@ -504,6 +508,9 @@ function setupSessionManagement() {
         if (userNameMobile) {
             userNameMobile.textContent = displayName;
         }
+        
+        // Load billing card if user is logged in
+        initializeBillingCard();
     }
 }
 
@@ -1058,16 +1065,21 @@ function destroyCharts() {
 
 /* UTILITIES */
 function updateCopyrightYear() {
-    document.getElementById('copyright-year').textContent = new Date().getFullYear();
+    const copyrightElement = document.getElementById('copyright-year');
+    if (copyrightElement) {
+        copyrightElement.textContent = new Date().getFullYear();
+    }
 }
 
 /* BILLING & GOVERNANCE CARDS */
 async function initializeBillingCard() {
     const billingCard = document.getElementById('billing-card');
+    if (!billingCard) return;
+    
     const token = localStorage.getItem('authToken');
     
     if (!token) {
-        billingCard.innerHTML = '<p>Please log in to view billing information.</p>';
+        billingCard.innerHTML = '<p style="color: #bdbdbd; text-align: center; padding: 20px;">Please log in to view billing information.</p>';
         return;
     }
     
@@ -1079,8 +1091,14 @@ async function initializeBillingCard() {
             }
         });
         
+        if (response.status === 401 || response.status === 403) {
+            // Token expired or invalid
+            billingCard.innerHTML = '<p style="color: #bdbdbd; text-align: center; padding: 20px;">Session expired. Please log in again.</p>';
+            return;
+        }
+        
         if (!response.ok) {
-            throw new Error('Failed to fetch invoice');
+            throw new Error(`Failed to fetch invoice: ${response.status}`);
         }
         
         const invoice = await response.json();
