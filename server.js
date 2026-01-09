@@ -8,6 +8,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');  // ADDED: For SHA1 hashing
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
+const OpenAI = require('openai');
 
 // NOTE: dotenv check removed as credentials are now hardcoded
 
@@ -2089,6 +2090,245 @@ app.get('/api/admin/companies/:id/details', authenticateToken, async (req, res) 
     } catch (error) {
         console.error('Error fetching company details:', error);
         res.status(500).json({ error: 'Failed to fetch company details' });
+    }
+});
+
+// ============================================
+// CHATBOT CONFIGURATION
+// ============================================
+
+// Initialize OpenAI client
+const openai = new OpenAI({
+    apiKey: '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'
+});
+
+// System prompt for AI
+const CHATBOT_SYSTEM_PROMPT = `
+You are Stack Ops IT's AI Assistant.
+
+You do NOT have access to any database.
+You do NOT know any client data.
+
+If data is required, respond ONLY in JSON:
+
+{
+  "type": "action",
+  "action": "<action_name>"
+}
+
+Allowed actions:
+- get_latest_invoice
+- get_all_invoices
+- get_project_updates
+- get_security_analytics
+- get_ticket_status
+
+If no data is required, respond normally in text.
+Never invent data.
+`;
+
+// ============================================
+// CHATBOT DATA FETCHING FUNCTIONS
+// ============================================
+
+/**
+ * Fetch client data based on action type
+ * All queries MUST filter by companyId for security
+ */
+async function fetchClientData(action, companyId) {
+    if (!pool) {
+        throw new Error('Database connection unavailable');
+    }
+
+    switch (action) {
+        case "get_latest_invoice":
+            return await getLatestInvoice(companyId);
+
+        case "get_all_invoices":
+            return await getAllInvoices(companyId);
+
+        default:
+            return { message: "No data available for this request." };
+    }
+}
+
+/**
+ * Get the latest invoice for a company
+ */
+async function getLatestInvoice(companyId) {
+    try {
+        // Get latest invoice
+        const [invoices] = await pool.query(
+            `SELECT 
+                i.InvoiceID,
+                i.InvoiceNumber,
+                i.InvoiceDate,
+                i.DueDate,
+                i.TotalAmount,
+                i.Status,
+                c.CompanyName
+             FROM Invoices i
+             LEFT JOIN Companies c ON i.CompanyID = c.ID
+             WHERE i.CompanyID = ?
+             ORDER BY i.InvoiceDate DESC
+             LIMIT 1`,
+            [companyId]
+        );
+
+        if (invoices.length === 0) {
+            return { message: "No invoices found." };
+        }
+
+        const invoice = invoices[0];
+
+        // Get invoice items
+        const [items] = await pool.query(
+            `SELECT 
+                Description,
+                Quantity,
+                UnitPrice,
+                Amount
+             FROM InvoiceItems
+             WHERE InvoiceID = ?`,
+            [invoice.InvoiceID]
+        );
+
+        // Format the response
+        return {
+            invoice_number: invoice.InvoiceNumber,
+            invoice_date: invoice.InvoiceDate,
+            due_date: invoice.DueDate,
+            total_amount: parseFloat(invoice.TotalAmount).toFixed(2),
+            status: invoice.Status,
+            company_name: invoice.CompanyName,
+            items: items.map(item => ({
+                description: item.Description,
+                quantity: item.Quantity,
+                unit_price: parseFloat(item.UnitPrice).toFixed(2),
+                amount: parseFloat(item.Amount || (item.Quantity * item.UnitPrice)).toFixed(2)
+            }))
+        };
+    } catch (error) {
+        console.error('Error fetching latest invoice:', error);
+        throw error;
+    }
+}
+
+/**
+ * Get all invoices for a company
+ */
+async function getAllInvoices(companyId) {
+    try {
+        const [invoices] = await pool.query(
+            `SELECT 
+                i.InvoiceID,
+                i.InvoiceNumber,
+                i.InvoiceDate,
+                i.DueDate,
+                i.TotalAmount,
+                i.Status,
+                c.CompanyName
+             FROM Invoices i
+             LEFT JOIN Companies c ON i.CompanyID = c.ID
+             WHERE i.CompanyID = ?
+             ORDER BY i.InvoiceDate DESC`,
+            [companyId]
+        );
+
+        if (invoices.length === 0) {
+            return { message: "No invoices found.", invoices: [] };
+        }
+
+        // Format the response
+        return {
+            total_count: invoices.length,
+            invoices: invoices.map(invoice => ({
+                invoice_id: invoice.InvoiceID,
+                invoice_number: invoice.InvoiceNumber,
+                invoice_date: invoice.InvoiceDate,
+                due_date: invoice.DueDate,
+                total_amount: parseFloat(invoice.TotalAmount).toFixed(2),
+                status: invoice.Status,
+                company_name: invoice.CompanyName
+            }))
+        };
+    } catch (error) {
+        console.error('Error fetching all invoices:', error);
+        throw error;
+    }
+}
+
+// ============================================
+// CHATBOT API ENDPOINT
+// ============================================
+
+app.post('/api/chat', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+
+        const userId = req.user.id;
+        const message = req.body.message;
+
+        if (!message || !message.trim()) {
+            return res.status(400).json({ error: 'Message is required' });
+        }
+
+        // Get user's company ID from database (security: never trust client)
+        const [users] = await pool.query(
+            'SELECT CompanyID FROM Users WHERE ID = ?',
+            [userId]
+        );
+
+        if (users.length === 0 || !users[0].CompanyID) {
+            return res.status(404).json({ error: 'Company not found for this user' });
+        }
+
+        const companyId = users[0].CompanyID;
+
+        // Ask AI what to do
+        const completion = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [
+                { role: "system", content: CHATBOT_SYSTEM_PROMPT },
+                { role: "user", content: message }
+            ]
+        });
+
+        const aiReply = completion.choices[0].message.content;
+
+        // Check if AI is requesting data
+        try {
+            const parsed = JSON.parse(aiReply);
+
+            if (parsed.type === "action") {
+                // Fetch data safely using companyId
+                const data = await fetchClientData(parsed.action, companyId);
+
+                // Send data back to AI for formatting
+                const formatted = await openai.chat.completions.create({
+                    model: "gpt-4o-mini",
+                    messages: [
+                        { role: "system", content: "Format this data clearly and professionally for the client. Be concise and helpful." },
+                        { role: "user", content: JSON.stringify(data) }
+                    ]
+                });
+
+                return res.json({
+                    text: formatted.choices[0].message.content
+                });
+            }
+        } catch (parseError) {
+            // Normal text response (not JSON)
+            return res.json({ text: aiReply });
+        }
+    } catch (error) {
+        console.error('Chat endpoint error:', error);
+        return res.status(500).json({ 
+            error: 'An error occurred processing your message',
+            text: "I'm sorry, I encountered an error. Please try again or contact support."
+        });
     }
 });
 
