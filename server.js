@@ -747,6 +747,13 @@ app.post('/api/auth/signin', async (req, res) => {
             return res.status(400).json({ success: false, message: "Invalid email or password" });
         }
 
+        // Check if user is a client (for Client Portal access)
+        // Allow both 'client' role and 'admin' role to sign in
+        const userRole = user.role ? user.role.toLowerCase() : '';
+        if (userRole !== 'client' && userRole !== 'admin') {
+            return res.status(403).json({ success: false, message: "Access denied. Only clients and admins can access this portal." });
+        }
+
         // Hybrid password verification:
         // 1) Prefer bcrypt (new Node.js hashing, hashes start with `$2`)
         // 2) Fallback to legacy C# SHA1 (40-char hex, sometimes truncated) for older accounts
@@ -782,6 +789,37 @@ app.post('/api/auth/signin', async (req, res) => {
     } catch (err) {
         console.error('Signin error details:', err.message, err.stack);
         res.status(500).json({ success: false, message: "Server error" });
+    }
+});
+
+// Resend MFA code endpoint
+app.post('/api/auth/send-mfa', async (req, res) => {
+    try {
+        const { email } = req.body;
+        
+        if (!email) {
+            return res.status(400).json({ success: false, message: 'Email is required.' });
+        }
+        
+        const user = await getUserByEmail(email);
+        
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found.' });
+        }
+        
+        // Generate new MFA code
+        const mfaCode = Math.floor(100000 + Math.random() * 900000);
+        const createdAt = new Date();
+        const expiresAt = new Date(createdAt.getTime() + 10 * 60000); // 10 minutes
+        
+        await insertMfaCode(user.id, mfaCode, expiresAt);
+        
+        await sendEmail(user.email, 'Your MFA Code', `Your MFA code is ${mfaCode}. It will expire in 10 minutes.`);
+        
+        res.json({ success: true, message: 'New MFA code sent to your email.' });
+    } catch (error) {
+        console.error('Send MFA error:', error);
+        res.status(500).json({ success: false, message: 'Server error. Please try again.' });
     }
 });
 

@@ -39,7 +39,7 @@
 
                     <div class="glow-wrap-face3">
                         <div class="glowing-border-layer-face3"></div>
-                        <button type="submit" class="btn-login">
+                        <button type="submit" class="btn-login" id="login-submit-btn">
                             <span>Sign In</span>
                             <i class="fas fa-arrow-right"></i>
                         </button>
@@ -49,6 +49,32 @@
                         <a href="forgot_password.html" class="forgot-link">Forgot password?</a>
                     </div>
                 </form>
+
+                <!-- MFA Section -->
+                <div class="mfa-section" id="mfa-section" style="display: none;">
+                    <div class="mfa-header">
+                        <h3>Enter MFA Code</h3>
+                        <p>We've sent a 6-digit code to your email. Please enter it below.</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="mfa-code">6-Digit Code</label>
+                        <input type="text" id="mfa-code" name="mfa-code" maxlength="6" pattern="\d{6}" placeholder="000000">
+                        <div class="error-message" id="mfa-error"></div>
+                    </div>
+                    <div class="resend-code">
+                        <a href="#" id="resend-code-link">Resend Code</a>
+                    </div>
+                    <div class="glow-wrap-face3">
+                        <div class="glowing-border-layer-face3"></div>
+                        <button type="button" class="btn-login" id="verify-mfa-btn">
+                            <span>Verify Code</span>
+                            <i class="fas fa-check"></i>
+                        </button>
+                    </div>
+                    <div class="mfa-back">
+                        <a href="#" id="back-to-login">Back to login</a>
+                    </div>
+                </div>
 
                 <div class="login-info">
                     <p><i class="fas fa-shield-alt"></i> Secure login with encryption</p>
@@ -381,27 +407,8 @@
             </div>
         </div>
     </section>
-        <!-- Add this at the end of <body> (keep your other content like navbar, sections, etc.) -->
-    <link href="https://cdn.jsdelivr.net/npm/@n8n/chat/dist/style.css" rel="stylesheet" />
-    <script type="module">
-        import { createChat } from 'https://cdn.jsdelivr.net/npm/@n8n/chat/dist/chat.bundle.es.js';
-                                    
-        createChat({
-            webhookUrl: 'https://stackconai.app.n8n.cloud/webhook/c510670c-08a2-41fe-b2e8-6eb7d5c0efae/chat',
-            mode: 'window',  // Default window mode: shows toggle button + chat window
-            showWelcomeScreen: false,
-            loadPreviousSession: false,
-            initialMessages: [
-            "Hello, I'm StackOn. your virtual assistant.\nHow can I help you today?\nPlease choose: \n1. Client Portal\n 2. Support"
-            ],  
-            enableStreaming: false,
-            chatInputKey: 'chatInput',  // Default, but explicit
-            
-        });
-    </script>
 
     <script src="js/script.js"></script>
-    <script src="js/chatbot.js"></script>
     <script src="js/clientportal.js"></script>
 </body>
 </html>

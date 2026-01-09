@@ -111,9 +111,46 @@ function setupEventListeners() {
     const mobileNavClose = document.getElementById('mobile-nav-close');
     const mobileNav = document.getElementById('mobile-nav');
     const btnLogoutMobile = document.getElementById('btn-logout-mobile');
+    const verifyMfaBtn = document.getElementById('verify-mfa-btn');
+    const resendCodeLink = document.getElementById('resend-code-link');
+    const backToLoginLink = document.getElementById('back-to-login');
 
     if (loginForm) {
         loginForm.addEventListener('submit', handleLogin);
+    }
+
+    if (verifyMfaBtn) {
+        verifyMfaBtn.addEventListener('click', handleMfaVerification);
+    }
+
+    if (resendCodeLink) {
+        resendCodeLink.addEventListener('click', function(e) {
+            e.preventDefault();
+            handleResendCode();
+        });
+    }
+
+    if (backToLoginLink) {
+        backToLoginLink.addEventListener('click', function(e) {
+            e.preventDefault();
+            handleBackToLogin();
+        });
+    }
+
+    // Add Enter key support for MFA code input
+    const mfaCodeInput = document.getElementById('mfa-code');
+    if (mfaCodeInput) {
+        mfaCodeInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                handleMfaVerification();
+            }
+        });
+        
+        // Only allow numbers
+        mfaCodeInput.addEventListener('input', function(e) {
+            e.target.value = e.target.value.replace(/[^0-9]/g, '');
+        });
     }
 
     if (logoutBtn) {
@@ -226,11 +263,24 @@ function togglePasswordVisibility() {
 }
 
 /* AUTHENTICATION */
+let currentEmail = '';
+
 function handleLogin(e) {
     e.preventDefault();
     
-    const email = document.getElementById('login-email').value;
+    const email = document.getElementById('login-email').value.trim();
     const password = document.getElementById('login-password').value;
+    const emailError = document.getElementById('login-email-error');
+    const passwordError = document.getElementById('login-password-error');
+    const loginForm = document.getElementById('login-form');
+    const mfaSection = document.getElementById('mfa-section');
+    const submitBtn = document.getElementById('login-submit-btn');
+    
+    // Reset error messages
+    emailError.style.display = 'none';
+    passwordError.style.display = 'none';
+    emailError.textContent = '';
+    passwordError.textContent = '';
     
     if (!email || !password) {
         showError('Please fill in all fields');
@@ -238,32 +288,195 @@ function handleLogin(e) {
     }
 
     if (!validateEmail(email)) {
-        showError('Please enter a valid email address');
+        emailError.textContent = 'Please enter a valid email address';
+        emailError.style.display = 'block';
         return;
     }
 
-    // Simulate API call
-    setTimeout(() => {
-        // Store user session
-        sessionStorage.setItem('userEmail', email);
-        sessionStorage.setItem('isLoggedIn', 'true');
-        sessionStorage.setItem('loginTime', new Date().getTime());
-        
-        // Update UI
-        const userName = email.split('@')[0];
-        document.getElementById('user-name').textContent = userName;
-        const userNameMobile = document.getElementById('user-name-mobile');
-        if (userNameMobile) {
-            userNameMobile.textContent = userName;
+    if (password.length < 8) {
+        passwordError.textContent = 'Password must be at least 8 characters long';
+        passwordError.style.display = 'block';
+        return;
+    }
+
+    currentEmail = email;
+    
+    // Disable submit button
+    submitBtn.disabled = true;
+    const originalText = submitBtn.querySelector('span').textContent;
+    submitBtn.querySelector('span').textContent = 'Signing in...';
+    
+    // Call signin API
+    fetch('/api/auth/signin', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email, password })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Hide login form and show MFA section
+            loginForm.style.display = 'none';
+            mfaSection.style.display = 'block';
+            mfaSection.classList.add('active');
+            showNotification('MFA code sent to your email', true);
+        } else {
+            showNotification(data.message || 'Sign-in failed. Please try again.', false);
+            emailError.textContent = data.message || 'Invalid email or password';
+            emailError.style.display = 'block';
         }
-        
-        // Switch to dashboard
-        document.getElementById('login-section').classList.remove('active');
-        document.getElementById('dashboard-section').classList.add('active');
-        
-        // Clear form
-        document.getElementById('login-form').reset();
-    }, 500);
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('An error occurred. Please try again.', false);
+    })
+    .finally(() => {
+        submitBtn.disabled = false;
+        submitBtn.querySelector('span').textContent = originalText;
+    });
+}
+
+function handleMfaVerification() {
+    const mfaCodeInput = document.getElementById('mfa-code');
+    const mfaError = document.getElementById('mfa-error');
+    const verifyBtn = document.getElementById('verify-mfa-btn');
+    const code = mfaCodeInput.value.trim();
+    
+    // Reset error
+    mfaError.style.display = 'none';
+    mfaError.textContent = '';
+    
+    // Validate code
+    if (code.length !== 6 || !/^\d+$/.test(code)) {
+        mfaError.textContent = 'Please enter a valid 6-digit code.';
+        mfaError.style.display = 'block';
+        return;
+    }
+    
+    // Disable verify button
+    verifyBtn.disabled = true;
+    const originalText = verifyBtn.querySelector('span').textContent;
+    verifyBtn.querySelector('span').textContent = 'Verifying...';
+    
+    // Call verify-mfa API
+    fetch('/api/auth/verify-mfa', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email: currentEmail, code })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Store auth token
+            if (data.accessToken) {
+                localStorage.setItem('authToken', data.accessToken);
+            }
+            
+            // Store user session
+            sessionStorage.setItem('userEmail', currentEmail);
+            sessionStorage.setItem('isLoggedIn', 'true');
+            sessionStorage.setItem('loginTime', new Date().getTime());
+            
+            // Update UI
+            const userName = currentEmail.split('@')[0];
+            document.getElementById('user-name').textContent = userName;
+            const userNameMobile = document.getElementById('user-name-mobile');
+            if (userNameMobile) {
+                userNameMobile.textContent = userName;
+            }
+            
+            showNotification('Authentication successful! Redirecting...', true);
+            
+            // Switch to dashboard after a short delay
+            setTimeout(() => {
+                document.getElementById('login-section').classList.remove('active');
+                document.getElementById('dashboard-section').classList.add('active');
+                
+                // Clear forms
+                document.getElementById('login-form').reset();
+                mfaCodeInput.value = '';
+                loginForm.style.display = 'block';
+                mfaSection.style.display = 'none';
+                mfaSection.classList.remove('active');
+            }, 1500);
+        } else {
+            mfaError.textContent = data.message || 'Invalid code. Please try again.';
+            mfaError.style.display = 'block';
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        mfaError.textContent = 'An error occurred. Please try again.';
+        mfaError.style.display = 'block';
+    })
+    .finally(() => {
+        verifyBtn.disabled = false;
+        verifyBtn.querySelector('span').textContent = originalText;
+    });
+}
+
+function handleResendCode() {
+    const resendLink = document.getElementById('resend-code-link');
+    
+    fetch('/api/auth/send-mfa', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email: currentEmail })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('New MFA code sent to your email', true);
+        } else {
+            showNotification(data.message || 'Failed to resend code. Please try again.', false);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('An error occurred. Please try again.', false);
+    });
+}
+
+function handleBackToLogin() {
+    const loginForm = document.getElementById('login-form');
+    const mfaSection = document.getElementById('mfa-section');
+    const mfaCodeInput = document.getElementById('mfa-code');
+    const mfaError = document.getElementById('mfa-error');
+    
+    // Reset MFA section
+    mfaCodeInput.value = '';
+    mfaError.style.display = 'none';
+    mfaError.textContent = '';
+    
+    // Show login form, hide MFA section
+    loginForm.style.display = 'block';
+    mfaSection.style.display = 'none';
+    mfaSection.classList.remove('active');
+}
+
+function showNotification(message, isSuccess = true) {
+    // Create notification element if it doesn't exist
+    let notification = document.getElementById('notification');
+    if (!notification) {
+        notification = document.createElement('div');
+        notification.id = 'notification';
+        notification.className = 'notification';
+        document.body.appendChild(notification);
+    }
+    
+    notification.textContent = message;
+    notification.className = 'notification ' + (isSuccess ? 'success' : 'error');
+    notification.classList.add('show');
+    
+    setTimeout(() => {
+        notification.classList.remove('show');
+    }, 3000);
 }
 
 function handleLogout() {
@@ -314,7 +527,7 @@ function validateEmail(email) {
 }
 
 function showError(message) {
-    alert(message);
+    showNotification(message, false);
 }
 
 /* PROJECTS */
