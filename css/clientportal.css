@@ -278,6 +278,38 @@
     letter-spacing: 4px;
 }
 
+.mfa-section .btn-login {
+    position: relative;
+    width: 100%;
+    height: 50px;
+    padding: 0;
+    background: linear-gradient(to right, #0033ff, #2575fc);
+    color: #ffffff !important;
+    border: none;
+    box-shadow: 0 4px 15px rgba(38, 117, 252, 0.4);
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 20px;
+}
+
+.mfa-section .btn-login:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(38, 117, 252, 0.4);
+}
+
+.mfa-section .btn-login:disabled {
+    background: #cccccc;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
 .resend-code {
     text-align: center;
     margin-top: 15px;

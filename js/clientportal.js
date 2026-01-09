@@ -384,8 +384,8 @@ function handleMfaVerification() {
     }
     
     verifyBtn.disabled = true;
-    const originalText = verifyBtn.querySelector('span').textContent;
-    verifyBtn.querySelector('span').textContent = 'Verifying...';
+    const originalText = verifyBtn.textContent;
+    verifyBtn.textContent = 'Verifying...';
     
     // Call verify-mfa API (same as signin.html)
     fetch('/api/auth/verify-mfa', {
@@ -440,7 +440,7 @@ function handleMfaVerification() {
     })
     .finally(() => {
         verifyBtn.disabled = false;
-        verifyBtn.querySelector('span').textContent = originalText;
+        verifyBtn.textContent = originalText;
     });
 }
 
