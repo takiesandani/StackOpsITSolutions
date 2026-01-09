@@ -862,7 +862,11 @@ app.post('/api/auth/verify-mfa', async (req, res) => {
             success: true,
             message: 'Authentication successful!',
             accessToken: accessToken,
-            redirect: isAdmin ? '/Admin.html' : '/ClientPortal.html'
+            redirect: isAdmin ? '/Admin.html' : '/ClientPortal.html',
+            user: {
+                firstName: user.firstName || '',
+                lastName: user.lastName || ''
+            }
         });
         
     } catch (error) {
@@ -1938,6 +1942,60 @@ app.delete('/api/admin/project-updates/:id', authenticateToken, async (req, res)
     } catch (error) {
         console.error('Error deleting project update:', error);
         res.status(500).json({ error: 'Failed to delete project update' });
+    }
+});
+
+// Get latest invoice for client (Client Portal)
+app.get('/api/client/latest-invoice', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        
+        const userId = req.user.id;
+        
+        // Get user's company ID
+        const [users] = await pool.query(
+            'SELECT CompanyID FROM Users WHERE ID = ?',
+            [userId]
+        );
+        
+        if (users.length === 0 || !users[0].CompanyID) {
+            return res.status(404).json({ error: 'Company not found for this user' });
+        }
+        
+        const companyId = users[0].CompanyID;
+        
+        // Get latest invoice for this company
+        const [invoices] = await pool.query(
+            `SELECT i.*, c.CompanyName
+             FROM Invoices i
+             LEFT JOIN Companies c ON i.CompanyID = c.ID
+             WHERE i.CompanyID = ?
+             ORDER BY i.InvoiceDate DESC
+             LIMIT 1`,
+            [companyId]
+        );
+        
+        if (invoices.length === 0) {
+            return res.json(null); // No invoice found
+        }
+        
+        const invoice = invoices[0];
+        
+        // Get invoice items
+        const [items] = await pool.query(
+            'SELECT * FROM InvoiceItems WHERE InvoiceID = ?',
+            [invoice.InvoiceID]
+        );
+        
+        res.json({
+            ...invoice,
+            items
+        });
+    } catch (error) {
+        console.error('Error fetching latest invoice:', error);
+        res.status(500).json({ error: 'Failed to fetch invoice' });
     }
 });
 

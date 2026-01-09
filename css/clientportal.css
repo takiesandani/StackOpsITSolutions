@@ -1030,6 +1030,38 @@
     font-weight: 400;
 }
 
+.billing-items-more {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.billing-see-more {
+    width: 100%;
+    padding: 8px 12px;
+    margin-top: 8px;
+    background: rgba(0, 110, 255, 0.1);
+    border: 1px solid rgba(0, 110, 255, 0.3);
+    border-radius: 6px;
+    color: var(--primary);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.billing-see-more:hover {
+    background: rgba(0, 110, 255, 0.2);
+    border-color: var(--primary);
+}
+
+.billing-see-more i {
+    transition: transform 0.3s ease;
+}
+
 .billing-warning {
     display: flex;
     gap: 11.2px;

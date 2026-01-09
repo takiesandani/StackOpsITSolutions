@@ -407,12 +407,21 @@ function handleMfaVerification() {
             sessionStorage.setItem('isLoggedIn', 'true');
             sessionStorage.setItem('loginTime', new Date().getTime());
             
-            // Update UI
-            const userName = currentEmail.split('@')[0];
-            document.getElementById('user-name').textContent = userName;
+            // Update UI with user's full name
+            let displayName = 'Client';
+            if (data.user && data.user.firstName && data.user.lastName) {
+                displayName = `${data.user.firstName} ${data.user.lastName}`;
+                sessionStorage.setItem('userFirstName', data.user.firstName);
+                sessionStorage.setItem('userLastName', data.user.lastName);
+            } else if (data.user && data.user.firstName) {
+                displayName = data.user.firstName;
+                sessionStorage.setItem('userFirstName', data.user.firstName);
+            }
+            
+            document.getElementById('user-name').textContent = displayName;
             const userNameMobile = document.getElementById('user-name-mobile');
             if (userNameMobile) {
-                userNameMobile.textContent = userName;
+                userNameMobile.textContent = displayName;
             }
             
             showNotification('Authentication successful! Redirecting...', true);
@@ -473,15 +482,27 @@ function handleLogout() {
 function setupSessionManagement() {
     const isLoggedIn = sessionStorage.getItem('isLoggedIn');
     const userEmail = sessionStorage.getItem('userEmail');
+    const userFirstName = sessionStorage.getItem('userFirstName');
+    const userLastName = sessionStorage.getItem('userLastName');
     
     if (isLoggedIn === 'true' && userEmail) {
         document.getElementById('login-section').classList.remove('active');
         document.getElementById('dashboard-section').classList.add('active');
-        const userName = userEmail.split('@')[0];
-        document.getElementById('user-name').textContent = userName;
+        
+        // Display user's full name if available, otherwise fallback to email prefix
+        let displayName = 'Client';
+        if (userFirstName && userLastName) {
+            displayName = `${userFirstName} ${userLastName}`;
+        } else if (userFirstName) {
+            displayName = userFirstName;
+        } else {
+            displayName = userEmail.split('@')[0];
+        }
+        
+        document.getElementById('user-name').textContent = displayName;
         const userNameMobile = document.getElementById('user-name-mobile');
         if (userNameMobile) {
-            userNameMobile.textContent = userName;
+            userNameMobile.textContent = displayName;
         }
     }
 }
@@ -1041,67 +1062,164 @@ function updateCopyrightYear() {
 }
 
 /* BILLING & GOVERNANCE CARDS */
-function initializeBillingCard() {
+async function initializeBillingCard() {
     const billingCard = document.getElementById('billing-card');
+    const token = localStorage.getItem('authToken');
     
-    const billingData = {
-        totalAmount: 4250,
-        currency: 'R',
-        items: [
-            { name: 'Cloud Infrastructure', cost: 1200 },
-            { name: 'Security Monitoring', cost: 850 },
-
-
-        ]
-    };
+    if (!token) {
+        billingCard.innerHTML = '<p>Please log in to view billing information.</p>';
+        return;
+    }
     
-    const today = new Date();
-    const dueDate = new Date(today.getFullYear(), today.getMonth() + 1, today.getDate());
-    const dueDateString = dueDate.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
-    
-    const itemsHtml = billingData.items.map(item => `
-        <div class="billing-item">
-            <span class="billing-item-name">${item.name}</span>
-            <span class="billing-item-cost">${billingData.currency}${item.cost}</span>
-        </div>
-    `).join('');
-    
-    billingCard.innerHTML = `
-        <div class="billing-card-header">
-            <i class="fas fa-credit-card"></i>
-            <h3>Billing Statement</h3>
-        </div>
-        <div class="billing-amount">
-            <span class="billing-currency">${billingData.currency}</span>${billingData.totalAmount.toLocaleString()}
-        </div>
-        <div class="billing-summary">
-            <div class="billing-summary-item">
-                <span class="billing-summary-label">Monthly Subscription</span>
-                <span class="billing-summary-value">${billingData.currency}${billingData.totalAmount}</span>
+    try {
+        const response = await fetch('/api/client/latest-invoice', {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to fetch invoice');
+        }
+        
+        const invoice = await response.json();
+        
+        if (!invoice) {
+            billingCard.innerHTML = `
+                <div class="billing-card-header">
+                    <i class="fas fa-credit-card"></i>
+                    <h3>Billing Statement</h3>
+                </div>
+                <p style="color: #bdbdbd; text-align: center; padding: 20px;">No invoices available</p>
+            `;
+            return;
+        }
+        
+        const currency = 'R';
+        const totalAmount = parseFloat(invoice.TotalAmount || 0);
+        const items = invoice.items || [];
+        const status = invoice.Status || 'Pending';
+        
+        // Format due date
+        const dueDate = invoice.DueDate ? new Date(invoice.DueDate) : null;
+        const dueDateString = dueDate ? dueDate.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A';
+        
+        // Payment status color
+        let statusColor = '#ffc107'; // yellow for pending
+        if (status.toLowerCase() === 'paid') {
+            statusColor = '#28a745'; // green
+        } else if (status.toLowerCase() === 'overdue') {
+            statusColor = '#dc3545'; // red
+        }
+        
+        // Show first 2 items, rest in dropdown if more than 2
+        const visibleItems = items.slice(0, 2);
+        const hiddenItems = items.slice(2);
+        const showMoreButton = items.length > 2;
+        
+        const visibleItemsHtml = visibleItems.map(item => {
+            const itemTotal = (parseFloat(item.Quantity || 0) * parseFloat(item.UnitPrice || 0)).toFixed(2);
+            return `
+                <div class="billing-item">
+                    <span class="billing-item-name">${item.Description || 'Service'}</span>
+                    <span class="billing-item-cost">${currency}${parseFloat(itemTotal).toLocaleString()}</span>
+                </div>
+            `;
+        }).join('');
+        
+        const hiddenItemsHtml = hiddenItems.map(item => {
+            const itemTotal = (parseFloat(item.Quantity || 0) * parseFloat(item.UnitPrice || 0)).toFixed(2);
+            return `
+                <div class="billing-item">
+                    <span class="billing-item-name">${item.Description || 'Service'}</span>
+                    <span class="billing-item-cost">${currency}${parseFloat(itemTotal).toLocaleString()}</span>
+                </div>
+            `;
+        }).join('');
+        
+        billingCard.innerHTML = `
+            <div class="billing-card-header">
+                <i class="fas fa-credit-card"></i>
+                <h3>Billing Statement</h3>
             </div>
-            <div class="billing-summary-item">
-                <span class="billing-summary-label">Total Services</span>
-                <span class="billing-summary-value">${billingData.items.length}</span>
+            <div class="billing-amount">
+                <span class="billing-currency">${currency}</span>${totalAmount.toLocaleString()}
             </div>
-            <div class="billing-summary-item">
-                <span class="billing-summary-label">Due Date</span>
-                <span class="billing-summary-value" style="color: var(--primary);">${dueDateString}</span>
+            <div class="billing-summary">
+                <div class="billing-summary-item">
+                    <span class="billing-summary-label">Monthly Subscription</span>
+                    <span class="billing-summary-value">${currency}${totalAmount.toLocaleString()}</span>
+                </div>
+                <div class="billing-summary-item">
+                    <span class="billing-summary-label">Total Services</span>
+                    <span class="billing-summary-value">${items.length}</span>
+                </div>
+                <div class="billing-summary-item">
+                    <span class="billing-summary-label">Payment Status</span>
+                    <span class="billing-summary-value" style="color: ${statusColor}; text-transform: capitalize;">${status}</span>
+                </div>
+                <div class="billing-summary-item">
+                    <span class="billing-summary-label">Due Date</span>
+                    <span class="billing-summary-value" style="color: var(--primary);">${dueDateString}</span>
+                </div>
             </div>
-        </div>
-        <div class="billing-items">
-            ${itemsHtml}
-        </div>
-        <div class="billing-warning">
-            <div class="warning-icon">
-                <i class="fas fa-exclamation-circle"></i>
+            <div class="billing-items">
+                ${visibleItemsHtml}
+                ${showMoreButton ? `
+                    <div class="billing-items-more" id="billing-items-more" style="display: none;">
+                        ${hiddenItemsHtml}
+                    </div>
+                    <button class="billing-see-more" id="billing-see-more-btn" onclick="toggleBillingItems()">
+                        <span>See More</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                ` : ''}
             </div>
-            <div class="warning-text">
-                <p><strong>Late Payment Notice:</strong></p>
-                <p>Failure to pay by the due date may result in service interruption and increased security exposure.</p>
+            <div class="billing-warning">
+                <div class="warning-icon">
+                    <i class="fas fa-exclamation-circle"></i>
+                </div>
+                <div class="warning-text">
+                    <p><strong>Late Payment Notice:</strong></p>
+                    <p>Failure to pay by the due date may result in service interruption and increased security exposure.</p>
+                </div>
             </div>
-        </div>
-    `;
+        `;
+    } catch (error) {
+        console.error('Error loading billing card:', error);
+        billingCard.innerHTML = `
+            <div class="billing-card-header">
+                <i class="fas fa-credit-card"></i>
+                <h3>Billing Statement</h3>
+            </div>
+            <p style="color: #bdbdbd; text-align: center; padding: 20px;">Error loading billing information</p>
+        `;
+    }
 }
+
+// Make toggleBillingItems globally accessible
+window.toggleBillingItems = function() {
+    const moreItems = document.getElementById('billing-items-more');
+    const seeMoreBtn = document.getElementById('billing-see-more-btn');
+    
+    if (moreItems && seeMoreBtn) {
+        const isHidden = moreItems.style.display === 'none';
+        moreItems.style.display = isHidden ? 'block' : 'none';
+        const icon = seeMoreBtn.querySelector('i');
+        const text = seeMoreBtn.querySelector('span');
+        
+        if (isHidden) {
+            text.textContent = 'See Less';
+            icon.classList.remove('fa-chevron-down');
+            icon.classList.add('fa-chevron-up');
+        } else {
+            text.textContent = 'See More';
+            icon.classList.remove('fa-chevron-up');
+            icon.classList.add('fa-chevron-down');
+        }
+    }
+};
 
 function initializeGovernanceCard() {
     const governanceCard = document.getElementById('governance-card');
