@@ -439,6 +439,11 @@ function handleMfaVerification() {
                 
                 // Reload billing card with new token
                 initializeBillingCard();
+                
+                // Initialize chatbot after login
+                if (typeof window.initChatbot === 'function') {
+                    window.initChatbot();
+                }
             }, 1500);
         } else {
             mfaError.textContent = data.message || 'Invalid code. Please try again.';
@@ -511,6 +516,11 @@ function setupSessionManagement() {
         
         // Load billing card if user is logged in
         initializeBillingCard();
+        
+        // Initialize chatbot if user is logged in
+        if (typeof window.initChatbot === 'function') {
+            window.initChatbot();
+        }
     }
 }
 

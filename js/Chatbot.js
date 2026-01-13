@@ -291,22 +291,49 @@
             'it audit': {
                 text: 'Our IT Audit services help identify vulnerabilities and ensure compliance.',
                 buttons: ['Book Assessment', 'Learn More', 'Get Pricing']
+            },
+            'invoices': {
+                text: 'I can help you with invoice information.',
+                buttons: null
+            },
+            'view invoices': {
+                text: 'I can help you with invoice information.',
+                buttons: null
             }
         };
 
         const response = responses[input];
         if (response) {
-            // If "Yes", add follow-up message
+            // If "Yes", add follow-up message with invoice option
             if (input === 'yes') {
                 setTimeout(() => {
                     setIsTyping(true);
                     setTimeout(() => {
                         setIsTyping(false);
-                        addMessage('bot', 'What service can we help you with', ['IT Audit', 'Cloud Solutions', 'Cybersecurity', 'Managed Services']);
+                        addMessage('bot', 'How can I assist you today?', ['View Invoices', 'IT Audit', 'Cloud Solutions', 'Cybersecurity', 'Managed Services']);
                     }, 800);
                 }, 2000);
             }
+            // Handle invoice requests
+            if (input === 'invoices' || input === 'view invoices') {
+                setTimeout(() => {
+                    setIsTyping(true);
+                    setTimeout(() => {
+                        setIsTyping(false);
+                        addMessage('bot', 'What invoice information would you like to see?', ['Latest Invoice', 'All Invoices']);
+                    }, 800);
+                }, 1500);
+            }
             return response;
+        }
+        
+        // Handle invoice button clicks (these come after responses check to allow buttons to work)
+        if (input === 'latest invoice') {
+            return await sendToBackend('What is my latest invoice?');
+        }
+        
+        if (input === 'all invoices') {
+            return await sendToBackend('Show me all my invoices');
         }
 
         // Default: send to backend

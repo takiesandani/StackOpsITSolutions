@@ -1,0 +1,179 @@
+CREATE TABLE Companies (
+    CompanyID INT AUTO_INCREMENT PRIMARY KEY,
+    CompanyName VARCHAR(255) NOT NULL,
+    Website VARCHAR(255),
+    Industry VARCHAR(255),
+    Address VARCHAR(255),
+    City VARCHAR(255),
+    State VARCHAR(255),
+    ZipCode VARCHAR(20),
+    Country VARCHAR(255),
+    Timezone VARCHAR(100) NOT NULL DEFAULT 'UTC',
+    CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE Users (
+    UserID INT AUTO_INCREMENT PRIMARY KEY,
+    FirstName VARCHAR(255) NOT NULL,
+    LastName VARCHAR(255) NOT NULL,
+    Email VARCHAR(255) NOT NULL UNIQUE,
+    Contact VARCHAR(20),
+    PasswordHash VARCHAR(255) NOT NULL,
+    IsActive BOOLEAN DEFAULT 1,
+    Role VARCHAR(50) NOT NULL,   -- Admin, Technician, Finance, Manager, etc.
+    CompanyID INT,
+    CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (CompanyID) REFERENCES Companies(CompanyID) ON DELETE CASCADE
+);
+
+CREATE TABLE CompanyContacts (
+    ContactID INT AUTO_INCREMENT PRIMARY KEY,
+    CompanyID INT NOT NULL,
+    FullName VARCHAR(255) NOT NULL,
+    Email VARCHAR(255) NOT NULL,
+    Phone VARCHAR(50),
+    Role VARCHAR(100),
+    IsPrimary BOOLEAN DEFAULT 0,
+    CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (CompanyID) REFERENCES Companies(CompanyID) ON DELETE CASCADE
+);
+
+CREATE TABLE CloudTenants (
+    TenantID INT AUTO_INCREMENT PRIMARY KEY,
+    CompanyID INT NOT NULL,
+    TenantDomain VARCHAR(255) NOT NULL,
+    TenantGUID VARCHAR(255),
+    SubscriptionType VARCHAR(100),
+    LastSync DATETIME NULL,
+    FOREIGN KEY (CompanyID) REFERENCES Companies(CompanyID) ON DELETE CASCADE
+);
+
+CREATE TABLE TenantHealthMetrics (
+    MetricID INT AUTO_INCREMENT PRIMARY KEY,
+    TenantID INT NOT NULL,
+    MetricName VARCHAR(255),
+    MetricValue VARCHAR(255),
+    Severity VARCHAR(50),
+    RecordedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (TenantID) REFERENCES CloudTenants(TenantID) ON DELETE CASCADE
+);
+
+CREATE TABLE Licenses (
+    LicenseID INT AUTO_INCREMENT PRIMARY KEY,
+    LicenseName VARCHAR(255),
+    SKU VARCHAR(100),
+    Category VARCHAR(100)
+);
+
+CREATE TABLE CompanyLicenses (
+    CompanyLicenseID INT AUTO_INCREMENT PRIMARY KEY,
+    CompanyID INT NOT NULL,
+    LicenseID INT NOT NULL,
+    Quantity INT NOT NULL,
+    Assigned INT DEFAULT 0,
+    LastUpdated DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (CompanyID) REFERENCES Companies(CompanyID) ON DELETE CASCADE,
+    FOREIGN KEY (LicenseID) REFERENCES Licenses(LicenseID) ON DELETE CASCADE
+);
+
+CREATE TABLE Invoices (
+    InvoiceID INT AUTO_INCREMENT PRIMARY KEY,
+    CompanyID INT NOT NULL,
+    InvoiceDate DATE NOT NULL,
+    DueDate DATE NOT NULL,
+    TotalAmount DECIMAL(18,2) NOT NULL,
+    Status VARCHAR(50) DEFAULT 'Pending',
+    FOREIGN KEY (CompanyID) REFERENCES Companies(CompanyID) ON DELETE CASCADE
+);
+
+CREATE TABLE InvoiceItems (
+    ItemID INT AUTO_INCREMENT PRIMARY KEY,
+    InvoiceID INT NOT NULL,
+    Description VARCHAR(255),
+    Quantity INT,
+    UnitPrice DECIMAL(18,2),
+    Amount DECIMAL(18,2) AS (Quantity * UnitPrice) PERSISTED,
+    FOREIGN KEY (InvoiceID) REFERENCES Invoices(InvoiceID) ON DELETE CASCADE
+);
+
+CREATE TABLE InvoiceItems (
+    ItemID INT AUTO_INCREMENT PRIMARY KEY,
+    InvoiceID INT NOT NULL,
+    Description VARCHAR(255),
+    Quantity INT,
+    UnitPrice DECIMAL(18,2),
+    Amount DECIMAL(18,2) AS (Quantity * UnitPrice) PERSISTED,
+    FOREIGN KEY (InvoiceID) REFERENCES Invoices(InvoiceID) ON DELETE CASCADE
+);
+
+CREATE TABLE Payments (
+    PaymentID INT AUTO_INCREMENT PRIMARY KEY,
+    InvoiceID INT NOT NULL,
+    AmountPaid DECIMAL(18,2),
+    PaymentDate DATE,
+    Method VARCHAR(100),
+    FOREIGN KEY (InvoiceID) REFERENCES Invoices(InvoiceID) ON DELETE CASCADE
+);
+
+CREATE TABLE Tickets (
+    TicketID INT AUTO_INCREMENT PRIMARY KEY,
+    CompanyID INT NOT NULL,
+    Title VARCHAR(255),
+    Description TEXT,
+    Status VARCHAR(100) DEFAULT 'Open',
+    Priority VARCHAR(50),
+    CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    AssignedTo INT NULL,
+    FOREIGN KEY (CompanyID) REFERENCES Companies(CompanyID) ON DELETE CASCADE,
+    FOREIGN KEY (AssignedTo) REFERENCES Users(UserID)
+);
+
+CREATE TABLE TicketUpdates (
+    UpdateID INT AUTO_INCREMENT PRIMARY KEY,
+    TicketID INT NOT NULL,
+    UpdatedBy INT NOT NULL,
+    UpdateText TEXT,
+    UpdatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (TicketID) REFERENCES Tickets(TicketID) ON DELETE CASCADE,
+    FOREIGN KEY (UpdatedBy) REFERENCES Users(UserID)
+);
+
+CREATE TABLE Projects (
+    ProjectID INT AUTO_INCREMENT PRIMARY KEY,
+    CompanyID INT NOT NULL,
+    ProjectName VARCHAR(255),
+    Status VARCHAR(100) DEFAULT 'In Progress',
+    StartDate DATE,
+    EndDate DATE NULL,
+    FOREIGN KEY (CompanyID) REFERENCES Companies(CompanyID) ON DELETE CASCADE
+);
+
+CREATE TABLE ProjectTasks (
+    TaskID INT AUTO_INCREMENT PRIMARY KEY,
+    ProjectID INT NOT NULL,
+    TaskName VARCHAR(255),
+    Status VARCHAR(100) DEFAULT 'Pending',
+    AssignedTo INT NULL,
+    DueDate DATE NULL,
+    FOREIGN KEY (ProjectID) REFERENCES Projects(ProjectID) ON DELETE CASCADE,
+    FOREIGN KEY (AssignedTo) REFERENCES Users(UserID)
+);
+
+CREATE TABLE ProjectUpdates (
+    UpdateID INT AUTO_INCREMENT PRIMARY KEY,
+    ProjectID INT NOT NULL,
+    UpdateText TEXT,
+    UpdatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (ProjectID) REFERENCES Projects(ProjectID) ON DELETE CASCADE
+);
+
+CREATE TABLE AuditLogs (
+    LogID INT AUTO_INCREMENT PRIMARY KEY,
+    UserID INT NULL,
+    CompanyID INT NULL,
+    Action VARCHAR(255),
+    Details TEXT,
+    Timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (UserID) REFERENCES Users(UserID),
+    FOREIGN KEY (CompanyID) REFERENCES Companies(CompanyID)
+);
