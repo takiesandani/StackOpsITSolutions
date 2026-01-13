@@ -2099,7 +2099,7 @@ app.get('/api/admin/companies/:id/details', authenticateToken, async (req, res) 
 
 // Initialize OpenAI client
 const openai = new OpenAI({
-    apiKey: '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'
+    apiKey: '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'
 });
 
 // System prompt for AI
