@@ -2306,6 +2306,13 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
                 // Fetch data safely using companyId
                 const data = await fetchClientData(parsed.action, companyId);
 
+                // Check if data fetch returned an error or empty message
+                if (data.message && (data.message.includes("No data") || data.message.includes("No invoices"))) {
+                    return res.json({ 
+                        text: data.message || "No invoice data available at this time."
+                    });
+                }
+
                 // Send data back to AI for formatting
                 const formatted = await openai.chat.completions.create({
                     model: "gpt-4o-mini",
@@ -2325,9 +2332,21 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
         }
     } catch (error) {
         console.error('Chat endpoint error:', error);
+        console.error('Error stack:', error.stack);
+        
+        // More specific error handling
+        let errorMessage = "I'm sorry, I encountered an error. Please try again or contact support.";
+        
+        if (error.message && error.message.includes('Database')) {
+            errorMessage = "Database connection error. Please try again in a moment.";
+        } else if (error.message && error.message.includes('OpenAI')) {
+            errorMessage = "AI service temporarily unavailable. Please try again.";
+        }
+        
         return res.status(500).json({ 
             error: 'An error occurred processing your message',
-            text: "I'm sorry, I encountered an error. Please try again or contact support."
+            text: errorMessage,
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
 });
