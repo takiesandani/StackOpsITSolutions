@@ -2140,14 +2140,17 @@ initializeOpenAI().catch(err => {
     console.error('Failed to initialize OpenAI:', err);
 });
 
-// System prompt for AI
+// ============================================
+// SYSTEM PROMPT (INTENT ONLY)
+// ============================================
+
 const CHATBOT_SYSTEM_PROMPT = `
 You are Stack Ops IT's AI Assistant.
 
 You do NOT have access to any database.
 You do NOT know any client data.
 
-If data is required, respond ONLY in JSON:
+If data is required, respond ONLY with valid JSON:
 
 {
   "type": "action",
@@ -2161,182 +2164,150 @@ Allowed actions:
 - get_security_analytics
 - get_ticket_status
 
-If no data is required, respond normally in text.
+If no data is required, respond with normal text.
 Never invent data.
+Never format invoices.
 `;
 
 // ============================================
-// CHATBOT DATA FETCHING FUNCTIONS
+// DATA FETCHING
 // ============================================
 
-/**
- * Fetch client data based on action type
- * All queries MUST filter by companyId for security
- */
 async function fetchClientData(action, companyId) {
-    if (!pool) {
-        throw new Error('Database connection unavailable');
-    }
+    if (!pool) throw new Error('Database connection unavailable');
 
     switch (action) {
         case "get_latest_invoice":
-            return await getLatestInvoice(companyId);
-
+            return getLatestInvoice(companyId);
         case "get_all_invoices":
-            return await getAllInvoices(companyId);
-
+            return getAllInvoices(companyId);
         default:
             return { message: "No data available for this request." };
     }
 }
 
-/**
- * Get the latest invoice for a company
- */
 async function getLatestInvoice(companyId) {
-    try {
-        // Get latest invoice
-        const [invoices] = await pool.query(
-            `SELECT 
-                i.InvoiceID,
-                i.InvoiceNumber,
-                i.InvoiceDate,
-                i.DueDate,
-                i.TotalAmount,
-                i.Status,
-                c.CompanyName
-             FROM Invoices i
-             LEFT JOIN Companies c ON i.CompanyID = c.ID
-             WHERE i.CompanyID = ?
-             ORDER BY i.InvoiceDate DESC
-             LIMIT 1`,
-            [companyId]
-        );
+    const [invoices] = await pool.query(
+        `SELECT i.InvoiceID, i.InvoiceNumber, i.InvoiceDate, i.DueDate,
+                i.TotalAmount, i.Status, c.CompanyName
+         FROM Invoices i
+         LEFT JOIN Companies c ON i.CompanyID = c.ID
+         WHERE i.CompanyID = ?
+         ORDER BY i.InvoiceDate DESC
+         LIMIT 1`,
+        [companyId]
+    );
 
-        if (invoices.length === 0) {
-            return { message: "No invoices found." };
-        }
+    if (!invoices.length) return { message: "No invoices found." };
 
-        const invoice = invoices[0];
+    const invoice = invoices[0];
 
-        // Get invoice items
-        const [items] = await pool.query(
-            `SELECT 
-                Description,
-                Quantity,
-                UnitPrice,
-                Amount
-             FROM InvoiceItems
-             WHERE InvoiceID = ?`,
-            [invoice.InvoiceID]
-        );
+    const [items] = await pool.query(
+        `SELECT Description, Quantity, UnitPrice, Amount
+         FROM InvoiceItems
+         WHERE InvoiceID = ?`,
+        [invoice.InvoiceID]
+    );
 
-        // Format the response
-        return {
-            invoice_number: invoice.InvoiceNumber,
-            invoice_date: invoice.InvoiceDate,
-            due_date: invoice.DueDate,
-            total_amount: parseFloat(invoice.TotalAmount).toFixed(2),
-            status: invoice.Status,
-            company_name: invoice.CompanyName,
-            items: items.map(item => ({
-                description: item.Description,
-                quantity: item.Quantity,
-                unit_price: parseFloat(item.UnitPrice).toFixed(2),
-                amount: parseFloat(item.Amount || (item.Quantity * item.UnitPrice)).toFixed(2)
-            }))
-        };
-    } catch (error) {
-        console.error('Error fetching latest invoice:', error);
-        throw error;
-    }
+    return {
+        invoice_number: invoice.InvoiceNumber,
+        invoice_date: invoice.InvoiceDate,
+        due_date: invoice.DueDate,
+        total_amount: parseFloat(invoice.TotalAmount).toFixed(2),
+        status: invoice.Status,
+        company_name: invoice.CompanyName,
+        items: items.map(i => ({
+            description: i.Description,
+            quantity: i.Quantity,
+            unit_price: parseFloat(i.UnitPrice).toFixed(2),
+            amount: parseFloat(i.Amount || (i.Quantity * i.UnitPrice)).toFixed(2)
+        }))
+    };
 }
 
-/**
- * Get all invoices for a company
- */
 async function getAllInvoices(companyId) {
-    try {
-        const [invoices] = await pool.query(
-            `SELECT 
-                i.InvoiceID,
-                i.InvoiceNumber,
-                i.InvoiceDate,
-                i.DueDate,
-                i.TotalAmount,
-                i.Status,
-                c.CompanyName
-             FROM Invoices i
-             LEFT JOIN Companies c ON i.CompanyID = c.ID
-             WHERE i.CompanyID = ?
-             ORDER BY i.InvoiceDate DESC`,
-            [companyId]
-        );
+    const [invoices] = await pool.query(
+        `SELECT InvoiceID, InvoiceNumber, InvoiceDate, DueDate, TotalAmount, Status
+         FROM Invoices
+         WHERE CompanyID = ?
+         ORDER BY InvoiceDate DESC`,
+        [companyId]
+    );
 
-        if (invoices.length === 0) {
-            return { message: "No invoices found.", invoices: [] };
-        }
-
-        // Format the response
-        return {
-            total_count: invoices.length,
-            invoices: invoices.map(invoice => ({
-                invoice_id: invoice.InvoiceID,
-                invoice_number: invoice.InvoiceNumber,
-                invoice_date: invoice.InvoiceDate,
-                due_date: invoice.DueDate,
-                total_amount: parseFloat(invoice.TotalAmount).toFixed(2),
-                status: invoice.Status,
-                company_name: invoice.CompanyName
-            }))
-        };
-    } catch (error) {
-        console.error('Error fetching all invoices:', error);
-        throw error;
-    }
+    return {
+        total_count: invoices.length,
+        invoices: invoices.map(i => ({
+            invoice_number: i.InvoiceNumber,
+            invoice_date: i.InvoiceDate,
+            due_date: i.DueDate,
+            total_amount: parseFloat(i.TotalAmount).toFixed(2),
+            status: i.Status
+        }))
+    };
 }
 
 // ============================================
-// CHATBOT API ENDPOINT
+// PLAIN-TEXT FORMATTERS (CRITICAL FIX)
+// ============================================
+
+function formatInvoice(invoice) {
+    let text = `Invoice Summary\n\n`;
+    text += `Invoice Number: ${invoice.invoice_number}\n`;
+    text += `Invoice Date: ${invoice.invoice_date}\n`;
+    text += `Due Date: ${invoice.due_date}\n`;
+    text += `Status: ${invoice.status}\n`;
+    text += `Total Amount: R ${invoice.total_amount}\n\n`;
+    text += `Services:\n`;
+
+    invoice.items.forEach(item => {
+        text += `- ${item.description}: ${item.quantity} x R${item.unit_price} = R${item.amount}\n`;
+    });
+
+    return text;
+}
+
+function formatAllInvoices(data) {
+    let text = `Invoices (${data.total_count})\n\n`;
+
+    data.invoices.forEach(inv => {
+        text += `Invoice ${inv.invoice_number}\n`;
+        text += `Date: ${inv.invoice_date}\n`;
+        text += `Due: ${inv.due_date}\n`;
+        text += `Amount: R ${inv.total_amount}\n`;
+        text += `Status: ${inv.status}\n\n`;
+    });
+
+    return text;
+}
+
+// ============================================
+// CHAT ENDPOINT
 // ============================================
 
 app.post('/api/chat', authenticateToken, async (req, res) => {
     try {
-        if (!pool) {
-            return res.status(500).json({ error: 'Database connection unavailable' });
-        }
+        if (!pool) return res.status(500).json({ text: "Database unavailable." });
 
         const userId = req.user.id;
         const message = req.body.message;
 
-        if (!message || !message.trim()) {
-            return res.status(400).json({ error: 'Message is required' });
+        if (!message?.trim()) {
+            return res.status(400).json({ text: "Message is required." });
         }
 
-        // Get user's company ID from database (security: never trust client)
         const [users] = await pool.query(
             'SELECT CompanyID FROM Users WHERE ID = ?',
             [userId]
         );
 
-        if (users.length === 0 || !users[0].CompanyID) {
-            return res.status(404).json({ error: 'Company not found for this user' });
+        if (!users.length) {
+            return res.status(404).json({ text: "Company not found." });
         }
 
         const companyId = users[0].CompanyID;
 
-        // Ensure OpenAI is initialized
-        if (!openai) {
-            await initializeOpenAI();
-            if (!openai) {
-                return res.status(500).json({ 
-                    error: 'AI service unavailable',
-                    text: "I'm sorry, the AI service is currently unavailable. Please try again later."
-                });
-            }
-        }
+        if (!openai) await initializeOpenAI();
 
-        // Ask AI what to do
         const completion = await openai.chat.completions.create({
             model: "gpt-4o-mini",
             messages: [
@@ -2345,68 +2316,35 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
             ]
         });
 
-        const aiReply = completion.choices[0].message.content;
+        const aiReply = completion.choices[0].message.content.trim();
 
-        // Check if AI is requesting data
+        let parsed = null;
         try {
-            const parsed = JSON.parse(aiReply);
+            parsed = JSON.parse(aiReply);
+        } catch {}
 
-            if (parsed.type === "action") {
-                // Fetch data safely using companyId
-                const data = await fetchClientData(parsed.action, companyId);
+        if (parsed?.type === "action") {
+            const data = await fetchClientData(parsed.action, companyId);
 
-                // Check if data fetch returned an error or empty message
-                if (data.message && (data.message.includes("No data") || data.message.includes("No invoices"))) {
-                    return res.json({ 
-                        text: data.message || "No invoice data available at this time."
-                    });
-                }
-
-                // Ensure OpenAI is initialized
-                if (!openai) {
-                    await initializeOpenAI();
-                    if (!openai) {
-                        return res.status(500).json({ 
-                            error: 'AI service unavailable',
-                            text: "I'm sorry, the AI service is currently unavailable. Please try again later."
-                        });
-                    }
-                }
-
-                // Send data back to AI for formatting
-                const formatted = await openai.chat.completions.create({
-                    model: "gpt-4o-mini",
-                    messages: [
-                        { role: "system", content: "Format this data clearly and professionally for the client. Be concise and helpful." },
-                        { role: "user", content: JSON.stringify(data) }
-                    ]
-                });
-
-                return res.json({
-                    text: formatted.choices[0].message.content
-                });
+            if (data.message) {
+                return res.json({ text: data.message });
             }
-        } catch (parseError) {
-            // Normal text response (not JSON)
-            return res.json({ text: aiReply });
+
+            if (parsed.action === "get_latest_invoice") {
+                return res.json({ text: formatInvoice(data) });
+            }
+
+            if (parsed.action === "get_all_invoices") {
+                return res.json({ text: formatAllInvoices(data) });
+            }
         }
+
+        return res.json({ text: aiReply });
+
     } catch (error) {
-        console.error('Chat endpoint error:', error);
-        console.error('Error stack:', error.stack);
-        
-        // More specific error handling
-        let errorMessage = "I'm sorry, I encountered an error. Please try again or contact support.";
-        
-        if (error.message && error.message.includes('Database')) {
-            errorMessage = "Database connection error. Please try again in a moment.";
-        } else if (error.message && error.message.includes('OpenAI')) {
-            errorMessage = "AI service temporarily unavailable. Please try again.";
-        }
-        
-        return res.status(500).json({ 
-            error: 'An error occurred processing your message',
-            text: errorMessage,
-            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        console.error('Chat error:', error);
+        return res.status(500).json({
+            text: "An unexpected error occurred. Please try again later."
         });
     }
 });
