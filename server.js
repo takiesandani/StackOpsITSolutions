@@ -9,6 +9,7 @@ const crypto = require('crypto');  // ADDED: For SHA1 hashing
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const OpenAI = require('openai');
+const {SecretManagerServiceClient} = require('@google-cloud/secret-manager');
 
 // NOTE: dotenv check removed as credentials are now hardcoded
 
@@ -2097,9 +2098,46 @@ app.get('/api/admin/companies/:id/details', authenticateToken, async (req, res) 
 // CHATBOT CONFIGURATION
 // ============================================
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-    apiKey: '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'
+// Initialize Secret Manager client
+const secretClient = new SecretManagerServiceClient();
+
+// Function to get secret from Google Cloud Secret Manager
+async function getSecret(secretName) {
+    const projectId = 'stackops-backend-475222';
+    const name = `projects/${projectId}/secrets/${secretName}/versions/latest`;
+    
+    try {
+        const [version] = await secretClient.accessSecretVersion({ name });
+        return version.payload.data.toString();
+    } catch (error) {
+        console.error(`Error accessing secret ${secretName}:`, error);
+        // Fallback to environment variable if secret not found
+        return process.env[secretName] || null;
+    }
+}
+
+// Initialize OpenAI client with secret from Secret Manager
+let openai = null;
+
+async function initializeOpenAI() {
+    try {
+        const apiKey = await getSecret('OPENAI_API_KEY');
+        if (!apiKey) {
+            console.error('OpenAI API key not found in Secret Manager or environment variables');
+            return null;
+        }
+        openai = new OpenAI({ apiKey: apiKey });
+        console.log('OpenAI client initialized successfully');
+        return openai;
+    } catch (error) {
+        console.error('Error initializing OpenAI:', error);
+        return null;
+    }
+}
+
+// Initialize OpenAI on startup
+initializeOpenAI().catch(err => {
+    console.error('Failed to initialize OpenAI:', err);
 });
 
 // System prompt for AI
@@ -2287,6 +2325,17 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
 
         const companyId = users[0].CompanyID;
 
+        // Ensure OpenAI is initialized
+        if (!openai) {
+            await initializeOpenAI();
+            if (!openai) {
+                return res.status(500).json({ 
+                    error: 'AI service unavailable',
+                    text: "I'm sorry, the AI service is currently unavailable. Please try again later."
+                });
+            }
+        }
+
         // Ask AI what to do
         const completion = await openai.chat.completions.create({
             model: "gpt-4o-mini",
@@ -2311,6 +2360,17 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
                     return res.json({ 
                         text: data.message || "No invoice data available at this time."
                     });
+                }
+
+                // Ensure OpenAI is initialized
+                if (!openai) {
+                    await initializeOpenAI();
+                    if (!openai) {
+                        return res.status(500).json({ 
+                            error: 'AI service unavailable',
+                            text: "I'm sorry, the AI service is currently unavailable. Please try again later."
+                        });
+                    }
                 }
 
                 // Send data back to AI for formatting

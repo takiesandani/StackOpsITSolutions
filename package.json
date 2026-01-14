@@ -31,6 +31,7 @@
     "mysql2": "^3.14.4",
     "nodemailer": "^7.0.6",
     "openai": "^4.20.0",
-    "pdfkit": "^0.17.2"
+    "pdfkit": "^0.17.2",
+    "@google-cloud/secret-manager": "^5.0.1"
   }
 }
