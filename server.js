@@ -2433,7 +2433,7 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
             parsed = JSON.parse(aiReply);
         } catch {}
 
-            if (parsed?.type === "action" && ALLOWED_ACTIONS.includes(parsed.action) && parsed.confidence >= 0.6 && parsed.needs_clarification === false) {
+            if (parsed?.type === "action" && ALLOWED_ACTIONS.includes(parsed.action) && parsed.confidence >= 0.4 || message.length > 10 && parsed.needs_clarification === false) {
 
             const data = await fetchClientData(parsed.action, companyId);
 
@@ -2484,7 +2484,7 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
         }
 
         return res.status(500).json({
-            text: "An unexpected error occurred. Please try again later."
+            text: "An unexpected error occurred. Please try again later." 
         });
     }
 });

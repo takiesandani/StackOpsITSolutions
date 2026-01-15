@@ -315,7 +315,13 @@
             }
 
             if (typeof data.text === "string" && data.text.trim().startsWith("{")) {
-                return { text: "I’m having trouble understanding that. Could you rephrase?", buttons: null };
+                // If AI responded with normal text (not JSON), return it
+                if (!parsed) {
+                    await saveChatMessage(userId, "user", message);
+                    await saveChatMessage(userId, "assistant", aiReply);
+                    return res.json({ text: aiReply });
+                }
+
             }
 
             setIsTyping(false);
