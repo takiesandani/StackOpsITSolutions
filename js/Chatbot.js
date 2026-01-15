@@ -270,37 +270,6 @@
             return await sendToBackend('Show me all my invoices');
         }
 
-        // Handle button responses
-        const responses = {
-            'yes': {
-                text: 'Great! Let\'s find out a bit more about what you need',
-                buttons: null
-            },
-            'no': {
-                text: 'No problem! Feel free to reach out anytime.',
-                buttons: ['View Services', 'Get a Quote', 'Contact Support']
-            },
-            'view services': {
-                text: 'What service can we help you with',
-                buttons: ['IT Audit', 'Cloud Solutions', 'Cybersecurity', 'Managed Services', 'Compliance']
-            },
-            'get a quote': {
-                text: 'Perfect! Which service are you interested in?',
-                buttons: ['IT Audit', 'Cloud Solutions', 'Cybersecurity', 'Managed Services']
-            },
-            'it audit': {
-                text: 'Our IT Audit services help identify vulnerabilities and ensure compliance.',
-                buttons: ['Book Assessment', 'Learn More', 'Get Pricing']
-            },
-            'invoices': {
-                text: 'I can help you with invoice information.',
-                buttons: null
-            },
-            'view invoices': {
-                text: 'I can help you with invoice information.',
-                buttons: null
-            }
-        };
 
         const response = responses[input];
         if (response) {
@@ -320,7 +289,7 @@
                     setIsTyping(true);
                     setTimeout(() => {
                         setIsTyping(false);
-                        addMessage('bot', 'What invoice information would you like to see?', ['Latest Invoice', 'All Invoices']);
+                        addMessage('bot', 'What invoice information would you like to see?', ['Latest invoice', 'All Invoices']);
                     }, 800);
                 }, 1500);
             }
