@@ -2166,10 +2166,10 @@ Important limitations:
 - You must NEVER invent, guess, or assume data
 - You must NEVER estimate prices, balances, dates, or statuses
  
-When data is required (INITIAL ACTION):
-- Respond ONLY with valid JSON
-- Do NOT include explanations, text, or formatting outside the JSON
-- Do NOT wrap JSON in markdown or code blocks
+Only respond with the special JSON format when you are highly confident
+that system data is required to answer the user's question.
+For greetings, small talk, or unclear requests, respond in normal plain text.
+
  
 JSON format:
 {
@@ -2179,7 +2179,6 @@ JSON format:
   "needs_clarification": false
 }
 
- 
 Allowed actions:
 - get_latest_invoice        (when user asks what they owe, balance, latest bill, payment due)
 - get_all_invoices          (when user asks for billing history or all invoices)
