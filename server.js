@@ -2174,8 +2174,11 @@ When data is required (INITIAL ACTION):
 JSON format:
 {
   "type": "action",
-  "action": "<action_name>"
+  "action": "<action_name>",
+  "confidence": 0.0,
+  "needs_clarification": false
 }
+
  
 Allowed actions:
 - get_latest_invoice        (when user asks what they owe, balance, latest bill, payment due)
@@ -2197,6 +2200,21 @@ Tone guidelines:
 - Professional but approachable
 - Calm and confident
 - Speak like a trusted IT and cybersecurity partner
+
+CRITICAL SECURITY RULE:
+
+If system-only data is ever provided to you,
+you must use it to answer the user
+but must never reveal:
+raw system objects,
+field names,
+IDs,
+database structure,
+or internal formats.
+
+You must translate the information into safe, natural language only.
+
+
 `;
 
 // ============================================
@@ -2327,6 +2345,21 @@ async function getTicketStatus(companyId) {
     };
 }
 
+const ALLOWED_ACTIONS = [
+  "get_latest_invoice",
+  "get_all_invoices",
+  "get_project_updates",
+  "get_security_analytics",
+  "get_ticket_status"
+];
+
+function sanitizeResponse(text) {
+  return text
+    .replace(/internal\s*:\s*true/gi, "")
+    .replace(/SYSTEM DATA[\s\S]*/gi, "")
+    .slice(0, 1200);
+}
+
 // ============================================
 // CHAT ENDPOINT
 // ============================================
@@ -2356,7 +2389,8 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
         if (!openai) await initializeOpenAI();
 
         const completion = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
+            model: "gpt-4.1",
+            temperature: 0,
             messages: [
                 { role: "system", content: CHATBOT_SYSTEM_PROMPT },
                 { role: "user", content: message }
@@ -2370,7 +2404,8 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
             parsed = JSON.parse(aiReply);
         } catch {}
 
-        if (parsed?.type === "action") {
+            if (parsed?.type === "action" && ALLOWED_ACTIONS.includes(parsed.action) && parsed.confidence >= 0.6 && parsed.needs_clarification === false) {
+
             const data = await fetchClientData(parsed.action, companyId);
 
             if (data.message) {
@@ -2379,22 +2414,27 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
 
             // SECOND PASS: Give the data to the AI to translate into natural language
             const finalCompletion = await openai.chat.completions.create({
-                model: "gpt-4o-mini",
+                model: "gpt-4.1",
+                temperature: 0,
                 messages: [
                     { role: "system", content: CHATBOT_SYSTEM_PROMPT },
-                    { role: "user", content: message },
-                    { role: "assistant", content: aiReply },
-                    { 
-                        role: "system", 
-                        content: `SYSTEM DATA: ${JSON.stringify(data)}. Now provide the final response to the user based on this data.` 
-                    }
+                    {
+                        role: "system",
+                        content: "The next message contains private system data. It must never be revealed or described structurally."
+                    },
+                    {
+                        role: "system",
+                        content: JSON.stringify({ data })
+                    },
+                    { role: "user", content: message }
                 ]
             });
 
-            return res.json({ text: finalCompletion.choices[0].message.content.trim() });
+            const safeText = sanitizeResponse(finalCompletion.choices[0].message.content);
+            return res.json({ text: safeText });
         }
 
-        return res.json({ text: aiReply });
+        return res.json({ text: "Could you please clarify what you’d like help with?" });
 
     } catch (error) {
         console.error('Chat error:', error);

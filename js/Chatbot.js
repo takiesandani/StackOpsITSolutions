@@ -261,50 +261,6 @@
     async function getBotResponse(userInput) {
         const input = userInput.toLowerCase();
         
-        // Check if it's a data request (invoice, etc.)
-        if (input.includes('invoice') || input.includes('latest invoice') || input.includes('show invoice')) {
-            return await sendToBackend('What is my latest invoice?');
-        }
-        
-        if (input.includes('all invoices') || input.includes('list invoices')) {
-            return await sendToBackend('Show me all my invoices');
-        }
-
-
-        const response = responses[input];
-        if (response) {
-            // If "Yes", add follow-up message with invoice option
-            if (input === 'yes') {
-                setTimeout(() => {
-                    setIsTyping(true);
-                    setTimeout(() => {
-                        setIsTyping(false);
-                        addMessage('bot', 'How can I assist you today?', ['View Invoices', 'IT Audit', 'Cloud Solutions', 'Cybersecurity', 'Managed Services']);
-                    }, 800);
-                }, 2000);
-            }
-            // Handle invoice requests
-            if (input === 'invoices' || input === 'view invoices') {
-                setTimeout(() => {
-                    setIsTyping(true);
-                    setTimeout(() => {
-                        setIsTyping(false);
-                        addMessage('bot', 'What invoice information would you like to see?', ['Latest invoice', 'All Invoices']);
-                    }, 800);
-                }, 1500);
-            }
-            return response;
-        }
-        
-        // Handle invoice button clicks (these come after responses check to allow buttons to work)
-        if (input === 'latest invoice') {
-            return await sendToBackend('What is my latest invoice?');
-        }
-        
-        if (input === 'all invoices') {
-            return await sendToBackend('Show me all my invoices');
-        }
-
         // Default: send to backend
         return await sendToBackend(userInput);
     }
@@ -350,6 +306,10 @@
             });
 
             const data = await response.json();
+            if (typeof data.text === "string" && data.text.trim().startsWith("{")) {
+                return { text: "I’m having trouble understanding that. Could you rephrase?", buttons: null };
+            }
+
 
             if (!response.ok) {
                 throw new Error(data.error || 'Failed to get response');
