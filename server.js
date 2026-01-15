@@ -2287,46 +2287,32 @@ async function getAllInvoices(companyId) {
 // PLAIN-TEXT FORMATTERS (CRITICAL FIX)
 // ============================================
 
-function formatDate(date) {
-    if (!date) return 'N/A';
-    const d = new Date(date);
-    if (isNaN(d.getTime())) return date;
-    return d.toLocaleDateString('en-GB', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric'
-    });
-}
-
 function formatInvoice(invoice) {
-    const services = invoice.items.map(item => item.description);
-    let servicesList = '';
-    if (services.length > 1) {
-        servicesList = services.slice(0, -1).join(', ') + ' and ' + services.slice(-1);
-    } else {
-        servicesList = services[0] || 'no specific services';
-    }
+    let text = `Invoice Summary\n\n`;
+    text += `Invoice Number: ${invoice.invoice_number}\n`;
+    text += `Invoice Date: ${invoice.invoice_date}\n`;
+    text += `Due Date: ${invoice.due_date}\n`;
+    text += `Status: ${invoice.status}\n`;
+    text += `Total Amount: R ${invoice.total_amount}\n\n`;
+    text += `Services:\n`;
 
-    let text = `Here is your Invoice summary for invoice number #${invoice.invoice_number}: `;
-    text += `you owe a total of R${invoice.total_amount} for the services ${servicesList}, `;
-    text += `which is due on the ${formatDate(invoice.due_date)}. `;
-    text += `Currently your status is ${invoice.status.toLowerCase()}. `;
-    text += `What else would you like to know?`;
+    invoice.items.forEach(item => {
+        text += `- ${item.description}: ${item.quantity} x R${item.unit_price} = R${item.amount}\n`;
+    });
 
     return text;
 }
 
 function formatAllInvoices(data) {
-    if (data.total_count === 0) return "I couldn't find any invoices for your account.";
-
-    let text = `I found ${data.total_count} invoices for you:\n\n`;
+    let text = `Invoices (${data.total_count})\n\n`;
 
     data.invoices.forEach(inv => {
-        text += `- Invoice #${inv.invoice_number} (R${inv.total_amount}) - `;
-        text += `Status: ${inv.status}, Due: ${formatDate(inv.due_date)}\n`;
+        text += `Invoice ${inv.invoice_number}\n`;
+        text += `Date: ${inv.invoice_date}\n`;
+        text += `Due: ${inv.due_date}\n`;
+        text += `Amount: R ${inv.total_amount}\n`;
+        text += `Status: ${inv.status}\n\n`;
     });
-
-    text += `\nWhich one would you like more details on?`;
 
     return text;
 }
