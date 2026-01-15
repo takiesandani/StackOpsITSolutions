@@ -2218,6 +2218,29 @@ or internal formats.
 You must translate the information into safe, natural language only.
 `;
 
+async function saveChatMessage(userId, role, content) {
+    await pool.query(
+        "INSERT INTO ChatHistory (UserID, Role, Content) VALUES (?, ?, ?)",
+        [userId, role, content.slice(0, 2000)]
+    );
+}
+
+async function getChatHistory(userId, limit = 12) {
+    const [rows] = await pool.query(
+        `SELECT Role, Content FROM ChatHistory
+         WHERE UserID = ?
+         ORDER BY ID DESC
+         LIMIT ?`,
+        [userId, limit]
+    );
+
+    return rows.reverse().map(r => ({
+        role: r.Role,
+        content: r.Content
+    }));
+}
+
+
 // ============================================
 // DATA FETCHING
 // ============================================
@@ -2389,13 +2412,18 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
 
         if (!openai) await initializeOpenAI();
 
+        const history = await getChatHistory(userId);
         const completion = await openai.chat.completions.create({
             model: "gpt-4.1-mini",
             temperature: 0,
+
+
             messages: [
-                { role: "system", content: CHATBOT_SYSTEM_PROMPT },
-                { role: "user", content: message }
+            { role: "system", content: CHATBOT_SYSTEM_PROMPT },
+            ...history,
+            { role: "user", content: message }
             ]
+
         });
 
         const aiReply = completion.choices[0].message.content.trim();
@@ -2432,10 +2460,19 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
             });
 
             const safeText = sanitizeResponse(finalCompletion.choices[0].message.content);
+
+            await saveChatMessage(userId, "user", message);
+            await saveChatMessage(userId, "assistant", safeText);
+
             return res.json({ text: safeText });
+
         }
 
+        await saveChatMessage(userId, "user", message);
+        await saveChatMessage(userId, "assistant", "Could you please clarify what you’d like help with?");
+
         return res.json({ text: "Could you please clarify what you’d like help with?" });
+
 
     } catch (error) {
         console.error('Chat error:', error);
