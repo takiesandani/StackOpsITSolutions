@@ -2150,7 +2150,6 @@ You are StackOn, the AI Assistant for Stack Ops IT.
 Stack Ops IT is a professional cybersecurity and IT services provider.
 This platform is a secure client dashboard used by authenticated customers only.
 
-
 Your role:
 - Assist clients in a clear, professional, and friendly manner
 - Communicate naturally, like a knowledgeable IT account manager
@@ -2167,7 +2166,7 @@ Important limitations:
 - You must NEVER invent, guess, or assume data
 - You must NEVER estimate prices, balances, dates, or statuses
  
-When data is required:
+When data is required (INITIAL ACTION):
 - Respond ONLY with valid JSON
 - Do NOT include explanations, text, or formatting outside the JSON
 - Do NOT wrap JSON in markdown or code blocks
@@ -2185,25 +2184,19 @@ Allowed actions:
 - get_security_analytics    (when user asks about security status, risks, audits, or protection)
 - get_ticket_status         (when user asks about support tickets or issues)
  
-If NO data is required:
-- Respond in natural, professional language
-- Be helpful and reassuring
-- Keep responses short and easy to understand
- 
+When data is PROVIDED by the system:
+- Analyze the raw data and explain it to the user in a friendly, conversational way
+- Do NOT mention that you are "receiving data" or "analyzing results" - just speak naturally
+- Ensure all technical dates or currency are formatted for human readability
+
 Formatting rules:
 - Never use tables, markdown, or bullet symbols
 - Use plain text only
-- Let the system handle all data presentation
-- Display data in a Human readable format
  
 Tone guidelines:
 - Professional but approachable
 - Calm and confident
 - Speak like a trusted IT and cybersecurity partner
- 
-Your goal:
-Help clients feel informed, supported, and confident in Stack Ops IT’s services,
-while strictly following system rules and data boundaries.
 `;
 
 // ============================================
@@ -2283,38 +2276,55 @@ async function getAllInvoices(companyId) {
     };
 }
 
-// ============================================
-// PLAIN-TEXT FORMATTERS (CRITICAL FIX)
-// ============================================
+async function getProjectUpdates(companyId) {
+    const [projects] = await pool.query(
+        `SELECT ProjectID, ProjectName, Status, DueDate
+         FROM Projects
+         WHERE CompanyID = ?
+         ORDER BY DueDate DESC`,
+        [companyId]
+    );
 
-function formatInvoice(invoice) {
-    let text = `Invoice Summary\n\n`;
-    text += `Invoice Number: ${invoice.invoice_number}\n`;
-    text += `Invoice Date: ${invoice.invoice_date}\n`;
-    text += `Due Date: ${invoice.due_date}\n`;
-    text += `Status: ${invoice.status}\n`;
-    text += `Total Amount: R ${invoice.total_amount}\n\n`;
-    text += `Services:\n`;
+    if (!projects.length) return { message: "No projects found for your company." };
 
-    invoice.items.forEach(item => {
-        text += `- ${item.description}: ${item.quantity} x R${item.unit_price} = R${item.amount}\n`;
-    });
+    const results = [];
+    for (const project of projects) {
+        const [updates] = await pool.query(
+            `SELECT UpdateText, UpdateDate
+             FROM ProjectUpdates
+             WHERE ProjectID = ?
+             ORDER BY UpdateDate DESC
+             LIMIT 3`,
+            [project.ProjectID]
+        );
+        results.push({
+            project_name: project.ProjectName,
+            status: project.Status,
+            due_date: project.DueDate,
+            latest_updates: updates.map(u => ({
+                text: u.UpdateText,
+                date: u.UpdateDate
+            }))
+        });
+    }
 
-    return text;
+    return { projects: results };
 }
 
-function formatAllInvoices(data) {
-    let text = `Invoices (${data.total_count})\n\n`;
+async function getSecurityAnalytics(companyId) {
+    // Placeholder as tables don't exist yet
+    return { 
+        message: "Security analytics data is currently being integrated. Please check back soon for real-time risk scores and audit reports.",
+        status: "Coming Soon"
+    };
+}
 
-    data.invoices.forEach(inv => {
-        text += `Invoice ${inv.invoice_number}\n`;
-        text += `Date: ${inv.invoice_date}\n`;
-        text += `Due: ${inv.due_date}\n`;
-        text += `Amount: R ${inv.total_amount}\n`;
-        text += `Status: ${inv.status}\n\n`;
-    });
-
-    return text;
+async function getTicketStatus(companyId) {
+    // Placeholder as tables don't exist yet
+    return {
+        message: "Support ticket tracking is currently being migrated. For urgent issues, please contact support@stackopsit.co.za.",
+        status: "Coming Soon"
+    };
 }
 
 // ============================================
@@ -2367,13 +2377,21 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
                 return res.json({ text: data.message });
             }
 
-            if (parsed.action === "get_latest_invoice") {
-                return res.json({ text: formatInvoice(data) });
-            }
+            // SECOND PASS: Give the data to the AI to translate into natural language
+            const finalCompletion = await openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                messages: [
+                    { role: "system", content: CHATBOT_SYSTEM_PROMPT },
+                    { role: "user", content: message },
+                    { role: "assistant", content: aiReply },
+                    { 
+                        role: "system", 
+                        content: `SYSTEM DATA: ${JSON.stringify(data)}. Now provide the final response to the user based on this data.` 
+                    }
+                ]
+            });
 
-            if (parsed.action === "get_all_invoices") {
-                return res.json({ text: formatAllInvoices(data) });
-            }
+            return res.json({ text: finalCompletion.choices[0].message.content.trim() });
         }
 
         return res.json({ text: aiReply });
