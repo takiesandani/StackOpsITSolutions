@@ -2389,7 +2389,7 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
         if (!openai) await initializeOpenAI();
 
         const completion = await openai.chat.completions.create({
-            model: "gpt-4.1",
+            model: "gpt-4.1-mini",
             temperature: 0,
             messages: [
                 { role: "system", content: CHATBOT_SYSTEM_PROMPT },
@@ -2414,7 +2414,7 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
 
             // SECOND PASS: Give the data to the AI to translate into natural language
             const finalCompletion = await openai.chat.completions.create({
-                model: "gpt-4.1",
+                model: "gpt-4.1-mini",
                 temperature: 0,
                 messages: [
                     { role: "system", content: CHATBOT_SYSTEM_PROMPT },
@@ -2438,6 +2438,13 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
 
     } catch (error) {
         console.error('Chat error:', error);
+        
+        if (error.code === 'insufficient_quota') {
+            return res.status(500).json({
+                text: "The AI service is currently unavailable due to quota limits. Please contact support or check billing details."
+            });
+        }
+
         return res.status(500).json({
             text: "An unexpected error occurred. Please try again later."
         });

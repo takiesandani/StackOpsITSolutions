@@ -306,18 +306,21 @@
             });
 
             const data = await response.json();
+            
+            if (!response.ok) {
+                return {
+                    text: data.text || 'Sorry, I encountered an error. Please try again or contact support.',
+                    buttons: null
+                };
+            }
+
             if (typeof data.text === "string" && data.text.trim().startsWith("{")) {
                 return { text: "I’m having trouble understanding that. Could you rephrase?", buttons: null };
             }
 
-
-            if (!response.ok) {
-                throw new Error(data.error || 'Failed to get response');
-            }
-
             setIsTyping(false);
             return {
-                text: data.text || data.error || 'No response received',
+                text: data.text || 'No response received',
                 buttons: null
             };
         } catch (error) {
