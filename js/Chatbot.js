@@ -305,7 +305,7 @@
             
             if (!response.ok) {
                 return {
-                    text: data.text || 'Sorry, I encountered an error. Please try again or contact support.',
+                    text: data.text || '',
                     buttons: null
                 };
             }
