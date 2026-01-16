@@ -19,12 +19,8 @@
     flex-direction: column;
     z-index: 9998;
     animation: slideUp 0.3s ease-out;
-    background: rgba(15, 23, 42, 0.95);
-    backdrop-filter: blur(20px);
-    border-radius: 16px;
-    border: 1px solid rgba(0, 110, 255, 0.2);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-    padding: 16px;
+    background: transparent;
+    padding: 0;
 }
 
 @keyframes slideUp {
@@ -44,6 +40,10 @@
     gap: 8px;
     justify-content: flex-end;
     margin-bottom: 12px;
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 10;
 }
 
 .mini-btn {
@@ -84,8 +84,9 @@
 .corner-messages {
     max-height: 600px;
     overflow-y: auto;
-    padding-right: 8px;
+    padding: 8px 0;
     flex: 1;
+    background: transparent;
 }
 
 .corner-messages::-webkit-scrollbar {
@@ -305,11 +306,9 @@
 .chatbot-input-container {
     display: flex;
     gap: 8px;
-    padding: 12px;
-    border-top: 1px solid rgba(0, 110, 255, 0.2);
+    padding: 12px 0;
     background: transparent;
     margin-top: 8px;
-    border-radius: 0 0 16px 16px;
 }
 
 .chatbot-input {
@@ -324,6 +323,7 @@
     background: rgba(15, 23, 42, 0.7);
     color: #e2e8f0;
     -webkit-appearance: none;
+    appearance: none;
     -webkit-tap-highlight-color: transparent;
 }
 
@@ -374,12 +374,13 @@
         right: 12px;
         bottom: 80px;
         left: 12px;
-        padding: 12px;
+        padding: 0;
+        background: transparent;
     }
 
     .corner-messages {
         max-height: calc(100vh - 240px);
-        padding: 6px;
+        padding: 8px 0;
     }
 
     .msg-wrapper {
@@ -416,7 +417,7 @@
     }
 
     .chatbot-input-container {
-        padding: 10px;
+        padding: 10px 0;
         gap: 6px;
     }
 
@@ -443,12 +444,14 @@
         right: 8px;
         left: 8px;
         bottom: 70px;
-        padding: 10px;
+        padding: 0;
         max-height: calc(100vh - 100px);
+        background: transparent;
     }
 
     .corner-messages {
         max-height: calc(100vh - 220px);
+        padding: 8px 0;
     }
 
     .msg-wrapper {
@@ -485,7 +488,7 @@
     }
 
     .chatbot-input-container {
-        padding: 8px;
+        padding: 8px 0;
         gap: 4px;
     }
 

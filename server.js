@@ -2158,9 +2158,10 @@ CORE BEHAVIOR PRINCIPLES
 - Never use hardcoded responses or fixed conversation flows
 - As a representative of Stack Ops IT Solutions, speak naturally as if you are a human team member. Use inclusive language like "we," "us," and "our" where appropriate (e.g., "You owe us R15,000 on this invoice" or "Our team is working on your project").
 - This chatbot is versatile and not limited to invoices. Handle a wide range of topics, including cybersecurity advice, general IT support, project updates, security analytics, support tickets, and open-ended conversations—just like other AI models (e.g., ChatGPT). Only fetch specific company data (like invoices or projects) when the user's intent clearly requires it; otherwise, engage conversationally on any subject.
-- **ABSOLUTE RULE - NO HALLUCINATION: You MUST ONLY use data that is explicitly provided in the system data messages. Every number, date, amount, invoice number, status, item name, company name, or any other detail MUST come directly from the provided database data. If the data is not in the system message, you MUST say "I don't have that information in your records" or "That information isn't available" - NEVER make up, estimate, guess, or assume ANY value.**
+- **ABSOLUTE RULE - NO HALLUCINATION: You MUST ONLY use data that is explicitly provided in the system data messages. Every number, date, amount, invoice number, status, item name, company name, or any other detail MUST come directly from the provided database data. You are like a database query result - you can ONLY say what exists in the data. If the data is not in the system message, you MUST say "I don't have that information in your records" or "That information isn't available" - NEVER make up, estimate, guess, or assume ANY value.**
+- **DATA-DRIVEN RESPONSES: Think of yourself as a smart interface to the database. You don't know anything that isn't in the database. When data is provided, you learn it. When no data is found, you acknowledge it. You never invent information.**
 - **DATA SCOPE: All data provided is specific to the current user's company. You are speaking to ONE specific company/user. Never reference data from other companies or make assumptions about what might exist. Only use what is explicitly provided.**
-- **CRITICAL: NEVER output JSON in any conversational text response. JSON is ONLY for triggering actions and must be the ENTIRE response (no text before or after). For all other replies, use plain text only. NEVER include JSON fragments, partial JSON, or any curly braces { } in your text responses.**
+- **CRITICAL: When you need to fetch data from the database, you MUST respond with ONLY pure JSON (no text before or after). When you DON'T need to fetch data, respond with plain text only. NEVER mix JSON with text. NEVER say "I will fetch" or "Let me retrieve" - just output the JSON action directly.**
 - **CRITICAL: When you have database data available from previous messages, use it naturally in your responses. Remember what invoices, projects, or other data was discussed and reference it when answering follow-up questions. However, if you need specific details that weren't in the previous data, you MUST trigger a fetch action rather than assuming.**
 
 ========================
@@ -2255,8 +2256,9 @@ CORE BEHAVIOR PRINCIPLES
   - Database structures
   - IDs or implementation details
 - **If the injected data does not cover the query, do not respond with assumed details. Instead, say "I don't have that specific information available. Would you like me to check your records?"**
-- **When system data shows "message" field (e.g., "No invoices found"), use that exact message or a natural version of it. Do not invent alternative explanations.**
-- **If system data is empty, null, or shows no results, acknowledge this directly: "I couldn't find any [invoices/projects/etc.] in your account" - do not make up placeholder data.**
+- **When system data shows "has_data: false" or a "message" field indicating no results, acknowledge this naturally. For example, if data shows {has_data: false, message: "No invoices found"}, respond naturally like "I couldn't find any invoices in your account" - use the message as guidance but phrase it naturally.**
+- **If system data is empty, null, or shows no results, acknowledge this directly based on what the data structure tells you - do not make up placeholder data.**
+- **LEARNING FROM DATA: When database data is provided to you, you learn it. You remember invoice numbers, amounts, dates, items, payments - everything in the data becomes part of your knowledge for this conversation. Use this learned data to answer follow-up questions.**
 
 ========================
 6. ACTION DETECTION
@@ -2264,13 +2266,15 @@ CORE BEHAVIOR PRINCIPLES
 
 Only respond with JSON when you need the system to fetch data.
 
-JSON FORMAT (no extra text):
+**IMPORTANT: When you need data, output ONLY the JSON below. Do NOT add any text like "I will fetch" or "Let me retrieve". Just output the pure JSON.**
+
+JSON FORMAT (ONLY the JSON, nothing else):
 
 {
   "type": "action",
   "action": "<action_name>",
   "params": { "key": "value" },  // Include params for actions needing extra info (e.g., invoice_number for get_invoice_details)
-  "confidence": 0.0-1.0,
+  "confidence": 0.8,
   "needs_clarification": false
 }
 
@@ -2285,7 +2289,14 @@ Allowed actions:
 - For greetings, explanations, or follow-up questions:
   - Respond in normal text ONLY.
   - Never wrap conversational replies in JSON.
-- **Trigger actions for any query requiring unfetched data (e.g., items or amounts for non-latest invoices).**
+- **When user asks for invoice data, invoice amounts, invoice details, or "how much do I owe", you MUST output JSON action immediately. Do NOT say "I will fetch" - just output the JSON.**
+- **Trigger actions for any query requiring unfetched data (e.g., "latest invoice", "how much do I owe", "show invoices", etc.).**
+
+EXAMPLES:
+- User: "How much do I owe?" → Output: {"type":"action","action":"get_latest_invoice","params":{},"confidence":0.9,"needs_clarification":false}
+- User: "Show my latest invoice" → Output: {"type":"action","action":"get_latest_invoice","params":{},"confidence":0.9,"needs_clarification":false}
+- User: "What invoices do I have?" → Output: {"type":"action","action":"get_all_invoices","params":{},"confidence":0.9,"needs_clarification":false}
+- User: "Hi" → Output: "Hello! How can I help you today?" (plain text, no JSON)
 
 ========================
 7. DATA REUSE
@@ -2368,7 +2379,11 @@ async function getLatestInvoice(companyId) {
         [companyId]
     );
 
-    if (!invoices.length) return { message: "No invoices found." };
+    if (!invoices.length) return { 
+        has_data: false,
+        data_type: "invoice",
+        message: "No invoices found in your account."
+    };
 
     const invoice = invoices[0];
 
@@ -2393,6 +2408,8 @@ async function getLatestInvoice(companyId) {
     const balance = parseFloat(invoice.TotalAmount) - totalPaid;
 
     return {
+        has_data: true,
+        data_type: "invoice",
         invoice_number: invoice.InvoiceNumber,
         invoice_date: invoice.InvoiceDate,
         due_date: invoice.DueDate,
@@ -2424,7 +2441,11 @@ async function getAllInvoices(companyId) {
         [companyId]
     );
 
-    if (!invoices.length) return { message: "No invoices found." };
+    if (!invoices.length) return { 
+        has_data: false,
+        data_type: "invoices",
+        message: "No invoices found in your account."
+    };
 
     const results = [];
     for (const invoice of invoices) {
@@ -2451,6 +2472,8 @@ async function getAllInvoices(companyId) {
     }
 
     return {
+        has_data: true,
+        data_type: "invoices",
         total_count: invoices.length,
         invoices: results
     };
@@ -2466,7 +2489,12 @@ async function getInvoiceDetails(companyId, invoiceNumber) {
         [companyId, invoiceNumber]
     );
 
-    if (!invoices.length) return { message: `Invoice #${invoiceNumber} not found.` };
+    if (!invoices.length) return { 
+        has_data: false,
+        data_type: "invoice",
+        invoice_number: invoiceNumber,
+        message: `Invoice #${invoiceNumber} not found in your account.`
+    };
 
     const invoice = invoices[0];
 
@@ -2489,6 +2517,8 @@ async function getInvoiceDetails(companyId, invoiceNumber) {
     const balance = parseFloat(invoice.TotalAmount) - totalPaid;
 
     return {
+        has_data: true,
+        data_type: "invoice",
         invoice_number: invoice.InvoiceNumber,
         invoice_date: invoice.InvoiceDate,
         due_date: invoice.DueDate,
@@ -2521,7 +2551,11 @@ async function getProjectUpdates(companyId) {
         [companyId]
     );
 
-    if (!projects.length) return { message: "No projects found for your company." };
+    if (!projects.length) return { 
+        has_data: false,
+        data_type: "projects",
+        message: "No projects found in your account."
+    };
 
     const results = [];
     for (const project of projects) {
@@ -2544,7 +2578,11 @@ async function getProjectUpdates(companyId) {
         });
     }
 
-    return { projects: results };
+    return { 
+        has_data: true,
+        data_type: "projects",
+        projects: results 
+    };
 }
 
 async function getSecurityAnalytics(companyId) {
@@ -2648,10 +2686,23 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
 
         if (!openai) await initializeOpenAI();
 
+        // Detect invoice-related queries and force action if needed
+        const messageLower = message.toLowerCase().trim();
+        const invoiceKeywords = ['invoice', 'owe', 'owe you', 'amount due', 'balance', 'payment', 'bill', 'billing'];
+        const isInvoiceQuery = invoiceKeywords.some(keyword => messageLower.includes(keyword));
+        
+        // If it's an invoice query and mentions "latest" or "how much", force get_latest_invoice
+        let forcedAction = null;
+        if (isInvoiceQuery && (messageLower.includes('latest') || messageLower.includes('how much') || messageLower.includes('owe'))) {
+            forcedAction = { type: "action", action: "get_latest_invoice", params: {}, confidence: 0.95, needs_clarification: false };
+        } else if (isInvoiceQuery && (messageLower.includes('all') || messageLower.includes('list') || messageLower.includes('show'))) {
+            forcedAction = { type: "action", action: "get_all_invoices", params: {}, confidence: 0.95, needs_clarification: false };
+        }
+
         const history = await getChatHistory(userId);
         const completion = await openai.chat.completions.create({
             model: "gpt-4o-mini",
-            temperature: 0.7,
+            temperature: 0.3, // Lower temperature for more consistent JSON output
 
 
             messages: [
@@ -2663,32 +2714,33 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
         });
 
         let aiReply = completion.choices[0].message.content.trim();
-        
-        // First, sanitize to remove any accidental JSON in the response
-        aiReply = sanitizeResponse(aiReply);
 
         let parsed = null;
-        try {
-            // Only try to parse if it looks like pure JSON (starts with { and ends with })
-            if (aiReply.trim().startsWith('{') && aiReply.trim().endsWith('}')) {
-                parsed = JSON.parse(aiReply);
+        
+        // Use forced action if we detected an invoice query
+        if (forcedAction) {
+            parsed = forcedAction;
+        } else {
+            try {
+                // Only try to parse if it looks like pure JSON (starts with { and ends with })
+                // DO NOT sanitize before parsing - we need the raw JSON if it exists
+                if (aiReply.trim().startsWith('{') && aiReply.trim().endsWith('}')) {
+                    parsed = JSON.parse(aiReply);
+                }
+            } catch (e) {
+                // Not valid JSON, treat as normal text
+                parsed = null;
             }
-        } catch (e) {
-            // Not valid JSON, treat as normal text
-            parsed = null;
         }
 
         // Check if AI wants to fetch data
-        if (parsed?.type === "action" && ALLOWED_ACTIONS.includes(parsed.action) && parsed.confidence >= 0.4 && !parsed.needs_clarification) {
+        // Lower confidence threshold to 0.3 to make it easier to trigger actions
+        if (parsed?.type === "action" && ALLOWED_ACTIONS.includes(parsed.action) && parsed.confidence >= 0.3 && !parsed.needs_clarification) {
 
             const data = await fetchClientData(parsed.action, companyId, parsed.params || {});
 
-            // If data contains only a message (no actual data), return it directly
-            if (data.message && Object.keys(data).length === 1) {
-                await saveChatMessage(userId, "user", message);
-                await saveChatMessage(userId, "assistant", data.message);
-                return res.json({ text: data.message });
-            }
+            // If data indicates no results, still pass it to AI to respond naturally
+            // Don't return hardcoded messages - let AI handle it based on the data structure
             
             // If data has a message but also other fields, include it in context
             // This handles cases like "No invoices found" but still provides context
@@ -2711,7 +2763,31 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
                     { role: "system", content: CHATBOT_SYSTEM_PROMPT },
                     {
                         role: "system",
-                        content: `CRITICAL: The following is REAL database data for THIS SPECIFIC USER'S COMPANY. You MUST ONLY use values that appear in this data. Do NOT invent, estimate, or assume any values not present here.\n\nDatabase Data:\n${JSON.stringify(data)}\n\nRules:\n- Use ONLY the exact values from the data above\n- If a field is missing or null, say "that information isn't available"\n- If amounts/dates/numbers are shown, use them exactly as provided\n- Do NOT mention receiving data or show JSON - just use the information naturally\n- This data is now part of conversation context for follow-up questions`
+                        content: `CRITICAL DATABASE DATA INSTRUCTIONS:
+
+The following is REAL database data fetched from the database for THIS SPECIFIC USER'S COMPANY. This is the ONLY source of truth.
+
+Database Data:
+${JSON.stringify(data, null, 2)}
+
+STRICT RULES:
+1. You MUST ONLY use values that appear in the data above
+2. If "has_data" is false, acknowledge that no data was found - use the message field naturally
+3. If data exists, use the EXACT values: invoice numbers, amounts, dates, statuses, items, payments - everything must match the data
+4. NEVER invent, estimate, guess, or assume ANY value not in the data
+5. If a field is missing or null in the data, say "that information isn't available in your records"
+6. Use amounts exactly as shown (e.g., if total_amount is "1500.00", say "R1,500.00")
+7. Use dates exactly as formatted in the data
+8. Reference invoice numbers exactly as shown (e.g., if invoice_number is "INV-001", use "Invoice #INV-001")
+9. Do NOT mention receiving data or system messages - just use the information naturally in conversation
+10. This data is now part of your memory - you can reference it in future messages
+
+RESPONSE STYLE:
+- Be clear, direct, and professional
+- Use the data naturally - don't list fields, just answer the question
+- If asked "How much do I owe?" and data shows outstanding_balance, say "You owe R[exact amount]"
+- If asked about invoice items, list them naturally from the items array
+- Always be specific with numbers and dates from the data`
                     },
                     ...conversationHistory,
                     { role: "user", content: message }
