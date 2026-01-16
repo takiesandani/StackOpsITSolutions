@@ -304,25 +304,27 @@
             const data = await response.json();
             
             if (!response.ok) {
+                setIsTyping(false);
                 return {
-                    text: data.text || '',
+                    text: data.text || 'An error occurred. Please try again.',
                     buttons: null
                 };
             }
 
-            if (typeof data.text === "string" && data.text.trim().startsWith("{")) {
-                // If AI responded with normal text (not JSON), return it
-                if (!parsed) {
-                    await saveChatMessage(userId, "user", message);
-                    await saveChatMessage(userId, "assistant", aiReply);
-                    return res.json({ text: aiReply });
-                }
-
-            }
-
             setIsTyping(false);
+            
+            // Ensure we never display JSON to the user
+            let responseText = data.text || 'No response received';
+            if (typeof responseText === 'string' && responseText.trim().startsWith('{')) {
+                // If somehow JSON got through, sanitize it
+                responseText = responseText.replace(/\{[^}]*\}/g, '').trim();
+                if (!responseText || responseText.length < 3) {
+                    responseText = 'I apologize, but I encountered an issue processing that. Could you please rephrase your question?';
+                }
+            }
+            
             return {
-                text: data.text || 'No response received',
+                text: responseText,
                 buttons: null
             };
         } catch (error) {

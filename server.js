@@ -2148,22 +2148,6 @@ You are StackOn, the AI Assistant for Stack Ops IT Solutions, a leading cybersec
 You are a true AI assistant with natural language understanding, contextual memory, and dynamic reasoning.
 You are NOT a rule-based or scripted chatbot.
 
-
-
-CRITICAL RULES:
-- You may only state facts explicitly provided in system data.
-- Never assume, estimate, infer, or guess.
-- Never display JSON, internal objects, or metadata.
-- Never invent invoice numbers, items, amounts, or dates.
-- If information is missing, state that clearly and professionally.
-- Never exaggerate or add opinion.
-- Never promise actions or say “I will fetch”.
-- Use neutral, factual, professional language.
-- If unsure, ask for clarification or state limited access.
-- Your response must always be clean natural language.
-
-Violation of any rule is a critical failure.
-
 ========================
 CORE BEHAVIOR PRINCIPLES
 ========================
@@ -2174,8 +2158,10 @@ CORE BEHAVIOR PRINCIPLES
 - Never use hardcoded responses or fixed conversation flows
 - As a representative of Stack Ops IT Solutions, speak naturally as if you are a human team member. Use inclusive language like "we," "us," and "our" where appropriate (e.g., "You owe us R15,000 on this invoice" or "Our team is working on your project").
 - This chatbot is versatile and not limited to invoices. Handle a wide range of topics, including cybersecurity advice, general IT support, project updates, security analytics, support tickets, and open-ended conversations—just like other AI models (e.g., ChatGPT). Only fetch specific company data (like invoices or projects) when the user's intent clearly requires it; otherwise, engage conversationally on any subject.
-- **CRITICAL: Never invent, assume, guess, or estimate any client data or details. Base ALL responses strictly on the provided system data from database fetches. If data is not available or not fetched for a query, do not provide it—say "I don't have that information" or ask for clarification. Do not fill in gaps with general knowledge or assumptions.**
-- **CRITICAL: NEVER output JSON in any conversational text response. JSON is ONLY for triggering actions and must be the ENTIRE response (no text before or after). For all other replies, use plain text only.**
+- **ABSOLUTE RULE - NO HALLUCINATION: You MUST ONLY use data that is explicitly provided in the system data messages. Every number, date, amount, invoice number, status, item name, company name, or any other detail MUST come directly from the provided database data. If the data is not in the system message, you MUST say "I don't have that information in your records" or "That information isn't available" - NEVER make up, estimate, guess, or assume ANY value.**
+- **DATA SCOPE: All data provided is specific to the current user's company. You are speaking to ONE specific company/user. Never reference data from other companies or make assumptions about what might exist. Only use what is explicitly provided.**
+- **CRITICAL: NEVER output JSON in any conversational text response. JSON is ONLY for triggering actions and must be the ENTIRE response (no text before or after). For all other replies, use plain text only. NEVER include JSON fragments, partial JSON, or any curly braces { } in your text responses.**
+- **CRITICAL: When you have database data available from previous messages, use it naturally in your responses. Remember what invoices, projects, or other data was discussed and reference it when answering follow-up questions. However, if you need specific details that weren't in the previous data, you MUST trigger a fetch action rather than assuming.**
 
 ========================
 1. CONTEXT & MEMORY
@@ -2268,7 +2254,9 @@ CORE BEHAVIOR PRINCIPLES
   - Internal field names
   - Database structures
   - IDs or implementation details
-- **If the injected data does not cover the query, do not respond with assumed details.**
+- **If the injected data does not cover the query, do not respond with assumed details. Instead, say "I don't have that specific information available. Would you like me to check your records?"**
+- **When system data shows "message" field (e.g., "No invoices found"), use that exact message or a natural version of it. Do not invent alternative explanations.**
+- **If system data is empty, null, or shows no results, acknowledge this directly: "I couldn't find any [invoices/projects/etc.] in your account" - do not make up placeholder data.**
 
 ========================
 6. ACTION DETECTION
@@ -2345,27 +2333,28 @@ async function getChatHistory(userId, limit = 12) {
 // ============================================
 // DATA FETCHING
 // ============================================
+
 async function fetchClientData(action, companyId, params = {}) {
     if (!pool) throw new Error('Database connection unavailable');
+    
+    // Validate companyId is provided
+    if (!companyId) {
+        return { message: "Company information is required to fetch data." };
+    }
 
     switch (action) {
         case "get_latest_invoice":
             return getLatestInvoice(companyId);
-
         case "get_all_invoices":
             return getAllInvoices(companyId);
-
         case "get_invoice_details":
-            if (!params.invoice_number) {
-                return { internal_error: "Invoice number missing" };
-            }
-            return getInvoiceDetails(companyId, params.invoice_number);
-
+            const invoiceNumber = params.invoice_number;
+            if (!invoiceNumber) return { message: "Invoice number is required." };
+            return getInvoiceDetails(companyId, invoiceNumber);
         default:
-            return { internal_error: "Unsupported action" };
+            return { message: "No data available for this request." };
     }
 }
-
 
 async function getLatestInvoice(companyId) {
     const [invoices] = await pool.query(
@@ -2584,31 +2573,60 @@ const ALLOWED_ACTIONS = [
   ];
 
 function sanitizeResponse(text) {
-    if (!text) return "";
-
-    return text
-        // Remove hidden action objects only
-        .replace(/"type"\s*:\s*"action"[\s\S]*?\}/gi, "")
-        .replace(/internal_error/gi, "")
-        .replace(/SYSTEM DATA[\s\S]*/gi, "")
-        .trim()
-        .slice(0, 1200);
+    if (!text || typeof text !== 'string') return '';
+    
+    // Remove any JSON objects (including nested ones)
+    // This pattern matches { ... } including nested braces
+    let cleaned = text;
+    let previousLength = 0;
+    
+    // Keep removing JSON until no more changes (handles nested JSON)
+    while (cleaned.length !== previousLength) {
+        previousLength = cleaned.length;
+        // Remove JSON objects: { ... } including multiline
+        cleaned = cleaned.replace(/\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g, '');
+        // Remove incomplete JSON patterns like { , "confidence": ...
+        cleaned = cleaned.replace(/\{\s*,?\s*["']?[^"']*["']?\s*:\s*[^}]*/g, '');
+    }
+    
+    // Remove JSON array patterns
+    cleaned = cleaned.replace(/\[[^\]]*\]/g, '');
+    
+    // Remove common JSON keywords that might leak through
+    cleaned = cleaned.replace(/\b(type|action|params|confidence|needs_clarification)\s*[:=]\s*[^,\s}]+/gi, '');
+    
+    // Remove system/internal markers
+    cleaned = cleaned.replace(/internal\s*:\s*true/gi, "");
+    cleaned = cleaned.replace(/SYSTEM DATA[\s\S]*/gi, "");
+    cleaned = cleaned.replace(/System data[\s\S]*/gi, "");
+    
+    // Remove any remaining curly braces or JSON artifacts
+    cleaned = cleaned.replace(/[{}[\]]/g, '');
+    
+    // Clean up extra whitespace
+    cleaned = cleaned.replace(/\s+/g, ' ').trim();
+    
+    // If after cleaning we have nothing meaningful, return a safe message
+    if (cleaned.length < 3) {
+        return "I apologize, but I'm having trouble processing that request. Could you please rephrase your question?";
+    }
+    
+    return cleaned.slice(0, 1200);
 }
-
 
 // ============================================
 // CHAT ENDPOINT
 // ============================================
 
-app.post("/api/chat", authenticateToken, async (req, res) => {
+app.post('/api/chat', authenticateToken, async (req, res) => {
     try {
-        if (!pool) {
-            return res.status(500).json({ text: "Database unavailable." });
-        }
+        if (!pool) return res.status(500).json({ text: "Database unavailable." });
+
         const userId = req.user.id;
-        const message = req.body.message?.trim();
-        if (!message) {
-             return res.status(400).json({ text: "Message is required." });
+        const message = req.body.message;
+
+        if (!message?.trim()) {
+            return res.status(400).json({ text: "Message is required." });
         }
 
         const [users] = await pool.query(
@@ -2621,130 +2639,137 @@ app.post("/api/chat", authenticateToken, async (req, res) => {
         }
 
         const companyId = users[0].CompanyID;
-        const userFirstName = users[0].FirstName || "there";
+        const userFirstName = users[0].FirstName || 'there';
 
-        if (!req.session) req.session = {};
+        // Validate company ID exists
+        if (!companyId) {
+            return res.status(400).json({ text: "Your account is not associated with a company. Please contact support." });
+        }
+
+        if (!openai) await initializeOpenAI();
 
         const history = await getChatHistory(userId);
-
-                // FIRST PASS (INTENT DETECTION)
         const completion = await openai.chat.completions.create({
             model: "gpt-4o-mini",
-            temperature: 0.6,
+            temperature: 0.7,
+
+
             messages: [
-                { role: "system", content: CHATBOT_SYSTEM_PROMPT },
-                ...history,
-                { role: "user", content: message }
+            { role: "system", content: CHATBOT_SYSTEM_PROMPT },
+            ...history,
+            { role: "user", content: message }
             ]
+
         });
 
-        let aiReply = completion.choices[0].message.content?.trim() || "";
+        let aiReply = completion.choices[0].message.content.trim();
+        
+        // First, sanitize to remove any accidental JSON in the response
+        aiReply = sanitizeResponse(aiReply);
+
         let parsed = null;
-
-        try { parsed = JSON.parse(aiReply); } catch {}
-
-        // ACTION HANDLING
-        if (
-            parsed?.type === "action" &&
-            ALLOWED_ACTIONS.includes(parsed.action) &&
-            parsed.confidence >= 0.4 &&
-            !parsed.needs_clarification
-        ) {
-            // Auto-infer invoice number from session if missing
-            if (
-                parsed.action === "get_invoice_details" &&
-                !parsed.params?.invoice_number &&
-                req.session.lastInvoiceNumber
-            ) {
-                parsed.params = {
-                    invoice_number: req.session.lastInvoiceNumber
-                };
+        try {
+            // Only try to parse if it looks like pure JSON (starts with { and ends with })
+            if (aiReply.trim().startsWith('{') && aiReply.trim().endsWith('}')) {
+                parsed = JSON.parse(aiReply);
             }
+        } catch (e) {
+            // Not valid JSON, treat as normal text
+            parsed = null;
+        }
 
-        // ACTION MODE
-            const data = await fetchClientData(
-                parsed.action,
-                companyId,
-                parsed.params || {}
-            );
-            
-            
-            // Professional fallback
-            if (data.internal_error) {
-                const friendly =
-                    "I can see your invoice summary, but the item breakdown isn’t available yet. Would you like me to retrieve it for you?";
+        // Check if AI wants to fetch data
+        if (parsed?.type === "action" && ALLOWED_ACTIONS.includes(parsed.action) && parsed.confidence >= 0.4 && !parsed.needs_clarification) {
 
+            const data = await fetchClientData(parsed.action, companyId, parsed.params || {});
+
+            // If data contains only a message (no actual data), return it directly
+            if (data.message && Object.keys(data).length === 1) {
                 await saveChatMessage(userId, "user", message);
-                await saveChatMessage(userId, "assistant", friendly);
-                return res.json({ text: friendly });
-
+                await saveChatMessage(userId, "assistant", data.message);
+                return res.json({ text: data.message });
             }
             
-            // Store invoice context
+            // If data has a message but also other fields, include it in context
+            // This handles cases like "No invoices found" but still provides context
+
+            // SECOND PASS: Include conversation history + data for context-aware response
+            // Data is injected as system context (not saved to chat history)
+            // Assistant's response will naturally include invoice info, which gets saved for follow-up context
+            const conversationHistory = await getChatHistory(userId, 20);
+            
+            // Store invoice number in session for context
             if (data.invoice_number) {
+                if (!req.session) req.session = {};
                 req.session.lastInvoiceNumber = data.invoice_number;
             }
-
-            // SECOND PASS (NATURAL RESPONSE)
+            
             const finalCompletion = await openai.chat.completions.create({
                 model: "gpt-4o-mini",
                 temperature: 0.6,
                 messages: [
                     { role: "system", content: CHATBOT_SYSTEM_PROMPT },
-    
                     {
                         role: "system",
-                        content: `System data (use naturally): ${JSON.stringify(data)}`
+                        content: `CRITICAL: The following is REAL database data for THIS SPECIFIC USER'S COMPANY. You MUST ONLY use values that appear in this data. Do NOT invent, estimate, or assume any values not present here.\n\nDatabase Data:\n${JSON.stringify(data)}\n\nRules:\n- Use ONLY the exact values from the data above\n- If a field is missing or null, say "that information isn't available"\n- If amounts/dates/numbers are shown, use them exactly as provided\n- Do NOT mention receiving data or show JSON - just use the information naturally\n- This data is now part of conversation context for follow-up questions`
                     },
-                    {
-                        role: "system",
-                        content: `Last invoice number: ${req.session.lastInvoiceNumber || "unknown"}`
-                    },
-                    ...history,
+                    ...conversationHistory,
                     { role: "user", content: message }
                 ]
             });
 
-            const safeText = sanitizeResponse(
-                finalCompletion.choices[0].message.content
-            );
- 
+            let finalResponse = finalCompletion.choices[0].message.content.trim();
+            const safeText = sanitizeResponse(finalResponse);
+
             await saveChatMessage(userId, "user", message);
             await saveChatMessage(userId, "assistant", safeText);
 
             return res.json({ text: safeText });
         }
 
-
-        // NORMAL CHAT (NO ACTION)
+        // Normal conversation - no action needed, use AI naturally
+        // Check if we have context from previous messages (like invoice numbers)
+        const conversationHistory = await getChatHistory(userId, 20);
+        
+        // Build context message if we have session data
+        let contextMessage = '';
+        if (req.session?.lastInvoiceNumber) {
+            contextMessage = `\n\nNote: The user has been discussing invoice #${req.session.lastInvoiceNumber}. You can reference this in your response if relevant.`;
+        }
+        
         const normalCompletion = await openai.chat.completions.create({
             model: "gpt-4o-mini",
-            temperature: 0.7,
+            temperature: 0.6,
             messages: [
-                { role: "system", content: CHATBOT_SYSTEM_PROMPT },
-                ...history,
+                { role: "system", content: CHATBOT_SYSTEM_PROMPT + contextMessage },
+                ...conversationHistory,
                 { role: "user", content: message }
             ]
         });
 
-        const safeNormal = sanitizeResponse(
-            normalCompletion.choices[0].message.content
-        );
+        let normalResponse = normalCompletion.choices[0].message.content.trim();
+        const safeNormalText = sanitizeResponse(normalResponse);
 
         await saveChatMessage(userId, "user", message);
-        await saveChatMessage(userId, "assistant", safeNormal);
+        await saveChatMessage(userId, "assistant", safeNormalText);
 
-        return res.json({ text: safeNormal });
+        return res.json({ text: safeNormalText });
+
+
     } catch (error) {
-        console.error("Chat error:", error);
+        console.error('Chat error:', error);
+        
+        if (error.code === 'insufficient_quota') {
+            return res.status(500).json({
+                text: "The AI service is currently unavailable due to quota limits. Please contact support or check billing details."
+            });
+        }
 
         return res.status(500).json({
-
-        text: "An unexpected error occurred. Please try again later."
+            text: "An unexpected error occurred. Please try again later." 
         });
     }
 });
-
 
 // Serve static files from the project root directory
 app.use(express.static(__dirname));
