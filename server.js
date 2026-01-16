@@ -2161,7 +2161,7 @@ CRITICAL RULES:
 - If unsure, ask for clarification or state limited access.
 - Your response must always be clean natural language.
 
-Violation is a critical failure.
+Violation of any rule is a critical failure.
 
 ========================
 CORE BEHAVIOR PRINCIPLES
@@ -2521,17 +2521,6 @@ async function getInvoiceDetails(companyId, invoiceNumber) {
     };
 }
 
-function renderInvoiceHistory(data) {
-    return (
-        "Here is your invoice history:\n\n" +
-        data.invoices.map(inv =>
-            `Invoice #${inv.invoice_number} – ${inv.status} – R${inv.total_amount} (Due: ${inv.due_date})`
-        ).join("\n")
-    );
-}
-
-
-
 // ... (rest of the code remains unchanged)
 async function getProjectUpdates(companyId) {
     const [projects] = await pool.query(
@@ -2605,64 +2594,50 @@ function sanitizeResponse(text) {
         .slice(0, 1200);
 }
 
-function runValidators(text, data) {
-    if (!text) return null;
-
-    // Block JSON or structured data
-    if (
-        text.includes("{") ||
-        text.includes("}") ||
-        text.includes("[") ||
-        text.includes("]") ||
-        /"[^"]+"\s*:/.test(text)
-    ) {
-        return null;
-    }
-
-    // If listing invoices, ensure they exist in DB
-    if (data?.invoices) {
-        const mentioned = [...text.matchAll(/Invoice\s*#?\s*(\d+)/gi)]
-            .map(m => m[1]);
-
-        const actual = data.invoices.map(i => String(i.invoice_number));
-
-        for (const inv of mentioned) {
-            if (!actual.includes(inv)) {
-                return null;
-            }
-        }
-    }
-
-    return text.trim();
-}
-
 
 // ============================================
 // CHAT ENDPOINT
 // ============================================
 
-app.post("/api/chat", authenticateToken, async (req, res) => {
+app.post('/api/chat', authenticateToken, async (req, res) => {
     try {
+        if (!pool) {
+            return res.status(500).json({ text: "Database unavailable." });
+        }
+
         const userId = req.user.id;
         const message = req.body.message?.trim();
         if (!message) {
-            return res.json({ text: "Please enter a message." });
+            return res.status(400).json({ text: "Message is required." });
         }
 
-        const [[user]] = await pool.query(
-            "SELECT CompanyID FROM Users WHERE ID = ?",
+        const [users] = await pool.query(
+            'SELECT CompanyID, FirstName FROM Users WHERE ID = ?',
             [userId]
         );
 
-        const companyId = user.CompanyID;
+        if (!users.length) {
+            return res.status(404).json({ text: "Company not found." });
+        }
 
+        const companyId = users[0].CompanyID;
+        const userFirstName = users[0].FirstName || "there";
+
+        if (!req.session) req.session = {};
         if (!openai) await initializeOpenAI();
 
         const history = await getChatHistory(userId);
 
+<<<<<<< HEAD
         const firstPass = await openai.chat.completions.create({
             model: "gpt-4.1-mini",
             temperature: 0,
+=======
+        // FIRST PASS (INTENT DETECTION)
+        const completion = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            temperature: 0.6,
+>>>>>>> parent of 7f14b81 (Update server.js)
             messages: [
                 { role: "system", content: CHATBOT_SYSTEM_PROMPT },
                 ...history,
@@ -2670,72 +2645,108 @@ app.post("/api/chat", authenticateToken, async (req, res) => {
             ]
         });
 
-        let parsed;
-        try {
-            parsed = JSON.parse(firstPass.choices[0].message.content);
-        } catch {
-            parsed = null;
-        }
+        let aiReply = completion.choices[0].message.content?.trim() || "";
+        let parsed = null;
 
-        // ACTION MODE
-        if (parsed?.type === "action" && ALLOWED_ACTIONS.includes(parsed.action)) {
+        try { parsed = JSON.parse(aiReply); } catch {}
+
+        // ACTION HANDLING
+        if (
+            parsed?.type === "action" &&
+            ALLOWED_ACTIONS.includes(parsed.action) &&
+            parsed.confidence >= 0.4 &&
+            !parsed.needs_clarification
+        ) {
+            // Auto-infer invoice number from session if missing
+            if (
+                parsed.action === "get_invoice_details" &&
+                !parsed.params?.invoice_number &&
+                req.session.lastInvoiceNumber
+            ) {
+                parsed.params = {
+                    invoice_number: req.session.lastInvoiceNumber
+                };
+            }
+
             const data = await fetchClientData(
                 parsed.action,
                 companyId,
                 parsed.params || {}
             );
 
-            // HARD RENDER FOR INVOICE HISTORY
-            if (parsed.action === "get_all_invoices") {
-                const safe = renderInvoiceHistory(data);
-                await saveChatMessage(userId, "assistant", safe);
-                return res.json({ text: safe });
+            // Professional fallback
+            if (data.internal_error) {
+                const friendly =
+                    "I can see your invoice summary, but the item breakdown isn’t available yet. Would you like me to retrieve it for you?";
+
+                await saveChatMessage(userId, "user", message);
+                await saveChatMessage(userId, "assistant", friendly);
+                return res.json({ text: friendly });
             }
 
+<<<<<<< HEAD
             // SECOND PASS (FORMAT ONLY)
             const secondPass = await openai.chat.completions.create({
                 model: "gpt-4.1-mini",
                 temperature: 0,
+=======
+            // Store invoice context
+            if (data.invoice_number) {
+                req.session.lastInvoiceNumber = data.invoice_number;
+            }
+
+            // SECOND PASS (NATURAL RESPONSE)
+            const finalCompletion = await openai.chat.completions.create({
+                temperature: 0.6,
+>>>>>>> parent of 7f14b81 (Update server.js)
                 messages: [
                     { role: "system", content: CHATBOT_SYSTEM_PROMPT },
-                    { role: "system", content: `System data: ${JSON.stringify(data)}` },
+                    {
+                        role: "system",
+                        content: `System data (use naturally): ${JSON.stringify(data)}`
+                    },
+                    {
+                        role: "system",
+                        content: `Last invoice number: ${req.session.lastInvoiceNumber || "unknown"}`
+                    },
+                    ...history,
                     { role: "user", content: message }
                 ]
             });
 
-            let text = secondPass.choices[0].message.content;
-            text = runValidators(text, data);
+            const safeText = sanitizeResponse(
+                finalCompletion.choices[0].message.content
+            );
 
-            if (!text) {
-                return res.json({
-                    text: "I can only display this information exactly as recorded in your account."
-                });
-            }
+            await saveChatMessage(userId, "user", message);
+            await saveChatMessage(userId, "assistant", safeText);
 
-            await saveChatMessage(userId, "assistant", text);
-            return res.json({ text });
+            return res.json({ text: safeText });
         }
 
-        // NORMAL CHAT
-        const reply = sanitizeResponse(firstPass.choices[0].message.content);
-        if (/invoice|amount|owe|payment|due/i.test(message)) {
-            return res.json({
-                text: "I don’t currently have verified billing data for that request. Please allow me to retrieve it."
-            });
-        }
+        // NORMAL CHAT (NO ACTION)
+        const normalCompletion = await openai.chat.completions.create({
+            temperature: 0.7,
+            messages: [
+                { role: "system", content: CHATBOT_SYSTEM_PROMPT },
+                ...history,
+                { role: "user", content: message }
+            ]
+        });
 
-        if (parsed?.action?.includes("invoice") && !text.includes("Invoice #")) {
-            return res.json({
-                text: "I can only discuss invoices when the invoice number is clearly identified."
-            });
-        }
+        const safeNormal = sanitizeResponse(
+            normalCompletion.choices[0].message.content
+        );
 
-        await saveChatMessage(userId, "assistant", reply);
-        return res.json({ text: reply });
+        await saveChatMessage(userId, "user", message);
+        await saveChatMessage(userId, "assistant", safeNormal);
 
-    } catch (err) {
-        console.error(err);
-        return res.json({
+        return res.json({ text: safeNormal });
+
+    } catch (error) {
+        console.error("Chat error:", error);
+
+        return res.status(500).json({
             text: "An unexpected error occurred. Please try again later."
         });
     }
