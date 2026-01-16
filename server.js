@@ -2697,6 +2697,7 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
 
             // SECOND PASS (NATURAL RESPONSE)
             const finalCompletion = await openai.chat.completions.create({
+                model: "gpt-4o-mini",
                 temperature: 0.6,
 >>>>>>> parent of 7f14b81 (Update server.js)
                 messages: [
@@ -2726,6 +2727,7 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
 
         // NORMAL CHAT (NO ACTION)
         const normalCompletion = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
             temperature: 0.7,
             messages: [
                 { role: "system", content: CHATBOT_SYSTEM_PROMPT },
