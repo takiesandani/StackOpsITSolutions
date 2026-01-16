@@ -2159,6 +2159,7 @@ CORE BEHAVIOR PRINCIPLES
 - As a representative of Stack Ops IT Solutions, speak naturally as if you are a human team member. Use inclusive language like "we," "us," and "our" where appropriate (e.g., "You owe us R15,000 on this invoice" or "Our team is working on your project").
 - This chatbot is versatile and not limited to invoices. Handle a wide range of topics, including cybersecurity advice, general IT support, project updates, security analytics, support tickets, and open-ended conversations—just like other AI models (e.g., ChatGPT). Only fetch specific company data (like invoices or projects) when the user's intent clearly requires it; otherwise, engage conversationally on any subject.
 - **CRITICAL: Never invent, assume, guess, or estimate any client data or details. Base ALL responses strictly on the provided system data from database fetches. If data is not available or not fetched for a query, do not provide it—say "I don't have that information" or ask for clarification. Do not fill in gaps with general knowledge or assumptions.**
+- **CRITICAL: NEVER output JSON in any conversational text response. JSON is ONLY for triggering actions and must be the ENTIRE response (no text before or after). For all other replies, use plain text only.**
 
 ========================
 1. CONTEXT & MEMORY
@@ -2229,7 +2230,7 @@ CORE BEHAVIOR PRINCIPLES
 ========================
 
 - Keep responses concise (1–3 lines unless detail is requested).
-- Use South African currency (ZAR / R).
+- Use South African currency (R).
 - Speak as part of Stack Ops IT Solutions:
   - Use inclusive language (we, us, our).
 - Tone: professional, clear, and friendly — like an experienced IT account manager at a cybersecurity firm.
@@ -2264,6 +2265,7 @@ JSON FORMAT (no extra text):
 {
   "type": "action",
   "action": "<action_name>",
+  "params": { "key": "value" },  // Include params for actions needing extra info (e.g., invoice_number for get_invoice_details)
   "confidence": 0.0-1.0,
   "needs_clarification": false
 }
@@ -2274,7 +2276,7 @@ Allowed actions:
 - get_project_updates     → project progress, updates
 - get_security_analytics  → security status, risks, audits
 - get_ticket_status       → support tickets, issues
-- get_invoice_details     → full details (items, payments, balance) for a specific invoice (provide invoice number in query context)
+- get_invoice_details     → full details (items, payments, balance) for a specific invoice (include "invoice_number" in params)
 
 - For greetings, explanations, or follow-up questions:
   - Respond in normal text ONLY.
@@ -2298,6 +2300,7 @@ You are a real AI assistant for Stack Ops IT Solutions.
 You reason, remember, infer intent, and respond dynamically.
 You do not behave like a decision tree or scripted bot.
 You NEVER invent or assume data—responses are strictly DB-driven.
+You NEVER output JSON in text responses—only pure JSON for actions.
 `;
 
 async function saveChatMessage(userId, role, content) {
@@ -2327,7 +2330,7 @@ async function getChatHistory(userId, limit = 12) {
 // DATA FETCHING
 // ============================================
 
-async function fetchClientData(action, companyId) {
+async function fetchClientData(action, companyId, params = {}) {
     if (!pool) throw new Error('Database connection unavailable');
 
     switch (action) {
@@ -2336,8 +2339,9 @@ async function fetchClientData(action, companyId) {
         case "get_all_invoices":
             return getAllInvoices(companyId);
         case "get_invoice_details":
-
-            return getInvoiceDetails(companyId, invoiceNumber);  // extract invoiceNumber from the message
+            const invoiceNumber = params.invoice_number;
+            if (!invoiceNumber) return { message: "Invoice number is required." };
+            return getInvoiceDetails(companyId, invoiceNumber);
         default:
             return { message: "No data available for this request." };
     }
@@ -2551,15 +2555,18 @@ async function getTicketStatus(companyId) {
 }
 
 const ALLOWED_ACTIONS = [
-  "get_latest_invoice",
-  "get_all_invoices",
-  "get_project_updates",
-  "get_security_analytics",
-  "get_ticket_status"
-];
+    "get_latest_invoice",
+    "get_all_invoices",
+    "get_project_updates",
+    "get_security_analytics",
+    "get_ticket_status",
+    "get_invoice_details"
+  ];
 
 function sanitizeResponse(text) {
-  return text
+// Remove any JSON-like strings (e.g., { "type": "action", ... }) from responses
+text = text.replace(/\{[^}]*\}/g, '').trim();
+return text
     .replace(/internal\s*:\s*true/gi, "")
     .replace(/SYSTEM DATA[\s\S]*/gi, "")
     .slice(0, 1200);
