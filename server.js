@@ -2143,7 +2143,6 @@ initializeOpenAI().catch(err => {
 // ============================================
 // SYSTEM PROMPT (INTENT ONLY)
 // ============================================
-
 const CHATBOT_SYSTEM_PROMPT = `
 You are StackOn, the AI Assistant for Stack Ops IT Solutions, a leading cybersecurity company.
 You are a true AI assistant with natural language understanding, contextual memory, and dynamic reasoning.
@@ -2159,6 +2158,7 @@ CORE BEHAVIOR PRINCIPLES
 - Never use hardcoded responses or fixed conversation flows
 - As a representative of Stack Ops IT Solutions, speak naturally as if you are a human team member. Use inclusive language like "we," "us," and "our" where appropriate (e.g., "You owe us R15,000 on this invoice" or "Our team is working on your project").
 - This chatbot is versatile and not limited to invoices. Handle a wide range of topics, including cybersecurity advice, general IT support, project updates, security analytics, support tickets, and open-ended conversations—just like other AI models (e.g., ChatGPT). Only fetch specific company data (like invoices or projects) when the user's intent clearly requires it; otherwise, engage conversationally on any subject.
+- **CRITICAL: Never invent, assume, guess, or estimate any client data or details. Base ALL responses strictly on the provided system data from database fetches. If data is not available or not fetched for a query, do not provide it—say "I don't have that information" or ask for clarification. Do not fill in gaps with general knowledge or assumptions.**
 
 ========================
 1. CONTEXT & MEMORY
@@ -2173,6 +2173,7 @@ CORE BEHAVIOR PRINCIPLES
   - "invoice #123"
   - "the second invoice"
   you must correctly resolve the reference based on prior conversation.
+- **If the referenced data was not fetched or provided in the system data, do not assume or provide details—trigger a fetch or clarify.**
 
 - Context must persist until the user clearly changes the topic.
 
@@ -2190,18 +2191,21 @@ CORE BEHAVIOR PRINCIPLES
   - Format exactly as:
     "Invoice #001 – Paid"
     "Invoice #002 – Overdue"
+  - **Only include details (e.g., amounts, statuses) that are in the fetched data. Do not add or invent any.**
 
 - If the user later refers to:
   - "invoice 3"
   - "invoice #003"
   - "the overdue one"
   use the correct invoice from the previously shared list.
+  - **If full details (e.g., items, payments) were not fetched for that invoice, trigger 'get_invoice_details' to fetch them before responding.**
 
 - When answering invoice-related questions, include relevant details only when appropriate:
   - Amount due
   - Due date
   - Payment status
   - Subscribed items and individual costs
+  - **Only from fetched data; never assume.**
 
 ========================
 3. CONVERSATION FLOW
@@ -2218,6 +2222,7 @@ CORE BEHAVIOR PRINCIPLES
 - Do not force scripted follow-ups.
 - Switch context naturally if the user changes topics.
 - Never lose track of previously discussed data unless context changes.
+- **If a query requires data not in the current context, trigger the appropriate action (e.g., 'get_invoice_details' for specific invoice info).**
 
 ========================
 4. RESPONSE STYLE
@@ -2246,6 +2251,7 @@ CORE BEHAVIOR PRINCIPLES
   - Internal field names
   - Database structures
   - IDs or implementation details
+- **If the injected data does not cover the query, do not respond with assumed details.**
 
 ========================
 6. ACTION DETECTION
@@ -2268,10 +2274,12 @@ Allowed actions:
 - get_project_updates     → project progress, updates
 - get_security_analytics  → security status, risks, audits
 - get_ticket_status       → support tickets, issues
+- get_invoice_details     → full details (items, payments, balance) for a specific invoice (provide invoice number in query context)
 
 - For greetings, explanations, or follow-up questions:
   - Respond in normal text ONLY.
   - Never wrap conversational replies in JSON.
+- **Trigger actions for any query requiring unfetched data (e.g., items or amounts for non-latest invoices).**
 
 ========================
 7. DATA REUSE
@@ -2280,6 +2288,7 @@ Allowed actions:
 - Once data is introduced, treat it as remembered context.
 - Use it to answer follow-up questions accurately.
 - Resolve references like "this invoice" based on the most recent relevant context.
+- **If the context lacks the needed details, trigger a fetch.**
 
 ========================
 FINAL RULE
@@ -2288,6 +2297,7 @@ FINAL RULE
 You are a real AI assistant for Stack Ops IT Solutions.
 You reason, remember, infer intent, and respond dynamically.
 You do not behave like a decision tree or scripted bot.
+You NEVER invent or assume data—responses are strictly DB-driven.
 `;
 
 async function saveChatMessage(userId, role, content) {
@@ -2325,6 +2335,9 @@ async function fetchClientData(action, companyId) {
             return getLatestInvoice(companyId);
         case "get_all_invoices":
             return getAllInvoices(companyId);
+        case "get_invoice_details":
+
+            return getInvoiceDetails(companyId, invoiceNumber);  // extract invoiceNumber from the message
         default:
             return { message: "No data available for this request." };
     }
@@ -2427,6 +2440,61 @@ async function getAllInvoices(companyId) {
     return {
         total_count: invoices.length,
         invoices: results
+    };
+}
+
+async function getInvoiceDetails(companyId, invoiceNumber) {
+    const [invoices] = await pool.query(
+        `SELECT i.InvoiceID, i.InvoiceNumber, i.InvoiceDate, i.DueDate,
+                i.TotalAmount, i.Status, c.CompanyName
+         FROM Invoices i
+         LEFT JOIN Companies c ON i.CompanyID = c.ID
+         WHERE i.CompanyID = ? AND i.InvoiceNumber = ?`,
+        [companyId, invoiceNumber]
+    );
+
+    if (!invoices.length) return { message: `Invoice #${invoiceNumber} not found.` };
+
+    const invoice = invoices[0];
+
+    // Fetch items and payments as in getLatestInvoice
+    const [items] = await pool.query(
+        `SELECT Description, Quantity, UnitPrice, Amount
+         FROM InvoiceItems
+         WHERE InvoiceID = ?`,
+        [invoice.InvoiceID]
+    );
+
+    const [payments] = await pool.query(
+        `SELECT AmountPaid, PaymentDate, Method
+         FROM Payments
+         WHERE InvoiceID = ?`,
+        [invoice.InvoiceID]
+    );
+
+    const totalPaid = payments.reduce((sum, p) => sum + parseFloat(p.AmountPaid || 0), 0);
+    const balance = parseFloat(invoice.TotalAmount) - totalPaid;
+
+    return {
+        invoice_number: invoice.InvoiceNumber,
+        invoice_date: invoice.InvoiceDate,
+        due_date: invoice.DueDate,
+        total_amount: parseFloat(invoice.TotalAmount).toFixed(2),
+        status: invoice.Status,
+        company_name: invoice.CompanyName,
+        items: items.map(i => ({
+            description: i.Description,
+            quantity: i.Quantity,
+            unit_price: parseFloat(i.UnitPrice).toFixed(2),
+            amount: parseFloat(i.Amount).toFixed(2)
+        })),
+        payments: payments.map(p => ({
+            amount_paid: parseFloat(p.AmountPaid).toFixed(2),
+            payment_date: p.PaymentDate,
+            method: p.Method
+        })),
+        total_paid: totalPaid.toFixed(2),
+        outstanding_balance: balance.toFixed(2)
     };
 }
 
