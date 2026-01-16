@@ -2148,6 +2148,21 @@ You are StackOn, the AI Assistant for Stack Ops IT Solutions, a leading cybersec
 You are a true AI assistant with natural language understanding, contextual memory, and dynamic reasoning.
 You are NOT a rule-based or scripted chatbot.
 
+
+CRITICAL RULES:
+- You may only state facts explicitly provided in system data.
+- Never assume, estimate, infer, or guess.
+- Never display JSON, internal objects, or metadata.
+- Never invent invoice numbers, items, amounts, or dates.
+- If information is missing, state that clearly and professionally.
+- Never exaggerate or add opinion.
+- Never promise actions or say “I will fetch”.
+- Use neutral, factual, professional language.
+- If unsure, ask for clarification or state limited access.
+- Your response must always be clean natural language.
+
+Violation of any rule is a critical failure.
+
 ========================
 CORE BEHAVIOR PRINCIPLES
 ========================
@@ -2329,23 +2344,27 @@ async function getChatHistory(userId, limit = 12) {
 // ============================================
 // DATA FETCHING
 // ============================================
-
 async function fetchClientData(action, companyId, params = {}) {
     if (!pool) throw new Error('Database connection unavailable');
 
     switch (action) {
         case "get_latest_invoice":
             return getLatestInvoice(companyId);
+
         case "get_all_invoices":
             return getAllInvoices(companyId);
+
         case "get_invoice_details":
-            const invoiceNumber = params.invoice_number;
-            if (!invoiceNumber) return { message: "Invoice number is required." };
-            return getInvoiceDetails(companyId, invoiceNumber);
+            if (!params.invoice_number) {
+                return { internal_error: "Invoice number missing" };
+            }
+            return getInvoiceDetails(companyId, params.invoice_number);
+
         default:
-            return { message: "No data available for this request." };
+            return { internal_error: "Unsupported action" };
     }
 }
+
 
 async function getLatestInvoice(companyId) {
     const [invoices] = await pool.query(
@@ -2564,13 +2583,17 @@ const ALLOWED_ACTIONS = [
   ];
 
 function sanitizeResponse(text) {
-// Remove any JSON-like strings (e.g., { "type": "action", ... }) from responses
-text = text.replace(/\{[^}]*\}/g, '').trim();
-return text
-    .replace(/internal\s*:\s*true/gi, "")
-    .replace(/SYSTEM DATA[\s\S]*/gi, "")
-    .slice(0, 1200);
+    if (!text) return "";
+
+    return text
+        // Remove hidden action objects only
+        .replace(/"type"\s*:\s*"action"[\s\S]*?\}/gi, "")
+        .replace(/internal_error/gi, "")
+        .replace(/SYSTEM DATA[\s\S]*/gi, "")
+        .trim()
+        .slice(0, 1200);
 }
+
 
 // ============================================
 // CHAT ENDPOINT
@@ -2578,12 +2601,13 @@ return text
 
 app.post('/api/chat', authenticateToken, async (req, res) => {
     try {
-        if (!pool) return res.status(500).json({ text: "Database unavailable." });
+        if (!pool) {
+            return res.status(500).json({ text: "Database unavailable." });
+        }
 
         const userId = req.user.id;
-        const message = req.body.message;
-
-        if (!message?.trim()) {
+        const message = req.body.message?.trim();
+        if (!message) {
             return res.status(400).json({ text: "Message is required." });
         }
 
@@ -2597,61 +2621,90 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
         }
 
         const companyId = users[0].CompanyID;
-        const userFirstName = users[0].FirstName || 'there';
+        const userFirstName = users[0].FirstName || "there";
 
+        if (!req.session) req.session = {};
         if (!openai) await initializeOpenAI();
 
         const history = await getChatHistory(userId);
+
+        // FIRST PASS (INTENT DETECTION)
         const completion = await openai.chat.completions.create({
             model: "gpt-4o-mini",
-            temperature: 0.7,
-
-
+            temperature: 0.6,
             messages: [
-            { role: "system", content: CHATBOT_SYSTEM_PROMPT },
-            ...history,
-            { role: "user", content: message }
+                { role: "system", content: CHATBOT_SYSTEM_PROMPT },
+                ...history,
+                { role: "user", content: message }
             ]
-
         });
 
-        const aiReply = completion.choices[0].message.content.trim();
-
+        let aiReply = completion.choices[0].message.content?.trim() || "";
         let parsed = null;
-        try {
-            parsed = JSON.parse(aiReply);
-        } catch {}
 
-        // Check if AI wants to fetch data
-        if (parsed?.type === "action" && ALLOWED_ACTIONS.includes(parsed.action) && parsed.confidence >= 0.4 && !parsed.needs_clarification) {
+        try { parsed = JSON.parse(aiReply); } catch {}
 
-            const data = await fetchClientData(parsed.action, companyId);
-
-            if (data.message) {
-                await saveChatMessage(userId, "user", message);
-                await saveChatMessage(userId, "assistant", data.message);
-                return res.json({ text: data.message });
+        // ACTION HANDLING
+        if (
+            parsed?.type === "action" &&
+            ALLOWED_ACTIONS.includes(parsed.action) &&
+            parsed.confidence >= 0.4 &&
+            !parsed.needs_clarification
+        ) {
+            // Auto-infer invoice number from session if missing
+            if (
+                parsed.action === "get_invoice_details" &&
+                !parsed.params?.invoice_number &&
+                req.session.lastInvoiceNumber
+            ) {
+                parsed.params = {
+                    invoice_number: req.session.lastInvoiceNumber
+                };
             }
 
-            // SECOND PASS: Include conversation history + data for context-aware response
-            // Data is injected as system context (not saved to chat history)
-            // Assistant's response will naturally include invoice info, which gets saved for follow-up context
-            const conversationHistory = await getChatHistory(userId, 20);
+            const data = await fetchClientData(
+                parsed.action,
+                companyId,
+                parsed.params || {}
+            );
+
+            // Professional fallback
+            if (data.internal_error) {
+                const friendly =
+                    "I can see your invoice summary, but the item breakdown isn’t available yet. Would you like me to retrieve it for you?";
+
+                await saveChatMessage(userId, "user", message);
+                await saveChatMessage(userId, "assistant", friendly);
+                return res.json({ text: friendly });
+            }
+
+            // Store invoice context
+            if (data.invoice_number) {
+                req.session.lastInvoiceNumber = data.invoice_number;
+            }
+
+            // SECOND PASS (NATURAL RESPONSE)
             const finalCompletion = await openai.chat.completions.create({
                 model: "gpt-4o-mini",
-                temperature: 0.7,
+                temperature: 0.6,
                 messages: [
                     { role: "system", content: CHATBOT_SYSTEM_PROMPT },
                     {
                         role: "system",
-                        content: `Current system data available: ${JSON.stringify(data)}. Use this data naturally in your response. The user's message is: "${message}"`
+                        content: `System data (use naturally): ${JSON.stringify(data)}`
                     },
-                    ...conversationHistory,
+                    {
+                        role: "system",
+                        content: `Last invoice number: ${req.session.lastInvoiceNumber || "unknown"}`
+                    },
+                    ...history,
                     { role: "user", content: message }
                 ]
             });
 
-            const safeText = sanitizeResponse(finalCompletion.choices[0].message.content);
+            const safeText = sanitizeResponse(
+                finalCompletion.choices[0].message.content
+            );
 
             await saveChatMessage(userId, "user", message);
             await saveChatMessage(userId, "assistant", safeText);
@@ -2659,41 +2712,35 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
             return res.json({ text: safeText });
         }
 
-        // Normal conversation - no action needed, use AI naturally
-        const conversationHistory = await getChatHistory(userId, 20);
+        // NORMAL CHAT (NO ACTION)
         const normalCompletion = await openai.chat.completions.create({
             model: "gpt-4o-mini",
             temperature: 0.7,
             messages: [
                 { role: "system", content: CHATBOT_SYSTEM_PROMPT },
-                ...conversationHistory,
+                ...history,
                 { role: "user", content: message }
             ]
         });
 
-        const normalResponse = normalCompletion.choices[0].message.content.trim();
-        const safeNormalText = sanitizeResponse(normalResponse);
+        const safeNormal = sanitizeResponse(
+            normalCompletion.choices[0].message.content
+        );
 
         await saveChatMessage(userId, "user", message);
-        await saveChatMessage(userId, "assistant", safeNormalText);
+        await saveChatMessage(userId, "assistant", safeNormal);
 
-        return res.json({ text: safeNormalText });
-
+        return res.json({ text: safeNormal });
 
     } catch (error) {
-        console.error('Chat error:', error);
-        
-        if (error.code === 'insufficient_quota') {
-            return res.status(500).json({
-                text: "The AI service is currently unavailable due to quota limits. Please contact support or check billing details."
-            });
-        }
+        console.error("Chat error:", error);
 
         return res.status(500).json({
-            text: "An unexpected error occurred. Please try again later." 
+            text: "An unexpected error occurred. Please try again later."
         });
     }
 });
+
 
 // Serve static files from the project root directory
 app.use(express.static(__dirname));
