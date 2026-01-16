@@ -2661,7 +2661,7 @@ app.post("/api/chat", authenticateToken, async (req, res) => {
         const history = await getChatHistory(userId);
 
         const firstPass = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
+            model: "gpt-4.1-mini",
             temperature: 0,
             messages: [
                 { role: "system", content: CHATBOT_SYSTEM_PROMPT },
@@ -2694,7 +2694,7 @@ app.post("/api/chat", authenticateToken, async (req, res) => {
 
             // SECOND PASS (FORMAT ONLY)
             const secondPass = await openai.chat.completions.create({
-                model: "gpt-4o-mini",
+                model: "gpt-4.1-mini",
                 temperature: 0,
                 messages: [
                     { role: "system", content: CHATBOT_SYSTEM_PROMPT },
