@@ -2116,16 +2116,6 @@ async function getSecret(secretName) {
     }
 }
 
-// Helper to extract JSON from AI response (handles markdown blocks)
-function extractJSON(text) {
-    try {
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        return jsonMatch ? JSON.parse(jsonMatch[0]) : null;
-    } catch (e) {
-        return null;
-    }
-}
-
 // Initialize OpenAI client with secret from Secret Manager
 let openai = null;
 
@@ -2159,6 +2149,7 @@ You are a true AI assistant with natural language understanding, contextual memo
 You are NOT a rule-based or scripted chatbot.
 
 
+
 CRITICAL RULES:
 - You may only state facts explicitly provided in system data.
 - Never assume, estimate, infer, or guess.
@@ -2171,7 +2162,7 @@ CRITICAL RULES:
 - If unsure, ask for clarification or state limited access.
 - Your response must always be clean natural language.
 
-Violation is a critical failure.
+Violation of any rule is a critical failure.
 
 ========================
 CORE BEHAVIOR PRINCIPLES
@@ -2182,17 +2173,26 @@ CORE BEHAVIOR PRINCIPLES
 - Respond dynamically based on previously shared data
 - Never use hardcoded responses or fixed conversation flows
 - As a representative of Stack Ops IT Solutions, speak naturally as if you are a human team member. Use inclusive language like "we," "us," and "our" where appropriate (e.g., "You owe us R15,000 on this invoice" or "Our team is working on your project").
-- This chatbot is versatile and not limited to invoices. Handle a wide range of topics, including cybersecurity advice, general IT support, project updates, security analytics, support tickets, and open-ended conversations.
-- **CRITICAL: Never invent, assume, guess, or estimate any client data or details. Base ALL responses strictly on the provided system data from database fetches.**
-- **CRITICAL: NEVER output JSON in any conversational text response. JSON is ONLY for triggering actions and must be the ENTIRE response.**
+- This chatbot is versatile and not limited to invoices. Handle a wide range of topics, including cybersecurity advice, general IT support, project updates, security analytics, support tickets, and open-ended conversations—just like other AI models (e.g., ChatGPT). Only fetch specific company data (like invoices or projects) when the user's intent clearly requires it; otherwise, engage conversationally on any subject.
+- **CRITICAL: Never invent, assume, guess, or estimate any client data or details. Base ALL responses strictly on the provided system data from database fetches. If data is not available or not fetched for a query, do not provide it—say "I don't have that information" or ask for clarification. Do not fill in gaps with general knowledge or assumptions.**
+- **CRITICAL: NEVER output JSON in any conversational text response. JSON is ONLY for triggering actions and must be the ENTIRE response (no text before or after). For all other replies, use plain text only.**
 
 ========================
 1. CONTEXT & MEMORY
 ========================
 
 - You retain and use the full conversation history.
-- When system-provided data appears, treat it as known context.
+- When system-provided data (e.g. invoices, projects, tickets) appears in the conversation, treat it as known context.
 - If you reference an invoice, that invoice becomes the active context.
+- When a user later says:
+  - "this invoice"
+  - "that invoice"
+  - "invoice #123"
+  - "the second invoice"
+  you must correctly resolve the reference based on prior conversation.
+- **If the referenced data was not fetched or provided in the system data, do not assume or provide details—trigger a fetch or clarify.**
+
+- Context must persist until the user clearly changes the topic.
 
 ========================
 2. INVOICE INTELLIGENCE
@@ -2200,10 +2200,46 @@ CORE BEHAVIOR PRINCIPLES
 
 - When providing invoice information:
   - Always include the invoice number (e.g. "Invoice #1234").
-  - After introducing an invoice, naturally ask: "What would you like to know about this invoice?"
-- Format lists exactly as:
+  - After introducing an invoice, naturally ask:
+    "What would you like to know about this invoice?"
+
+- When listing multiple invoices:
+  - Use one line per invoice.
+  - Format exactly as:
     "Invoice #001 – Paid"
     "Invoice #002 – Overdue"
+  - **Only include details (e.g., amounts, statuses) that are in the fetched data. Do not add or invent any.**
+
+- If the user later refers to:
+  - "invoice 3"
+  - "invoice #003"
+  - "the overdue one"
+  use the correct invoice from the previously shared list.
+  - **If full details (e.g., items, payments) were not fetched for that invoice, trigger 'get_invoice_details' to fetch them before responding.**
+
+- When answering invoice-related questions, include relevant details only when appropriate:
+  - Amount due
+  - Due date
+  - Payment status
+  - Subscribed items and individual costs
+  - **Only from fetched data; never assume.**
+
+========================
+3. CONVERSATION FLOW
+========================
+
+- Be natural, professional, and conversational.
+- Understand questions such as:
+  - "How much do I owe?"
+  - "What is my latest invoice?"
+  - "Show all my invoices"
+  - "What am I paying for?"
+  - Also handle broader topics like cybersecurity best practices, IT troubleshooting, project timelines, or even casual chat (e.g., "What's the weather like?" or "Tell me a joke").
+
+- Do not force scripted follow-ups.
+- Switch context naturally if the user changes topics.
+- Never lose track of previously discussed data unless context changes.
+- **If a query requires data not in the current context, trigger the appropriate action (e.g., 'get_invoice_details' for specific invoice info).**
 
 ========================
 4. RESPONSE STYLE
@@ -2211,32 +2247,76 @@ CORE BEHAVIOR PRINCIPLES
 
 - Keep responses concise (1–3 lines unless detail is requested).
 - Use South African currency (R).
-- Tone: professional, clear, and friendly.
-- Plain text only: No tables, No markdown, No bullet symbols.
+- Speak as part of Stack Ops IT Solutions:
+  - Use inclusive language (we, us, our).
+- Tone: professional, clear, and friendly — like an experienced IT account manager at a cybersecurity firm.
+- Plain text only:
+  - No tables
+  - No markdown
+  - No bullet symbols
+
+========================
+5. DATA SAFETY & INTEGRITY
+========================
+
+- You do NOT know client data unless it is explicitly provided by the system.
+- Never guess, assume, invent, or estimate values.
+- When data is injected into the conversation:
+  - Speak about it naturally.
+  - Do NOT mention receiving data or system messages.
+- Never reveal:
+  - Internal field names
+  - Database structures
+  - IDs or implementation details
+- **If the injected data does not cover the query, do not respond with assumed details.**
 
 ========================
 6. ACTION DETECTION
 ========================
 
 Only respond with JSON when you need the system to fetch data.
-IMPORTANT: You MUST return a valid JSON object when an action is required.
 
-JSON FORMAT:
+JSON FORMAT (no extra text):
+
 {
   "type": "action",
   "action": "<action_name>",
-  "params": { "key": "value" },
-  "confidence": 1.0,
+  "params": { "key": "value" },  // Include params for actions needing extra info (e.g., invoice_number for get_invoice_details)
+  "confidence": 0.0-1.0,
   "needs_clarification": false
 }
 
 Allowed actions:
-- get_latest_invoice
-- get_all_invoices
-- get_project_updates
-- get_security_analytics
-- get_ticket_status
-- get_invoice_details (requires "invoice_number" in params)
+- get_latest_invoice      → latest bill, balance, payment due
+- get_all_invoices        → billing history, invoice list
+- get_project_updates     → project progress, updates
+- get_security_analytics  → security status, risks, audits
+- get_ticket_status       → support tickets, issues
+- get_invoice_details     → full details (items, payments, balance) for a specific invoice (include "invoice_number" in params)
+
+- For greetings, explanations, or follow-up questions:
+  - Respond in normal text ONLY.
+  - Never wrap conversational replies in JSON.
+- **Trigger actions for any query requiring unfetched data (e.g., items or amounts for non-latest invoices).**
+
+========================
+7. DATA REUSE
+========================
+
+- Once data is introduced, treat it as remembered context.
+- Use it to answer follow-up questions accurately.
+- Resolve references like "this invoice" based on the most recent relevant context.
+- **If the context lacks the needed details, trigger a fetch.**
+
+========================
+FINAL RULE
+========================
+
+You are a real AI assistant for Stack Ops IT Solutions.
+You reason, remember, infer intent, and respond dynamically.
+You do not behave like a decision tree or scripted bot.
+You NEVER invent or assume data—responses are strictly DB-driven.
+You NEVER output JSON in text responses—only pure JSON for actions.
 `;
 
 async function saveChatMessage(userId, role, content) {
@@ -2271,17 +2351,16 @@ async function fetchClientData(action, companyId, params = {}) {
     switch (action) {
         case "get_latest_invoice":
             return getLatestInvoice(companyId);
+
         case "get_all_invoices":
             return getAllInvoices(companyId);
+
         case "get_invoice_details":
-            if (!params.invoice_number) return { internal_error: "Invoice number missing" };
+            if (!params.invoice_number) {
+                return { internal_error: "Invoice number missing" };
+            }
             return getInvoiceDetails(companyId, params.invoice_number);
-        case "get_project_updates":
-            return getProjectUpdates(companyId);
-        case "get_security_analytics":
-            return getSecurityAnalytics(companyId);
-        case "get_ticket_status":
-            return getTicketStatus(companyId);
+
         default:
             return { internal_error: "Unsupported action" };
     }
@@ -2303,8 +2382,23 @@ async function getLatestInvoice(companyId) {
     if (!invoices.length) return { message: "No invoices found." };
 
     const invoice = invoices[0];
-    const [items] = await pool.query("SELECT Description, Quantity, UnitPrice, Amount FROM InvoiceItems WHERE InvoiceID = ?", [invoice.InvoiceID]);
-    const [payments] = await pool.query("SELECT AmountPaid FROM Payments WHERE InvoiceID = ?", [invoice.InvoiceID]);
+
+    // Fetch invoice items
+    const [items] = await pool.query(
+        `SELECT Description, Quantity, UnitPrice, Amount
+         FROM InvoiceItems
+         WHERE InvoiceID = ?`,
+        [invoice.InvoiceID]
+    );
+
+    // Fetch payments and calculate total paid
+    const [payments] = await pool.query(
+        `SELECT AmountPaid, PaymentDate, Method
+         FROM Payments
+         WHERE InvoiceID = ?
+         ORDER BY PaymentDate DESC`,
+        [invoice.InvoiceID]
+    );
 
     const totalPaid = payments.reduce((sum, p) => sum + parseFloat(p.AmountPaid || 0), 0);
     const balance = parseFloat(invoice.TotalAmount) - totalPaid;
@@ -2315,53 +2409,169 @@ async function getLatestInvoice(companyId) {
         due_date: invoice.DueDate,
         total_amount: parseFloat(invoice.TotalAmount).toFixed(2),
         status: invoice.Status,
-        items: items.map(i => ({ description: i.Description, amount: i.Amount })),
+        company_name: invoice.CompanyName,
+        items: items.map(i => ({
+            description: i.Description,
+            quantity: i.Quantity,
+            unit_price: parseFloat(i.UnitPrice).toFixed(2),
+            amount: parseFloat(i.Amount).toFixed(2)
+        })),
+        payments: payments.map(p => ({
+            amount_paid: parseFloat(p.AmountPaid).toFixed(2),
+            payment_date: p.PaymentDate,
+            method: p.Method
+        })),
+        total_paid: totalPaid.toFixed(2),
         outstanding_balance: balance.toFixed(2)
     };
 }
 
 async function getAllInvoices(companyId) {
     const [invoices] = await pool.query(
-        `SELECT InvoiceNumber, DueDate, TotalAmount, Status FROM Invoices WHERE CompanyID = ? ORDER BY InvoiceDate DESC`,
+        `SELECT InvoiceID, InvoiceNumber, InvoiceDate, DueDate, TotalAmount, Status
+         FROM Invoices
+         WHERE CompanyID = ?
+         ORDER BY InvoiceDate DESC`,
         [companyId]
     );
-    return { total_count: invoices.length, invoices: invoices.map(inv => ({
-        invoice_number: inv.InvoiceNumber,
-        total_amount: parseFloat(inv.TotalAmount).toFixed(2),
-        status: inv.Status,
-        due_date: inv.DueDate
-    }))};
+
+    if (!invoices.length) return { message: "No invoices found." };
+
+    const results = [];
+    for (const invoice of invoices) {
+        // Fetch payments for each invoice
+        const [payments] = await pool.query(
+            `SELECT AmountPaid
+             FROM Payments
+             WHERE InvoiceID = ?`,
+            [invoice.InvoiceID]
+        );
+
+        const totalPaid = payments.reduce((sum, p) => sum + parseFloat(p.AmountPaid || 0), 0);
+        const balance = parseFloat(invoice.TotalAmount) - totalPaid;
+
+        results.push({
+            invoice_number: invoice.InvoiceNumber,
+            invoice_date: invoice.InvoiceDate,
+            due_date: invoice.DueDate,
+            total_amount: parseFloat(invoice.TotalAmount).toFixed(2),
+            status: invoice.Status,
+            total_paid: totalPaid.toFixed(2),
+            outstanding_balance: balance.toFixed(2)
+        });
+    }
+
+    return {
+        total_count: invoices.length,
+        invoices: results
+    };
 }
 
 async function getInvoiceDetails(companyId, invoiceNumber) {
     const [invoices] = await pool.query(
-        `SELECT i.InvoiceID, i.InvoiceNumber, i.TotalAmount, i.Status FROM Invoices i WHERE i.CompanyID = ? AND i.InvoiceNumber = ?`,
+        `SELECT i.InvoiceID, i.InvoiceNumber, i.InvoiceDate, i.DueDate,
+                i.TotalAmount, i.Status, c.CompanyName
+         FROM Invoices i
+         LEFT JOIN Companies c ON i.CompanyID = c.ID
+         WHERE i.CompanyID = ? AND i.InvoiceNumber = ?`,
         [companyId, invoiceNumber]
     );
+
     if (!invoices.length) return { message: `Invoice #${invoiceNumber} not found.` };
-    return getLatestInvoice(companyId); // Simplified for this example to return full data
-}
 
-function renderInvoiceHistory(data) {
-    return (
-        "Here is your invoice history:\n\n" +
-        data.invoices.map(inv =>
-            `Invoice #${inv.invoice_number} – ${inv.status} – R${inv.total_amount} (Due: ${inv.due_date})`
-        ).join("\n")
+    const invoice = invoices[0];
+
+    // Fetch items and payments as in getLatestInvoice
+    const [items] = await pool.query(
+        `SELECT Description, Quantity, UnitPrice, Amount
+         FROM InvoiceItems
+         WHERE InvoiceID = ?`,
+        [invoice.InvoiceID]
     );
+
+    const [payments] = await pool.query(
+        `SELECT AmountPaid, PaymentDate, Method
+         FROM Payments
+         WHERE InvoiceID = ?`,
+        [invoice.InvoiceID]
+    );
+
+    const totalPaid = payments.reduce((sum, p) => sum + parseFloat(p.AmountPaid || 0), 0);
+    const balance = parseFloat(invoice.TotalAmount) - totalPaid;
+
+    return {
+        invoice_number: invoice.InvoiceNumber,
+        invoice_date: invoice.InvoiceDate,
+        due_date: invoice.DueDate,
+        total_amount: parseFloat(invoice.TotalAmount).toFixed(2),
+        status: invoice.Status,
+        company_name: invoice.CompanyName,
+        items: items.map(i => ({
+            description: i.Description,
+            quantity: i.Quantity,
+            unit_price: parseFloat(i.UnitPrice).toFixed(2),
+            amount: parseFloat(i.Amount).toFixed(2)
+        })),
+        payments: payments.map(p => ({
+            amount_paid: parseFloat(p.AmountPaid).toFixed(2),
+            payment_date: p.PaymentDate,
+            method: p.Method
+        })),
+        total_paid: totalPaid.toFixed(2),
+        outstanding_balance: balance.toFixed(2)
+    };
 }
 
+// ... (rest of the code remains unchanged)
 async function getProjectUpdates(companyId) {
-    const [projects] = await pool.query(`SELECT ProjectName, Status, DueDate FROM Projects WHERE CompanyID = ?`, [companyId]);
-    return { projects };
+    const [projects] = await pool.query(
+        `SELECT ProjectID, ProjectName, Status, DueDate
+         FROM Projects
+         WHERE CompanyID = ?
+         ORDER BY DueDate DESC`,
+        [companyId]
+    );
+
+    if (!projects.length) return { message: "No projects found for your company." };
+
+    const results = [];
+    for (const project of projects) {
+        const [updates] = await pool.query(
+            `SELECT UpdateText, UpdateDate
+             FROM ProjectUpdates
+             WHERE ProjectID = ?
+             ORDER BY UpdateDate DESC
+             LIMIT 3`,
+            [project.ProjectID]
+        );
+        results.push({
+            project_name: project.ProjectName,
+            status: project.Status,
+            due_date: project.DueDate,
+            latest_updates: updates.map(u => ({
+                text: u.UpdateText,
+                date: u.UpdateDate
+            }))
+        });
+    }
+
+    return { projects: results };
 }
 
 async function getSecurityAnalytics(companyId) {
-    return { message: "Security analytics data is currently being integrated.", status: "Coming Soon" };
+    // Placeholder as tables don't exist yet
+    return { 
+        message: "Security analytics data is currently being integrated. Please check back soon for real-time risk scores and audit reports.",
+        status: "Coming Soon"
+    };
 }
 
 async function getTicketStatus(companyId) {
-    return { message: "Support ticket tracking is currently being migrated.", status: "Coming Soon" };
+    // Placeholder as tables don't exist yet
+    return {
+        message: "Support ticket tracking is currently being migrated. For urgent issues, please contact support@stackopsit.co.za.",
+        status: "Coming Soon"
+    };
 }
 
 const ALLOWED_ACTIONS = [
@@ -2375,13 +2585,14 @@ const ALLOWED_ACTIONS = [
 
 function sanitizeResponse(text) {
     if (!text) return "";
-    return text.replace(/"type"\s*:\s*"action"[\s\S]*?\}/gi, "").replace(/internal_error/gi, "").trim().slice(0, 1200);
-}
 
-function runValidators(text, data) {
-    if (!text) return null;
-    if (text.includes("{") || text.includes("}") || /"[^"]+"\s*:/.test(text)) return null;
-    return text.trim();
+    return text
+        // Remove hidden action objects only
+        .replace(/"type"\s*:\s*"action"[\s\S]*?\}/gi, "")
+        .replace(/internal_error/gi, "")
+        .replace(/SYSTEM DATA[\s\S]*/gi, "")
+        .trim()
+        .slice(0, 1200);
 }
 
 
@@ -2391,69 +2602,146 @@ function runValidators(text, data) {
 
 app.post("/api/chat", authenticateToken, async (req, res) => {
     try {
+        if (!pool) {
+            return res.status(500).json({ text: "Database unavailable." });
+        }
         const userId = req.user.id;
         const message = req.body.message?.trim();
-        if (!message) return res.json({ text: "Please enter a message." });
+        if (!message) {
+             return res.status(400).json({ text: "Message is required." });
+        }
 
-        const [[user]] = await pool.query("SELECT CompanyID FROM Users WHERE ID = ?", [userId]);
-        const companyId = user.CompanyID;
+        const [users] = await pool.query(
+            'SELECT CompanyID, FirstName FROM Users WHERE ID = ?',
+            [userId]
+        );
 
-        if (!openai) await initializeOpenAI();
+        if (!users.length) {
+            return res.status(404).json({ text: "Company not found." });
+        }
+
+        const companyId = users[0].CompanyID;
+        const userFirstName = users[0].FirstName || "there";
+
+        if (!req.session) req.session = {};
+
         const history = await getChatHistory(userId);
 
-        // FIRST PASS: Detect intent and trigger Action or Chat
-        const firstPass = await openai.chat.completions.create({
+                // FIRST PASS (INTENT DETECTION)
+        const completion = await openai.chat.completions.create({
             model: "gpt-4o-mini",
-            temperature: 0,
-            response_format: { "type": "json_object" }, // Force JSON for intent detection
+            temperature: 0.6,
             messages: [
-                { role: "system", content: CHATBOT_SYSTEM_PROMPT + "\nRespond with a JSON action if the user asks for data (invoices, projects, etc), otherwise respond with a JSON object containing a 'reply' field." },
+                { role: "system", content: CHATBOT_SYSTEM_PROMPT },
                 ...history,
                 { role: "user", content: message }
             ]
         });
 
-        const parsed = extractJSON(firstPass.choices[0].message.content);
+        let aiReply = completion.choices[0].message.content?.trim() || "";
+        let parsed = null;
 
-        // ACTION MODE: If AI requested data
-        if (parsed?.type === "action" && ALLOWED_ACTIONS.includes(parsed.action)) {
-            const data = await fetchClientData(parsed.action, companyId, parsed.params || {});
+        try { parsed = JSON.parse(aiReply); } catch {}
 
-            if (parsed.action === "get_all_invoices") {
-                const safe = renderInvoiceHistory(data);
-                await saveChatMessage(userId, "assistant", safe);
-                return res.json({ text: safe });
+        // ACTION HANDLING
+        if (
+            parsed?.type === "action" &&
+            ALLOWED_ACTIONS.includes(parsed.action) &&
+            parsed.confidence >= 0.4 &&
+            !parsed.needs_clarification
+        ) {
+            // Auto-infer invoice number from session if missing
+            if (
+                parsed.action === "get_invoice_details" &&
+                !parsed.params?.invoice_number &&
+                req.session.lastInvoiceNumber
+            ) {
+                parsed.params = {
+                    invoice_number: req.session.lastInvoiceNumber
+                };
             }
 
-            // SECOND PASS: Format the fetched data into a natural response
-            const secondPass = await openai.chat.completions.create({
+        // ACTION MODE
+            const data = await fetchClientData(
+                parsed.action,
+                companyId,
+                parsed.params || {}
+            );
+            
+            
+            // Professional fallback
+            if (data.internal_error) {
+                const friendly =
+                    "I can see your invoice summary, but the item breakdown isn’t available yet. Would you like me to retrieve it for you?";
+
+                await saveChatMessage(userId, "user", message);
+                await saveChatMessage(userId, "assistant", friendly);
+                return res.json({ text: friendly });
+
+            }
+            
+            // Store invoice context
+            if (data.invoice_number) {
+                req.session.lastInvoiceNumber = data.invoice_number;
+            }
+
+            // SECOND PASS (NATURAL RESPONSE)
+            const finalCompletion = await openai.chat.completions.create({
                 model: "gpt-4o-mini",
-                temperature: 0,
+                temperature: 0.6,
                 messages: [
                     { role: "system", content: CHATBOT_SYSTEM_PROMPT },
-                    { role: "system", content: `System data: ${JSON.stringify(data)}` },
+    
+                    {
+                        role: "system",
+                        content: `System data (use naturally): ${JSON.stringify(data)}`
+                    },
+                    {
+                        role: "system",
+                        content: `Last invoice number: ${req.session.lastInvoiceNumber || "unknown"}`
+                    },
+                    ...history,
                     { role: "user", content: message }
                 ]
             });
 
-            let text = runValidators(secondPass.choices[0].message.content, data);
-            if (!text) return res.json({ text: "I can only display this information exactly as recorded in your account." });
+            const safeText = sanitizeResponse(
+                finalCompletion.choices[0].message.content
+            );
+ 
+            await saveChatMessage(userId, "user", message);
+            await saveChatMessage(userId, "assistant", safeText);
 
-            await saveChatMessage(userId, "assistant", text);
-            return res.json({ text });
+            return res.json({ text: safeText });
         }
 
-        // NORMAL CHAT: If no action was triggered
-        const reply = parsed?.reply || sanitizeResponse(firstPass.choices[0].message.content);
-        
 
+        // NORMAL CHAT (NO ACTION)
+        const normalCompletion = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            temperature: 0.7,
+            messages: [
+                { role: "system", content: CHATBOT_SYSTEM_PROMPT },
+                ...history,
+                { role: "user", content: message }
+            ]
+        });
 
-        await saveChatMessage(userId, "assistant", reply);
-        return res.json({ text: reply });
+        const safeNormal = sanitizeResponse(
+            normalCompletion.choices[0].message.content
+        );
 
-    } catch (err) {
-        console.error(err);
-        return res.json({ text: "An unexpected error occurred. Please try again later." });
+        await saveChatMessage(userId, "user", message);
+        await saveChatMessage(userId, "assistant", safeNormal);
+
+        return res.json({ text: safeNormal });
+    } catch (error) {
+        console.error("Chat error:", error);
+
+        return res.status(500).json({
+
+        text: "An unexpected error occurred. Please try again later."
+        });
     }
 });
 
