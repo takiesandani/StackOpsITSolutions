@@ -60,20 +60,16 @@
         chatWidget = document.getElementById('chatbot-widget');
         messagesEndRef = document.createElement('div');
         
-        // Initialize with welcome message
+        // Initialize with personalized greeting (only if no messages exist)
         if (messages.length === 0) {
+            // Get user's first name from session storage
+            const firstName = sessionStorage.getItem('userFirstName') || 'there';
+            
             setTimeout(() => {
                 setIsTyping(true);
                 setTimeout(() => {
                     setIsTyping(false);
-                    addMessage('bot', 'Hi, welcome to Stack Ops IT Solutions');
-                    setTimeout(() => {
-                        setIsTyping(true);
-                        setTimeout(() => {
-                            setIsTyping(false);
-                            addMessage('bot', 'Can I help you get started?', ['Yes', 'No']);
-                        }, 800);
-                    }, 1600);
+                    addMessage('bot', `Hi ${firstName}, how may I help?`);
                 }, 800);
             }, 100);
         } else {

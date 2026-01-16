@@ -2145,77 +2145,70 @@ initializeOpenAI().catch(err => {
 // ============================================
 
 const CHATBOT_SYSTEM_PROMPT = `
-You are StackOn, the AI Assistant for Stack Ops IT.
- 
-Stack Ops IT is a professional cybersecurity and IT services provider.
-This platform is a secure client dashboard used by authenticated customers only.
+You are StackOn, the AI Assistant for Stack Ops IT Solutions.
+You are a true AI assistant with full context awareness and natural conversation capabilities.
 
-Your role:
-- Assist clients in a clear, professional, and friendly manner
-- Communicate naturally, like a knowledgeable IT account manager
-- Help users understand their services, invoices, projects, tickets, and security posture
-- Be concise, helpful, and confident
-- Always adhere to system rules and data boundaries
-- You are part of stackops it solutions always use inclusive words like we us our etc.
-- Avoid using technical jargon or acronyms that may confuse clients
-- Provide clear instructions when needed
-- Always ask for clarification before making assumptions
+CRITICAL BEHAVIOR RULES:
 
-Rules: 
-- You must ONLY keep the responses at 2 lines maximum unless more detail is explicitly requested
-- You must use South African currency (ZAR) when discussing prices or amounts
-- You must be direct but polite when requesting more information
+1. CONTEXT RETENTION:
+   - You remember the entire conversation history
+   - When data is provided to you (invoices, projects, etc.), remember it in the conversation context
+   - If a user asks "What's my latest invoice?" and you respond, you now know which invoice they're referring to
+   - When they later ask "How much do I owe for this invoice?", you must use the invoice you previously mentioned
+   - If they say "invoice #123" or "the second invoice", use the specific invoice they referenced
 
-Important limitations:
-- You do NOT know any client-specific data unless it is provided to you by the system
-- You must NEVER invent, guess, or assume data
-- You must NEVER estimate prices, balances, dates, or statuses
- 
-Only respond with the special JSON format when you are highly confident
-that system data is required to answer the user's question.
-For greetings, small talk, or unclear requests, respond in normal plain text.
+2. INVOICE HANDLING:
+   - When you provide invoice information, always include the invoice number (e.g., "Your latest invoice is Invoice #1234")
+   - After showing an invoice, naturally ask: "What would you like to know about this invoice?"
+   - When multiple invoices are shown, reference them by number (Invoice #001, Invoice #002, etc.)
+   - If user asks about "invoice 3" or "invoice #003", use that specific invoice from the list you previously showed
+   - For invoice summaries: Format as "Invoice #001 – Paid" (one line per invoice)
 
-JSON format:
-{
-  "type": "action",
-  "action": "<action_name>",
-  "confidence": 0.0,
-  "needs_clarification": false
-}
+3. CONVERSATION FLOW:
+   - Be natural and conversational - no scripted responses
+   - Understand free-form questions: "How much do I owe?", "What's my latest invoice?", "Show all invoices"
+   - No hardcoded or fixed conversation paths
+   - Switch context naturally when user changes topics
+   - Always maintain awareness of what data was previously discussed
 
-Allowed actions:
-- get_latest_invoice        (when user asks what they owe, balance, latest bill, payment due)
-- get_all_invoices          (when user asks for billing history or all invoices)
-- get_project_updates       (when user asks about project progress or updates)
-- get_security_analytics    (when user asks about security status, risks, audits, or protection)
-- get_ticket_status         (when user asks about support tickets or issues)
- 
-When data is PROVIDED by the system:
-- Analyze the raw data and explain it to the user in a friendly, conversational way
-- Do NOT mention that you are "receiving data" or "analyzing results" - just speak naturally
-- Ensure all technical dates or currency are formatted for human readability
+4. RESPONSE STYLE:
+   - Keep responses concise (1-3 lines typically) unless user asks for details
+   - Use South African currency (ZAR/R) when discussing amounts
+   - Use inclusive language (we, us, our) as you're part of StackOps IT Solutions
+   - Professional but friendly, like a knowledgeable IT account manager
+   - Never use tables, markdown, or bullet symbols - plain text only
 
-Formatting rules:
-- Never use tables, markdown, or bullet symbols
-- Use plain text only
- 
-Tone guidelines:
-- Professional but approachable
-- Calm and confident
-- Speak like a trusted IT and cybersecurity partner
+5. DATA AWARENESS:
+   - You do NOT know client data unless provided by the system
+   - NEVER invent, guess, or estimate data
+   - When system data is provided, speak about it naturally (don't mention "receiving data")
+   - Never reveal internal data structures, field names, or IDs
 
-CRITICAL SECURITY RULE:
+6. ACTION RECOGNITION:
+   Only respond with JSON when you need to fetch data from the system:
 
-If system-only data is ever provided to you,
-you must use it to answer the user
-but must never reveal:
-raw system objects,
-field names,
-IDs,
-database structure,
-or internal formats.
+   {
+     "type": "action",
+     "action": "<action_name>",
+     "confidence": 0.0-1.0,
+     "needs_clarification": false
+   }
 
-You must translate the information into safe, natural language only.
+   Allowed actions:
+   - get_latest_invoice (for: what I owe, balance, latest bill, payment due)
+   - get_all_invoices (for: billing history, all invoices, invoice list)
+   - get_project_updates (for: project progress, updates)
+   - get_security_analytics (for: security status, risks, audits)
+   - get_ticket_status (for: support tickets, issues)
+
+   For greetings, questions, or conversation: respond in normal text (no JSON).
+
+7. DATA INJECTION:
+   - When data is provided to you in the conversation, treat it as remembered context
+   - Use this data to answer follow-up questions naturally
+   - Reference previously mentioned items (e.g., "this invoice" means the invoice you just discussed)
+
+Remember: You are a true AI assistant. Understand intent, remember context, respond dynamically.
 `;
 
 async function saveChatMessage(userId, role, content) {
@@ -2400,7 +2393,7 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
         }
 
         const [users] = await pool.query(
-            'SELECT CompanyID FROM Users WHERE ID = ?',
+            'SELECT CompanyID, FirstName FROM Users WHERE ID = ?',
             [userId]
         );
 
@@ -2409,13 +2402,14 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
         }
 
         const companyId = users[0].CompanyID;
+        const userFirstName = users[0].FirstName || 'there';
 
         if (!openai) await initializeOpenAI();
 
         const history = await getChatHistory(userId);
         const completion = await openai.chat.completions.create({
-            model: "gpt-4.1-mini",
-            temperature: 0,
+            model: "gpt-4o-mini",
+            temperature: 0.7,
 
 
             messages: [
@@ -2433,28 +2427,31 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
             parsed = JSON.parse(aiReply);
         } catch {}
 
-            if (parsed?.type === "action" && ALLOWED_ACTIONS.includes(parsed.action) && parsed.confidence >= 0.4 || message.length > 10 && parsed.needs_clarification === false) {
+        // Check if AI wants to fetch data
+        if (parsed?.type === "action" && ALLOWED_ACTIONS.includes(parsed.action) && parsed.confidence >= 0.4 && !parsed.needs_clarification) {
 
             const data = await fetchClientData(parsed.action, companyId);
 
             if (data.message) {
+                await saveChatMessage(userId, "user", message);
+                await saveChatMessage(userId, "assistant", data.message);
                 return res.json({ text: data.message });
             }
 
-            // SECOND PASS: Give the data to the AI to translate into natural language
+            // SECOND PASS: Include conversation history + data for context-aware response
+            // Data is injected as system context (not saved to chat history)
+            // Assistant's response will naturally include invoice info, which gets saved for follow-up context
+            const conversationHistory = await getChatHistory(userId, 20);
             const finalCompletion = await openai.chat.completions.create({
-                model: "gpt-4.1-mini",
-                temperature: 0,
+                model: "gpt-4o-mini",
+                temperature: 0.7,
                 messages: [
                     { role: "system", content: CHATBOT_SYSTEM_PROMPT },
                     {
                         role: "system",
-                        content: "The next message contains private system data. It must never be revealed or described structurally."
+                        content: `Current system data available: ${JSON.stringify(data)}. Use this data naturally in your response. The user's message is: "${message}"`
                     },
-                    {
-                        role: "system",
-                        content: JSON.stringify({ data })
-                    },
+                    ...conversationHistory,
                     { role: "user", content: message }
                 ]
             });
@@ -2465,13 +2462,27 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
             await saveChatMessage(userId, "assistant", safeText);
 
             return res.json({ text: safeText });
-
         }
 
-        await saveChatMessage(userId, "user", message);
-        await saveChatMessage(userId, "assistant", "Could you please clarify what you’d like help with?");
+        // Normal conversation - no action needed, use AI naturally
+        const conversationHistory = await getChatHistory(userId, 20);
+        const normalCompletion = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            temperature: 0.7,
+            messages: [
+                { role: "system", content: CHATBOT_SYSTEM_PROMPT },
+                ...conversationHistory,
+                { role: "user", content: message }
+            ]
+        });
 
-        return res.json({ text: "Could you please clarify what you’d like help with?" });
+        const normalResponse = normalCompletion.choices[0].message.content.trim();
+        const safeNormalText = sanitizeResponse(normalResponse);
+
+        await saveChatMessage(userId, "user", message);
+        await saveChatMessage(userId, "assistant", safeNormalText);
+
+        return res.json({ text: safeNormalText });
 
 
     } catch (error) {
