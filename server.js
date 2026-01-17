@@ -2323,48 +2323,82 @@ JSON FORMAT (EXACT)
   "needs_clarification": false
 }
 
-CURRENTLY ALLOWED ACTIONS (LIVE)
+ALLOWED ACTIONS (ALL LIVE AND AVAILABLE)
 
-get_latest_invoice
-get_all_invoices
-get_invoice_details (requires invoice_number)
-FUTURE ACTIONS (DO NOT CALL YET)
-get_project_updates
-get_ticket_status
-get_security_analytics
-These may be discussed conversationally but must NOT be triggered.
+get_latest_invoice - Fetch the most recent invoice for the company
+get_all_invoices - Fetch all invoices for the company
+get_invoice_details - Fetch detailed information for a specific invoice (requires invoice_number in params)
+get_project_updates - Fetch project status and latest updates
+get_security_analytics - Fetch security analytics and risk assessments
+get_ticket_status - Fetch support ticket status and information
+
+All actions are available and should be triggered when the user requests related information.
 
  WHEN TO TRIGGER ACTIONS
 
 Trigger an action immediately (JSON only) when the user asks for:
-Amount owed
-Latest invoice
-Invoice list
-Invoice details
-Outstanding balance
+- Invoice information: amount owed, latest invoice, invoice list, invoice details, outstanding balance
+- Project information: project updates, project status, project progress
+- Security information: security analytics, security reports, risk assessments
+- Support information: ticket status, support tickets, help desk status
+
 Greetings or general conversation:
-Plain text only
+Plain text only (but always include action buttons)
+
+DATA PRESENTATION (CRITICAL)
+When presenting data from the database:
+1. ALWAYS summarize in natural language first
+2. NEVER show raw database fields (invoice_number, total_amount, due_date, etc.)
+3. NEVER show JSON structures, timestamps, or SQL data
+4. Convert everything to friendly explanations:
+   - "Invoice #12345" not "invoice_number: 12345"
+   - "R5,000.00" not "total_amount: 5000.00"
+   - "Due on January 15, 2024" not "due_date: 2024-01-15T00:00:00.000Z"
+5. If presenting a list, keep it concise (max 5-7 items, summarize if more)
+6. Always end with relevant action buttons
 
 DATA REUSE
-
 Remember fetched data
 Use it naturally in follow-ups
 Resolve references correctly
 Fetch again only if necessary
 
-RESPONSE STYLE
-Concise, natural, professional
-South African currency (R)
-No markdown
-No tables
-No bullet symbols
+RESPONSE STYLE (CRITICAL)
+- ALWAYS summarize database data in natural, conversational language
+- NEVER show raw database fields, JSON structures, timestamps, SQL data, or technical field names
+- Convert all data into friendly, professional explanations
+- Use plain English: "Your latest invoice is for R5,000.00, due on January 15, 2024" NOT "invoice_number: INV-001, total_amount: 5000.00, due_date: 2024-01-15"
+- Be concise, natural, and professional (1-3 lines unless detail is requested)
+- South African currency (R)
+- No markdown, no tables, no bullet symbols, no raw data dumps
+- If information is unavailable, say: "I'm sorry, that information is currently unavailable."
 
-BUTTONS & INTERACTIVITY
-You can suggest actions to the user using buttons.
-Buttons should be short (1-3 words) and actionable.
-Format: Put buttons at the very end of your response, each enclosed in double square brackets.
-Example: "I can help with that. [[View Invoices]] [[Latest Invoice]]"
-Example buttons: [[View Invoices]], [[Latest Invoice]], [[Security Audit]], [[Support Ticket]], [[Project Status]].
+BUTTONS & INTERACTIVITY (MANDATORY)
+You MUST present action buttons for any capability you have. This is a button-driven interface.
+
+REQUIRED BUTTONS TO ALWAYS SHOW (when appropriate):
+- [[View Latest Invoice]] - for get_latest_invoice action
+- [[View All Invoices]] - for get_all_invoices action
+- [[Project Updates]] - for get_project_updates action
+- [[Security Analytics]] - for get_security_analytics action
+- [[Ticket Status]] - for get_ticket_status action
+
+BUTTON-TO-ACTION MAPPING (CRITICAL):
+When a user message matches button text, you MUST immediately trigger the corresponding action (output JSON only):
+- "View Latest Invoice" or "Latest Invoice" → {"type":"action","action":"get_latest_invoice","params":{},"confidence":0.95,"needs_clarification":false}
+- "View All Invoices" or "All Invoices" or "View Invoices" → {"type":"action","action":"get_all_invoices","params":{},"confidence":0.95,"needs_clarification":false}
+- "Project Updates" or "Project Status" → {"type":"action","action":"get_project_updates","params":{},"confidence":0.95,"needs_clarification":false}
+- "Security Analytics" or "Security" → {"type":"action","action":"get_security_analytics","params":{},"confidence":0.95,"needs_clarification":false}
+- "Ticket Status" or "Support Ticket" or "Ticket" → {"type":"action","action":"get_ticket_status","params":{},"confidence":0.95,"needs_clarification":false}
+
+RULES:
+- Always include relevant action buttons at the end of your response
+- Buttons should be short (1-3 words) and actionable
+- Format: Put buttons at the very end of your response, each enclosed in double square brackets
+- Example: "I can help you with invoices, projects, security, and support tickets. [[View Latest Invoice]] [[Project Updates]] [[Security Analytics]] [[Ticket Status]]"
+- When a user clicks a button, you will receive that button text as their message - treat it as a request to perform that action
+- Always show buttons after providing information or when greeting the user
+- Button clicks should ALWAYS trigger actions - never respond with text when a button is clicked
 
 FINAL RULE
 You are StackOn, the AI Assistant for Stack Ops IT Solutions.
@@ -2426,6 +2460,12 @@ async function fetchClientData(action, companyId, params = {}) {
             const invoiceNumber = params.invoice_number;
             if (!invoiceNumber) return { message: "Invoice number is required." };
             return getInvoiceDetails(companyId, invoiceNumber);
+        case "get_project_updates":
+            return getProjectUpdates(companyId);
+        case "get_security_analytics":
+            return getSecurityAnalytics(companyId);
+        case "get_ticket_status":
+            return getTicketStatus(companyId);
         default:
             return { message: "No data available for this request." };
     }
@@ -2796,36 +2836,57 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
 
         if (!openai) await initializeOpenAI();
 
-        // Detect invoice-related queries and force action if needed
+        // Detect button clicks and action keywords to force actions
         const messageLower = message.toLowerCase().trim();
-        const invoiceKeywords = ['invoice', 'owe', 'owe you', 'amount due', 'balance', 'payment', 'bill', 'billing'];
-        const itemsKeywords = ['items included', 'services', 'service subscribed', 'subscribed to', 'what am i paying for', 'what\'s on the invoice', 'invoice items', 'item', 'items'];
-        const isInvoiceQuery = invoiceKeywords.some(keyword => messageLower.includes(keyword)) || 
-                              itemsKeywords.some(keyword => messageLower.includes(keyword));
         
-        // If user corrects information (date incorrect, wrong amount, etc.), re-fetch to ensure accuracy
-        const correctionKeywords = ['incorrect', 'wrong', 'date is', 'not correct', 'that\'s wrong', 'that is wrong'];
-        const isCorrection = correctionKeywords.some(keyword => messageLower.includes(keyword));
-        
-        // If it's an invoice query and mentions "latest" or "how much", force get_latest_invoice
+        // Button text detection (exact matches for button clicks)
         let forcedAction = null;
-        if (isInvoiceQuery && (messageLower.includes('latest') || messageLower.includes('how much') || messageLower.includes('owe'))) {
+        if (message === 'View Latest Invoice' || message === 'Latest Invoice' || messageLower === 'view latest invoice' || messageLower === 'latest invoice') {
             forcedAction = { type: "action", action: "get_latest_invoice", params: {}, confidence: 0.95, needs_clarification: false };
-        } else if (isInvoiceQuery && (messageLower.includes('all') || messageLower.includes('list') || messageLower.includes('show'))) {
+        } else if (message === 'View All Invoices' || message === 'All Invoices' || message === 'View Invoices' || 
+                   messageLower === 'view all invoices' || messageLower === 'all invoices' || messageLower === 'view invoices') {
             forcedAction = { type: "action", action: "get_all_invoices", params: {}, confidence: 0.95, needs_clarification: false };
-        } else if (itemsKeywords.some(keyword => messageLower.includes(keyword))) {
-            // User is asking about items/services - fetch invoice data to get items array
-            if (req.session?.lastInvoiceNumber) {
-                forcedAction = { type: "action", action: "get_invoice_details", params: { invoice_number: req.session.lastInvoiceNumber }, confidence: 0.95, needs_clarification: false };
-            } else {
+        } else if (message === 'Project Updates' || message === 'Project Status' || 
+                   messageLower === 'project updates' || messageLower === 'project status') {
+            forcedAction = { type: "action", action: "get_project_updates", params: {}, confidence: 0.95, needs_clarification: false };
+        } else if (message === 'Security Analytics' || message === 'Security' || 
+                   messageLower === 'security analytics' || messageLower === 'security') {
+            forcedAction = { type: "action", action: "get_security_analytics", params: {}, confidence: 0.95, needs_clarification: false };
+        } else if (message === 'Ticket Status' || message === 'Support Ticket' || message === 'Ticket' || 
+                   messageLower === 'ticket status' || messageLower === 'support ticket' || messageLower === 'ticket') {
+            forcedAction = { type: "action", action: "get_ticket_status", params: {}, confidence: 0.95, needs_clarification: false };
+        }
+        
+        // Detect invoice-related queries and force action if needed (only if not already set by button)
+        if (!forcedAction) {
+            const invoiceKeywords = ['invoice', 'owe', 'owe you', 'amount due', 'balance', 'payment', 'bill', 'billing'];
+            const itemsKeywords = ['items included', 'services', 'service subscribed', 'subscribed to', 'what am i paying for', 'what\'s on the invoice', 'invoice items', 'item', 'items'];
+            const isInvoiceQuery = invoiceKeywords.some(keyword => messageLower.includes(keyword)) || 
+                                  itemsKeywords.some(keyword => messageLower.includes(keyword));
+            
+            // If user corrects information (date incorrect, wrong amount, etc.), re-fetch to ensure accuracy
+            const correctionKeywords = ['incorrect', 'wrong', 'date is', 'not correct', 'that\'s wrong', 'that is wrong'];
+            const isCorrection = correctionKeywords.some(keyword => messageLower.includes(keyword));
+            
+            // If it's an invoice query and mentions "latest" or "how much", force get_latest_invoice
+            if (isInvoiceQuery && (messageLower.includes('latest') || messageLower.includes('how much') || messageLower.includes('owe'))) {
                 forcedAction = { type: "action", action: "get_latest_invoice", params: {}, confidence: 0.95, needs_clarification: false };
-            }
-        } else if (isCorrection && (isInvoiceQuery || req.session?.lastInvoiceNumber)) {
-            // User is correcting invoice info - re-fetch to get accurate data
-            if (req.session?.lastInvoiceNumber) {
-                forcedAction = { type: "action", action: "get_invoice_details", params: { invoice_number: req.session.lastInvoiceNumber }, confidence: 0.95, needs_clarification: false };
-            } else {
-                forcedAction = { type: "action", action: "get_latest_invoice", params: {}, confidence: 0.95, needs_clarification: false };
+            } else if (isInvoiceQuery && (messageLower.includes('all') || messageLower.includes('list') || messageLower.includes('show'))) {
+                forcedAction = { type: "action", action: "get_all_invoices", params: {}, confidence: 0.95, needs_clarification: false };
+            } else if (itemsKeywords.some(keyword => messageLower.includes(keyword))) {
+                // User is asking about items/services - fetch invoice data to get items array
+                if (req.session?.lastInvoiceNumber) {
+                    forcedAction = { type: "action", action: "get_invoice_details", params: { invoice_number: req.session.lastInvoiceNumber }, confidence: 0.95, needs_clarification: false };
+                } else {
+                    forcedAction = { type: "action", action: "get_latest_invoice", params: {}, confidence: 0.95, needs_clarification: false };
+                }
+            } else if (isCorrection && (isInvoiceQuery || req.session?.lastInvoiceNumber)) {
+                // User is correcting invoice info - re-fetch to get accurate data
+                if (req.session?.lastInvoiceNumber) {
+                    forcedAction = { type: "action", action: "get_invoice_details", params: { invoice_number: req.session.lastInvoiceNumber }, confidence: 0.95, needs_clarification: false };
+                } else {
+                    forcedAction = { type: "action", action: "get_latest_invoice", params: {}, confidence: 0.95, needs_clarification: false };
+                }
             }
         }
 
@@ -2917,62 +2978,88 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
 
             // SECOND PASS: Include conversation history + data for context-aware response
             // Data is injected as system context (not saved to chat history)
-            // Assistant's response will naturally include invoice info, which gets saved for follow-up context
+            // Assistant's response will naturally include the data, which gets saved for follow-up context
             
-            // Safety checks for data fields to avoid undefined
-            const safeInvoiceNumber = data.invoice_number ? String(data.invoice_number) : 'Unknown';
-            const safeBalance = data.outstanding_balance ? String(data.outstanding_balance) : '0.00';
-            const safeDueDateRaw = data.due_date || '';
-            const safeItems = data.items || [];
+            // Build data context message based on data type
+            let dataContextMessage = '';
+            const dataType = data.data_type || 'unknown';
+            
+            if (dataType === 'invoice' || dataType === 'invoices') {
+                // Invoice-specific handling
+                const safeInvoiceNumber = data.invoice_number ? String(data.invoice_number) : 'Unknown';
+                const safeBalance = data.outstanding_balance ? String(data.outstanding_balance) : '0.00';
+                const safeDueDateRaw = data.due_date || '';
+                const safeItems = data.items || [];
+                const safeTotalAmount = data.total_amount ? String(data.total_amount) : '0.00';
 
-            // Format the year from due_date for clarity
-            const dueDateYear = safeDueDateRaw ? String(safeDueDateRaw).substring(0, 4) : 'N/A';
-            const dueDateFormatted = safeDueDateRaw ? 
-                (String(safeDueDateRaw).includes('T') ? String(safeDueDateRaw).split('T')[0] : String(safeDueDateRaw)) : '';
-            
-            // Calculate formatted date for explicit display
-            const formattedDate = dueDateFormatted ? 
-                new Date(dueDateFormatted + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 
-                'Not specified';
-            
-            let conversationHistory = await getChatHistory(userId, 30); 
-            
-            // CRITICAL: Filter out incorrect responses from history
-            if (safeInvoiceNumber !== 'Unknown') {
-                conversationHistory = conversationHistory.filter(msg => {
-                    if (msg.role === 'assistant') {
-                        const content = msg.content.toLowerCase();
-                        if (content.includes('invoice') && content.match(/\d{4,}/) && !content.includes(`#${safeInvoiceNumber}`) && !content.includes(safeInvoiceNumber)) {
-                            const mentionedNumbers = content.match(/\d{4,}/g) || [];
-                            if (mentionedNumbers.length > 0 && !mentionedNumbers.some(num => num === safeInvoiceNumber)) {
-                                return false; 
-                            }
-                        }
-                        const amountPattern = /r\s*[\d,]+\.?\d*/gi;
-                        const hasAmount = content.match(amountPattern);
-                        if (hasAmount && safeBalance !== '0.00') {
-                            const dbAmount = parseFloat(safeBalance);
-                            const mentionedAmounts = hasAmount.map(m => {
-                                const cleaned = m.toLowerCase().replace(/r\s*/, '').replace(/,/g, '');
-                                return parseFloat(cleaned) || 0;
-                            });
-                            const matchesCorrect = mentionedAmounts.some(amt => Math.abs(amt - dbAmount) < 0.01);
-                            if (!matchesCorrect) {
-                                return false; 
-                            }
-                        }
-                    }
-                    return true;
-                });
+                // Format dates
+                const dueDateFormatted = safeDueDateRaw ? 
+                    (String(safeDueDateRaw).includes('T') ? String(safeDueDateRaw).split('T')[0] : String(safeDueDateRaw)) : '';
+                const formattedDate = dueDateFormatted ? 
+                    new Date(dueDateFormatted + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 
+                    'Not specified';
+                
+                // Store invoice data in session for context
+                if (safeInvoiceNumber !== 'Unknown') {
+                    if (!req.session) req.session = {};
+                    req.session.lastInvoiceNumber = safeInvoiceNumber;
+                    req.session.lastAmount = safeBalance;
+                    req.session.lastDueDate = dueDateFormatted;
+                }
+                
+                dataContextMessage = `🚨 AUTHORITATIVE DATABASE DATA - INVOICE INFORMATION 🚨
+
+CRITICAL: You MUST summarize this data in natural, conversational language. NEVER show raw database fields.
+
+INVOICE DATA (use exact values, format for display):
+- Invoice Number: "${safeInvoiceNumber}" → Say as "Invoice #${safeInvoiceNumber}"
+- Total Amount: "${safeTotalAmount}" → Format as "R${parseFloat(safeTotalAmount).toLocaleString('en-ZA', {minimumFractionDigits: 2, maximumFractionDigits: 2})}"
+- Outstanding Balance: "${safeBalance}" → Format as "R${parseFloat(safeBalance).toLocaleString('en-ZA', {minimumFractionDigits: 2, maximumFractionDigits: 2})}"
+- Due Date: "${dueDateFormatted}" → Say as "${formattedDate}"
+${safeItems.length > 0 ? `- Items: ${safeItems.map(i => `"${i.description}" (R${parseFloat(i.amount).toLocaleString('en-ZA', {minimumFractionDigits: 2, maximumFractionDigits: 2})})`).join(', ')}` : '- No items listed'}
+
+RESPONSE REQUIREMENTS:
+✅ Summarize in natural language: "Your latest invoice #${safeInvoiceNumber} is for R${parseFloat(safeTotalAmount).toLocaleString('en-ZA', {minimumFractionDigits: 2, maximumFractionDigits: 2})}, due on ${formattedDate}."
+❌ NEVER show: "invoice_number: ${safeInvoiceNumber}, total_amount: ${safeTotalAmount}, due_date: ${dueDateFormatted}"
+✅ Always end with relevant action buttons like [[View All Invoices]] or [[View Latest Invoice]]`;
+            } else if (dataType === 'projects') {
+                dataContextMessage = `🚨 AUTHORITATIVE DATABASE DATA - PROJECT INFORMATION 🚨
+
+CRITICAL: You MUST summarize this data in natural, conversational language. NEVER show raw database fields.
+
+PROJECT DATA:
+${data.has_data && data.projects ? JSON.stringify(data.projects, null, 2) : 'No projects found'}
+
+RESPONSE REQUIREMENTS:
+✅ Summarize projects in natural language: "You have X active projects. [Project Name] is [Status] with a due date of [Date]."
+❌ NEVER show raw JSON, field names, or timestamps
+✅ Always end with relevant action buttons like [[Project Updates]]`;
+            } else if (data.message) {
+                // Handle messages (like "coming soon" for security/tickets)
+                dataContextMessage = `🚨 DATABASE RESPONSE 🚨
+
+${data.message}
+
+RESPONSE REQUIREMENTS:
+✅ Present this message naturally and professionally
+✅ If it's a "coming soon" message, be friendly and suggest alternatives
+✅ Always end with relevant action buttons`;
+            } else {
+                // Generic data handling
+                dataContextMessage = `🚨 AUTHORITATIVE DATABASE DATA 🚨
+
+CRITICAL: You MUST summarize this data in natural, conversational language. NEVER show raw database fields.
+
+DATA RECEIVED:
+${JSON.stringify(data, null, 2)}
+
+RESPONSE REQUIREMENTS:
+✅ Summarize in natural language - convert all technical fields to friendly explanations
+❌ NEVER show raw JSON, field names, timestamps, or SQL data
+✅ Always end with relevant action buttons`;
             }
             
-            // Store invoice number and key data in session for context
-            if (safeInvoiceNumber !== 'Unknown') {
-                if (!req.session) req.session = {};
-                req.session.lastInvoiceNumber = safeInvoiceNumber;
-                req.session.lastAmount = safeBalance;
-                req.session.lastDueDate = dueDateFormatted;
-            }
+            let conversationHistory = await getChatHistory(userId, 30);
             
             const finalCompletion = await openai.chat.completions.create({
                 model: "gpt-4o-mini",
@@ -2980,39 +3067,7 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
                 messages: [
                     {
                         role: "system",
-                        content: `🚨🚨🚨 AUTHORITATIVE DATABASE DATA - MANDATORY USE 🚨🚨🚨
-
-YOU MUST USE THESE EXACT VALUES FROM DATABASE:
-
-1. TOTAL AMOUNT OWED: "${safeBalance}" (raw value from database)
-   → Format this as currency: "R" + add commas for thousands + ".00" for decimals
-   ❌ NEVER change the actual number value
-   ✅ ALWAYS use "${safeBalance}" and format it properly
-
-2. DUE DATE: "${dueDateFormatted}" (raw date from database)
-   → SAY EXACTLY: "${formattedDate}"
-   ❌ NEVER use any other date
-   ✅ ALWAYS use: "${formattedDate}"
-   ⚠️ The date "${dueDateFormatted}" means year ${dueDateYear} - use this EXACT year only
-
-3. INVOICE NUMBER: "${safeInvoiceNumber}"
-   → SAY EXACTLY: "Invoice #${safeInvoiceNumber}" or "${safeInvoiceNumber}"
-   ❌ NEVER use any other number
-   ✅ ALWAYS use: "${safeInvoiceNumber}"
-
-4. ITEM DETAILS WITH AMOUNTS:
-${safeItems.length > 0 ? safeItems.map((item, idx) => {
-    return `   - ${item.description}: Amount is "${item.amount}" (format as "R" + commas + ".00")`;
-}).join('\n') : '   - No items'}
-   → When asked about item amounts, use the EXACT amount value from above
-   ❌ NEVER invent or change item amounts
-   ✅ ALWAYS use the exact amount values shown above
-
-🚨🚨🚨 CRITICAL RULES:
-- These raw values from database ARE THE ONLY SOURCE OF TRUTH
-- Use the exact numbers shown - just format them for display
-- Conversation history may contain WRONG data - IGNORE it
-- Do NOT invent, estimate, guess, or change ANY numeric values`
+                        content: dataContextMessage
                     },
                     { role: "system", content: CHATBOT_SYSTEM_PROMPT },
                     ...conversationHistory,

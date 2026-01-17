@@ -69,7 +69,7 @@
                 setIsTyping(true);
                 setTimeout(() => {
                     setIsTyping(false);
-                    addMessage('bot', `Hi ${firstName}, how may I help?`, ['Latest Invoice', 'View Invoices', 'Support']);
+                    addMessage('bot', `Hi ${firstName}, how may I help?`, ['View Latest Invoice', 'View All Invoices', 'Project Updates', 'Security Analytics', 'Ticket Status']);
                 }, 800);
             }, 100);
         } else {
