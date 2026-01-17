@@ -313,12 +313,25 @@
 
             setIsTyping(false);
             
-            // Ensure we never display JSON to the user
+            // Ensure we never display JSON or error codes to the user
             let responseText = data.text || 'No response received';
+            
+            // Check for JSON
             if (typeof responseText === 'string' && responseText.trim().startsWith('{')) {
-                // If somehow JSON got through, sanitize it
+                console.error('ERROR: Frontend received JSON response:', responseText.substring(0, 100));
+                responseText = 'I apologize, but I encountered an issue processing that. Could you please rephrase your question?';
+            }
+            
+            // Check for error codes or internal errors
+            if (typeof responseText === 'string') {
+                // Remove any JSON artifacts
                 responseText = responseText.replace(/\{[^}]*\}/g, '').trim();
-                if (!responseText || responseText.length < 3) {
+                // Remove error codes
+                responseText = responseText.replace(/\b(error|errorCode|statusCode|code)\s*[:=]\s*\d+/gi, '').trim();
+                // Remove internal error messages
+                responseText = responseText.replace(/internal\s*error/gi, '').trim();
+                
+                if (!responseText || responseText.length < 3 || responseText.match(/^[\s\W]*$/)) {
                     responseText = 'I apologize, but I encountered an issue processing that. Could you please rephrase your question?';
                 }
             }

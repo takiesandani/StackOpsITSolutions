@@ -2155,10 +2155,13 @@ A valid company context is always present.
 
  CORE BEHAVIOR
 Understand user intent from free-form language
-Maintain awareness of the full conversation history
-Respond dynamically using known context
-Never rely on scripted responses or decision trees
+Maintain awareness of the full conversation history - remember everything discussed
+Respond dynamically using known context - be conversational, not robotic
+Never rely on scripted responses or decision trees - speak naturally
 Be professional, friendly, and concise (1–3 lines unless detail is requested)
+When user asks follow-up questions about previously discussed data, reference that data naturally
+You have memory - if you mentioned an invoice number, amount, date, or item earlier, remember it
+Continue conversations fluidly - don't restart or act like you forgot previous context
 
  DATA RULES (NON-NEGOTIABLE)
 ABSOLUTE NO HALLUCINATION — CLIENT DATA
@@ -2170,10 +2173,22 @@ Assume
 Estimate
 Invent values
 Fill in missing details
+Infer dates from context
+Use dates from training data
+Make up dates based on "recent" or "latest"
+
+⚠️ CRITICAL - DATES:
+- Dates MUST come EXACTLY from the database data
+- If data shows "2026-12-31", you MUST say "December 31, 2026"
+- NEVER say "2023" if the data shows "2026"
+- NEVER infer the year from context or current date
+- Copy the year, month, and day EXACTLY as shown in the data
+- Only format the date for readability (e.g., "2026-12-31" → "December 31, 2026")
+- Making up dates = CRITICAL ERROR
 
 This applies to all:
 Invoice numbers
-Dates
+Dates (year, month, day must match data exactly)
 Amounts
 Statuses
 Items
@@ -2230,6 +2245,13 @@ When invoice data is injected, it follows this structure:
   outstanding_balance
 }
 
+⚠️ ITEMS ARRAY EXPLANATION:
+- The "items" array contains ALL services, subscriptions, or items charged on the invoice
+- Each item's "description" field tells you what the service/item is
+- When user asks "what services" or "what items" or "what am I paying for", use the "items" array
+- List each item's description exactly as shown in the data
+- If items array is empty [], say no items are listed
+- The items come from a separate table (InvoiceItems) linked by InvoiceID
 
 You may ONLY reference fields that exist in the provided data
 If has_data: false, acknowledge this naturally
@@ -2368,7 +2390,6 @@ async function getChatHistory(userId, limit = 12) {
         content: r.Content
     }));
 }
-
 
 // ============================================
 // DATA FETCHING
@@ -2640,42 +2661,77 @@ const ALLOWED_ACTIONS = [
   ];
 
 function sanitizeResponse(text) {
-    if (!text || typeof text !== 'string') return '';
+    if (!text || typeof text !== 'string') {
+        return "I apologize, but I'm having trouble processing that request. Could you please rephrase your question?";
+    }
+    
+    // First check if entire response is JSON - if so, return error message
+    let trimmed = text.trim();
+    if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || 
+        (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+        console.error('ERROR: Response was pure JSON, should not reach sanitizeResponse:', trimmed.substring(0, 100));
+        return "I apologize, but I encountered an issue processing that. Could you please rephrase your question?";
+    }
     
     // Remove any JSON objects (including nested ones)
-    // This pattern matches { ... } including nested braces
     let cleaned = text;
     let previousLength = 0;
+    let iterations = 0;
     
     // Keep removing JSON until no more changes (handles nested JSON)
-    while (cleaned.length !== previousLength) {
+    while (cleaned.length !== previousLength && iterations < 10) {
+        iterations++;
         previousLength = cleaned.length;
         // Remove JSON objects: { ... } including multiline
         cleaned = cleaned.replace(/\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g, '');
         // Remove incomplete JSON patterns like { , "confidence": ...
         cleaned = cleaned.replace(/\{\s*,?\s*["']?[^"']*["']?\s*:\s*[^}]*/g, '');
+        // Remove JSON-like patterns with quotes and colons
+        cleaned = cleaned.replace(/["']\w+["']\s*:\s*[^,\s}]+/g, '');
     }
     
     // Remove JSON array patterns
     cleaned = cleaned.replace(/\[[^\]]*\]/g, '');
     
-    // Remove common JSON keywords that might leak through
-    cleaned = cleaned.replace(/\b(type|action|params|confidence|needs_clarification)\s*[:=]\s*[^,\s}]+/gi, '');
+    // Remove common JSON keywords and error codes
+    cleaned = cleaned.replace(/\b(type|action|params|confidence|needs_clarification|error|errorCode|statusCode|code)\s*[:=]\s*[^,\s}]+/gi, '');
+    
+    // Remove error codes and HTTP status codes
+    cleaned = cleaned.replace(/\b\d{3}\b(?:\s*(?:error|status|code))?/gi, '');
+    cleaned = cleaned.replace(/error\s*(?:code|message)?\s*[:=]\s*[^\s,}]+/gi, '');
+    cleaned = cleaned.replace(/internal\s*error/gi, '');
+    cleaned = cleaned.replace(/status\s*[:=]\s*\d+/gi, '');
     
     // Remove system/internal markers
     cleaned = cleaned.replace(/internal\s*:\s*true/gi, "");
-    cleaned = cleaned.replace(/SYSTEM DATA[\s\S]*/gi, "");
-    cleaned = cleaned.replace(/System data[\s\S]*/gi, "");
+    cleaned = cleaned.replace(/SYSTEM\s*DATA[\s\S]*/gi, "");
+    cleaned = cleaned.replace(/System\s*data[\s\S]*/gi, "");
+    cleaned = cleaned.replace(/Database\s*Data[\s\S]*/gi, "");
+    cleaned = cleaned.replace(/CRITICAL\s*DATABASE[\s\S]*/gi, "");
     
-    // Remove any remaining curly braces or JSON artifacts
+    // Remove JSON.stringify artifacts
+    cleaned = cleaned.replace(/JSON\.stringify/gi, '');
+    
+    // Remove any remaining curly braces, square brackets, or JSON artifacts
     cleaned = cleaned.replace(/[{}[\]]/g, '');
+    
+    // Remove quotes around single words that look like JSON keys
+    cleaned = cleaned.replace(/["'](\w+)["']\s*:/g, '$1');
     
     // Clean up extra whitespace
     cleaned = cleaned.replace(/\s+/g, ' ').trim();
     
+    // Remove any remaining technical artifacts
+    cleaned = cleaned.replace(/\b(object|array|string|number|boolean|null|undefined)\b/gi, '');
+    
     // If after cleaning we have nothing meaningful, return a safe message
-    if (cleaned.length < 3) {
+    if (cleaned.length < 3 || cleaned.match(/^[\s\W]*$/)) {
         return "I apologize, but I'm having trouble processing that request. Could you please rephrase your question?";
+    }
+    
+    // Final check - if it still looks like JSON, reject it
+    if (cleaned.includes('"type"') || cleaned.includes('"action"') || cleaned.includes('"error"')) {
+        return "I apologize, but I encountered an issue processing that. Could you please rephrase your question?";
     }
     
     return cleaned.slice(0, 1200);
@@ -2718,7 +2774,13 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
         // Detect invoice-related queries and force action if needed
         const messageLower = message.toLowerCase().trim();
         const invoiceKeywords = ['invoice', 'owe', 'owe you', 'amount due', 'balance', 'payment', 'bill', 'billing'];
-        const isInvoiceQuery = invoiceKeywords.some(keyword => messageLower.includes(keyword));
+        const itemsKeywords = ['items included', 'services', 'service subscribed', 'subscribed to', 'what am i paying for', 'what\'s on the invoice', 'invoice items', 'item', 'items'];
+        const isInvoiceQuery = invoiceKeywords.some(keyword => messageLower.includes(keyword)) || 
+                              itemsKeywords.some(keyword => messageLower.includes(keyword));
+        
+        // If user corrects information (date incorrect, wrong amount, etc.), re-fetch to ensure accuracy
+        const correctionKeywords = ['incorrect', 'wrong', 'date is', 'not correct', 'that\'s wrong', 'that is wrong'];
+        const isCorrection = correctionKeywords.some(keyword => messageLower.includes(keyword));
         
         // If it's an invoice query and mentions "latest" or "how much", force get_latest_invoice
         let forcedAction = null;
@@ -2726,6 +2788,20 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
             forcedAction = { type: "action", action: "get_latest_invoice", params: {}, confidence: 0.95, needs_clarification: false };
         } else if (isInvoiceQuery && (messageLower.includes('all') || messageLower.includes('list') || messageLower.includes('show'))) {
             forcedAction = { type: "action", action: "get_all_invoices", params: {}, confidence: 0.95, needs_clarification: false };
+        } else if (itemsKeywords.some(keyword => messageLower.includes(keyword))) {
+            // User is asking about items/services - fetch invoice data to get items array
+            if (req.session?.lastInvoiceNumber) {
+                forcedAction = { type: "action", action: "get_invoice_details", params: { invoice_number: req.session.lastInvoiceNumber }, confidence: 0.95, needs_clarification: false };
+            } else {
+                forcedAction = { type: "action", action: "get_latest_invoice", params: {}, confidence: 0.95, needs_clarification: false };
+            }
+        } else if (isCorrection && (isInvoiceQuery || req.session?.lastInvoiceNumber)) {
+            // User is correcting invoice info - re-fetch to get accurate data
+            if (req.session?.lastInvoiceNumber) {
+                forcedAction = { type: "action", action: "get_invoice_details", params: { invoice_number: req.session.lastInvoiceNumber }, confidence: 0.95, needs_clarification: false };
+            } else {
+                forcedAction = { type: "action", action: "get_latest_invoice", params: {}, confidence: 0.95, needs_clarification: false };
+            }
         }
 
         const history = await getChatHistory(userId);
@@ -2767,6 +2843,17 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
         if (parsed?.type === "action" && ALLOWED_ACTIONS.includes(parsed.action) && parsed.confidence >= 0.3 && !parsed.needs_clarification) {
 
             const data = await fetchClientData(parsed.action, companyId, parsed.params || {});
+            
+            // Log data for debugging (remove in production if needed)
+            if (data.due_date || data.invoice_date) {
+                console.log('DEBUG: Invoice data fetched from database:', {
+                    due_date: data.due_date,
+                    invoice_date: data.invoice_date,
+                    invoice_number: data.invoice_number,
+                    items_count: data.items?.length || 0,
+                    items: data.items?.map(i => i.description) || []
+                });
+            }
 
             // If data indicates no results, still pass it to AI to respond naturally
             // Don't return hardcoded messages - let AI handle it based on the data structure
@@ -2777,46 +2864,99 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
             // SECOND PASS: Include conversation history + data for context-aware response
             // Data is injected as system context (not saved to chat history)
             // Assistant's response will naturally include invoice info, which gets saved for follow-up context
-            const conversationHistory = await getChatHistory(userId, 20);
+            const conversationHistory = await getChatHistory(userId, 30); // Increased to 30 for better context
             
-            // Store invoice number in session for context
+            // Store invoice number and key data in session for context
             if (data.invoice_number) {
                 if (!req.session) req.session = {};
                 req.session.lastInvoiceNumber = data.invoice_number;
+                // Store key data points for follow-up questions
+                if (data.outstanding_balance) req.session.lastAmount = data.outstanding_balance;
+                if (data.due_date) req.session.lastDueDate = data.due_date;
             }
             
             const finalCompletion = await openai.chat.completions.create({
                 model: "gpt-4o-mini",
-                temperature: 0.6,
+                temperature: 0.7, // Slightly higher for more natural conversation
                 messages: [
                     { role: "system", content: CHATBOT_SYSTEM_PROMPT },
                     {
                         role: "system",
-                        content: `CRITICAL DATABASE DATA INSTRUCTIONS:
+                        content: `CRITICAL DATABASE DATA INSTRUCTIONS - ABSOLUTE RULES:
 
 The following is REAL database data fetched from the database for THIS SPECIFIC USER'S COMPANY. This is the ONLY source of truth.
 
 Database Data:
 ${JSON.stringify(data, null, 2)}
 
-STRICT RULES:
-1. You MUST ONLY use values that appear in the data above
-2. If "has_data" is false, acknowledge that no data was found - use the message field naturally
-3. If data exists, use the EXACT values: invoice numbers, amounts, dates, statuses, items, payments - everything must match the data
-4. NEVER invent, estimate, guess, or assume ANY value not in the data
-5. If a field is missing or null in the data, say "that information isn't available in your records"
-6. Use amounts exactly as shown (e.g., if total_amount is "1500.00", say "R1,500.00")
-7. Use dates exactly as formatted in the data
-8. Reference invoice numbers exactly as shown (e.g., if invoice_number is "INV-001", use "Invoice #INV-001")
-9. Do NOT mention receiving data or system messages - just use the information naturally in conversation
-10. This data is now part of your memory - you can reference it in future messages
+⚠️ ABSOLUTE RULES - VIOLATION = CRITICAL ERROR:
 
-RESPONSE STYLE:
-- Be clear, direct, and professional
-- Use the data naturally - don't list fields, just answer the question
-- If asked "How much do I owe?" and data shows outstanding_balance, say "You owe R[exact amount]"
-- If asked about invoice items, list them naturally from the items array
-- Always be specific with numbers and dates from the data`
+1. DATES - CRITICAL:
+   - Use ONLY the dates shown in the data above
+   - If due_date is shown as "2026-01-15", say "January 15, 2026" (convert format but keep EXACT year, month, day)
+   - If due_date is shown as "2026-12-31", say "December 31, 2026"
+   - NEVER infer the year from the current year
+   - NEVER assume dates based on "recent" or "latest"
+   - NEVER use dates from your training data
+   - NEVER make up dates like "December 15, 2023" if the data shows a different date
+   - If the data shows "2026", use "2026" - do NOT use "2023" or any other year
+   - Copy the date EXACTLY as it appears, only format it for readability
+
+2. AMOUNTS:
+   - Use EXACT amounts from the data
+   - If outstanding_balance is "1500.00", say "R1,500.00"
+   - NEVER round or estimate
+
+3. INVOICE NUMBERS:
+   - Use EXACT invoice numbers from the data
+   - If invoice_number is "INV-001", say "Invoice #INV-001"
+
+4. ITEMS & SERVICES (CRITICAL):
+   - The "items" array contains ALL services/subscriptions/items on the invoice
+   - Each item has: description, quantity, unit_price, amount
+   - When user asks about:
+     * "items included"
+     * "services subscribed to"
+     * "what am I paying for"
+     * "what's on the invoice"
+     * "invoice items"
+     * "services"
+   - You MUST list the items from the "items" array using the "description" field
+   - Use EXACT descriptions from the data - never change or paraphrase item names
+   - Example: If items array has [{"description": "Microsoft 365 Business", ...}], say "Microsoft 365 Business"
+   - If items array is empty or missing, say "No items are listed on this invoice"
+   
+5. PAYMENTS:
+   - List ONLY payments shown in the "payments" array
+   - Use exact amounts, dates, and payment methods from the data
+
+6. GENERAL:
+   - If "has_data" is false, acknowledge no data found
+   - If a field is missing/null, say "that information isn't available"
+   - NEVER invent, estimate, guess, or assume ANY value
+   - Do NOT mention receiving data - use it naturally
+   - This data is now part of your memory for this conversation
+
+DATE EXAMPLES (COPY EXACTLY):
+- Data: {"due_date": "2026-12-31"} → Say: "December 31, 2026"
+- Data: {"due_date": "2026-01-15"} → Say: "January 15, 2026"  
+- Data: {"due_date": "2026-03-20"} → Say: "March 20, 2026"
+- NEVER say "December 15, 2023" if data shows "2026" - that is a CRITICAL ERROR
+
+ITEMS/SERVICES EXAMPLES (USE EXACT DESCRIPTIONS):
+- Data: {"items": [{"description": "Microsoft 365 Business", "quantity": 1, "unit_price": "500.00", "amount": "500.00"}]}
+  → User: "What services am I subscribed to?" 
+  → Say: "You're subscribed to Microsoft 365 Business"
+
+- Data: {"items": [{"description": "Office 365 E3", ...}, {"description": "Azure Storage", ...}]}
+  → User: "What items are included?"
+  → Say: "Your invoice includes Office 365 E3 and Azure Storage"
+
+- If items array exists but is empty: []
+  → Say: "No items are listed on this invoice"
+
+- If items field is missing entirely
+  → Say: "Item details aren't available for this invoice" (don't make up items)`
                     },
                     ...conversationHistory,
                     { role: "user", content: message }
@@ -2824,7 +2964,22 @@ RESPONSE STYLE:
             });
 
             let finalResponse = finalCompletion.choices[0].message.content.trim();
+            
+            // Pre-check: If response looks like JSON, log and sanitize aggressively
+            if (finalResponse.trim().startsWith('{') || finalResponse.trim().startsWith('[')) {
+                console.error('WARNING: AI returned JSON-like response:', finalResponse.substring(0, 200));
+            }
+            
             const safeText = sanitizeResponse(finalResponse);
+            
+            // Final validation before sending
+            if (!safeText || safeText.length < 3 || safeText.includes('"type"') || safeText.includes('"action"')) {
+                console.error('ERROR: Response failed validation after sanitization');
+                const fallbackText = "I apologize, but I'm having trouble with that request. Could you please rephrase your question?";
+                await saveChatMessage(userId, "user", message);
+                await saveChatMessage(userId, "assistant", fallbackText);
+                return res.json({ text: fallbackText });
+            }
 
             await saveChatMessage(userId, "user", message);
             await saveChatMessage(userId, "assistant", safeText);
@@ -2834,17 +2989,30 @@ RESPONSE STYLE:
 
         // Normal conversation - no action needed, use AI naturally
         // Check if we have context from previous messages (like invoice numbers)
-        const conversationHistory = await getChatHistory(userId, 20);
+        const conversationHistory = await getChatHistory(userId, 30); // Increased for better context
         
         // Build context message if we have session data
         let contextMessage = '';
         if (req.session?.lastInvoiceNumber) {
-            contextMessage = `\n\nNote: The user has been discussing invoice #${req.session.lastInvoiceNumber}. You can reference this in your response if relevant.`;
+            contextMessage = `\n\nCONVERSATION CONTEXT: You recently discussed invoice #${req.session.lastInvoiceNumber}`;
+            if (req.session.lastAmount) {
+                contextMessage += ` with an outstanding balance of R${req.session.lastAmount}`;
+            }
+            if (req.session.lastDueDate) {
+                contextMessage += `, due on ${req.session.lastDueDate}`;
+            }
+            contextMessage += `. Use this context to answer follow-up questions naturally. Reference this invoice when the user asks about "it", "that invoice", or similar. Only use exact data from conversation history or fresh fetches - never invent.`;
+        }
+        
+        // If user corrects information, they might be pointing out a hallucination
+        // Add warning about data accuracy
+        if (message.toLowerCase().includes('incorrect') || message.toLowerCase().includes('wrong') || message.toLowerCase().includes('date is')) {
+            contextMessage += `\n\n⚠️ WARNING: User is correcting information. You MUST fetch fresh data from the database to get accurate dates and amounts. Do NOT reuse potentially incorrect information from conversation history.`;
         }
         
         const normalCompletion = await openai.chat.completions.create({
             model: "gpt-4o-mini",
-            temperature: 0.6,
+            temperature: 0.7, // Higher for more natural conversation flow
             messages: [
                 { role: "system", content: CHATBOT_SYSTEM_PROMPT + contextMessage },
                 ...conversationHistory,
@@ -2853,7 +3021,22 @@ RESPONSE STYLE:
         });
 
         let normalResponse = normalCompletion.choices[0].message.content.trim();
+        
+        // Pre-check: If response looks like JSON, log and sanitize aggressively
+        if (normalResponse.trim().startsWith('{') || normalResponse.trim().startsWith('[')) {
+            console.error('WARNING: AI returned JSON-like response in normal chat:', normalResponse.substring(0, 200));
+        }
+        
         const safeNormalText = sanitizeResponse(normalResponse);
+        
+        // Final validation before sending
+        if (!safeNormalText || safeNormalText.length < 3 || safeNormalText.includes('"type"') || safeNormalText.includes('"action"')) {
+            console.error('ERROR: Normal response failed validation after sanitization');
+            const fallbackText = "I apologize, but I'm having trouble with that request. Could you please rephrase your question?";
+            await saveChatMessage(userId, "user", message);
+            await saveChatMessage(userId, "assistant", fallbackText);
+            return res.json({ text: fallbackText });
+        }
 
         await saveChatMessage(userId, "user", message);
         await saveChatMessage(userId, "assistant", safeNormalText);
