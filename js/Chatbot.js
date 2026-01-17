@@ -69,7 +69,7 @@
                 setIsTyping(true);
                 setTimeout(() => {
                     setIsTyping(false);
-                    addMessage('bot', `Hi ${firstName}, how may I help?`);
+                    addMessage('bot', `Hi ${firstName}, how may I help?`, ['Latest Invoice', 'View Invoices', 'Support']);
                 }, 800);
             }, 100);
         } else {
@@ -324,7 +324,7 @@
             
             return {
                 text: responseText,
-                buttons: null
+                buttons: data.buttons || null
             };
         } catch (error) {
             console.error('Chat error:', error);

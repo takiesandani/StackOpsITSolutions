@@ -2359,6 +2359,13 @@ No markdown
 No tables
 No bullet symbols
 
+BUTTONS & INTERACTIVITY
+You can suggest actions to the user using buttons.
+Buttons should be short (1-3 words) and actionable.
+Format: Put buttons at the very end of your response, each enclosed in double square brackets.
+Example: "I can help with that. [[View Invoices]] [[Latest Invoice]]"
+Example buttons: [[View Invoices]], [[Latest Invoice]], [[Security Audit]], [[Support Ticket]], [[Project Status]].
+
 FINAL RULE
 You are StackOn, the AI Assistant for Stack Ops IT Solutions.
 
@@ -3064,7 +3071,18 @@ ${data.items && data.items.length > 0 ? data.items.map((item, idx) => {
                 console.error('ERROR: AI returned JSON-like response in final output:', finalResponse.substring(0, 200));
             }
             
-            const safeText = sanitizeResponse(finalResponse);
+            // Extract buttons: [[Button Name]]
+            const buttons = [];
+            const buttonRegex = /\[\[([^\]]+)\]\]/g;
+            let match;
+            while ((match = buttonRegex.exec(finalResponse)) !== null) {
+                buttons.push(match[1].trim());
+            }
+            
+            // Remove buttons from finalResponse before sanitization
+            let finalResponseCleaned = finalResponse.replace(buttonRegex, '').trim();
+            
+            const safeText = sanitizeResponse(finalResponseCleaned);
             
             // Final check after sanitization
             if (safeText.includes('I will fetch') || safeText.includes("Here's the request")) {
@@ -3072,7 +3090,7 @@ ${data.items && data.items.length > 0 ? data.items.map((item, idx) => {
                 const fallbackText = "I apologize, but I encountered an issue processing that. Could you please rephrase your question?";
                 await saveChatMessage(userId, "user", message);
                 await saveChatMessage(userId, "assistant", fallbackText);
-                return res.json({ text: fallbackText });
+                return res.json({ text: fallbackText, buttons: null });
             }
             
             // Final validation before sending
@@ -3081,13 +3099,16 @@ ${data.items && data.items.length > 0 ? data.items.map((item, idx) => {
                 const fallbackText = "I apologize, but I'm having trouble with that request. Could you please rephrase your question?";
                 await saveChatMessage(userId, "user", message);
                 await saveChatMessage(userId, "assistant", fallbackText);
-                return res.json({ text: fallbackText });
+                return res.json({ text: fallbackText, buttons: null });
             }
 
             await saveChatMessage(userId, "user", message);
             await saveChatMessage(userId, "assistant", safeText);
 
-            return res.json({ text: safeText });
+            return res.json({ 
+                text: safeText, 
+                buttons: buttons.length > 0 ? buttons : null 
+            });
         }
 
         // Normal conversation - no action needed, use AI naturally
@@ -3130,7 +3151,18 @@ ${data.items && data.items.length > 0 ? data.items.map((item, idx) => {
             console.error('WARNING: AI returned JSON-like response in normal chat:', normalResponse.substring(0, 200));
         }
         
-        const safeNormalText = sanitizeResponse(normalResponse);
+        // Extract buttons: [[Button Name]]
+        const normalButtons = [];
+        const normalButtonRegex = /\[\[([^\]]+)\]\]/g;
+        let normalMatch;
+        while ((normalMatch = normalButtonRegex.exec(normalResponse)) !== null) {
+            normalButtons.push(normalMatch[1].trim());
+        }
+        
+        // Remove buttons from response before sanitization
+        let normalResponseCleaned = normalResponse.replace(normalButtonRegex, '').trim();
+        
+        const safeNormalText = sanitizeResponse(normalResponseCleaned);
         
         // Final validation before sending
         if (!safeNormalText || safeNormalText.length < 3 || safeNormalText.includes('"type"') || safeNormalText.includes('"action"')) {
@@ -3138,13 +3170,16 @@ ${data.items && data.items.length > 0 ? data.items.map((item, idx) => {
             const fallbackText = "I apologize, but I'm having trouble with that request. Could you please rephrase your question?";
             await saveChatMessage(userId, "user", message);
             await saveChatMessage(userId, "assistant", fallbackText);
-            return res.json({ text: fallbackText });
+            return res.json({ text: fallbackText, buttons: null });
         }
 
         await saveChatMessage(userId, "user", message);
         await saveChatMessage(userId, "assistant", safeNormalText);
 
-        return res.json({ text: safeNormalText });
+        return res.json({ 
+            text: safeNormalText, 
+            buttons: normalButtons.length > 0 ? normalButtons : null 
+        });
 
 
     } catch (error) {
