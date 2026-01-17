@@ -2272,7 +2272,6 @@ When an invoice is mentioned, it becomes active context
 Resolve references like:
 “this invoice”
 “that one”
-“invoice 1023”
 “the overdue one”
 using conversation history
 If required details are missing:
@@ -2285,8 +2284,7 @@ LISTING INVOICES
 When listing invoices:
 One line per invoice
 
-Format exactly:
-Invoice #1023 – Overdue
+Format: Invoice #[number] – [status]
 Only include details present in the data
 
 TERMINOLOGY NORMALIZATION
@@ -2935,14 +2933,18 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
             let conversationHistory = await getChatHistory(userId, 30); // Increased to 30 for better context
             
             // CRITICAL: Filter out incorrect responses from history that contain wrong invoice data
-            // Remove any assistant messages that mention wrong invoice numbers (1023) or wrong amounts (R15.00, R15,.00)
+            // Remove any assistant messages that mention wrong invoice numbers or wrong amounts
             if (data.invoice_number) {
                 conversationHistory = conversationHistory.filter(msg => {
                     if (msg.role === 'assistant') {
                         const content = msg.content.toLowerCase();
-                        // Remove messages with wrong invoice numbers
-                        if (content.includes('1023') && !content.includes(`#${data.invoice_number}`)) {
-                            return false;
+                        // Remove messages with wrong invoice numbers (if invoice number is mentioned but doesn't match current data)
+                        if (content.includes('invoice') && content.match(/\d{4,}/) && !content.includes(`#${data.invoice_number}`) && !content.includes(data.invoice_number)) {
+                            // Check if message mentions a 4+ digit number that's not the correct invoice number
+                            const mentionedNumbers = content.match(/\d{4,}/g) || [];
+                            if (mentionedNumbers.length > 0 && !mentionedNumbers.some(num => num === data.invoice_number)) {
+                                return false; // Remove message with wrong invoice number
+                            }
                         }
                         // Remove messages with wrong amounts - check if amount is way off from database value
                         const amountPattern = /r\s*[\d,]+\.?\d*/gi;
@@ -2959,9 +2961,16 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
                                 return false; // Remove this message - it has wrong amount
                             }
                         }
-                        // Remove messages with wrong years (2023 when it should be 2026)
-                        if (dueDateYear && dueDateYear !== '2023' && content.includes('2023') && content.includes('due date')) {
-                            return false;
+                        // Remove messages with wrong dates (if date is mentioned and doesn't match database date)
+                        if (dueDateFormatted && formattedDate) {
+                            // Extract year from message if mentioned
+                            const yearMatch = content.match(/\b(202\d|203\d)\b/);
+                            if (yearMatch && yearMatch[0] !== dueDateYear) {
+                                // Message mentions a year that doesn't match database year - likely wrong
+                                if (content.includes('due date') || content.includes('date')) {
+                                    return false;
+                                }
+                            }
                         }
                     }
                     return true;
@@ -2997,7 +3006,7 @@ YOU MUST USE THESE EXACT VALUES FROM DATABASE:
    → SAY EXACTLY: "${formattedDate}"
    ❌ NEVER use any other date (not from history, not from training data)
    ✅ ALWAYS use: "${formattedDate}"
-   ⚠️ The date "${dueDateFormatted}" means year ${dueDateYear}, NOT 2023 or any other year
+   ⚠️ The date "${dueDateFormatted}" means year ${dueDateYear} - use this EXACT year only
 
 3. INVOICE NUMBER: "${data.invoice_number}"
    → SAY EXACTLY: "Invoice #${data.invoice_number}" or "${data.invoice_number}"
