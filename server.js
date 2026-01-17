@@ -2486,6 +2486,8 @@ async function getLatestInvoice(companyId) {
     const dueDate = formatDate(invoice.DueDate);
     
     console.log('DEBUG getLatestInvoice: Date formatting:', {
+        InvoiceNumber_raw: invoice.InvoiceNumber,
+        InvoiceNumber_formatted: String(invoice.InvoiceNumber || ''),
         InvoiceDate_raw: invoice.InvoiceDate,
         InvoiceDate_formatted: invoiceDate,
         DueDate_raw: invoice.DueDate,
@@ -2619,6 +2621,8 @@ async function getInvoiceDetails(companyId, invoiceNumber) {
     const dueDate = formatDate(invoice.DueDate);
     
     console.log('DEBUG getInvoiceDetails: Date formatting:', {
+        InvoiceNumber_raw: invoice.InvoiceNumber,
+        InvoiceNumber_formatted: String(invoice.InvoiceNumber || ''),
         InvoiceDate_raw: invoice.InvoiceDate,
         InvoiceDate_formatted: invoiceDate,
         DueDate_raw: invoice.DueDate,
@@ -2732,56 +2736,23 @@ function sanitizeResponse(text) {
         return "I apologize, but I encountered an issue processing that. Could you please rephrase your question?";
     }
     
-    // Remove any JSON objects (including nested ones)
+    // Remove only complete JSON objects (preserve currency amounts like R15,000.00)
     let cleaned = text;
-    let previousLength = 0;
-    let iterations = 0;
     
-    // Keep removing JSON until no more changes (handles nested JSON)
-    while (cleaned.length !== previousLength && iterations < 10) {
-        iterations++;
-        previousLength = cleaned.length;
-        // Remove JSON objects: { ... } including multiline
-        cleaned = cleaned.replace(/\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g, '');
-        // Remove incomplete JSON patterns like { , "confidence": ...
-        cleaned = cleaned.replace(/\{\s*,?\s*["']?[^"']*["']?\s*:\s*[^}]*/g, '');
-        // Remove JSON-like patterns with quotes and colons
-        cleaned = cleaned.replace(/["']\w+["']\s*:\s*[^,\s}]+/g, '');
-    }
+    // Remove complete JSON objects: { ... }
+    cleaned = cleaned.replace(/\{[^{}]*\}/g, '');
     
     // Remove JSON array patterns
     cleaned = cleaned.replace(/\[[^\]]*\]/g, '');
     
-    // Remove common JSON keywords and error codes
-    cleaned = cleaned.replace(/\b(type|action|params|confidence|needs_clarification|error|errorCode|statusCode|code)\s*[:=]\s*[^,\s}]+/gi, '');
+    // Remove system/internal markers (complete phrases only)
+    cleaned = cleaned.replace(/SYSTEM\s*DATA[\s\S]*?(\n\n|$)/gi, "");
+    cleaned = cleaned.replace(/System\s*data[\s\S]*?(\n\n|$)/gi, "");
+    cleaned = cleaned.replace(/Database\s*Data[\s\S]*?(\n\n|$)/gi, "");
+    cleaned = cleaned.replace(/CRITICAL\s*DATABASE[\s\S]*?(\n\n|$)/gi, "");
     
-    // Remove error codes and HTTP status codes
-    cleaned = cleaned.replace(/\b\d{3}\b(?:\s*(?:error|status|code))?/gi, '');
-    cleaned = cleaned.replace(/error\s*(?:code|message)?\s*[:=]\s*[^\s,}]+/gi, '');
-    cleaned = cleaned.replace(/internal\s*error/gi, '');
-    cleaned = cleaned.replace(/status\s*[:=]\s*\d+/gi, '');
-    
-    // Remove system/internal markers
-    cleaned = cleaned.replace(/internal\s*:\s*true/gi, "");
-    cleaned = cleaned.replace(/SYSTEM\s*DATA[\s\S]*/gi, "");
-    cleaned = cleaned.replace(/System\s*data[\s\S]*/gi, "");
-    cleaned = cleaned.replace(/Database\s*Data[\s\S]*/gi, "");
-    cleaned = cleaned.replace(/CRITICAL\s*DATABASE[\s\S]*/gi, "");
-    
-    // Remove JSON.stringify artifacts
-    cleaned = cleaned.replace(/JSON\.stringify/gi, '');
-    
-    // Remove any remaining curly braces, square brackets, or JSON artifacts
-    cleaned = cleaned.replace(/[{}[\]]/g, '');
-    
-    // Remove quotes around single words that look like JSON keys
-    cleaned = cleaned.replace(/["'](\w+)["']\s*:/g, '$1');
-    
-    // Clean up extra whitespace
-    cleaned = cleaned.replace(/\s+/g, ' ').trim();
-    
-    // Remove any remaining technical artifacts
-    cleaned = cleaned.replace(/\b(object|array|string|number|boolean|null|undefined)\b/gi, '');
+    // Clean up extra whitespace (but preserve spaces in currency amounts)
+    cleaned = cleaned.replace(/\s{3,}/g, ' ').trim();
     
     // If after cleaning we have nothing meaningful, return a safe message
     if (cleaned.length < 3 || cleaned.match(/^[\s\W]*$/)) {
@@ -2789,7 +2760,7 @@ function sanitizeResponse(text) {
     }
     
     // Final check - if it still looks like JSON, reject it
-    if (cleaned.includes('"type"') || cleaned.includes('"action"') || cleaned.includes('"error"')) {
+    if (cleaned.trim().startsWith('{') || cleaned.trim().startsWith('[')) {
         return "I apologize, but I encountered an issue processing that. Could you please rephrase your question?";
     }
     

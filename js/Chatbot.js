@@ -313,27 +313,13 @@
 
             setIsTyping(false);
             
-            // Ensure we never display JSON or error codes to the user
+            // Get response text directly from backend - no sanitization needed (backend already handles it)
             let responseText = data.text || 'No response received';
             
-            // Check for JSON
-            if (typeof responseText === 'string' && responseText.trim().startsWith('{')) {
+            // Only check if entire response is JSON (very rare case)
+            if (typeof responseText === 'string' && responseText.trim().startsWith('{') && responseText.trim().endsWith('}')) {
                 console.error('ERROR: Frontend received JSON response:', responseText.substring(0, 100));
                 responseText = 'I apologize, but I encountered an issue processing that. Could you please rephrase your question?';
-            }
-            
-            // Check for error codes or internal errors
-            if (typeof responseText === 'string') {
-                // Remove any JSON artifacts
-                responseText = responseText.replace(/\{[^}]*\}/g, '').trim();
-                // Remove error codes
-                responseText = responseText.replace(/\b(error|errorCode|statusCode|code)\s*[:=]\s*\d+/gi, '').trim();
-                // Remove internal error messages
-                responseText = responseText.replace(/internal\s*error/gi, '').trim();
-                
-                if (!responseText || responseText.length < 3 || responseText.match(/^[\s\W]*$/)) {
-                    responseText = 'I apologize, but I encountered an issue processing that. Could you please rephrase your question?';
-                }
             }
             
             return {
