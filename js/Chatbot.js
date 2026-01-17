@@ -69,7 +69,7 @@
                 setIsTyping(true);
                 setTimeout(() => {
                     setIsTyping(false);
-                    addMessage('bot', `Hi ${firstName}, how may I help?`, ['View Latest Invoice', 'View All Invoices', 'Project Updates', 'Security Analytics', 'Ticket Status']);
+                    addMessage('bot', `Hi ${firstName}, how may I help?`, ['View Latest Invoice', 'View All Invoices', 'Make Payments', 'Project Updates', 'Security Analytics', 'Ticket Status']);
                 }, 800);
             }, 100);
         } else {
@@ -301,7 +301,16 @@
                 body: JSON.stringify({ message: message })
             });
 
-            const data = await response.json();
+            let data;
+            try {
+                data = await response.json();
+            } catch (jsonError) {
+                setIsTyping(false);
+                return {
+                    text: 'An error occurred. Please try again.',
+                    buttons: null
+                };
+            }
             
             if (!response.ok) {
                 setIsTyping(false);
@@ -313,13 +322,17 @@
 
             setIsTyping(false);
             
-            // Get response text directly from backend - no sanitization needed (backend already handles it)
+            // Get response text directly from backend
             let responseText = data.text || 'No response received';
             
-            // Only check if entire response is JSON (very rare case)
+            // Check if response is pure JSON (should not happen)
             if (typeof responseText === 'string' && responseText.trim().startsWith('{') && responseText.trim().endsWith('}')) {
-                console.error('ERROR: Frontend received JSON response:', responseText.substring(0, 100));
-                responseText = 'I apologize, but I encountered an issue processing that. Could you please rephrase your question?';
+                try {
+                    JSON.parse(responseText);
+                    responseText = 'I apologize, but I encountered an issue processing that. Could you please rephrase your question?';
+                } catch (e) {
+                    // Not valid JSON, continue with responseText
+                }
             }
             
             return {

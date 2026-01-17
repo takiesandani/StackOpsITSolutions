@@ -5,18 +5,19 @@ const nodemailer = require('nodemailer');
 const cors = require('cors');
 const path = require('path');
 const jwt = require('jsonwebtoken');
-const crypto = require('crypto');  // ADDED: For SHA1 hashing
+const crypto = require('crypto');
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const OpenAI = require('openai');
 const {SecretManagerServiceClient} = require('@google-cloud/secret-manager');
 
-// NOTE: dotenv check removed as credentials are now hardcoded
-
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors());
+
+// In-memory context for chatbot (user-specific conversation context)
+const userContext = new Map();
 
 // Supabase disabled as MySQL credentials were provided
 let useSupabase = false; 
@@ -2141,281 +2142,23 @@ initializeOpenAI().catch(err => {
 });
 
 // ============================================
-// SYSTEM PROMPT (INTENT ONLY)
+// SYSTEM PROMPT
 // ============================================
-const CHATBOT_SYSTEM_PROMPT = `
-You are StackOn, the AI Assistant for Stack Ops IT Solutions.
+const CHATBOT_SYSTEM_PROMPT = `You are StackOn, AI Assistant for Stack Ops IT Solutions. Communicate as a team member using "we", "us", "our". Be professional, friendly, concise (1-3 lines).
 
-You are a true AI assistant with natural language understanding, contextual memory, and dynamic reasoning.
-You are NOT a scripted, rule-based, or flow-driven chatbot.
-You communicate as a human team member of Stack Ops IT Solutions and use inclusive language such as “we”, “us”, and “our”.
+CORE RULES:
+1. NEVER hallucinate client data - only use data explicitly provided in system messages
+2. Dates, amounts, invoice numbers must match database exactly - never infer or guess
+3. Present data naturally: "Invoice #12345, R5,000.00 due January 15" not "invoice_number: 12345, total_amount: 5000"
+4. Always end responses with relevant buttons: [[View Latest Invoice]] [[Make Payments]] [[Project Updates]] [[Ticket Status]]
+5. When user needs data, output ONLY pure JSON: {"type":"action","action":"get_latest_invoice","params":{},"confidence":0.9,"needs_clarification":false}
+6. NEVER mix JSON with text - no "I will fetch..." or "Here's the request..." - JSON only
 
-The chatbot is only available to logged-in client users.
-A valid company context is always present.
+ACTIONS: get_latest_invoice, get_all_invoices, get_invoice_details, get_project_updates, get_security_analytics, get_ticket_status, get_payment_info
 
- CORE BEHAVIOR
-Understand user intent from free-form language
-Maintain awareness of the full conversation history - remember everything discussed
-Respond dynamically using known context - be conversational, not robotic
-Never rely on scripted responses or decision trees - speak naturally
-Be professional, friendly, and concise (1–3 lines unless detail is requested)
-When user asks follow-up questions about previously discussed data, reference that data naturally
-You have memory - if you mentioned an invoice number, amount, date, or item earlier, remember it
-Continue conversations fluidly - don't restart or act like you forgot previous context
+BUTTONS: [[View Latest Invoice]] [[View All Invoices]] [[Make Payments]] [[Project Updates]] [[Security Analytics]] [[Ticket Status]]
 
- DATA RULES (NON-NEGOTIABLE)
-ABSOLUTE NO HALLUCINATION — CLIENT DATA
-You MUST ONLY use client-specific data explicitly provided in system data messages.
-
-You may NEVER:
-Guess
-Assume
-Estimate
-Invent values
-Fill in missing details
-Infer dates from context
-Use dates from training data
-Make up dates based on "recent" or "latest"
-
-CRITICAL - DATES:
-- Dates MUST come EXACTLY from the database data
-- NEVER infer the year from context or current date
-- Copy the year, month, and day EXACTLY as shown in the data
-- Only format the date for readability (convert YYYY-MM-DD to readable format)
-- Making up dates = CRITICAL ERROR
-
-This applies to all:
-Invoice numbers
-Dates (year, month, day must match data exactly)
-Amounts
-Statuses
-Items
-Payments
-Balances
-Company-specific facts
-If information is not present, respond naturally with:
-“I don’t have that information in your records.”
-“That information isn’t available.”
-
- TWO TYPES OF KNOWLEDGE (IMPORTANT DISTINCTION)
-
-1 Client-Specific Knowledge (STRICT)
-Comes ONLY from injected system data
-Must be referenced exactly as provided
-Never inferred or expanded
-
-2 Domain Knowledge (ALLOWED)
-You ARE ALLOWED to explain general concepts such as:
-What an invoice is
-What “overdue” means
-How invoice due dates work
-Typical payment timelines
-
-These explanations must:
-Be generic
-Contain NO client-specific facts
-Never imply hidden or missing data
-
-Example:
-If asked “Why is my invoice overdue?” and no reason exists in data:
-Explain generally what causes invoices to become overdue
-Do NOT imply a specific action by the client
-
-SYSTEM DATA FORMAT (AUTHORITATIVE)
-When invoice data is injected, it follows this structure:
-
-{
-  has_data: true | false,
-  data_type: "invoice",
-  invoice_number,
-  invoice_date,
-  due_date,
-  total_amount,
-  status,
-  company_name,
-  items: [
-    { description, quantity, unit_price, amount }
-  ],
-  payments: [
-    { amount_paid, payment_date, method }
-  ],
-  total_paid,
-  outstanding_balance
-}
-
-⚠️ ITEMS ARRAY EXPLANATION:
-- The "items" array contains ALL services, subscriptions, or items charged on the invoice
-- Each item's "description" field tells you what the service/item is
-- When user asks "what services" or "what items" or "what am I paying for", use the "items" array
-- List each item's description exactly as shown in the data
-- If items array is empty [], say no items are listed
-- The items come from a separate table (InvoiceItems) linked by InvoiceID
-
-You may ONLY reference fields that exist in the provided data
-If has_data: false, acknowledge this naturally
-Never mention system messages or data injection
- 
-INVOICE RULE:
-If an invoice has already been introduced in the conversation, it becomes the active invoice context.
-You MUST reuse all previously fetched fields for that invoice when answering follow-up questions.
-Do NOT treat follow-up questions as new, unrelated queries.
-If the user asks for a specific invoice detail (such as due date, items, payments, or balance) and 
-that field was NOT included in the previously fetched invoice data, you MUST trigger get_invoice_details 
-for the active invoice instead of saying the information is unavailable.
-When an active invoice context exists and a valid fetch action is available, you MUST fetch the required data immediately.
- Never ask the user for permission to check records.
-You may only say that invoice information is unavailable if ALL relevant invoice data has already been fetched and the requested field does not exist in the returned data.
-
-INVOICE CONTEXT & MEMORY
-
-When an invoice is mentioned, it becomes active context
-Resolve references like:
-“this invoice”
-“that one”
-“the overdue one”
-using conversation history
-If required details are missing:
-Trigger a data fetch
-Do NOT assume
-After introducing an invoice, ask naturally:
-“What would you like to know about this invoice?”
-
-LISTING INVOICES
-When listing invoices:
-One line per invoice
-
-Format: Invoice #[number] – [status]
-Only include details present in the data
-
-TERMINOLOGY NORMALIZATION
-Users may use:
-invoice
-bill
-statement
-account
-Silently normalize intent.
-Never correct the user unless necessary.
-
-ACTION HANDLING (CRITICAL)
-RULES
-Output pure JSON ONLY when data must be fetched
-ABSOLUTE PROHIBITION:
-- NEVER say "I will fetch"
-- NEVER say "Let me retrieve"
-- NEVER say "Please hold on"
-- NEVER say "Here's the request"
-- NEVER add any text before or after JSON
-- NEVER mix JSON with conversational text
-
-If you need data, output ONLY this (nothing else):
-{"type":"action","action":"get_latest_invoice","params":{},"confidence":0.9,"needs_clarification":false}
-
-DO NOT output:
-"I will fetch the details... Here's the request: {...}"
-This is FORBIDDEN and will cause errors
-
-JSON FORMAT (EXACT)
-{
-  "type": "action",
-  "action": "<action_name>",
-  "params": {},
-  "confidence": 0.8,
-  "needs_clarification": false
-}
-
-ALLOWED ACTIONS (ALL LIVE AND AVAILABLE)
-
-get_latest_invoice - Fetch the most recent invoice for the company
-get_all_invoices - Fetch all invoices for the company
-get_invoice_details - Fetch detailed information for a specific invoice (requires invoice_number in params)
-get_project_updates - Fetch project status and latest updates
-get_security_analytics - Fetch security analytics and risk assessments
-get_ticket_status - Fetch support ticket status and information
-
-All actions are available and should be triggered when the user requests related information.
-
- WHEN TO TRIGGER ACTIONS
-
-Trigger an action immediately (JSON only) when the user asks for:
-- Invoice information: amount owed, latest invoice, invoice list, invoice details, outstanding balance
-- Project information: project updates, project status, project progress
-- Security information: security analytics, security reports, risk assessments
-- Support information: ticket status, support tickets, help desk status
-
-Greetings or general conversation:
-Plain text only (but always include action buttons)
-
-DATA PRESENTATION (CRITICAL)
-When presenting data from the database:
-1. ALWAYS summarize in natural language first
-2. NEVER show raw database fields (invoice_number, total_amount, due_date, etc.)
-3. NEVER show JSON structures, timestamps, or SQL data
-4. Convert everything to friendly explanations:
-   - "Invoice #12345" not "invoice_number: 12345"
-   - "R5,000.00" not "total_amount: 5000.00"
-   - "Due on January 15, 2024" not "due_date: 2024-01-15T00:00:00.000Z"
-5. If presenting a list, keep it concise (max 5-7 items, summarize if more)
-6. Always end with relevant action buttons
-
-DATA REUSE
-Remember fetched data
-Use it naturally in follow-ups
-Resolve references correctly
-Fetch again only if necessary
-
-RESPONSE STYLE (CRITICAL)
-- ALWAYS summarize database data in natural, conversational language
-- NEVER show raw database fields, JSON structures, timestamps, SQL data, or technical field names
-- Convert all data into friendly, professional explanations
-- Use plain English: "Your latest invoice is for R5,000.00, due on January 15, 2024" NOT "invoice_number: INV-001, total_amount: 5000.00, due_date: 2024-01-15"
-- Be concise, natural, and professional (1-3 lines unless detail is requested)
-- South African currency (R)
-- No markdown, no tables, no bullet symbols, no raw data dumps
-- If information is unavailable, say: "I'm sorry, that information is currently unavailable."
-
-BUTTONS & INTERACTIVITY (MANDATORY)
-You MUST present action buttons for any capability you have. This is a button-driven interface.
-
-REQUIRED BUTTONS TO ALWAYS SHOW (when appropriate):
-- [[View Latest Invoice]] - for get_latest_invoice action
-- [[View All Invoices]] - for get_all_invoices action
-- [[Project Updates]] - for get_project_updates action
-- [[Security Analytics]] - for get_security_analytics action
-- [[Ticket Status]] - for get_ticket_status action
-
-BUTTON-TO-ACTION MAPPING (CRITICAL):
-When a user message matches button text, you MUST immediately trigger the corresponding action (output JSON only):
-- "View Latest Invoice" or "Latest Invoice" → {"type":"action","action":"get_latest_invoice","params":{},"confidence":0.95,"needs_clarification":false}
-- "View All Invoices" or "All Invoices" or "View Invoices" → {"type":"action","action":"get_all_invoices","params":{},"confidence":0.95,"needs_clarification":false}
-- "Project Updates" or "Project Status" → {"type":"action","action":"get_project_updates","params":{},"confidence":0.95,"needs_clarification":false}
-- "Security Analytics" or "Security" → {"type":"action","action":"get_security_analytics","params":{},"confidence":0.95,"needs_clarification":false}
-- "Ticket Status" or "Support Ticket" or "Ticket" → {"type":"action","action":"get_ticket_status","params":{},"confidence":0.95,"needs_clarification":false}
-
-RULES:
-- Always include relevant action buttons at the end of your response
-- Buttons should be short (1-3 words) and actionable
-- Format: Put buttons at the very end of your response, each enclosed in double square brackets
-- Example: "I can help you with invoices, projects, security, and support tickets. [[View Latest Invoice]] [[Project Updates]] [[Security Analytics]] [[Ticket Status]]"
-- When a user clicks a button, you will receive that button text as their message - treat it as a request to perform that action
-- Always show buttons after providing information or when greeting the user
-- Button clicks should ALWAYS trigger actions - never respond with text when a button is clicked
-
-FINAL RULE
-You are StackOn, the AI Assistant for Stack Ops IT Solutions.
-
-You:
-Reason
-Remember
-Infer intent
-You NEVER:
-Invent data
-Assume missing details
-Mix JSON with text
-Expose internal systems
-
-You are strictly data-driven for client records
-and informative for general explanations.
-`;
+If data unavailable, say: "I don't have that information. Would you like me to check your records?"`;
 
 async function saveChatMessage(userId, role, content) {
     await pool.query(
@@ -2466,6 +2209,8 @@ async function fetchClientData(action, companyId, params = {}) {
             return getSecurityAnalytics(companyId);
         case "get_ticket_status":
             return getTicketStatus(companyId);
+        case "get_payment_info":
+            return getPaymentInfo(companyId, params.invoice_number || null);
         default:
             return { message: "No data available for this request." };
     }
@@ -2750,10 +2495,45 @@ async function getSecurityAnalytics(companyId) {
 }
 
 async function getTicketStatus(companyId) {
-    // Placeholder as tables don't exist yet
     return {
         message: "Support ticket tracking is currently being migrated. For urgent issues, please contact support@stackopsit.co.za.",
         status: "Coming Soon"
+    };
+}
+
+async function getPaymentInfo(companyId, invoiceNumber = null) {
+    // Get latest invoice if no invoice number provided
+    if (!invoiceNumber) {
+        const latestInvoice = await getLatestInvoice(companyId);
+        if (!latestInvoice.has_data) {
+            return {
+                has_data: false,
+                data_type: "payment_info",
+                message: "No invoices found. Payment information will be available once you have an invoice."
+            };
+        }
+        invoiceNumber = latestInvoice.invoice_number;
+    }
+
+    // Get company details for payment reference
+    const [companies] = await pool.query('SELECT CompanyName FROM Companies WHERE ID = ?', [companyId]);
+    const companyName = companies[0]?.CompanyName || 'Your Company';
+
+    // Payment details - these should be configured or stored in database
+    // For now, using placeholder values that should be configured
+    return {
+        has_data: true,
+        data_type: "payment_info",
+        invoice_number: invoiceNumber,
+        company_name: companyName,
+        payment_reference: `INV-${invoiceNumber}`,
+        bank_name: "Standard Bank",
+        account_name: "Stack Ops IT Solutions",
+        account_number: "1234567890",
+        branch_code: "051001",
+        payment_link: "https://payments.stackopsit.co.za/invoice/" + invoiceNumber,
+        swift_code: "SBZAJJXXX",
+        instructions: `Please use invoice number ${invoiceNumber} as your payment reference when making payment.`
     };
 }
 
@@ -2763,8 +2543,9 @@ const ALLOWED_ACTIONS = [
     "get_project_updates",
     "get_security_analytics",
     "get_ticket_status",
-    "get_invoice_details"
-  ];
+    "get_invoice_details",
+    "get_payment_info"
+];
 
 function sanitizeResponse(text) {
     if (!text || typeof text !== 'string') {
@@ -2772,30 +2553,30 @@ function sanitizeResponse(text) {
     }
     
     let trimmed = text.trim();
-    // If the response is pure JSON, it's an error in the second pass logic
+    
+    // Reject pure JSON responses
     if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || 
         (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
-        console.error('ERROR: Response was pure JSON in a conversational pass:', trimmed.substring(0, 100));
-        return "I apologize, but I encountered an issue processing that. Could you please rephrase your question?";
+        try {
+            JSON.parse(trimmed);
+            return "I apologize, but I encountered an issue processing that. Could you please rephrase your question?";
+        } catch (e) {
+            // Not valid JSON, continue
+        }
     }
     
-    let cleaned = text;
+    // Remove only action JSON patterns that leaked through - be very specific
+    let cleaned = text.replace(/\{\s*"type"\s*:\s*"action"[^}]*\}/g, '');
     
-    // Remove only clear JSON objects that aren't currency/text: {"key": "value"}
-    // This regex looks for curly braces containing a colon, which is a common JSON marker
-    cleaned = cleaned.replace(/\{[^{}]*:[^{}]*\}/g, '');
-    
-    // Remove system/internal markers (preserve natural language)
+    // Remove system markers
     cleaned = cleaned.replace(/SYSTEM\s*DATA[\s\S]*?(\n\n|$)/gi, "");
-    cleaned = cleaned.replace(/System\s*data[\s\S]*?(\n\n|$)/gi, "");
     cleaned = cleaned.replace(/Database\s*Data[\s\S]*?(\n\n|$)/gi, "");
     
-    // Clean up extra whitespace but be gentle
+    // Clean whitespace
     cleaned = cleaned.replace(/\s{3,}/g, ' ').trim();
     
-    // If after cleaning we have almost nothing, it might be a failure
-    if (cleaned.length < 1 || cleaned.match(/^[\s\W]*$/)) {
-        console.error('ERROR: sanitizeResponse resulted in empty string from:', text);
+    // Validate result
+    if (cleaned.length < 3 || cleaned.includes('"type"') && cleaned.includes('"action"')) {
         return "I apologize, but I'm having trouble processing that request. Could you please rephrase your question?";
     }
     
@@ -2834,27 +2615,39 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
             return res.status(400).json({ text: "Your account is not associated with a company. Please contact support." });
         }
 
-        if (!openai) await initializeOpenAI();
+        if (!openai) {
+            const initialized = await initializeOpenAI();
+            if (!initialized) {
+                return res.status(500).json({ text: "AI service is currently unavailable. Please try again later." });
+            }
+        }
 
         // Detect button clicks and action keywords to force actions
         const messageLower = message.toLowerCase().trim();
         
-        // Button text detection (exact matches for button clicks)
+        // Button detection - map button text to actions
+        const buttonMap = {
+            'view latest invoice': 'get_latest_invoice',
+            'latest invoice': 'get_latest_invoice',
+            'view all invoices': 'get_all_invoices',
+            'all invoices': 'get_all_invoices',
+            'view invoices': 'get_all_invoices',
+            'make payments': 'get_payment_info',
+            'make payment': 'get_payment_info',
+            'payment': 'get_payment_info',
+            'project updates': 'get_project_updates',
+            'project status': 'get_project_updates',
+            'security analytics': 'get_security_analytics',
+            'security': 'get_security_analytics',
+            'ticket status': 'get_ticket_status',
+            'support ticket': 'get_ticket_status',
+            'ticket': 'get_ticket_status'
+        };
+
         let forcedAction = null;
-        if (message === 'View Latest Invoice' || message === 'Latest Invoice' || messageLower === 'view latest invoice' || messageLower === 'latest invoice') {
-            forcedAction = { type: "action", action: "get_latest_invoice", params: {}, confidence: 0.95, needs_clarification: false };
-        } else if (message === 'View All Invoices' || message === 'All Invoices' || message === 'View Invoices' || 
-                   messageLower === 'view all invoices' || messageLower === 'all invoices' || messageLower === 'view invoices') {
-            forcedAction = { type: "action", action: "get_all_invoices", params: {}, confidence: 0.95, needs_clarification: false };
-        } else if (message === 'Project Updates' || message === 'Project Status' || 
-                   messageLower === 'project updates' || messageLower === 'project status') {
-            forcedAction = { type: "action", action: "get_project_updates", params: {}, confidence: 0.95, needs_clarification: false };
-        } else if (message === 'Security Analytics' || message === 'Security' || 
-                   messageLower === 'security analytics' || messageLower === 'security') {
-            forcedAction = { type: "action", action: "get_security_analytics", params: {}, confidence: 0.95, needs_clarification: false };
-        } else if (message === 'Ticket Status' || message === 'Support Ticket' || message === 'Ticket' || 
-                   messageLower === 'ticket status' || messageLower === 'support ticket' || messageLower === 'ticket') {
-            forcedAction = { type: "action", action: "get_ticket_status", params: {}, confidence: 0.95, needs_clarification: false };
+        const action = buttonMap[messageLower];
+        if (action) {
+            forcedAction = { type: "action", action: action, params: {}, confidence: 0.95, needs_clarification: false };
         }
         
         // Detect invoice-related queries and force action if needed (only if not already set by button)
@@ -2875,78 +2668,47 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
                 forcedAction = { type: "action", action: "get_all_invoices", params: {}, confidence: 0.95, needs_clarification: false };
             } else if (itemsKeywords.some(keyword => messageLower.includes(keyword))) {
                 // User is asking about items/services - fetch invoice data to get items array
-                if (req.session?.lastInvoiceNumber) {
-                    forcedAction = { type: "action", action: "get_invoice_details", params: { invoice_number: req.session.lastInvoiceNumber }, confidence: 0.95, needs_clarification: false };
+                const context = userContext.get(userId) || {};
+                if (context.lastInvoiceNumber) {
+                    forcedAction = { type: "action", action: "get_invoice_details", params: { invoice_number: context.lastInvoiceNumber }, confidence: 0.95, needs_clarification: false };
                 } else {
                     forcedAction = { type: "action", action: "get_latest_invoice", params: {}, confidence: 0.95, needs_clarification: false };
                 }
-            } else if (isCorrection && (isInvoiceQuery || req.session?.lastInvoiceNumber)) {
+            } else if (isCorrection && (isInvoiceQuery)) {
                 // User is correcting invoice info - re-fetch to get accurate data
-                if (req.session?.lastInvoiceNumber) {
-                    forcedAction = { type: "action", action: "get_invoice_details", params: { invoice_number: req.session.lastInvoiceNumber }, confidence: 0.95, needs_clarification: false };
+                const context = userContext.get(userId) || {};
+                if (context.lastInvoiceNumber) {
+                    forcedAction = { type: "action", action: "get_invoice_details", params: { invoice_number: context.lastInvoiceNumber }, confidence: 0.95, needs_clarification: false };
                 } else {
                     forcedAction = { type: "action", action: "get_latest_invoice", params: {}, confidence: 0.95, needs_clarification: false };
                 }
             }
         }
 
-        const history = await getChatHistory(userId);
-        const completion = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
-            temperature: 0.3, // Lower temperature for more consistent JSON output
+        // If we have forcedAction, skip AI call and go straight to data fetch
+        let parsed = forcedAction;
 
+        // Only call AI if no forcedAction detected
+        if (!forcedAction) {
+            const history = await getChatHistory(userId, 20);
+            const completion = await openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                temperature: 0.3,
+                messages: [
+                    { role: "system", content: CHATBOT_SYSTEM_PROMPT },
+                    ...history,
+                    { role: "user", content: message }
+                ]
+            });
 
-            messages: [
-            { role: "system", content: CHATBOT_SYSTEM_PROMPT },
-            ...history,
-            { role: "user", content: message }
-            ]
-
-        });
-
-        let aiReply = completion.choices[0].message.content.trim();
-        
-        // DEBUG: Log what AI actually returned
-        console.log('DEBUG: AI raw response:', aiReply.substring(0, 300));
-
-        let parsed = null;
-        
-        // Use forced action if we detected an invoice query
-        if (forcedAction) {
-            parsed = forcedAction;
-            console.log('DEBUG: Using forced action:', parsed);
-        } else {
-            // Check if response contains text before JSON (like "I will fetch... Here's the request: {")
-            const hasTextBeforeJson = aiReply.includes('I will fetch') || 
-                                    aiReply.includes('Let me retrieve') || 
-                                    aiReply.includes('Here\'s the request') ||
-                                    aiReply.includes('Please hold on');
+            const aiReply = completion.choices[0].message.content.trim();
             
-            if (hasTextBeforeJson) {
-                // Try to extract JSON from the response
-                const jsonMatch = aiReply.match(/\{[\s\S]*\}/);
-                if (jsonMatch) {
-                    try {
-                        parsed = JSON.parse(jsonMatch[0]);
-                        console.log('DEBUG: Extracted JSON from mixed response:', parsed);
-                    } catch (e) {
-                        console.error('ERROR: Could not parse JSON from mixed response');
-                        parsed = null;
-                    }
-                } else {
-                    console.error('ERROR: AI said it will fetch but no JSON found in response');
-                    parsed = null;
-                }
-            } else {
+            // Only try to parse if it's pure JSON
+            if (aiReply.trim().startsWith('{') && aiReply.trim().endsWith('}')) {
                 try {
-                    // Only try to parse if it looks like pure JSON (starts with { and ends with })
-                    if (aiReply.trim().startsWith('{') && aiReply.trim().endsWith('}')) {
-                        parsed = JSON.parse(aiReply);
-                        console.log('DEBUG: Parsed pure JSON response:', parsed);
-                    }
+                    parsed = JSON.parse(aiReply);
                 } catch (e) {
-                    // Not valid JSON, treat as normal text
-                    parsed = null;
+                    parsed = null; // Not valid JSON, treat as normal conversation
                 }
             }
         }
@@ -2956,19 +2718,6 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
         if (parsed?.type === "action" && ALLOWED_ACTIONS.includes(parsed.action) && parsed.confidence >= 0.3 && !parsed.needs_clarification) {
 
             const data = await fetchClientData(parsed.action, companyId, parsed.params || {});
-            
-            // COMPREHENSIVE DEBUG: Log ALL data fetched from database
-            console.log('=== DEBUG: DATABASE DATA FETCHED ===');
-            console.log('Action:', parsed.action);
-            console.log('CompanyID:', companyId);
-            console.log('Full data object:', JSON.stringify(data, null, 2));
-            console.log('DueDate from DB:', data.due_date);
-            console.log('InvoiceDate from DB:', data.invoice_date);
-            console.log('InvoiceNumber:', data.invoice_number);
-            console.log('Items count:', data.items?.length || 0);
-            console.log('Items descriptions:', data.items?.map(i => i.description) || []);
-            console.log('Has_data:', data.has_data);
-            console.log('=====================================');
 
             // If data indicates no results, still pass it to AI to respond naturally
             // Don't return hardcoded messages - let AI handle it based on the data structure
@@ -2999,12 +2748,13 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
                     new Date(dueDateFormatted + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 
                     'Not specified';
                 
-                // Store invoice data in session for context
+                // Store invoice data in user context
                 if (safeInvoiceNumber !== 'Unknown') {
-                    if (!req.session) req.session = {};
-                    req.session.lastInvoiceNumber = safeInvoiceNumber;
-                    req.session.lastAmount = safeBalance;
-                    req.session.lastDueDate = dueDateFormatted;
+                    const context = userContext.get(userId) || {};
+                    context.lastInvoiceNumber = safeInvoiceNumber;
+                    context.lastAmount = safeBalance;
+                    context.lastDueDate = dueDateFormatted;
+                    userContext.set(userId, context);
                 }
                 
                 dataContextMessage = `🚨 AUTHORITATIVE DATABASE DATA - INVOICE INFORMATION 🚨
@@ -3034,6 +2784,26 @@ RESPONSE REQUIREMENTS:
 ✅ Summarize projects in natural language: "You have X active projects. [Project Name] is [Status] with a due date of [Date]."
 ❌ NEVER show raw JSON, field names, or timestamps
 ✅ Always end with relevant action buttons like [[Project Updates]]`;
+            } else if (dataType === 'payment_info') {
+                const paymentData = data;
+                dataContextMessage = `🚨 PAYMENT INFORMATION 🚨
+
+CRITICAL: Present payment details clearly and professionally.
+
+PAYMENT DATA:
+- Invoice Number: ${paymentData.invoice_number || 'N/A'}
+- Payment Reference: ${paymentData.payment_reference || 'N/A'}
+- Bank Name: ${paymentData.bank_name || 'N/A'}
+- Account Name: ${paymentData.account_name || 'N/A'}
+- Account Number: ${paymentData.account_number || 'N/A'}
+- Branch Code: ${paymentData.branch_code || 'N/A'}
+- Payment Link: ${paymentData.payment_link || 'N/A'}
+- Instructions: ${paymentData.instructions || 'Use invoice number as reference'}
+
+RESPONSE REQUIREMENTS:
+✅ Present payment details clearly: "To make payment, transfer funds to [Account Details]. Use [Reference] as payment reference. Alternatively, use the payment link: [Link]"
+❌ NEVER show raw field names or JSON
+✅ Always end with relevant action buttons like [[View Latest Invoice]]`;
             } else if (data.message) {
                 // Handle messages (like "coming soon" for security/tickets)
                 dataContextMessage = `🚨 DATABASE RESPONSE 🚨
@@ -3059,7 +2829,7 @@ RESPONSE REQUIREMENTS:
 ✅ Always end with relevant action buttons`;
             }
             
-            let conversationHistory = await getChatHistory(userId, 30);
+            let conversationHistory = await getChatHistory(userId, 20);
             
             const finalCompletion = await openai.chat.completions.create({
                 model: "gpt-4o-mini",
@@ -3077,33 +2847,6 @@ RESPONSE REQUIREMENTS:
 
             let finalResponse = finalCompletion.choices[0].message.content.trim();
             
-            // DEBUG: Log the actual AI response before any processing
-            console.log('=== DEBUG: AI FINAL RESPONSE ===');
-            console.log('Raw response:', finalResponse);
-            console.log('Response length:', finalResponse.length);
-            console.log('Contains "I will fetch":', finalResponse.includes('I will fetch'));
-            console.log('Contains "Here\'s the request":', finalResponse.includes("Here's the request"));
-            console.log('Starts with {:', finalResponse.trim().startsWith('{'));
-            console.log('================================');
-            
-            // Pre-check: If response contains "I will fetch" or "Here's the request", it's wrong
-            if (finalResponse.includes('I will fetch') || finalResponse.includes("Here's the request") || 
-                finalResponse.includes('Let me retrieve') || finalResponse.includes('Please hold on')) {
-                console.error('ERROR: AI returned text saying it will fetch - this should not happen! Response:', finalResponse.substring(0, 200));
-                // This is a critical error - the AI should not say this
-                // Extract JSON if present, otherwise return error message
-                const jsonMatch = finalResponse.match(/\{[\s\S]*\}/);
-                if (jsonMatch) {
-                    // If there's JSON in there, the system should have caught it earlier
-                    console.error('ERROR: Found JSON in mixed response but already processed');
-                }
-            }
-            
-            // Pre-check: If response looks like JSON, log and sanitize aggressively
-            if (finalResponse.trim().startsWith('{') || finalResponse.trim().startsWith('[')) {
-                console.error('ERROR: AI returned JSON-like response in final output:', finalResponse.substring(0, 200));
-            }
-            
             // Extract buttons: [[Button Name]]
             const buttons = [];
             const buttonRegex = /\[\[([^\]]+)\]\]/g;
@@ -3112,23 +2855,12 @@ RESPONSE REQUIREMENTS:
                 buttons.push(match[1].trim());
             }
             
-            // Remove buttons from finalResponse before sanitization
+            // Remove buttons from response before sanitization
             let finalResponseCleaned = finalResponse.replace(buttonRegex, '').trim();
-            
             const safeText = sanitizeResponse(finalResponseCleaned);
             
-            // Final check after sanitization
-            if (safeText.includes('I will fetch') || safeText.includes("Here's the request")) {
-                console.error('ERROR: Sanitized response still contains fetch text!');
-                const fallbackText = "I apologize, but I encountered an issue processing that. Could you please rephrase your question?";
-                await saveChatMessage(userId, "user", message);
-                await saveChatMessage(userId, "assistant", fallbackText);
-                return res.json({ text: fallbackText, buttons: null });
-            }
-            
-            // Final validation before sending
-            if (!safeText || safeText.length < 3 || safeText.includes('"type"') || safeText.includes('"action"')) {
-                console.error('ERROR: Response failed validation after sanitization');
+            // Validate response
+            if (!safeText || safeText.length < 3 || (safeText.includes('"type"') && safeText.includes('"action"'))) {
                 const fallbackText = "I apologize, but I'm having trouble with that request. Could you please rephrase your question?";
                 await saveChatMessage(userId, "user", message);
                 await saveChatMessage(userId, "assistant", fallbackText);
@@ -3145,18 +2877,18 @@ RESPONSE REQUIREMENTS:
         }
 
         // Normal conversation - no action needed, use AI naturally
-        // Check if we have context from previous messages (like invoice numbers)
-        const conversationHistory = await getChatHistory(userId, 30); // Increased for better context
+        const conversationHistory = await getChatHistory(userId, 20);
         
-        // Build context message if we have session data
+        // Build context message if we have user context data
         let contextMessage = '';
-        if (req.session?.lastInvoiceNumber) {
-            contextMessage = `\n\nCONVERSATION CONTEXT: You recently discussed invoice #${req.session.lastInvoiceNumber}`;
-            if (req.session.lastAmount) {
-                contextMessage += ` with an outstanding balance of R${req.session.lastAmount}`;
+        const context = userContext.get(userId) || {};
+        if (context.lastInvoiceNumber) {
+            contextMessage = `\n\nCONVERSATION CONTEXT: You recently discussed invoice #${context.lastInvoiceNumber}`;
+            if (context.lastAmount) {
+                contextMessage += ` with an outstanding balance of R${context.lastAmount}`;
             }
-            if (req.session.lastDueDate) {
-                contextMessage += `, due on ${req.session.lastDueDate}`;
+            if (context.lastDueDate) {
+                contextMessage += `, due on ${context.lastDueDate}`;
             }
             contextMessage += `. Use this context to answer follow-up questions naturally. Reference this invoice when the user asks about "it", "that invoice", or similar. Only use exact data from conversation history or fresh fetches - never invent.`;
         }
