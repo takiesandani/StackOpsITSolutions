@@ -2179,11 +2179,9 @@ Make up dates based on "recent" or "latest"
 
 CRITICAL - DATES:
 - Dates MUST come EXACTLY from the database data
-- If data shows "2026-12-31", you MUST say "December 31, 2026"
-- NEVER say "2023" if the data shows "2026"
 - NEVER infer the year from context or current date
 - Copy the year, month, and day EXACTLY as shown in the data
-- Only format the date for readability (e.g., "2026-12-31" → "December 31, 2026")
+- Only format the date for readability (convert YYYY-MM-DD to readable format)
 - Making up dates = CRITICAL ERROR
 
 This applies to all:
@@ -2992,8 +2990,6 @@ YOU MUST USE THESE EXACT VALUES FROM DATABASE:
 
 1. TOTAL AMOUNT OWED: "${data.outstanding_balance}" (raw value from database)
    → Format this as currency: "R" + add commas for thousands + ".00" for decimals
-   → Example: "15000.00" becomes "R15,000.00"
-   → Example: "500.00" becomes "R500.00"
    ❌ NEVER change the actual number value
    ✅ ALWAYS use "${data.outstanding_balance}" and format it properly
 
@@ -3005,7 +3001,7 @@ YOU MUST USE THESE EXACT VALUES FROM DATABASE:
 
 3. INVOICE NUMBER: "${data.invoice_number}"
    → SAY EXACTLY: "Invoice #${data.invoice_number}" or "${data.invoice_number}"
-   ❌ NEVER use "1023" or any other number
+   ❌ NEVER use any other number
    ✅ ALWAYS use: "${data.invoice_number}"
 
 4. ITEM DETAILS WITH AMOUNTS:
