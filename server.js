@@ -2953,20 +2953,12 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
             // Data is injected as system context (not saved to chat history)
             // Assistant's response will naturally include invoice info, which gets saved for follow-up context
             
-            // Format amount with commas - Define FIRST so we can use it in filter
-            const formatAmount = (amt) => {
-                if (!amt) return '';
-                const num = parseFloat(amt);
-                return num.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            };
-            
             // Format the year from due_date for clarity
             const dueDateYear = data.due_date ? data.due_date.substring(0, 4) : 'N/A';
             const dueDateFormatted = data.due_date ? 
                 (data.due_date.includes('T') ? data.due_date.split('T')[0] : data.due_date) : '';
             
-            // Calculate formatted amount and formatted date for explicit display
-            const formattedAmount = formatAmount(data.outstanding_balance || '0');
+            // Calculate formatted date for explicit display (amount formatting removed - use raw database value)
             const formattedDate = dueDateFormatted ? 
                 new Date(dueDateFormatted + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 
                 '';
@@ -2983,20 +2975,17 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
                         if (content.includes('1023') && !content.includes(`#${data.invoice_number}`)) {
                             return false;
                         }
-                        // Remove messages with wrong amounts (only keep if they match the correct formatted amount)
-                        // Check if message mentions an amount but it doesn't match the correct formatted amount
+                        // Remove messages with wrong amounts - check if amount is way off from database value
                         const amountPattern = /r\s*[\d,]+\.?\d*/gi;
                         const hasAmount = content.match(amountPattern);
-                        if (hasAmount && !content.includes(formattedAmount.toLowerCase().replace(/r/, ''))) {
-                            // Message mentions an amount, check if it matches the correct one
-                            // Remove if amount exists but doesn't match (allows messages without amounts)
-                            const mentionedAmounts = hasAmount.map(m => m.toLowerCase().replace(/r\s*/, '').replace(/,/g, ''));
-                            const correctAmountValue = formattedAmount.replace(/,/g, '').toLowerCase();
-                            const matchesCorrect = mentionedAmounts.some(amt => {
-                                const normalizedMentioned = amt.replace(/\./g, '');
-                                const normalizedCorrect = correctAmountValue.replace(/\./g, '');
-                                return normalizedMentioned === normalizedCorrect;
+                        if (hasAmount && data.outstanding_balance) {
+                            const dbAmount = parseFloat(data.outstanding_balance);
+                            const mentionedAmounts = hasAmount.map(m => {
+                                const cleaned = m.toLowerCase().replace(/r\s*/, '').replace(/,/g, '');
+                                return parseFloat(cleaned) || 0;
                             });
+                            // If mentioned amount is significantly different from database amount, remove it
+                            const matchesCorrect = mentionedAmounts.some(amt => Math.abs(amt - dbAmount) < 0.01);
                             if (!matchesCorrect) {
                                 return false; // Remove this message - it has wrong amount
                             }
@@ -3026,30 +3015,42 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
                     // PUT DATA FIRST - Most important, takes precedence over history
                     {
                         role: "system",
-                        content: `🚨 AUTHORITATIVE DATABASE DATA - OVERRIDE EVERYTHING ELSE 🚨
+                        content: `🚨🚨🚨 AUTHORITATIVE DATABASE DATA - MANDATORY USE 🚨🚨🚨
 
-EXACT VALUES YOU MUST USE (DO NOT CHANGE THESE):
+YOU MUST USE THESE EXACT VALUES FROM DATABASE:
 
-1. AMOUNT OWED: "${data.outstanding_balance}" → SAY EXACTLY: "R${formattedAmount}"
-   ❌ NEVER change this amount or use commas incorrectly (e.g., "R${formattedAmount.replace(/,/g, '')}" is WRONG)
-   ✅ ALWAYS say "R${formattedAmount}" (copy this EXACT format)
+1. TOTAL AMOUNT OWED: "${data.outstanding_balance}" (raw value from database)
+   → Format this as currency: "R" + add commas for thousands + ".00" for decimals
+   → Example: "15000.00" becomes "R15,000.00"
+   → Example: "500.00" becomes "R500.00"
+   ❌ NEVER change the actual number value
+   ✅ ALWAYS use "${data.outstanding_balance}" and format it properly
 
-2. DUE DATE: "${dueDateFormatted}" (year: ${dueDateYear}) → SAY EXACTLY: "${formattedDate}"
-   ❌ NEVER say "December 15, 2023" or any other date
-   ✅ ALWAYS say "${formattedDate}"
+2. DUE DATE: "${dueDateFormatted}" (raw date from database)
+   → SAY EXACTLY: "${formattedDate}"
+   ❌ NEVER use any other date (not from history, not from training data)
+   ✅ ALWAYS use: "${formattedDate}"
+   ⚠️ The date "${dueDateFormatted}" means year ${dueDateYear}, NOT 2023 or any other year
 
-3. INVOICE NUMBER: "${data.invoice_number}" → SAY EXACTLY: "Invoice #${data.invoice_number}"
-   ❌ NEVER say "1023" or any other number
-   ✅ ALWAYS say "Invoice #${data.invoice_number}"
+3. INVOICE NUMBER: "${data.invoice_number}"
+   → SAY EXACTLY: "Invoice #${data.invoice_number}" or "${data.invoice_number}"
+   ❌ NEVER use "1023" or any other number
+   ✅ ALWAYS use: "${data.invoice_number}"
 
-4. ITEMS: ${data.items?.map(i => i.description).join(', ') || 'none'}
-   ✅ List these EXACT descriptions when asked about items/services
+4. ITEM DETAILS WITH AMOUNTS:
+${data.items && data.items.length > 0 ? data.items.map((item, idx) => {
+    return `   - ${item.description}: Amount is "${item.amount}" (format as "R" + commas + ".00")`;
+}).join('\n') : '   - No items'}
+   → When asked about item amounts, use the EXACT amount value from above and format it properly
+   ❌ NEVER invent or change item amounts
+   ✅ ALWAYS use the exact amount values shown above
 
-🚨 CRITICAL: These values OVERRIDE conversation history, training data, and any other source.
-🚨 The AMOUNT "${data.outstanding_balance}" formatted as "R${formattedAmount}" is AUTHORITATIVE.
-🚨 The DUE DATE "${dueDateFormatted}" formatted as "${formattedDate}" is AUTHORITATIVE.
-🚨 The INVOICE NUMBER "${data.invoice_number}" is AUTHORITATIVE.
-🚨 IGNORE any conflicting values from history or training data. Use ONLY the values above.`
+🚨🚨🚨 CRITICAL RULES:
+- These raw values from database ARE THE ONLY SOURCE OF TRUTH
+- Use the exact numbers shown - just format them for display (add "R", commas, decimals)
+- Conversation history may contain WRONG data - IGNORE it
+- Training data may contain WRONG data - IGNORE it
+- Do NOT invent, estimate, guess, or change ANY numeric values`
                     },
                     { role: "system", content: CHATBOT_SYSTEM_PROMPT },
                     // History comes AFTER data (less priority)
