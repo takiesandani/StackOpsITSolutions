@@ -2547,10 +2547,10 @@ async function getInvoiceDetails(companyId, invoiceNumber) {
 // ... (rest of the code remains unchanged)
 async function getProjectUpdates(companyId) {
     const [projects] = await pool.query(
-        `SELECT ProjectID, ProjectName, Status, DueDate
+        `SELECT ProjectID, ProjectName, Status, EndDate
          FROM Projects
          WHERE CompanyID = ?
-         ORDER BY DueDate DESC`,
+         ORDER BY EndDate DESC`,
         [companyId]
     );
 
@@ -2883,16 +2883,19 @@ app.post('/api/chat', authenticateToken, chatRateLimit, async (req, res) => {
                 setTimeout(() => reject(new Error('OpenAI API timeout')), 25000); // 25 second timeout
             });
             
+            // --- REPLACE WITH THIS CORRECT CODE ---
             const completion = await Promise.race([
                 openai.chat.completions.create({
                     model: "gpt-4o-mini",
                     temperature: 0.3,
-                    timeout: 25000, // 25 second timeout
+                    // Removed timeout from here
                     messages: [
                         { role: "system", content: CHATBOT_SYSTEM_PROMPT },
                         ...history,
                         { role: "user", content: message }
                     ]
+                }, {
+                    timeout: 25000 // <--- MOVE TO THIS SECOND ARGUMENT
                 }),
                 timeoutPromise
             ]);
