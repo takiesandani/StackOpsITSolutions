@@ -2302,10 +2302,21 @@ Never correct the user unless necessary.
 
 ACTION HANDLING (CRITICAL)
 RULES
-Output pure JSON only when data must be fetched
-No text before or after JSON
-No explanations
-No mixed responses
+Output pure JSON ONLY when data must be fetched
+ABSOLUTE PROHIBITION:
+- NEVER say "I will fetch"
+- NEVER say "Let me retrieve"
+- NEVER say "Please hold on"
+- NEVER say "Here's the request"
+- NEVER add any text before or after JSON
+- NEVER mix JSON with conversational text
+
+If you need data, output ONLY this (nothing else):
+{"type":"action","action":"get_latest_invoice","params":{},"confidence":0.9,"needs_clarification":false}
+
+DO NOT output:
+"I will fetch the details... Here's the request: {...}"
+This is FORBIDDEN and will cause errors
 
 JSON FORMAT (EXACT)
 {
@@ -2565,13 +2576,28 @@ async function getInvoiceDetails(companyId, invoiceNumber) {
 
     const totalPaid = payments.reduce((sum, p) => sum + parseFloat(p.AmountPaid || 0), 0);
     const balance = parseFloat(invoice.TotalAmount) - totalPaid;
+    
+    // Ensure dates are strings - MySQL DATE fields need proper formatting
+    const invoiceDate = invoice.InvoiceDate instanceof Date 
+        ? invoice.InvoiceDate.toISOString().split('T')[0] 
+        : String(invoice.InvoiceDate || '');
+    const dueDate = invoice.DueDate instanceof Date 
+        ? invoice.DueDate.toISOString().split('T')[0] 
+        : String(invoice.DueDate || '');
+    
+    console.log('DEBUG getInvoiceDetails: Raw dates from DB:', {
+        InvoiceDate: invoice.InvoiceDate,
+        DueDate: invoice.DueDate,
+        InvoiceDate_formatted: invoiceDate,
+        DueDate_formatted: dueDate
+    });
 
     return {
         has_data: true,
         data_type: "invoice",
         invoice_number: invoice.InvoiceNumber,
-        invoice_date: invoice.InvoiceDate,
-        due_date: invoice.DueDate,
+        invoice_date: invoiceDate,
+        due_date: dueDate,
         total_amount: parseFloat(invoice.TotalAmount).toFixed(2),
         status: invoice.Status,
         company_name: invoice.CompanyName,
@@ -2819,22 +2845,49 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
         });
 
         let aiReply = completion.choices[0].message.content.trim();
+        
+        // DEBUG: Log what AI actually returned
+        console.log('DEBUG: AI raw response:', aiReply.substring(0, 300));
 
         let parsed = null;
         
         // Use forced action if we detected an invoice query
         if (forcedAction) {
             parsed = forcedAction;
+            console.log('DEBUG: Using forced action:', parsed);
         } else {
-            try {
-                // Only try to parse if it looks like pure JSON (starts with { and ends with })
-                // DO NOT sanitize before parsing - we need the raw JSON if it exists
-                if (aiReply.trim().startsWith('{') && aiReply.trim().endsWith('}')) {
-                    parsed = JSON.parse(aiReply);
+            // Check if response contains text before JSON (like "I will fetch... Here's the request: {")
+            const hasTextBeforeJson = aiReply.includes('I will fetch') || 
+                                    aiReply.includes('Let me retrieve') || 
+                                    aiReply.includes('Here\'s the request') ||
+                                    aiReply.includes('Please hold on');
+            
+            if (hasTextBeforeJson) {
+                // Try to extract JSON from the response
+                const jsonMatch = aiReply.match(/\{[\s\S]*\}/);
+                if (jsonMatch) {
+                    try {
+                        parsed = JSON.parse(jsonMatch[0]);
+                        console.log('DEBUG: Extracted JSON from mixed response:', parsed);
+                    } catch (e) {
+                        console.error('ERROR: Could not parse JSON from mixed response');
+                        parsed = null;
+                    }
+                } else {
+                    console.error('ERROR: AI said it will fetch but no JSON found in response');
+                    parsed = null;
                 }
-            } catch (e) {
-                // Not valid JSON, treat as normal text
-                parsed = null;
+            } else {
+                try {
+                    // Only try to parse if it looks like pure JSON (starts with { and ends with })
+                    if (aiReply.trim().startsWith('{') && aiReply.trim().endsWith('}')) {
+                        parsed = JSON.parse(aiReply);
+                        console.log('DEBUG: Parsed pure JSON response:', parsed);
+                    }
+                } catch (e) {
+                    // Not valid JSON, treat as normal text
+                    parsed = null;
+                }
             }
         }
 
@@ -2844,16 +2897,18 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
 
             const data = await fetchClientData(parsed.action, companyId, parsed.params || {});
             
-            // Log data for debugging (remove in production if needed)
-            if (data.due_date || data.invoice_date) {
-                console.log('DEBUG: Invoice data fetched from database:', {
-                    due_date: data.due_date,
-                    invoice_date: data.invoice_date,
-                    invoice_number: data.invoice_number,
-                    items_count: data.items?.length || 0,
-                    items: data.items?.map(i => i.description) || []
-                });
-            }
+            // COMPREHENSIVE DEBUG: Log ALL data fetched from database
+            console.log('=== DEBUG: DATABASE DATA FETCHED ===');
+            console.log('Action:', parsed.action);
+            console.log('CompanyID:', companyId);
+            console.log('Full data object:', JSON.stringify(data, null, 2));
+            console.log('DueDate from DB:', data.due_date);
+            console.log('InvoiceDate from DB:', data.invoice_date);
+            console.log('InvoiceNumber:', data.invoice_number);
+            console.log('Items count:', data.items?.length || 0);
+            console.log('Items descriptions:', data.items?.map(i => i.description) || []);
+            console.log('Has_data:', data.has_data);
+            console.log('=====================================');
 
             // If data indicates no results, still pass it to AI to respond naturally
             // Don't return hardcoded messages - let AI handle it based on the data structure
@@ -2884,23 +2939,32 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
                         role: "system",
                         content: `CRITICAL DATABASE DATA INSTRUCTIONS - ABSOLUTE RULES:
 
-The following is REAL database data fetched from the database for THIS SPECIFIC USER'S COMPANY. This is the ONLY source of truth.
+⚠️ THE DATA BELOW IS REAL DATABASE DATA - USE IT EXACTLY AS PROVIDED:
 
-Database Data:
 ${JSON.stringify(data, null, 2)}
 
 ⚠️ ABSOLUTE RULES - VIOLATION = CRITICAL ERROR:
 
-1. DATES - CRITICAL:
-   - Use ONLY the dates shown in the data above
-   - If due_date is shown as "2026-01-15", say "January 15, 2026" (convert format but keep EXACT year, month, day)
-   - If due_date is shown as "2026-12-31", say "December 31, 2026"
-   - NEVER infer the year from the current year
+⚠️ DATA VERIFICATION:
+The DueDate shown above is the EXACT date from the database.
+Do NOT change it, estimate it, or format it differently.
+If DueDate is "2026-12-31", you MUST say "December 31, 2026" (same year, month, day).
+If DueDate is null or missing, say "The due date isn't available in your records."
+
+⚠️ ABSOLUTE RULES - VIOLATION = CRITICAL ERROR:
+
+1. DATES - CRITICAL (MOST IMPORTANT RULE):
+   ⚠️ THE DUE_DATE ABOVE IS THE EXACT DATE FROM THE DATABASE
+   - Look at the "due_date" field in the data above - that is the REAL date from the database
+   - If due_date is "2026-12-31", you MUST say "December 31, 2026" (convert format but keep EXACT year, month, day)
+   - If due_date is "2026-01-15", you MUST say "January 15, 2026"
+   - If due_date is null or empty, say "The due date isn't available in your records"
+   - NEVER infer the year from the current year or your training data
    - NEVER assume dates based on "recent" or "latest"
-   - NEVER use dates from your training data
-   - NEVER make up dates like "December 15, 2023" if the data shows a different date
-   - If the data shows "2026", use "2026" - do NOT use "2023" or any other year
-   - Copy the date EXACTLY as it appears, only format it for readability
+   - NEVER use dates from your training data (like 2023 dates)
+   - NEVER make up dates - if data shows "2026", you MUST use "2026"
+   - If you see "2026" in the data but say "2023", that is a CRITICAL ERROR
+   - Copy the year, month, and day EXACTLY as shown in the due_date field
 
 2. AMOUNTS:
    - Use EXACT amounts from the data
@@ -2965,12 +3029,43 @@ ITEMS/SERVICES EXAMPLES (USE EXACT DESCRIPTIONS):
 
             let finalResponse = finalCompletion.choices[0].message.content.trim();
             
+            // DEBUG: Log the actual AI response before any processing
+            console.log('=== DEBUG: AI FINAL RESPONSE ===');
+            console.log('Raw response:', finalResponse);
+            console.log('Response length:', finalResponse.length);
+            console.log('Contains "I will fetch":', finalResponse.includes('I will fetch'));
+            console.log('Contains "Here\'s the request":', finalResponse.includes("Here's the request"));
+            console.log('Starts with {:', finalResponse.trim().startsWith('{'));
+            console.log('================================');
+            
+            // Pre-check: If response contains "I will fetch" or "Here's the request", it's wrong
+            if (finalResponse.includes('I will fetch') || finalResponse.includes("Here's the request") || 
+                finalResponse.includes('Let me retrieve') || finalResponse.includes('Please hold on')) {
+                console.error('ERROR: AI returned text saying it will fetch - this should not happen! Response:', finalResponse.substring(0, 200));
+                // This is a critical error - the AI should not say this
+                // Extract JSON if present, otherwise return error message
+                const jsonMatch = finalResponse.match(/\{[\s\S]*\}/);
+                if (jsonMatch) {
+                    // If there's JSON in there, the system should have caught it earlier
+                    console.error('ERROR: Found JSON in mixed response but already processed');
+                }
+            }
+            
             // Pre-check: If response looks like JSON, log and sanitize aggressively
             if (finalResponse.trim().startsWith('{') || finalResponse.trim().startsWith('[')) {
-                console.error('WARNING: AI returned JSON-like response:', finalResponse.substring(0, 200));
+                console.error('ERROR: AI returned JSON-like response in final output:', finalResponse.substring(0, 200));
             }
             
             const safeText = sanitizeResponse(finalResponse);
+            
+            // Final check after sanitization
+            if (safeText.includes('I will fetch') || safeText.includes("Here's the request")) {
+                console.error('ERROR: Sanitized response still contains fetch text!');
+                const fallbackText = "I apologize, but I encountered an issue processing that. Could you please rephrase your question?";
+                await saveChatMessage(userId, "user", message);
+                await saveChatMessage(userId, "assistant", fallbackText);
+                return res.json({ text: fallbackText });
+            }
             
             // Final validation before sending
             if (!safeText || safeText.length < 3 || safeText.includes('"type"') || safeText.includes('"action"')) {
