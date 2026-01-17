@@ -2177,7 +2177,7 @@ Infer dates from context
 Use dates from training data
 Make up dates based on "recent" or "latest"
 
-⚠️ CRITICAL - DATES:
+CRITICAL - DATES:
 - Dates MUST come EXACTLY from the database data
 - If data shows "2026-12-31", you MUST say "December 31, 2026"
 - NEVER say "2023" if the data shows "2026"
@@ -2467,13 +2467,37 @@ async function getLatestInvoice(companyId) {
 
     const totalPaid = payments.reduce((sum, p) => sum + parseFloat(p.AmountPaid || 0), 0);
     const balance = parseFloat(invoice.TotalAmount) - totalPaid;
+    
+    // Format dates - convert ISO strings to YYYY-MM-DD format
+    const formatDate = (dateValue) => {
+        if (!dateValue) return '';
+        if (dateValue instanceof Date) {
+            return dateValue.toISOString().split('T')[0];
+        }
+        const dateStr = String(dateValue);
+        // If it's an ISO string like "2026-01-09T00:00:00.000Z", extract just the date part
+        if (dateStr.includes('T')) {
+            return dateStr.split('T')[0];
+        }
+        return dateStr;
+    };
+    
+    const invoiceDate = formatDate(invoice.InvoiceDate);
+    const dueDate = formatDate(invoice.DueDate);
+    
+    console.log('DEBUG getLatestInvoice: Date formatting:', {
+        InvoiceDate_raw: invoice.InvoiceDate,
+        InvoiceDate_formatted: invoiceDate,
+        DueDate_raw: invoice.DueDate,
+        DueDate_formatted: dueDate
+    });
 
     return {
         has_data: true,
         data_type: "invoice",
-        invoice_number: invoice.InvoiceNumber,
-        invoice_date: invoice.InvoiceDate,
-        due_date: invoice.DueDate,
+        invoice_number: String(invoice.InvoiceNumber || ''),
+        invoice_date: invoiceDate,
+        due_date: dueDate,
         total_amount: parseFloat(invoice.TotalAmount).toFixed(2),
         status: invoice.Status,
         company_name: invoice.CompanyName,
@@ -2577,25 +2601,34 @@ async function getInvoiceDetails(companyId, invoiceNumber) {
     const totalPaid = payments.reduce((sum, p) => sum + parseFloat(p.AmountPaid || 0), 0);
     const balance = parseFloat(invoice.TotalAmount) - totalPaid;
     
-    // Ensure dates are strings - MySQL DATE fields need proper formatting
-    const invoiceDate = invoice.InvoiceDate instanceof Date 
-        ? invoice.InvoiceDate.toISOString().split('T')[0] 
-        : String(invoice.InvoiceDate || '');
-    const dueDate = invoice.DueDate instanceof Date 
-        ? invoice.DueDate.toISOString().split('T')[0] 
-        : String(invoice.DueDate || '');
+    // Format dates - convert ISO strings to YYYY-MM-DD format
+    const formatDate = (dateValue) => {
+        if (!dateValue) return '';
+        if (dateValue instanceof Date) {
+            return dateValue.toISOString().split('T')[0];
+        }
+        const dateStr = String(dateValue);
+        // If it's an ISO string like "2026-01-09T00:00:00.000Z", extract just the date part
+        if (dateStr.includes('T')) {
+            return dateStr.split('T')[0];
+        }
+        return dateStr;
+    };
     
-    console.log('DEBUG getInvoiceDetails: Raw dates from DB:', {
-        InvoiceDate: invoice.InvoiceDate,
-        DueDate: invoice.DueDate,
+    const invoiceDate = formatDate(invoice.InvoiceDate);
+    const dueDate = formatDate(invoice.DueDate);
+    
+    console.log('DEBUG getInvoiceDetails: Date formatting:', {
+        InvoiceDate_raw: invoice.InvoiceDate,
         InvoiceDate_formatted: invoiceDate,
+        DueDate_raw: invoice.DueDate,
         DueDate_formatted: dueDate
     });
 
     return {
         has_data: true,
         data_type: "invoice",
-        invoice_number: invoice.InvoiceNumber,
+        invoice_number: String(invoice.InvoiceNumber || ''),
         invoice_date: invoiceDate,
         due_date: dueDate,
         total_amount: parseFloat(invoice.TotalAmount).toFixed(2),
@@ -2930,98 +2963,42 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
                 if (data.due_date) req.session.lastDueDate = data.due_date;
             }
             
+            // Format the year from due_date for clarity
+            const dueDateYear = data.due_date ? data.due_date.substring(0, 4) : 'N/A';
+            const dueDateFormatted = data.due_date ? 
+                (data.due_date.includes('T') ? data.due_date.split('T')[0] : data.due_date) : '';
+            
+            // Format amount with commas
+            const formatAmount = (amt) => {
+                if (!amt) return '';
+                const num = parseFloat(amt);
+                return num.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            };
+            
             const finalCompletion = await openai.chat.completions.create({
                 model: "gpt-4o-mini",
-                temperature: 0.7, // Slightly higher for more natural conversation
+                temperature: 0.5, // Lower temperature for more accurate data usage
                 messages: [
-                    { role: "system", content: CHATBOT_SYSTEM_PROMPT },
+                    // PUT DATA FIRST - Most important, takes precedence over history
                     {
                         role: "system",
-                        content: `CRITICAL DATABASE DATA INSTRUCTIONS - ABSOLUTE RULES:
+                        content: `⚠️ CRITICAL: REAL DATABASE DATA - USE THESE EXACT VALUES:
 
-⚠️ THE DATA BELOW IS REAL DATABASE DATA - USE IT EXACTLY AS PROVIDED:
+due_date: "${dueDateFormatted}" (year: ${dueDateYear})
+outstanding_balance: "${data.outstanding_balance}" (formatted: R${formatAmount(data.outstanding_balance)})
+invoice_number: "${data.invoice_number}"
+items: ${data.items?.map(i => i.description).join(', ') || 'none'}
 
-${JSON.stringify(data, null, 2)}
+RULES:
+1. DUE_DATE "${dueDateFormatted}": Year is ${dueDateYear}. Format as readable date (e.g., "January 9, ${dueDateYear}") - NEVER use 2023 or any other year.
+2. AMOUNT "${data.outstanding_balance}": Say "R${formatAmount(data.outstanding_balance)}" (format with commas).
+3. INVOICE_NUMBER "${data.invoice_number}": Say "Invoice #${data.invoice_number}" - NOT 1023 or any other number.
+4. ITEMS: List "${data.items?.map(i => i.description).join(', ') || 'none'}" when asked.
 
-⚠️ ABSOLUTE RULES - VIOLATION = CRITICAL ERROR:
-
-⚠️ DATA VERIFICATION:
-The DueDate shown above is the EXACT date from the database.
-Do NOT change it, estimate it, or format it differently.
-If DueDate is "2026-12-31", you MUST say "December 31, 2026" (same year, month, day).
-If DueDate is null or missing, say "The due date isn't available in your records."
-
-⚠️ ABSOLUTE RULES - VIOLATION = CRITICAL ERROR:
-
-1. DATES - CRITICAL (MOST IMPORTANT RULE):
-   ⚠️ THE DUE_DATE ABOVE IS THE EXACT DATE FROM THE DATABASE
-   - Look at the "due_date" field in the data above - that is the REAL date from the database
-   - If due_date is "2026-12-31", you MUST say "December 31, 2026" (convert format but keep EXACT year, month, day)
-   - If due_date is "2026-01-15", you MUST say "January 15, 2026"
-   - If due_date is null or empty, say "The due date isn't available in your records"
-   - NEVER infer the year from the current year or your training data
-   - NEVER assume dates based on "recent" or "latest"
-   - NEVER use dates from your training data (like 2023 dates)
-   - NEVER make up dates - if data shows "2026", you MUST use "2026"
-   - If you see "2026" in the data but say "2023", that is a CRITICAL ERROR
-   - Copy the year, month, and day EXACTLY as shown in the due_date field
-
-2. AMOUNTS:
-   - Use EXACT amounts from the data
-   - If outstanding_balance is "1500.00", say "R1,500.00"
-   - NEVER round or estimate
-
-3. INVOICE NUMBERS:
-   - Use EXACT invoice numbers from the data
-   - If invoice_number is "INV-001", say "Invoice #INV-001"
-
-4. ITEMS & SERVICES (CRITICAL):
-   - The "items" array contains ALL services/subscriptions/items on the invoice
-   - Each item has: description, quantity, unit_price, amount
-   - When user asks about:
-     * "items included"
-     * "services subscribed to"
-     * "what am I paying for"
-     * "what's on the invoice"
-     * "invoice items"
-     * "services"
-   - You MUST list the items from the "items" array using the "description" field
-   - Use EXACT descriptions from the data - never change or paraphrase item names
-   - Example: If items array has [{"description": "Microsoft 365 Business", ...}], say "Microsoft 365 Business"
-   - If items array is empty or missing, say "No items are listed on this invoice"
-   
-5. PAYMENTS:
-   - List ONLY payments shown in the "payments" array
-   - Use exact amounts, dates, and payment methods from the data
-
-6. GENERAL:
-   - If "has_data" is false, acknowledge no data found
-   - If a field is missing/null, say "that information isn't available"
-   - NEVER invent, estimate, guess, or assume ANY value
-   - Do NOT mention receiving data - use it naturally
-   - This data is now part of your memory for this conversation
-
-DATE EXAMPLES (COPY EXACTLY):
-- Data: {"due_date": "2026-12-31"} → Say: "December 31, 2026"
-- Data: {"due_date": "2026-01-15"} → Say: "January 15, 2026"  
-- Data: {"due_date": "2026-03-20"} → Say: "March 20, 2026"
-- NEVER say "December 15, 2023" if data shows "2026" - that is a CRITICAL ERROR
-
-ITEMS/SERVICES EXAMPLES (USE EXACT DESCRIPTIONS):
-- Data: {"items": [{"description": "Microsoft 365 Business", "quantity": 1, "unit_price": "500.00", "amount": "500.00"}]}
-  → User: "What services am I subscribed to?" 
-  → Say: "You're subscribed to Microsoft 365 Business"
-
-- Data: {"items": [{"description": "Office 365 E3", ...}, {"description": "Azure Storage", ...}]}
-  → User: "What items are included?"
-  → Say: "Your invoice includes Office 365 E3 and Azure Storage"
-
-- If items array exists but is empty: []
-  → Say: "No items are listed on this invoice"
-
-- If items field is missing entirely
-  → Say: "Item details aren't available for this invoice" (don't make up items)`
+⚠️ IGNORE any conflicting information from conversation history. Use ONLY the values above.`
                     },
+                    { role: "system", content: CHATBOT_SYSTEM_PROMPT },
+                    // History comes AFTER data (less priority)
                     ...conversationHistory,
                     { role: "user", content: message }
                 ]
