@@ -3091,10 +3091,67 @@ ${data.items && data.items.length > 0 ? data.items.map((item, idx) => {
         }
 
         // Normal conversation - no action needed, use AI naturally
-        // Check if we have context from previous messages (like invoice numbers)
+        // BUT: If user asks about invoice details and we have session data, inject fresh data to ensure accuracy
         const conversationHistory = await getChatHistory(userId, 30); // Increased for better context
         
-        // Build context message if we have session data
+        // Check if user is asking about invoice details (invoice number, due date, amount, etc.)
+        const invoiceDetailKeywords = ['invoice number', 'invoice #', 'due date', 'invoice date', 'amount owed', 'balance', 'services', 'items'];
+        const isInvoiceDetailQuery = invoiceDetailKeywords.some(keyword => messageLower.includes(keyword));
+        
+        // If user asks about invoice details AND we have session data, fetch fresh data to ensure accuracy
+        if (isInvoiceDetailQuery && req.session?.lastInvoiceNumber) {
+            // Re-fetch to ensure we have the correct, fresh data
+            const freshData = await fetchClientData('get_latest_invoice', companyId, {});
+            
+            if (freshData.has_data) {
+                // Format fresh data for injection
+                const dueDateYear = freshData.due_date ? freshData.due_date.substring(0, 4) : 'N/A';
+                const dueDateFormatted = freshData.due_date ? 
+                    (freshData.due_date.includes('T') ? freshData.due_date.split('T')[0] : freshData.due_date) : '';
+                const formattedDate = dueDateFormatted ? 
+                    new Date(dueDateFormatted + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
+                
+                // Inject fresh data as system message to override any wrong history
+                const freshDataMessage = {
+                    role: "system",
+                    content: `🚨 FRESH DATABASE DATA - USE THESE VALUES:
+
+Invoice Number: "${freshData.invoice_number}"
+Due Date: "${formattedDate}" (from "${dueDateFormatted}")
+Outstanding Balance: "${freshData.outstanding_balance}" (format as R with commas)
+Items: ${freshData.items?.map(i => `${i.description}: ${i.amount}`).join(', ') || 'none'}
+
+⚠️ These are the ACTUAL database values - use them EXACTLY. Ignore any conflicting data in conversation history.`
+                };
+                
+                const normalCompletion = await openai.chat.completions.create({
+                    model: "gpt-4o-mini",
+                    temperature: 0.5,
+                    messages: [
+                        { role: "system", content: CHATBOT_SYSTEM_PROMPT },
+                        freshDataMessage,
+                        ...conversationHistory,
+                        { role: "user", content: message }
+                    ]
+                });
+                
+                let normalResponse = normalCompletion.choices[0].message.content.trim();
+                const safeNormalText = sanitizeResponse(normalResponse);
+                
+                if (!safeNormalText || safeNormalText.length < 3 || safeNormalText.includes('"type"') || safeNormalText.includes('"action"')) {
+                    const fallbackText = "I apologize, but I'm having trouble with that request. Could you please rephrase your question?";
+                    await saveChatMessage(userId, "user", message);
+                    await saveChatMessage(userId, "assistant", fallbackText);
+                    return res.json({ text: fallbackText });
+                }
+
+                await saveChatMessage(userId, "user", message);
+                await saveChatMessage(userId, "assistant", safeNormalText);
+                return res.json({ text: safeNormalText });
+            }
+        }
+        
+        // Build context message if we have session data (for non-invoice-detail questions)
         let contextMessage = '';
         if (req.session?.lastInvoiceNumber) {
             contextMessage = `\n\nCONVERSATION CONTEXT: You recently discussed invoice #${req.session.lastInvoiceNumber}`;
@@ -3105,12 +3162,6 @@ ${data.items && data.items.length > 0 ? data.items.map((item, idx) => {
                 contextMessage += `, due on ${req.session.lastDueDate}`;
             }
             contextMessage += `. Use this context to answer follow-up questions naturally. Reference this invoice when the user asks about "it", "that invoice", or similar. Only use exact data from conversation history or fresh fetches - never invent.`;
-        }
-        
-        // If user corrects information, they might be pointing out a hallucination
-        // Add warning about data accuracy
-        if (message.toLowerCase().includes('incorrect') || message.toLowerCase().includes('wrong') || message.toLowerCase().includes('date is')) {
-            contextMessage += `\n\n⚠️ WARNING: User is correcting information. You MUST fetch fresh data from the database to get accurate dates and amounts. Do NOT reuse potentially incorrect information from conversation history.`;
         }
         
         const normalCompletion = await openai.chat.completions.create({
