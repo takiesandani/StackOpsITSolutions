@@ -16,8 +16,34 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors());
 
-// In-memory context for chatbot (user-specific conversation context)
-const userContext = new Map();
+// Rate limiting for chatbot - simple in-memory store (consider Redis for production)
+const rateLimitStore = new Map();
+const RATE_LIMIT_WINDOW = 60000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 30; // 30 requests per minute per user
+
+// Rate limiting middleware for chatbot
+function chatRateLimit(req, res, next) {
+    const userId = req.user?.id;
+    if (!userId) return next();
+    
+    const now = Date.now();
+    const userKey = `chat_${userId}`;
+    const userRequests = rateLimitStore.get(userKey) || [];
+    
+    // Remove requests outside the time window
+    const recentRequests = userRequests.filter(timestamp => now - timestamp < RATE_LIMIT_WINDOW);
+    
+    if (recentRequests.length >= RATE_LIMIT_MAX_REQUESTS) {
+        return res.status(429).json({ 
+            text: "Rate limit exceeded. Please wait a moment before sending another message.",
+            buttons: null
+        });
+    }
+    
+    recentRequests.push(now);
+    rateLimitStore.set(userKey, recentRequests);
+    next();
+}
 
 // Supabase disabled as MySQL credentials were provided
 let useSupabase = false; 
@@ -2119,19 +2145,42 @@ async function getSecret(secretName) {
 
 // Initialize OpenAI client with secret from Secret Manager
 let openai = null;
+let openaiInitializationAttempted = false;
+let openaiInitializationError = null;
+const OPENAI_INIT_RETRY_DELAY = 60000; // Retry after 1 minute on failure
 
 async function initializeOpenAI() {
+    // Prevent multiple simultaneous initialization attempts
+    if (openaiInitializationAttempted && openai) {
+        return openai;
+    }
+    
+    // If we've already failed recently, don't retry immediately
+    if (openaiInitializationError && Date.now() - openaiInitializationError.timestamp < OPENAI_INIT_RETRY_DELAY) {
+        return null;
+    }
+    
     try {
+        openaiInitializationAttempted = true;
         const apiKey = await getSecret('OPENAI_API_KEY');
         if (!apiKey) {
             console.error('OpenAI API key not found in Secret Manager or environment variables');
+            openaiInitializationError = { timestamp: Date.now(), error: 'API key not found' };
+            openaiInitializationAttempted = false; // Allow retry
             return null;
         }
-        openai = new OpenAI({ apiKey: apiKey });
+        openai = new OpenAI({ 
+            apiKey: apiKey,
+            timeout: 30000, // 30 second timeout
+            maxRetries: 2
+        });
+        openaiInitializationError = null; // Clear any previous errors
         console.log('OpenAI client initialized successfully');
         return openai;
     } catch (error) {
         console.error('Error initializing OpenAI:', error);
+        openaiInitializationError = { timestamp: Date.now(), error: error.message };
+        openaiInitializationAttempted = false; // Allow retry after delay
         return null;
     }
 }
@@ -2161,25 +2210,78 @@ BUTTONS: [[View Latest Invoice]] [[View All Invoices]] [[Make Payments]] [[Proje
 If data unavailable, say: "I don't have that information. Would you like me to check your records?"`;
 
 async function saveChatMessage(userId, role, content) {
-    await pool.query(
-        "INSERT INTO ChatHistory (UserID, Role, Content) VALUES (?, ?, ?)",
-        [userId, role, content.slice(0, 2000)]
-    );
+    try {
+        await pool.query(
+            "INSERT INTO ChatHistory (UserID, Role, Content) VALUES (?, ?, ?)",
+            [userId, role, content.slice(0, 2000)]
+        );
+    } catch (error) {
+        console.error('Error saving chat message:', error);
+        // Don't throw - allow conversation to continue even if history save fails
+    }
 }
 
 async function getChatHistory(userId, limit = 12) {
-    const [rows] = await pool.query(
-        `SELECT Role, Content FROM ChatHistory
-         WHERE UserID = ?
-         ORDER BY ID DESC
-         LIMIT ?`,
-        [userId, limit]
-    );
+    try {
+        // Fixed query - more efficient ordering
+        const [rows] = await pool.query(
+            `SELECT Role, Content FROM ChatHistory
+             WHERE UserID = ?
+             ORDER BY ID ASC
+             LIMIT ?`,
+            [userId, limit]
+        );
 
-    return rows.reverse().map(r => ({
-        role: r.Role,
-        content: r.Content
-    }));
+        return rows.map(r => ({
+            role: r.Role,
+            content: r.Content
+        }));
+    } catch (error) {
+        console.error('Error getting chat history:', error);
+        return []; // Return empty array on error to allow conversation to continue
+    }
+}
+
+// Store and retrieve user context from database
+async function getUserContext(userId) {
+    try {
+        const [rows] = await pool.query(
+            `SELECT ContextData FROM UserContext WHERE UserID = ? LIMIT 1`,
+            [userId]
+        );
+        
+        if (rows.length > 0 && rows[0].ContextData) {
+            return JSON.parse(rows[0].ContextData);
+        }
+        return {};
+    } catch (error) {
+        // If table doesn't exist, return empty context
+        if (error.code === 'ER_NO_SUCH_TABLE') {
+            return {};
+        }
+        console.error('Error getting user context:', error);
+        return {};
+    }
+}
+
+async function saveUserContext(userId, context) {
+    try {
+        const contextJson = JSON.stringify(context);
+        await pool.query(
+            `INSERT INTO UserContext (UserID, ContextData, UpdatedAt) 
+             VALUES (?, ?, NOW()) 
+             ON DUPLICATE KEY UPDATE ContextData = ?, UpdatedAt = NOW()`,
+            [userId, contextJson, contextJson]
+        );
+    } catch (error) {
+        // If table doesn't exist, silently fail (graceful degradation)
+        if (error.code === 'ER_NO_SUCH_TABLE') {
+            console.warn('UserContext table does not exist. Context will not be persisted.');
+            return;
+        }
+        console.error('Error saving user context:', error);
+        // Don't throw - context is not critical
+    }
 }
 
 // ============================================
@@ -2502,39 +2604,77 @@ async function getTicketStatus(companyId) {
 }
 
 async function getPaymentInfo(companyId, invoiceNumber = null) {
-    // Get latest invoice if no invoice number provided
-    if (!invoiceNumber) {
-        const latestInvoice = await getLatestInvoice(companyId);
-        if (!latestInvoice.has_data) {
-            return {
-                has_data: false,
-                data_type: "payment_info",
-                message: "No invoices found. Payment information will be available once you have an invoice."
-            };
+    try {
+        // Get latest invoice if no invoice number provided
+        if (!invoiceNumber) {
+            const latestInvoice = await getLatestInvoice(companyId);
+            if (!latestInvoice.has_data) {
+                return {
+                    has_data: false,
+                    data_type: "payment_info",
+                    message: "No invoices found. Payment information will be available once you have an invoice."
+                };
+            }
+            invoiceNumber = latestInvoice.invoice_number;
         }
-        invoiceNumber = latestInvoice.invoice_number;
+
+        // Get company details for payment reference
+        let companyName = 'Your Company';
+        try {
+            const [companies] = await pool.query('SELECT CompanyName FROM Companies WHERE ID = ?', [companyId]);
+            companyName = companies[0]?.CompanyName || 'Your Company';
+        } catch (error) {
+            console.error('Error fetching company name:', error);
+        }
+
+        // Try to get payment info from database (CompanySettings table) or use defaults
+        let paymentConfig = {
+            bank_name: process.env.PAYMENT_BANK_NAME || "Standard Bank",
+            account_name: process.env.PAYMENT_ACCOUNT_NAME || "Stack Ops IT Solutions",
+            account_number: process.env.PAYMENT_ACCOUNT_NUMBER || "1234567890",
+            branch_code: process.env.PAYMENT_BRANCH_CODE || "051001",
+            swift_code: process.env.PAYMENT_SWIFT_CODE || "SBZAJJXXX",
+            payment_link_base: process.env.PAYMENT_LINK_BASE || "https://payments.stackopsit.co.za/invoice/"
+        };
+
+        // Try to get from CompanySettings table if it exists
+        try {
+            const [settings] = await pool.query(
+                `SELECT SettingKey, SettingValue FROM CompanySettings 
+                 WHERE CompanyID = ? AND SettingKey IN ('bank_name', 'account_name', 'account_number', 'branch_code', 'swift_code', 'payment_link_base')`,
+                [companyId]
+            );
+            
+            settings.forEach(setting => {
+                if (paymentConfig.hasOwnProperty(setting.SettingKey)) {
+                    paymentConfig[setting.SettingKey] = setting.SettingValue;
+                }
+            });
+        } catch (error) {
+            // Table might not exist, use environment variables or defaults
+            if (error.code !== 'ER_NO_SUCH_TABLE') {
+                console.error('Error fetching payment settings:', error);
+            }
+        }
+
+        return {
+            has_data: true,
+            data_type: "payment_info",
+            invoice_number: invoiceNumber,
+            company_name: companyName,
+            payment_reference: `INV-${invoiceNumber}`,
+            bank_name: paymentConfig.bank_name,
+            account_name: paymentConfig.account_name,
+            account_number: paymentConfig.account_number,
+            branch_code: paymentConfig.branch_code,
+            payment_link: paymentConfig.payment_link_base + invoiceNumber,
+            swift_code: paymentConfig.swift_code,
+            instructions: `Please use invoice number ${invoiceNumber} as your payment reference when making payment.`
+        };
+    } catch (error) {
+        console.error('Error in getPaymentInfo:', error);
+        throw error;
     }
-
-    // Get company details for payment reference
-    const [companies] = await pool.query('SELECT CompanyName FROM Companies WHERE ID = ?', [companyId]);
-    const companyName = companies[0]?.CompanyName || 'Your Company';
-
-    // Payment details - these should be configured or stored in database
-    // For now, using placeholder values that should be configured
-    return {
-        has_data: true,
-        data_type: "payment_info",
-        invoice_number: invoiceNumber,
-        company_name: companyName,
-        payment_reference: `INV-${invoiceNumber}`,
-        bank_name: "Standard Bank",
-        account_name: "Stack Ops IT Solutions",
-        account_number: "1234567890",
-        branch_code: "051001",
-        payment_link: "https://payments.stackopsit.co.za/invoice/" + invoiceNumber,
-        swift_code: "SBZAJJXXX",
-        instructions: `Please use invoice number ${invoiceNumber} as your payment reference when making payment.`
-    };
 }
 
 const ALLOWED_ACTIONS = [
@@ -2587,38 +2727,84 @@ function sanitizeResponse(text) {
 // CHAT ENDPOINT
 // ============================================
 
-app.post('/api/chat', authenticateToken, async (req, res) => {
+// Standard error response helper
+function createErrorResponse(text, buttons = null) {
+    return { text, buttons };
+}
+
+// Standard success response helper
+function createSuccessResponse(text, buttons = null, hasMoreMessages = false, nextMessage = null) {
+    const response = { text, buttons };
+    if (hasMoreMessages && nextMessage) {
+        response.hasMoreMessages = true;
+        response.nextMessage = nextMessage;
+    }
+    return response;
+}
+
+app.post('/api/chat', authenticateToken, chatRateLimit, async (req, res) => {
     try {
-        if (!pool) return res.status(500).json({ text: "Database unavailable." });
+        if (!pool) {
+            return res.status(500).json(createErrorResponse("Database unavailable. Please try again later."));
+        }
 
         const userId = req.user.id;
         const message = req.body.message;
 
-        if (!message?.trim()) {
-            return res.status(400).json({ text: "Message is required." });
+        // Validate message exists and is not empty
+        if (!message || typeof message !== 'string' || !message.trim()) {
+            return res.status(400).json(createErrorResponse("Message is required."));
         }
 
-        const [users] = await pool.query(
-            'SELECT CompanyID, FirstName FROM Users WHERE ID = ?',
-            [userId]
-        );
-
-        if (!users.length) {
-            return res.status(404).json({ text: "Company not found." });
+        // Validate message length (max 2000 characters)
+        const trimmedMessage = message.trim();
+        if (trimmedMessage.length > 2000) {
+            return res.status(400).json(createErrorResponse("Message is too long. Please keep it under 2000 characters."));
         }
 
-        const companyId = users[0].CompanyID;
-        const userFirstName = users[0].FirstName || 'there';
+        let users, companyId, userFirstName;
+        
+        try {
+            [users] = await pool.query(
+                'SELECT CompanyID, FirstName FROM Users WHERE ID = ?',
+                [userId]
+            );
 
-        // Validate company ID exists
-        if (!companyId) {
-            return res.status(400).json({ text: "Your account is not associated with a company. Please contact support." });
+            if (!users.length) {
+                return res.status(404).json(createErrorResponse("User not found."));
+            }
+
+            companyId = users[0].CompanyID;
+            userFirstName = users[0].FirstName || 'there';
+
+            // Validate company ID exists and is valid
+            if (!companyId) {
+                return res.status(400).json(createErrorResponse("Your account is not associated with a company. Please contact support."));
+            }
+
+            // Validate company ID exists in Companies table
+            try {
+                const [companyCheck] = await pool.query(
+                    'SELECT ID FROM Companies WHERE ID = ? LIMIT 1',
+                    [companyId]
+                );
+                
+                if (!companyCheck.length) {
+                    return res.status(400).json(createErrorResponse("Your account is associated with an invalid company. Please contact support."));
+                }
+            } catch (error) {
+                console.error('Error validating company ID:', error);
+                // Continue with request even if validation query fails (graceful degradation)
+            }
+        } catch (error) {
+            console.error('Error fetching user data:', error);
+            return res.status(500).json(createErrorResponse("Error retrieving your account information. Please try again later."));
         }
 
         if (!openai) {
             const initialized = await initializeOpenAI();
             if (!initialized) {
-                return res.status(500).json({ text: "AI service is currently unavailable. Please try again later." });
+                return res.status(503).json(createErrorResponse("AI service is currently unavailable. Please try again later."));
             }
         }
 
@@ -2668,7 +2854,7 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
                 forcedAction = { type: "action", action: "get_all_invoices", params: {}, confidence: 0.95, needs_clarification: false };
             } else if (itemsKeywords.some(keyword => messageLower.includes(keyword))) {
                 // User is asking about items/services - fetch invoice data to get items array
-                const context = userContext.get(userId) || {};
+                const context = await getUserContext(userId);
                 if (context.lastInvoiceNumber) {
                     forcedAction = { type: "action", action: "get_invoice_details", params: { invoice_number: context.lastInvoiceNumber }, confidence: 0.95, needs_clarification: false };
                 } else {
@@ -2676,7 +2862,7 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
                 }
             } else if (isCorrection && (isInvoiceQuery)) {
                 // User is correcting invoice info - re-fetch to get accurate data
-                const context = userContext.get(userId) || {};
+                const context = await getUserContext(userId);
                 if (context.lastInvoiceNumber) {
                     forcedAction = { type: "action", action: "get_invoice_details", params: { invoice_number: context.lastInvoiceNumber }, confidence: 0.95, needs_clarification: false };
                 } else {
@@ -2691,15 +2877,25 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
         // Only call AI if no forcedAction detected
         if (!forcedAction) {
             const history = await getChatHistory(userId, 20);
-            const completion = await openai.chat.completions.create({
-                model: "gpt-4o-mini",
-                temperature: 0.3,
-                messages: [
-                    { role: "system", content: CHATBOT_SYSTEM_PROMPT },
-                    ...history,
-                    { role: "user", content: message }
-                ]
+            
+            // Create timeout promise
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('OpenAI API timeout')), 25000); // 25 second timeout
             });
+            
+            const completion = await Promise.race([
+                openai.chat.completions.create({
+                    model: "gpt-4o-mini",
+                    temperature: 0.3,
+                    timeout: 25000, // 25 second timeout
+                    messages: [
+                        { role: "system", content: CHATBOT_SYSTEM_PROMPT },
+                        ...history,
+                        { role: "user", content: message }
+                    ]
+                }),
+                timeoutPromise
+            ]);
 
             const aiReply = completion.choices[0].message.content.trim();
             
@@ -2717,7 +2913,16 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
         // Lower confidence threshold to 0.3 to make it easier to trigger actions
         if (parsed?.type === "action" && ALLOWED_ACTIONS.includes(parsed.action) && parsed.confidence >= 0.3 && !parsed.needs_clarification) {
 
-            const data = await fetchClientData(parsed.action, companyId, parsed.params || {});
+            let data;
+            try {
+                data = await fetchClientData(parsed.action, companyId, parsed.params || {});
+            } catch (fetchError) {
+                console.error('Error fetching client data:', fetchError);
+                const errorText = "I'm having trouble retrieving that information. Please try again or contact support.";
+                await saveChatMessage(userId, "user", message);
+                await saveChatMessage(userId, "assistant", errorText);
+                return res.json(createErrorResponse(errorText));
+            }
 
             // If data indicates no results, still pass it to AI to respond naturally
             // Don't return hardcoded messages - let AI handle it based on the data structure
@@ -2748,13 +2953,13 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
                     new Date(dueDateFormatted + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 
                     'Not specified';
                 
-                // Store invoice data in user context
+                // Store invoice data in user context (database)
                 if (safeInvoiceNumber !== 'Unknown') {
-                    const context = userContext.get(userId) || {};
+                    const context = await getUserContext(userId);
                     context.lastInvoiceNumber = safeInvoiceNumber;
                     context.lastAmount = safeBalance;
                     context.lastDueDate = dueDateFormatted;
-                    userContext.set(userId, context);
+                    await saveUserContext(userId, context);
                 }
                 
                 dataContextMessage = `🚨 AUTHORITATIVE DATABASE DATA - INVOICE INFORMATION 🚨
@@ -2785,25 +2990,31 @@ RESPONSE REQUIREMENTS:
 ❌ NEVER show raw JSON, field names, or timestamps
 ✅ Always end with relevant action buttons like [[Project Updates]]`;
             } else if (dataType === 'payment_info') {
+                // Format payment info directly - don't use AI for this
                 const paymentData = data;
-                dataContextMessage = `🚨 PAYMENT INFORMATION 🚨
-
-CRITICAL: Present payment details clearly and professionally.
-
-PAYMENT DATA:
-- Invoice Number: ${paymentData.invoice_number || 'N/A'}
-- Payment Reference: ${paymentData.payment_reference || 'N/A'}
-- Bank Name: ${paymentData.bank_name || 'N/A'}
-- Account Name: ${paymentData.account_name || 'N/A'}
-- Account Number: ${paymentData.account_number || 'N/A'}
-- Branch Code: ${paymentData.branch_code || 'N/A'}
-- Payment Link: ${paymentData.payment_link || 'N/A'}
-- Instructions: ${paymentData.instructions || 'Use invoice number as reference'}
-
-RESPONSE REQUIREMENTS:
-✅ Present payment details clearly: "To make payment, transfer funds to [Account Details]. Use [Reference] as payment reference. Alternatively, use the payment link: [Link]"
-❌ NEVER show raw field names or JSON
-✅ Always end with relevant action buttons like [[View Latest Invoice]]`;
+                const bankName = paymentData.bank_name || 'N/A';
+                const accountName = paymentData.account_name || 'N/A';
+                const accountNumber = paymentData.account_number || 'N/A';
+                const branchCode = paymentData.branch_code || 'N/A';
+                const paymentRef = paymentData.payment_reference || paymentData.invoice_number || 'N/A';
+                const paymentLink = paymentData.payment_link || '';
+                
+                // Format payment details - one per line for readability
+                const paymentDetailsText = `To make payment, transfer funds to the following account details:\n\nBank Name: ${bankName}\nAccount Name: ${accountName}\nAccount Number: ${accountNumber}\nBranch Code: ${branchCode}\n\nPayment Reference: ${paymentRef}`;
+                
+                // Format second message with clickable link
+                const linkMessage = paymentLink ? `Pay online: ${paymentLink}` : null;
+                
+                // Save first message (account details)
+                await saveChatMessage(userId, "user", message);
+                await saveChatMessage(userId, "assistant", paymentDetailsText);
+                if (linkMessage) {
+                    await saveChatMessage(userId, "assistant", linkMessage);
+                }
+                
+                // Return first response with account details
+                res.json(createSuccessResponse(paymentDetailsText, null, !!linkMessage, linkMessage));
+                return;
             } else if (data.message) {
                 // Handle messages (like "coming soon" for security/tickets)
                 dataContextMessage = `🚨 DATABASE RESPONSE 🚨
@@ -2829,23 +3040,86 @@ RESPONSE REQUIREMENTS:
 ✅ Always end with relevant action buttons`;
             }
             
+            // Ensure dataContextMessage is not empty
+            if (!dataContextMessage || dataContextMessage.trim().length < 10) {
+                dataContextMessage = `🚨 DATA AVAILABLE 🚨
+
+The requested information is available. Please summarize it in natural, conversational language. Never show raw database fields or JSON. Always end with relevant action buttons.`;
+            }
+            
             let conversationHistory = await getChatHistory(userId, 20);
             
-            const finalCompletion = await openai.chat.completions.create({
-                model: "gpt-4o-mini",
-                temperature: 0.5, 
-                messages: [
-                    {
-                        role: "system",
-                        content: dataContextMessage
-                    },
-                    { role: "system", content: CHATBOT_SYSTEM_PROMPT },
-                    ...conversationHistory,
-                    { role: "user", content: message }
-                ]
-            });
+            let finalResponse;
+            try {
+                // Create timeout promise
+                const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('OpenAI API timeout')), 25000); // 25 second timeout
+                });
+                
+                const finalCompletion = await Promise.race([
+                    openai.chat.completions.create({
+                        model: "gpt-4o-mini",
+                        temperature: 0.5, 
+                        timeout: 25000, // 25 second timeout
+                        messages: [
+                            {
+                                role: "system",
+                                content: dataContextMessage
+                            },
+                            { role: "system", content: CHATBOT_SYSTEM_PROMPT },
+                            ...conversationHistory,
+                            { role: "user", content: message }
+                        ]
+                    }),
+                    timeoutPromise
+                ]);
 
-            let finalResponse = finalCompletion.choices[0].message.content.trim();
+                finalResponse = finalCompletion.choices[0].message.content.trim();
+            } catch (openaiError) {
+                console.error('OpenAI API error:', openaiError);
+                const errorText = openaiError.message === 'OpenAI API timeout' 
+                    ? "The request took too long. Please try again with a simpler question."
+                    : "I'm having trouble processing that request right now. Please try again in a moment.";
+                await saveChatMessage(userId, "user", message);
+                await saveChatMessage(userId, "assistant", errorText);
+                return res.json(createErrorResponse(errorText));
+            }
+            
+            // Ensure we have a valid response
+            if (!finalResponse || finalResponse.length < 3) {
+                const errorText = "I apologize, but I'm having trouble generating a response. Could you please rephrase your question?";
+                await saveChatMessage(userId, "user", message);
+                await saveChatMessage(userId, "assistant", errorText);
+                return res.json(createErrorResponse(errorText));
+            }
+            
+            // Check if response is pure JSON (should not happen in second pass)
+            if (finalResponse.trim().startsWith('{') && finalResponse.trim().endsWith('}')) {
+                try {
+                    JSON.parse(finalResponse.trim());
+                    // AI returned JSON instead of text - regenerate with simpler prompt
+                    const timeoutPromise2 = new Promise((_, reject) => {
+                        setTimeout(() => reject(new Error('OpenAI API timeout')), 25000);
+                    });
+                    
+                    const simpleCompletion = await Promise.race([
+                        openai.chat.completions.create({
+                            model: "gpt-4o-mini",
+                            temperature: 0.5,
+                            timeout: 25000,
+                            messages: [
+                                { role: "system", content: "You are StackOn. Respond naturally in plain text only. Never return JSON. Summarize the data conversationally." },
+                                { role: "system", content: dataContextMessage },
+                                { role: "user", content: message }
+                            ]
+                        }),
+                        timeoutPromise2
+                    ]);
+                    finalResponse = simpleCompletion.choices[0].message.content.trim();
+                } catch (e) {
+                    // Not valid JSON, continue
+                }
+            }
             
             // Extract buttons: [[Button Name]]
             const buttons = [];
@@ -2860,20 +3134,20 @@ RESPONSE REQUIREMENTS:
             const safeText = sanitizeResponse(finalResponseCleaned);
             
             // Validate response
-            if (!safeText || safeText.length < 3 || (safeText.includes('"type"') && safeText.includes('"action"'))) {
-                const fallbackText = "I apologize, but I'm having trouble with that request. Could you please rephrase your question?";
+            if (!safeText || safeText.length < 3 || safeText === "I apologize, but I encountered an issue processing that. Could you please rephrase your question?") {
+                // If sanitization failed, try one more time with a fallback
+                const fallbackText = data.has_data === false ? 
+                    "I couldn't find any invoices in your account. Would you like me to check something else?" :
+                    "Here's the information you requested. If you need anything else, just ask!";
                 await saveChatMessage(userId, "user", message);
                 await saveChatMessage(userId, "assistant", fallbackText);
-                return res.json({ text: fallbackText, buttons: null });
+                return res.json(createSuccessResponse(fallbackText, buttons.length > 0 ? buttons : ['View Latest Invoice', 'Make Payments']));
             }
 
             await saveChatMessage(userId, "user", message);
             await saveChatMessage(userId, "assistant", safeText);
 
-            return res.json({ 
-                text: safeText, 
-                buttons: buttons.length > 0 ? buttons : null 
-            });
+            return res.json(createSuccessResponse(safeText, buttons.length > 0 ? buttons : null));
         }
 
         // Normal conversation - no action needed, use AI naturally
@@ -2881,7 +3155,7 @@ RESPONSE REQUIREMENTS:
         
         // Build context message if we have user context data
         let contextMessage = '';
-        const context = userContext.get(userId) || {};
+        const context = await getUserContext(userId);
         if (context.lastInvoiceNumber) {
             contextMessage = `\n\nCONVERSATION CONTEXT: You recently discussed invoice #${context.lastInvoiceNumber}`;
             if (context.lastAmount) {
@@ -2899,15 +3173,24 @@ RESPONSE REQUIREMENTS:
             contextMessage += `\n\n⚠️ WARNING: User is correcting information. You MUST fetch fresh data from the database to get accurate dates and amounts. Do NOT reuse potentially incorrect information from conversation history.`;
         }
         
-        const normalCompletion = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
-            temperature: 0.7, // Higher for more natural conversation flow
-            messages: [
-                { role: "system", content: CHATBOT_SYSTEM_PROMPT + contextMessage },
-                ...conversationHistory,
-                { role: "user", content: message }
-            ]
+        // Create timeout promise
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('OpenAI API timeout')), 25000); // 25 second timeout
         });
+        
+        const normalCompletion = await Promise.race([
+            openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                temperature: 0.7, // Higher for more natural conversation flow
+                timeout: 25000, // 25 second timeout
+                messages: [
+                    { role: "system", content: CHATBOT_SYSTEM_PROMPT + contextMessage },
+                    ...conversationHistory,
+                    { role: "user", content: message }
+                ]
+            }),
+            timeoutPromise
+        ]);
 
         let normalResponse = normalCompletion.choices[0].message.content.trim();
         
@@ -2935,30 +3218,25 @@ RESPONSE REQUIREMENTS:
             const fallbackText = "I apologize, but I'm having trouble with that request. Could you please rephrase your question?";
             await saveChatMessage(userId, "user", message);
             await saveChatMessage(userId, "assistant", fallbackText);
-            return res.json({ text: fallbackText, buttons: null });
+            return res.json(createErrorResponse(fallbackText));
         }
 
         await saveChatMessage(userId, "user", message);
         await saveChatMessage(userId, "assistant", safeNormalText);
 
-        return res.json({ 
-            text: safeNormalText, 
-            buttons: normalButtons.length > 0 ? normalButtons : null 
-        });
+        return res.json(createSuccessResponse(safeNormalText, normalButtons.length > 0 ? normalButtons : null));
 
 
     } catch (error) {
         console.error('Chat error:', error);
         
         if (error.code === 'insufficient_quota') {
-            return res.status(500).json({
-                text: "The AI service is currently unavailable due to quota limits. Please contact support or check billing details."
-            });
+            return res.status(503).json(createErrorResponse("The AI service is currently unavailable due to quota limits. Please contact support or check billing details."));
         }
 
-        return res.status(500).json({
-            text: "An unexpected error occurred. Please try again later." 
-        });
+        // Log error but don't expose details to user
+        console.error('Unexpected chat error:', error);
+        return res.status(500).json(createErrorResponse("An unexpected error occurred. Please try again later."));
     }
 });
 

@@ -13,9 +13,39 @@
     let messages = [];
     let isTyping = false;
     let messagesEndRef = null;
+    let isSendingMessage = false; // Prevent race conditions
+    let retryCount = 0;
+    const MAX_RETRIES = 3;
+
+    // Load messages from localStorage on initialization
+    function loadMessagesFromStorage() {
+        try {
+            const stored = localStorage.getItem('chatbot_messages');
+            if (stored) {
+                messages = JSON.parse(stored);
+            }
+        } catch (e) {
+            console.warn('Failed to load messages from storage:', e);
+            messages = [];
+        }
+    }
+
+    // Save messages to localStorage
+    function saveMessagesToStorage() {
+        try {
+            localStorage.setItem('chatbot_messages', JSON.stringify(messages));
+        } catch (e) {
+            console.warn('Failed to save messages to storage:', e);
+        }
+    }
 
     // Initialize chatbot widget
     function initChatbot() {
+        // Check if widget already exists to prevent duplicate initialization
+        if (document.getElementById('chatbot-widget')) {
+            return;
+        }
+
         // Check if user is authenticated
         const token = localStorage.getItem('authToken');
         const isLoggedIn = sessionStorage.getItem('isLoggedIn');
@@ -23,6 +53,9 @@
         if (!token || isLoggedIn !== 'true') {
             return; // Don't show widget if not authenticated
         }
+
+        // Load messages from storage
+        loadMessagesFromStorage();
 
         // Create widget HTML
         const widgetHTML = `
@@ -97,6 +130,7 @@
 
     function addMessage(sender, text, buttons = null) {
         messages.push({ sender, text, buttons });
+        saveMessagesToStorage(); // Persist to localStorage
         renderMessages();
     }
 
@@ -189,8 +223,8 @@
                         </div>
                     ` : ''}
                     <div class="msg-wrapper">
-                        <div class="text-bubble">
-                            ${msg.text}
+                        <div class="text-bubble" style="white-space: pre-line;">
+                            ${msg.text.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" style="color: #0066FF; text-decoration: underline;">$1</a>')}
                         </div>
                         ${msg.buttons ? `
                             <div class="btn-group">
@@ -240,18 +274,40 @@
         });
     }
 
-    function handleButtonClick(buttonText) {
+    async function handleButtonClick(buttonText) {
+        if (isSendingMessage) return; // Prevent multiple simultaneous requests
+        
         addMessage('user', buttonText);
         setIsTyping(true);
 
-        // Get bot response
-        setTimeout(async () => {
-            setIsTyping(false);
+        try {
             const response = await getBotResponse(buttonText);
+            setIsTyping(false);
+            
             if (response) {
-                addMessage('bot', response.text, response.buttons);
+                // Handle multi-message responses
+                if (response.hasMoreMessages && response.nextMessage) {
+                    // Add first message
+                    addMessage('bot', response.text, response.buttons);
+                    
+                    // Automatically add second message after a short delay
+                    setTimeout(() => {
+                        setIsTyping(true);
+                        setTimeout(() => {
+                            setIsTyping(false);
+                            addMessage('bot', response.nextMessage, null);
+                        }, 500);
+                    }, 300);
+                } else {
+                    // Single message response
+                    addMessage('bot', response.text, response.buttons);
+                }
             }
-        }, 1200);
+        } catch (error) {
+            setIsTyping(false);
+            console.error('Error handling button click:', error);
+            addMessage('bot', 'Sorry, I encountered an error. Please try again.', null);
+        }
     }
 
     async function getBotResponse(userInput) {
@@ -262,34 +318,72 @@
     }
 
     async function sendTextMessage() {
+        if (isSendingMessage) return; // Prevent multiple simultaneous requests
+        
         const input = document.getElementById('chatbot-input');
         const message = input?.value.trim();
         
         if (!message) return;
         
+        // Validate message length (2000 character limit)
+        if (message.length > 2000) {
+            addMessage('bot', 'Your message is too long. Please keep it under 2000 characters.', null);
+            return;
+        }
+        
         input.value = '';
+        input.disabled = true; // Disable input while sending
         addMessage('user', message);
         setIsTyping(true);
+        isSendingMessage = true;
         
-        setTimeout(async () => {
-            setIsTyping(false);
+        try {
             const response = await sendToBackend(message);
+            setIsTyping(false);
+            
             if (response) {
-                addMessage('bot', response.text, response.buttons);
+                // Handle multi-message responses
+                if (response.hasMoreMessages && response.nextMessage) {
+                    // Add first message
+                    addMessage('bot', response.text, response.buttons);
+                    
+                    // Automatically add second message after a short delay
+                    setTimeout(() => {
+                        setIsTyping(true);
+                        setTimeout(() => {
+                            setIsTyping(false);
+                            addMessage('bot', response.nextMessage, null);
+                        }, 500);
+                    }, 300);
+                } else {
+                    // Single message response
+                    addMessage('bot', response.text, response.buttons);
+                }
             }
-        }, 500);
+        } catch (error) {
+            setIsTyping(false);
+            console.error('Error sending message:', error);
+            addMessage('bot', 'Sorry, I encountered an error. Please try again.', null);
+        } finally {
+            isSendingMessage = false;
+            input.disabled = false;
+            input.focus();
+        }
     }
 
-    async function sendToBackend(message) {
+    async function sendToBackend(message, retryAttempt = 0) {
         const token = localStorage.getItem('authToken');
         if (!token) {
+            setIsTyping(false);
             return {
                 text: 'Error: You are not authenticated. Please refresh the page.',
                 buttons: null
             };
         }
 
-        setIsTyping(true);
+        // Create AbortController for timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
         try {
             const response = await fetch('/api/chat', {
@@ -298,14 +392,22 @@
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({ message: message })
+                body: JSON.stringify({ message: message }),
+                signal: controller.signal
             });
+
+            clearTimeout(timeoutId);
 
             let data;
             try {
                 data = await response.json();
             } catch (jsonError) {
                 setIsTyping(false);
+                // Retry on JSON parse errors if we haven't exceeded max retries
+                if (retryAttempt < MAX_RETRIES) {
+                    await new Promise(resolve => setTimeout(resolve, 1000 * (retryAttempt + 1))); // Exponential backoff
+                    return sendToBackend(message, retryAttempt + 1);
+                }
                 return {
                     text: 'An error occurred. Please try again.',
                     buttons: null
@@ -314,6 +416,11 @@
             
             if (!response.ok) {
                 setIsTyping(false);
+                // Retry on 5xx errors if we haven't exceeded max retries
+                if (response.status >= 500 && retryAttempt < MAX_RETRIES) {
+                    await new Promise(resolve => setTimeout(resolve, 1000 * (retryAttempt + 1))); // Exponential backoff
+                    return sendToBackend(message, retryAttempt + 1);
+                }
                 return {
                     text: data.text || 'An error occurred. Please try again.',
                     buttons: null
@@ -321,6 +428,7 @@
             }
 
             setIsTyping(false);
+            retryCount = 0; // Reset retry count on success
             
             // Get response text directly from backend
             let responseText = data.text || 'No response received';
@@ -335,13 +443,33 @@
                 }
             }
             
+            // Handle multi-message responses (e.g., payment info with separate link message)
+            if (data.hasMoreMessages && data.nextMessage) {
+                // Return special flag - don't add message here, let caller know it's already handled
+                return {
+                    text: responseText,
+                    buttons: data.buttons || null,
+                    hasMoreMessages: true,
+                    nextMessage: data.nextMessage,
+                    alreadyAdded: false  // Flag to indicate we need to add first message
+                };
+            }
+            
             return {
                 text: responseText,
                 buttons: data.buttons || null
             };
         } catch (error) {
+            clearTimeout(timeoutId);
+            setIsTyping(false); // Always reset typing indicator on error
+            
+            // Retry on network errors if we haven't exceeded max retries
+            if ((error.name === 'AbortError' || error.message.includes('fetch')) && retryAttempt < MAX_RETRIES) {
+                await new Promise(resolve => setTimeout(resolve, 1000 * (retryAttempt + 1))); // Exponential backoff
+                return sendToBackend(message, retryAttempt + 1);
+            }
+            
             console.error('Chat error:', error);
-            setIsTyping(false);
             return {
                 text: 'Sorry, I encountered an error. Please try again or contact support.',
                 buttons: null
