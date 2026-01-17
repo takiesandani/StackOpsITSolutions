@@ -2731,43 +2731,35 @@ function sanitizeResponse(text) {
         return "I apologize, but I'm having trouble processing that request. Could you please rephrase your question?";
     }
     
-    // First check if entire response is JSON - if so, return error message
     let trimmed = text.trim();
+    // If the response is pure JSON, it's an error in the second pass logic
     if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || 
         (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
-        console.error('ERROR: Response was pure JSON, should not reach sanitizeResponse:', trimmed.substring(0, 100));
+        console.error('ERROR: Response was pure JSON in a conversational pass:', trimmed.substring(0, 100));
         return "I apologize, but I encountered an issue processing that. Could you please rephrase your question?";
     }
     
-    // Remove only complete JSON objects (preserve currency amounts like R15,000.00)
     let cleaned = text;
     
-    // Remove complete JSON objects: { ... }
-    cleaned = cleaned.replace(/\{[^{}]*\}/g, '');
+    // Remove only clear JSON objects that aren't currency/text: {"key": "value"}
+    // This regex looks for curly braces containing a colon, which is a common JSON marker
+    cleaned = cleaned.replace(/\{[^{}]*:[^{}]*\}/g, '');
     
-    // Remove JSON array patterns
-    cleaned = cleaned.replace(/\[[^\]]*\]/g, '');
-    
-    // Remove system/internal markers (complete phrases only)
+    // Remove system/internal markers (preserve natural language)
     cleaned = cleaned.replace(/SYSTEM\s*DATA[\s\S]*?(\n\n|$)/gi, "");
     cleaned = cleaned.replace(/System\s*data[\s\S]*?(\n\n|$)/gi, "");
     cleaned = cleaned.replace(/Database\s*Data[\s\S]*?(\n\n|$)/gi, "");
-    cleaned = cleaned.replace(/CRITICAL\s*DATABASE[\s\S]*?(\n\n|$)/gi, "");
     
-    // Clean up extra whitespace (but preserve spaces in currency amounts)
+    // Clean up extra whitespace but be gentle
     cleaned = cleaned.replace(/\s{3,}/g, ' ').trim();
     
-    // If after cleaning we have nothing meaningful, return a safe message
-    if (cleaned.length < 3 || cleaned.match(/^[\s\W]*$/)) {
+    // If after cleaning we have almost nothing, it might be a failure
+    if (cleaned.length < 1 || cleaned.match(/^[\s\W]*$/)) {
+        console.error('ERROR: sanitizeResponse resulted in empty string from:', text);
         return "I apologize, but I'm having trouble processing that request. Could you please rephrase your question?";
     }
     
-    // Final check - if it still looks like JSON, reject it
-    if (cleaned.trim().startsWith('{') || cleaned.trim().startsWith('[')) {
-        return "I apologize, but I encountered an issue processing that. Could you please rephrase your question?";
-    }
-    
-    return cleaned.slice(0, 1200);
+    return cleaned.slice(0, 1500);
 }
 
 // ============================================
@@ -2927,56 +2919,46 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
             // Data is injected as system context (not saved to chat history)
             // Assistant's response will naturally include invoice info, which gets saved for follow-up context
             
+            // Safety checks for data fields to avoid undefined
+            const safeInvoiceNumber = data.invoice_number ? String(data.invoice_number) : 'Unknown';
+            const safeBalance = data.outstanding_balance ? String(data.outstanding_balance) : '0.00';
+            const safeDueDateRaw = data.due_date || '';
+            const safeItems = data.items || [];
+
             // Format the year from due_date for clarity
-            const dueDateYear = data.due_date ? data.due_date.substring(0, 4) : 'N/A';
-            const dueDateFormatted = data.due_date ? 
-                (data.due_date.includes('T') ? data.due_date.split('T')[0] : data.due_date) : '';
+            const dueDateYear = safeDueDateRaw ? String(safeDueDateRaw).substring(0, 4) : 'N/A';
+            const dueDateFormatted = safeDueDateRaw ? 
+                (String(safeDueDateRaw).includes('T') ? String(safeDueDateRaw).split('T')[0] : String(safeDueDateRaw)) : '';
             
-            // Calculate formatted date for explicit display (amount formatting removed - use raw database value)
+            // Calculate formatted date for explicit display
             const formattedDate = dueDateFormatted ? 
                 new Date(dueDateFormatted + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 
-                '';
+                'Not specified';
             
-            let conversationHistory = await getChatHistory(userId, 30); // Increased to 30 for better context
+            let conversationHistory = await getChatHistory(userId, 30); 
             
-            // CRITICAL: Filter out incorrect responses from history that contain wrong invoice data
-            // Remove any assistant messages that mention wrong invoice numbers or wrong amounts
-            if (data.invoice_number) {
+            // CRITICAL: Filter out incorrect responses from history
+            if (safeInvoiceNumber !== 'Unknown') {
                 conversationHistory = conversationHistory.filter(msg => {
                     if (msg.role === 'assistant') {
                         const content = msg.content.toLowerCase();
-                        // Remove messages with wrong invoice numbers (if invoice number is mentioned but doesn't match current data)
-                        if (content.includes('invoice') && content.match(/\d{4,}/) && !content.includes(`#${data.invoice_number}`) && !content.includes(data.invoice_number)) {
-                            // Check if message mentions a 4+ digit number that's not the correct invoice number
+                        if (content.includes('invoice') && content.match(/\d{4,}/) && !content.includes(`#${safeInvoiceNumber}`) && !content.includes(safeInvoiceNumber)) {
                             const mentionedNumbers = content.match(/\d{4,}/g) || [];
-                            if (mentionedNumbers.length > 0 && !mentionedNumbers.some(num => num === data.invoice_number)) {
-                                return false; // Remove message with wrong invoice number
+                            if (mentionedNumbers.length > 0 && !mentionedNumbers.some(num => num === safeInvoiceNumber)) {
+                                return false; 
                             }
                         }
-                        // Remove messages with wrong amounts - check if amount is way off from database value
                         const amountPattern = /r\s*[\d,]+\.?\d*/gi;
                         const hasAmount = content.match(amountPattern);
-                        if (hasAmount && data.outstanding_balance) {
-                            const dbAmount = parseFloat(data.outstanding_balance);
+                        if (hasAmount && safeBalance !== '0.00') {
+                            const dbAmount = parseFloat(safeBalance);
                             const mentionedAmounts = hasAmount.map(m => {
                                 const cleaned = m.toLowerCase().replace(/r\s*/, '').replace(/,/g, '');
                                 return parseFloat(cleaned) || 0;
                             });
-                            // If mentioned amount is significantly different from database amount, remove it
                             const matchesCorrect = mentionedAmounts.some(amt => Math.abs(amt - dbAmount) < 0.01);
                             if (!matchesCorrect) {
-                                return false; // Remove this message - it has wrong amount
-                            }
-                        }
-                        // Remove messages with wrong dates (if date is mentioned and doesn't match database date)
-                        if (dueDateFormatted && formattedDate) {
-                            // Extract year from message if mentioned
-                            const yearMatch = content.match(/\b(202\d|203\d)\b/);
-                            if (yearMatch && yearMatch[0] !== dueDateYear) {
-                                // Message mentions a year that doesn't match database year - likely wrong
-                                if (content.includes('due date') || content.includes('date')) {
-                                    return false;
-                                }
+                                return false; 
                             }
                         }
                     }
@@ -2985,58 +2967,54 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
             }
             
             // Store invoice number and key data in session for context
-            if (data.invoice_number) {
+            if (safeInvoiceNumber !== 'Unknown') {
                 if (!req.session) req.session = {};
-                req.session.lastInvoiceNumber = data.invoice_number;
-                // Store key data points for follow-up questions
-                if (data.outstanding_balance) req.session.lastAmount = data.outstanding_balance;
-                if (data.due_date) req.session.lastDueDate = data.due_date;
+                req.session.lastInvoiceNumber = safeInvoiceNumber;
+                req.session.lastAmount = safeBalance;
+                req.session.lastDueDate = dueDateFormatted;
             }
             
             const finalCompletion = await openai.chat.completions.create({
                 model: "gpt-4o-mini",
-                temperature: 0.5, // Lower temperature for more accurate data usage
+                temperature: 0.5, 
                 messages: [
-                    // PUT DATA FIRST - Most important, takes precedence over history
                     {
                         role: "system",
                         content: `🚨🚨🚨 AUTHORITATIVE DATABASE DATA - MANDATORY USE 🚨🚨🚨
 
 YOU MUST USE THESE EXACT VALUES FROM DATABASE:
 
-1. TOTAL AMOUNT OWED: "${data.outstanding_balance}" (raw value from database)
+1. TOTAL AMOUNT OWED: "${safeBalance}" (raw value from database)
    → Format this as currency: "R" + add commas for thousands + ".00" for decimals
    ❌ NEVER change the actual number value
-   ✅ ALWAYS use "${data.outstanding_balance}" and format it properly
+   ✅ ALWAYS use "${safeBalance}" and format it properly
 
 2. DUE DATE: "${dueDateFormatted}" (raw date from database)
    → SAY EXACTLY: "${formattedDate}"
-   ❌ NEVER use any other date (not from history, not from training data)
+   ❌ NEVER use any other date
    ✅ ALWAYS use: "${formattedDate}"
    ⚠️ The date "${dueDateFormatted}" means year ${dueDateYear} - use this EXACT year only
 
-3. INVOICE NUMBER: "${data.invoice_number}"
-   → SAY EXACTLY: "Invoice #${data.invoice_number}" or "${data.invoice_number}"
+3. INVOICE NUMBER: "${safeInvoiceNumber}"
+   → SAY EXACTLY: "Invoice #${safeInvoiceNumber}" or "${safeInvoiceNumber}"
    ❌ NEVER use any other number
-   ✅ ALWAYS use: "${data.invoice_number}"
+   ✅ ALWAYS use: "${safeInvoiceNumber}"
 
 4. ITEM DETAILS WITH AMOUNTS:
-${data.items && data.items.length > 0 ? data.items.map((item, idx) => {
+${safeItems.length > 0 ? safeItems.map((item, idx) => {
     return `   - ${item.description}: Amount is "${item.amount}" (format as "R" + commas + ".00")`;
 }).join('\n') : '   - No items'}
-   → When asked about item amounts, use the EXACT amount value from above and format it properly
+   → When asked about item amounts, use the EXACT amount value from above
    ❌ NEVER invent or change item amounts
    ✅ ALWAYS use the exact amount values shown above
 
 🚨🚨🚨 CRITICAL RULES:
 - These raw values from database ARE THE ONLY SOURCE OF TRUTH
-- Use the exact numbers shown - just format them for display (add "R", commas, decimals)
+- Use the exact numbers shown - just format them for display
 - Conversation history may contain WRONG data - IGNORE it
-- Training data may contain WRONG data - IGNORE it
 - Do NOT invent, estimate, guess, or change ANY numeric values`
                     },
                     { role: "system", content: CHATBOT_SYSTEM_PROMPT },
-                    // History comes AFTER data (less priority)
                     ...conversationHistory,
                     { role: "user", content: message }
                 ]
