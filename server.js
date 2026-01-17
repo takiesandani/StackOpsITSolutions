@@ -2952,7 +2952,63 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
             // SECOND PASS: Include conversation history + data for context-aware response
             // Data is injected as system context (not saved to chat history)
             // Assistant's response will naturally include invoice info, which gets saved for follow-up context
-            const conversationHistory = await getChatHistory(userId, 30); // Increased to 30 for better context
+            
+            // Format amount with commas - Define FIRST so we can use it in filter
+            const formatAmount = (amt) => {
+                if (!amt) return '';
+                const num = parseFloat(amt);
+                return num.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            };
+            
+            // Format the year from due_date for clarity
+            const dueDateYear = data.due_date ? data.due_date.substring(0, 4) : 'N/A';
+            const dueDateFormatted = data.due_date ? 
+                (data.due_date.includes('T') ? data.due_date.split('T')[0] : data.due_date) : '';
+            
+            // Calculate formatted amount and formatted date for explicit display
+            const formattedAmount = formatAmount(data.outstanding_balance || '0');
+            const formattedDate = dueDateFormatted ? 
+                new Date(dueDateFormatted + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 
+                '';
+            
+            let conversationHistory = await getChatHistory(userId, 30); // Increased to 30 for better context
+            
+            // CRITICAL: Filter out incorrect responses from history that contain wrong invoice data
+            // Remove any assistant messages that mention wrong invoice numbers (1023) or wrong amounts (R15.00, R15,.00)
+            if (data.invoice_number) {
+                conversationHistory = conversationHistory.filter(msg => {
+                    if (msg.role === 'assistant') {
+                        const content = msg.content.toLowerCase();
+                        // Remove messages with wrong invoice numbers
+                        if (content.includes('1023') && !content.includes(`#${data.invoice_number}`)) {
+                            return false;
+                        }
+                        // Remove messages with wrong amounts (only keep if they match the correct formatted amount)
+                        // Check if message mentions an amount but it doesn't match the correct formatted amount
+                        const amountPattern = /r\s*[\d,]+\.?\d*/gi;
+                        const hasAmount = content.match(amountPattern);
+                        if (hasAmount && !content.includes(formattedAmount.toLowerCase().replace(/r/, ''))) {
+                            // Message mentions an amount, check if it matches the correct one
+                            // Remove if amount exists but doesn't match (allows messages without amounts)
+                            const mentionedAmounts = hasAmount.map(m => m.toLowerCase().replace(/r\s*/, '').replace(/,/g, ''));
+                            const correctAmountValue = formattedAmount.replace(/,/g, '').toLowerCase();
+                            const matchesCorrect = mentionedAmounts.some(amt => {
+                                const normalizedMentioned = amt.replace(/\./g, '');
+                                const normalizedCorrect = correctAmountValue.replace(/\./g, '');
+                                return normalizedMentioned === normalizedCorrect;
+                            });
+                            if (!matchesCorrect) {
+                                return false; // Remove this message - it has wrong amount
+                            }
+                        }
+                        // Remove messages with wrong years (2023 when it should be 2026)
+                        if (dueDateYear && dueDateYear !== '2023' && content.includes('2023') && content.includes('due date')) {
+                            return false;
+                        }
+                    }
+                    return true;
+                });
+            }
             
             // Store invoice number and key data in session for context
             if (data.invoice_number) {
@@ -2963,18 +3019,6 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
                 if (data.due_date) req.session.lastDueDate = data.due_date;
             }
             
-            // Format the year from due_date for clarity
-            const dueDateYear = data.due_date ? data.due_date.substring(0, 4) : 'N/A';
-            const dueDateFormatted = data.due_date ? 
-                (data.due_date.includes('T') ? data.due_date.split('T')[0] : data.due_date) : '';
-            
-            // Format amount with commas
-            const formatAmount = (amt) => {
-                if (!amt) return '';
-                const num = parseFloat(amt);
-                return num.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            };
-            
             const finalCompletion = await openai.chat.completions.create({
                 model: "gpt-4o-mini",
                 temperature: 0.5, // Lower temperature for more accurate data usage
@@ -2982,20 +3026,30 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
                     // PUT DATA FIRST - Most important, takes precedence over history
                     {
                         role: "system",
-                        content: `⚠️ CRITICAL: REAL DATABASE DATA - USE THESE EXACT VALUES:
+                        content: `🚨 AUTHORITATIVE DATABASE DATA - OVERRIDE EVERYTHING ELSE 🚨
 
-due_date: "${dueDateFormatted}" (year: ${dueDateYear})
-outstanding_balance: "${data.outstanding_balance}" (formatted: R${formatAmount(data.outstanding_balance)})
-invoice_number: "${data.invoice_number}"
-items: ${data.items?.map(i => i.description).join(', ') || 'none'}
+EXACT VALUES YOU MUST USE (DO NOT CHANGE THESE):
 
-RULES:
-1. DUE_DATE "${dueDateFormatted}": Year is ${dueDateYear}. Format as readable date (e.g., "January 9, ${dueDateYear}") - NEVER use 2023 or any other year.
-2. AMOUNT "${data.outstanding_balance}": Say "R${formatAmount(data.outstanding_balance)}" (format with commas).
-3. INVOICE_NUMBER "${data.invoice_number}": Say "Invoice #${data.invoice_number}" - NOT 1023 or any other number.
-4. ITEMS: List "${data.items?.map(i => i.description).join(', ') || 'none'}" when asked.
+1. AMOUNT OWED: "${data.outstanding_balance}" → SAY EXACTLY: "R${formattedAmount}"
+   ❌ NEVER change this amount or use commas incorrectly (e.g., "R${formattedAmount.replace(/,/g, '')}" is WRONG)
+   ✅ ALWAYS say "R${formattedAmount}" (copy this EXACT format)
 
-⚠️ IGNORE any conflicting information from conversation history. Use ONLY the values above.`
+2. DUE DATE: "${dueDateFormatted}" (year: ${dueDateYear}) → SAY EXACTLY: "${formattedDate}"
+   ❌ NEVER say "December 15, 2023" or any other date
+   ✅ ALWAYS say "${formattedDate}"
+
+3. INVOICE NUMBER: "${data.invoice_number}" → SAY EXACTLY: "Invoice #${data.invoice_number}"
+   ❌ NEVER say "1023" or any other number
+   ✅ ALWAYS say "Invoice #${data.invoice_number}"
+
+4. ITEMS: ${data.items?.map(i => i.description).join(', ') || 'none'}
+   ✅ List these EXACT descriptions when asked about items/services
+
+🚨 CRITICAL: These values OVERRIDE conversation history, training data, and any other source.
+🚨 The AMOUNT "${data.outstanding_balance}" formatted as "R${formattedAmount}" is AUTHORITATIVE.
+🚨 The DUE DATE "${dueDateFormatted}" formatted as "${formattedDate}" is AUTHORITATIVE.
+🚨 The INVOICE NUMBER "${data.invoice_number}" is AUTHORITATIVE.
+🚨 IGNORE any conflicting values from history or training data. Use ONLY the values above.`
                     },
                     { role: "system", content: CHATBOT_SYSTEM_PROMPT },
                     // History comes AFTER data (less priority)
