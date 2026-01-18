@@ -3094,27 +3094,50 @@ form .glow-wrap .link-content:hover {
     100% { transform: translateY(-100px) scale(1); opacity: 0; }
 }
 
-/* Mobile Responsive */
+/* Mobile Responsive Improvements */
 @media (max-width: 768px) {
+    .testimonials-hero {
+        /* Drastically reduced from 330px to 60px to push content up */
+        padding: 80px 20px 70px; 
+        min-height: auto;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .testimonials-title {
+        /* Resetting margins to 0 so they don't fight with the padding */
+        margin-top: 0 !important; 
+        margin-bottom: 20px !important;
+    }
+
+    .testimonials-title h1 {
+        font-size: 1.8rem; /* Slightly larger for better mobile readability */
+        margin-bottom: 10px;
+    }
+
     .testimonials-orb-container {
-        height: 550px;
-        padding: 0 20px;
+        /* Remove negative margins and let height be dynamic */
+        margin: 0 auto !important; 
+        height: auto;
+        min-height: 400px; /* Ensures enough space for the cards */
+        width: 100%;
+        padding: 20px 0;
     }
 
     .testimonial-orb {
-        width: 90%;
-        max-width: 350px;
-        padding: 25px;
+        width: 95%; /* Use more screen width on mobile */
+        max-width: 340px;
+        padding: 20px;
+        /* Position them relatively so they stack properly in the container */
+        position: relative; 
+        transform: scale(1) !important; /* Keep active card full size */
     }
 
+    /* Hide the 'prev' and 'next' orbs on mobile to avoid horizontal scroll/clutter */
     .testimonial-orb.prev,
     .testimonial-orb.next {
-        opacity: 0;
-    }
-
-    .testimonials-hero {
-        min-height: auto;
-        padding: 330px 20px 110px;
+        display: none;
     }
 }
 
