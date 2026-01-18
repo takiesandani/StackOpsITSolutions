@@ -2824,7 +2824,7 @@ form .glow-wrap .link-content:hover {
 /* Testimonials Page Unique Styles */
 .testimonials-hero {
     min-height: auto;
-    padding: 300px 20px 60px;
+    padding: 80px 20px 60px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2850,8 +2850,9 @@ form .glow-wrap .link-content:hover {
 
 .testimonials-title {
     text-align: center;
-    margin-bottom: -60px;
-    margin-top: -260px;
+    /* Change 5: Use standard margins to give content room to breathe */
+    margin-bottom: 40px;
+    margin-top: 0; 
     z-index: 2;
     position: relative;
 }
@@ -2884,11 +2885,17 @@ form .glow-wrap .link-content:hover {
     position: relative;
     width: 100%;
     max-width: 1200px;
-    height: 500px;
-    margin: -80px auto;
+    /* Change 1: Remove fixed height, use min-height */
+    min-height: 400px; 
+    /* Change 2: Use grid to stack orbs in one spot without absolute positioning issues */
+    display: grid;
+    place-items: center;
+    margin: 40px auto; /* Removed negative margins which cause overlap */
     perspective: 1200px;
     z-index: 2;
-    overflow: hidden;
+    /* Change 3: Ensure floating doesn't get cut off */
+    overflow: visible; 
+    padding: 40px 0; 
 }
 
 .testimonials-slider {
@@ -2901,35 +2908,31 @@ form .glow-wrap .link-content:hover {
 }
 
 .testimonial-orb {
-    position: absolute;
-    width: 380px;
+    /* Change 4: Assign all orbs to the same grid cell */
+    grid-area: 1 / 1 / 2 / 2; 
+    position: relative; /* Changed from absolute */
+    width: 100%;
+    max-width: 450px; /* Slightly wider for better text flow */
     padding: 35px;
     background: rgba(255, 255, 255, 0.05);
     backdrop-filter: blur(15px);
     border: 1px solid rgba(0, 110, 255, 0.4);
     border-radius: 25px;
-    box-shadow: 0 10px 40px rgba(0, 110, 255, 0.3);
-    cursor: pointer;
+    
+    /* Keep your existing transitions and styles */
     opacity: 0;
-    transform: translate3d(100px, 0, 0) scale(0.8) rotateY(20deg);
-    transform-style: preserve-3d;
-    transform-origin: center center;
-    z-index: 1;
-    will-change: transform, opacity;
-    backface-visibility: hidden;
-    -webkit-backface-visibility: hidden;
-    /* Smooth transitions only for opacity and slideshow position changes */
-    transition: opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1), 
-                transform 0.9s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    pointer-events: none; /* Prevent clicking hidden orbs */
+    transform: scale(0.8);
+    transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .testimonial-orb.active {
     opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1) rotateY(0deg);
+    pointer-events: all;
+    transform: scale(1);
     z-index: 10;
-    /* Animation handles the floating movement - smooth easing */
+    /* Animation handles the floating movement */
     animation: continuous-float 8s ease-in-out infinite;
-    transition: opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .testimonial-orb.prev {
@@ -3025,21 +3028,8 @@ form .glow-wrap .link-content:hover {
 }
 
 @keyframes continuous-float {
-    0% { 
-        transform: translate3d(0, 0, 0) scale(1) rotateY(0deg);
-    }
-    25% { 
-        transform: translate3d(12px, -18px, 0) scale(1) rotateY(1.5deg);
-    }
-    50% { 
-        transform: translate3d(-8px, -22px, 0) scale(1) rotateY(-1.5deg);
-    }
-    75% { 
-        transform: translate3d(-12px, -12px, 0) scale(1) rotateY(0.8deg);
-    }
-    100% { 
-        transform: translate3d(0, 0, 0) scale(1) rotateY(0deg);
-    }
+    0%, 100% { transform: translate3d(0, 0, 0); }
+    50% { transform: translate3d(0, -20px, 0); } /* Simplified for stability */
 }
 
 @keyframes side-float-left {
