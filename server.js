@@ -11,6 +11,10 @@ const fs = require('fs');
 const OpenAI = require('openai');
 const {SecretManagerServiceClient} = require('@google-cloud/secret-manager');
 
+// invoice payment endpoints 
+require("dotenv").config();
+
+
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -1514,134 +1518,172 @@ app.post('/api/admin/invoices/preview', authenticateToken, async (req, res) => {
     }
 });
 
-// Create invoice
 app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
-    try {
-        if (!pool) {
-            return res.status(500).json({ error: 'Database connection unavailable' });
-        }
-        const { CompanyID, UserID, InvoiceDate, DueDate, TotalAmount, Status, Items } = req.body;
-        
-        // Get next invoice number
-        const [maxInvoice] = await pool.query('SELECT MAX(InvoiceNumber) as maxNum FROM Invoices');
-        const nextInvoiceNumber = (maxInvoice[0]?.maxNum || 0) + 1;
-        
-        // Use a transaction
-        const connection = await pool.getConnection();
-        await connection.beginTransaction();
-
-        try {
-            const [result] = await connection.query(
-                `INSERT INTO Invoices (CompanyID, InvoiceDate, DueDate, TotalAmount, Status, InvoiceNumber)
-                 VALUES (?, ?, ?, ?, ?, ?)`,
-                [CompanyID, InvoiceDate, DueDate, TotalAmount, Status || 'Pending', nextInvoiceNumber]
-            );
-            
-            const invoiceId = result.insertId;
-
-            // Insert items if provided
-            if (Items && Items.length > 0) {
-                // Bulk insert items
-                for (const item of Items) {
-                    await connection.query(
-                        `INSERT INTO InvoiceItems (InvoiceID, Description, Quantity, UnitPrice)
-                         VALUES (?, ?, ?, ?)`,
-                        [invoiceId, item.Description, item.Quantity, item.UnitPrice]
-                    );
-                }
-            }
-
-            // Fetch company and client details for PDF and Email
-            const [companyRows] = await connection.query(
-                'SELECT companyname AS CompanyName, address, city, state, zipcode FROM Companies WHERE ID = ?', 
-                [CompanyID]
-            );
-            const [clientRows] = await connection.query(
-                'SELECT firstname, lastname, email FROM Users WHERE ID = ?', 
-                [UserID]
-            );
-            
-            const companyData = companyRows[0];
-            const clientData = clientRows[0];
-
-            if (!clientData) {
-                throw new Error(`Client with ID ${UserID} not found`);
-            }
-            if (!companyData) {
-                throw new Error(`Company with ID ${CompanyID} not found`);
-            }
-
-            await connection.commit();
-            const invoiceData = {
-                InvoiceNumber: nextInvoiceNumber,
-                InvoiceDate,
-                DueDate,
-                TotalAmount
-            };
-            
-            // Generate PDF
-            const pdfBuffer = await generateInvoicePDF(invoiceData, Items, companyData, clientData);
-
-            // Send Email
-            const emailBody = `
-                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-                    <p>Good day ${clientData.lastname},</p>
-                    <p>I hope this email finds you well.</p>
-                    <p>Please find the attached document below as your invoice.</p>
-                    <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
-                        <tr>
-                            <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 150px;">Invoice Number:</td>
-                            <td style="padding: 10px; border: 1px solid #ddd;">#${nextInvoiceNumber}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold;">Invoice Date:</td>
-                            <td style="padding: 10px; border: 1px solid #ddd;">${new Date(InvoiceDate).toLocaleDateString()}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold;">Due Date:</td>
-                            <td style="padding: 10px; border: 1px solid #ddd;">${new Date(DueDate).toLocaleDateString()}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold;">Total Amount:</td>
-                            <td style="padding: 10px; border: 1px solid #ddd;">R${parseFloat(TotalAmount).toFixed(2)}</td>
-                        </tr>
-                    </table>
-                    <p style="margin-top: 20px;">If you have any questions, please contact us at billing@stackopsit.co.za or 011 568 9337.</p>
-                    <p>Best regards,<br><b>StackOps IT Solutions Team</b></p>
-                </div>
-            `;
-
-            try {
-                await sendBillingEmail( // email is sent from the billing email not the general email
-                    clientData.email, 
-                    `Invoice #${nextInvoiceNumber} from StackOps IT Solutions`, 
-                    emailBody, 
-                    true,
-                    [{
-                        filename: `Invoice_${nextInvoiceNumber}.pdf`,
-                        content: pdfBuffer
-                    }]
-                );
-                res.json({ InvoiceID: invoiceId, InvoiceNumber: nextInvoiceNumber, message: 'Invoice created and sent successfully' });
-            } catch (emailError) {
-                console.error('Invoice created but email failed:', emailError);
-                res.json({ 
-                    InvoiceID: invoiceId, 
-                    InvoiceNumber: nextInvoiceNumber, 
-                    message: 'Invoice created successfully, but there was an error sending the email. Please send it manually.',
-                    emailError: emailError.message 
-                });
-            }
-        } catch (innerError) {
-            if (connection) await connection.rollback();
-            throw innerError;
-        } finally {
-            if (connection) connection.release();
-        }
-    } catch (error) {
-        console.error('Error creating invoice:', error);
-        res.status(500).json({ error: 'Failed to create invoice' });
+  try {
+    if (!pool) {
+      return res.status(500).json({ error: 'Database connection unavailable' });
     }
+    const { CompanyID, UserID, InvoiceDate, DueDate, TotalAmount, Status, Items } = req.body;
+    
+    // Get next invoice number
+    const [maxInvoice] = await pool.query('SELECT MAX(InvoiceNumber) as maxNum FROM Invoices');
+    const nextInvoiceNumber = (maxInvoice[0]?.maxNum || 0) + 1;
+    
+    // Use a transaction
+    const connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    try {
+      const [result] = await connection.query(
+        `INSERT INTO Invoices (CompanyID, InvoiceDate, DueDate, TotalAmount, Status, InvoiceNumber)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [CompanyID, InvoiceDate, DueDate, TotalAmount, Status || 'Pending', nextInvoiceNumber]
+      );
+      
+      const invoiceId = result.insertId;
+
+      // Insert items if provided
+      if (Items && Items.length > 0) {
+        for (const item of Items) {
+          await connection.query(
+            `INSERT INTO InvoiceItems (InvoiceID, Description, Quantity, UnitPrice)
+             VALUES (?, ?, ?, ?)`,
+            [invoiceId, item.Description, item.Quantity, item.UnitPrice]
+          );
+        }
+      }
+
+      // NEW: Create YOCO payment for the invoice
+      let paymentUrl = null;
+      let yocoCheckoutId = null;
+      try {
+        const yocoSecretKey = await getSecret('YOCO_SECRET_KEY');
+        if (!yocoSecretKey) {
+          throw new Error('YOCO secret key not found in Secret Manager or environment variables');
+        }
+
+        const amountInCents = Math.round(parseFloat(TotalAmount) * 100);  // Convert to cents
+        const yocoResponse = await fetch("https://payments.yoco.com/api/checkouts", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${yocoSecretKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            amount: amountInCents,
+            currency: "ZAR",
+            description: `Payment for Invoice #${nextInvoiceNumber}`
+          })
+        });
+
+        const yocoData = await yocoResponse.json();
+        if (yocoData.id && yocoData.redirectUrl) {
+          paymentUrl = yocoData.redirectUrl;
+          yocoCheckoutId = yocoData.id;
+
+          // Store in yoco_payments table
+          await connection.query(
+            "INSERT INTO yoco_payments (invoice_id, yoco_checkout_id, redirect_url, amount, status) VALUES (?, ?, ?, ?, 'pending')",
+            [invoiceId, yocoCheckoutId, paymentUrl, amountInCents]
+          );
+        }
+      } catch (yocoError) {
+        console.error("Error creating YOCO payment:", yocoError);
+        // Continue without payment link; email will note this
+      }
+
+      // Fetch company and client details for PDF and Email
+      const [companyRows] = await connection.query(
+        'SELECT companyname AS CompanyName, address, city, state, zipcode FROM Companies WHERE ID = ?', 
+        [CompanyID]
+      );
+      const [clientRows] = await connection.query(
+        'SELECT firstname, lastname, email FROM Users WHERE ID = ?', 
+        [UserID]
+      );
+      
+      const companyData = companyRows[0];
+      const clientData = clientRows[0];
+
+      if (!clientData) {
+        throw new Error(`Client with ID ${UserID} not found`);
+      }
+      if (!companyData) {
+        throw new Error(`Company with ID ${CompanyID} not found`);
+      }
+
+      await connection.commit();
+      const invoiceData = {
+        InvoiceNumber: nextInvoiceNumber,
+        InvoiceDate,
+        DueDate,
+        TotalAmount
+      };
+      
+      // Generate PDF
+      const pdfBuffer = await generateInvoicePDF(invoiceData, Items, companyData, clientData);
+
+      // UPDATED: Send Email with Payment Link
+      const emailBody = `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <p>Good day ${clientData.lastname},</p>
+            <p>I hope this email finds you well.</p>
+            <p>Please find the attached document below as your invoice.</p>
+            <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 150px;">Invoice Number:</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">#${nextInvoiceNumber}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold;">Invoice Date:</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">${new Date(InvoiceDate).toLocaleDateString()}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold;">Due Date:</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">${new Date(DueDate).toLocaleDateString()}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold;">Total Amount:</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">R${parseFloat(TotalAmount).toFixed(2)}</td>
+                </tr>
+            </table>
+            ${paymentUrl ? `<p style="margin-top: 20px;"><strong>Payment Link:</strong> <a href="${paymentUrl}" target="_blank">Click here to pay securely via YOCO</a></p>` : '<p style="margin-top: 20px; color: red;">Note: Payment link could not be generated. Please contact support for payment instructions.</p>'}
+            <p>If you have any questions, please contact us at billing@stackopsit.co.za or 011 568 9337.</p>
+            <p>Best regards,<br><b>StackOps IT Solutions Team</b></p>
+        </div>
+      `;
+
+      try {
+        await sendBillingEmail(
+          clientData.email, 
+          `Invoice #${nextInvoiceNumber} from StackOps IT Solutions`, 
+          emailBody, 
+          true,
+          [{
+            filename: `Invoice_${nextInvoiceNumber}.pdf`,
+            content: pdfBuffer
+          }]
+        );
+        res.json({ InvoiceID: invoiceId, InvoiceNumber: nextInvoiceNumber, message: 'Invoice created and sent successfully' });
+      } catch (emailError) {
+        console.error('Invoice created but email failed:', emailError);
+        res.json({ 
+          InvoiceID: invoiceId, 
+          InvoiceNumber: nextInvoiceNumber, 
+          message: 'Invoice created successfully, but there was an error sending the email. Please send it manually.',
+          emailError: emailError.message 
+        });
+      }
+    } catch (innerError) {
+      if (connection) await connection.rollback();
+      throw innerError;
+    } finally {
+      if (connection) connection.release();
+    }
+  } catch (error) {
+    console.error('Error creating invoice:', error);
+    res.status(500).json({ error: 'Failed to create invoice' });
+  }
 });
 
 // Get invoice items
@@ -2119,6 +2161,107 @@ app.get('/api/admin/companies/:id/details', authenticateToken, async (req, res) 
         console.error('Error fetching company details:', error);
         res.status(500).json({ error: 'Failed to fetch company details' });
     }
+});
+
+//=======================================================================================//
+//                       payment endpoints would go here                                 //
+//=======================================================================================//
+// YOCO Payment Creation (unchanged, for general use)
+app.post("/create-payment", async (req, res) => {
+  const { amount, description } = req.body;
+
+  try {
+    // Fetch YOCO secret key from Google Cloud Secret Manager
+    const yocoSecretKey = await getSecret('YOCO_SECRET_KEY');
+    if (!yocoSecretKey) {
+      throw new Error('YOCO secret key not found in Secret Manager or environment variables');
+    }
+
+    const response = await fetch("https://payments.yoco.com/api/checkouts", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${yocoSecretKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        amount: parseInt(amount),
+        currency: "ZAR",
+        description
+      })
+    });
+
+    const data = await response.json();
+
+    // SAVE TO DATABASE AS PENDING (your existing payments table for YOCO)
+    db.query(
+      "INSERT INTO payments (yoco_checkout_id, amount, description, status) VALUES (?, ?, ?, ?)",
+      [data.id, amount, description, "pending"]
+    );
+
+    res.json({
+      paymentUrl: data.redirectUrl
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Payment creation failed" });
+  }
+});
+
+// YOCO WEBHOOK (UPDATED: Now handles invoice payments and updates both tables)
+// YOCO WEBHOOK (UPDATED: Now handles invoice payments and updates both tables)
+app.post("/webhook/yoco", (req, res) => {
+  const event = req.body;
+
+  if (event.type === "checkout.paid") {
+    const checkoutId = event.payload.id;
+
+    // Find the YOCO payment record linked to an invoice
+    pool.query(
+      "SELECT invoice_id, amount FROM yoco_payments WHERE yoco_checkout_id = ? AND status = 'pending'",
+      [checkoutId],
+      (err, results) => {
+        if (err || results.length === 0) {
+          console.error("YOCO payment not found or error:", err);
+          return res.sendStatus(200);  // Acknowledge but don't process
+        }
+
+        const { invoice_id, amount } = results[0];
+        const amountInRands = amount / 100;  // Convert cents to rands
+
+        // Update invoice status to 'Paid'
+        pool.query(
+          "UPDATE Invoices SET Status = 'Paid' WHERE InvoiceID = ?",
+          [invoice_id],
+          (updateErr) => {
+            if (updateErr) {
+              console.error("Error updating invoice status:", updateErr);
+              return res.sendStatus(200);
+            }
+
+            // Insert into Payments table (your existing schema)
+            pool.query(
+              "INSERT INTO Payments (InvoiceID, AmountPaid, PaymentDate, Method) VALUES (?, ?, CURDATE(), 'YOCO')",
+              [invoice_id, amountInRands],
+              (insertErr) => {
+                if (insertErr) {
+                  console.error("Error inserting into Payments table:", insertErr);
+                }
+
+                // Update YOCO payment status to 'paid'
+                pool.query(
+                  "UPDATE yoco_payments SET status = 'paid' WHERE yoco_checkout_id = ?",
+                  [checkoutId]
+                );
+              }
+            );
+          }
+        );
+      }
+    );
+  }
+
+  res.sendStatus(200);
 });
 
 // ============================================

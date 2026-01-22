@@ -102,7 +102,7 @@
                 setIsTyping(true);
                 setTimeout(() => {
                     setIsTyping(false);
-                    addMessage('bot', `Hi ${firstName}, how may I help?`, ['View Latest Invoice', 'View All Invoices', 'Make Payments', 'Project Updates', 'Security Analytics', 'Ticket Status']);
+                    addMessage('bot', `Hi ${firstName}, how may I help?`, [ 'Make Payments', 'Contact Support']);
                 }, 800);
             }, 100);
         } else {
