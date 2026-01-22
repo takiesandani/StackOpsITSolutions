@@ -2209,7 +2209,6 @@ app.post("/create-payment", async (req, res) => {
 });
 
 // YOCO WEBHOOK (UPDATED: Now handles invoice payments and updates both tables)
-// YOCO WEBHOOK (UPDATED: Now handles invoice payments and updates both tables)
 app.post("/webhook/yoco", (req, res) => {
   const event = req.body;
 
@@ -2264,11 +2263,140 @@ app.post("/webhook/yoco", (req, res) => {
   res.sendStatus(200);
 });
 
-// ============================================
-// CHATBOT CONFIGURATION
-// ============================================
+//===========================================================================================================//
+//                                       DUO API INTEGRATION                                                 //
+//===========================================================================================================//
 
-// Initialize Secret Manager client
+/**
+ * QUEST: Sign Duo Request
+ * Replicates the Postman signature logic using HMAC-SHA1
+ */
+function signDuoRequest(method, host, path, params, skey, date) {
+    const paramString = Object.keys(params).sort().map(k => `${k}=${params[k]}`).join('&');
+    const canon = [date, method.toUpperCase(), host.toLowerCase(), path, paramString].join('\n');
+    return crypto.createHmac('sha1', skey).update(canon).digest('hex');
+}
+
+/**
+ * QUEST: Hourly Sync Engine
+ * Updates 'used_licenses' for all linked clients without fetching private user lists
+ */
+async function syncDuoData() {
+    console.log('[Duo Sync] Awakening Sync Engine... 🤖');
+    try {
+        // 1. Fetch SECURE credentials from Google Cloud Vault
+        const ikey = await getSecret('DUO_IKEY');
+        const skey = await getSecret('DUO_SKEY');
+
+        if (!ikey || !skey) {
+            console.error('[Duo Sync] Mission Aborted: Keys not found in Secret Manager.');
+            return;
+        }
+
+        // 2. Get the list of clients from your bridge table
+        const [clients] = await pool.query("SELECT * FROM client_duo_stats");
+
+        for (const client of clients) {
+            const date = new Date().toUTCString();
+            
+            // OPTIMIZATION: We set limit=0 to get the count (metadata) WITHOUT the user names
+            const params = { 
+                account_id: client.duo_account_id,
+                limit: '0' 
+            };
+            
+            const targetHost = client.duo_api_hostname;
+            const path = "/admin/v1/users";
+
+            // Sign the request
+            const signature = signDuoRequest("GET", targetHost, path, params, skey, date);
+            
+            // Construct URL with params
+            const url = `https://${targetHost}${path}?account_id=${client.duo_account_id}&limit=0`;
+
+            const response = await fetch(url, {
+                headers: {
+                    'Date': date,
+                    'Authorization': 'Basic ' + Buffer.from(`${ikey}:${signature}`).toString('base64')
+                }
+            });
+
+            const data = await response.json();
+
+
+            
+            if (data.stat === 'OK') {
+                const usedCount = data.metadata.total_objects;
+                
+                // Diagnostic Update
+                const [result] = await pool.query(
+                    "UPDATE client_duo_stats SET used_licenses = ?, last_updated = NOW() WHERE id = ?",
+                    [usedCount, client.id]
+                );
+
+                if (result.affectedRows > 0) {
+                    console.log(`[Duo Sync Success] Row ID ${client.id} updated! New count: ${usedCount} 📊`);
+                } else {
+                    console.log(`[Duo Sync Warning] No rows updated. Does ID ${client.id} exist in the table? ❓`);
+                }
+            } else {
+                console.error(`[Duo Sync] API Error for User ${client.user_id}:`, data.message);
+            }
+        }
+    } catch (error) {
+        console.error('[Duo Sync] Critical System Failure:', error);
+    }
+}
+
+// --- TEST MODE: Run once immediately on startup ---
+console.log("[Test] Manually triggering first Duo Sync...");
+syncDuoData(); 
+
+// Then keep the hourly loop
+setInterval(syncDuoData, 60 * 60 * 1000);
+
+/**
+ * QUEST: Secure Dashboard Endpoint
+ * Allows a logged-in client to see their license totals ONLY.
+ */
+app.get('/api/client/duo-stats', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user.id; // Extracted from JWT token
+
+        const [rows] = await pool.query(
+            `SELECT 
+                edition, 
+                used_licenses, 
+                total_purchased, 
+                (total_purchased - used_licenses) AS remaining_licenses,
+                status, 
+                last_updated 
+             FROM client_duo_stats 
+             WHERE user_id = ?`, 
+            [userId]
+        );
+
+        if (rows.length === 0) {
+            return res.status(404).json({ message: "No Duo account linked to your profile." });
+        }
+
+        const data = rows[0];
+
+        // Map API internal names to User-Friendly names for the Game UI
+        if (data.edition === 'ENTERPRISE') data.edition = 'Essentials 🛡️';
+        if (data.edition === 'PLATFORM') data.edition = 'Advantage ⚔️';
+        if (data.edition === 'BEYOND') data.edition = 'Premier 💎';
+
+        res.json(data);
+    } catch (error) {
+        console.error('[Dashboard Error]:', error);
+        res.status(500).json({ error: 'Internal server error while fetching stats.' });
+    }
+});
+
+// ====================================================================================================//
+//                                 GOOGLE CLOUD SECRET MANAGER SETUP                                   //
+// ====================================================================================================//
 const secretClient = new SecretManagerServiceClient();
 
 // Function to get secret from Google Cloud Secret Manager
@@ -2285,6 +2413,11 @@ async function getSecret(secretName) {
         return process.env[secretName] || null;
     }
 }
+// ====================================================================================================//
+//                                       CHATBOT CONFIGURATION                                         //
+// ====================================================================================================//
+
+
 
 // Initialize OpenAI client with secret from Secret Manager
 let openai = null;
@@ -3385,6 +3518,7 @@ The requested information is available. Please summarize it in natural, conversa
         return res.status(500).json(createErrorResponse("An unexpected error occurred. Please try again later."));
     }
 });
+
 
 // Serve static files from the project root directory
 app.use(express.static(__dirname));
