@@ -11,18 +11,18 @@ const mockProjects = [
         id: 1,
         name: "Cisco Duo Licences",
         type: "Enterprise Identity & Access Management",
-        status: "Active",
+        status: "Syncing...", // Changed from Active
         risks: { critical: 0, high: 0, medium: 0 },
         securityScore: 100,
         uptime: 100,
-        lastUpdate: "Updated just now",
+        lastUpdate: "Checking database...",
         icon: "fas fa-shield-check",
         cardMetrics: [
-            { label: "Total Licences", value: ": 250", icon: "fas fa-id-card" },
-            { label: "Active Usage", value: ": 185", icon: "fas fa-user-check" },
-            { label: "Remaining Licences", value: ": 65", icon: "fas fa-user-plus" }
+            { label: "Total Licences", value: ": ...", icon: "fas fa-id-card" },
+            { label: "Active Usage", value: ": ...", icon: "fas fa-user-check" },
+            { label: "Remaining Licences", value: ": ...", icon: "fas fa-user-plus" }
         ],
-        cardFooter: "Licence Status: Healthy",
+        cardFooter: "Verifying...",
         noDashboard: true
     },
     {
@@ -558,17 +558,38 @@ async function fetchDuoStats() {
 
     try {
         const response = await fetch('/api/duo-stats', {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
+            headers: { 'Authorization': `Bearer ${token}` }
         });
         
         if (response.ok) {
             const data = await response.json();
-            updateDuoProjectData(data);
+            
+            // Targeted Strike: Find the Duo object and overwrite it with DB data
+            const duoProject = mockProjects.find(p => p.name === "Cisco Duo Licences");
+            
+            if (duoProject) {
+                duoProject.status = "Active";
+                duoProject.cardMetrics = [
+                    { label: "Total Licences", value: `: ${data.total_licenses}`, icon: "fas fa-id-card" },
+                    { label: "Active Usage", value: `: ${data.used_licenses}`, icon: "fas fa-user-check" },
+                    { label: "Remaining Licences", value: `: ${data.remaining_licenses}`, icon: "fas fa-user-plus" }
+                ];
+                
+                // Set health status based on remaining count
+                duoProject.cardFooter = data.remaining_licenses <= 2 ? "Status: Critical Limit" : "Status: Healthy";
+                duoProject.lastUpdate = `Synced: ${data.last_sync}`;
+
+                // RE-RENDER: This forces the HTML to rebuild using the new DB values
+                displayCurrentProject();
+            }
         }
     } catch (error) {
         console.error('Error fetching Duo stats:', error);
+        const duoProject = mockProjects.find(p => p.name === "Cisco Duo Licences");
+        if(duoProject) {
+            duoProject.status = "Offline";
+            displayCurrentProject();
+        }
     }
 }
 
@@ -585,6 +606,43 @@ function updateDuoProjectData(data) {
         
         // Re-display if currently visible
         displayCurrentProject();
+    }
+}
+
+/**
+ * Mission: Replace Mock Duo Data with Real API Data 🛰️
+ */
+async function syncCiscoCardData() {
+    try {
+        const token = localStorage.getItem('token'); // Get your JWT
+        const response = await fetch('/api/duo-stats', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!response.ok) throw new Error('Duo stats offline');
+
+        const data = await response.json();
+
+        // 1. Find the Cisco Duo project in your mockProjects array
+        const duoProject = mockProjects.find(p => p.name === "Cisco Duo Licences");
+
+        if (duoProject) {
+            // 2. Inject the real data into the metrics
+            duoProject.cardMetrics = [
+                { label: "Total Licences", value: `: ${data.total_licenses}`, icon: "fas fa-id-card" },
+                { label: "Active Usage", value: `: ${data.used_licenses}`, icon: "fas fa-user-check" },
+                { label: "Remaining Licences", value: `: ${data.remaining_licenses}`, icon: "fas fa-user-plus" }
+            ];
+            
+            // 3. Update the footer with the real sync time
+            duoProject.lastUpdate = `Synced: ${data.last_sync}`;
+            duoProject.cardFooter = `Tier: ${data.edition}`;
+
+            // 4. Refresh the UI
+            renderProjects(); 
+        }
+    } catch (error) {
+        console.error("Duo UI Sync Failed:", error);
     }
 }
 
