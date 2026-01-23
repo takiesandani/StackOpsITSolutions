@@ -278,65 +278,83 @@
     letter-spacing: 4px;
 }
 
-/* Glow-wrap-face3 for Login Button */
-.mfa-section .glow-wrap-face3 {
+/* =====================================
+   GLOW BUTTON (LOGIN + MFA)
+===================================== */
+
+.glow-wrap-face3 {
     position: relative;
     width: 60%;
-    max-width: 100%;
     height: 50px;
+    margin: 15px auto 0;
     border-radius: 25px;
     overflow: hidden;
-    box-shadow: 0 4px 15px rgba(0, 110, 255, 0.199);
-    transition: transform 0.2s ease;
-    margin: 10px auto 0;
+    transition: transform 0.25s ease;
 }
 
-.mfa-section .glow-wrap-face3:hover {
+.glow-wrap-face3:hover {
     transform: scale(1.05);
-    animation: live-glow 1.5s infinite alternate;
 }
 
-.mfa-section .glow-wrap-face3 .glowing-border-layer-face3 {
+/* Rotating glow layer */
+.glow-wrap-face3 .glowing-border-layer-face3 {
     position: absolute;
-    top: -80px;
-    left: -80px;
-    width: 360px;
-    height: 210px;
-    z-index: 1;
+    inset: -150%;
+    border-radius: 50%;
     background: conic-gradient(
-        #0267ff 0%,
-        hsla(207, 100%, 50%, 0) 25%,
-        #0084ff00 50%,
-        #0077ff00 75%,
-        #0077ff 100%
+        from 0deg,
+        #0267ff,
+        transparent 30%,
+        transparent 60%,
+        #0267ff
     );
     animation: spin 3s linear infinite;
+    z-index: 0;
+    pointer-events: none;
 }
 
-.mfa-section .btn-login {
+/* Actual button */
+.glow-wrap-face3 .btn-login {
     position: relative;
+    z-index: 1;
     width: 100%;
-    height: 50px;
-    padding: 0;
-    background: linear-gradient(to right, #0033ff, #2575fc);
-    color: #ffffff !important;
+    height: 100%;
+    border-radius: 25px;
     border: none;
-    box-shadow: 0 4px 15px rgba(38, 117, 252, 0.4);
-    border-radius: 8px;
+    background: linear-gradient(135deg, #0033ff, #2575fc);
+    color: #ffffff;
     font-size: 16px;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.3s;
+
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-top: 20px;
+
+    box-shadow: 0 4px 15px rgba(38, 117, 252, 0.45);
+    transition: all 0.3s ease;
 }
 
-.mfa-section .btn-login:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 5px 15px rgba(38, 117, 252, 0.4);
+.glow-wrap-face3 .btn-login:hover {
+    box-shadow: 0 0 25px rgba(38, 117, 252, 0.85);
 }
+
+.glow-wrap-face3 .btn-login:disabled {
+    background: #cccccc;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+/* Spin animation */
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 
 .mfa-section .btn-login:disabled {
     background: #cccccc;
