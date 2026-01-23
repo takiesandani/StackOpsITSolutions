@@ -30,7 +30,7 @@ const mockProjects = [
         id: 2,
         name: "Microsoft 365 security & health",
         type: "Proactive tenant security insights",
-        status: "Active",
+        status: "inactive",
         risks: { critical: 2, high: 3, medium: 5 },
         securityScore: 92,
         uptime: 99.8,
@@ -46,7 +46,7 @@ const mockProjects = [
         id: 3,
         name: "Support & Service desk",
         type: "Real-time support visibility and tracking",
-        status: "Active",
+        status: "inactive",
         risks: { critical: 1, high: 2, medium: 3 },
         securityScore: 88,
         uptime: 99.5,
@@ -60,25 +60,9 @@ const mockProjects = [
     },
     {
         id: 4,
-        name: "Projects",
-        type: "Project Activity Feed",
-        status: "Active",
-        risks: { critical: 0, high: 1, medium: 2 },
-        securityScore: 95,
-        uptime: 99.9,
-        lastUpdate: "3 hours ago",
-        icon: "fas fa-network-wired",
-        cardMetrics: [
-            { label: "0365 Security Audit", value: "", icon: "fas fa-file-alt" },
-            { label: "0365 Identity and access management", value: "", icon: "fas fa-wrench"}
-        ],
-        cardFooter: "Last project update: 2 days ago"
-    },
-    {
-        id: 5,
         name: "Backup & recovery",
         type: "Automated protection and restore readiness",
-        status: "Active",
+        status: "inactive",
         risks: { critical: 1, high: 1, medium: 1 },
         securityScore: 90,
         uptime: 99.7,
@@ -94,7 +78,7 @@ const mockProjects = [
         id: 6,
         name: "Cloud data services",
         type: "Optomized cloud storage & Database health",
-        status: "Active",
+        status: "inactive",
         risks: { critical: 1, high: 1, medium: 1 },
         securityScore: 90,
         uptime: 99.7,
@@ -828,7 +812,10 @@ function createProjectCard(project) {
                 <h3>${project.name}</h3>
                 <p class="project-type">${project.type}</p>
             </div>
-            <span class="project-status-badge">${project.status}</span>
+            <span class="project-status-badge status-${project.status.toLowerCase()}">
+                ${project.status}
+            </span>
+
         </div>
         <div class="project-info">
             ${metricsHTML}
