@@ -17,6 +17,7 @@ const mockProjects = [
         uptime: 100,
         lastUpdate: "Checking database...",
         icon: "fas fa-shield-check",
+        image: "Images/CiscoDUO.png",
         cardMetrics: [
             { label: "Total Licences", value: ": ...", icon: "fas fa-id-card" },
             { label: "Active Usage", value: ": ...", icon: "fas fa-user-check" },
@@ -821,7 +822,7 @@ function createProjectCard(project) {
     card.innerHTML = `
         <div class="project-card-header">
             <div class="project-icon">
-                <i class="${project.icon}"></i>
+                ${project.image ? `<img src="${project.image}" alt="${project.name}">` : `<i class="${project.icon}"></i>`}
             </div>
             <div class="project-title">
                 <h3>${project.name}</h3>
