@@ -2286,6 +2286,21 @@ function signDuoRequest(method, host, path, params, skey, date) {
     return crypto.createHmac('sha1', skey).update(canon).digest('hex');
 }
 
+// Helper: Map Duo Edition to Marketing Name
+function mapDuoEditionToMarketingName(edition) {
+    if (!edition) return 'Unknown';
+
+    const editionMap = {
+        ENTERPRISE: 'Essentials',
+        PLATFORM: 'Advantage',
+        BEYOND: 'Premier',
+        PERSONAL: 'Free'
+    };
+
+    return editionMap[edition.toUpperCase()] || edition;
+}
+
+
 /**
  * Main Task: Sync Duo Data
  * Fetches user counts and editions for all active clients.
@@ -2396,7 +2411,7 @@ app.get('/api/duo-stats', authenticateToken, async (req, res) => {
             total_licenses: total,
             remaining_licenses: remaining, // 🆕 The requested field
             usage_percent: percentUsed,    // 🆕 Great for UI progress bars
-            edition: stats.edition,
+            edition: mapDuoEditionToMarketingName(stats.edition),
             status: stats.status,
             last_sync: formattedDate,
             account_id: stats.duo_account_id
