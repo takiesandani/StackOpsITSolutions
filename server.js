@@ -2293,39 +2293,26 @@ function signDuoRequest(method, host, path, params, skey, date) {
 async function syncDuoData() {
     console.log('[Duo Sync] Awakening Engine... 🤖');
     try {
-        // 1. Fetch Secure Keys from Google Vault
         const ikey = await getSecret('DUO_IKEY');
         const skey = await getSecret('DUO_SKEY');
+        if (!ikey || !skey) return;
 
-        if (!ikey || !skey) {
-            console.error('[Duo Sync] Mission Aborted: Keys not found.');
-            return;
-        }
-
-        // 2. Get list of clients to sync
-        // Using 'active' to match your recent SQL insert
         const [clients] = await pool.query("SELECT * FROM client_duo_stats WHERE status = 'active' OR status = 'Active'");
         
-        if (clients.length === 0) {
-            console.log('[Duo Sync] No active clients found.');
-            return;
-        }
-
         for (const client of clients) {
             const date = new Date().toUTCString();
             const host = client.duo_api_hostname.trim();
             const accId = client.duo_account_id.trim();
 
-            console.log(`[Duo Sync] Processing Client ID: ${client.user_id}...`);
-
-            // --- PART A: FETCH USER COUNT (Used Licenses) ---
+            // --- PART A: FETCH USER COUNT ---
+            // Try without the limit parameter first - Duo defaults to a count metadata anyway
             const userPath = "/admin/v1/users";
-            const userParams = { account_id: accId, limit: '0' }; // limit 0 = count only (Privacy Mode)
+            const userParams = { account_id: accId }; // Removed limit to see if it clears the error
             
             const userSig = signDuoRequest("GET", host, userPath, userParams, skey, date);
-            const userUrl = `https://${host}${userPath}?account_id=${encodeURIComponent(accId)}&limit=0`;
+            const userUrl = `https://${host}${userPath}?account_id=${encodeURIComponent(accId)}`;
 
-            let userCount = client.used_licenses; // Fallback to current DB value
+            let userCount = client.used_licenses; 
             try {
                 const userRes = await fetch(userUrl, {
                     headers: {
@@ -2336,22 +2323,20 @@ async function syncDuoData() {
                 const userData = await userRes.json();
                 
                 if (userData.stat === 'OK') {
+                    // Duo returns the total in metadata even if you don't fetch the full list
                     userCount = userData.metadata?.total_objects || 0;
                 } else {
-                    console.error(`[Duo Sync] User Count API Error for ${client.user_id}:`, userData.message);
+                    console.error(`[Duo Sync] Count Error for ${client.user_id}:`, userData.message);
                 }
-            } catch (e) {
-                console.error(`[Duo Sync] Network error fetching users:`, e.message);
-            }
+            } catch (e) { console.error(`[Duo Sync] User fetch error:`, e.message); }
 
-            // --- PART B: FETCH ACCOUNT EDITION (Tier) ---
+            // --- PART B: FETCH EDITION (This part is already working!) ---
             const edPath = "/admin/v1/billing/edition";
             const edParams = { account_id: accId };
-            
             const edSig = signDuoRequest("GET", host, edPath, edParams, skey, date);
             const edUrl = `https://${host}${edPath}?account_id=${encodeURIComponent(accId)}`;
 
-            let edition = client.edition; // Fallback to current DB value
+            let edition = client.edition;
             try {
                 const edRes = await fetch(edUrl, {
                     headers: {
@@ -2360,28 +2345,20 @@ async function syncDuoData() {
                     }
                 });
                 const edData = await edRes.json();
-                
                 if (edData.stat === 'OK') {
                     edition = edData.response?.edition || edition;
                 }
-            } catch (e) {
-                console.warn(`[Duo Sync] Network error fetching edition:`, e.message);
-            }
+            } catch (e) { console.warn(`[Duo Sync] Edition fetch error:`, e.message); }
 
             // --- PART C: UPDATE DATABASE ---
-            try {
-                await pool.query(
-                    "UPDATE client_duo_stats SET used_licenses = ?, edition = ?, last_updated = NOW() WHERE id = ?",
-                    [userCount, edition, client.id]
-                );
-                console.log(`[Duo Sync Success] User ${client.user_id} -> Count: ${userCount}, Tier: ${edition} 📊`);
-            } catch (dbErr) {
-                console.error(`[Duo Sync] DB Update failed:`, dbErr.message);
-            }
+            await pool.query(
+                "UPDATE client_duo_stats SET used_licenses = ?, edition = ?, last_updated = NOW() WHERE id = ?",
+                [userCount, edition, client.id]
+            );
+            console.log(`[Duo Sync Success] User ${client.user_id} -> Count: ${userCount}, Tier: ${edition} 📊`);
         }
-        console.log('[Duo Sync] All missions complete. 🏁');
     } catch (error) {
-        console.error('[Duo Sync] Critical System Failure:', error);
+        console.error('[Duo Sync] Critical Failure:', error);
     }
 }
 
