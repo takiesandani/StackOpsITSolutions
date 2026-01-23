@@ -2365,10 +2365,38 @@ async function syncDuoData() {
                 }
             } catch (e) { console.warn(`[Duo Sync] Edition fetch error:`, e.message); }
 
+            // --- PART D: FETCH TOTAL LICENSES ---
+            const billPath = "/admin/v1/billing/summary";
+            const billParams = { account_id: accId };
+            const billSig = signDuoRequest("GET", host, billPath, billParams, skey, date);
+            const billUrl = `https://${host}${billPath}?account_id=${encodeURIComponent(accId)}`;
+
+            let totalLicenses = client.total_licenses;
+
+            try {
+                const billRes = await fetch(billUrl, {
+                    headers: {
+                        'Date': date,
+                        'Authorization': 'Basic ' + Buffer.from(`${ikey}:${billSig}`).toString('base64')
+                    }
+                });
+
+                const billData = await billRes.json();
+
+                if (billData.stat === 'OK') {
+                    totalLicenses = billData.response?.licenses?.total || totalLicenses;
+                } else {
+                    console.error(`[Duo Sync] Billing Error:`, billData.message);
+                }
+            } catch (e) {
+                console.error(`[Duo Sync] Billing fetch error:`, e.message);
+            }
+
+
             // --- PART C: UPDATE DATABASE ---
             await pool.query(
-                "UPDATE client_duo_stats SET used_licenses = ?, edition = ?, last_updated = NOW() WHERE id = ?",
-                [userCount, edition, client.id]
+                "UPDATE client_duo_stats SET used_licenses = ?, total_licenses = ?, edition = ?, last_updated = NOW() WHERE id = ?",
+                [userCount, totalLicenses,edition, client.id]
             );
             console.log(`[Duo Sync Success] User ${client.user_id} -> Count: ${userCount}, Tier: ${edition} 📊`);
         }
