@@ -2266,104 +2266,122 @@ app.post("/webhook/yoco", (req, res) => {
 //===========================================================================================================//
 //                                       DUO API INTEGRATION                                                 //
 //===========================================================================================================//
-
 /**
- * Sign Duo Request (HMAC-SHA1 for DUO API auth)
+ * Helper: Sign Duo Request
+ * Essential for authenticating with Duo's Admin API.
  */
 function signDuoRequest(method, host, path, params, skey, date) {
-    const paramString = Object.keys(params).sort().map(k => `${k}=${params[k]}`).join('&');
+    // 1. Sort the keys alphabetically (Duo requirement)
+    const sortedKeys = Object.keys(params).sort();
+    
+    // 2. Map to 'key=value' format with URL encoding
+    const paramString = sortedKeys
+        .map(k => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`)
+        .join('&');
+        
+    // 3. Create the canonical string for hashing
     const canon = [date, method.toUpperCase(), host.toLowerCase(), path, paramString].join('\n');
+    
+    // 4. Return the HMAC-SHA1 signature
     return crypto.createHmac('sha1', skey).update(canon).digest('hex');
 }
 
 /**
- * Sync DUO Data: Updates used_licenses and edition for active clients in client_duo_stats.
- * Runs immediately on server startup for testing.
+ * Main Task: Sync Duo Data
+ * Fetches user counts and editions for all active clients.
  */
 async function syncDuoData() {
-    console.log('[Duo Sync] Starting...');
+    console.log('[Duo Sync] Awakening Engine... 🤖');
     try {
+        // 1. Fetch Secure Keys from Google Vault
         const ikey = await getSecret('DUO_IKEY');
         const skey = await getSecret('DUO_SKEY');
+
         if (!ikey || !skey) {
-            console.error('[Duo Sync] Missing DUO keys.');
+            console.error('[Duo Sync] Mission Aborted: Keys not found.');
             return;
         }
 
-        const [clients] = await pool.query("SELECT * FROM client_duo_stats WHERE status = 'Active'");
+        // 2. Get list of clients to sync
+        // Using 'active' to match your recent SQL insert
+        const [clients] = await pool.query("SELECT * FROM client_duo_stats WHERE status = 'active' OR status = 'Active'");
+        
         if (clients.length === 0) {
-            console.log('[Duo Sync] No active clients.');
+            console.log('[Duo Sync] No active clients found.');
             return;
         }
 
         for (const client of clients) {
             const date = new Date().toUTCString();
-            const childApiHostname = client.duo_api_hostname;
-            const accountId = client.duo_account_id;
+            const host = client.duo_api_hostname.trim();
+            const accId = client.duo_account_id.trim();
 
-            // Fetch user count
-            const userParams = { account_id: accountId, limit: '0' };
+            console.log(`[Duo Sync] Processing Client ID: ${client.user_id}...`);
+
+            // --- PART A: FETCH USER COUNT (Used Licenses) ---
             const userPath = "/admin/v1/users";
-            const userSignature = signDuoRequest("GET", childApiHostname, userPath, userParams, skey, date);
-            const userUrl = `https://${childApiHostname}${userPath}?account_id=${accountId}&limit=0`;
+            const userParams = { account_id: accId, limit: '0' }; // limit 0 = count only (Privacy Mode)
+            
+            const userSig = signDuoRequest("GET", host, userPath, userParams, skey, date);
+            const userUrl = `https://${host}${userPath}?account_id=${encodeURIComponent(accId)}&limit=0`;
 
-            let userCount = 0;
+            let userCount = client.used_licenses; // Fallback to current DB value
             try {
-                const userResponse = await fetch(userUrl, {
+                const userRes = await fetch(userUrl, {
                     headers: {
                         'Date': date,
-                        'Authorization': 'Basic ' + Buffer.from(`${ikey}:${userSignature}`).toString('base64')
+                        'Authorization': 'Basic ' + Buffer.from(`${ikey}:${userSig}`).toString('base64')
                     }
                 });
-                const userData = await userResponse.json();
+                const userData = await userRes.json();
+                
                 if (userData.stat === 'OK') {
                     userCount = userData.metadata?.total_objects || 0;
                 } else {
-                    console.error(`[Duo Sync] User count error for ${client.user_id}:`, userData.message);
-                    continue;
+                    console.error(`[Duo Sync] User Count API Error for ${client.user_id}:`, userData.message);
                 }
-            } catch (error) {
-                console.error(`[Duo Sync] Fetch error for ${client.user_id}:`, error.message);
-                continue;
+            } catch (e) {
+                console.error(`[Duo Sync] Network error fetching users:`, e.message);
             }
 
-            // Fetch edition
-            const editionParams = { account_id: accountId };
-            const editionPath = "/admin/v1/billing/edition";
-            const editionSignature = signDuoRequest("GET", childApiHostname, editionPath, editionParams, skey, date);
-            const editionUrl = `https://${childApiHostname}${editionPath}?account_id=${accountId}`;
+            // --- PART B: FETCH ACCOUNT EDITION (Tier) ---
+            const edPath = "/admin/v1/billing/edition";
+            const edParams = { account_id: accId };
+            
+            const edSig = signDuoRequest("GET", host, edPath, edParams, skey, date);
+            const edUrl = `https://${host}${edPath}?account_id=${encodeURIComponent(accId)}`;
 
-            let edition = client.edition;
+            let edition = client.edition; // Fallback to current DB value
             try {
-                const editionResponse = await fetch(editionUrl, {
+                const edRes = await fetch(edUrl, {
                     headers: {
                         'Date': date,
-                        'Authorization': 'Basic ' + Buffer.from(`${ikey}:${editionSignature}`).toString('base64')
+                        'Authorization': 'Basic ' + Buffer.from(`${ikey}:${edSig}`).toString('base64')
                     }
                 });
-                const editionData = await editionResponse.json();
-                if (editionData.stat === 'OK') {
-                    edition = editionData.response?.edition || edition;
+                const edData = await edRes.json();
+                
+                if (edData.stat === 'OK') {
+                    edition = edData.response?.edition || edition;
                 }
-            } catch (error) {
-                console.warn(`[Duo Sync] Edition fetch error for ${client.user_id}:`, error.message);
+            } catch (e) {
+                console.warn(`[Duo Sync] Network error fetching edition:`, e.message);
             }
 
-            // Update DB
+            // --- PART C: UPDATE DATABASE ---
             try {
                 await pool.query(
                     "UPDATE client_duo_stats SET used_licenses = ?, edition = ?, last_updated = NOW() WHERE id = ?",
                     [userCount, edition, client.id]
                 );
-                console.log(`[Duo Sync] Updated ${client.user_id}: licenses=${userCount}, edition=${edition}`);
-            } catch (dbError) {
-                console.error(`[Duo Sync] DB error for ${client.user_id}:`, dbError.message);
+                console.log(`[Duo Sync Success] User ${client.user_id} -> Count: ${userCount}, Tier: ${edition} 📊`);
+            } catch (dbErr) {
+                console.error(`[Duo Sync] DB Update failed:`, dbErr.message);
             }
         }
-
-        console.log('[Duo Sync] Done.');
+        console.log('[Duo Sync] All missions complete. 🏁');
     } catch (error) {
-        console.error('[Duo Sync] Failed:', error);
+        console.error('[Duo Sync] Critical System Failure:', error);
     }
 }
 
