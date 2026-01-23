@@ -1172,7 +1172,7 @@ async function initializeBillingCard() {
                     <i class="fas fa-credit-card"></i>
                     <h3>Billing Statement</h3>
                 </div>
-                <p style="color: #bdbdbd; text-align: center; padding: 20px;">No invoices available</p>
+                <p style="color: #bdbdbd; text-align: center; padding: 20px;">No active billing</p>
             `;
             return;
         }
@@ -1341,11 +1341,11 @@ function initializeSupportCard() {
         <div class="governance-content">
             <div class="governance-item">
                 <i class="fas fa-clock"></i>
-                <span class="governance-item-text"><strong>24/7 Priority Support</strong> - Response in 30 minutes</span>
+                <span class="governance-item-text"><strong>24/7 Priority Support</strong> - Response in 1 hour</span>
             </div>
             <div class="governance-item">
                 <i class="fas fa-phone"></i>
-                <span class="governance-item-text"><strong>Dedicated Support Team</strong> - 2 assigned engineers</span>
+                <span class="governance-item-text"><strong>Dedicated Support Team</strong> - 1 assigned engineers</span>
             </div>
             <div class="governance-item">
                 <i class="fas fa-tachometer-alt"></i>
