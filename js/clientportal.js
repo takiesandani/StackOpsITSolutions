@@ -9,6 +9,24 @@ let previewLockedByClick = false;
 const mockProjects = [
     {
         id: 1,
+        name: "Cisco Duo Licences",
+        type: "Enterprise Identity & Access Management",
+        status: "Active",
+        risks: { critical: 0, high: 0, medium: 0 },
+        securityScore: 100,
+        uptime: 100,
+        lastUpdate: "Updated just now",
+        icon: "fas fa-shield-check",
+        cardMetrics: [
+            { label: "Total Licences", value: ": 250", icon: "fas fa-id-card" },
+            { label: "Active Usage", value: ": 185", icon: "fas fa-user-check" },
+            { label: "Remaining Licences", value: ": 65", icon: "fas fa-user-plus" }
+        ],
+        cardFooter: "Licence Status: Healthy",
+        noDashboard: true
+    },
+    {
+        id: 2,
         name: "Microsoft 365 security & health",
         type: "Proactive tenant security insights",
         status: "Active",
@@ -24,7 +42,7 @@ const mockProjects = [
         cardFooter: "IT budget saving: 12"
     },
     {
-        id: 2,
+        id: 3,
         name: "Support & Service desk",
         type: "Real-time support visibility and tracking",
         status: "Active",
@@ -40,7 +58,7 @@ const mockProjects = [
         cardFooter: "Active Issues: 8"
     },
     {
-        id: 3,
+        id: 4,
         name: "Projects",
         type: "Project Activity Feed",
         status: "Active",
@@ -54,9 +72,9 @@ const mockProjects = [
             { label: "0365 Identity and access management", value: "", icon: "fas fa-wrench"}
         ],
         cardFooter: "Last project update: 2 days ago"
-    }/*,
+    },
     {
-        id: 4,
+        id: 5,
         name: "Backup & recovery",
         type: "Automated protection and restore readiness",
         status: "Active",
@@ -72,7 +90,7 @@ const mockProjects = [
         cardFooter: "Backup Status: Healthy"
     },
     {
-        id: 5,
+        id: 6,
         name: "Cloud data services",
         type: "Optomized cloud storage & Database health",
         status: "Active",
@@ -86,7 +104,7 @@ const mockProjects = [
             { label: "Data Redundancy", value: ": 3x", icon: "fas fa-copy" }
         ],
         cardFooter: "Cloud Cost: R4,250/month"
-    } */
+    }
 ];
 
 /* INITIALIZATION */
@@ -534,6 +552,42 @@ function showError(message) {
 }
 
 /* PROJECTS */
+async function fetchDuoStats() {
+    const token = localStorage.getItem('authToken');
+    if (!token) return;
+
+    try {
+        const response = await fetch('/api/duo-stats', {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            updateDuoProjectData(data);
+        }
+    } catch (error) {
+        console.error('Error fetching Duo stats:', error);
+    }
+}
+
+function updateDuoProjectData(data) {
+    const duoProject = mockProjects.find(p => p.name === "Cisco Duo Licences");
+    if (duoProject) {
+        duoProject.cardMetrics = [
+            { label: "Total Licences", value: `: ${data.total_licenses}`, icon: "fas fa-id-card" },
+            { label: "Active Usage", value: `: ${data.used_licenses}`, icon: "fas fa-user-check" },
+            { label: "Remaining Licences", value: `: ${data.remaining_licenses}`, icon: "fas fa-user-plus" }
+        ];
+        duoProject.cardFooter = `Licence Status: ${data.used_licenses >= data.total_licenses ? 'Critical' : 'Healthy'}`;
+        duoProject.lastUpdate = data.last_sync;
+        
+        // Re-display if currently visible
+        displayCurrentProject();
+    }
+}
+
 function initializeProjectsList() {
     const projectsGrid = document.getElementById('projects-grid');
     projectsGrid.innerHTML = '';
@@ -544,6 +598,7 @@ function initializeProjectsList() {
     previewLockedByClick = false;
     
     displayCurrentProject();
+    fetchDuoStats();
 }
 
 function displayCurrentProject() {
@@ -558,27 +613,29 @@ function displayCurrentProject() {
     visibleProjects.forEach((project, index) => {
         const projectCard = createProjectCard(project);
         
-        projectCard.addEventListener('mouseenter', () => {
-            if (!previewLockedByClick) {
-                showProjectPreview(project);
-            }
-        });
-        
-        projectCard.addEventListener('mouseleave', () => {
-            if (!previewLockedByClick) {
-                hideProjectPreview();
-            }
-        });
-        
-        projectCard.addEventListener('click', () => {
-            const allCards = document.querySelectorAll('.project-card');
-            allCards.forEach(card => card.classList.remove('glow-selected'));
+        if (!project.noDashboard) {
+            projectCard.addEventListener('mouseenter', () => {
+                if (!previewLockedByClick) {
+                    showProjectPreview(project);
+                }
+            });
             
-            previewLockedByClick = true;
-            selectedProjectId = project.id;
-            projectCard.classList.add('glow-selected');
-            showProjectPreview(project);
-        });
+            projectCard.addEventListener('mouseleave', () => {
+                if (!previewLockedByClick) {
+                    hideProjectPreview();
+                }
+            });
+            
+            projectCard.addEventListener('click', () => {
+                const allCards = document.querySelectorAll('.project-card');
+                allCards.forEach(card => card.classList.remove('glow-selected'));
+                
+                previewLockedByClick = true;
+                selectedProjectId = project.id;
+                projectCard.classList.add('glow-selected');
+                showProjectPreview(project);
+            });
+        }
         
         projectsGrid.appendChild(projectCard);
     });
@@ -699,45 +756,9 @@ function hideProjectPreview() {
     }
 }
 
-function createProjectCards(projects) {
-    const card = document.createElement('div');
-    card.className = 'project-card';
-
-    const risksCount = projects.risks.critical + projects.risks.high + projects.risks.medium;
-
-    card.innerHTML = `
-        <div class="project-card-header">
-            <div class="project-icon">
-                <i class="${projects.icon}"></i>
-            </div>
-            <div class="project-title">
-                <h3${projects.name}</h3>
-                <p class="project-type">${projects.type}</p>
-            </div>
-            <span class="project-status-badge">${projects.status}</span>
-        </div>
-        <div class="project-info">
-            <div class="project-info-item">
-                <i class="fas fa-shield-alt"></i>
-                <span>Security score: ${projects.securityScore}%</span>
-                <i class="fas fa-server"></i>
-                <span>Usage: ${projects.uptime}%</span>
-        <div class="project-risks">
-            <span>S: ${risksCount}</span>
-                        <div class="risk-indicator">
-                <div class="risk-dot critical" title="${projects.risks.critical} Critical"></div>
-                <div class="risk-dot high" title="${projects.risks.high} High"></div>
-                <div class="risk-dot medium" title="${projects.risks.medium} Medium"></div>
-            </div>
-        </div>
-         `;      
-         
-        return card;
-}
-
 function createProjectCard(project) {
     const card = document.createElement('div');
-    card.className = 'project-card';
+    card.className = 'project-card' + (project.noDashboard ? ' no-interaction' : '');
     card.setAttribute('data-project-id', project.id);
     
     const risksCount = project.risks.critical + project.risks.high + project.risks.medium;
@@ -770,8 +791,8 @@ function createProjectCard(project) {
         <div class="project-risks">
             <span>${project.cardFooter || 'Risks: ' + risksCount}</span>
             <div class="risk-indicator">
-                <div class="risk-dot ${project.risks.critical > 0 ? 'critical' : project.risks.high > 0 ? 'high' : 'medium'}" 
-                     title="${project.risks.critical > 0 ? project.risks.critical + ' Critical' : project.risks.high > 0 ? project.risks.high + ' High' : project.risks.medium + ' Medium'}"></div>
+                <div class="risk-dot ${project.risks.critical > 0 ? 'critical' : project.risks.high > 0 ? 'high' : (project.risks.medium > 0 ? 'medium' : 'success')}" 
+                     title="${project.risks.critical > 0 ? project.risks.critical + ' Critical' : project.risks.high > 0 ? project.risks.high + ' High' : (project.risks.medium > 0 ? project.risks.medium + ' Medium' : 'No Risks detected')}"></div>
             </div>
         </div>
     `;

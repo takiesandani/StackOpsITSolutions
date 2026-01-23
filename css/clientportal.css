@@ -685,6 +685,31 @@
     box-shadow: 0 12px 30px rgba(0, 110, 255, 0.5);
 }
 
+/* No Interaction Project Card */
+.project-card.no-interaction {
+    cursor: default;
+}
+
+.project-card.no-interaction:hover {
+    transform: none !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+    animation: none !important;
+    box-shadow: 0 0 10px rgba(30, 144, 255, 0.7) !important;
+}
+
+.project-card.no-interaction:hover::before {
+    opacity: 0 !important;
+}
+
+.project-card.no-interaction:hover .project-icon,
+.project-card.no-interaction:hover .project-status-badge,
+.project-card.no-interaction:hover .project-info,
+.project-card.no-interaction:hover .project-info-item,
+.project-card.no-interaction:hover .risk-indicator {
+    transform: none !important;
+    animation: none !important;
+}
+
 .project-card-header {
     display: flex;
     align-items: flex-start;
@@ -1539,6 +1564,10 @@
 
 .risk-dot.medium {
     background: #ff9800;
+}
+
+.risk-dot.success {
+    background: var(--success);
 }
 
 /* DASHBOARD VIEW */

@@ -2362,6 +2362,52 @@ async function syncDuoData() {
     }
 }
 
+/**
+ * Endpoint: Get Duo Stats for Logged-in Client
+ * Route: GET /api/duo-stats
+ */
+app.get('/api/duo-stats', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user.id; // From JWT token
+
+        const [rows] = await pool.query(
+            "SELECT used_licenses, total_licenses, edition, last_updated, duo_account_id, status FROM client_duo_stats WHERE user_id = ?",
+            [userId]
+        );
+
+        if (rows.length === 0) {
+            return res.status(404).json({ message: "No Duo stats found for this account." });
+        }
+
+        const stats = rows[0];
+
+        // --- MATH ENGINE START ---
+        const used = stats.used_licenses || 0;
+        const total = stats.total_licenses || 0;
+        const remaining = Math.max(0, total - used); // Use Math.max to avoid negative numbers if over-limit
+        const percentUsed = total > 0 ? Math.round((used / total) * 100) : 0;
+        // --- MATH ENGINE END ---
+
+        // Format the date for the client's local timezone
+        const formattedDate = new Date(stats.last_updated).toLocaleString();
+
+        res.json({
+            used_licenses: used,
+            total_licenses: total,
+            remaining_licenses: remaining, // 🆕 The requested field
+            usage_percent: percentUsed,    // 🆕 Great for UI progress bars
+            edition: stats.edition,
+            status: stats.status,
+            last_sync: formattedDate,
+            account_id: stats.duo_account_id
+        });
+
+    } catch (error) {
+        console.error('Error fetching Duo stats:', error);
+        res.status(500).json({ error: 'Failed to retrieve Duo security data.' });
+    }
+});
+
 // Trigger immediately on startup (for testing)
 setTimeout(() => {
     console.log('[Test] Running DUO sync on startup...');
