@@ -2300,7 +2300,6 @@ function mapDuoEditionToMarketingName(edition) {
     return editionMap[edition.toUpperCase()] || edition;
 }
 
-
 /**
  * Main Task: Sync Duo Data
  * Fetches user counts and editions for all active clients.
@@ -2319,11 +2318,9 @@ async function syncDuoData() {
             const host = client.duo_api_hostname.trim();
             const accId = client.duo_account_id.trim();
 
-            // --- PART A: FETCH USER COUNT ---
-            // Try without the limit parameter first - Duo defaults to a count metadata anyway
+            // --- PART A: FETCH USED LICENSES (Active Users) ---
             const userPath = "/admin/v1/users";
-            const userParams = { account_id: accId }; // Removed limit to see if it clears the error
-            
+            const userParams = { account_id: accId };
             const userSig = signDuoRequest("GET", host, userPath, userParams, skey, date);
             const userUrl = `https://${host}${userPath}?account_id=${encodeURIComponent(accId)}`;
 
@@ -2336,16 +2333,12 @@ async function syncDuoData() {
                     }
                 });
                 const userData = await userRes.json();
-                
                 if (userData.stat === 'OK') {
-                    // Duo returns the total in metadata even if you don't fetch the full list
                     userCount = userData.metadata?.total_objects || 0;
-                } else {
-                    console.error(`[Duo Sync] Count Error for ${client.user_id}:`, userData.message);
                 }
-            } catch (e) { console.error(`[Duo Sync] User fetch error:`, e.message); }
+            } catch (e) { console.error(`[Duo Sync] User count error:`, e.message); }
 
-            // --- PART B: FETCH EDITION (This part is already working!) ---
+            // --- PART B: FETCH EDITION ---
             const edPath = "/admin/v1/billing/edition";
             const edParams = { account_id: accId };
             const edSig = signDuoRequest("GET", host, edPath, edParams, skey, date);
@@ -2365,40 +2358,42 @@ async function syncDuoData() {
                 }
             } catch (e) { console.warn(`[Duo Sync] Edition fetch error:`, e.message); }
 
-            // --- PART D: FETCH TOTAL LICENSES ---
-            const billPath = "/admin/v1/billing/summary";
-            const billParams = { account_id: accId };
-            const billSig = signDuoRequest("GET", host, billPath, billParams, skey, date);
-            const billUrl = `https://${host}${billPath}?account_id=${encodeURIComponent(accId)}`;
+            // --- PART D: FETCH TOTAL LICENSES (The New Working Endpoint!) ---
+            const limitPath = "/admin/v1/billing/user_limit";
+            const limitParams = { account_id: accId };
+            const limitSig = signDuoRequest("GET", host, limitPath, limitParams, skey, date);
+            const limitUrl = `https://${host}${limitPath}?account_id=${encodeURIComponent(accId)}`;
 
             let totalLicenses = client.total_licenses;
 
             try {
-                const billRes = await fetch(billUrl, {
+                const limitRes = await fetch(limitUrl, {
                     headers: {
                         'Date': date,
-                        'Authorization': 'Basic ' + Buffer.from(`${ikey}:${billSig}`).toString('base64')
+                        'Authorization': 'Basic ' + Buffer.from(`${ikey}:${limitSig}`).toString('base64')
                     }
                 });
 
-                const billData = await billRes.json();
+                const limitData = await limitRes.json();
 
-                if (billData.stat === 'OK') {
-                    totalLicenses = billData.response?.licenses?.total || totalLicenses;
+                if (limitData.stat === 'OK') {
+                    // Mapping 'user_limit' from API to 'total_licenses' in DB
+                    totalLicenses = limitData.response?.user_limit || totalLicenses;
+                    // Note: current_user_count is also available here if Part A fails
+                    userCount = limitData.response?.current_user_count || userCount;
                 } else {
-                    console.error(`[Duo Sync] Billing Error:`, billData.message);
+                    console.error(`[Duo Sync] Limit API Error for ${client.name}:`, limitData.message);
                 }
             } catch (e) {
-                console.error(`[Duo Sync] Billing fetch error:`, e.message);
+                console.error(`[Duo Sync] Limit fetch failure:`, e.message);
             }
-
 
             // --- PART C: UPDATE DATABASE ---
             await pool.query(
                 "UPDATE client_duo_stats SET used_licenses = ?, total_licenses = ?, edition = ?, last_updated = NOW() WHERE id = ?",
-                [userCount, totalLicenses,edition, client.id]
+                [userCount, totalLicenses, edition, client.id]
             );
-            console.log(`[Duo Sync Success] User ${client.user_id} -> Count: ${userCount}, Tier: ${edition} 📊`);
+            console.log(`[Duo Sync Success] ${client.name} -> Used: ${userCount}, Total: ${totalLicenses} 📊`);
         }
     } catch (error) {
         console.error('[Duo Sync] Critical Failure:', error);
