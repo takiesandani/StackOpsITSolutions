@@ -17,7 +17,7 @@ const mockProjects = [
         uptime: 100,
         lastUpdate: "Checking database...",
         icon: "fas fa-shield-check",
-        image: "Images/CiscoDUO.png",
+        image: "Images/cisco-duo.png",
         cardMetrics: [
             { label: "Total Licences", value: ": ...", icon: "fas fa-id-card" },
             { label: "Active Usage", value: ": ...", icon: "fas fa-user-check" },
