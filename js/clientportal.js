@@ -1341,11 +1341,11 @@ function initializeSupportCard() {
         <div class="governance-content">
             <div class="governance-item">
                 <i class="fas fa-clock"></i>
-                <span class="governance-item-text"><strong>24/7 Priority Support</strong> - Response in 1 hour</span>
+                <span class="governance-item-text"><strong>8am - 5pm Priority Support</strong> - Response in 1 hour</span>
             </div>
             <div class="governance-item">
                 <i class="fas fa-phone"></i>
-                <span class="governance-item-text"><strong>Dedicated Support Team</strong> - 1 assigned engineers</span>
+                <span class="governance-item-text"><strong>Dedicated Support Team</strong> - 1 assigned engineer</span>
             </div>
             <div class="governance-item">
                 <i class="fas fa-tachometer-alt"></i>
