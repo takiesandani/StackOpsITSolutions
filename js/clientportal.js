@@ -488,6 +488,12 @@ function handleLogout() {
         resetDashboard();
     }
 
+    // Hide chatbot
+    const chatWidget = document.getElementById('chatWidget');
+    if (chatWidget) {
+        chatWidget.style.display = 'none';
+    }
+
     // Redirect to public home page so protected views aren't visible
     window.location.href = 'Home.html';
 }

@@ -3063,526 +3063,311 @@ function sanitizeResponse(text) {
     return cleaned.slice(0, 1500);
 }
 
-// ============================================
-// CHAT ENDPOINT
-// ============================================
+//==================================================================================================================================//
+//                                                        Chatbot setup here                                                        //                
+//==================================================================================================================================//
 
-// Standard error response helper
-function createErrorResponse(text, buttons = null) {
-    return { text, buttons };
-}
-
-// Standard success response helper
-function createSuccessResponse(text, buttons = null, hasMoreMessages = false, nextMessage = null) {
-    const response = { text, buttons };
-    if (hasMoreMessages && nextMessage) {
-        response.hasMoreMessages = true;
-        response.nextMessage = nextMessage;
-    }
-    return response;
-}
-
-app.post('/api/chat', authenticateToken, chatRateLimit, async (req, res) => {
-    try {
-        if (!pool) {
-            return res.status(500).json(createErrorResponse("Database unavailable. Please try again later."));
-        }
-
-        const userId = req.user.id;
-        const message = req.body.message;
-
-        // Validate message exists and is not empty
-        if (!message || typeof message !== 'string' || !message.trim()) {
-            return res.status(400).json(createErrorResponse("Message is required."));
-        }
-
-        // Validate message length (max 2000 characters)
-        const trimmedMessage = message.trim();
-        if (trimmedMessage.length > 2000) {
-            return res.status(400).json(createErrorResponse("Message is too long. Please keep it under 2000 characters."));
-        }
-
-        let users, companyId, userFirstName;
-        
+// Chatbot helper functions
+function getClientData(clientId) {
+    return new Promise(async (resolve, reject) => {
         try {
-            [users] = await pool.query(
-                'SELECT CompanyID, FirstName FROM Users WHERE ID = ?',
-                [userId]
-            );
-
-            if (!users.length) {
-                return res.status(404).json(createErrorResponse("User not found."));
+            // Get client from Users table
+            const [users] = await pool.query(`
+                SELECT 
+                    ID AS id,
+                    FirstName AS firstName,
+                    LastName AS lastName,
+                    Email AS email,
+                    Contact AS contact
+                FROM Users 
+                WHERE ID = ? AND Role = 'client'
+            `, [clientId]);
+            
+            if (users.length === 0) {
+                return reject(new Error('Client not found'));
             }
+            
+            const [projects] = await pool.query('SELECT * FROM Projects WHERE ClientID = ?', [clientId]);
+            const [invoices] = await pool.query('SELECT * FROM Invoices WHERE ClientID = ?', [clientId]);
+            
+            resolve({
+                client: {
+                    id: users[0].id,
+                    name: `${users[0].firstName} ${users[0].lastName}`.trim(),
+                    email: users[0].email,
+                    phone: users[0].contact
+                },
+                projects: projects,
+                invoices: invoices
+            });
+        } catch (err) {
+            reject(err);
+        }
+    });
+}
 
-            companyId = users[0].CompanyID;
-            userFirstName = users[0].FirstName || 'there';
+function detectPaymentIntent(message) {
+    const paymentKeywords = [
+        'pay', 'payment', 'make payment', 'pay invoice', 'settle',
+        'pay now', 'payment link', 'how to pay', 'where to pay',
+        'want to pay', 'pay my invoice', 'clear my balance'
+    ];
+    
+    const lowerMessage = message.toLowerCase();
+    return paymentKeywords.some(keyword => lowerMessage.includes(keyword));
+}
 
-            // Validate company ID exists and is valid
-            if (!companyId) {
-                return res.status(400).json(createErrorResponse("Your account is not associated with a company. Please contact support."));
-            }
+async function createPaymentLink(invoiceId, clientId, amount, description) {
+    try {
+        const [invoices] = await pool.query(
+            'SELECT * FROM Invoices WHERE InvoiceID = ? AND ClientID = ?',
+            [invoiceId, clientId]
+        );
 
-            // Validate company ID exists in Companies table
-            try {
-                const [companyCheck] = await pool.query(
-                    'SELECT ID FROM Companies WHERE ID = ? LIMIT 1',
-                    [companyId]
-                );
-                
-                if (!companyCheck.length) {
-                    return res.status(400).json(createErrorResponse("Your account is associated with an invalid company. Please contact support."));
+        if (invoices.length === 0) {
+            throw new Error('Invoice not found');
+        }
+
+        const invoice = invoices[0];
+
+        if (invoice.Status === 'Paid') {
+            throw new Error('Invoice is already paid');
+        }
+
+        // Get Yoco secret key
+        const yocoSecretKey = process.env.YOCO_SECRET_KEY || await getSecret('YOCO_SECRET_KEY');
+        if (!yocoSecretKey) {
+            throw new Error('YOCO secret key not configured');
+        }
+
+        const response = await fetch('https://payments.yoco.com/api/checkouts', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${yocoSecretKey}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                amount: Math.round(parseFloat(amount) * 100),
+                currency: 'ZAR',
+                description: description || `Invoice #${invoiceId} Payment`,
+                metadata: {
+                    invoice_id: invoiceId.toString(),
+                    client_id: clientId.toString()
                 }
-            } catch (error) {
-                console.error('Error validating company ID:', error);
-                // Continue with request even if validation query fails (graceful degradation)
-            }
-        } catch (error) {
-            console.error('Error fetching user data:', error);
-            return res.status(500).json(createErrorResponse("Error retrieving your account information. Please try again later."));
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to create payment link');
         }
 
-        if (!openai) {
-            const initialized = await initializeOpenAI();
-            if (!initialized) {
-                return res.status(503).json(createErrorResponse("AI service is currently unavailable. Please try again later."));
-            }
-        }
+        const data = await response.json();
 
-        // Detect button clicks and action keywords to force actions
-        const messageLower = message.toLowerCase().trim();
-        
-        // Button detection - map button text to actions
-        const buttonMap = {
-            'view latest invoice': 'get_latest_invoice',
-            'latest invoice': 'get_latest_invoice',
-            'view all invoices': 'get_all_invoices',
-            'all invoices': 'get_all_invoices',
-            'view invoices': 'get_all_invoices',
-            'make payments': 'get_payment_info',
-            'make payment': 'get_payment_info',
-            'payment': 'get_payment_info',
-            'project updates': 'get_project_updates',
-            'project status': 'get_project_updates',
-            'security analytics': 'get_security_analytics',
-            'security': 'get_security_analytics',
-            'ticket status': 'get_ticket_status',
-            'support ticket': 'get_ticket_status',
-            'ticket': 'get_ticket_status'
+        // Store in yoco_payments table
+        await pool.query(
+            "INSERT INTO yoco_payments (invoice_id, yoco_checkout_id, redirect_url, amount, status) VALUES (?, ?, ?, ?, 'pending')",
+            [invoiceId, data.id, data.redirectUrl, Math.round(parseFloat(amount) * 100)]
+        );
+
+        return {
+            success: true,
+            paymentUrl: data.redirectUrl,
+            checkoutId: data.id,
+            amount: amount,
+            invoiceId: invoiceId
         };
 
-        let forcedAction = null;
-        const action = buttonMap[messageLower];
-        if (action) {
-            forcedAction = { type: "action", action: action, params: {}, confidence: 0.95, needs_clarification: false };
+    } catch (error) {
+        console.error('Payment link creation error:', error);
+        throw error;
+    }
+}
+
+async function createBulkPaymentLink(clientId, invoiceIds) {
+    try {
+        const [invoices] = await pool.query(
+            `SELECT * FROM Invoices 
+            WHERE InvoiceID IN (?) AND ClientID = ? AND Status IN ('Unpaid', 'Overdue')`,
+            [invoiceIds, clientId]
+        );
+
+        if (invoices.length === 0) {
+            throw new Error('No unpaid invoices found');
         }
+
+        const totalAmount = invoices.reduce((sum, inv) => sum + parseFloat(inv.TotalAmount), 0);
+        const yocoSecretKey = process.env.YOCO_SECRET_KEY || await getSecret('YOCO_SECRET_KEY');
         
-        // Detect invoice-related queries and force action if needed (only if not already set by button)
-        if (!forcedAction) {
-            const invoiceKeywords = ['invoice', 'owe', 'owe you', 'amount due', 'balance', 'payment', 'bill', 'billing'];
-            const itemsKeywords = ['items included', 'services', 'service subscribed', 'subscribed to', 'what am i paying for', 'what\'s on the invoice', 'invoice items', 'item', 'items'];
-            const isInvoiceQuery = invoiceKeywords.some(keyword => messageLower.includes(keyword)) || 
-                                  itemsKeywords.some(keyword => messageLower.includes(keyword));
-            
-            // If user corrects information (date incorrect, wrong amount, etc.), re-fetch to ensure accuracy
-            const correctionKeywords = ['incorrect', 'wrong', 'date is', 'not correct', 'that\'s wrong', 'that is wrong'];
-            const isCorrection = correctionKeywords.some(keyword => messageLower.includes(keyword));
-            
-            // If it's an invoice query and mentions "latest" or "how much", force get_latest_invoice
-            if (isInvoiceQuery && (messageLower.includes('latest') || messageLower.includes('how much') || messageLower.includes('owe'))) {
-                forcedAction = { type: "action", action: "get_latest_invoice", params: {}, confidence: 0.95, needs_clarification: false };
-            } else if (isInvoiceQuery && (messageLower.includes('all') || messageLower.includes('list') || messageLower.includes('show'))) {
-                forcedAction = { type: "action", action: "get_all_invoices", params: {}, confidence: 0.95, needs_clarification: false };
-            } else if (itemsKeywords.some(keyword => messageLower.includes(keyword))) {
-                // User is asking about items/services - fetch invoice data to get items array
-                const context = await getUserContext(userId);
-                if (context.lastInvoiceNumber) {
-                    forcedAction = { type: "action", action: "get_invoice_details", params: { invoice_number: context.lastInvoiceNumber }, confidence: 0.95, needs_clarification: false };
-                } else {
-                    forcedAction = { type: "action", action: "get_latest_invoice", params: {}, confidence: 0.95, needs_clarification: false };
-                }
-            } else if (isCorrection && (isInvoiceQuery)) {
-                // User is correcting invoice info - re-fetch to get accurate data
-                const context = await getUserContext(userId);
-                if (context.lastInvoiceNumber) {
-                    forcedAction = { type: "action", action: "get_invoice_details", params: { invoice_number: context.lastInvoiceNumber }, confidence: 0.95, needs_clarification: false };
-                } else {
-                    forcedAction = { type: "action", action: "get_latest_invoice", params: {}, confidence: 0.95, needs_clarification: false };
-                }
-            }
+        if (!yocoSecretKey) {
+            throw new Error('YOCO secret key not configured');
         }
 
-        // If we have forcedAction, skip AI call and go straight to data fetch
-        let parsed = forcedAction;
-
-        // Only call AI if no forcedAction detected
-        if (!forcedAction) {
-            const history = await getChatHistory(userId, 20);
-            
-            // Create timeout promise
-            const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('OpenAI API timeout')), 25000); // 25 second timeout
-            });
-            
-            // --- REPLACE WITH THIS CORRECT CODE ---
-            const completion = await Promise.race([
-                openai.chat.completions.create({
-                    model: "gpt-4o-mini",
-                    temperature: 0.3,
-                    // Removed timeout from here
-                    messages: [
-                        { role: "system", content: CHATBOT_SYSTEM_PROMPT },
-                        ...history,
-                        { role: "user", content: message }
-                    ]
-                }, {
-                    timeout: 25000 // <--- MOVE TO THIS SECOND ARGUMENT
-                }),
-                timeoutPromise
-            ]);
-
-            const aiReply = completion.choices[0].message.content.trim();
-            
-            // Only try to parse if it's pure JSON
-            if (aiReply.trim().startsWith('{') && aiReply.trim().endsWith('}')) {
-                try {
-                    parsed = JSON.parse(aiReply);
-                } catch (e) {
-                    parsed = null; // Not valid JSON, treat as normal conversation
+        const response = await fetch('https://payments.yoco.com/api/checkouts', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${yocoSecretKey}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                amount: Math.round(totalAmount * 100),
+                currency: 'ZAR',
+                description: `Bulk Payment for ${invoices.length} Invoices`,
+                metadata: {
+                    invoice_ids: invoiceIds.join(','),
+                    client_id: clientId.toString()
                 }
-            }
-        }
-
-        // Check if AI wants to fetch data
-        // Lower confidence threshold to 0.3 to make it easier to trigger actions
-        if (parsed?.type === "action" && ALLOWED_ACTIONS.includes(parsed.action) && parsed.confidence >= 0.3 && !parsed.needs_clarification) {
-
-            let data;
-            try {
-                data = await fetchClientData(parsed.action, companyId, parsed.params || {});
-            } catch (fetchError) {
-                console.error('Error fetching client data:', fetchError);
-                const errorText = "I'm having trouble retrieving that information. Please try again or contact support.";
-                await saveChatMessage(userId, "user", message);
-                await saveChatMessage(userId, "assistant", errorText);
-                return res.json(createErrorResponse(errorText));
-            }
-
-            // If data indicates no results, still pass it to AI to respond naturally
-            // Don't return hardcoded messages - let AI handle it based on the data structure
-            
-            // If data has a message but also other fields, include it in context
-            // This handles cases like "No invoices found" but still provides context
-
-            // SECOND PASS: Include conversation history + data for context-aware response
-            // Data is injected as system context (not saved to chat history)
-            // Assistant's response will naturally include the data, which gets saved for follow-up context
-            
-            // Build data context message based on data type
-            let dataContextMessage = '';
-            const dataType = data.data_type || 'unknown';
-            
-            if (dataType === 'invoice' || dataType === 'invoices') {
-                // Invoice-specific handling
-                const safeInvoiceNumber = data.invoice_number ? String(data.invoice_number) : 'Unknown';
-                const safeBalance = data.outstanding_balance ? String(data.outstanding_balance) : '0.00';
-                const safeDueDateRaw = data.due_date || '';
-                const safeItems = data.items || [];
-                const safeTotalAmount = data.total_amount ? String(data.total_amount) : '0.00';
-
-                // Format dates
-                const dueDateFormatted = safeDueDateRaw ? 
-                    (String(safeDueDateRaw).includes('T') ? String(safeDueDateRaw).split('T')[0] : String(safeDueDateRaw)) : '';
-                const formattedDate = dueDateFormatted ? 
-                    new Date(dueDateFormatted + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 
-                    'Not specified';
-                
-                // Store invoice data in user context (database)
-                if (safeInvoiceNumber !== 'Unknown') {
-                    const context = await getUserContext(userId);
-                    context.lastInvoiceNumber = safeInvoiceNumber;
-                    context.lastAmount = safeBalance;
-                    context.lastDueDate = dueDateFormatted;
-                    await saveUserContext(userId, context);
-                }
-                
-                dataContextMessage = `🚨 AUTHORITATIVE DATABASE DATA - INVOICE INFORMATION 🚨
-
-CRITICAL: You MUST summarize this data in natural, conversational language. NEVER show raw database fields.
-
-INVOICE DATA (use exact values, format for display):
-- Invoice Number: "${safeInvoiceNumber}" → Say as "Invoice #${safeInvoiceNumber}"
-- Total Amount: "${safeTotalAmount}" → Format as "R${parseFloat(safeTotalAmount).toLocaleString('en-ZA', {minimumFractionDigits: 2, maximumFractionDigits: 2})}"
-- Outstanding Balance: "${safeBalance}" → Format as "R${parseFloat(safeBalance).toLocaleString('en-ZA', {minimumFractionDigits: 2, maximumFractionDigits: 2})}"
-- Due Date: "${dueDateFormatted}" → Say as "${formattedDate}"
-${safeItems.length > 0 ? `- Items: ${safeItems.map(i => `"${i.description}" (R${parseFloat(i.amount).toLocaleString('en-ZA', {minimumFractionDigits: 2, maximumFractionDigits: 2})})`).join(', ')}` : '- No items listed'}
-
-RESPONSE REQUIREMENTS:
-✅ Summarize in natural language: "Your latest invoice #${safeInvoiceNumber} is for R${parseFloat(safeTotalAmount).toLocaleString('en-ZA', {minimumFractionDigits: 2, maximumFractionDigits: 2})}, due on ${formattedDate}."
-❌ NEVER show: "invoice_number: ${safeInvoiceNumber}, total_amount: ${safeTotalAmount}, due_date: ${dueDateFormatted}"
-✅ Always end with relevant action buttons like [[View All Invoices]] or [[View Latest Invoice]]`;
-            } else if (dataType === 'projects') {
-                dataContextMessage = `🚨 AUTHORITATIVE DATABASE DATA - PROJECT INFORMATION 🚨
-
-CRITICAL: You MUST summarize this data in natural, conversational language. NEVER show raw database fields.
-
-PROJECT DATA:
-${data.has_data && data.projects ? JSON.stringify(data.projects, null, 2) : 'No projects found'}
-
-RESPONSE REQUIREMENTS:
-✅ Summarize projects in natural language: "You have X active projects. [Project Name] is [Status] with a due date of [Date]."
-❌ NEVER show raw JSON, field names, or timestamps
-✅ Always end with relevant action buttons like [[Project Updates]]`;
-            } else if (dataType === 'payment_info') {
-                // Format payment info directly - don't use AI for this
-                const paymentData = data;
-                const bankName = paymentData.bank_name || 'N/A';
-                const accountName = paymentData.account_name || 'N/A';
-                const accountNumber = paymentData.account_number || 'N/A';
-                const branchCode = paymentData.branch_code || 'N/A';
-                const paymentRef = paymentData.payment_reference || paymentData.invoice_number || 'N/A';
-                const paymentLink = paymentData.payment_link || '';
-                
-                // Format payment details - one per line for readability
-                const paymentDetailsText = `To make payment, transfer funds to the following account details:\n\nBank Name: ${bankName}\nAccount Name: ${accountName}\nAccount Number: ${accountNumber}\nBranch Code: ${branchCode}\n\nPayment Reference: ${paymentRef}`;
-                
-                // Format second message with clickable link
-                const linkMessage = paymentLink ? `Pay online: ${paymentLink}` : null;
-                
-                // Save first message (account details)
-                await saveChatMessage(userId, "user", message);
-                await saveChatMessage(userId, "assistant", paymentDetailsText);
-                if (linkMessage) {
-                    await saveChatMessage(userId, "assistant", linkMessage);
-                }
-                
-                // Return first response with account details
-                res.json(createSuccessResponse(paymentDetailsText, null, !!linkMessage, linkMessage));
-                return;
-            } else if (data.message) {
-                // Handle messages (like "coming soon" for security/tickets)
-                dataContextMessage = `🚨 DATABASE RESPONSE 🚨
-
-${data.message}
-
-RESPONSE REQUIREMENTS:
-✅ Present this message naturally and professionally
-✅ If it's a "coming soon" message, be friendly and suggest alternatives
-✅ Always end with relevant action buttons`;
-            } else {
-                // Generic data handling
-                dataContextMessage = `🚨 AUTHORITATIVE DATABASE DATA 🚨
-
-CRITICAL: You MUST summarize this data in natural, conversational language. NEVER show raw database fields.
-
-DATA RECEIVED:
-${JSON.stringify(data, null, 2)}
-
-RESPONSE REQUIREMENTS:
-✅ Summarize in natural language - convert all technical fields to friendly explanations
-❌ NEVER show raw JSON, field names, timestamps, or SQL data
-✅ Always end with relevant action buttons`;
-            }
-            
-            // Ensure dataContextMessage is not empty
-            if (!dataContextMessage || dataContextMessage.trim().length < 10) {
-                dataContextMessage = `🚨 DATA AVAILABLE 🚨
-
-The requested information is available. Please summarize it in natural, conversational language. Never show raw database fields or JSON. Always end with relevant action buttons.`;
-            }
-            
-            let conversationHistory = await getChatHistory(userId, 20);
-            
-            let finalResponse;
-            try {
-                // Create timeout promise
-                const timeoutPromise = new Promise((_, reject) => {
-                    setTimeout(() => reject(new Error('OpenAI API timeout')), 25000); // 25 second timeout
-                });
-                
-                const finalCompletion = await Promise.race([
-                    openai.chat.completions.create({
-                        model: "gpt-4o-mini",
-                        temperature: 0.5, 
-                        timeout: 25000, // 25 second timeout
-                        messages: [
-                            {
-                                role: "system",
-                                content: dataContextMessage
-                            },
-                            { role: "system", content: CHATBOT_SYSTEM_PROMPT },
-                            ...conversationHistory,
-                            { role: "user", content: message }
-                        ]
-                    }),
-                    timeoutPromise
-                ]);
-
-                finalResponse = finalCompletion.choices[0].message.content.trim();
-            } catch (openaiError) {
-                console.error('OpenAI API error:', openaiError);
-                const errorText = openaiError.message === 'OpenAI API timeout' 
-                    ? "The request took too long. Please try again with a simpler question."
-                    : "I'm having trouble processing that request right now. Please try again in a moment.";
-                await saveChatMessage(userId, "user", message);
-                await saveChatMessage(userId, "assistant", errorText);
-                return res.json(createErrorResponse(errorText));
-            }
-            
-            // Ensure we have a valid response
-            if (!finalResponse || finalResponse.length < 3) {
-                const errorText = "I apologize, but I'm having trouble generating a response. Could you please rephrase your question?";
-                await saveChatMessage(userId, "user", message);
-                await saveChatMessage(userId, "assistant", errorText);
-                return res.json(createErrorResponse(errorText));
-            }
-            
-            // Check if response is pure JSON (should not happen in second pass)
-            if (finalResponse.trim().startsWith('{') && finalResponse.trim().endsWith('}')) {
-                try {
-                    JSON.parse(finalResponse.trim());
-                    // AI returned JSON instead of text - regenerate with simpler prompt
-                    const timeoutPromise2 = new Promise((_, reject) => {
-                        setTimeout(() => reject(new Error('OpenAI API timeout')), 25000);
-                    });
-                    
-                    const simpleCompletion = await Promise.race([
-                        openai.chat.completions.create({
-                            model: "gpt-4o-mini",
-                            temperature: 0.5,
-                            timeout: 25000,
-                            messages: [
-                                { role: "system", content: "You are StackOn. Respond naturally in plain text only. Never return JSON. Summarize the data conversationally." },
-                                { role: "system", content: dataContextMessage },
-                                { role: "user", content: message }
-                            ]
-                        }),
-                        timeoutPromise2
-                    ]);
-                    finalResponse = simpleCompletion.choices[0].message.content.trim();
-                } catch (e) {
-                    // Not valid JSON, continue
-                }
-            }
-            
-            // Extract buttons: [[Button Name]]
-            const buttons = [];
-            const buttonRegex = /\[\[([^\]]+)\]\]/g;
-            let match;
-            while ((match = buttonRegex.exec(finalResponse)) !== null) {
-                buttons.push(match[1].trim());
-            }
-            
-            // Remove buttons from response before sanitization
-            let finalResponseCleaned = finalResponse.replace(buttonRegex, '').trim();
-            const safeText = sanitizeResponse(finalResponseCleaned);
-            
-            // Validate response
-            if (!safeText || safeText.length < 3 || safeText === "I apologize, but I encountered an issue processing that. Could you please rephrase your question?") {
-                // If sanitization failed, try one more time with a fallback
-                const fallbackText = data.has_data === false ? 
-                    "I couldn't find any invoices in your account. Would you like me to check something else?" :
-                    "Here's the information you requested. If you need anything else, just ask!";
-                await saveChatMessage(userId, "user", message);
-                await saveChatMessage(userId, "assistant", fallbackText);
-                return res.json(createSuccessResponse(fallbackText, buttons.length > 0 ? buttons : ['View Latest Invoice', 'Make Payments']));
-            }
-
-            await saveChatMessage(userId, "user", message);
-            await saveChatMessage(userId, "assistant", safeText);
-
-            return res.json(createSuccessResponse(safeText, buttons.length > 0 ? buttons : null));
-        }
-
-        // Normal conversation - no action needed, use AI naturally
-        const conversationHistory = await getChatHistory(userId, 20);
-        
-        // Build context message if we have user context data
-        let contextMessage = '';
-        const context = await getUserContext(userId);
-        if (context.lastInvoiceNumber) {
-            contextMessage = `\n\nCONVERSATION CONTEXT: You recently discussed invoice #${context.lastInvoiceNumber}`;
-            if (context.lastAmount) {
-                contextMessage += ` with an outstanding balance of R${context.lastAmount}`;
-            }
-            if (context.lastDueDate) {
-                contextMessage += `, due on ${context.lastDueDate}`;
-            }
-            contextMessage += `. Use this context to answer follow-up questions naturally. Reference this invoice when the user asks about "it", "that invoice", or similar. Only use exact data from conversation history or fresh fetches - never invent.`;
-        }
-        
-        // If user corrects information, they might be pointing out a hallucination
-        // Add warning about data accuracy
-        if (message.toLowerCase().includes('incorrect') || message.toLowerCase().includes('wrong') || message.toLowerCase().includes('date is')) {
-            contextMessage += `\n\n⚠️ WARNING: User is correcting information. You MUST fetch fresh data from the database to get accurate dates and amounts. Do NOT reuse potentially incorrect information from conversation history.`;
-        }
-        
-        // Create timeout promise
-        const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('OpenAI API timeout')), 25000); // 25 second timeout
+            })
         });
-        
-        const normalCompletion = await Promise.race([
-            openai.chat.completions.create({
-                model: "gpt-4o-mini",
-                temperature: 0.7, // Higher for more natural conversation flow
-                timeout: 25000, // 25 second timeout
-                messages: [
-                    { role: "system", content: CHATBOT_SYSTEM_PROMPT + contextMessage },
-                    ...conversationHistory,
-                    { role: "user", content: message }
-                ]
-            }),
-            timeoutPromise
-        ]);
 
-        let normalResponse = normalCompletion.choices[0].message.content.trim();
-        
-        // Pre-check: If response looks like JSON, log and sanitize aggressively
-        if (normalResponse.trim().startsWith('{') || normalResponse.trim().startsWith('[')) {
-            console.error('WARNING: AI returned JSON-like response in normal chat:', normalResponse.substring(0, 200));
-        }
-        
-        // Extract buttons: [[Button Name]]
-        const normalButtons = [];
-        const normalButtonRegex = /\[\[([^\]]+)\]\]/g;
-        let normalMatch;
-        while ((normalMatch = normalButtonRegex.exec(normalResponse)) !== null) {
-            normalButtons.push(normalMatch[1].trim());
-        }
-        
-        // Remove buttons from response before sanitization
-        let normalResponseCleaned = normalResponse.replace(normalButtonRegex, '').trim();
-        
-        const safeNormalText = sanitizeResponse(normalResponseCleaned);
-        
-        // Final validation before sending
-        if (!safeNormalText || safeNormalText.length < 3 || safeNormalText.includes('"type"') || safeNormalText.includes('"action"')) {
-            console.error('ERROR: Normal response failed validation after sanitization');
-            const fallbackText = "I apologize, but I'm having trouble with that request. Could you please rephrase your question?";
-            await saveChatMessage(userId, "user", message);
-            await saveChatMessage(userId, "assistant", fallbackText);
-            return res.json(createErrorResponse(fallbackText));
+        if (!response.ok) {
+            throw new Error('Failed to create bulk payment link');
         }
 
-        await saveChatMessage(userId, "user", message);
-        await saveChatMessage(userId, "assistant", safeNormalText);
+        const data = await response.json();
 
-        return res.json(createSuccessResponse(safeNormalText, normalButtons.length > 0 ? normalButtons : null));
+        // Store each invoice payment
+        for (const invoice of invoices) {
+            await pool.query(
+                "INSERT INTO yoco_payments (invoice_id, yoco_checkout_id, redirect_url, amount, status) VALUES (?, ?, ?, ?, 'pending')",
+                [invoice.InvoiceID, data.id, data.redirectUrl, Math.round(parseFloat(invoice.TotalAmount) * 100)]
+            );
+        }
 
+        return {
+            success: true,
+            paymentUrl: data.redirectUrl,
+            checkoutId: data.id,
+            totalAmount: totalAmount,
+            invoiceCount: invoices.length
+        };
 
     } catch (error) {
-        console.error('Chat error:', error);
-        
-        if (error.code === 'insufficient_quota') {
-            return res.status(503).json(createErrorResponse("The AI service is currently unavailable due to quota limits. Please contact support or check billing details."));
-        }
+        console.error('Bulk payment link creation error:', error);
+        throw error;
+    }
+}
 
-        // Log error but don't expose details to user
-        console.error('Unexpected chat error:', error);
-        return res.status(500).json(createErrorResponse("An unexpected error occurred. Please try again later."));
+// Chatbot endpoint
+app.post('/api/chat', authenticateToken, chatRateLimit, async (req, res) => {
+    const { message } = req.body;
+    const clientId = req.user.id;
+    
+    if (!message) {
+        return res.status(400).json({ 
+            success: false,
+            error: 'Message is required' 
+        });
+    }
+    
+    try {
+        const clientData = await getClientData(clientId);
+        
+        const unpaidInvoices = clientData.invoices.filter(
+            inv => inv.Status === 'Unpaid' || inv.Status === 'Overdue'
+        );
+        const totalOwed = unpaidInvoices.reduce(
+            (sum, inv) => sum + parseFloat(inv.TotalAmount), 0
+        );
+        
+        const wantsToMakePayment = detectPaymentIntent(message);
+        
+        if (wantsToMakePayment && unpaidInvoices.length > 0) {
+            let paymentResponse = '';
+            let paymentUrl = null;
+            
+            if (unpaidInvoices.length === 1) {
+                const invoice = unpaidInvoices[0];
+                try {
+                    const payment = await createPaymentLink(
+                        invoice.InvoiceID,
+                        clientId,
+                        invoice.TotalAmount,
+                        `Payment for Invoice #${invoice.InvoiceID}`
+                    );
+                    
+                    paymentUrl = payment.paymentUrl;
+                    paymentResponse = `I've generated a secure payment link for your invoice #${invoice.id} (R${parseFloat(invoice.amount).toFixed(2)}).`;
+                    
+                } catch (error) {
+                    console.error('Payment link generation error:', error);
+                    paymentResponse = `I encountered an issue generating your payment link. Please contact support or try again later.`;
+                }
+            } else {
+                try {
+                    const invoiceIds = unpaidInvoices.map(inv => inv.InvoiceID);
+                    const payment = await createBulkPaymentLink(
+                        clientId,
+                        invoiceIds
+                    );
+                    
+                    paymentUrl = payment.paymentUrl;
+                    paymentResponse = `I've generated a payment link to settle all your outstanding invoices (${payment.invoiceCount} invoices totaling R${payment.totalAmount.toFixed(2)}).`;
+                    
+                } catch (error) {
+                    console.error('Bulk payment link generation error:', error);
+                    paymentResponse = `I encountered an issue generating your payment link. Please contact support or try again later.`;
+                }
+            }
+            
+            return res.json({
+                success: true,
+                message: paymentResponse,
+                hasPaymentLink: true,
+                paymentUrl: paymentUrl,
+                totalAmount: totalOwed.toFixed(2),
+                invoiceCount: unpaidInvoices.length
+            });
+        }
+        
+        const systemPrompt = `You are a helpful assistant for StackOn, a project management company. 
+You have access to the following client data:
+
+CLIENT INFO:
+- Name: ${clientData.client.name}
+- Email: ${clientData.client.email}
+- Phone: ${clientData.client.phone}
+
+PROJECTS (${clientData.projects.length} total):
+${clientData.projects.map(p => `- "${p.Name}" - Status: ${p.Status} - ${p.Description}`).join('\n') || 'No projects yet'}
+
+INVOICES (${clientData.invoices.length} total):
+${clientData.invoices.map(i => `- Invoice #${i.InvoiceID}: R${i.TotalAmount} (${i.Status.toUpperCase()}) - Due: ${i.DueDate}`).join('\n') || 'No invoices yet'}
+
+TOTAL OWED: R${totalOwed.toFixed(2)}
+
+Answer questions about their projects, invoices, payments, and account status. 
+Be friendly, helpful, and professional. Use South African Rand (R) for currency.
+
+IMPORTANT: If they ask about making a payment, tell them you can generate a secure payment link for them instantly.`;
+
+        const completion = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: message }
+            ],
+            temperature: 0.7,
+            max_tokens: 500
+        });
+        
+        const aiResponse = completion.choices[0].message.content;
+        
+        res.json({
+            success: true,
+            message: aiResponse,
+            clientName: clientData.client.name,
+            hasPaymentLink: false
+        });
+        
+    } catch (error) {
+        console.error('❌ Chat error:', error.message);
+        res.status(500).json({ 
+            success: false,
+            error: 'Failed to process your message', 
+            details: error.message 
+        });
     }
 });
-
 
 // Serve static files from the project root directory
 app.use(express.static(__dirname));
