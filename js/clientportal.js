@@ -9,7 +9,7 @@ let previewLockedByClick = false;
 const mockProjects = [
     {
         id: 1,
-        name: "Cisco Duo Licences",
+        name: "Cisco Duo Licenses",
         type: "Enterprise Identity & Access Management",
         status: "Syncing...", // Changed from Active
         risks: { critical: 0, high: 0, medium: 0 },

@@ -267,16 +267,39 @@
             width: 64px;
             height: 64px;
             border-radius: 50%;
-            background: #0066FF;
-            border: none;
+            background: linear-gradient(135deg, rgba(0, 102, 255, 0.9), rgba(0, 92, 204, 0.9));
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.2);
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 6px 24px rgba(0, 102, 255, 0.4);
-            transition: all 0.3s;
+            box-shadow: 
+                0 0 20px rgba(0, 102, 255, 0.6),
+                0 0 40px rgba(0, 102, 255, 0.4),
+                0 0 60px rgba(0, 102, 255, 0.2),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
             z-index: 9999;
-            padding: 14px;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        .chatbot-logo {
+            width: 32px;
+            height: 32px;
+            object-fit: contain;
+            filter: brightness(0) invert(1);
+            animation: chatbotJump 5s ease-in-out infinite;
+        }
+
+        @keyframes chatbotJump {
+            0%, 100% {
+                transform: translateY(0) scale(1);
+            }
+            50% {
+                transform: translateY(-3px) scale(1.05);
+            }
         }
 
         .main-toggle svg {
@@ -285,15 +308,29 @@
         }
 
         .main-toggle.on {
-            background: #2d3748;
+            background: rgba(45, 55, 72, 0.95);
+            backdrop-filter: blur(15px);
             color: white;
             font-size: 28px;
             padding: 0;
+            box-shadow: 
+                0 0 30px rgba(239, 68, 68, 0.6),
+                0 0 50px rgba(239, 68, 68, 0.4),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        }
+
+        .main-toggle.on .chatbot-logo {
+            animation: none;
+            transform: scale(0.8);
         }
 
         .main-toggle:hover {
             transform: scale(1.1);
-            box-shadow: 0 8px 32px rgba(0, 102, 255, 0.5);
+            box-shadow: 
+                0 0 30px rgba(0, 102, 255, 0.8),
+                0 0 50px rgba(0, 102, 255, 0.6),
+                0 0 70px rgba(0, 102, 255, 0.4),
+                inset 0 1px 0 rgba(255, 255, 255, 0.2);
         }
 
         .chat-input {
@@ -775,18 +812,7 @@
     <!-- Chatbot Widget -->
     <div class="chatbot-widget" id="chatWidget" style="display: none;">
         <button id="chatToggle" class="main-toggle" aria-label="Open chat">
-            <!-- StackOps Logo SVG -->
-            <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                    <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" style="stop-color:#0066FF;stop-opacity:1" />
-                        <stop offset="100%" style="stop-color:#0052CC;stop-opacity:1" />
-                    </linearGradient>
-                </defs>
-                <path d="M20 30 L35 15 L65 15 L80 30 L80 70 L65 85 L35 85 L20 70 Z" fill="url(#logoGrad)"/>
-                <path d="M30 40 L40 30 L60 30 L70 40 L70 60 L60 70 L40 70 L30 60 Z" fill="#0066FF" opacity="0.8"/>
-                <circle cx="50" cy="50" r="8" fill="white"/>
-            </svg>
+            <img src="Images/Logos/RemovedStackOpsONLY.png" alt="StackOps Chatbot" class="chatbot-logo">
         </button>
     </div>
 
