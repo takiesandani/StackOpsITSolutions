@@ -3093,6 +3093,14 @@ function getClientData(clientId) {
             const [projects] = await pool.query('SELECT * FROM Projects WHERE CompanyID = ?', [companyId]);
             const [invoices] = await pool.query('SELECT * FROM Invoices WHERE CompanyID = ?', [companyId]);
             
+            // Get Duo Stats
+            const [duoRows] = await pool.query(`
+                SELECT cds.used_licenses, cds.total_licenses, cds.edition, cds.last_updated, cds.status 
+                FROM client_duo_stats cds
+                JOIN user_duo_accounts uda ON cds.id = uda.duo_id
+                WHERE uda.user_id = ?
+            `, [clientId]);
+
             resolve({
                 client: {
                     id: users[0].id,
@@ -3102,7 +3110,8 @@ function getClientData(clientId) {
                     phone: users[0].contact
                 },
                 projects: projects,
-                invoices: invoices
+                invoices: invoices,
+                duoStats: duoRows.length > 0 ? duoRows[0] : null
             });
         } catch (err) {
             reject(err);
@@ -3341,7 +3350,17 @@ ${clientData.invoices.map(i => `- Invoice #${i.InvoiceID}: R${i.TotalAmount} (${
 
 TOTAL OWED: R${totalOwed.toFixed(2)}
 
-Answer questions about their projects, invoices, payments, and account status. 
+CISCO DUO STATS:
+${clientData.duoStats ? `
+- Edition: ${clientData.duoStats.edition}
+- Status: ${clientData.duoStats.status}
+- Used Licenses: ${clientData.duoStats.used_licenses}
+- Total Licenses: ${clientData.duoStats.total_licenses}
+- Remaining Licenses: ${Math.max(0, clientData.duoStats.total_licenses - clientData.duoStats.used_licenses)}
+- Last Updated: ${clientData.duoStats.last_updated}
+` : 'No Cisco Duo information available for this account.'}
+
+Answer questions about their projects, invoices, payments, account status, and Cisco Duo license usage. 
 Be friendly, helpful, and professional. Use South African Rand (R) for currency.
 
 IMPORTANT: If they ask about making a payment, tell them you can generate a secure payment link for them instantly.`;
