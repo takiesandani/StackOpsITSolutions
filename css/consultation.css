@@ -44,7 +44,7 @@ a {
     padding: 12px 30px;
     background: rgba(0, 0, 0, 0.206);
     color: white;
-    font-weight: 600;
+    font-weight: 200;
     border-radius: 5px;
     border: 2px solid var(--primary);
     cursor: pointer;
@@ -209,12 +209,7 @@ header.sticky {
         height: 22px;
         margin-top: 0;
     }
-    .hamburger {
-        font-size: 20px;
-        padding: 0;
-        margin: 0;
-        line-height: 1;
-      }
+
 }
 
 
@@ -245,7 +240,7 @@ header.sticky {
 .nav-links a {
     position: relative;
     color: var(--light);
-    font-weight: 500;
+    font-weight: 200;
     font-size: 16px;
     padding: 6px 12px;
     border-radius: 8px;
@@ -282,20 +277,13 @@ header.sticky {
 }
 
 
-.hamburger {
-    display: none;
-    cursor: pointer;
-    font-size: 24px;
-    color: var(--light);
-}
-
 /* Styles for the button-like links */
 .nav-links li a.button-like {
     padding: 8px 16px;
     background-color: var(--primary-orange);
     color: var(--white);
     border-radius: 15px;
-    font-weight: 400;
+    font-weight: 200;
     transition: all 0.3s ease;
     border: 2px solid var(--primary-orange);
 }
@@ -333,7 +321,7 @@ header.sticky {
     padding: 5px 8px;
     color: var(--light);
     font-size: 16px;
-    font-weight: 500;
+    font-weight: 200;
     text-decoration: none;
 }
 
@@ -426,7 +414,7 @@ header.sticky {
 .day.selected {
     background: white;
     color: var(--dark);
-    font-weight: 400;
+    font-weight: 200;
 }
 
 .day.unavailable {
@@ -484,7 +472,7 @@ header.sticky {
 .form-group label {
     display: block;
     margin-bottom: 8px;
-    font-weight: 500;
+    font-weight: 200;
     color: white;
 }
 
@@ -598,7 +586,7 @@ footer {
     color: #ffffff;
     margin: 0 0 1.25rem;
     font-size: 1.2rem;
-    font-weight: 300;
+    font-weight: 200;
 }
 
 .footer-section p,
@@ -749,58 +737,8 @@ footer a:hover {
     opacity: 0.7;
 }
 
-/* Tablet & mobile navigation: show hamburger and slide-in menu */
-@media (max-width: 1024px) {
-    .hamburger {
-        display: block;
-    }
-
-    .nav-links {
-        position: fixed;
-        top: 72px;
-        right: 5%;
-        width: min(340px, 80vw);
-        height: auto;
-        max-height: calc(100vh - 90px);
-        background: rgba(0, 0, 0, 0.95);
-        flex-direction: column;
-        justify-content: flex-start;
-        align-items: flex-start;
-        padding: 16px 20px;
-        gap: 6px;
-        border-radius: 12px;
-        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
-        transform: translateX(110%);
-        opacity: 0;
-        transition: transform 0.35s ease, opacity 0.35s ease;
-        z-index: 999;
-    }
-
-    .nav-links.active {
-        transform: translateX(0);
-        opacity: 1;
-        left: auto;
-    }
-
-    .nav-links li {
-        margin: 4px 0;
-        width: 100%;
-    }
-
-    .nav-links a {
-        display: block;
-        width: 100%;
-        padding: 10px 12px;
-    }
-
-    .consultation-container {
-        flex-direction: column;
-    }
-
-    .time-slots {
-        grid-template-columns: repeat(2, 1fr);
-    }
-}
+/* Tablet & mobile navigation: hamburger menu handled by JavaScript with minimal-menu */
+/* Removed conflicting nav-links styles - uses minimal-menu from style.css instead */
 
 .page-header {
     text-align: center;
@@ -810,7 +748,7 @@ footer a:hover {
 .page-header h1 {
     font-size: 3rem;
     margin-bottom: 20px;
-    font-weight: 400;
+    font-weight: 200;
     color: white
 }
 
@@ -889,7 +827,7 @@ form .glow-wrap .link-content {
   background: #000000 !important;
   color: #ffffff !important;
   font-size: 15px;
-  font-weight: 400;
+  font-weight: 200;
   letter-spacing: 2px;
   cursor: pointer;
   z-index: 2;

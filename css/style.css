@@ -35,7 +35,7 @@ h3,
 h4,
 h5,
 h6 {
-    font-weight: 400;
+    font-weight: 200;
 }
 
 a {
@@ -56,7 +56,7 @@ a {
     padding: 12px 30px;
     background: rgba(0, 0, 0, 0.206);
     color: white;
-    font-weight: 600;
+    font-weight: 200;
     border-radius: 5px;
     border: 2px solid var(--primary);
     cursor: pointer;
@@ -126,7 +126,7 @@ section {
 
 .section-title h2 {
     font-size: clamp(1.75rem, 5vw, 2.5rem);
-    font-weight: 400;
+    font-weight: 200;
     margin-bottom: 10px;
     color: white;
 }
@@ -272,13 +272,83 @@ header.sticky {
     color: var(--primary);
 }
 
-
+/* Hamburger icon */
 .hamburger {
     display: none;
+    width: 28px;
+    height: 22px;
+    position: relative;
     cursor: pointer;
-    font-size: 24px;
-    color: var(--light);
+    z-index: 10001;
 }
+
+.hamburger span {
+    position: absolute;
+    height: 3px;
+    width: 100%;
+    background: var(--light);
+    left: 0;
+    transition: 0.3s ease;
+}
+
+.hamburger span:nth-child(1) { top: 0; }
+.hamburger span:nth-child(2) { top: 9px; }
+.hamburger span:nth-child(3) { top: 18px; }
+
+/* Cross state */
+.hamburger.active span:nth-child(1) {
+    transform: rotate(45deg);
+    top: 9px;
+}
+
+.hamburger.active span:nth-child(2) {
+    opacity: 0;
+}
+
+.hamburger.active span:nth-child(3) {
+    transform: rotate(-45deg);
+    top: 9px;
+}
+
+/* Mobile menu */
+#minimal-menu {
+    position: fixed;
+    top: 70px;
+    right: 12px;
+    width: 280px;
+    background: rgba(0, 0, 0, 0.85);
+    color: #fff;
+    border-radius: 14px;
+    padding: 14px 0;
+    z-index: 10000;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+}
+
+#minimal-menu ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+#minimal-menu li a {
+    display: block;
+    padding: 12px 20px;
+    color: #fff;
+    text-decoration: none;
+    font-size: 16px;
+}
+
+#minimal-menu li a:hover {
+    background: rgba(255,255,255,0.08);
+}
+
+/* Show hamburger only on mobile */
+@media (max-width: 480px) {
+    .hamburger {
+        display: block;
+    }
+}
+
 
 /* Styles for the button-like links */
 .nav-links li a.button-like {
@@ -286,7 +356,7 @@ header.sticky {
     background-color: var(--primary-orange);
     color: var(--white);
     border-radius: 15px;
-    font-weight: 600;
+    font-weight: 200;
     transition: all 0.3s ease;
     border: 2px solid var(--primary-orange);
 }
@@ -324,7 +394,7 @@ header.sticky {
     padding: 5px 8px;
     color: var(--light);
     font-size: 16px;
-    font-weight: 500;
+    font-weight: 200;
     text-decoration: none;
 }
 
@@ -574,7 +644,7 @@ header.sticky {
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
-    margin-top: 80px;
+    margin-top: 0px;
     padding: clamp(130px, 11vw, 170px) clamp(6%, 8vw, 12%) clamp(100px, 9vw, 140px);
     display: flex;
     flex-direction: column;
@@ -653,7 +723,7 @@ header.sticky {
 .about-content h1 {
     font-size: 3rem; 
     line-height: 1;
-    font-weight: 400;
+    font-weight: 200;
     margin-bottom: 8px; /* Reduced margin to keep lines tight */
     margin-left: 0;
 }
@@ -694,7 +764,7 @@ header.sticky {
 @media (max-width: 992px) {
     .our-story-header-image {
         min-height: clamp(480px, 68vh, 540px);
-        margin-top: 90px;
+        margin-top: 0px;
         padding: clamp(130px, 18vw, 170px) 8% clamp(160px, 20vw, 200px);
         align-items: flex-start;
     }
@@ -742,27 +812,27 @@ header.sticky {
         background-repeat: no-repeat;
         background-color: rgba(0, 0, 0, 0.9);
         gap: clamp(6px, 1.8vw, 12px);
-        margin-top: 15%;
+        margin-top: 0%;
     }
 
     .our-story-header-image .about-content {
-        max-width: clamp(180px, 84%, 260px);
-        width: 100%;
+        max-width: clamp(600px, 100%, 660px);
+        width: 160%;
         padding: 0;
         text-align: left;
     }
 
     .our-story-header-image .about-content h1 {
-        font-size: clamp(0.82rem, 2vw, 1.05rem);
+        font-size: clamp(1.82rem, 2vw, 1.05rem);
         margin-bottom: clamp(1px, 0.8vw, 4px);
         letter-spacing: 0.015em;
     }
 
     .our-story-header-image .about-content p {
-        font-size: clamp(0.34rem, 3vw, 0.42rem);
+        font-size: clamp(0.54rem, 6vw, 0.72rem);
         line-height: 1.54;
         margin-top: clamp(2px, 1vw, 4px);
-        max-width: clamp(180px, 100%, 260px);
+        max-width: clamp(480px, 100%, 260px);
         width: 100%;
     }
 
@@ -984,7 +1054,7 @@ header.sticky {
 
 .stat-text {
     font-size: clamp(0.75rem, 1.1vw, 0.95rem);
-    font-weight: 500;
+    font-weight: 200;
     line-height: 1.25;
     margin: 0;
     padding: 0 4px;
@@ -1451,7 +1521,7 @@ label {
     font-size: 0.9rem;
     color: #ffffff;
     margin-bottom: 5px;
-    font-weight: 500;
+    font-weight: 200;
 }
 .form-group-name .name-field:last-child label {
     font-size: 0.9rem;
@@ -1501,7 +1571,7 @@ textarea {
     padding: 12px 30px;
     background: rgb(0, 0, 0);
     color: white;
-    font-weight: 600;
+    font-weight: 200;
     border-radius: 45px;
     border: 2px solid var(--primary);
     cursor: pointer;
@@ -1530,7 +1600,7 @@ textarea {
     border-radius: 25px;
     padding: 0.625rem 1.5rem;
     font-size: 15px;
-    font-weight: 400;
+    font-weight: 200;
     letter-spacing: 2px;
     position: relative;
     overflow: hidden; /* Important for clipping the animated border */
@@ -1768,7 +1838,7 @@ footer {
     color: #ffffff;
     margin: 0 0 1.25rem;
     font-size: 1.2rem;
-    font-weight: 300;
+    font-weight: 400;
 }
 
 .footer-section p,
@@ -2162,17 +2232,31 @@ footer a:hover {
 
     /* Footer */
     .footer-content {
-        text-align: center;
+        text-align: left;
+        justify-items: start;
     }
 
     .footer-section {
-        text-align: center;
+        text-align: left;
+        align-items: flex-start;
         margin-bottom: 20px;
     }
 
     .footer-section h3::after {
-        margin-left: auto;
+        margin-left: 0;
         margin-right: auto;
+    }
+
+    .footer-section ul {
+        align-items: flex-start;
+    }
+
+    .footer-section .social-icons {
+        justify-content: flex-start;
+    }
+
+    footer .copyright {
+        text-align: center;
     }
 
     /* Approach Steps */
@@ -2249,7 +2333,7 @@ footer a:hover {
     color: #c8c8c8; 
     width: 190px;
     margin: 0;
-    font-weight: 300; /* Bolder for "Our Valued Clients" style */
+    font-weight: 200; /* Bolder for "Our Valued Clients" style */
     line-height: 1.1;
     text-transform: none;
     position: relative; /* needed so the pseudo-element can be positioned relative to the text */
@@ -2263,7 +2347,7 @@ footer a:hover {
     color: #c8c8c8; 
     width: 190px;
     margin: 0;
-    font-weight: 300; /* Bolder for "Our Valued Clients" style */
+    font-weight: 200; /* Bolder for "Our Valued Clients" style */
     line-height: 1.1;
     text-transform: none;
     position: relative; 
@@ -2578,7 +2662,7 @@ footer a:hover {
   background: #000000;
   color: #008cff;
   font-size: 15px;
-  font-weight: 400;
+  font-weight: 200;
   letter-spacing: 2px;
   cursor: pointer;
   z-index: 2;
@@ -2650,7 +2734,7 @@ footer a:hover {
   background: #000000;
   color: #ffffff !important;
   font-size: 15px;
-  font-weight: 400;
+  font-weight: 200;
   letter-spacing: 2px;
   cursor: pointer;
   z-index: 2;
@@ -2731,7 +2815,7 @@ form .glow-wrap[style*="width: 100%"] {
   background: #000000 !important;
   color: #ffffff !important;
   font-size: 13px !important; /* Increased from 9px for better readability */
-  font-weight: 400;
+  font-weight: 200;
   letter-spacing: 1.5px !important; /* Increased letter spacing */
   cursor: pointer;
   z-index: 2;
@@ -2777,7 +2861,7 @@ form .glow-wrap .link-content {
   background: #000000;
   color: #ffffff !important;
   font-size: 15px;
-  font-weight: 400;
+  font-weight: 200;
   letter-spacing: 2px;
   cursor: pointer;
   z-index: 2;
@@ -2854,7 +2938,7 @@ form .glow-wrap .link-content:hover {
 
 .testimonials-title h1 {
     font-size: clamp(1.5rem, 3vw, 2.5rem);
-    font-weight: 300;
+    font-weight: 200;
     margin-bottom: 2px;
     background: linear-gradient(135deg, #ffffff 0%, #ffffff 100%);
     -webkit-background-clip: text;
@@ -3010,7 +3094,7 @@ form .glow-wrap .link-content:hover {
 .testimonial-author {
     font-size: 1rem;
     color: #006eff;
-    font-weight: 600;
+    font-weight: 200;
     text-align: right;
     margin-top: 15px;
     position: relative;

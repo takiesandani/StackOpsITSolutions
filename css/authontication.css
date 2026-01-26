@@ -70,7 +70,7 @@ body {
 
 .form-group label {
   display: block;
-  font-weight: 500;
+  font-weight: 200;
   margin-bottom: 8px;
   color: var(--text-muted);
 }
@@ -122,14 +122,14 @@ body {
 .forgot-password a {
   color: var(--primary-color);
   font-size: 0.9rem;
-  font-weight: 500;
+  font-weight: 200;
 }
 
 .btn-primary {
   width: 100%;
   padding: 15px;
   font-size: 1.1rem;
-  font-weight: 600;
+  font-weight: 200;
   color: var(--background-dark);
   background-color: var(--primary-color);
   border: none;
@@ -151,7 +151,7 @@ body {
 
 .auth-link a {
   color: var(--primary-color);
-  font-weight: 500;
+  font-weight: 200;
 }
 
 /* Responsive Styles */

@@ -93,7 +93,7 @@ header.sticky {
 .nav-links a {
     position: relative;
     color: var(--light);
-    font-weight: 500;
+    font-weight: 200;
     font-size: 16px;
     padding: 6px 12px;
     border-radius: 8px;
@@ -152,7 +152,7 @@ header.sticky {
 
 .admin-panel h1 {
     font-size: clamp(1.75rem, 5vw, 2.5rem);
-    font-weight: 400;
+    font-weight: 200;
     margin-bottom: 10px;
     color: white;
 }
@@ -304,7 +304,7 @@ header.sticky {
     margin-bottom: 20px;
     color: white;
     font-size: clamp(1.5rem, 4vw, 2rem);
-    font-weight: 400;
+    font-weight: 200;
 }
 
 .booking-list ul {
@@ -663,7 +663,7 @@ header.sticky {
 .sidebar-header h2 {
     font-size: 1.2rem;
     color: var(--light);
-    font-weight: 500;
+    font-weight: 200;
 }
 
 .sidebar-toggle {
@@ -761,7 +761,7 @@ header.sticky {
 .page-header h1 {
     font-size: clamp(1.5rem, 4vw, 2rem);
     color: var(--light);
-    font-weight: 400;
+    font-weight: 200;
 }
 
 .filter-group {
@@ -782,7 +782,7 @@ header.sticky {
     align-items: center;
     gap: 8px;
     text-decoration: none;
-    font-weight: 500;
+    font-weight: 200;
 }
 
 .btn-primary {
@@ -842,7 +842,7 @@ header.sticky {
     padding: 15px;
     text-align: left;
     color: var(--primary);
-    font-weight: 600;
+    font-weight: 200;
     font-size: 0.95rem;
     border-bottom: 2px solid rgba(0, 110, 255, 0.3);
 }
@@ -882,7 +882,7 @@ header.sticky {
     display: block;
     margin-bottom: 8px;
     color: var(--light);
-    font-weight: 500;
+    font-weight: 200;
     font-size: 0.95rem;
 }
 
@@ -1024,7 +1024,7 @@ header.sticky {
 .info-item span {
     color: var(--light);
     font-size: 1rem;
-    font-weight: 500;
+    font-weight: 200;
 }
 
 .info-box {
@@ -1181,7 +1181,7 @@ header.sticky {
     color: var(--light);
     font-size: 1.5rem;
     margin-bottom: 20px;
-    font-weight: 400;
+    font-weight: 200;
 }
 
 /* Mobile Responsive for Admin Pages */
@@ -1324,7 +1324,7 @@ header.sticky {
     padding: 4px 12px;
     border-radius: 12px;
     font-size: 0.85rem;
-    font-weight: 500;
+    font-weight: 200;
     text-transform: capitalize;
 }
 

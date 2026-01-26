@@ -15,7 +15,7 @@
 
     let currentIndex = 0;
     let autoPlayInterval = null;
-    const slideDuration = 3000; // 7 seconds per slide
+    const slideDuration = 8000; // 7 seconds per slide
     let isPaused = false;
 
     /**

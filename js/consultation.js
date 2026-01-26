@@ -268,18 +268,5 @@ class BookingForm {
 document.addEventListener("DOMContentLoaded", () => {
     const calendar = new Calendar("calendar-container", "timeSlots");
     const bookingForm = new BookingForm("bookingForm");
-    const hamburger = document.getElementById('hamburger');
-    if (hamburger) {
-        hamburger.addEventListener('click', function(e) {
-            e.stopPropagation();
-            showMinimalMenu();
-        });
-        const hamburgerIcon = hamburger.querySelector('i');
-        if (hamburgerIcon) {
-            hamburgerIcon.addEventListener('click', function(e) {
-                e.stopPropagation();
-                showMinimalMenu();
-            });
-        }
-    }
+   
 });

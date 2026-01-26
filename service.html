@@ -19,9 +19,12 @@
                 <img src="Images/Logos/RemovedStackOps.png" alt="Stackops IT Solutions Logo" >
             
         </a>
-        <div class="hamburger" id="hamburger">
-            <i class="fas fa-bars"></i>
+        <div id="hamburger" class="hamburger">
+            <span></span>
+            <span></span>
+            <span></span>
         </div>
+
         <ul class="nav-links" id="nav-links">
             <li><a href="Home.html">Home</a></li>
             <li><a href="about.html">About</a></li>
@@ -266,7 +269,52 @@
 
 
 
-    <script src="js/script.js"></script>
-    <script src="js/Chatbot.js"></script>
+        <script src="js/script.js"></script>
+
+        <script>
+            document.addEventListener('DOMContentLoaded', () => {
+                const hamburger = document.getElementById('hamburger');
+                let menu = null;
+
+                function openMenu() {
+                    menu = document.createElement('div');
+                    menu.id = 'minimal-menu';
+                    menu.innerHTML = `
+                        <ul>
+                            <li><a href="Home.html">Home</a></li>
+                            <li><a href="about.html">About</a></li>
+                            <li><a href="service.html">Solutions</a></li>
+                            <li><a href="approach.html">Our Approach</a></li>
+                            <li><a href="contact.html">Contact Us</a></li>
+                            <li><a href="consultation.html">Book a Consultation</a></li>
+                            <li><a href="ClientPortal.html">Client Portal</a></li>
+                            <li><a href="#">Shop</a></li>
+                        </ul>
+                    `;
+                    document.body.appendChild(menu);
+                    hamburger.classList.add('active');
+                }
+
+                function closeMenu() {
+                    if (menu) {
+                        menu.remove();
+                        menu = null;
+                        hamburger.classList.remove('active');
+                    }
+                }
+
+                hamburger.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    menu ? closeMenu() : openMenu();
+                });
+
+                document.addEventListener('click', (e) => {
+                    if (menu && !menu.contains(e.target) && e.target !== hamburger) {
+                        closeMenu();
+                    }
+                });
+            });
+
+        </script>
 </body>
 </html>

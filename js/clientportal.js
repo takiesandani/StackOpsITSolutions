@@ -548,12 +548,15 @@ function showError(message) {
 // Updated: fetchDuoStats - Now with better error handling, loading states, and retries
 async function fetchDuoStats(retryCount = 0) {
     const token = localStorage.getItem('authToken');
-    if (!token) {
-        console.warn('[Duo Sync] No auth token found. Skipping fetch.');
+    const isLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
+    
+    // Only fetch if user is logged in and has a token
+    if (!token || !isLoggedIn) {
+        console.log('[Duo Sync] User not logged in. Skipping fetch.');
         return;
     }
 
-    const duoProject = mockProjects.find(p => p.name === "Cisco Duo Licences");
+    const duoProject = mockProjects.find(p => p.name === "Cisco Duo Licenses");
     if (!duoProject) {
         console.error('[Duo Sync] Duo project not found in mockProjects.');
         return;

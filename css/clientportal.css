@@ -85,7 +85,7 @@
 
 .form-group label {
     display: block;
-    font-weight: 300;
+    font-weight: 200;
     margin-bottom: 8px;
     color: #bdbdbd;
     font-size: 0.9rem;
@@ -177,7 +177,7 @@
     box-shadow: none;
     border-radius: 23px;
     font-size: 15px;
-    font-weight: 400;
+    font-weight: 200;
     cursor: pointer;
     transition: color 0.3s;
     display: flex;
@@ -265,7 +265,7 @@
     color: var(--light);
     margin-bottom: 15px;
     text-align: center;
-    font-weight: 300;
+    font-weight: 200;
 }
 
 .mfa-section .form-group {
@@ -324,7 +324,7 @@
     background: black;
     color: #ffffff;
     font-size: 16px;
-    font-weight: 600;
+    font-weight: 200;
     cursor: pointer;
 
     display: flex;
@@ -481,7 +481,7 @@
     color: var(--light);
     font-size: 1.5rem;
     margin: 0;
-    font-weight: 300;
+    font-weight: 200;
 }
 
 .site-header .header-user {
@@ -550,7 +550,7 @@
     border: 1px solid var(--danger);
     border-radius: 6px;
     cursor: pointer;
-    font-weight: 400;
+    font-weight: 200;
     transition: all 0.3s ease;
     display: flex;
     align-items: center;
@@ -577,7 +577,7 @@
     font-size: 1.33rem;
     color: var(--light);
     margin-bottom: 3px;
-    font-weight: 400;
+    font-weight: 200;
     letter-spacing: -1px;
 }
 
@@ -604,13 +604,13 @@
 .nav-counter {
     color: #bdbdbd;
     font-size: 0.918rem;
-    font-weight: 400;
+    font-weight: 200;
     opacity: 0.9;
 }
 
 .nav-counter span {
     color: var(--primary);
-    font-weight: 400;
+    font-weight: 200;
 }
 
 .nav-buttons {
@@ -811,7 +811,7 @@
     color: var(--light);
     font-size: 1.051rem;
     margin-bottom: 4.4px;
-    font-weight: 300;
+    font-weight: 200;
     letter-spacing: -0.5px;
 }
 
@@ -827,7 +827,7 @@
     color: var(--success);
     border-radius: 20px;
     font-size: 0.714rem;
-    font-weight: 400;
+    font-weight: 200;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     border: 1px solid rgba(40, 167, 69, 0.4);
@@ -919,7 +919,7 @@
 .project-risks span {
     color: #bdbdbd;
     font-size: 0.877rem;
-    font-weight: 400;
+    font-weight: 200;
 }
 
 .risk-indicator {
@@ -1077,7 +1077,7 @@
     color: var(--light);
     font-size: 1.224rem;
     margin: 0;
-    font-weight: 300;
+    font-weight: 200;
 }
 
 .billing-amount {
@@ -1120,7 +1120,7 @@
 
 .billing-summary-value {
     color: var(--light);
-    font-weight: 300;
+    font-weight: 200;
 }
 
 .billing-items {
@@ -1147,7 +1147,7 @@
 
 .billing-item-cost {
     color: var(--primary);
-    font-weight: 400;
+    font-weight: 200;
 }
 
 .billing-items-more {
@@ -1240,7 +1240,7 @@
     color: var(--light);
     font-size: 1.102rem;
     margin: 0;
-    font-weight: 300;
+    font-weight: 200;
 }
 
 .governance-content {
@@ -1286,7 +1286,7 @@
     color: var(--light);
     font-size: 1.102rem;
     margin: 0;
-    font-weight: 300;
+    font-weight: 200;
 }
 
 /* PROJECT PREVIEW SECTION */
@@ -1351,7 +1351,7 @@
 .preview-header h3 {
     color: var(--light);
     font-size: 1.4rem;
-    font-weight: 300;
+    font-weight: 200;
     margin: 0 0 8px 0;
     display: flex;
     align-items: center;
@@ -1433,7 +1433,7 @@
 .preview-stat-label {
     color: #bdbdbd;
     font-size: 0.8rem;
-    font-weight: 400;
+    font-weight: 200;
     text-transform: uppercase;
     letter-spacing: 0.6px;
 }
@@ -1441,7 +1441,7 @@
 .preview-stat-value {
     color: var(--light);
     font-size: 1.5rem;
-    font-weight: 300;
+    font-weight: 200;
     line-height: 1;
 }
 
@@ -1498,14 +1498,14 @@
 .risk-label {
     color: #bdbdbd;
     font-size: 0.85rem;
-    font-weight: 400;
+    font-weight: 200;
     text-transform: uppercase;
 }
 
 .risk-value {
     color: var(--light);
     font-size: 1.8rem;
-    font-weight: 400;
+    font-weight: 200;
 }
 
 .risk-item.critical .risk-value {
@@ -1569,7 +1569,7 @@
     box-shadow: none;
     border-radius: 23px;
     font-size: 15px;
-    font-weight: 400;
+    font-weight: 200;
     cursor: pointer;
     transition: color 0.3s;
     display: flex;
@@ -1714,7 +1714,7 @@
     background: rgba(40, 167, 69, 0.2);
     color: var(--success);
     border-radius: 20px;
-    font-weight: 400;
+    font-weight: 200;
     font-size: 0.9rem;
 }
 
@@ -1908,7 +1908,7 @@
 }
 
 .vuln-level {
-    font-weight: 400;
+    font-weight: 200;
     font-size: 0.8rem;
     text-transform: uppercase;
 }
@@ -2012,14 +2012,14 @@
 
 .status-name {
     color: var(--light);
-    font-weight: 400;
+    font-weight: 200;
 }
 
 .status-badge {
     padding: 4px 12px;
     border-radius: 20px;
     font-size: 0.8rem;
-    font-weight: 400;
+    font-weight: 200;
 }
 
 .status-badge.online {
@@ -2113,7 +2113,7 @@
     padding: 6px 12px;
     border-radius: 20px;
     font-size: 0.8rem;
-    font-weight: 400;
+    font-weight: 200;
     white-space: nowrap;
 }
 
@@ -2589,7 +2589,7 @@
     .user-name-mobile {
         color: var(--light);
         font-size: 0.9rem;
-        font-weight: 400;
+        font-weight: 200;
     }
 
     .mobile-nav-close {
@@ -2617,7 +2617,7 @@
     .mobile-nav-title {
         color: var(--light);
         font-size: 1rem;
-        font-weight: 300;
+        font-weight: 200;
         line-height: 1.4;
     }
 
@@ -2628,7 +2628,7 @@
         border: 1px solid var(--danger);
         border-radius: 6px;
         cursor: pointer;
-        font-weight: 400;
+        font-weight: 200;
         transition: all 0.3s ease;
         display: flex;
         align-items: center;

@@ -5,62 +5,8 @@ window.addEventListener('scroll', function() {
 });
 
 // Mobile Menu Toggle
-const hamburger = document.getElementById('hamburger');
-const navLinks = document.getElementById('nav-links');
 
-function showMinimalMenu() {
-    let minimalMenu = document.getElementById('minimal-menu');
-    if (!minimalMenu) {
-        minimalMenu = document.createElement('div');
-        minimalMenu.id = 'minimal-menu';
-        minimalMenu.style.position = 'fixed';
-        minimalMenu.style.top = '70px';
-        minimalMenu.style.right = '10px';
-        minimalMenu.style.width = '140px';
-        minimalMenu.style.height = 'auto';
-        minimalMenu.style.maxHeight = '220px';
-        minimalMenu.style.overflowY = 'auto';
-        minimalMenu.style.background = 'rgba(0,0,0,0.97)';
-        minimalMenu.style.color = '#fff';
-        minimalMenu.style.zIndex = '9999';
-        minimalMenu.style.padding = '8px 0 8px 0';
-        minimalMenu.style.borderRadius = '8px';
-        minimalMenu.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
-        minimalMenu.innerHTML = '<ul style="list-style:none;padding:0;margin:0;text-align:left;">' +
-            '<li><a href="Home.html" style="color:#fff;text-decoration:none;display:block;padding:6px 12px;font-size:15px;">Home</a></li>' +
-            '<li><a href="about.html" style="color:#fff;text-decoration:none;display:block;padding:6px 12px;font-size:15px;">About</a></li>' +
-            '<li><a href="service.html" style="color:#fff;text-decoration:none;display:block;padding:6px 12px;font-size:15px;">Services</a></li>' +
-            '<li><a href="contact.html" style="color:#fff;text-decoration:none;display:block;padding:6px 12px;font-size:15px;">Contact</a></li>' +
-            '</ul>' +
-            '<button id="close-minimal-menu" style="margin:8px 12px 0 12px;background:#222;color:#fff;border:none;padding:4px 8px;border-radius:6px;cursor:pointer;width:calc(100% - 24px);font-size:14px;">Close</button>';
-        document.body.appendChild(minimalMenu);
-        document.getElementById('close-minimal-menu').onclick = function() {
-            minimalMenu.remove();
-        };
-    }
-}
 
-if (hamburger) {
-    hamburger.addEventListener('click', () => {
-        if (navLinks) {
-            navLinks.classList.toggle('active');
-            hamburger.innerHTML = navLinks.classList.contains('active') ? 
-                '<i class="fas fa-times"></i>' : '<i class="fas fa-bars"></i>';
-        } else {
-            showMinimalMenu();
-        }
-    });
-}
-
-// Close mobile menu when clicking on a link
-document.querySelectorAll('.nav-links a').forEach(link => {
-    link.addEventListener('click', () => {
-        if (navLinks.classList.contains('active')) {
-            navLinks.classList.remove('active');
-            hamburger.innerHTML = '<i class="fas fa-bars"></i>';
-        }
-    });
-});
 
 document.addEventListener('DOMContentLoaded', () => {
     const contactForm = document.getElementById('contactForm');
