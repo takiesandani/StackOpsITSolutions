@@ -2409,7 +2409,10 @@ app.get('/api/duo-stats', authenticateToken, async (req, res) => {
         const userId = req.user.id; // From JWT token
 
         const [rows] = await pool.query(
-            "SELECT used_licenses, total_licenses, edition, last_updated, duo_account_id, status FROM client_duo_stats WHERE user_id = ?",
+            `SELECT cds.used_licenses, cds.total_licenses, cds.edition, cds.last_updated, cds.duo_account_id, cds.status 
+             FROM client_duo_stats cds
+             JOIN user_duo_accounts uda ON cds.id = uda.duo_id
+             WHERE uda.user_id = ?`,
             [userId]
         );
 
