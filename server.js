@@ -3075,6 +3075,7 @@ function getClientData(clientId) {
             const [users] = await pool.query(`
                 SELECT 
                     ID AS id,
+                    CompanyID AS companyId,
                     FirstName AS firstName,
                     LastName AS lastName,
                     Email AS email,
@@ -3086,13 +3087,16 @@ function getClientData(clientId) {
             if (users.length === 0) {
                 return reject(new Error('Client not found'));
             }
+
+            const companyId = users[0].companyId;
             
-            const [projects] = await pool.query('SELECT * FROM Projects WHERE ClientID = ?', [clientId]);
-            const [invoices] = await pool.query('SELECT * FROM Invoices WHERE ClientID = ?', [clientId]);
+            const [projects] = await pool.query('SELECT * FROM Projects WHERE CompanyID = ?', [companyId]);
+            const [invoices] = await pool.query('SELECT * FROM Invoices WHERE CompanyID = ?', [companyId]);
             
             resolve({
                 client: {
                     id: users[0].id,
+                    companyId: companyId,
                     name: `${users[0].firstName} ${users[0].lastName}`.trim(),
                     email: users[0].email,
                     phone: users[0].contact
@@ -3117,11 +3121,11 @@ function detectPaymentIntent(message) {
     return paymentKeywords.some(keyword => lowerMessage.includes(keyword));
 }
 
-async function createPaymentLink(invoiceId, clientId, amount, description) {
+async function createPaymentLink(invoiceId, companyId, amount, description) {
     try {
         const [invoices] = await pool.query(
-            'SELECT * FROM Invoices WHERE InvoiceID = ? AND ClientID = ?',
-            [invoiceId, clientId]
+            'SELECT * FROM Invoices WHERE InvoiceID = ? AND CompanyID = ?',
+            [invoiceId, companyId]
         );
 
         if (invoices.length === 0) {
