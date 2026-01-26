@@ -3121,7 +3121,7 @@ function detectPaymentIntent(message) {
     return paymentKeywords.some(keyword => lowerMessage.includes(keyword));
 }
 
-async function createPaymentLink(invoiceId, companyId, amount, description) {
+async function createPaymentLink(invoiceId, clientId, companyId, amount, description) {
     try {
         const [invoices] = await pool.query(
             'SELECT * FROM Invoices WHERE InvoiceID = ? AND CompanyID = ?',
@@ -3187,12 +3187,12 @@ async function createPaymentLink(invoiceId, companyId, amount, description) {
     }
 }
 
-async function createBulkPaymentLink(clientId, invoiceIds) {
+async function createBulkPaymentLink(clientId, companyId, invoiceIds) {
     try {
         const [invoices] = await pool.query(
             `SELECT * FROM Invoices 
-            WHERE InvoiceID IN (?) AND ClientID = ? AND Status IN ('Unpaid', 'Overdue')`,
-            [invoiceIds, clientId]
+            WHERE InvoiceID IN (?) AND CompanyID = ? AND Status IN ('Unpaid', 'Overdue')`,
+            [invoiceIds, companyId]
         );
 
         if (invoices.length === 0) {
@@ -3285,12 +3285,13 @@ app.post('/api/chat', authenticateToken, chatRateLimit, async (req, res) => {
                     const payment = await createPaymentLink(
                         invoice.InvoiceID,
                         clientId,
+                        clientData.client.companyId,
                         invoice.TotalAmount,
                         `Payment for Invoice #${invoice.InvoiceID}`
                     );
                     
                     paymentUrl = payment.paymentUrl;
-                    paymentResponse = `I've generated a secure payment link for your invoice #${invoice.id} (R${parseFloat(invoice.amount).toFixed(2)}).`;
+                    paymentResponse = `I've generated a secure payment link for your invoice #${invoice.InvoiceID} (R${parseFloat(invoice.TotalAmount).toFixed(2)}).`;
                     
                 } catch (error) {
                     console.error('Payment link generation error:', error);
@@ -3301,6 +3302,7 @@ app.post('/api/chat', authenticateToken, chatRateLimit, async (req, res) => {
                     const invoiceIds = unpaidInvoices.map(inv => inv.InvoiceID);
                     const payment = await createBulkPaymentLink(
                         clientId,
+                        clientData.client.companyId,
                         invoiceIds
                     );
                     
