@@ -837,10 +837,10 @@ header.sticky {
     }
 
     .our-story-header-image .about-content p {
-        font-size: clamp(0.54rem, 6vw, 0.72rem);
+        font-size: clamp(0.54rem, 3vw, 0.12rem);
         line-height: 1.54;
         margin-top: clamp(2px, 1vw, 4px);
-        max-width: clamp(480px, 100%, 260px);
+        max-width: clamp(320px, 100%, 160px);
         width: 100%;
     }
 
