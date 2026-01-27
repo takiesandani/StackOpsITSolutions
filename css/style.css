@@ -500,16 +500,17 @@ header.sticky {
 }
 
 .service-content {
-    padding: clamp(18px, 5vw, 25px);
+    padding: clamp(18px, 2vw, 25px);
     flex-grow: 1;
     display: flex;
     flex-direction: column;
 }
 
 .service-content h2 {
-    font-size: clamp(1.35rem, 4.5vw, 1.8rem);
+    font-size: clamp(1.35rem, 4.5vw, 1rem);
     color: white;
     margin-bottom: clamp(8px, 3vw, 12px);
+    font-weight: 200;
 }
 
 .service-content p {
@@ -562,28 +563,35 @@ header.sticky {
 }
 
 .service-content h2 {
-    font-size: clamp(1.8rem, 6vw, 2.5rem);
+    font-size: clamp(0.8rem, 3vw, 1.5rem);
     margin-bottom: clamp(12px, 4vw, 18px);
     color: white;
+    font-weight: 200;
 }
 
 .service-content p {
     margin-bottom: clamp(12px, 4vw, 18px);
     opacity: 0.8;
-    font-size: clamp(0.95rem, 3.5vw, 1.1rem);
+    font-size: clamp(0.75rem, 2.5vw, 0.1rem);
+    font-weight: 100;
 }
 
 .service-content ul {
     list-style: none;
     margin: clamp(12px, 4vw, 18px) 0;
+    font-size: clamp(0.75rem, 2.5vw, 0.1rem);
+    font-weight: 100;
 }
+
 
 .service-content li {
     margin-bottom: clamp(6px, 3vw, 12px);
     display: flex;
     align-items: center;
-    font-size: clamp(0.95rem, 3.5vw, 1.1rem);
+    font-size: clamp(0.75rem, 0.5vw, 0.1rem);
+    font-weight: 100;
 }
+
 
 .service-content li i {
     color: var(--primary);
@@ -1722,12 +1730,14 @@ textarea {
     text-align: center;
     background: rgba(28, 28, 28, 0.7);
     padding: 80px 20px;
+    font-weight: 200;
 }
 
 .cta h2 {
-    font-size: 2.5rem;
+    font-size: 2rem;
     margin-bottom: 15px;
     color: white;
+    font-weight: 100;
 }
 
 .cta p {
