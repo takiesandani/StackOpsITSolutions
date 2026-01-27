@@ -99,9 +99,49 @@
         font-size: 2.5rem;
     }
     
-    .service-content h2 {
-        font-size: 2rem;
-    }
+.service-content {
+    padding: clamp(18px, 2vw, 25px);
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+}
+
+.service-content h2 {
+    font-size: clamp(1.35rem, 4.5vw, 1rem);
+    color: white;
+    margin-bottom: clamp(8px, 3vw, 12px);
+    font-weight: 200;
+}
+
+.service-content p {
+    font-size: clamp(0.9rem, 3.5vw, 1rem);
+    opacity: 0.8;
+    margin-bottom: clamp(12px, 4vw, 18px);
+}
+
+.service-content ul {
+    list-style: none;
+    margin-bottom: clamp(12px, 4vw, 18px);
+    text-align: left;
+    margin-left: calc(-1 * clamp(18px, 2vw, 25px));
+    padding-left: clamp(18px, 2vw, 25px);
+    width: calc(100% + clamp(18px, 2vw, 25px));
+}
+
+.service-content li {
+    display: flex;
+    margin-bottom: clamp(6px, 3vw, 10px);
+    font-size: clamp(0.9rem, 3.5vw, 1rem);
+    opacity: 0.9;
+    
+    
+}
+
+.service-content li i {
+    color: var(--primary);
+    margin-right: 0px;
+}
     /* Center services-preview section and grid on mobile */
     .services-preview {
         display: flex;
