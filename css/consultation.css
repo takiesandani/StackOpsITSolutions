@@ -142,10 +142,11 @@ section {
     margin-bottom: 60px;
 }
 
-.section-title h2 {
-    font-size: 2.5rem;
+.section-title h1 {
+    font-size: 1.5rem;
     margin-bottom: 20px;
     color: var(--primary);
+    font-weight: 200;
 }
 
 .section-title p {
@@ -746,17 +747,18 @@ footer a:hover {
 }
 
 .page-header h1 {
-    font-size: 3rem;
+    font-size: 1rem;
     margin-bottom: 20px;
-    font-weight: 200;
+    font-weight: 100;
     color: white
 }
 
 .page-header p {
-    font-size: 1.2rem;
+    font-size: 2rem;
     max-width: 700px;
     margin: 0 auto;
     opacity: 0.8;
+    font-weight: 100;
 }
 
 /* ===== GLOW-WRAP BUTTON STYLES FOR CONSULTATION PAGE ===== */
