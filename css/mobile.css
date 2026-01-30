@@ -50,24 +50,21 @@
 
     /* Mobile Shop Styling */
     .Shop {
+        border: 2px solid var(--primary);
+        border-radius: 20px;
+        margin-top: 15px;
         display: flex;
         align-items: center;
         justify-content: center;
-        border: 2px solid var(--primary);
-        border-radius: 0;
-        margin-top: 4px;
-        padding: 0;
-        height: 26px;
-    }
-
-    .Shop li {
-        margin: 0;
+        width: 150px; /* Give it some width on mobile */
     }
 
     .Shop a {
-        padding: 5px 8px;
+        padding: 8px 0 !important;
+        width: 100%;
+        text-align: center;
         color: var(--light);
-        font-size: 16px;
+        font-size: 18px;
         font-weight: 200;
         text-decoration: none;
     }

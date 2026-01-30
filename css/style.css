@@ -342,10 +342,14 @@ header.sticky {
     background: rgba(255,255,255,0.08);
 }
 
-/* Show hamburger only on mobile */
-@media (max-width: 480px) {
+/* Show hamburger on tablet and mobile (768px and below) */
+@media (max-width: 768px) {
     .hamburger {
         display: block;
+    }
+    
+    .nav-links {
+        display: none;
     }
 }
 
@@ -367,35 +371,33 @@ header.sticky {
     transform: translateY(-3px);
 }
 
-/* Shop Div Styling */
+/* Shop Button Styling */
 .Shop {
+    border: 2px solid var(--primary);
+    border-radius: 20px;
+    transition: all 0.3s ease;
+    margin-left: 15px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 2px solid #006eff;
-    border-radius: 15px;
-    transition: all 0.3s ease;
-    padding: 0;
-    height: 26px;
-    margin-top: 3px;
 }
 
 .Shop:hover {
-    background-color: rgba(0, 110, 255, 0.1);
-}
-
-.Shop li {
-    list-style: none;
-    margin-bottom: 2px;
-    padding: 0;
+    background-color: var(--primary);
+    transform: translateY(-2px);
+    box-shadow: 0 0 15px rgba(0, 110, 255, 0.4);
 }
 
 .Shop a {
-    padding: 5px 8px;
-    color: var(--light);
-    font-size: 16px;
+    padding: 5px 20px !important;
+    color: var(--light) !important;
+    font-size: 15px;
     font-weight: 200;
     text-decoration: none;
+}
+
+.Shop a::after {
+    display: none; /* Remove underline effect for the button */
 }
 
 /*======================================================================================================*/

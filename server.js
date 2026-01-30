@@ -2164,7 +2164,7 @@ app.get('/api/admin/companies/:id/details', authenticateToken, async (req, res) 
 });
 
 //=======================================================================================//
-//                       payment endpoints would go here                                 //
+//                                  Payment integration                                  //
 //=======================================================================================//
 // YOCO Payment Creation (unchanged, for general use)
 app.post("/create-payment", async (req, res) => {
@@ -2208,7 +2208,7 @@ app.post("/create-payment", async (req, res) => {
   }
 });
 
-// YOCO WEBHOOK (UPDATED: Now handles invoice payments and updates both tables)
+// YOCO WEBHOOK 
 app.post("/webhook/yoco", (req, res) => {
   const event = req.body;
 
@@ -3390,6 +3390,137 @@ IMPORTANT: If they ask about making a payment, tell them you can generate a secu
             success: false,
             error: 'Failed to process your message', 
             details: error.message 
+        });
+    }
+});
+
+//=================================================================================================================//
+//                                   
+
+// ============================================
+// PUBLIC CHATBOT ENDPOINT (Website Widget)
+// ============================================
+app.post('/api/chat-public', async (req, res) => {
+    const { message, sessionId, visitorName, visitorEmail, visitorPhone } = req.body;
+
+    if (!message || !sessionId) {
+        return res.status(400).json({
+            success: false,
+            error: 'Message and sessionId required'
+        });
+    }
+
+    try {
+        // Initialize OpenAI if needed
+        if (!openai) {
+            await initializeOpenAI();
+        }
+
+        if (!openai) {
+            return res.status(503).json({
+                success: false,
+                message: "AI service temporarily unavailable. Please try again later."
+            });
+        }
+
+        // Hardcoded website URL for scraping
+        const WEBSITE_URL = 'https://stackopsit.co.za/';
+        
+        // Build system prompt for public chatbot
+        const systemPrompt = `You are StackOn, an enthusiastic and helpful AI assistant for StackOps IT Solutions.
+
+KEY INFORMATION:
+- Company: StackOps IT Solutions
+- Services: Managed IT Services, Cybersecurity, Cloud Solutions, IT Infrastructure
+- Website: ${WEBSITE_URL}
+- Email: info@stackopsit.co.za
+- We provide end-to-end managed services for businesses in South Africa
+
+PERSONALITY:
+- Friendly and approachable, but professional
+- Use emojis occasionally (not every message)
+- Keep responses concise (2-3 sentences max for simple questions)
+- Be enthusiastic about tech and helping clients
+- Use South African context naturally (Rand, local references)
+- Sound like a helpful human, not a robot
+
+YOUR ROLE:
+1. Answer questions about StackOps services and capabilities
+2. Help visitors book free consultations
+3. Guide them through the booking process smoothly
+4. Be genuinely helpful and build trust
+
+TONE GUIDELINES:
+- Greeting: Warm and welcoming
+- Questions: Conversational, not interrogative
+- Explanations: Clear and simple
+- Booking: Encouraging but not pushy
+- Errors: Apologetic and helpful
+
+IMPORTANT:
+- Don't be overly formal or use corporate jargon
+- Don't list everything - answer what they ask
+- Don't repeat yourself
+- Don't apologize unnecessarily
+- Focus on being helpful, not impressive
+- When users want to book, collect: Name, Email, Phone, and preferred time
+- Booking button should say: "I'd like to book a consultation"`;
+
+        // Check for booking intent
+        const bookingKeywords = [
+            'book', 'appointment', 'consultation', 'schedule', 'meeting',
+            'call', 'speak', 'talk', 'discuss', 'get in touch', 'contact'
+        ];
+
+        const lowerMessage = message.toLowerCase();
+        const wantsToBook = bookingKeywords.some(keyword => lowerMessage.includes(keyword));
+
+        let responseMessage = '';
+        let options = null;
+
+        if (wantsToBook) {
+            // Handle booking intent
+            if (!visitorName || !visitorEmail) {
+                responseMessage = "Awesome! Let's get you set up with a free consultation. 😊\n\nFirst, what's your name?";
+                options = null;
+            } else {
+                // User has provided info, ask about their needs
+                responseMessage = `Great to meet you, ${visitorName}! 👋\n\nWhat type of service are you interested in? We offer:\n\n• Managed IT Services\n• Cybersecurity Solutions\n• Cloud Solutions\n• IT Infrastructure & Support`;
+                options = ['Managed IT Services', 'Cybersecurity', 'Cloud Solutions', 'Infrastructure Support', 'Other'];
+            }
+        } else {
+            // General query - use OpenAI
+            const messages = [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: message }
+            ];
+
+            const completion = await openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                messages: messages,
+                temperature: 0.8,
+                max_tokens: 250
+            });
+
+            responseMessage = completion.choices[0].message.content;
+            
+            // Add booking option button
+            if (!message.toLowerCase().includes('book')) {
+                options = ['📅 I\'d like to book a consultation'];
+            }
+        }
+
+        res.json({
+            success: true,
+            message: responseMessage,
+            options: options
+        });
+
+    } catch (error) {
+        console.error('Public chatbot error:', error);
+        res.status(500).json({
+            success: false,
+            message: "I encountered an error. Could you please try again?"
         });
     }
 });
