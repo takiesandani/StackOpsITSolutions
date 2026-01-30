@@ -690,25 +690,6 @@ class StackOpsChatbot {
         const message = this.messageInput.value.trim();
         if (!message) return;
 
-        // Check if we should enter booking mode (first time booking keyword is used)
-        const bookingKeywords = ['book', 'appointment', 'consultation', 'schedule', 'meeting', 'call', 'speak', 'talk', 'discuss', 'get in touch', 'contact'];
-        const wantsToBook = bookingKeywords.some(keyword => message.toLowerCase().includes(keyword));
-        
-        if (wantsToBook && !this.bookingMode) {
-            // First time user mentioned booking - enter booking mode
-            this.bookingMode = true;
-            this.bookingStep = 0;
-            this.addMessage('user', message);
-            this.messageInput.value = '';
-            this.sendButton.disabled = true;
-            setTimeout(() => {
-                this.addMessage('bot', "Awesome! Let's get you set up with a free consultation. 😊\n\nFirst, what's your name?");
-                this.sendButton.disabled = false;
-                this.messageInput.focus();
-            }, 500);
-            return;
-        }
-
         // Check if user is responding to a booking request
         if (this.bookingMode) {
             if (this.bookingStep === 0) {
@@ -765,13 +746,13 @@ class StackOpsChatbot {
                 this.messageInput.value = '';
                 this.sendButton.disabled = true;
                 setTimeout(() => {
-                    this.addMessage('bot', 'Great! When would you like to schedule your consultation? Please provide a date and time (e.g., 2026-02-05 at 14:00)');
+                    this.addMessage('bot', 'Great! When would you like to schedule your consultation? (e.g., 2026-02-05 at 14:00)');
                     this.sendButton.disabled = false;
                     this.messageInput.focus();
                 }, 500);
                 return;
             } else if (this.bookingStep === 4) {
-                // Date/time selection and booking submission
+                // Date/time selection
                 const dateTimeMatch = message.match(/(\d{4}-\d{2}-\d{2})\s+at\s+(\d{2}:\d{2})/i);
                 if (!dateTimeMatch) {
                     this.addMessage('user', message);
@@ -784,6 +765,7 @@ class StackOpsChatbot {
                 this.addMessage('user', message);
                 this.messageInput.value = '';
                 this.sendButton.disabled = true;
+                this.bookingMode = false;
                 this.showTyping(true);
 
                 // Send booking data to server
@@ -810,17 +792,7 @@ class StackOpsChatbot {
 
                     if (data.success && data.bookingSuccess) {
                         this.addMessage('bot', data.message, null);
-                        // Reset booking mode
-                        this.bookingMode = false;
                         this.bookingStep = 0;
-                        this.visitorData = {
-                            name: null,
-                            email: null,
-                            phone: null,
-                            service: null,
-                            date: null,
-                            time: null
-                        };
                     } else {
                         this.addMessage('bot', data.message || "There was an issue creating your booking. Please try again.");
                         this.bookingMode = false;
@@ -839,7 +811,6 @@ class StackOpsChatbot {
             }
         }
 
-        // Regular message (not in booking mode)
         this.addMessage('user', message);
         this.messageInput.value = '';
         this.sendButton.disabled = true;
@@ -862,6 +833,11 @@ class StackOpsChatbot {
             this.showTyping(false);
 
             if (data.success) {
+                // Check if booking was initiated
+                if (message.toLowerCase().includes('book') || message.toLowerCase().includes('consultation') || message.toLowerCase().includes('appointment')) {
+                    this.bookingMode = true;
+                    this.bookingStep = 0;
+                }
                 this.addMessage('bot', data.message, data.options);
             } else {
                 this.addMessage('bot', "Oops! Something went wrong on my end. Mind trying that again?");

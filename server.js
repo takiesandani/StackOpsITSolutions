@@ -3423,41 +3423,7 @@ app.post('/api/chat-public', async (req, res) => {
             });
         }
 
-        // Check if this is a booking confirmation with full data
-        if (bookingData && visitorName && visitorEmail && visitorPhone && bookingData.service && bookingData.date && bookingData.time) {
-            try {
-                // Create booking in appointment table (matching consultation.html booking structure)
-                const [result] = await pool.query(
-                    'INSERT INTO appointment (date, time, clientname, email, service, message, is_available) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                    [bookingData.date, bookingData.time, visitorName, visitorEmail, bookingData.service, `Phone: ${visitorPhone}`, false]
-                );
-
-                if (result.affectedRows > 0) {
-                    // Send confirmation emails
-                    const clientConfirmation = `Hi ${visitorName},\n\nYour free consultation has been booked! 🎉\n\nDate: ${bookingData.date}\nTime: ${bookingData.time}\nService: ${bookingData.service}\n\nWe'll contact you shortly at ${visitorEmail} or ${visitorPhone}.\n\nBest regards,\nStackOps IT Solutions Team`;
-                    
-                    const adminNotification = `New Consultation Booking from Chatbot:\n\nName: ${visitorName}\nEmail: ${visitorEmail}\nPhone: ${visitorPhone}\nService: ${bookingData.service}\nDate: ${bookingData.date}\nTime: ${bookingData.time}`;
-
-                    await sendEmail(visitorEmail, 'Consultation Booking Confirmation', clientConfirmation, true);
-                    await sendEmail('info@stackopsit.co.za', 'New Chatbot Consultation Booking', adminNotification);
-
-                    return res.json({
-                        success: true,
-                        message: `Perfect! Your consultation has been booked for ${bookingData.date} at ${bookingData.time}. We'll send you a confirmation email shortly. Looking forward to speaking with you! 🚀`,
-                        bookingSuccess: true
-                    });
-                }
-            } catch (bookingError) {
-                console.error('Booking creation error:', bookingError);
-                return res.json({
-                    success: false,
-                    message: `I had trouble saving your booking. Please contact us directly at info@stackopsit.co.za with your details and we'll get you scheduled!`,
-                    bookingSuccess: false
-                });
-            }
-        }
-
-        // If not a booking request, handle as general Q&A
+        // Hardcoded website URL for scraping
         const WEBSITE_URL = 'https://stackopsit.co.za/';
         
         // Build system prompt for public chatbot
@@ -3496,30 +3462,88 @@ IMPORTANT:
 - Don't list everything - answer what they ask
 - Don't repeat yourself
 - Don't apologize unnecessarily
-- Focus on being helpful, not impressive`;
+- Focus on being helpful, not impressive
+- When users want to book, collect: Name, Email, Phone, and preferred time
+- Booking button should say: "I'd like to book a consultation"`;
 
-        // Handle general Q&A with OpenAI
-        const messages = [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: message }
+        // Check for booking intent
+        const bookingKeywords = [
+            'book', 'appointment', 'consultation', 'schedule', 'meeting',
+            'call', 'speak', 'talk', 'discuss', 'get in touch', 'contact'
         ];
 
-        const completion = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
-            messages: messages,
-            temperature: 0.8,
-            max_tokens: 250
-        });
+        const lowerMessage = message.toLowerCase();
+        const wantsToBook = bookingKeywords.some(keyword => lowerMessage.includes(keyword));
 
-        const responseMessage = completion.choices[0].message.content;
-        
-        // Add booking option button for non-booking queries
-        const options = message.toLowerCase().includes('book') ? null : ['📅 I\'d like to book a consultation'];
+        let responseMessage = '';
+        let options = null;
+        let bookingSuccess = false;
+
+        // Check if this is a booking confirmation with full data
+        if (bookingData && visitorName && visitorEmail && visitorPhone && bookingData.service && bookingData.date && bookingData.time) {
+            try {
+                // Create booking in appointment table
+                const [result] = await pool.query(
+                    'INSERT INTO appointment (date, time, clientname, email, phone, service, is_available) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                    [bookingData.date, bookingData.time, visitorName, visitorEmail, visitorPhone, bookingData.service, false]
+                );
+
+                if (result.affectedRows > 0) {
+                    // Send confirmation emails
+                    const clientConfirmation = `Hi ${visitorName},\n\nYour free consultation has been booked! 🎉\n\nDate: ${bookingData.date}\nTime: ${bookingData.time}\nService: ${bookingData.service}\n\nWe'll contact you shortly at ${visitorEmail} or ${visitorPhone}.\n\nBest regards,\nStackOps IT Solutions Team`;
+                    
+                    const adminNotification = `New Consultation Booking from Chatbot:\n\nName: ${visitorName}\nEmail: ${visitorEmail}\nPhone: ${visitorPhone}\nService: ${bookingData.service}\nDate: ${bookingData.date}\nTime: ${bookingData.time}`;
+
+                    await sendEmail(visitorEmail, 'Consultation Booking Confirmation', clientConfirmation, true);
+                    await sendEmail('info@stackopsit.co.za', 'New Chatbot Consultation Booking', adminNotification);
+
+                    responseMessage = `Perfect! Your consultation has been booked for ${bookingData.date} at ${bookingData.time}. We'll send you a confirmation email shortly. Looking forward to speaking with you! 🚀`;
+                    bookingSuccess = true;
+                }
+            } catch (bookingError) {
+                console.error('Booking creation error:', bookingError);
+                responseMessage = `I had trouble saving your booking. Please contact us directly at info@stackopsit.co.za with your details and we'll get you scheduled!`;
+            }
+        } else if (wantsToBook) {
+            // Handle booking intent - guide through the process
+            if (!visitorName || !visitorEmail) {
+                responseMessage = "Awesome! Let's get you set up with a free consultation. 😊\n\nFirst, what's your name?";
+                options = null;
+            } else if (!visitorPhone) {
+                responseMessage = `Thanks, ${visitorName}! 👋\n\nWhat's the best phone number to reach you?`;
+                options = null;
+            } else {
+                // User has provided info, ask about their needs
+                responseMessage = `Great! And what service are you interested in? We offer:\n\n• Managed IT Services\n• Cybersecurity Solutions\n• Cloud Solutions\n• IT Infrastructure & Support`;
+                options = ['Managed IT Services', 'Cybersecurity', 'Cloud Solutions', 'Infrastructure Support', 'Other'];
+            }
+        } else {
+            // General query - use OpenAI
+            const messages = [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: message }
+            ];
+
+            const completion = await openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                messages: messages,
+                temperature: 0.8,
+                max_tokens: 250
+            });
+
+            responseMessage = completion.choices[0].message.content;
+            
+            // Add booking option button
+            if (!message.toLowerCase().includes('book')) {
+                options = ['📅 I\'d like to book a consultation'];
+            }
+        }
 
         res.json({
             success: true,
             message: responseMessage,
-            options: options
+            options: options,
+            bookingSuccess: bookingSuccess
         });
 
     } catch (error) {
