@@ -11,7 +11,10 @@ class StackOpsChatbot {
         this.visitorData = {
             name: null,
             email: null,
-            phone: null
+            phone: null,
+            service: null,
+            date: null,
+            time: null
         };
         
         this.STACKOPS_LOGO = `
@@ -689,18 +692,22 @@ class StackOpsChatbot {
         this.sendButton.disabled = true;
         this.showTyping(true);
 
-        // Extract name, email, phone from message if it looks like structured input
-        // Check if this might be a name (no @ symbol, probably just text)
-        if (!this.visitorData.name && !message.includes('@') && !message.match(/\d{10,}/)) {
+        // Extract and store booking data from message
+        if (!this.visitorData.name && !message.includes('@') && !message.match(/\d{8,}/)) {
             this.visitorData.name = message;
-        }
-        // Check if this looks like an email
-        else if (!this.visitorData.email && message.includes('@')) {
+        } else if (!this.visitorData.email && message.includes('@')) {
             this.visitorData.email = message;
-        }
-        // Check if this looks like a phone number
-        else if (!this.visitorData.phone && message.match(/\d{9,}/)) {
+        } else if (!this.visitorData.phone && message.match(/\d{8,}/)) {
             this.visitorData.phone = message;
+        } else if (!this.visitorData.service && !message.match(/\d{4}-\d{2}-\d{2}/)) {
+            // Service selection - check if it matches one of the available services
+            this.visitorData.service = message;
+        } else if (!this.visitorData.date && message.match(/\d{4}-\d{2}-\d{2}/)) {
+            // Date selection
+            this.visitorData.date = message.match(/\d{4}-\d{2}-\d{2}/)[0];
+        } else if (!this.visitorData.time && this.visitorData.date) {
+            // Time selection
+            this.visitorData.time = message;
         }
 
         try {
@@ -712,7 +719,9 @@ class StackOpsChatbot {
                     sessionId: this.sessionId,
                     visitorName: this.visitorData.name,
                     visitorEmail: this.visitorData.email,
-                    visitorPhone: this.visitorData.phone
+                    visitorPhone: this.visitorData.phone,
+                    bookingService: this.visitorData.service,
+                    bookingDate: this.visitorData.date
                 })
             });
 
@@ -721,6 +730,12 @@ class StackOpsChatbot {
 
             if (data.success) {
                 this.addMessage('bot', data.message, data.options);
+                
+                // If we have all booking info and a time was selected, create the booking
+                if (this.visitorData.name && this.visitorData.email && this.visitorData.phone && 
+                    this.visitorData.service && this.visitorData.date && this.visitorData.time) {
+                    this.createBooking();
+                }
             } else {
                 this.addMessage('bot', "Oops! Something went wrong on my end. Mind trying that again?");
             }
@@ -729,6 +744,51 @@ class StackOpsChatbot {
             this.showTyping(false);
             this.addMessage('bot', "Hmm, I'm having trouble connecting. Could you refresh the page and try again?");
             console.error('Chatbot error:', error);
+        } finally {
+            this.sendButton.disabled = false;
+            this.messageInput.focus();
+        }
+    }
+
+    async createBooking() {
+        this.sendButton.disabled = true;
+        this.showTyping(true);
+
+        try {
+            const response = await fetch(`${this.API_URL}/api/book`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    date: this.visitorData.date,
+                    time: this.visitorData.time,
+                    name: this.visitorData.name,
+                    email: this.visitorData.email,
+                    service: this.visitorData.service,
+                    message: ''
+                })
+            });
+
+            const result = await response.text();
+            this.showTyping(false);
+
+            if (response.ok) {
+                this.addMessage('bot', `Perfect! Your consultation has been booked for ${this.visitorData.date} at ${this.visitorData.time}. 🎉\n\nWe've sent a confirmation email to ${this.visitorData.email}. Looking forward to speaking with you!`);
+                // Reset booking data
+                this.visitorData = {
+                    name: null,
+                    email: null,
+                    phone: null,
+                    service: null,
+                    date: null,
+                    time: null
+                };
+            } else {
+                this.addMessage('bot', "There was an issue creating your booking. Please try visiting our consultation page directly or contact us at info@stackopsit.co.za");
+            }
+        } catch (error) {
+            this.showTyping(false);
+            this.addMessage('bot', "I encountered an error creating your booking. Please contact us at info@stackopsit.co.za to complete your booking.");
+            console.error('Booking creation error:', error);
         } finally {
             this.sendButton.disabled = false;
             this.messageInput.focus();

@@ -3401,7 +3401,7 @@ IMPORTANT: If they ask about making a payment, tell them you can generate a secu
 // PUBLIC CHATBOT ENDPOINT (Website Widget)
 // ============================================
 app.post('/api/chat-public', async (req, res) => {
-    const { message, sessionId, visitorName, visitorEmail, visitorPhone } = req.body;
+    const { message, sessionId, visitorName, visitorEmail, visitorPhone, bookingDate, bookingService } = req.body;
 
     if (!message || !sessionId) {
         return res.status(400).json({
@@ -3426,12 +3426,26 @@ app.post('/api/chat-public', async (req, res) => {
         // Hardcoded website URL
         const WEBSITE_URL = 'https://stackopsit.co.za/';
         
+        // Available services (matching consultation.html)
+        const availableServices = [
+            'Cybersecurity Consulting',
+            'Cloud Security',
+            'Systems Implementation',
+            'IT Operations Support',
+            'End-user computing',
+            'Governance & Compliance',
+            'Web Development',
+            'Mobile App Development',
+            'AI Automations',
+            'Web Design'
+        ];
+        
         // Build system prompt for public chatbot
         const systemPrompt = `You are StackOn, an enthusiastic and helpful AI assistant for StackOps IT Solutions.
 
 KEY INFORMATION:
 - Company: StackOps IT Solutions
-- Services: Managed IT Services, Cybersecurity, Cloud Solutions, IT Infrastructure
+- Services: ${availableServices.join(', ')}
 - Website: ${WEBSITE_URL}
 - Email: info@stackopsit.co.za
 - We provide end-to-end managed services for businesses in South Africa
@@ -3473,10 +3487,13 @@ IMPORTANT:
         const lowerMessage = message.toLowerCase();
         const wantsToBook = bookingKeywords.some(keyword => lowerMessage.includes(keyword));
 
+        // If user has already started providing booking info, they're in booking mode
+        const inBookingMode = visitorName || visitorEmail || visitorPhone || bookingService || bookingDate;
+
         let responseMessage = '';
         let options = null;
 
-        if (wantsToBook) {
+        if (wantsToBook || inBookingMode) {
             // Handle booking intent - guide through the process step by step
             if (!visitorName) {
                 responseMessage = "Awesome! Let's get you set up with a free consultation. 😊\n\nFirst, what's your name?";
@@ -3484,10 +3501,32 @@ IMPORTANT:
                 responseMessage = `Thanks, ${visitorName}! 👋\n\nWhat's your email address?`;
             } else if (!visitorPhone) {
                 responseMessage = "Perfect! And what's your phone number?";
-            } else {
+            } else if (!bookingService) {
                 // User has provided name, email, phone - ask about their service needs
-                responseMessage = `Excellent! What service are you interested in? We offer:\n\n• Managed IT Services\n• Cybersecurity Solutions\n• Cloud Solutions\n• IT Infrastructure & Support\n\nOr just let me know what you need help with!`;
-                options = ['Managed IT Services', 'Cybersecurity', 'Cloud Solutions', 'Infrastructure Support', 'Other'];
+                responseMessage = `Excellent! What service are you interested in?`;
+                options = availableServices;
+            } else if (!bookingDate) {
+                // Ask for preferred date
+                responseMessage = `Great choice! When would you like to schedule your consultation?\n\nPlease enter a date in format: YYYY-MM-DD (e.g., 2026-02-10)`;
+            } else {
+                // User has provided date - get available times from database
+                try {
+                    const [availableTimes] = await pool.query(
+                        'SELECT time FROM appointment WHERE date = ? AND is_available = TRUE ORDER BY time ASC',
+                        [bookingDate]
+                    );
+
+                    if (availableTimes.length === 0) {
+                        responseMessage = `Sorry, there are no available times on ${bookingDate}. Could you please choose a different date?`;
+                    } else {
+                        const timesList = availableTimes.map(t => t.time).join('\n• ');
+                        responseMessage = `Perfect! Here are the available times on ${bookingDate}:\n\n• ${timesList}\n\nWhich time works best for you?`;
+                        options = availableTimes.map(t => t.time);
+                    }
+                } catch (dbError) {
+                    console.error('Database error checking availability:', dbError);
+                    responseMessage = `I had trouble checking availability. Please try visiting our consultation page directly at ${WEBSITE_URL}consultation.html`;
+                }
             }
         } else {
             // General query - use OpenAI
@@ -3514,7 +3553,14 @@ IMPORTANT:
         res.json({
             success: true,
             message: responseMessage,
-            options: options
+            options: options,
+            bookingStep: {
+                name: visitorName,
+                email: visitorEmail,
+                phone: visitorPhone,
+                service: bookingService,
+                date: bookingDate
+            }
         });
 
     } catch (error) {
