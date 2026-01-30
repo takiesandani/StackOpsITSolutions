@@ -3401,7 +3401,7 @@ IMPORTANT: If they ask about making a payment, tell them you can generate a secu
 // PUBLIC CHATBOT ENDPOINT (Website Widget)
 // ============================================
 app.post('/api/chat-public', async (req, res) => {
-    const { message, sessionId, visitorName, visitorEmail, visitorPhone, bookingDate, bookingService } = req.body;
+    const { message, sessionId, visitorName, visitorEmail, visitorPhone, bookingService, bookingDate, bookingTime } = req.body;
 
     if (!message || !sessionId) {
         return res.status(400).json({
@@ -3445,56 +3445,49 @@ app.post('/api/chat-public', async (req, res) => {
 
 KEY INFORMATION:
 - Company: StackOps IT Solutions
-- Services: ${availableServices.join(', ')}
 - Website: ${WEBSITE_URL}
 - Email: info@stackopsit.co.za
-- We provide end-to-end managed services for businesses in South Africa
+- Phone: +27 (0) 11 234 5678
+- Located in: Mia Drive, Waterfall City, Johannesburg, South Africa
+- Services offered: ${availableServices.join(', ')}
 
 PERSONALITY:
 - Friendly and approachable, but professional
 - Use emojis occasionally (not every message)
-- Keep responses concise (2-3 sentences max for simple questions)
+- Keep responses concise and helpful
 - Be enthusiastic about tech and helping clients
-- Use South African context naturally (Rand, local references)
 - Sound like a helpful human, not a robot
 
 YOUR ROLE:
-1. Answer questions about StackOps services and capabilities
-2. Help visitors book free consultations
-3. Guide them through the booking process smoothly
-4. Be genuinely helpful and build trust
-
-TONE GUIDELINES:
-- Greeting: Warm and welcoming
-- Questions: Conversational, not interrogative
-- Explanations: Clear and simple
-- Booking: Encouraging but not pushy
-- Errors: Apologetic and helpful
+1. Answer questions about StackOps services, capabilities, and company info
+2. Help visitors book free consultations when they ask
+3. Guide them to the consultation page if needed
+4. Answer technical and business questions
+5. Be genuinely helpful and build trust
 
 IMPORTANT:
-- Don't be overly formal or use corporate jargon
-- Don't list everything - answer what they ask
-- Don't repeat yourself
-- Don't apologize unnecessarily
-- Focus on being helpful, not impressive`;
+- Provide accurate information based on what's on the website
+- Don't make up services or information
+- When unsure, suggest visiting the website or contacting directly
+- Be helpful with all types of questions, not just bookings`;
 
         // Check for booking intent
         const bookingKeywords = [
             'book', 'appointment', 'consultation', 'schedule', 'meeting',
-            'call', 'speak', 'talk', 'discuss', 'get in touch', 'contact'
+            'call', 'speak', 'talk to', 'discuss', 'get in touch', 'contact'
         ];
 
         const lowerMessage = message.toLowerCase();
         const wantsToBook = bookingKeywords.some(keyword => lowerMessage.includes(keyword));
 
         // If user has already started providing booking info, they're in booking mode
-        const inBookingMode = visitorName || visitorEmail || visitorPhone || bookingService || bookingDate;
+        const inBookingMode = visitorName || visitorEmail || visitorPhone || bookingService || bookingDate || bookingTime;
 
         let responseMessage = '';
         let options = null;
 
         if (wantsToBook || inBookingMode) {
-            // Handle booking intent - guide through the process step by step
+            // Handle booking intent - collect all info
             if (!visitorName) {
                 responseMessage = "Awesome! Let's get you set up with a free consultation. 😊\n\nFirst, what's your name?";
             } else if (!visitorEmail) {
@@ -3508,24 +3501,78 @@ IMPORTANT:
             } else if (!bookingDate) {
                 // Ask for preferred date
                 responseMessage = `Great choice! When would you like to schedule your consultation?\n\nPlease enter a date in format: YYYY-MM-DD (e.g., 2026-02-10)`;
+            } else if (!bookingTime) {
+                // Ask for preferred time
+                responseMessage = `Perfect! What time works best for you?\n\nAvailable times: 09:00 AM to 05:00 PM\n\nPlease enter time in format: HH:MM (e.g., 14:30)`;
             } else {
-                // User has provided date - get available times from database
+                // We have all info - create booking
                 try {
-                    const [availableTimes] = await pool.query(
-                        'SELECT time FROM appointment WHERE date = ? AND is_available = TRUE ORDER BY time ASC',
-                        [bookingDate]
-                    );
-
-                    if (availableTimes.length === 0) {
-                        responseMessage = `Sorry, there are no available times on ${bookingDate}. Could you please choose a different date?`;
+                    // Validate time is within business hours (09:00 to 17:00)
+                    const timeParts = bookingTime.split(':');
+                    const hour = parseInt(timeParts[0]);
+                    
+                    if (hour < 9 || hour >= 17) {
+                        responseMessage = `Sorry, the time ${bookingTime} is outside business hours (09:00 AM - 05:00 PM). Please choose a time within those hours.`;
                     } else {
-                        const timesList = availableTimes.map(t => t.time).join('\n• ');
-                        responseMessage = `Perfect! Here are the available times on ${bookingDate}:\n\n• ${timesList}\n\nWhich time works best for you?`;
-                        options = availableTimes.map(t => t.time);
+                        // Create booking in database
+                        const [result] = await pool.query(
+                            'INSERT INTO appointment (date, time, clientname, email, phone, service, is_available) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                            [bookingDate, bookingTime, visitorName, visitorEmail, visitorPhone, bookingService, false]
+                        );
+
+                        if (result.affectedRows > 0) {
+                            // Send confirmation emails
+                            const clientConfirmation = `
+                                <!DOCTYPE html>
+                                <html>
+                                <head>
+                                    <style>
+                                        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4; }
+                                        .container { max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); border-top: 5px solid #007bff; }
+                                        .content { padding: 30px; }
+                                        .footer { text-align: center; font-size: 0.8em; color: #888; margin-top: 20px; border-top: 1px solid #eee; padding-top: 10px; }
+                                        a { color: #007bff; text-decoration: none; }
+                                    </style>
+                                </head>
+                                <body>
+                                    <div class="container">
+                                        <div class="content">
+                                            <p>Hello ${visitorName},</p>
+                                            <p>Your consultation with StackOps IT Solutions has been successfully booked for <strong>${bookingDate} at ${bookingTime}</strong>. We look forward to speaking with you about your <strong>${bookingService}</strong> inquiry!</p>
+                                            <p>If you need to reschedule or cancel, please contact us by replying to this email or calling us.</p>
+                                            <p>Best regards,</p>
+                                            <p>The StackOps IT Team</p>
+                                        </div>
+                                        
+                                        <div class="footer">
+                                            <p>StackOps IT Solutions (Pty) Ltd | Reg. No: 2016/120370/07 | B-BBEE Level: 1 Contributor: 135% | CSD Supplier: MAAA1641244</p>
+                                            <p>Legally registered in South Africa. All client information is protected in accordance with the Protection of Personal Information Act (POPIA) and our internal privacy and security policies.</p>
+                                        </div>
+                                    </div>
+                                </body>
+                                </html>
+                            `;
+                            
+                            const adminNotification = `New Consultation Booking from Chatbot:
+
+Name: ${visitorName}
+Email: ${visitorEmail}
+Phone: ${visitorPhone}
+Service: ${bookingService}
+Date: ${bookingDate}
+Time: ${bookingTime}`;
+
+                            await sendEmail(visitorEmail, 'Consultation Booking Confirmation', clientConfirmation, true);
+                            await sendEmail('info@stackopsit.co.za', 'New Chatbot Consultation Booking', adminNotification);
+
+                            responseMessage = `Perfect! 🎉 Your consultation has been booked!\n\n📅 Date: ${bookingDate}\n⏰ Time: ${bookingTime}\n📋 Service: ${bookingService}\n\nWe've sent a confirmation email to ${visitorEmail}. We look forward to speaking with you!`;
+                        } else {
+                            responseMessage = `There was an issue creating your booking. Please try again or contact us at info@stackopsit.co.za`;
+                        }
                     }
                 } catch (dbError) {
-                    console.error('Database error checking availability:', dbError);
-                    responseMessage = `I had trouble checking availability. Please try visiting our consultation page directly at ${WEBSITE_URL}consultation.html`;
+                    console.error('Booking creation error:', dbError);
+                    responseMessage = `I had trouble creating your booking. Please contact us at info@stackopsit.co.za or visit ${WEBSITE_URL}consultation.html to book directly.`;
                 }
             }
         } else {
@@ -3538,14 +3585,16 @@ IMPORTANT:
             const completion = await openai.chat.completions.create({
                 model: "gpt-4o-mini",
                 messages: messages,
-                temperature: 0.8,
-                max_tokens: 250
+                temperature: 0.7,
+                max_tokens: 300
             });
 
             responseMessage = completion.choices[0].message.content;
             
-            // Add booking option button if they haven't mentioned booking
-            if (!lowerMessage.includes('book') && !lowerMessage.includes('appointment')) {
+            // Add booking option button if relevant
+            if (lowerMessage.includes('service') || lowerMessage.includes('help') || 
+                lowerMessage.includes('solution') || lowerMessage.includes('support') ||
+                lowerMessage.includes('consult')) {
                 options = ['📅 I\'d like to book a consultation'];
             }
         }
@@ -3553,14 +3602,7 @@ IMPORTANT:
         res.json({
             success: true,
             message: responseMessage,
-            options: options,
-            bookingStep: {
-                name: visitorName,
-                email: visitorEmail,
-                phone: visitorPhone,
-                service: bookingService,
-                date: bookingDate
-            }
+            options: options
         });
 
     } catch (error) {
