@@ -3401,7 +3401,7 @@ IMPORTANT: If they ask about making a payment, tell them you can generate a secu
 // PUBLIC CHATBOT ENDPOINT (Website Widget)
 // ============================================
 app.post('/api/chat-public', async (req, res) => {
-    const { message, sessionId, visitorName, visitorEmail, visitorPhone, bookingData } = req.body;
+    const { message, sessionId, visitorName, visitorEmail, visitorPhone } = req.body;
 
     if (!message || !sessionId) {
         return res.status(400).json({
@@ -3423,7 +3423,7 @@ app.post('/api/chat-public', async (req, res) => {
             });
         }
 
-        // Hardcoded website URL for scraping
+        // Hardcoded website URL
         const WEBSITE_URL = 'https://stackopsit.co.za/';
         
         // Build system prompt for public chatbot
@@ -3462,9 +3462,7 @@ IMPORTANT:
 - Don't list everything - answer what they ask
 - Don't repeat yourself
 - Don't apologize unnecessarily
-- Focus on being helpful, not impressive
-- When users want to book, collect: Name, Email, Phone, and preferred time
-- Booking button should say: "I'd like to book a consultation"`;
+- Focus on being helpful, not impressive`;
 
         // Check for booking intent
         const bookingKeywords = [
@@ -3477,44 +3475,18 @@ IMPORTANT:
 
         let responseMessage = '';
         let options = null;
-        let bookingSuccess = false;
 
-        // Check if this is a booking confirmation with full data
-        if (bookingData && visitorName && visitorEmail && visitorPhone && bookingData.service && bookingData.date && bookingData.time) {
-            try {
-                // Create booking in appointment table
-                const [result] = await pool.query(
-                    'INSERT INTO appointment (date, time, clientname, email, phone, service, is_available) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                    [bookingData.date, bookingData.time, visitorName, visitorEmail, visitorPhone, bookingData.service, false]
-                );
-
-                if (result.affectedRows > 0) {
-                    // Send confirmation emails
-                    const clientConfirmation = `Hi ${visitorName},\n\nYour free consultation has been booked! 🎉\n\nDate: ${bookingData.date}\nTime: ${bookingData.time}\nService: ${bookingData.service}\n\nWe'll contact you shortly at ${visitorEmail} or ${visitorPhone}.\n\nBest regards,\nStackOps IT Solutions Team`;
-                    
-                    const adminNotification = `New Consultation Booking from Chatbot:\n\nName: ${visitorName}\nEmail: ${visitorEmail}\nPhone: ${visitorPhone}\nService: ${bookingData.service}\nDate: ${bookingData.date}\nTime: ${bookingData.time}`;
-
-                    await sendEmail(visitorEmail, 'Consultation Booking Confirmation', clientConfirmation, true);
-                    await sendEmail('info@stackopsit.co.za', 'New Chatbot Consultation Booking', adminNotification);
-
-                    responseMessage = `Perfect! Your consultation has been booked for ${bookingData.date} at ${bookingData.time}. We'll send you a confirmation email shortly. Looking forward to speaking with you! 🚀`;
-                    bookingSuccess = true;
-                }
-            } catch (bookingError) {
-                console.error('Booking creation error:', bookingError);
-                responseMessage = `I had trouble saving your booking. Please contact us directly at info@stackopsit.co.za with your details and we'll get you scheduled!`;
-            }
-        } else if (wantsToBook) {
-            // Handle booking intent - guide through the process
-            if (!visitorName || !visitorEmail) {
+        if (wantsToBook) {
+            // Handle booking intent - guide through the process step by step
+            if (!visitorName) {
                 responseMessage = "Awesome! Let's get you set up with a free consultation. 😊\n\nFirst, what's your name?";
-                options = null;
+            } else if (!visitorEmail) {
+                responseMessage = `Thanks, ${visitorName}! 👋\n\nWhat's your email address?`;
             } else if (!visitorPhone) {
-                responseMessage = `Thanks, ${visitorName}! 👋\n\nWhat's the best phone number to reach you?`;
-                options = null;
+                responseMessage = "Perfect! And what's your phone number?";
             } else {
-                // User has provided info, ask about their needs
-                responseMessage = `Great! And what service are you interested in? We offer:\n\n• Managed IT Services\n• Cybersecurity Solutions\n• Cloud Solutions\n• IT Infrastructure & Support`;
+                // User has provided name, email, phone - ask about their service needs
+                responseMessage = `Excellent! What service are you interested in? We offer:\n\n• Managed IT Services\n• Cybersecurity Solutions\n• Cloud Solutions\n• IT Infrastructure & Support\n\nOr just let me know what you need help with!`;
                 options = ['Managed IT Services', 'Cybersecurity', 'Cloud Solutions', 'Infrastructure Support', 'Other'];
             }
         } else {
@@ -3533,8 +3505,8 @@ IMPORTANT:
 
             responseMessage = completion.choices[0].message.content;
             
-            // Add booking option button
-            if (!message.toLowerCase().includes('book')) {
+            // Add booking option button if they haven't mentioned booking
+            if (!lowerMessage.includes('book') && !lowerMessage.includes('appointment')) {
                 options = ['📅 I\'d like to book a consultation'];
             }
         }
@@ -3542,8 +3514,7 @@ IMPORTANT:
         res.json({
             success: true,
             message: responseMessage,
-            options: options,
-            bookingSuccess: bookingSuccess
+            options: options
         });
 
     } catch (error) {
