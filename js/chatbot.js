@@ -11,8 +11,14 @@ class StackOpsChatbot {
         this.visitorData = {
             name: null,
             email: null,
-            phone: null
+            phone: null,
+            service: null,
+            date: null,
+            time: null
         };
+        
+        this.bookingMode = false;
+        this.bookingStep = 0; // 0=name, 1=email, 2=phone, 3=service, 4=date/time
         
         this.STACKOPS_LOGO = `
             <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
@@ -684,6 +690,156 @@ class StackOpsChatbot {
         const message = this.messageInput.value.trim();
         if (!message) return;
 
+        // Check if we should enter booking mode (first time booking keyword is used)
+        const bookingKeywords = ['book', 'appointment', 'consultation', 'schedule', 'meeting', 'call', 'speak', 'talk', 'discuss', 'get in touch', 'contact'];
+        const wantsToBook = bookingKeywords.some(keyword => message.toLowerCase().includes(keyword));
+        
+        if (wantsToBook && !this.bookingMode) {
+            // First time user mentioned booking - enter booking mode
+            this.bookingMode = true;
+            this.bookingStep = 0;
+            this.addMessage('user', message);
+            this.messageInput.value = '';
+            this.sendButton.disabled = true;
+            setTimeout(() => {
+                this.addMessage('bot', "Awesome! Let's get you set up with a free consultation. 😊\n\nFirst, what's your name?");
+                this.sendButton.disabled = false;
+                this.messageInput.focus();
+            }, 500);
+            return;
+        }
+
+        // Check if user is responding to a booking request
+        if (this.bookingMode) {
+            if (this.bookingStep === 0) {
+                // Collecting name
+                this.visitorData.name = message;
+                this.bookingStep = 1;
+                this.addMessage('user', message);
+                this.messageInput.value = '';
+                this.sendButton.disabled = true;
+                setTimeout(() => {
+                    this.addMessage('bot', `Thanks, ${message}! 👋\n\nWhat's your email address?`);
+                    this.sendButton.disabled = false;
+                    this.messageInput.focus();
+                }, 500);
+                return;
+            } else if (this.bookingStep === 1) {
+                // Collecting email
+                if (!this.validateEmail(message)) {
+                    this.addMessage('user', message);
+                    this.messageInput.value = '';
+                    this.addMessage('bot', 'That doesn\'t look like a valid email. Could you try again?');
+                    return;
+                }
+                this.visitorData.email = message;
+                this.bookingStep = 2;
+                this.addMessage('user', message);
+                this.messageInput.value = '';
+                this.sendButton.disabled = true;
+                setTimeout(() => {
+                    this.addMessage('bot', 'Perfect! And what\'s your phone number?');
+                    this.sendButton.disabled = false;
+                    this.messageInput.focus();
+                }, 500);
+                return;
+            } else if (this.bookingStep === 2) {
+                // Collecting phone
+                this.visitorData.phone = message;
+                this.bookingStep = 3;
+                this.addMessage('user', message);
+                this.messageInput.value = '';
+                this.sendButton.disabled = true;
+                setTimeout(() => {
+                    this.addMessage('bot', 'Excellent! What service are you interested in?', 
+                        ['Managed IT Services', 'Cybersecurity', 'Cloud Solutions', 'Infrastructure Support', 'Other']);
+                    this.sendButton.disabled = false;
+                    this.messageInput.focus();
+                }, 500);
+                return;
+            } else if (this.bookingStep === 3) {
+                // Service selection
+                this.visitorData.service = message;
+                this.bookingStep = 4;
+                this.addMessage('user', message);
+                this.messageInput.value = '';
+                this.sendButton.disabled = true;
+                setTimeout(() => {
+                    this.addMessage('bot', 'Great! When would you like to schedule your consultation? Please provide a date and time (e.g., 2026-02-05 at 14:00)');
+                    this.sendButton.disabled = false;
+                    this.messageInput.focus();
+                }, 500);
+                return;
+            } else if (this.bookingStep === 4) {
+                // Date/time selection and booking submission
+                const dateTimeMatch = message.match(/(\d{4}-\d{2}-\d{2})\s+at\s+(\d{2}:\d{2})/i);
+                if (!dateTimeMatch) {
+                    this.addMessage('user', message);
+                    this.messageInput.value = '';
+                    this.addMessage('bot', 'Please use format: YYYY-MM-DD at HH:MM (e.g., 2026-02-05 at 14:00)');
+                    return;
+                }
+                this.visitorData.date = dateTimeMatch[1];
+                this.visitorData.time = dateTimeMatch[2];
+                this.addMessage('user', message);
+                this.messageInput.value = '';
+                this.sendButton.disabled = true;
+                this.showTyping(true);
+
+                // Send booking data to server
+                try {
+                    const response = await fetch(`${this.API_URL}/api/chat-public`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            message: `Booking for ${this.visitorData.service}`,
+                            sessionId: this.sessionId,
+                            visitorName: this.visitorData.name,
+                            visitorEmail: this.visitorData.email,
+                            visitorPhone: this.visitorData.phone,
+                            bookingData: {
+                                service: this.visitorData.service,
+                                date: this.visitorData.date,
+                                time: this.visitorData.time
+                            }
+                        })
+                    });
+
+                    const data = await response.json();
+                    this.showTyping(false);
+
+                    if (data.success && data.bookingSuccess) {
+                        this.addMessage('bot', data.message, null);
+                        // Reset booking mode
+                        this.bookingMode = false;
+                        this.bookingStep = 0;
+                        this.visitorData = {
+                            name: null,
+                            email: null,
+                            phone: null,
+                            service: null,
+                            date: null,
+                            time: null
+                        };
+                    } else {
+                        this.addMessage('bot', data.message || "There was an issue creating your booking. Please try again.");
+                        this.bookingMode = false;
+                        this.bookingStep = 0;
+                    }
+                } catch (error) {
+                    this.showTyping(false);
+                    this.addMessage('bot', "I encountered an error processing your booking. Please contact us at info@stackopsit.co.za");
+                    console.error('Booking error:', error);
+                    this.bookingMode = false;
+                    this.bookingStep = 0;
+                }
+                this.sendButton.disabled = false;
+                this.messageInput.focus();
+                return;
+            }
+        }
+
+        // Regular message (not in booking mode)
         this.addMessage('user', message);
         this.messageInput.value = '';
         this.sendButton.disabled = true;
@@ -719,6 +875,11 @@ class StackOpsChatbot {
             this.sendButton.disabled = false;
             this.messageInput.focus();
         }
+    }
+
+    validateEmail(email) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        return emailRegex.test(email);
     }
 
     addMessage(sender, text, options = null) {

@@ -3401,7 +3401,7 @@ IMPORTANT: If they ask about making a payment, tell them you can generate a secu
 // PUBLIC CHATBOT ENDPOINT (Website Widget)
 // ============================================
 app.post('/api/chat-public', async (req, res) => {
-    const { message, sessionId, visitorName, visitorEmail, visitorPhone } = req.body;
+    const { message, sessionId, visitorName, visitorEmail, visitorPhone, bookingData } = req.body;
 
     if (!message || !sessionId) {
         return res.status(400).json({
@@ -3423,7 +3423,41 @@ app.post('/api/chat-public', async (req, res) => {
             });
         }
 
-        // Hardcoded website URL for scraping
+        // Check if this is a booking confirmation with full data
+        if (bookingData && visitorName && visitorEmail && visitorPhone && bookingData.service && bookingData.date && bookingData.time) {
+            try {
+                // Create booking in appointment table (matching consultation.html booking structure)
+                const [result] = await pool.query(
+                    'INSERT INTO appointment (date, time, clientname, email, service, message, is_available) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                    [bookingData.date, bookingData.time, visitorName, visitorEmail, bookingData.service, `Phone: ${visitorPhone}`, false]
+                );
+
+                if (result.affectedRows > 0) {
+                    // Send confirmation emails
+                    const clientConfirmation = `Hi ${visitorName},\n\nYour free consultation has been booked! 🎉\n\nDate: ${bookingData.date}\nTime: ${bookingData.time}\nService: ${bookingData.service}\n\nWe'll contact you shortly at ${visitorEmail} or ${visitorPhone}.\n\nBest regards,\nStackOps IT Solutions Team`;
+                    
+                    const adminNotification = `New Consultation Booking from Chatbot:\n\nName: ${visitorName}\nEmail: ${visitorEmail}\nPhone: ${visitorPhone}\nService: ${bookingData.service}\nDate: ${bookingData.date}\nTime: ${bookingData.time}`;
+
+                    await sendEmail(visitorEmail, 'Consultation Booking Confirmation', clientConfirmation, true);
+                    await sendEmail('info@stackopsit.co.za', 'New Chatbot Consultation Booking', adminNotification);
+
+                    return res.json({
+                        success: true,
+                        message: `Perfect! Your consultation has been booked for ${bookingData.date} at ${bookingData.time}. We'll send you a confirmation email shortly. Looking forward to speaking with you! 🚀`,
+                        bookingSuccess: true
+                    });
+                }
+            } catch (bookingError) {
+                console.error('Booking creation error:', bookingError);
+                return res.json({
+                    success: false,
+                    message: `I had trouble saving your booking. Please contact us directly at info@stackopsit.co.za with your details and we'll get you scheduled!`,
+                    bookingSuccess: false
+                });
+            }
+        }
+
+        // If not a booking request, handle as general Q&A
         const WEBSITE_URL = 'https://stackopsit.co.za/';
         
         // Build system prompt for public chatbot
@@ -3462,53 +3496,25 @@ IMPORTANT:
 - Don't list everything - answer what they ask
 - Don't repeat yourself
 - Don't apologize unnecessarily
-- Focus on being helpful, not impressive
-- When users want to book, collect: Name, Email, Phone, and preferred time
-- Booking button should say: "I'd like to book a consultation"`;
+- Focus on being helpful, not impressive`;
 
-        // Check for booking intent
-        const bookingKeywords = [
-            'book', 'appointment', 'consultation', 'schedule', 'meeting',
-            'call', 'speak', 'talk', 'discuss', 'get in touch', 'contact'
+        // Handle general Q&A with OpenAI
+        const messages = [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: message }
         ];
 
-        const lowerMessage = message.toLowerCase();
-        const wantsToBook = bookingKeywords.some(keyword => lowerMessage.includes(keyword));
+        const completion = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: messages,
+            temperature: 0.8,
+            max_tokens: 250
+        });
 
-        let responseMessage = '';
-        let options = null;
-
-        if (wantsToBook) {
-            // Handle booking intent
-            if (!visitorName || !visitorEmail) {
-                responseMessage = "Awesome! Let's get you set up with a free consultation. 😊\n\nFirst, what's your name?";
-                options = null;
-            } else {
-                // User has provided info, ask about their needs
-                responseMessage = `Great to meet you, ${visitorName}! 👋\n\nWhat type of service are you interested in? We offer:\n\n• Managed IT Services\n• Cybersecurity Solutions\n• Cloud Solutions\n• IT Infrastructure & Support`;
-                options = ['Managed IT Services', 'Cybersecurity', 'Cloud Solutions', 'Infrastructure Support', 'Other'];
-            }
-        } else {
-            // General query - use OpenAI
-            const messages = [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: message }
-            ];
-
-            const completion = await openai.chat.completions.create({
-                model: "gpt-4o-mini",
-                messages: messages,
-                temperature: 0.8,
-                max_tokens: 250
-            });
-
-            responseMessage = completion.choices[0].message.content;
-            
-            // Add booking option button
-            if (!message.toLowerCase().includes('book')) {
-                options = ['📅 I\'d like to book a consultation'];
-            }
-        }
+        const responseMessage = completion.choices[0].message.content;
+        
+        // Add booking option button for non-booking queries
+        const options = message.toLowerCase().includes('book') ? null : ['📅 I\'d like to book a consultation'];
 
         res.json({
             success: true,
