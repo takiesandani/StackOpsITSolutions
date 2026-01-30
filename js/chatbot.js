@@ -692,19 +692,27 @@ class StackOpsChatbot {
         this.sendButton.disabled = true;
         this.showTyping(true);
 
-        // Auto-detect and store booking data
-        if (!this.visitorData.name && !message.includes('@') && !message.match(/\d{9,}/) && !message.match(/\d{4}-\d{2}-\d{2}/) && !message.match(/^\d{2}:\d{2}$/)) {
-            this.visitorData.name = message;
-        } else if (!this.visitorData.email && message.includes('@')) {
-            this.visitorData.email = message;
-        } else if (!this.visitorData.phone && message.match(/\d{9,}/) && !this.visitorData.email) {
-            this.visitorData.phone = message;
-        } else if (!this.visitorData.service && !message.match(/\d{4}-\d{2}-\d{2}/) && !message.match(/^\d{2}:\d{2}$/)) {
-            this.visitorData.service = message;
-        } else if (!this.visitorData.date && message.match(/\d{4}-\d{2}-\d{2}/)) {
-            this.visitorData.date = message.match(/\d{4}-\d{2}-\d{2}/)[0];
-        } else if (!this.visitorData.time && message.match(/^\d{2}:\d{2}$/)) {
-            this.visitorData.time = message;
+        // Check if user is asking to book FIRST before storing data
+        const bookingKeywords = ['book', 'appointment', 'consultation', 'schedule', 'meeting', 'call', 'speak', 'discuss', 'contact'];
+        const lowerMessage = message.toLowerCase();
+        const wantsToBook = bookingKeywords.some(keyword => lowerMessage.includes(keyword));
+
+        // Only auto-detect booking data if user is already in booking mode OR just asked to book
+        if (wantsToBook || this.visitorData.name || this.visitorData.email || this.visitorData.phone || this.visitorData.service || this.visitorData.date) {
+            // Now we're in booking flow - collect data
+            if (!this.visitorData.name && !message.includes('@') && !message.match(/\d{9,}/) && !message.match(/\d{4}-\d{2}-\d{2}/) && !message.match(/^\d{2}:\d{2}$/)) {
+                this.visitorData.name = message;
+            } else if (!this.visitorData.email && message.includes('@')) {
+                this.visitorData.email = message;
+            } else if (!this.visitorData.phone && message.match(/\d{9,}/) && this.visitorData.email) {
+                this.visitorData.phone = message;
+            } else if (!this.visitorData.service && !message.match(/\d{4}-\d{2}-\d{2}/) && !message.match(/^\d{2}:\d{2}$/)) {
+                this.visitorData.service = message;
+            } else if (!this.visitorData.date && message.match(/\d{4}-\d{2}-\d{2}/)) {
+                this.visitorData.date = message.match(/\d{4}-\d{2}-\d{2}/)[0];
+            } else if (!this.visitorData.time && message.match(/^\d{2}:\d{2}$/)) {
+                this.visitorData.time = message;
+            }
         }
 
         try {

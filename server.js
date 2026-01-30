@@ -3591,12 +3591,8 @@ Time: ${bookingTime}`;
 
             responseMessage = completion.choices[0].message.content;
             
-            // Add booking option button if relevant
-            if (lowerMessage.includes('service') || lowerMessage.includes('help') || 
-                lowerMessage.includes('solution') || lowerMessage.includes('support') ||
-                lowerMessage.includes('consult')) {
-                options = ['📅 I\'d like to book a consultation'];
-            }
+            // Always add booking option for general inquiries
+            options = ['📅 I\'d like to book a consultation'];
         }
 
         res.json({
