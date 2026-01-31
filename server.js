@@ -574,7 +574,7 @@ app.get('/api/schedule', async (req, res) => {
 
 // function to book a consultation from consultation.html page (updated from original)
 app.post('/api/book', async (req, res) => {
-    const { date, time, name, email, service, message } = req.body;
+    const { date, time, name, email, service, message, companyName, title, phone } = req.body;
     
     let updateSuccessful = false;
     let result; 
@@ -584,8 +584,8 @@ app.post('/api/book', async (req, res) => {
             throw new Error('MySQL pool is not available.');
         }
         [result] = await pool.query(
-            'UPDATE appointment SET is_available = FALSE, clientname = ?, email = ?, service = ?, message = ? WHERE date = ? AND time = ? AND is_available = TRUE',
-            [name, email, service, message, date, time]
+            'UPDATE appointment SET is_available = FALSE, clientname = ?, companyName = ?, title = ?, email = ?, phone = ?, service = ?, message = ? WHERE date = ? AND time = ? AND is_available = TRUE',
+            [name, companyName || '', title || '', email, phone || '', service, message, date, time]
         );
         
         if (result.affectedRows > 0) {
@@ -630,7 +630,10 @@ app.post('/api/book', async (req, res) => {
         const adminNotification = `New Consultation Booking:
 
 - Name: ${name}
+- Company: ${companyName || 'N/A'}
+- Title: ${title || 'N/A'}
 - Email: ${email}
+- Phone: ${phone || 'N/A'}
 - Date: ${date}
 - Time: ${time}
 - Service: ${service}
@@ -3401,7 +3404,7 @@ IMPORTANT: If they ask about making a payment, tell them you can generate a secu
 // PUBLIC CHATBOT ENDPOINT (Website Widget)
 // ============================================
 app.post('/api/chat-public', async (req, res) => {
-    const { message, sessionId, visitorName, visitorEmail, visitorPhone, bookingService, bookingDate, bookingTime } = req.body;
+    const { message, sessionId, visitorName, visitorCompanyName, visitorEmail, visitorPhone, bookingService, bookingDate, bookingTime, bookingNotes } = req.body;
 
     if (!message || !sessionId) {
         return res.status(400).json({
@@ -3481,21 +3484,23 @@ IMPORTANT:
         const wantsToBook = bookingKeywords.some(keyword => lowerMessage.includes(keyword));
 
         // If user has already started providing booking info, they're in booking mode
-        const inBookingMode = visitorName || visitorEmail || visitorPhone || bookingService || bookingDate || bookingTime;
+        const inBookingMode = visitorName || visitorCompanyName || visitorEmail || visitorPhone || bookingService || bookingDate || bookingTime || bookingNotes;
 
         let responseMessage = '';
         let options = null;
 
         if (wantsToBook || inBookingMode) {
-            // Handle booking intent - collect all info
+            // Handle booking intent - collect all info in order
             if (!visitorName) {
-                responseMessage = "Awesome! Let's get you set up with a free consultation. 😊\n\nFirst, what's your name?";
+                responseMessage = "Awesome! Let's get you set up with a free consultation. 😊\n\nFirst, what's your full name?";
+            } else if (!visitorCompanyName) {
+                responseMessage = `Thanks, ${visitorName}! 👋\n\nWhat's your company name?`;
             } else if (!visitorEmail) {
-                responseMessage = `Thanks, ${visitorName}! 👋\n\nWhat's your email address?`;
+                responseMessage = `Great! What's your email address?`;
             } else if (!visitorPhone) {
                 responseMessage = "Perfect! And what's your phone number?";
             } else if (!bookingService) {
-                // User has provided name, email, phone - ask about their service needs
+                // User has provided name, company, email, phone - ask about their service needs
                 responseMessage = `Excellent! What service are you interested in?`;
                 options = availableServices;
             } else if (!bookingDate) {
@@ -3504,6 +3509,9 @@ IMPORTANT:
             } else if (!bookingTime) {
                 // Ask for preferred time
                 responseMessage = `Perfect! What time works best for you?\n\nAvailable times: 09:00 AM to 05:00 PM\n\nPlease enter time in format: HH:MM (e.g., 14:30)`;
+            } else if (!bookingNotes) {
+                // Ask for additional notes/questions before confirming
+                responseMessage = `Excellent! Before we confirm your booking, do you have any additional questions or concerns we should know about? You can type them here or just say "no" to proceed.`;
             } else {
                 // We have all info - create booking
                 try {
@@ -3514,10 +3522,10 @@ IMPORTANT:
                     if (hour < 9 || hour >= 17) {
                         responseMessage = `Sorry, the time ${bookingTime} is outside business hours (09:00 AM - 05:00 PM). Please choose a time within those hours.`;
                     } else {
-                        // Create booking in database
+                        // Create booking using UPDATE (same as consultation.html /api/book)
                         const [result] = await pool.query(
-                            'INSERT INTO appointment (date, time, clientname, email, phone, service, is_available) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                            [bookingDate, bookingTime, visitorName, visitorEmail, visitorPhone, bookingService, false]
+                            'UPDATE appointment SET is_available = FALSE, clientname = ?, companyName = ?, title = ?, email = ?, phone = ?, service = ?, message = ? WHERE date = ? AND time = ? AND is_available = TRUE',
+                            [visitorName, visitorCompanyName || '', 'Client', visitorEmail, visitorPhone || '', bookingService, bookingNotes === 'no' ? '' : bookingNotes, bookingDate, bookingTime]
                         );
 
                         if (result.affectedRows > 0) {
@@ -3556,16 +3564,18 @@ IMPORTANT:
                             const adminNotification = `New Consultation Booking from Chatbot:
 
 Name: ${visitorName}
+Company: ${visitorCompanyName}
 Email: ${visitorEmail}
 Phone: ${visitorPhone}
 Service: ${bookingService}
 Date: ${bookingDate}
-Time: ${bookingTime}`;
+Time: ${bookingTime}
+Additional Notes: ${bookingNotes === 'no' ? 'None' : bookingNotes}`;
 
                             await sendEmail(visitorEmail, 'Consultation Booking Confirmation', clientConfirmation, true);
                             await sendEmail('info@stackopsit.co.za', 'New Chatbot Consultation Booking', adminNotification);
 
-                            responseMessage = `Perfect! 🎉 Your consultation has been booked!\n\n📅 Date: ${bookingDate}\n⏰ Time: ${bookingTime}\n📋 Service: ${bookingService}\n\nWe've sent a confirmation email to ${visitorEmail}. We look forward to speaking with you!`;
+                            responseMessage = `Perfect! 🎉 Your consultation has been booked!\n\n📅 Date: ${bookingDate}\n⏰ Time: ${bookingTime}\n🏢 Company: ${visitorCompanyName}\n📋 Service: ${bookingService}\n\nWe've sent a confirmation email to ${visitorEmail}. We look forward to speaking with you!`;
                         } else {
                             responseMessage = `There was an issue creating your booking. Please try again or contact us at info@stackopsit.co.za`;
                         }

@@ -10,11 +10,14 @@ class StackOpsChatbot {
         this.sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
         this.visitorData = {
             name: null,
+            companyName: null,
+            title: null,
             email: null,
             phone: null,
             service: null,
             date: null,
-            time: null
+            time: null,
+            additionalNotes: null
         };
         
         this.STACKOPS_LOGO = `
@@ -698,20 +701,24 @@ class StackOpsChatbot {
         const wantsToBook = bookingKeywords.some(keyword => lowerMessage.includes(keyword));
 
         // Only auto-detect booking data if user is already in booking mode OR just asked to book
-        if (wantsToBook || this.visitorData.name || this.visitorData.email || this.visitorData.phone || this.visitorData.service || this.visitorData.date) {
-            // Now we're in booking flow - collect data
+        if (wantsToBook || this.visitorData.name || this.visitorData.companyName || this.visitorData.email || this.visitorData.phone || this.visitorData.service || this.visitorData.date) {
+            // Collect booking info in order: name -> company -> title -> email -> phone -> service -> date -> time -> notes
             if (!this.visitorData.name && !message.includes('@') && !message.match(/\d{9,}/) && !message.match(/\d{4}-\d{2}-\d{2}/) && !message.match(/^\d{2}:\d{2}$/)) {
                 this.visitorData.name = message;
-            } else if (!this.visitorData.email && message.includes('@')) {
+            } else if (!this.visitorData.companyName && this.visitorData.name && !message.includes('@') && !message.match(/\d{9,}/) && !message.match(/\d{4}-\d{2}-\d{2}/) && !message.match(/^\d{2}:\d{2}$/)) {
+                this.visitorData.companyName = message;
+            } else if (!this.visitorData.email && this.visitorData.name && this.visitorData.companyName && message.includes('@')) {
                 this.visitorData.email = message;
-            } else if (!this.visitorData.phone && message.match(/\d{9,}/) && this.visitorData.email) {
+            } else if (!this.visitorData.phone && this.visitorData.email && message.match(/\d{9,}/)) {
                 this.visitorData.phone = message;
-            } else if (!this.visitorData.service && !message.match(/\d{4}-\d{2}-\d{2}/) && !message.match(/^\d{2}:\d{2}$/)) {
+            } else if (!this.visitorData.service && this.visitorData.phone && !message.match(/\d{4}-\d{2}-\d{2}/) && !message.match(/^\d{2}:\d{2}$/)) {
                 this.visitorData.service = message;
-            } else if (!this.visitorData.date && message.match(/\d{4}-\d{2}-\d{2}/)) {
+            } else if (!this.visitorData.date && this.visitorData.service && message.match(/\d{4}-\d{2}-\d{2}/)) {
                 this.visitorData.date = message.match(/\d{4}-\d{2}-\d{2}/)[0];
-            } else if (!this.visitorData.time && message.match(/^\d{2}:\d{2}$/)) {
+            } else if (!this.visitorData.time && this.visitorData.date && message.match(/^\d{2}:\d{2}$/)) {
                 this.visitorData.time = message;
+            } else if (!this.visitorData.additionalNotes && this.visitorData.time) {
+                this.visitorData.additionalNotes = message;
             }
         }
 
@@ -723,11 +730,13 @@ class StackOpsChatbot {
                     message,
                     sessionId: this.sessionId,
                     visitorName: this.visitorData.name,
+                    visitorCompanyName: this.visitorData.companyName,
                     visitorEmail: this.visitorData.email,
                     visitorPhone: this.visitorData.phone,
                     bookingService: this.visitorData.service,
                     bookingDate: this.visitorData.date,
-                    bookingTime: this.visitorData.time
+                    bookingTime: this.visitorData.time,
+                    bookingNotes: this.visitorData.additionalNotes
                 })
             });
 
