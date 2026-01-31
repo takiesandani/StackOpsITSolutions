@@ -8,16 +8,21 @@ class StackOpsChatbot {
     constructor() {
         this.API_URL = window.location.origin; // Uses main server
         this.sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        
+        // Initialize visitor data - check localStorage first for existing bookings
+        const savedBooking = localStorage.getItem('stackops_booking');
+        const parsedBooking = savedBooking ? JSON.parse(savedBooking) : null;
+        
         this.visitorData = {
-            name: null,
-            companyName: null,
-            title: null,
-            email: null,
-            phone: null,
-            service: null,
-            date: null,
-            time: null,
-            additionalNotes: null
+            name: parsedBooking?.name || null,
+            companyName: parsedBooking?.companyName || null,
+            title: parsedBooking?.title || null,
+            email: parsedBooking?.email || null,
+            phone: parsedBooking?.phone || null,
+            service: parsedBooking?.service || null,
+            date: parsedBooking?.date || null,
+            time: parsedBooking?.time || null,
+            additionalNotes: parsedBooking?.additionalNotes || null
         };
         
         this.STACKOPS_LOGO = `
@@ -745,6 +750,14 @@ class StackOpsChatbot {
 
             if (data.success) {
                 this.addMessage('bot', data.message, data.options);
+                
+                // If booking was successful (check for confirmation message), save to localStorage
+                if (data.message.includes('been booked') || data.message.includes('successfully booked')) {
+                    // Save booking to localStorage for persistence
+                    localStorage.setItem('stackops_booking', JSON.stringify(this.visitorData));
+                    
+                    // Don't reset data - keep it for future queries about the appointment
+                }
             } else {
                 this.addMessage('bot', "Oops! Something went wrong on my end. Mind trying that again?");
             }

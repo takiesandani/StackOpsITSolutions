@@ -3480,16 +3480,31 @@ IMPORTANT:
             'call', 'speak', 'talk to', 'discuss', 'get in touch', 'contact'
         ];
 
+        // Check if user is asking about their appointment
+        const appointmentQueryKeywords = ['when', 'my appointment', 'my booking', 'my consultation', 'time', 'date', 'scheduled'];
+        const isAskingAboutAppointment = appointmentQueryKeywords.some(keyword => lowerMessage.includes(keyword)) && 
+                                           (visitorName || visitorEmail); // Only if we have their info
+
         const lowerMessage = message.toLowerCase();
         const wantsToBook = bookingKeywords.some(keyword => lowerMessage.includes(keyword));
 
         // If user has already started providing booking info, they're in booking mode
-        const inBookingMode = visitorName || visitorCompanyName || visitorEmail || visitorPhone || bookingService || bookingDate || bookingTime || bookingNotes;
+        // But NOT if all fields are complete (that means booking is done)
+        const bookingComplete = visitorName && visitorCompanyName && visitorEmail && visitorPhone && bookingService && bookingDate && bookingTime && bookingNotes !== null;
+        const bookingIncomplete = visitorName || visitorCompanyName || visitorEmail || visitorPhone || bookingService || bookingDate || bookingTime || bookingNotes;
+        const inBookingMode = (wantsToBook || bookingIncomplete) && !bookingComplete;
 
         let responseMessage = '';
         let options = null;
 
-        if (wantsToBook || inBookingMode) {
+        // If user is asking about their appointment and we have booking details, tell them
+        if (isAskingAboutAppointment && bookingDate && bookingTime) {
+            responseMessage = `📅 Here's your appointment details:\n\n• Date: ${bookingDate}\n• Time: ${bookingTime}\n• Service: ${bookingService}\n• With: ${visitorCompanyName || 'StackOps IT Solutions'}\n\nWe've sent you a confirmation email. Is there anything else you need?`;
+            options = ['💬 Ask a question', '📞 Contact info'];
+        } else if (isAskingAboutAppointment && visitorName && !bookingDate) {
+            responseMessage = `I don't have a booking on record for you yet. Would you like to schedule a consultation now?`;
+            options = ['📅 Yes, book a consultation', '📞 Contact us instead'];
+        } else if (inBookingMode) {
             // Handle booking intent - collect all info in order
             if (!visitorName) {
                 responseMessage = "Awesome! Let's get you set up with a free consultation. 😊\n\nFirst, what's your full name?";
@@ -3522,62 +3537,75 @@ IMPORTANT:
                     if (hour < 9 || hour >= 17) {
                         responseMessage = `Sorry, the time ${bookingTime} is outside business hours (09:00 AM - 05:00 PM). Please choose a time within those hours.`;
                     } else {
-                        // Create booking using UPDATE (same as consultation.html /api/book)
-                        const [result] = await pool.query(
-                            'UPDATE appointment SET is_available = FALSE, clientname = ?, companyName = ?, title = ?, email = ?, phone = ?, service = ?, message = ? WHERE date = ? AND time = ? AND is_available = TRUE',
-                            [visitorName, visitorCompanyName || '', 'Client', visitorEmail, visitorPhone || '', bookingService, bookingNotes === 'no' ? '' : bookingNotes, bookingDate, bookingTime]
+                        // Try to find and update an available slot for that date/time
+                        const [slots] = await pool.query(
+                            'SELECT id FROM appointment WHERE date = ? AND time = ? AND is_available = TRUE LIMIT 1',
+                            [bookingDate, bookingTime]
                         );
 
-                        if (result.affectedRows > 0) {
-                            // Send confirmation emails
-                            const clientConfirmation = `
-                                <!DOCTYPE html>
-                                <html>
-                                <head>
-                                    <style>
-                                        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4; }
-                                        .container { max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); border-top: 5px solid #007bff; }
-                                        .content { padding: 30px; }
-                                        .footer { text-align: center; font-size: 0.8em; color: #888; margin-top: 20px; border-top: 1px solid #eee; padding-top: 10px; }
-                                        a { color: #007bff; text-decoration: none; }
-                                    </style>
-                                </head>
-                                <body>
-                                    <div class="container">
-                                        <div class="content">
-                                            <p>Hello ${visitorName},</p>
-                                            <p>Your consultation with StackOps IT Solutions has been successfully booked for <strong>${bookingDate} at ${bookingTime}</strong>. We look forward to speaking with you about your <strong>${bookingService}</strong> inquiry!</p>
-                                            <p>If you need to reschedule or cancel, please contact us by replying to this email or calling us.</p>
-                                            <p>Best regards,</p>
-                                            <p>The StackOps IT Team</p>
-                                        </div>
-                                        
-                                        <div class="footer">
-                                            <p>StackOps IT Solutions (Pty) Ltd | Reg. No: 2016/120370/07 | B-BBEE Level: 1 Contributor: 135% | CSD Supplier: MAAA1641244</p>
-                                            <p>Legally registered in South Africa. All client information is protected in accordance with the Protection of Personal Information Act (POPIA) and our internal privacy and security policies.</p>
-                                        </div>
-                                    </div>
-                                </body>
-                                </html>
-                            `;
-                            
-                            const adminNotification = `New Consultation Booking from Chatbot:
-
-Name: ${visitorName}
-Company: ${visitorCompanyName}
-Email: ${visitorEmail}
-Phone: ${visitorPhone}
-Service: ${bookingService}
-Date: ${bookingDate}
-Time: ${bookingTime}
-Additional Notes: ${bookingNotes === 'no' ? 'None' : bookingNotes}`;
-
-                            await sendEmail(visitorEmail, 'Consultation Booking Confirmation', clientConfirmation, true);
-                            await sendEmail('info@stackopsit.co.za', 'New Chatbot Consultation Booking', adminNotification);
-
-                            responseMessage = `Perfect! 🎉 Your consultation has been booked!\n\n📅 Date: ${bookingDate}\n⏰ Time: ${bookingTime}\n🏢 Company: ${visitorCompanyName}\n📋 Service: ${bookingService}\n\nWe've sent a confirmation email to ${visitorEmail}. We look forward to speaking with you!`;
+                        if (slots.length === 0) {
+                            responseMessage = `Sorry, that time slot (${bookingTime} on ${bookingDate}) is not available. Please choose another date and time.`;
                         } else {
-                            responseMessage = `There was an issue creating your booking. Please try again or contact us at info@stackopsit.co.za`;
+                            const [result] = await pool.query(
+                                'UPDATE appointment SET is_available = FALSE, clientname = ?, companyName = ?, title = ?, email = ?, phone = ?, service = ?, message = ? WHERE date = ? AND time = ? AND is_available = TRUE LIMIT 1',
+                                [visitorName, visitorCompanyName || '', 'Client', visitorEmail, visitorPhone || '', bookingService, bookingNotes === 'no' ? '' : bookingNotes, bookingDate, bookingTime]
+                            );
+
+                            if (result.affectedRows > 0) {
+                                // Send confirmation emails
+                                const clientConfirmation = `
+                                    <!DOCTYPE html>
+                                    <html>
+                                    <head>
+                                        <style>
+                                            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4; }
+                                            .container { max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); border-top: 5px solid #007bff; }
+                                            .content { padding: 30px; }
+                                            .footer { text-align: center; font-size: 0.8em; color: #888; margin-top: 20px; border-top: 1px solid #eee; padding-top: 10px; }
+                                            a { color: #007bff; text-decoration: none; }
+                                        </style>
+                                    </head>
+                                    <body>
+                                        <div class="container">
+                                            <div class="content">
+                                                <p>Hello ${visitorName},</p>
+                                                <p>Your consultation with StackOps IT Solutions has been successfully booked for <strong>${bookingDate} at ${bookingTime}</strong>. We look forward to speaking with you about your <strong>${bookingService}</strong> inquiry!</p>
+                                                <p>If you need to reschedule or cancel, please contact us by replying to this email or calling us.</p>
+                                                <p>Best regards,</p>
+                                                <p>The StackOps IT Team</p>
+                                            </div>
+                                            
+                                            <div class="footer">
+                                                <p>StackOps IT Solutions (Pty) Ltd | Reg. No: 2016/120370/07 | B-BBEE Level: 1 Contributor: 135% | CSD Supplier: MAAA1641244</p>
+                                                <p>Legally registered in South Africa. All client information is protected in accordance with the Protection of Personal Information Act (POPIA) and our internal privacy and security policies.</p>
+                                            </div>
+                                        </div>
+                                    </body>
+                                    </html>
+                                `;
+                                
+                                const adminNotification = `New Consultation Booking from Chatbot:
+
+- Name: ${visitorName}
+- Company: ${visitorCompanyName || 'N/A'}
+- Email: ${visitorEmail}
+- Phone: ${visitorPhone || 'N/A'}
+- Service: ${bookingService}
+- Date: ${bookingDate}
+- Time: ${bookingTime}
+- Additional Notes: ${bookingNotes === 'no' ? 'None' : bookingNotes}`;
+
+                                await sendEmail(visitorEmail, 'Consultation Booking Confirmation', clientConfirmation, true);
+                                await sendEmail('info@stackopsit.co.za', 'New Chatbot Consultation Booking', adminNotification);
+
+                                // Reset booking data and return to normal assistant mode
+                                responseMessage = `Perfect! 🎉 Your consultation has been booked!\n\n📅 Date: ${bookingDate}\n⏰ Time: ${bookingTime}\n🏢 Company: ${visitorCompanyName}\n📋 Service: ${bookingService}\n\nWe've sent a confirmation email to ${visitorEmail}. We look forward to speaking with you!\n\nIs there anything else I can help you with today?`;
+                                
+                                // Return options to continue helping
+                                options = ['💬 Ask a question', '📞 Contact info', '🏠 Back to home'];
+                            } else {
+                                responseMessage = `There was an issue creating your booking. Please try again or contact us at info@stackopsit.co.za`;
+                            }
                         }
                     }
                 } catch (dbError) {
@@ -3620,6 +3648,51 @@ Additional Notes: ${bookingNotes === 'no' ? 'None' : bookingNotes}`;
     }
 });
 
+// Function to auto-generate appointment slots for the next 30 days
+async function generateWeeklySlots() {
+    try {
+        if (!pool) return;
+        
+        const standardTimes = ['09:00:00', '10:00:00', '11:00:00', '14:00:00', '15:00:00'];
+        const today = new Date();
+        
+        // Generate slots for next 30 days
+        for (let i = 1; i <= 30; i++) {
+            const date = new Date(today);
+            date.setDate(date.getDate() + i);
+            
+            // Skip weekends (0 = Sunday, 6 = Saturday)
+            if (date.getDay() === 0 || date.getDay() === 6) continue;
+            
+            const dateString = date.toISOString().split('T')[0]; // YYYY-MM-DD format
+            
+            // Check if slots already exist for this date
+            const [existingRows] = await pool.query(
+                'SELECT time FROM appointment WHERE date = ?',
+                [dateString]
+            );
+            
+            const existingTimes = new Set(existingRows.map(row => row.time));
+            
+            // Insert missing slots
+            const slotsToInsert = standardTimes
+                .filter(time => !existingTimes.has(time))
+                .map(time => [dateString, time, true, '', '', '', '', '', '', '']);
+            
+            if (slotsToInsert.length > 0) {
+                await pool.query(
+                    'INSERT INTO appointment (date, time, is_available, clientname, companyName, title, email, phone, service, message) VALUES ?',
+                    [slotsToInsert]
+                );
+            }
+        }
+        
+        console.log('✅ Weekly appointment slots generated successfully');
+    } catch (error) {
+        console.error('❌ Error generating weekly slots:', error);
+    }
+}
+
 // Serve static files from the project root directory
 app.use(express.static(__dirname));
 
@@ -3632,4 +3705,9 @@ app.get('/', (req, res) => {
 // Server Startup
 // ------------------------------------------------------------------------
 const PORT = process.env.PORT || 8080;  // Use PORT env var for Cloud Run
-app.listen(PORT, () => console.log(`Server running on port ${PORT}. Supabase mode: ${useSupabase ? 'ON' : 'OFF'}`));
+app.listen(PORT, async () => {
+    console.log(`Server running on port ${PORT}. Supabase mode: ${useSupabase ? 'ON' : 'OFF'}`);
+    
+    // Generate weekly slots on startup
+    await generateWeeklySlots();
+});
