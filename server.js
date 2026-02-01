@@ -3474,6 +3474,9 @@ IMPORTANT:
 - When unsure, suggest visiting the website or contacting directly
 - Be helpful with all types of questions, not just bookings`;
 
+        // Convert message to lowercase first (before using it)
+        const lowerMessage = message.toLowerCase();
+
         // Check for booking intent
         const bookingKeywords = [
             'book', 'appointment', 'consultation', 'schedule', 'meeting',
@@ -3485,7 +3488,6 @@ IMPORTANT:
         const isAskingAboutAppointment = appointmentQueryKeywords.some(keyword => lowerMessage.includes(keyword)) && 
                                            (visitorName || visitorEmail); // Only if we have their info
 
-        const lowerMessage = message.toLowerCase();
         const wantsToBook = bookingKeywords.some(keyword => lowerMessage.includes(keyword));
 
         // If user has already started providing booking info, they're in booking mode
