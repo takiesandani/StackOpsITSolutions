@@ -705,12 +705,11 @@ class StackOpsChatbot {
         const lowerMessage = message.toLowerCase();
         const wantsToBook = bookingKeywords.some(keyword => lowerMessage.includes(keyword));
 
-        // Check if user wants to book another consultation (for rebooking)
-        const rebookingKeywords = ['another', 'again', 'one more', 'second'];
-        const wantsRebook = rebookingKeywords.some(keyword => lowerMessage.includes(keyword)) && wantsToBook;
+        // Check if booking was previously completed
+        const bookingWasCompleted = this.visitorData.name && this.visitorData.companyName && this.visitorData.email && this.visitorData.phone && this.visitorData.service && this.visitorData.date && this.visitorData.time && this.visitorData.additionalNotes !== null;
 
-        // If user wants to rebook, reset the booking data (allow new booking)
-        if (wantsRebook) {
+        // If user wants to book AGAIN (after a completed booking), reset the booking data
+        if (wantsToBook && bookingWasCompleted) {
             this.visitorData = {
                 name: null,
                 companyName: null,
