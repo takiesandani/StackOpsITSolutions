@@ -671,7 +671,8 @@ box-shadow:
 /* Tablets and Medium Screens (768px - 1000px) */
 @media (max-width: 1000px) {
   .left-section {
-    margin-left: 5%;
+    margin-left: 0;
+    margin-right: auto;
   }
 
   .menu-grid {
@@ -3149,24 +3150,12 @@ footer a:hover {
 
 @keyframes slideShow {
     0% {
-        opacity: 0;
-        transform: translateX(100%);
-    }
-    2.4% {
         opacity: 1;
         transform: translateX(0);
-    }
-    11.1% {
-        opacity: 1;
-        transform: translateX(0);
-    }
-    14.3% {
-        opacity: 0;
-        transform: translateX(-100%);
     }
     100% {
-        opacity: 0;
-        transform: translateX(-100%);
+        opacity: 1;
+        transform: translateX(0);
     }
 }
 
