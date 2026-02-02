@@ -3490,9 +3490,9 @@ IMPORTANT:
 
         const wantsToBook = bookingKeywords.some(keyword => lowerMessage.includes(keyword));
 
-        // If user has already started providing booking info, they're in booking mode
-        const bookingIncomplete = !visitorName || !visitorCompanyName || !visitorEmail || !visitorPhone || !bookingService || !bookingDate || !bookingTime || bookingNotes === null;
-        const inBookingMode = (wantsToBook || visitorName || visitorCompanyName || visitorEmail || visitorPhone || bookingService || bookingDate || bookingTime || bookingNotes !== null) && bookingIncomplete;
+        // If user has any booking data or wants to book, keep them in booking mode until booking is created
+        const hasAnyBookingData = visitorName || visitorCompanyName || visitorEmail || visitorPhone || bookingService || bookingDate || bookingTime || bookingNotes !== null;
+        const inBookingMode = wantsToBook || hasAnyBookingData;
 
         let responseMessage = '';
         let options = null;

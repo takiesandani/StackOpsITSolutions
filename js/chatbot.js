@@ -741,8 +741,8 @@ class StackOpsChatbot {
                 this.visitorData.date = message.match(/\d{4}-\d{2}-\d{2}/)[0];
             } else if (!this.visitorData.time && this.visitorData.date && message.match(/^\d{2}:\d{2}$/)) {
                 this.visitorData.time = message;
-            } else if (this.visitorData.time && this.visitorData.additionalNotes === null) {
-                // Store additional notes (even if empty or "no")
+            } else if (this.visitorData.time !== null && this.visitorData.additionalNotes === null) {
+                // Store additional notes (even if it's "no additional notes" or similar)
                 this.visitorData.additionalNotes = message;
             }
         }
