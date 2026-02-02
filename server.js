@@ -3397,7 +3397,9 @@ IMPORTANT: If they ask about making a payment, tell them you can generate a secu
     }
 });
 
-
+//==================================================================================================================================//
+//                                         public Chatbot setup here                                                                //                
+//==================================================================================================================================//
 
 // Serve static files from the project root directory
 app.use(express.static(__dirname));
@@ -3414,6 +3416,4 @@ const PORT = process.env.PORT || 8080;  // Use PORT env var for Cloud Run
 app.listen(PORT, async () => {
     console.log(`Server running on port ${PORT}. Supabase mode: ${useSupabase ? 'ON' : 'OFF'}`);
     
-    // Generate weekly slots on startup
-    await generateWeeklySlots();
 });
