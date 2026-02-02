@@ -705,9 +705,28 @@ class StackOpsChatbot {
         const lowerMessage = message.toLowerCase();
         const wantsToBook = bookingKeywords.some(keyword => lowerMessage.includes(keyword));
 
+        // Check if user wants to book another consultation (for rebooking)
+        const rebookingKeywords = ['another', 'again', 'one more', 'second'];
+        const wantsRebook = rebookingKeywords.some(keyword => lowerMessage.includes(keyword)) && wantsToBook;
+
+        // If user wants to rebook, reset the booking data (allow new booking)
+        if (wantsRebook) {
+            this.visitorData = {
+                name: null,
+                companyName: null,
+                title: null,
+                email: null,
+                phone: null,
+                service: null,
+                date: null,
+                time: null,
+                additionalNotes: null
+            };
+        }
+
         // Only auto-detect booking data if user is already in booking mode OR just asked to book
         if (wantsToBook || this.visitorData.name || this.visitorData.companyName || this.visitorData.email || this.visitorData.phone || this.visitorData.service || this.visitorData.date) {
-            // Collect booking info in order: name -> company -> title -> email -> phone -> service -> date -> time -> notes
+            // Collect booking info in order: name -> company -> email -> phone -> service -> date -> time -> notes
             if (!this.visitorData.name && !message.includes('@') && !message.match(/\d{9,}/) && !message.match(/\d{4}-\d{2}-\d{2}/) && !message.match(/^\d{2}:\d{2}$/)) {
                 this.visitorData.name = message;
             } else if (!this.visitorData.companyName && this.visitorData.name && !message.includes('@') && !message.match(/\d{9,}/) && !message.match(/\d{4}-\d{2}-\d{2}/) && !message.match(/^\d{2}:\d{2}$/)) {
@@ -722,7 +741,8 @@ class StackOpsChatbot {
                 this.visitorData.date = message.match(/\d{4}-\d{2}-\d{2}/)[0];
             } else if (!this.visitorData.time && this.visitorData.date && message.match(/^\d{2}:\d{2}$/)) {
                 this.visitorData.time = message;
-            } else if (!this.visitorData.additionalNotes && this.visitorData.time) {
+            } else if (this.visitorData.time && this.visitorData.additionalNotes === null) {
+                // Store additional notes (even if empty or "no")
                 this.visitorData.additionalNotes = message;
             }
         }
@@ -751,12 +771,23 @@ class StackOpsChatbot {
             if (data.success) {
                 this.addMessage('bot', data.message, data.options);
                 
-                // If booking was successful (check for confirmation message), save to localStorage
+                // If booking was successful (check for confirmation message), save to localStorage and reset
                 if (data.message.includes('been booked') || data.message.includes('successfully booked')) {
                     // Save booking to localStorage for persistence
                     localStorage.setItem('stackops_booking', JSON.stringify(this.visitorData));
                     
-                    // Don't reset data - keep it for future queries about the appointment
+                    // Reset booking data for potential rebooking
+                    this.visitorData = {
+                        name: null,
+                        companyName: null,
+                        title: null,
+                        email: null,
+                        phone: null,
+                        service: null,
+                        date: null,
+                        time: null,
+                        additionalNotes: null
+                    };
                 }
             } else {
                 this.addMessage('bot', "Oops! Something went wrong on my end. Mind trying that again?");

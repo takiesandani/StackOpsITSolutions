@@ -3526,9 +3526,9 @@ IMPORTANT:
             } else if (!bookingTime) {
                 // Ask for preferred time
                 responseMessage = `Perfect! What time works best for you?\n\nAvailable times: 09:00 AM to 05:00 PM\n\nPlease enter time in format: HH:MM (e.g., 14:30)`;
-            } else if (!bookingNotes) {
+            } else if (bookingNotes === null) {
                 // Ask for additional notes/questions before confirming
-                responseMessage = `Excellent! Before we confirm your booking, do you have any additional questions or concerns we should know about? You can type them here or just say "no" to proceed.`;
+                responseMessage = `Excellent! Before we confirm your booking, do you have any additional questions or concerns we should know about? (Or just type "no additional notes" if you don't)`;
             } else {
                 // We have all info - create booking
                 try {
@@ -3616,23 +3616,91 @@ IMPORTANT:
                 }
             }
         } else {
-            // General query - use OpenAI
-            const messages = [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: message }
-            ];
+            // General query - check if asking about services, about, or approach
+            const pageKeywords = {
+                services: ['service', 'solution', 'offer', 'offer', 'cybersecurity', 'cloud', 'development', 'implementation', 'support', 'consulting'],
+                about: ['about', 'company', 'story', 'team', 'experience', 'history', 'founded', 'decade', 'b-bbee', 'award', 'mission'],
+                approach: ['approach', 'methodology', 'process', 'how', 'work', 'strategy', 'framework', 'method', 'steps']
+            };
 
-            const completion = await openai.chat.completions.create({
-                model: "gpt-4o-mini",
-                messages: messages,
-                temperature: 0.7,
-                max_tokens: 300
-            });
+            // Check which page the user is asking about
+            let askingAboutPage = null;
+            if (pageKeywords.services.some(keyword => lowerMessage.includes(keyword))) {
+                askingAboutPage = 'services';
+            } else if (pageKeywords.about.some(keyword => lowerMessage.includes(keyword))) {
+                askingAboutPage = 'about';
+            } else if (pageKeywords.approach.some(keyword => lowerMessage.includes(keyword))) {
+                askingAboutPage = 'approach';
+            }
 
-            responseMessage = completion.choices[0].message.content;
+            // If asking about a specific page, provide a summary instead of relying on GPT
+            if (askingAboutPage === 'services') {
+                responseMessage = `🚀 **StackOps IT Solutions Offers:**
+
+1. **Cybersecurity Consulting** - Protect your business from threats
+2. **Cloud Security** - Secure cloud infrastructure and compliance
+3. **Systems Implementation** - Deploy reliable IT systems
+4. **IT Operations Support** - 24/7 managed services & support
+5. **End-user Computing** - Device management and user support
+6. **Governance & Compliance** - Regulatory compliance and policy management
+7. **Web Development** - Custom web applications and solutions
+8. **Mobile App Development** - iOS and Android applications
+9. **AI Automations** - Intelligent automation solutions
+10. **Web Design** - Professional UI/UX design
+
+We're an all-rounder Managed Services Provider helping businesses optimize their IT infrastructure. Would you like to know more about any specific service?`;
+                options = availableServices;
+            } else if (askingAboutPage === 'about') {
+                responseMessage = `📖 **About StackOps IT Solutions**
+
+StackOps IT Solutions is an established Managed Services Provider located in Mia Drive, Waterfall City, Johannesburg, South Africa.
+
+**Key Facts:**
+• Founded in 2016 (10+ years of excellence)
+• B-BBEE Level 1 Contributor
+• CSD Supplier certified
+• Legally registered in South Africa
+• POPIA compliant (Protection of Personal Information Act)
+
+**Our Mission:**
+We turn complex IT challenges into reliable solutions. Our team of experts is dedicated to helping businesses grow through technology while maintaining the highest standards of security, reliability, and service quality.
+
+We're more than just an IT partner—we're part of your journey! 🤝`;
+                options = ['💬 Learn about our services', '📅 Book a consultation', '📞 Contact us'];
+            } else if (askingAboutPage === 'approach') {
+                responseMessage = `🎯 **Our Approach**
+
+At StackOps, we believe in working closely with our clients to deliver solutions that actually work:
+
+1. **Listen & Understand** - We take time to understand your unique challenges
+2. **Plan & Strategy** - We develop a comprehensive roadmap
+3. **Implement with Care** - Careful execution with minimal disruption
+4. **Support & Optimize** - Ongoing support to ensure continued success
+5. **Evolve Together** - We adapt to your changing needs
+
+Our team combines technical expertise with genuine care for our clients' success. We don't just deploy technology—we ensure it drives real value for your business. 💡`;
+                options = ['📋 View our services', '📅 Book a consultation', '📞 Contact details'];
+            } else {
+                // General query - use OpenAI
+                const messages = [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: message }
+                ];
+
+                const completion = await openai.chat.completions.create({
+                    model: "gpt-4o-mini",
+                    messages: messages,
+                    temperature: 0.7,
+                    max_tokens: 300
+                });
+
+                responseMessage = completion.choices[0].message.content;
+            }
             
             // Always add booking option for general inquiries
-            options = ['📅 I\'d like to book a consultation'];
+            if (!options) {
+                options = ['📅 I\'d like to book a consultation'];
+            }
         }
 
         res.json({
