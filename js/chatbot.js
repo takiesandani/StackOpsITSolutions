@@ -724,7 +724,11 @@ class StackOpsChatbot {
         }
 
         // Only auto-detect booking data if user is already in booking mode OR just asked to book
-        if (wantsToBook || this.visitorData.name || this.visitorData.companyName || this.visitorData.email || this.visitorData.phone || this.visitorData.service || this.visitorData.date) {
+        // But NOT if they just clicked the initial "book a consultation" button and have no data yet
+        const hasPartialBookingData = this.visitorData.name || this.visitorData.companyName || this.visitorData.email || this.visitorData.phone || this.visitorData.service || this.visitorData.date || this.visitorData.time;
+        const shouldExtractData = hasPartialBookingData || (wantsToBook && hasPartialBookingData);
+        
+        if (shouldExtractData) {
             // Collect booking info in order: name -> company -> email -> phone -> service -> date -> time -> notes
             if (!this.visitorData.name && !message.includes('@') && !message.match(/\d{9,}/) && !message.match(/\d{4}-\d{2}-\d{2}/) && !message.match(/^\d{2}:\d{2}$/)) {
                 this.visitorData.name = message;
