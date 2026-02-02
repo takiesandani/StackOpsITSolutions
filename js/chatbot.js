@@ -700,16 +700,16 @@ class StackOpsChatbot {
         this.sendButton.disabled = true;
         this.showTyping(true);
 
-        // Detect if user wants to book (new booking or rebooking)
+        // Detect if user wants to book
         const bookingKeywords = ['book', 'appointment', 'consultation', 'schedule', 'meeting', 'call', 'speak', 'discuss', 'contact'];
         const lowerMessage = message.toLowerCase();
         const wantsToBook = bookingKeywords.some(keyword => lowerMessage.includes(keyword));
 
-        // Check if we have a completed booking - if so and user wants to book again, reset
+        // Check if we have a completed booking
         const isBookingComplete = this.visitorData.name && this.visitorData.companyName && this.visitorData.email && this.visitorData.phone && this.visitorData.service && this.visitorData.date && this.visitorData.time && this.visitorData.additionalNotes !== null;
         
+        // If user wants to book again after completion, reset
         if (wantsToBook && isBookingComplete) {
-            // User wants to book again - reset all data
             this.visitorData = {
                 name: null,
                 companyName: null,
@@ -723,11 +723,12 @@ class StackOpsChatbot {
             };
         }
 
-        // Extract booking data if in booking flow
+        // ONLY extract booking data if we ALREADY have at least one field filled
+        // This prevents extracting the booking trigger message itself
         const hasAnyData = this.visitorData.name || this.visitorData.companyName || this.visitorData.email || this.visitorData.phone || this.visitorData.service || this.visitorData.date || this.visitorData.time || this.visitorData.additionalNotes !== null;
         
-        if ((wantsToBook || hasAnyData) && !isBookingComplete) {
-            // We're in the booking flow - extract the right field based on what we already have
+        if (hasAnyData && !isBookingComplete) {
+            // We're in the middle of the booking flow - extract the right field
             if (!this.visitorData.name && !message.includes('@') && !message.match(/\d{9,}/) && !message.match(/\d{4}-\d{2}-\d{2}/) && !message.match(/^\d{2}:\d{2}$/)) {
                 this.visitorData.name = message;
             } else if (this.visitorData.name && !this.visitorData.companyName && !message.includes('@') && !message.match(/\d{9,}/) && !message.match(/\d{4}-\d{2}-\d{2}/) && !message.match(/^\d{2}:\d{2}$/)) {
