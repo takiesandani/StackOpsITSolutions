@@ -3491,10 +3491,8 @@ IMPORTANT:
         const wantsToBook = bookingKeywords.some(keyword => lowerMessage.includes(keyword));
 
         // If user has already started providing booking info, they're in booking mode
-        // But NOT if all fields are complete (that means booking is done)
-        const bookingComplete = visitorName && visitorCompanyName && visitorEmail && visitorPhone && bookingService && bookingDate && bookingTime && bookingNotes !== null;
-        const bookingIncomplete = visitorName || visitorCompanyName || visitorEmail || visitorPhone || bookingService || bookingDate || bookingTime || bookingNotes;
-        const inBookingMode = (wantsToBook || bookingIncomplete) && !bookingComplete;
+        const bookingIncomplete = !visitorName || !visitorCompanyName || !visitorEmail || !visitorPhone || !bookingService || !bookingDate || !bookingTime || bookingNotes === null;
+        const inBookingMode = (wantsToBook || visitorName || visitorCompanyName || visitorEmail || visitorPhone || bookingService || bookingDate || bookingTime || bookingNotes !== null) && bookingIncomplete;
 
         let responseMessage = '';
         let options = null;
