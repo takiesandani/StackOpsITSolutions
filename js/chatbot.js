@@ -700,16 +700,16 @@ class StackOpsChatbot {
         this.sendButton.disabled = true;
         this.showTyping(true);
 
-        // Check if user is asking to book FIRST before storing data
+        // Detect if user wants to book (new booking or rebooking)
         const bookingKeywords = ['book', 'appointment', 'consultation', 'schedule', 'meeting', 'call', 'speak', 'discuss', 'contact'];
         const lowerMessage = message.toLowerCase();
         const wantsToBook = bookingKeywords.some(keyword => lowerMessage.includes(keyword));
 
-        // Check if booking was previously completed
-        const bookingWasCompleted = this.visitorData.name && this.visitorData.companyName && this.visitorData.email && this.visitorData.phone && this.visitorData.service && this.visitorData.date && this.visitorData.time && this.visitorData.additionalNotes !== null;
-
-        // If user wants to book AGAIN (after a completed booking), reset the booking data
-        if (wantsToBook && bookingWasCompleted) {
+        // Check if we have a completed booking - if so and user wants to book again, reset
+        const isBookingComplete = this.visitorData.name && this.visitorData.companyName && this.visitorData.email && this.visitorData.phone && this.visitorData.service && this.visitorData.date && this.visitorData.time && this.visitorData.additionalNotes !== null;
+        
+        if (wantsToBook && isBookingComplete) {
+            // User wants to book again - reset all data
             this.visitorData = {
                 name: null,
                 companyName: null,
@@ -723,29 +723,26 @@ class StackOpsChatbot {
             };
         }
 
-        // Track if we're in active booking mode
-        // Start extracting data once user clicks "book" OR once they have any booking data
-        const hasAnyBookingData = this.visitorData.name || this.visitorData.companyName || this.visitorData.email || this.visitorData.phone || this.visitorData.service || this.visitorData.date || this.visitorData.time;
-        const inActiveBookingMode = wantsToBook || hasAnyBookingData;
+        // Extract booking data if in booking flow
+        const hasAnyData = this.visitorData.name || this.visitorData.companyName || this.visitorData.email || this.visitorData.phone || this.visitorData.service || this.visitorData.date || this.visitorData.time || this.visitorData.additionalNotes !== null;
         
-        if (inActiveBookingMode) {
-            // Collect booking info in order: name -> company -> email -> phone -> service -> date -> time -> notes
+        if ((wantsToBook || hasAnyData) && !isBookingComplete) {
+            // We're in the booking flow - extract the right field based on what we already have
             if (!this.visitorData.name && !message.includes('@') && !message.match(/\d{9,}/) && !message.match(/\d{4}-\d{2}-\d{2}/) && !message.match(/^\d{2}:\d{2}$/)) {
                 this.visitorData.name = message;
-            } else if (!this.visitorData.companyName && this.visitorData.name && !message.includes('@') && !message.match(/\d{9,}/) && !message.match(/\d{4}-\d{2}-\d{2}/) && !message.match(/^\d{2}:\d{2}$/)) {
+            } else if (this.visitorData.name && !this.visitorData.companyName && !message.includes('@') && !message.match(/\d{9,}/) && !message.match(/\d{4}-\d{2}-\d{2}/) && !message.match(/^\d{2}:\d{2}$/)) {
                 this.visitorData.companyName = message;
-            } else if (!this.visitorData.email && this.visitorData.name && this.visitorData.companyName && message.includes('@')) {
+            } else if (this.visitorData.name && this.visitorData.companyName && !this.visitorData.email && message.includes('@')) {
                 this.visitorData.email = message;
-            } else if (!this.visitorData.phone && this.visitorData.email && message.match(/\d{9,}/)) {
+            } else if (this.visitorData.email && !this.visitorData.phone && message.match(/\d{9,}/)) {
                 this.visitorData.phone = message;
-            } else if (!this.visitorData.service && this.visitorData.phone && !message.match(/\d{4}-\d{2}-\d{2}/) && !message.match(/^\d{2}:\d{2}$/)) {
+            } else if (this.visitorData.phone && !this.visitorData.service && !message.match(/\d{4}-\d{2}-\d{2}/) && !message.match(/^\d{2}:\d{2}$/)) {
                 this.visitorData.service = message;
-            } else if (!this.visitorData.date && this.visitorData.service && message.match(/\d{4}-\d{2}-\d{2}/)) {
+            } else if (this.visitorData.service && !this.visitorData.date && message.match(/\d{4}-\d{2}-\d{2}/)) {
                 this.visitorData.date = message.match(/\d{4}-\d{2}-\d{2}/)[0];
-            } else if (!this.visitorData.time && this.visitorData.date && message.match(/^\d{2}:\d{2}$/)) {
+            } else if (this.visitorData.date && !this.visitorData.time && message.match(/^\d{2}:\d{2}$/)) {
                 this.visitorData.time = message;
-            } else if (this.visitorData.time !== null && this.visitorData.additionalNotes === null) {
-                // Store additional notes (even if it's "no additional notes" or similar)
+            } else if (this.visitorData.time && this.visitorData.additionalNotes === null) {
                 this.visitorData.additionalNotes = message;
             }
         }
@@ -774,12 +771,10 @@ class StackOpsChatbot {
             if (data.success) {
                 this.addMessage('bot', data.message, data.options);
                 
-                // If booking was successful (check for confirmation message), save to localStorage and reset
+                // If booking was successful, reset for potential rebooking
                 if (data.message.includes('been booked') || data.message.includes('successfully booked')) {
-                    // Save booking to localStorage for persistence
                     localStorage.setItem('stackops_booking', JSON.stringify(this.visitorData));
                     
-                    // Reset booking data for potential rebooking
                     this.visitorData = {
                         name: null,
                         companyName: null,
