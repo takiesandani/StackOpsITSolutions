@@ -8,6 +8,7 @@ class StackOpsChatbot {
     constructor() {
         this.API_URL = window.location.origin; // Uses main server
         this.sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        this.inBookingFlow = false; // Flag to track if we're actively in a booking flow
         
         // Initialize visitor data - check localStorage first for existing bookings
         const savedBooking = localStorage.getItem('stackops_booking');
@@ -708,8 +709,9 @@ class StackOpsChatbot {
         // Check if we have a completed booking
         const isBookingComplete = this.visitorData.name && this.visitorData.companyName && this.visitorData.email && this.visitorData.phone && this.visitorData.service && this.visitorData.date && this.visitorData.time && this.visitorData.additionalNotes !== null;
         
-        // If user wants to book again after completion, reset
+        // If user wants to book and already completed, reset for new booking
         if (wantsToBook && isBookingComplete) {
+            this.inBookingFlow = false;
             this.visitorData = {
                 name: null,
                 companyName: null,
@@ -723,12 +725,14 @@ class StackOpsChatbot {
             };
         }
 
-        // ONLY extract booking data if we ALREADY have at least one field filled
-        // This prevents extracting the booking trigger message itself
-        const hasAnyData = this.visitorData.name || this.visitorData.companyName || this.visitorData.email || this.visitorData.phone || this.visitorData.service || this.visitorData.date || this.visitorData.time || this.visitorData.additionalNotes !== null;
-        
-        if (hasAnyData && !isBookingComplete) {
-            // We're in the middle of the booking flow - extract the right field
+        // User initiated booking flow
+        if (wantsToBook) {
+            this.inBookingFlow = true;
+        }
+
+        // Extract booking data if we're in booking flow
+        if (this.inBookingFlow && !isBookingComplete) {
+            // Extract the appropriate field based on what we have
             if (!this.visitorData.name && !message.includes('@') && !message.match(/\d{9,}/) && !message.match(/\d{4}-\d{2}-\d{2}/) && !message.match(/^\d{2}:\d{2}$/)) {
                 this.visitorData.name = message;
             } else if (this.visitorData.name && !this.visitorData.companyName && !message.includes('@') && !message.match(/\d{9,}/) && !message.match(/\d{4}-\d{2}-\d{2}/) && !message.match(/^\d{2}:\d{2}$/)) {
@@ -772,9 +776,10 @@ class StackOpsChatbot {
             if (data.success) {
                 this.addMessage('bot', data.message, data.options);
                 
-                // If booking was successful, reset for potential rebooking
+                // If booking was successful, reset booking flow
                 if (data.message.includes('been booked') || data.message.includes('successfully booked')) {
                     localStorage.setItem('stackops_booking', JSON.stringify(this.visitorData));
+                    this.inBookingFlow = false;
                     
                     this.visitorData = {
                         name: null,
