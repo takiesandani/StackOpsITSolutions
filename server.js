@@ -2228,109 +2228,106 @@ app.post("/api/create-payment", authenticateToken, async (req, res) => {
 });
 
 app.post("/webhook/yoco", express.raw({ type: "application/json" }), async (req, res) => {
-    console.log("[YOCO WEBHOOK] 📥 Event received");
+  console.log("[YOCO WEBHOOK] 📥 Event received");
 
-    try {
-      const event = JSON.parse(req.body.toString());
-      const payment = event?.data?.object;
+  try {
+    const event = Buffer.isBuffer(req.body)
+      ? JSON.parse(req.body.toString("utf8"))
+      : req.body;
 
-      if (!payment) {
-        console.error("[YOCO WEBHOOK] ❌ Invalid payload");
-        return res.sendStatus(200);
-      }
+    const payment = event?.data?.object;
 
-      const invoiceId = payment?.metadata?.invoiceId;
-
-      if (!invoiceId) {
-        console.error("[YOCO WEBHOOK] ❌ No invoiceId found in metadata");
-        return res.sendStatus(200);
-      }
-
-      if (payment.status !== "paid") {
-        console.log(`[YOCO WEBHOOK] ℹ️ Payment status: ${payment.status}`);
-        return res.sendStatus(200);
-      }
-
-      const connection = await pool.getConnection();
-
-      try {
-        await connection.beginTransaction();
-
-        // Prevent duplicate processing
-        const [existing] = await connection.query(
-          "SELECT status FROM yoco_payments WHERE invoice_id = ? LIMIT 1",
-          [invoiceId]
-        );
-
-        if (!existing.length || existing[0].status === "paid") {
-          console.log(`[YOCO WEBHOOK] ℹ️ Invoice ${invoiceId} already processed`);
-          await connection.commit();
-          return res.sendStatus(200);
-        }
-
-        // Mark invoice as paid
-        await connection.query(
-          "UPDATE Invoices SET Status = 'Paid' WHERE InvoiceID = ?",
-          [invoiceId]
-        );
-
-        // Mark Yoco payment as paid
-        await connection.query(
-          "UPDATE yoco_payments SET status = 'paid', updated_at = NOW() WHERE invoice_id = ?",
-          [invoiceId]
-        );
-
-        // Insert payment record
-        const [paymentRow] = await connection.query(
-          "SELECT amount FROM yoco_payments WHERE invoice_id = ? LIMIT 1",
-          [invoiceId]
-        );
-
-        await connection.query(
-          "INSERT INTO Payments (InvoiceID, AmountPaid, PaymentDate, Method) VALUES (?, ?, NOW(), 'YOCO')",
-          [invoiceId, paymentRow[0].amount / 100]
-        );
-
-        // Get email details
-        const [details] = await connection.query(
-          `SELECT i.InvoiceNumber, u.email, u.firstname
-           FROM Invoices i
-           JOIN Companies c ON i.CompanyID = c.ID
-           JOIN Users u ON c.ID = u.CompanyID
-           WHERE i.InvoiceID = ?
-           LIMIT 1`,
-          [invoiceId]
-        );
-
-        await connection.commit();
-
-        console.log(`[YOCO WEBHOOK] 🎉 SUCCESS: Invoice ${invoiceId} PAID`);
-
-        if (details.length) {
-          const inv = details[0];
-          await sendBillingEmail(
-            inv.email,
-            `Payment Received - Invoice #${inv.InvoiceNumber}`,
-            `<p>Hi ${inv.firstname},</p>
-             <p>We have successfully received your payment for Invoice #${inv.InvoiceNumber}. Thank you!</p>`,
-            true
-          );
-        }
-
-        return res.sendStatus(200);
-      } catch (dbErr) {
-        await connection.rollback();
-        console.error("[YOCO WEBHOOK] ❌ DB Error:", dbErr);
-        return res.sendStatus(200);
-      } finally {
-        connection.release();
-      }
-    } catch (err) {
-      console.error("[YOCO WEBHOOK] ❌ Webhook Error:", err);
+    if (!payment) {
+      console.error("[YOCO WEBHOOK] ❌ Invalid payload");
       return res.sendStatus(200);
     }
+
+    const invoiceId = payment?.metadata?.invoiceId;
+
+    if (!invoiceId) {
+      console.error("[YOCO WEBHOOK] ❌ No invoiceId found in metadata");
+      return res.sendStatus(200);
+    }
+
+    if (payment.status !== "paid") {
+      console.log(`[YOCO WEBHOOK] ℹ️ Payment status: ${payment.status}`);
+      return res.sendStatus(200);
+    }
+
+    const connection = await pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const [existing] = await connection.query(
+        "SELECT status FROM yoco_payments WHERE invoice_id = ? LIMIT 1",
+        [invoiceId]
+      );
+
+      if (!existing.length || existing[0].status === "paid") {
+        console.log(`[YOCO WEBHOOK] ℹ️ Invoice ${invoiceId} already processed`);
+        await connection.commit();
+        return res.sendStatus(200);
+      }
+
+      await connection.query(
+        "UPDATE Invoices SET Status = 'Paid' WHERE InvoiceID = ?",
+        [invoiceId]
+      );
+
+      await connection.query(
+        "UPDATE yoco_payments SET status = 'paid', updated_at = NOW() WHERE invoice_id = ?",
+        [invoiceId]
+      );
+
+      const [paymentRow] = await connection.query(
+        "SELECT amount FROM yoco_payments WHERE invoice_id = ? LIMIT 1",
+        [invoiceId]
+      );
+
+      await connection.query(
+        "INSERT INTO Payments (InvoiceID, AmountPaid, PaymentDate, Method) VALUES (?, ?, NOW(), 'YOCO')",
+        [invoiceId, paymentRow[0].amount / 100]
+      );
+
+      const [details] = await connection.query(
+        `SELECT i.InvoiceNumber, u.email, u.firstname
+         FROM Invoices i
+         JOIN Companies c ON i.CompanyID = c.ID
+         JOIN Users u ON c.ID = u.CompanyID
+         WHERE i.InvoiceID = ?
+         LIMIT 1`,
+        [invoiceId]
+      );
+
+      await connection.commit();
+
+      console.log(`[YOCO WEBHOOK] 🎉 SUCCESS: Invoice ${invoiceId} PAID`);
+
+      if (details.length) {
+        const inv = details[0];
+        await sendBillingEmail(
+          inv.email,
+          `Payment Received - Invoice #${inv.InvoiceNumber}`,
+          `<p>Hi ${inv.firstname},</p>
+           <p>We have successfully received your payment for Invoice #${inv.InvoiceNumber}. Thank you!</p>`,
+          true
+        );
+      }
+
+      return res.sendStatus(200);
+    } catch (dbErr) {
+      await connection.rollback();
+      console.error("[YOCO WEBHOOK] ❌ DB Error:", dbErr);
+      return res.sendStatus(200);
+    } finally {
+      connection.release();
+    }
+  } catch (err) {
+    console.error("[YOCO WEBHOOK] ❌ Webhook Error:", err);
+    return res.sendStatus(200);
   }
-);
+});
 
 
 //===========================================================================================================//
