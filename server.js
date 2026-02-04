@@ -110,11 +110,11 @@ const transporter = nodemailer.createTransport({
     }
 });
 
-// function to generate invoice PDF
+// function to generate invoice PDF - REDESIGNED to match professional layout
 async function generateInvoicePDF(invoiceData, items, companyData, clientData) {
     return new Promise((resolve, reject) => {
         try {
-            const doc = new PDFDocument({ margin: 50 });
+            const doc = new PDFDocument({ margin: 40, size: 'A4' });
             let buffers = [];
             
             doc.on('data', buffers.push.bind(buffers));
@@ -127,86 +127,210 @@ async function generateInvoicePDF(invoiceData, items, companyData, clientData) {
                 reject(err);
             });
 
-            const logoPath = path.join(__dirname, 'Images', 'Logos', 'RemovedStackOps.png');
-            if (fs.existsSync(logoPath)) {
-                doc.image(logoPath, 50, 45, { width: 100 });
-            }
-
-            doc.fillColor('#444444')
-               .fontSize(20)
-               .text('INVOICE', 50, 120);
-
             const formatDate = (dateStr) => {
                 const date = new Date(dateStr);
-                return isNaN(date.getTime()) ? 'N/A' : date.toLocaleDateString();
+                return isNaN(date.getTime()) ? 'N/A' : date.toLocaleDateString('en-ZA');
             };
 
-            doc.fontSize(10)
-               .text(`Invoice Number: ${invoiceData.InvoiceNumber || 'N/A'}`, 200, 50, { align: 'right' })
-               .text(`Invoice Date: ${formatDate(invoiceData.InvoiceDate)}`, 200, 65, { align: 'right' })
-               .text(`Due Date: ${formatDate(invoiceData.DueDate)}`, 200, 80, { align: 'right' })
-               .moveDown();
+            // ==================== HEADER SECTION ====================
+            
+            // Left side: Company info + QR Code
+            doc.fontSize(10).fillColor('#000000');
+            doc.text('StackOps IT Solutions Pty(Ltd)', 40, 40);
+            doc.fontSize(9).text('Reg No: 2016/120370/07', 40, 58);
+            doc.text('Mia Drive, Waterfall City', 40, 73);
+            doc.text('Johannesburg, 1685', 40, 88);
+            
+            // QR Code (left side, below company info)
+            const qrCodePath = path.join(__dirname, 'Images', 'QRCode.jpeg');
+            if (fs.existsSync(qrCodePath)) {
+                doc.image(qrCodePath, 40, 105, { width: 60, height: 60 });
+            }
 
-        // From details
-        doc.fontSize(12).text('FROM:', 50, 160);
-        doc.fontSize(10)
-           .text('StackOps IT Solutions', 50, 175)
-           .text('Mia Drive, Waterfall City', 50, 190)
-           .text('Johannesburg, 1685', 50, 205)
-           .text('011 568 9337', 50, 220)
-           .text('billing@stackopsit.co.za', 50, 235);
+            // Center: Contact Details
+            const centerX = 220;
+            doc.fontSize(8).fillColor('#666666');
+            doc.text('Tel: 011 568 9337', centerX, 40);
+            doc.text('Email: billing@stackopsit.co.za', centerX, 53);
+            doc.text('Web: www.stackopsit.co.za', centerX, 66);
 
-        // To details
-        doc.fontSize(12).text('TO:', 300, 160);
-        doc.fontSize(10)
-           .text(companyData.CompanyName, 300, 175)
-           .text(`${clientData.firstname} ${clientData.lastname}`, 300, 190)
-           .text(companyData.address || '', 300, 205)
-           .text(`${companyData.city || ''} ${companyData.state || ''} ${companyData.zipcode || ''}`, 300, 220)
-           .text(clientData.email, 300, 235);
+            // Right side: INVOICE title + Logo with black background + StackOps logo
+            const rightX = 420;
+            
+            // Black box background for logo
+            doc.rect(rightX - 10, 35, 90, 90).fill('#000000');
+            
+            // Main StackOps logo in the black box
+            const logoPath = path.join(__dirname, 'Images', 'Logos', 'RemovedStackOps.png');
+            if (fs.existsSync(logoPath)) {
+                doc.image(logoPath, rightX - 5, 40, { width: 80, height: 80 });
+            }
 
-        // Table Header
-        const tableTop = 280;
-        doc.rect(50, tableTop, 510, 20).fill('#eeeeee');
-        doc.fillColor('#000000')
-           .fontSize(9)
-           .text('Service Category', 55, tableTop + 5)
-           .text('Deliverables', 150, tableTop + 5)
-           .text('Frequency', 280, tableTop + 5)
-           .text('Rate', 380, tableTop + 5)
-           .text('Total', 470, tableTop + 5);
+            // INVOICE title
+            doc.fontSize(24).fillColor('#000000');
+            doc.text('INVOICE', 320, 130, { align: 'center' });
 
-        // Items - Updated for new structure
-        let i = 0;
-        items.forEach((item, index) => {
-            const y = tableTop + 25 + (i * 30);
-            // Service Category
-            doc.fontSize(9).text((item.ServiceCategory || item.Description || ''), 55, y, { width: 90 });
-            // Deliverables
-            doc.text((item.Deliverables || ''), 150, y, { width: 125 });
-            // Frequency
-            doc.text((item.Frequency || 'Once-off'), 280, y, { width: 95 });
-            // Rate
-            doc.text((item.Rate || ''), 380, y, { width: 85 });
-            // Total
-            doc.text(`R${parseFloat(item.Total || item.UnitPrice || 0).toFixed(2)}`, 470, y);
-            i++;
-        });
+            // ==================== BILL TO SECTION ====================
+            
+            doc.fontSize(9).fillColor('#000000');
+            doc.text('Bill to', 40, 180);
+            
+            doc.fontSize(10).text(companyData.CompanyName, 40, 195);
+            doc.fontSize(9);
+            doc.text(`${clientData.firstname} ${clientData.lastname}`, 40, 210);
+            doc.text(clientData.email || '', 40, 225);
 
-        const totalY = tableTop + 35 + (i * 30);
-        doc.moveTo(50, totalY - 5).lineTo(560, totalY - 5).stroke();
-        doc.fontSize(12).text('TOTAL:', 380, totalY);
-        doc.text(`R${parseFloat(invoiceData.TotalAmount).toFixed(2)}`, 470, totalY);
+            // Invoice details (right side)
+            const invoiceDetailX = 350;
+            doc.fontSize(9);
+            doc.text('Invoice Ref:', invoiceDetailX, 180);
+            doc.text(`#${invoiceData.InvoiceNumber || 'N/A'}`, invoiceDetailX + 80, 180);
+            
+            doc.text('Date:', invoiceDetailX, 195);
+            doc.text(formatDate(invoiceData.InvoiceDate), invoiceDetailX + 80, 195);
 
-        // Payment Details Space
-        doc.fontSize(10)
-           .moveDown(2)
-           .text('PAYMENT DETAILS:', 50, doc.y)
-           .text('Bank Name: [To be updated]', 50, doc.y + 15)
-           .text('Account Number: [To be updated]', 50, doc.y + 30)
-           .text('Reference: ' + invoiceData.InvoiceNumber, 50, doc.y + 45);
+            // Horizontal line separator
+            doc.moveTo(40, 250).lineTo(560, 250).stroke('#cccccc');
 
-        doc.end();
+            // ==================== INVOICE ITEMS TABLE ====================
+            
+            const tableTop = 270;
+            const colWidths = {
+                category: 100,
+                deliverables: 150,
+                frequency: 80,
+                rate: 70,
+                total: 70
+            };
+            
+            const col1 = 40;
+            const col2 = col1 + colWidths.category;
+            const col3 = col2 + colWidths.deliverables;
+            const col4 = col3 + colWidths.frequency;
+            const col5 = col4 + colWidths.rate;
+
+            // Table header with light gray background
+            doc.rect(col1 - 10, tableTop - 5, 540, 25).fill('#f5f5f5');
+            
+            doc.fontSize(8).fillColor('#000000').font('Helvetica-Bold');
+            doc.text('SERVICE CATEGORY', col1, tableTop + 3);
+            doc.text('DELIVERABLES', col2, tableTop + 3);
+            doc.text('FREQUENCY', col3, tableTop + 3);
+            doc.text('RATE', col4, tableTop + 3);
+            doc.text('TOTAL', col5, tableTop + 3);
+
+            // Table divider
+            doc.moveTo(col1 - 10, tableTop + 20).lineTo(550, tableTop + 20).stroke('#cccccc');
+
+            // Table rows
+            doc.font('Helvetica');
+            let currentY = tableTop + 28;
+            const lineHeight = 25;
+
+            items.forEach((item, index) => {
+                const y = currentY + (index * lineHeight);
+                
+                doc.fontSize(8).fillColor('#333333');
+                
+                // Service Category
+                doc.text((item.ServiceCategory || item.Description || ''), col1, y, { 
+                    width: colWidths.category - 5,
+                    align: 'left'
+                });
+                
+                // Deliverables
+                doc.text((item.Deliverables || ''), col2, y, { 
+                    width: colWidths.deliverables - 5,
+                    align: 'left'
+                });
+                
+                // Frequency
+                doc.text((item.Frequency || 'Once-off'), col3, y, { 
+                    width: colWidths.frequency - 5,
+                    align: 'left'
+                });
+                
+                // Rate
+                doc.text((item.Rate || ''), col4, y, { 
+                    width: colWidths.rate - 5,
+                    align: 'left'
+                });
+                
+                // Total
+                doc.text(`R${parseFloat(item.Total || item.UnitPrice || 0).toFixed(2)}`, col5, y, { 
+                    width: colWidths.total,
+                    align: 'right'
+                });
+            });
+
+            const itemsEndY = currentY + (items.length * lineHeight);
+
+            // Bottom border of table
+            doc.moveTo(col1 - 10, itemsEndY).lineTo(550, itemsEndY).stroke('#cccccc');
+
+            // ==================== TOTALS SECTION ====================
+            
+            const totalsX = 380;
+            const totalsY = itemsEndY + 15;
+
+            doc.fontSize(9).fillColor('#000000');
+            doc.text('SUB TOTAL:', totalsX, totalsY, { align: 'right', width: 100 });
+            doc.text(`R${parseFloat(invoiceData.TotalAmount).toFixed(2)}`, totalsX + 110, totalsY, { align: 'right', width: 50 });
+
+            doc.text('VAT TAX:', totalsX, totalsY + 18, { align: 'right', width: 100 });
+            doc.text('N/A', totalsX + 110, totalsY + 18, { align: 'right', width: 50 });
+
+            doc.fontSize(10).font('Helvetica-Bold');
+            doc.text('TOTAL:', totalsX, totalsY + 36, { align: 'right', width: 100 });
+            doc.text(`R${parseFloat(invoiceData.TotalAmount).toFixed(2)}`, totalsX + 110, totalsY + 36, { align: 'right', width: 50 });
+
+            // ==================== BANKING DETAILS ====================
+            
+            const bankingY = totalsY + 80;
+            doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000');
+            doc.text('BANKING DETAILS', 40, bankingY);
+            
+            doc.fontSize(8).font('Helvetica').fillColor('#333333');
+            doc.text('Bank: Standard Bank Business', 40, bankingY + 18);
+            doc.text('Account Name: StackOps IT Solutions', 40, bankingY + 33);
+            doc.text('Acc Number: 10255699752', 40, bankingY + 48);
+            doc.text('Branch Code: 050205', 40, bankingY + 63);
+            doc.text('Acc Type: Current', 40, bankingY + 78);
+
+            // ==================== TERMS & CONDITIONS ====================
+            
+            const termsY = bankingY + 110;
+            
+            doc.moveTo(40, termsY - 10).lineTo(560, termsY - 10).stroke('#cccccc');
+            
+            doc.fontSize(8).font('Helvetica-Bold').fillColor('#000000');
+            doc.text('TERMS & CONDITIONS', 40, termsY);
+            
+            const termsText = `All quotations are valid for 10 days from date of issue and subject to stock availability. Prices may change without prior notice. Ownership of goods remains with Stackops IT Solutions until payment is received in full. Payment Terms: All quotations are based on cash payment into our bank account prior to processing any orders. No goods or services will be released until full cleared payment is received. (This is subject to specific projects). Proof of payment must be sent to billing@stackopsit.co.za to avoid delays. Orders will only be processed once full cleared payment reflects in Stackops IT Solutions (Pty) Ltd's Bank account. Confidentiality: This quotation is intended solely for the recipient and may not be shared with third parties without written consent from Stackops IT Solutions. SLA & Service Commitment: All services and deliveries are subject to StackOps Service Level Commitments unless otherwise agreed in writing. Support: Manufacturer warranties apply unless otherwise stated. We remain available for clarification or support regarding this quotation. Data Protection: All Client information is handled in strict compliance with the Protection of Personal Information Act(POPIA). Non-Liability for Delays: Stackops IT Solutions cannot be held liable for delays caused by suppliers, manufacturers, or circumstances beyond our control. Professional Procurement: Stackops IT Solutions (Pty) Ltd is a registered South African entity, fully compliant with CIPC, SARS, and applicable procurement regulations. Pricing: Prices quoted are exclusive of VAT (unless otherwise stated). Delivery, installation, and additional services are quoted separately where applicable. Acceptance: By Accepting this quotation, the client acknowledges and agrees to the above terms and conditions.`;
+            
+            doc.fontSize(7).font('Helvetica').fillColor('#555555');
+            doc.text(termsText, 40, termsY + 18, {
+                width: 520,
+                align: 'justify',
+                lineGap: 2
+            });
+
+            // ==================== FOOTER ====================
+            
+            const footerY = 750;
+            
+            // Thank you message
+            doc.fontSize(12).font('Helvetica-Bold').fillColor('#000000');
+            doc.text('THANK YOU FOR', 280, footerY, { align: 'center', width: 100 });
+            doc.text('YOUR BUSINESS', 280, footerY + 15, { align: 'center', width: 100 });
+
+            // Small logo in bottom right
+            const smallLogoPath = path.join(__dirname, 'Images', 'Logos', 'RemovedStackOpsONLY.png');
+            if (fs.existsSync(smallLogoPath)) {
+                doc.image(smallLogoPath, 510, 735, { width: 40, height: 40 });
+            }
+
+            doc.end();
         } catch (err) {
             reject(err);
         }
