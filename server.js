@@ -10,6 +10,7 @@ const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const OpenAI = require('openai');
 const {SecretManagerServiceClient} = require('@google-cloud/secret-manager');
+const { Webhook } = require('svix');
 
 // invoice payment endpoints 
 require("dotenv").config();
@@ -2221,7 +2222,8 @@ app.post("/webhook/yoco", async (req, res) => {
     // Step 1: Verify webhook signature (SECURITY)
     const signature = req.headers['x-yoco-signature'];
     const webhookSecret = await getSecret('YOCO_WEBHOOK_SECRET');
-    
+    const wh = new Webhook(webhookSecret);
+
     if (!webhookSecret) {
       console.error('[YOCO WEBHOOK] ⚠️ CRITICAL: Webhook secret not configured!');
       return res.sendStatus(500);
@@ -2229,14 +2231,17 @@ app.post("/webhook/yoco", async (req, res) => {
     
     // Verify the signature
     const payload = JSON.stringify(req.body);
-    const expectedSignature = crypto
-      .createHmac('sha256', webhookSecret)
-      .update(payload)
-      .digest('hex');
-    
-    if (signature !== expectedSignature) {
-      console.error('[YOCO WEBHOOK] 🚨 Invalid signature - possible fraud attempt!');
-      return res.sendStatus(403);
+
+    try {
+        wh.verify(payload, {
+            'svix-id': req.headers['svix-id'] || req.headers['x-yoco-id'],
+            'svix-timestamp': req.headers['svix-timestamp'] || req.headers['x-yoco-timestamp'],
+            'svix-signature': signature,
+        });
+        console.log('[YOCO WEBHOOK] ✅ Signature verified via Svix');
+    } catch (err) {
+        console.error('[YOCO WEBHOOK] 🚨 Verification failed:', err.message);
+        return res.status(403).send('Invalid signature');
     }
     
     console.log('[YOCO WEBHOOK] ✅ Signature verified');
