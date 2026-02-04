@@ -2235,7 +2235,10 @@ app.post("/webhook/yoco", express.raw({ type: "application/json" }), async (req,
       ? JSON.parse(req.body.toString("utf8"))
       : req.body;
 
-    const payment = event?.data?.object;
+    console.log("[YOCO WEBHOOK] Event type:", event?.type);
+
+    const payment = event?.data;
+
 
     if (!payment) {
       console.error("[YOCO WEBHOOK] ❌ Invalid payload");
