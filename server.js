@@ -155,20 +155,20 @@ async function generateInvoicePDF(invoiceData, items, companyData, clientData) {
             doc.text('Web: www.stackopsit.co.za', centerX, 66);
 
             // Right side: INVOICE title + Logo with black background + StackOps logo
-            const rightX = 420;
+            const rightX = 430;
             
-            // Black box background for logo
-            doc.rect(rightX - 10, 35, 90, 90).fill('#000000');
+            // Black box background for logo - extends to top of page
+            doc.rect(rightX - 20, 0, 140, 140).fill('#000000');
             
-            // Main StackOps logo in the black box
+            // Main StackOps logo in the black box - higher resolution, not squashed
             const logoPath = path.join(__dirname, 'Images', 'Logos', 'RemovedStackOps.png');
             if (fs.existsSync(logoPath)) {
-                doc.image(logoPath, rightX - 5, 40, { width: 80, height: 80 });
+                doc.image(logoPath, rightX - 10, 15, { width: 120, height: 100 });
             }
 
             // INVOICE title
             doc.fontSize(24).fillColor('#000000');
-            doc.text('INVOICE', 320, 130, { align: 'center' });
+            doc.text('INVOICE', 320, 145, { align: 'center' });
 
             // ==================== BILL TO SECTION ====================
             
@@ -284,18 +284,33 @@ async function generateInvoicePDF(invoiceData, items, companyData, clientData) {
             doc.text('TOTAL:', totalsX, totalsY + 36, { align: 'right', width: 100 });
             doc.text(`R${parseFloat(invoiceData.TotalAmount).toFixed(2)}`, totalsX + 110, totalsY + 36, { align: 'right', width: 50 });
 
-            // ==================== BANKING DETAILS ====================
+            // ==================== BANKING DETAILS & TOTALS (Combined Section) ====================
             
-            const bankingY = totalsY + 80;
+            const bankingY = totalsY + 60;
+            
+            // Banking details (left side)
             doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000');
             doc.text('BANKING DETAILS', 40, bankingY);
             
             doc.fontSize(8).font('Helvetica').fillColor('#333333');
-            doc.text('Bank: Standard Bank Business', 40, bankingY + 18);
-            doc.text('Account Name: StackOps IT Solutions', 40, bankingY + 33);
-            doc.text('Acc Number: 10255699752', 40, bankingY + 48);
-            doc.text('Branch Code: 050205', 40, bankingY + 63);
-            doc.text('Acc Type: Current', 40, bankingY + 78);
+            doc.text('Bank: Standard Bank Business', 40, bankingY + 16);
+            doc.text('Account Name: StackOps IT Solutions', 40, bankingY + 28);
+            doc.text('Acc Number: 10255699752', 40, bankingY + 40);
+            doc.text('Branch Code: 050205', 40, bankingY + 52);
+            doc.text('Acc Type: Current', 40, bankingY + 64);
+
+            // Totals (right side, aligned with banking details)
+            doc.fontSize(9).font('Helvetica').fillColor('#000000');
+            const totalsRightX = 380;
+            doc.text('SUB TOTAL:', totalsRightX, bankingY, { align: 'right', width: 130 });
+            doc.text(`R${parseFloat(invoiceData.TotalAmount).toFixed(2)}`, totalsRightX + 140, bankingY, { align: 'right' });
+
+            doc.text('VAT TAX:', totalsRightX, bankingY + 16, { align: 'right', width: 130 });
+            doc.text('N/A', totalsRightX + 140, bankingY + 16, { align: 'right' });
+
+            doc.fontSize(10).font('Helvetica-Bold');
+            doc.text('TOTAL:', totalsRightX, bankingY + 32, { align: 'right', width: 130 });
+            doc.text(`R${parseFloat(invoiceData.TotalAmount).toFixed(2)}`, totalsRightX + 140, bankingY + 32, { align: 'right' });
 
             // ==================== TERMS & CONDITIONS ====================
             
@@ -306,14 +321,41 @@ async function generateInvoicePDF(invoiceData, items, companyData, clientData) {
             doc.fontSize(8).font('Helvetica-Bold').fillColor('#000000');
             doc.text('TERMS & CONDITIONS', 40, termsY);
             
-            const termsText = `All quotations are valid for 10 days from date of issue and subject to stock availability. Prices may change without prior notice. Ownership of goods remains with Stackops IT Solutions until payment is received in full. Payment Terms: All quotations are based on cash payment into our bank account prior to processing any orders. No goods or services will be released until full cleared payment is received. (This is subject to specific projects). Proof of payment must be sent to billing@stackopsit.co.za to avoid delays. Orders will only be processed once full cleared payment reflects in Stackops IT Solutions (Pty) Ltd's Bank account. Confidentiality: This quotation is intended solely for the recipient and may not be shared with third parties without written consent from Stackops IT Solutions. SLA & Service Commitment: All services and deliveries are subject to StackOps Service Level Commitments unless otherwise agreed in writing. Support: Manufacturer warranties apply unless otherwise stated. We remain available for clarification or support regarding this quotation. Data Protection: All Client information is handled in strict compliance with the Protection of Personal Information Act(POPIA). Non-Liability for Delays: Stackops IT Solutions cannot be held liable for delays caused by suppliers, manufacturers, or circumstances beyond our control. Professional Procurement: Stackops IT Solutions (Pty) Ltd is a registered South African entity, fully compliant with CIPC, SARS, and applicable procurement regulations. Pricing: Prices quoted are exclusive of VAT (unless otherwise stated). Delivery, installation, and additional services are quoted separately where applicable. Acceptance: By Accepting this quotation, the client acknowledges and agrees to the above terms and conditions.`;
-            
             doc.fontSize(7).font('Helvetica').fillColor('#555555');
-            doc.text(termsText, 40, termsY + 18, {
-                width: 520,
-                align: 'justify',
-                lineGap: 2
-            });
+            
+            // Build terms text with bold sections
+            const y1 = termsY + 16;
+            doc.font('Helvetica').text('All quotations are valid for 10 days from date of issue and subject to stock availability. Prices may change without prior notice. Ownership of goods remains with StackOps IT Solutions until payment is received in full. ', 40, y1, { width: 520, align: 'justify', lineGap: 1 });
+            
+            doc.font('Helvetica-Bold').text('Payment Terms: ', 40, doc.y, { width: 520, continued: true });
+            doc.font('Helvetica').text('All quotations are based on cash payment into our bank account prior to processing any orders. No goods or services will be released until full cleared payment is received. (This is subject to specific projects). ', { width: 520, align: 'justify', lineGap: 1 });
+            
+            doc.font('Helvetica-Bold').text('Proof of payment', 40, doc.y, { width: 520, continued: true });
+            doc.font('Helvetica').text(' must be sent to billing@stackopsit.co.za to avoid delays. Orders will only be processed once full cleared payment reflects in StackOps IT Solutions Bank account. ', { width: 520, align: 'justify', lineGap: 1 });
+            
+            doc.font('Helvetica-Bold').text('Confidentiality: ', 40, doc.y, { width: 520, continued: true });
+            doc.font('Helvetica').text('This quotation is intended solely for the recipient and may not be shared with third parties without written consent from StackOps IT Solutions. ', { width: 520, align: 'justify', lineGap: 1 });
+            
+            doc.font('Helvetica-Bold').text('SLA & Service Commitment: ', 40, doc.y, { width: 520, continued: true });
+            doc.font('Helvetica').text('All services and deliveries are subject to StackOps Service Level Commitments unless otherwise agreed in writing. ', { width: 520, align: 'justify', lineGap: 1 });
+            
+            doc.font('Helvetica-Bold').text('Support: ', 40, doc.y, { width: 520, continued: true });
+            doc.font('Helvetica').text('Manufacturer warranties apply unless otherwise stated. We remain available for clarification or support regarding this quotation. ', { width: 520, align: 'justify', lineGap: 1 });
+            
+            doc.font('Helvetica-Bold').text('Data Protection: ', 40, doc.y, { width: 520, continued: true });
+            doc.font('Helvetica').text('All Client information is handled in strict compliance with the Protection of Personal Information Act(POPIA). ', { width: 520, align: 'justify', lineGap: 1 });
+            
+            doc.font('Helvetica-Bold').text('Non-Liability for Delays: ', 40, doc.y, { width: 520, continued: true });
+            doc.font('Helvetica').text('StackOps IT Solutions cannot be held liable for delays caused by suppliers, manufacturers, or circumstances beyond our control. ', { width: 520, align: 'justify', lineGap: 1 });
+            
+            doc.font('Helvetica-Bold').text('Professional Procurement: ', 40, doc.y, { width: 520, continued: true });
+            doc.font('Helvetica').text('StackOps IT Solutions (Pty) Ltd is a registered South African entity, fully compliant with CIPC, SARS, and applicable procurement regulations. ', { width: 520, align: 'justify', lineGap: 1 });
+            
+            doc.font('Helvetica-Bold').text('Pricing: ', 40, doc.y, { width: 520, continued: true });
+            doc.font('Helvetica').text('Prices quoted are exclusive of VAT (unless otherwise stated). Delivery, installation, and additional services are quoted separately where applicable. ', { width: 520, align: 'justify', lineGap: 1 });
+            
+            doc.font('Helvetica-Bold').text('Acceptance: ', 40, doc.y, { width: 520, continued: true });
+            doc.font('Helvetica').text('By accepting this quotation, the client acknowledges and agrees to the above terms and conditions.', { width: 520, align: 'justify', lineGap: 1 });
 
             // ==================== FOOTER ====================
             
@@ -324,10 +366,10 @@ async function generateInvoicePDF(invoiceData, items, companyData, clientData) {
             doc.text('THANK YOU FOR', 280, footerY, { align: 'center', width: 100 });
             doc.text('YOUR BUSINESS', 280, footerY + 15, { align: 'center', width: 100 });
 
-            // Small logo in bottom right
+            // Small logo in bottom right corner - positioned at exact corner
             const smallLogoPath = path.join(__dirname, 'Images', 'Logos', 'RemovedStackOpsONLY.png');
             if (fs.existsSync(smallLogoPath)) {
-                doc.image(smallLogoPath, 510, 735, { width: 40, height: 40 });
+                doc.image(smallLogoPath, 520, 755, { width: 40, height: 40 });
             }
 
             doc.end();
