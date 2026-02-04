@@ -2237,13 +2237,14 @@ app.post("/webhook/yoco", express.raw({ type: "application/json" }), async (req,
 
     console.log("[YOCO WEBHOOK] Event type:", event?.type);
 
-    const payment = event?.data;
+    const payment = event?.data?.payment;
 
 
     if (!payment) {
-      console.error("[YOCO WEBHOOK] ❌ Invalid payload");
-      return res.sendStatus(200);
+    console.error("[YOCO WEBHOOK] ❌ Invalid payload", event.data);
+    return res.sendStatus(200);
     }
+
 
     const invoiceId = payment?.metadata?.invoiceId;
 
