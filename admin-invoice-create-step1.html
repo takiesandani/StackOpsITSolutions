@@ -93,8 +93,8 @@
                         </div>
                     </div>
 
-                    <h2>Step 1: Select Client</h2>
-                    <p>Choose the client for this invoice. This will automatically set the company.</p>
+                    <h2>Step 1: Select or Create Client</h2>
+                    <p>Choose an existing client or create a new one for this invoice.</p>
 
                     <form id="select-client-form">
                         <div class="form-group">
@@ -111,11 +111,61 @@
                             </select>
                         </div>
 
+                        <!-- New Client Modal Link -->
+                        <div class="form-group">
+                            <p class="text-center" style="margin-top: 20px;">
+                                <small>Don't see the client you need?</small><br>
+                                <button type="button" class="btn btn-outline" id="create-new-client-btn" style="margin-top: 10px;">
+                                    <i class="fas fa-plus"></i> Create New Client
+                                </button>
+                            </p>
+                        </div>
+
                         <div class="form-actions">
                             <button type="button" class="btn btn-secondary" onclick="window.location.href='admin-invoices.html'">Cancel</button>
                             <button type="submit" class="btn btn-primary">Next: Invoice Details</button>
                         </div>
                     </form>
+
+                    <!-- Create New Client Modal -->
+                    <div id="create-client-modal" class="modal">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h3>Create New Client (Quick Add)</h3>
+                                <button type="button" class="modal-close" id="close-client-modal">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <form id="quick-add-client-form">
+                                <div class="form-group">
+                                    <label for="new-client-name">Client Name *</label>
+                                    <input type="text" id="new-client-name" class="form-control" required placeholder="Full name or contact person">
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="new-client-email">Email Address</label>
+                                    <input type="email" id="new-client-email" class="form-control" placeholder="client@example.com">
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="new-client-phone">Phone Number</label>
+                                    <input type="tel" id="new-client-phone" class="form-control" placeholder="+1 (555) 000-0000">
+                                </div>
+
+                                <div class="form-group" style="display: none;">
+                                    <label for="new-client-company">Company *</label>
+                                    <select id="new-client-company" class="form-select" required disabled>
+                                        <option value="">Will be auto-filled</option>
+                                    </select>
+                                </div>
+
+                                <div class="modal-actions">
+                                    <button type="button" class="btn btn-secondary" id="cancel-client-btn">Cancel</button>
+                                    <button type="submit" class="btn btn-primary">Create Client</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
                 </div>
             </div>
         </main>

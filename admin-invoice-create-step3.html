@@ -101,21 +101,22 @@
                             <table class="data-table" id="items-table">
                                 <thead>
                                     <tr>
-                                        <th>Description</th>
-                                        <th>Quantity</th>
-                                        <th>Unit Price</th>
-                                        <th>Amount</th>
+                                        <th>Service Category</th>
+                                        <th>Deliverables</th>
+                                        <th>Frequency</th>
+                                        <th>Rate</th>
+                                        <th>Total</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="items-tbody">
                                     <tr>
-                                        <td colspan="5" class="text-center">No items added yet. Click "Add Item" to get started.</td>
+                                        <td colspan="6" class="text-center">No items added yet. Click "Add Item" to get started.</td>
                                     </tr>
                                 </tbody>
                                 <tfoot>
                                     <tr>
-                                        <td colspan="3" class="text-right"><strong>Total Amount:</strong></td>
+                                        <td colspan="4" class="text-right"><strong>Invoice Total:</strong></td>
                                         <td><strong id="total-amount">R0.00</strong></td>
                                         <td></td>
                                     </tr>
@@ -148,16 +149,27 @@
             </div>
             <form id="add-item-form">
                 <div class="form-group">
-                    <label for="item-description">Description *</label>
-                    <input type="text" id="item-description" class="form-input" required>
+                    <label for="item-service-category">Service Category *</label>
+                    <input type="text" id="item-service-category" class="form-input" required placeholder="e.g., Security Audit, Cloud Migration, Support">
                 </div>
                 <div class="form-group">
-                    <label for="item-quantity">Quantity *</label>
-                    <input type="number" id="item-quantity" class="form-input" min="1" step="1" required>
+                    <label for="item-deliverables">Deliverables *</label>
+                    <textarea id="item-deliverables" class="form-input" required placeholder="e.g., O365 Identity & Access Management" rows="3"></textarea>
                 </div>
                 <div class="form-group">
-                    <label for="item-unit-price">Unit Price *</label>
-                    <input type="number" id="item-unit-price" class="form-input" min="0" step="0.01" required>
+                    <label for="item-frequency">Frequency *</label>
+                    <select id="item-frequency" class="form-select" required>
+                        <option value="Once-off">Once-off</option>
+                        <option value="Recurring">Recurring (Subscription)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="item-rate">Rate *</label>
+                    <input type="text" id="item-rate" class="form-input" required placeholder="e.g., 12 hours, 5 days, 2 weeks, 3 months">
+                </div>
+                <div class="form-group">
+                    <label for="item-total">Total (Amount) *</label>
+                    <input type="number" id="item-total" class="form-input" min="0" step="0.01" required placeholder="e.g., 21,600 or 28,800">
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" id="cancel-item-btn">Cancel</button>

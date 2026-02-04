@@ -10,10 +10,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         'Content-Type': 'application/json'
     };
 
-    // Step 1: Load companies and clients
+    // ==================== STEP 1: CLIENT SELECTION & CREATION ====================
+    
     const companySelect = document.getElementById('company-select');
     const clientSelect = document.getElementById('client-select');
     const selectClientForm = document.getElementById('select-client-form');
+    const createNewClientBtn = document.getElementById('create-new-client-btn');
+    const createClientModal = document.getElementById('create-client-modal');
+    const closeClientModal = document.getElementById('close-client-modal');
+    const cancelClientBtn = document.getElementById('cancel-client-btn');
+    const quickAddClientForm = document.getElementById('quick-add-client-form');
 
     if (companySelect) {
         // Load companies
@@ -53,6 +59,80 @@ document.addEventListener('DOMContentLoaded', async () => {
                 } catch (error) {
                     console.error('Error loading clients:', error);
                 }
+            }
+        });
+    }
+
+    // Create New Client Modal - Open
+    if (createNewClientBtn) {
+        createNewClientBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (!companySelect.value) {
+                alert('Please select a company first');
+                return;
+            }
+            document.getElementById('new-client-company').value = companySelect.value;
+            createClientModal.classList.add('active');
+        });
+    }
+
+    // Create New Client Modal - Close
+    if (closeClientModal) {
+        closeClientModal.addEventListener('click', () => {
+            createClientModal.classList.remove('active');
+            quickAddClientForm.reset();
+        });
+    }
+
+    if (cancelClientBtn) {
+        cancelClientBtn.addEventListener('click', () => {
+            createClientModal.classList.remove('active');
+            quickAddClientForm.reset();
+        });
+    }
+
+    // Quick Add Client Form Submission
+    if (quickAddClientForm) {
+        quickAddClientForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const clientName = document.getElementById('new-client-name').value;
+            const clientEmail = document.getElementById('new-client-email').value;
+            const clientPhone = document.getElementById('new-client-phone').value;
+            const companyId = companySelect.value;
+
+            try {
+                const response = await fetch('/api/admin/clients/quick-add', {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({
+                        CompanyID: companyId,
+                        ClientName: clientName,
+                        ClientEmail: clientEmail || null,
+                        ClientPhone: clientPhone || null
+                    })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to create client');
+                }
+
+                const result = await response.json();
+                
+                // Add the new client to the dropdown and select it
+                const option = document.createElement('option');
+                option.value = result.ClientID;
+                option.textContent = `${clientName} (${clientEmail || 'N/A'})`;
+                clientSelect.appendChild(option);
+                clientSelect.value = result.ClientID;
+
+                alert(`Client "${clientName}" created successfully!`);
+                createClientModal.classList.remove('active');
+                quickAddClientForm.reset();
+            } catch (error) {
+                console.error('Error creating client:', error);
+                alert(`Error: ${error.message}`);
             }
         });
     }
@@ -108,7 +188,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    // Step 3: Invoice items
+    // ==================== STEP 3: INVOICE ITEMS ====================
+
     let invoiceItems = JSON.parse(sessionStorage.getItem('invoiceItems') || '[]');
     const addItemBtn = document.getElementById('add-item-btn');
     const addItemForm = document.getElementById('add-item-form');
@@ -123,16 +204,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!itemsTbody) return;
         itemsTbody.innerHTML = '';
         if (invoiceItems.length === 0) {
-            itemsTbody.innerHTML = '<tr><td colspan="5" class="text-center">No items added yet. Click "Add Item" to get started.</td></tr>';
+            itemsTbody.innerHTML = '<tr><td colspan="6" class="text-center">No items added yet. Click "Add Item" to get started.</td></tr>';
         } else {
             invoiceItems.forEach((item, index) => {
                 const row = document.createElement('tr');
-                const amount = item.quantity * item.unitPrice;
                 row.innerHTML = `
-                    <td>${item.description}</td>
-                    <td>${item.quantity}</td>
-                    <td>R${parseFloat(item.unitPrice).toFixed(2)}</td>
-                    <td>R${amount.toFixed(2)}</td>
+                    <td>${item.serviceCategory}</td>
+                    <td>${item.deliverables}</td>
+                    <td>${item.frequency}</td>
+                    <td>${item.rate}</td>
+                    <td>R${parseFloat(item.total).toFixed(2)}</td>
                     <td>
                         <button class="btn btn-sm btn-danger" onclick="removeItem(${index})">Remove</button>
                     </td>
@@ -142,7 +223,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // Update total
-        const total = invoiceItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+        const total = invoiceItems.reduce((sum, item) => sum + parseFloat(item.total), 0);
         if (totalAmountEl) {
             totalAmountEl.textContent = `R${total.toFixed(2)}`;
         }
@@ -179,11 +260,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (addItemForm) {
         addItemForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            const description = document.getElementById('item-description').value;
-            const quantity = parseInt(document.getElementById('item-quantity').value);
-            const unitPrice = parseFloat(document.getElementById('item-unit-price').value);
+            const serviceCategory = document.getElementById('item-service-category').value;
+            const deliverables = document.getElementById('item-deliverables').value;
+            const frequency = document.getElementById('item-frequency').value;
+            const rate = document.getElementById('item-rate').value;
+            const total = parseFloat(document.getElementById('item-total').value);
 
-            invoiceItems.push({ description, quantity, unitPrice });
+            invoiceItems.push({ 
+                serviceCategory, 
+                deliverables, 
+                frequency, 
+                rate, 
+                total 
+            });
             updateItemsTable();
             addItemModal.classList.remove('active');
             addItemForm.reset();
@@ -204,7 +293,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    // Preview Page Logic
+    // ==================== PREVIEW PAGE LOGIC ====================
+
     const pdfPreview = document.getElementById('pdf-preview');
     if (pdfPreview && window.location.pathname.includes('admin-invoice-create-preview.html')) {
         const loadingOverlay = document.getElementById('loading-overlay');
@@ -216,7 +306,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const invoiceData = JSON.parse(sessionStorage.getItem('invoiceData') || '{}');
         const clientData = JSON.parse(sessionStorage.getItem('invoiceClientData') || '{}');
         const items = JSON.parse(sessionStorage.getItem('invoiceItems') || '[]');
-        const totalAmount = items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+        const totalAmount = items.reduce((sum, item) => sum + parseFloat(item.total), 0);
 
         const generatePreview = async () => {
             loadingOverlay.classList.add('active');
@@ -231,9 +321,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                         DueDate: invoiceData.dueDate,
                         TotalAmount: totalAmount,
                         Items: items.map(item => ({
-                            Description: item.description,
-                            Quantity: item.quantity,
-                            UnitPrice: item.unitPrice
+                            ServiceCategory: item.serviceCategory,
+                            Deliverables: item.deliverables,
+                            Frequency: item.frequency,
+                            Rate: item.rate,
+                            Total: item.total
                         }))
                     })
                 });
@@ -253,72 +345,84 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         };
 
-        generatePreview();
+        if (pdfPreview) {
+            generatePreview();
+        }
 
-        previewSendBtn.addEventListener('click', async () => {
-            if (!confirm('Are you sure you want to send this invoice to the client?')) return;
+        if (previewSendBtn) {
+            previewSendBtn.addEventListener('click', async () => {
+                if (!confirm('Are you sure you want to send this invoice to the client?')) return;
 
-            previewSendBtn.disabled = true;
-            previewSendBtn.textContent = 'Sending...';
-            loadingOverlay.classList.add('active');
-            document.getElementById('loading-text').textContent = 'Creating & Sending Invoice...';
+                previewSendBtn.disabled = true;
+                previewSendBtn.textContent = 'Sending...';
+                loadingOverlay.classList.add('active');
+                document.getElementById('loading-text').textContent = 'Creating & Sending Invoice...';
 
-            try {
-                const response = await fetch('/api/admin/invoices', {
-                    method: 'POST',
-                    headers,
-                    body: JSON.stringify({
-                        CompanyID: invoiceData.companyId,
-                        UserID: clientData.userId,
-                        InvoiceDate: invoiceData.invoiceDate,
-                        DueDate: invoiceData.dueDate,
-                        TotalAmount: totalAmount,
-                        Status: invoiceData.status,
-                        Items: items.map(item => ({
-                            Description: item.description,
-                            Quantity: item.quantity,
-                            UnitPrice: item.unitPrice
-                        }))
-                    })
-                });
+                try {
+                    const response = await fetch('/api/admin/invoices', {
+                        method: 'POST',
+                        headers,
+                        body: JSON.stringify({
+                            CompanyID: invoiceData.companyId,
+                            UserID: clientData.userId,
+                            InvoiceDate: invoiceData.invoiceDate,
+                            DueDate: invoiceData.dueDate,
+                            TotalAmount: totalAmount,
+                            Status: invoiceData.status,
+                            Items: items.map(item => ({
+                                ServiceCategory: item.serviceCategory,
+                                Deliverables: item.deliverables,
+                                Frequency: item.frequency,
+                                Rate: item.rate,
+                                Total: item.total
+                            }))
+                        })
+                    });
 
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.error || 'Failed to create invoice');
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.error || 'Failed to create invoice');
+                    }
+                    
+                    const result = await response.json();
+                    alert(`Invoice #${result.InvoiceNumber} created and sent successfully!`);
+                    
+                    sessionStorage.removeItem('invoiceData');
+                    sessionStorage.removeItem('invoiceClientData');
+                    sessionStorage.removeItem('invoiceItems');
+                    window.location.href = 'admin-invoices.html';
+                } catch (error) {
+                    console.error('Error creating invoice:', error);
+                    alert(`Error: ${error.message}`);
+                    previewSendBtn.disabled = false;
+                    previewSendBtn.textContent = 'Send to Client';
+                    loadingOverlay.classList.remove('active');
                 }
-                
-                const result = await response.json();
-                alert(`Invoice #${result.InvoiceNumber} created and sent successfully!`);
-                
-                sessionStorage.removeItem('invoiceData');
-                sessionStorage.removeItem('invoiceClientData');
-                sessionStorage.removeItem('invoiceItems');
-                window.location.href = 'admin-invoices.html';
-            } catch (error) {
-                console.error('Error creating invoice:', error);
-                alert(`Error: ${error.message}`);
-                previewSendBtn.disabled = false;
-                previewSendBtn.textContent = 'Send to Client';
-                loadingOverlay.classList.remove('active');
-            }
-        });
+            });
+        }
 
-        previewEditBtn.addEventListener('click', () => {
-            window.location.href = 'admin-invoice-create-step2.html';
-        });
+        if (previewEditBtn) {
+            previewEditBtn.addEventListener('click', () => {
+                window.location.href = 'admin-invoice-create-step2.html';
+            });
+        }
 
-        previewBackBtn.addEventListener('click', () => {
-            window.location.href = 'admin-invoice-create-step3.html';
-        });
+        if (previewBackBtn) {
+            previewBackBtn.addEventListener('click', () => {
+                window.location.href = 'admin-invoice-create-step3.html';
+            });
+        }
 
-        previewCancelBtn.addEventListener('click', () => {
-            if (confirm('Are you sure you want to cancel? All progress will be lost.')) {
-                sessionStorage.removeItem('invoiceData');
-                sessionStorage.removeItem('invoiceClientData');
-                sessionStorage.removeItem('invoiceItems');
-                window.location.href = 'admin-invoices.html';
-            }
-        });
+        if (previewCancelBtn) {
+            previewCancelBtn.addEventListener('click', () => {
+                if (confirm('Are you sure you want to cancel? All progress will be lost.')) {
+                    sessionStorage.removeItem('invoiceData');
+                    sessionStorage.removeItem('invoiceClientData');
+                    sessionStorage.removeItem('invoiceItems');
+                    window.location.href = 'admin-invoices.html';
+                }
+            });
+        }
     }
 
     updateItemsTable();

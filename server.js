@@ -169,27 +169,34 @@ async function generateInvoicePDF(invoiceData, items, companyData, clientData) {
         const tableTop = 280;
         doc.rect(50, tableTop, 510, 20).fill('#eeeeee');
         doc.fillColor('#000000')
-           .fontSize(10)
-           .text('Description', 60, tableTop + 5)
-           .text('Quantity', 250, tableTop + 5)
-           .text('Unit Price', 350, tableTop + 5)
-           .text('Amount', 450, tableTop + 5);
+           .fontSize(9)
+           .text('Service Category', 55, tableTop + 5)
+           .text('Deliverables', 150, tableTop + 5)
+           .text('Frequency', 280, tableTop + 5)
+           .text('Rate', 380, tableTop + 5)
+           .text('Total', 470, tableTop + 5);
 
-        // Items
+        // Items - Updated for new structure
         let i = 0;
         items.forEach((item, index) => {
-            const y = tableTop + 25 + (i * 25);
-            doc.text(item.Description, 60, y)
-               .text(item.Quantity.toString(), 250, y)
-               .text(`R${parseFloat(item.UnitPrice).toFixed(2)}`, 350, y)
-               .text(`R${(item.Quantity * item.UnitPrice).toFixed(2)}`, 450, y);
+            const y = tableTop + 25 + (i * 30);
+            // Service Category
+            doc.fontSize(9).text((item.ServiceCategory || item.Description || ''), 55, y, { width: 90 });
+            // Deliverables
+            doc.text((item.Deliverables || ''), 150, y, { width: 125 });
+            // Frequency
+            doc.text((item.Frequency || 'Once-off'), 280, y, { width: 95 });
+            // Rate
+            doc.text((item.Rate || ''), 380, y, { width: 85 });
+            // Total
+            doc.text(`R${parseFloat(item.Total || item.UnitPrice || 0).toFixed(2)}`, 470, y);
             i++;
         });
 
-        const totalY = tableTop + 35 + (i * 25);
+        const totalY = tableTop + 35 + (i * 30);
         doc.moveTo(50, totalY - 5).lineTo(560, totalY - 5).stroke();
-        doc.fontSize(12).text('TOTAL:', 350, totalY);
-        doc.text(`R${parseFloat(invoiceData.TotalAmount).toFixed(2)}`, 450, totalY);
+        doc.fontSize(12).text('TOTAL:', 380, totalY);
+        doc.text(`R${parseFloat(invoiceData.TotalAmount).toFixed(2)}`, 470, totalY);
 
         // Payment Details Space
         doc.fontSize(10)
@@ -1436,6 +1443,66 @@ app.get('/api/admin/clients', authenticateToken, async (req, res) => {
     }
 });
 
+// ==================== QUICK ADD CLIENT FOR INVOICING ====================
+// This endpoint creates a lightweight client record without full registration
+// Ideal for automation and quick invoice creation workflows
+app.post('/api/admin/clients/quick-add', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+
+        const { CompanyID, ClientName, ClientEmail, ClientPhone } = req.body;
+
+        if (!CompanyID || !ClientName) {
+            return res.status(400).json({ error: 'CompanyID and ClientName are required' });
+        }
+
+        // Split client name into first and last name
+        const nameParts = ClientName.trim().split(' ');
+        const firstName = nameParts[0];
+        const lastName = nameParts.slice(1).join(' ') || nameParts[0];
+
+        // Insert into ClientQuickAdd table for reference
+        const [quickAddResult] = await pool.query(
+            `INSERT INTO ClientQuickAdd (CompanyID, ClientName, ClientEmail, ClientPhone)
+             VALUES (?, ?, ?, ?)`,
+            [CompanyID, ClientName, ClientEmail || null, ClientPhone || null]
+        );
+
+        const quickClientID = quickAddResult.insertId;
+
+        // Also create a Users record for the client (marked as quick-added)
+        const [userResult] = await pool.query(
+            `INSERT INTO Users (FirstName, LastName, Email, Contact, PasswordHash, IsActive, Role, CompanyID, IsQuickAdd)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                firstName,
+                lastName,
+                ClientEmail || `quickadd_${quickClientID}@automated.local`,
+                ClientPhone || '',
+                bcrypt.hashSync('QUICK_ADD_NO_PASSWORD', 10), // Placeholder password
+                1, // IsActive = true
+                'Client', // Default role
+                CompanyID,
+                1 // IsQuickAdd = true
+            ]
+        );
+
+        res.json({
+            ClientID: userResult.insertId,
+            QuickClientID: quickClientID,
+            ClientName: ClientName,
+            ClientEmail: ClientEmail,
+            ClientPhone: ClientPhone,
+            message: 'Client created successfully for invoice automation'
+        });
+    } catch (error) {
+        console.error('Error creating quick-add client:', error);
+        res.status(500).json({ error: 'Failed to create client. ' + error.message });
+    }
+});
+
 // Get invoices - optionally filtered by company or client
 app.get('/api/admin/invoices', authenticateToken, async (req, res) => {
     try {
@@ -1552,14 +1619,25 @@ app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
       
       const invoiceId = result.insertId;
 
-      // Insert items if provided
+      // Insert items if provided - Updated to handle new structure
       if (Items && Items.length > 0) {
         for (const item of Items) {
-          await connection.query(
-            `INSERT INTO InvoiceItems (InvoiceID, Description, Quantity, UnitPrice)
-             VALUES (?, ?, ?, ?)`,
-            [invoiceId, item.Description, item.Quantity, item.UnitPrice]
-          );
+          // Support both old and new formats
+          if (item.ServiceCategory) {
+            // New format: ServiceCategory, Deliverables, Frequency, Rate, Total
+            await connection.query(
+              `INSERT INTO InvoiceItems (InvoiceID, ServiceCategory, Deliverables, Frequency, Rate, Total)
+               VALUES (?, ?, ?, ?, ?, ?)`,
+              [invoiceId, item.ServiceCategory, item.Deliverables, item.Frequency, item.Rate, item.Total]
+            );
+          } else {
+            // Old format: Description, Quantity, UnitPrice (for backward compatibility)
+            await connection.query(
+              `INSERT INTO InvoiceItems (InvoiceID, Description, Quantity, UnitPrice)
+               VALUES (?, ?, ?, ?)`,
+              [invoiceId, item.Description, item.Quantity, item.UnitPrice]
+            );
+          }
         }
       }
 
