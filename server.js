@@ -2178,15 +2178,18 @@ app.get('/api/admin/companies/:id/details', authenticateToken, async (req, res) 
 //=====================================================================================================================================//
 
 // YOCO Payment Creation
-app.post("/create-payment", async (req, res) => {
+app.post("/api/create-payment", authenticateToken, async (req, res) => {
     const { amount, description, invoiceId } = req.body;
 
-    try {
-        const yocoSecretKey = await getSecret('YOCO_SECRET_KEY');
-        if (!yocoSecretKey) {
-            throw new Error('YOCO secret key not found in Secret Manager');
-        }
+    if (!amount || !invoiceId) {
+        return res.status(400).json({ error: "Amount and Invoice ID are required" });
+    }
 
+    try {
+        // 1. Get Secret Key
+        const yocoSecretKey = "@TakalaniSandani2005"; // Ensure this matches your Yoco Secret
+
+        // 2. Create Yoco Checkout with Metadata
         const response = await fetch("https://payments.yoco.com/api/checkouts", {
             method: "POST",
             headers: {
@@ -2194,99 +2197,118 @@ app.post("/create-payment", async (req, res) => {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
-                amount: parseInt(amount),
+                amount: Math.round(parseFloat(amount) * 100), // Convert to cents
                 currency: "ZAR",
-                description: description || `Payment for Invoice #${invoiceId}`
+                description: description || `Payment for Invoice #${invoiceId}`,
+                // THE FIX: We pass the invoiceId here. Yoco will send it back in the webhook.
+                metadata: {
+                    invoiceId: invoiceId.toString()
+                },
+                redirectUrl: `https://stackopsit.co.za/payment-success.html?invoiceId=${invoiceId}`
             })
         });
 
         const data = await response.json();
 
-        if (!data.id) {
-            console.error('[YOCO] Creation Failed:', data);
-            return res.status(400).json({ error: "Could not create Yoco checkout" });
+        if (data.id) {
+            // 3. Save to database (we still save the checkout_id for logs, but we won't rely on it)
+            await pool.query(
+                "INSERT INTO yoco_payments (yoco_checkout_id, invoice_id, amount, description, status) VALUES (?, ?, ?, ?, ?)",
+                [data.id, invoiceId, Math.round(parseFloat(amount) * 100), description, "pending"]
+            );
+
+            res.json({ paymentUrl: data.redirectUrl });
+        } else {
+            throw new Error(data.errorMessage || "Failed to create Yoco checkout");
         }
-
-        // SAVE TO DATABASE AS PENDING
-        await pool.query(
-            "INSERT INTO yoco_payments (yoco_checkout_id, invoice_id, amount, description, status) VALUES (?, ?, ?, ?, ?)",
-            [data.id, invoiceId, amount, description, "pending"]
-        );
-
-        res.json({ paymentUrl: data.redirectUrl });
-
     } catch (err) {
-        console.error('❌ Payment creation error:', err.message);
+        console.error("❌ Payment Error:", err.message);
         res.status(500).json({ error: "Payment creation failed" });
     }
 });
 
 app.post("/webhook/yoco", async (req, res) => {
     console.log('[YOCO WEBHOOK] 📥 Event received.');
+    
+    // Always respond 200 immediately to Yoco
     res.sendStatus(200); 
 
     try {
         const event = req.body;
-        // 1. Extract the raw ID (e.g., "4xbq2Xap3yYTPoRhBRyUYOWg")
-        const rawId = (event.payload?.id || event.payload?.checkoutId || event.id || "").replace('p_', '').replace('ch_', '');
         
-        if (!rawId) return;
+        // 1. EXTRACT INVOICE ID FROM METADATA
+        // Yoco usually nests this in payload.metadata
+        const invoiceId = event.payload?.metadata?.invoiceId || event.metadata?.invoiceId;
 
-        console.log(`[YOCO WEBHOOK] ⚡ Processing Raw ID: ${rawId}`);
+        if (!invoiceId) {
+            console.error('[YOCO WEBHOOK] ❌ No invoiceId found in metadata. Skipping.');
+            return;
+        }
+
+        console.log(`[YOCO WEBHOOK] ⚡ Processing Invoice ID: ${invoiceId}`);
 
         const connection = await pool.getConnection();
         try {
             await connection.beginTransaction();
 
-            // 2. FUZZY SEARCH: Look for any record where the yoco_checkout_id OR redirect_url contains this ID
+            // 2. SEARCH BY INVOICE ID (Ignore the Yoco ID entirely)
             const [yocoPayments] = await connection.query(
-                `SELECT invoice_id, amount FROM yoco_payments 
-                 WHERE (yoco_checkout_id LIKE ? OR redirect_url LIKE ?) 
-                 AND status = 'pending'`,
-                [`%${rawId}%`, `%${rawId}%`]
+                "SELECT invoice_id, amount FROM yoco_payments WHERE invoice_id = ? AND status = 'pending' LIMIT 1",
+                [invoiceId]
             );
 
             if (yocoPayments.length > 0) {
-                const { invoice_id, amount } = yocoPayments[0];
+                const { amount } = yocoPayments[0];
                 const amountInRands = amount / 100;
 
-                // 3. Update Tables
-                await connection.query("UPDATE Invoices SET Status = 'Paid' WHERE InvoiceID = ?", [invoice_id]);
+                // 3. UPDATE TABLES
+                // Mark main Invoice as Paid
+                await connection.query("UPDATE Invoices SET Status = 'Paid' WHERE InvoiceID = ?", [invoiceId]);
+                
+                // Record the payment in your history
                 await connection.query(
                     "INSERT INTO Payments (InvoiceID, AmountPaid, PaymentDate, Method) VALUES (?, ?, NOW(), 'YOCO')",
-                    [invoice_id, amountInRands]
-                );
-                await connection.query(
-                    "UPDATE yoco_payments SET status = 'paid', updated_at = NOW() WHERE (yoco_checkout_id LIKE ? OR redirect_url LIKE ?)",
-                    [`%${rawId}%`, `%${rawId}%`]
+                    [invoiceId, amountInRands]
                 );
 
-                // 4. Send Email
+                // Update your Yoco tracking table
+                await connection.query(
+                    "UPDATE yoco_payments SET status = 'paid', updated_at = NOW() WHERE invoice_id = ?",
+                    [invoiceId]
+                );
+
+                // 4. GET EMAIL DETAILS
                 const [details] = await connection.query(
                     `SELECT i.InvoiceNumber, u.email, u.firstname FROM Invoices i 
-                     JOIN Users u ON i.CompanyID = u.CompanyID 
-                     WHERE i.InvoiceID = ? LIMIT 1`, [invoice_id]
+                     JOIN Companies c ON i.CompanyID = c.ID 
+                     JOIN Users u ON c.ID = u.CompanyID 
+                     WHERE i.InvoiceID = ? LIMIT 1`, [invoiceId]
                 );
 
                 await connection.commit();
-                console.log(`[YOCO WEBHOOK] 🎉 SUCCESS: Invoice #${invoice_id} is now PAID.`);
+                console.log(`[YOCO WEBHOOK] 🎉 SUCCESS: Invoice #${invoiceId} is now PAID.`);
 
+                // 5. SEND CONFIRMATION EMAIL
                 if (details.length > 0) {
                     const inv = details[0];
-                    await sendBillingEmail(inv.email, `Payment Received - #${inv.InvoiceNumber}`, 
-                    `<p>Hi ${inv.firstname}, payment for Invoice #${inv.InvoiceNumber} received. Thank you!</p>`, true);
+                    await sendBillingEmail(
+                        inv.email, 
+                        `Payment Received - Invoice #${inv.InvoiceNumber}`, 
+                        `<p>Hi ${inv.firstname},</p><p>We have successfully received your payment for Invoice #${inv.InvoiceNumber}. Thank you!</p>`, 
+                        true
+                    );
                 }
             } else {
-                console.log(`[YOCO WEBHOOK] ℹ️ No pending payment found matching ID fragment: ${rawId}`);
+                console.log(`[YOCO WEBHOOK] ℹ️ Invoice ${invoiceId} is either already paid or doesn't exist.`);
             }
         } catch (dbErr) {
             await connection.rollback();
-            console.error("[YOCO WEBHOOK] ❌ DB Error:", dbErr.message);
+            console.error("[YOCO WEBHOOK] ❌ Database Error:", dbErr.message);
         } finally {
             connection.release();
         }
     } catch (err) {
-        console.error("[YOCO WEBHOOK] ❌ Critical Error:", err.message);
+        console.error("[YOCO WEBHOOK] ❌ Critical Webhook Error:", err.message);
     }
 });
 
