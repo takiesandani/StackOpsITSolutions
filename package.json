@@ -19,6 +19,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@google-cloud/secret-manager": "^5.0.1",
     "@n8n/chat": "^1.0.0-rc.0",
     "@supabase/supabase-js": "^2.75.0",
     "bcryptjs": "^3.0.2",
@@ -32,6 +33,6 @@
     "nodemailer": "^7.0.6",
     "openai": "^4.20.0",
     "pdfkit": "^0.17.2",
-    "@google-cloud/secret-manager": "^5.0.1"
+    "svix": "^1.84.1"
   }
 }
