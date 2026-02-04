@@ -2220,186 +2220,119 @@ app.post("/create-payment", async (req, res) => {
 
 
 
-// YOCO WEBHOOK - PRODUCTION READY WITH SIGNATURE VERIFICATION
+// YOCO WEBHOOK - HASSLE-FREE VERIFICATION MODE
 app.post("/webhook/yoco", async (req, res) => {
-    console.log('[YOCO WEBHOOK] 📥 Received new event');
+    console.log('[YOCO WEBHOOK] 📥 Event received.');
+
+    // 1. Respond to Yoco immediately (Prevents timeouts and double-notifications)
+    res.sendStatus(200);
 
     try {
-        // 1. Get Secret from Secret Manager
-        const webhookSecret = await getSecret('YOCO_WEBHOOK_SECRET');
-        if (!webhookSecret) {
-            console.error('[YOCO WEBHOOK] ⚠️ YOCO_WEBHOOK_SECRET not found in Secret Manager');
-            return res.status(500).send('Configuration error');
-        }
-
-        // 2. Extract Svix/Yoco Headers
-        const svix_id = req.headers["svix-id"] || req.headers["x-yoco-id"];
-        const svix_timestamp = req.headers["svix-timestamp"] || req.headers["x-yoco-timestamp"];
-        const svix_signature = req.headers["svix-signature"] || req.headers["x-yoco-signature"];
-
-        if (!svix_id || !svix_timestamp || !svix_signature) {
-            console.error('[YOCO WEBHOOK] 🚨 Missing security headers. Check Yoco Dashboard settings.');
-            return res.status(400).send('Missing headers');
-        }
-
-        // 3. Verify Signature using the RAW BODY
-        const wh = new Webhook(webhookSecret);
-        try {
-            // We use req.rawBody here because JSON.stringify(req.body) is unreliable for signatures
-            const payload = req.rawBody; 
-            wh.verify(payload, {
-                "svix-id": svix_id,
-                "svix-timestamp": svix_timestamp,
-                "svix-signature": svix_signature,
-            });
-            console.log('[YOCO WEBHOOK] ✅ Signature verified successfully');
-        } catch (err) {
-            console.error('[YOCO WEBHOOK] 🚨 Verification failed:', err.message);
-            return res.status(403).send('Invalid signature');
-        }
-
-        // 4. Send 200 OK immediately to Yoco (prevents retries/timeouts)
-        res.sendStatus(200);
-
-        // 5. Process Business Logic Asynchronously
         const event = req.body;
-    
-    if (event.type === "checkout.succeeded" || event.type === "payment.succeeded") {
-      const checkoutId = event.payload?.id || event.payload?.checkoutId;
-      
-      if (!checkoutId) {
-        console.error('[YOCO WEBHOOK] ❌ No checkout ID found in payload');
-        return;
-      }
 
-      console.log(`[YOCO WEBHOOK] 💳 Processing payment for checkout: ${checkoutId}`);
+        // 2. Only process if it's a successful checkout or payment
+        if (event.type === "checkout.succeeded" || event.type === "payment.succeeded") {
+            
+            // Extract the checkout ID (Yoco structure varies slightly between event types)
+            const checkoutId = event.payload?.id || event.payload?.checkoutId;
+            
+            if (!checkoutId) {
+                console.error('[YOCO WEBHOOK] ❌ No checkout ID found in payload');
+                return;
+            }
 
-      // Find the YOCO payment record linked to an invoice
-      const [yocoPayments] = await pool.query(
-        "SELECT invoice_id, amount FROM yoco_payments WHERE yoco_checkout_id = ? AND status = 'pending'",
-        [checkoutId]
-      );
+            console.log(`[YOCO WEBHOOK] 💳 Verifying checkout: ${checkoutId}`);
 
-      if (yocoPayments.length === 0) {
-        console.error(`[YOCO WEBHOOK] ⚠️ No pending payment found for checkout: ${checkoutId}`);
-        return;
-      }
+            // 3. SECURITY CHECK: Manually verify with Yoco API
+            // This ensures the payment is real without needing Svix headers
+            const yocoSecretKey = await getSecret('YOCO_SECRET_KEY');
+            const verifyRes = await fetch(`https://payments.yoco.com/api/checkouts/${checkoutId}`, {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${yocoSecretKey}` }
+            });
+            
+            const verifyData = await verifyRes.json();
 
-      const { invoice_id, amount } = yocoPayments[0];
-      const amountInRands = amount / 100;  // Convert cents to rands
+            // Only proceed if Yoco confirms the status is 'successful' or 'paid'
+            if (verifyData.status === 'successful' || verifyData.status === 'paid') {
+                console.log(`[YOCO WEBHOOK] ✅ Yoco confirmed: Checkout ${checkoutId} is PAID.`);
 
-      console.log(`[YOCO WEBHOOK] 💰 Processing Invoice #${invoice_id} for R${amountInRands.toFixed(2)}`);
+                const connection = await pool.getConnection();
+                try {
+                    await connection.beginTransaction();
 
-      // Use transaction to ensure data consistency
-      const connection = await pool.getConnection();
-      
-      try {
-        await connection.beginTransaction();
+                    // A. Find the pending payment in your local DB
+                    const [yocoPayments] = await connection.query(
+                        "SELECT invoice_id, amount FROM yoco_payments WHERE yoco_checkout_id = ? AND status = 'pending'",
+                        [checkoutId]
+                    );
 
-        // 1. Update invoice status to 'Paid'
-        await connection.query(
-          "UPDATE Invoices SET Status = 'Paid' WHERE InvoiceID = ?",
-          [invoice_id]
-        );
-        console.log(`[YOCO WEBHOOK] ✅ Invoice #${invoice_id} marked as PAID`);
+                    if (yocoPayments.length > 0) {
+                        const { invoice_id, amount } = yocoPayments[0];
+                        const amountInRands = amount / 100;
 
-        // 2. Insert into Payments table (FIXED - was using wrong query)
-        await connection.query(
-          "INSERT INTO Payments (InvoiceID, AmountPaid, PaymentDate, Method) VALUES (?, ?, NOW(), 'YOCO')",
-          [invoice_id, amountInRands]
-        );
-        console.log(`[YOCO WEBHOOK] ✅ Payment record created: R${amountInRands.toFixed(2)}`);
+                        // B. Update Invoice to 'Paid'
+                        await connection.query("UPDATE Invoices SET Status = 'Paid' WHERE InvoiceID = ?", [invoice_id]);
 
-        // 3. Update YOCO payment status to 'paid'
-        await connection.query(
-          "UPDATE yoco_payments SET status = 'paid', updated_at = NOW() WHERE yoco_checkout_id = ?",
-          [checkoutId]
-        );
-        console.log(`[YOCO WEBHOOK] ✅ YOCO payment status updated to PAID`);
+                        // C. Record the payment
+                        await connection.query(
+                            "INSERT INTO Payments (InvoiceID, AmountPaid, PaymentDate, Method) VALUES (?, ?, NOW(), 'YOCO')",
+                            [invoice_id, amountInRands]
+                        );
 
-        // 4. Get client email for confirmation
-        const [invoiceDetails] = await connection.query(
-          `SELECT i.InvoiceNumber, i.CompanyID, u.email, u.firstname, u.lastname
-           FROM Invoices i
-           JOIN Companies c ON i.CompanyID = c.ID
-           JOIN Users u ON c.ID = u.CompanyID
-           WHERE i.InvoiceID = ?
-           LIMIT 1`,
-          [invoice_id]
-        );
+                        // D. Update your internal tracking table
+                        await connection.query(
+                            "UPDATE yoco_payments SET status = 'paid', updated_at = NOW() WHERE yoco_checkout_id = ?",
+                            [checkoutId]
+                        );
 
-        await connection.commit();
-        console.log(`[YOCO WEBHOOK] ✅ Transaction committed successfully`);
+                        // E. Get client details for the email
+                        const [invoiceDetails] = await connection.query(
+                            `SELECT i.InvoiceNumber, u.email, u.firstname, u.lastname
+                             FROM Invoices i
+                             JOIN Companies c ON i.CompanyID = c.ID
+                             JOIN Users u ON c.ID = u.CompanyID
+                             WHERE i.InvoiceID = ? LIMIT 1`,
+                            [invoice_id]
+                        );
 
-        // 5. Send confirmation email (outside transaction to avoid rollback issues)
-        if (invoiceDetails.length > 0) {
-          const invoice = invoiceDetails[0];
-          const emailBody = `
-            <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
-                <h2 style="color: #28a745; text-align: center;">✅ Payment Confirmed</h2>
-                <hr style="border: 1px solid #28a745; margin: 20px 0;">
-                <p>Good day ${invoice.firstname} ${invoice.lastname},</p>
-                <p>We are pleased to confirm that your payment has been <strong style="color: #28a745;">successfully processed</strong>.</p>
-                
-                <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
-                    <tr>
-                        <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 150px;">Invoice Number:</td>
-                        <td style="padding: 10px; border: 1px solid #ddd;">#${invoice.InvoiceNumber}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold;">Amount Paid:</td>
-                        <td style="padding: 10px; border: 1px solid #ddd; color: #28a745; font-weight: bold;">R${amountInRands.toFixed(2)}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold;">Payment Method:</td>
-                        <td style="padding: 10px; border: 1px solid #ddd;">YOCO (Card Payment)</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold;">Transaction Date:</td>
-                        <td style="padding: 10px; border: 1px solid #ddd;">${new Date().toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg' })}</td>
-                    </tr>
-                </table>
-                
-                <p>Your invoice has been marked as <strong style="color: #28a745;">PAID</strong> in our system.</p>
-                <p>Thank you for your prompt payment and continued business!</p>
-                
-                <hr style="border: 1px solid #eee; margin: 20px 0;">
-                <p style="font-size: 12px; color: #666;">
-                    If you have any questions about this payment, please contact us at:<br>
-                    📧 billing@stackopsit.co.za<br>
-                    📞 011 568 9337
-                </p>
-                <p>Best regards,<br><strong>StackOps IT Solutions Team</strong></p>
-            </div>
-          `;
-          
-          try {
-            await sendBillingEmail(
-              invoice.email, 
-              `✅ Payment Confirmed - Invoice #${invoice.InvoiceNumber}`, 
-              emailBody, 
-              true
-            );
-            console.log(`[YOCO WEBHOOK] 📧 Confirmation email sent to ${invoice.email}`);
-          } catch (emailError) {
-            console.error('[YOCO WEBHOOK] ⚠️ Email sending failed (payment still processed):', emailError);
-          }
+                        await connection.commit();
+                        console.log(`[YOCO WEBHOOK] 🎉 Database updated for Invoice #${invoice_id}`);
+
+                        // 4. Send the confirmation email
+                        if (invoiceDetails.length > 0) {
+                            const inv = invoiceDetails[0];
+                            const emailBody = `
+                                <div style="font-family: Arial; padding: 20px; border: 1px solid #eee;">
+                                    <h2 style="color: #28a745;">Payment Received</h2>
+                                    <p>Hi ${inv.firstname},</p>
+                                    <p>Your payment of <strong>R${amountInRands.toFixed(2)}</strong> for Invoice <strong>#${inv.InvoiceNumber}</strong> has been processed successfully.</p>
+                                    <p>Thank you for choosing StackOps IT Solutions.</p>
+                                </div>`;
+
+                            try {
+                                await sendBillingEmail(inv.email, `Payment Confirmed - #${inv.InvoiceNumber}`, emailBody, true);
+                                console.log(`[YOCO WEBHOOK] 📧 Email sent to ${inv.email}`);
+                            } catch (e) {
+                                console.error('[YOCO WEBHOOK] ⚠️ Email failed:', e.message);
+                            }
+                        }
+                    } else {
+                        console.log(`[YOCO WEBHOOK] ℹ️ Checkout ${checkoutId} already processed or not found.`);
+                    }
+                } catch (dbErr) {
+                    await connection.rollback();
+                    console.error("[YOCO WEBHOOK] ❌ DB Transaction Error:", dbErr);
+                } finally {
+                    connection.release();
+                }
+            } else {
+                console.warn(`[YOCO WEBHOOK] 🚨 Verification failed for ${checkoutId}. Status: ${verifyData.status}`);
+            }
         }
-
-        console.log(`[YOCO WEBHOOK] 🎉 Payment processing COMPLETE for Invoice #${invoice_id}`);
-
-      } catch (dbError) {
-        await connection.rollback();
-        console.error('[YOCO WEBHOOK] ❌ Transaction FAILED - rolled back:', dbError);
-      } finally {
-        connection.release();
-      }
-    } else {
-      console.log(`[YOCO WEBHOOK] ℹ️ Event type "${event.type}" ignored (not a payment success)`);
+    } catch (err) {
+        console.error("[YOCO WEBHOOK] ❌ Critical Error:", err.message);
     }
-  } catch (error) {
-    console.error('[YOCO WEBHOOK] ❌ Critical error:', error);
-  }
 });
 
 //===========================================================================================================//
