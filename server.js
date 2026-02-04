@@ -17,7 +17,13 @@ require("dotenv").config();
 
 
 const app = express();
-app.use(express.json());
+// FIND THIS AT THE TOP OF YOUR server.js AND REPLACE IT:
+app.use(express.json({
+    verify: (req, res, buf) => {
+        req.rawBody = buf.toString(); // This saves the exact raw string for signature check
+    }
+}));
+app.use(express.urlencoded({ extended: true }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cors());
 
@@ -2216,41 +2222,47 @@ app.post("/create-payment", async (req, res) => {
 
 // YOCO WEBHOOK - PRODUCTION READY WITH SIGNATURE VERIFICATION
 app.post("/webhook/yoco", async (req, res) => {
-  console.log('[YOCO WEBHOOK] 📥 Received event:', JSON.stringify(req.body, null, 2));
-  
-  try {
-    // Step 1: Verify webhook signature (SECURITY)
-    const signature = req.headers['x-yoco-signature'];
-    const webhookSecret = await getSecret('YOCO_WEBHOOK_SECRET');
-    const wh = new Webhook(webhookSecret);
-
-    if (!webhookSecret) {
-      console.error('[YOCO WEBHOOK] ⚠️ CRITICAL: Webhook secret not configured!');
-      return res.sendStatus(500);
-    }
-    
-    // Verify the signature
-    const payload = JSON.stringify(req.body);
+    console.log('[YOCO WEBHOOK] 📥 Received new event');
 
     try {
-        wh.verify(payload, {
-            'svix-id': req.headers['svix-id'] || req.headers['x-yoco-id'],
-            'svix-timestamp': req.headers['svix-timestamp'] || req.headers['x-yoco-timestamp'],
-            'svix-signature': signature,
-        });
-        console.log('[YOCO WEBHOOK] ✅ Signature verified via Svix');
-    } catch (err) {
-        console.error('[YOCO WEBHOOK] 🚨 Verification failed:', err.message);
-        return res.status(403).send('Invalid signature');
-    }
-    
-    console.log('[YOCO WEBHOOK] ✅ Signature verified');
-    
-    // Acknowledge immediately
-    res.sendStatus(200);
-    
-    // Step 2: Process the webhook asynchronously
-    const event = req.body;
+        // 1. Get Secret from Secret Manager
+        const webhookSecret = await getSecret('YOCO_WEBHOOK_SECRET');
+        if (!webhookSecret) {
+            console.error('[YOCO WEBHOOK] ⚠️ YOCO_WEBHOOK_SECRET not found in Secret Manager');
+            return res.status(500).send('Configuration error');
+        }
+
+        // 2. Extract Svix/Yoco Headers
+        const svix_id = req.headers["svix-id"] || req.headers["x-yoco-id"];
+        const svix_timestamp = req.headers["svix-timestamp"] || req.headers["x-yoco-timestamp"];
+        const svix_signature = req.headers["svix-signature"] || req.headers["x-yoco-signature"];
+
+        if (!svix_id || !svix_timestamp || !svix_signature) {
+            console.error('[YOCO WEBHOOK] 🚨 Missing security headers. Check Yoco Dashboard settings.');
+            return res.status(400).send('Missing headers');
+        }
+
+        // 3. Verify Signature using the RAW BODY
+        const wh = new Webhook(webhookSecret);
+        try {
+            // We use req.rawBody here because JSON.stringify(req.body) is unreliable for signatures
+            const payload = req.rawBody; 
+            wh.verify(payload, {
+                "svix-id": svix_id,
+                "svix-timestamp": svix_timestamp,
+                "svix-signature": svix_signature,
+            });
+            console.log('[YOCO WEBHOOK] ✅ Signature verified successfully');
+        } catch (err) {
+            console.error('[YOCO WEBHOOK] 🚨 Verification failed:', err.message);
+            return res.status(403).send('Invalid signature');
+        }
+
+        // 4. Send 200 OK immediately to Yoco (prevents retries/timeouts)
+        res.sendStatus(200);
+
+        // 5. Process Business Logic Asynchronously
+        const event = req.body;
     
     if (event.type === "checkout.succeeded" || event.type === "payment.succeeded") {
       const checkoutId = event.payload?.id || event.payload?.checkoutId;
