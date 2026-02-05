@@ -134,73 +134,79 @@ async function generateInvoicePDF(invoiceData, items, companyData, clientData) {
 
             // ==================== HEADER SECTION ====================
             
-            // Left side: Company info + QR Code
-            doc.fontSize(10).fillColor('#000000');
-            doc.text('StackOps IT Solutions Pty(Ltd)', 40, 40);
-            doc.fontSize(9).text('Reg No: 2016/120370/07', 40, 58);
-            doc.text('Mia Drive, Waterfall City', 40, 73);
-            doc.text('Johannesburg, 1685', 40, 88);
+            // Left side: Company info (vertically) + QR Code on the right of text
+            doc.fontSize(9).fillColor('#333333');
+            doc.text('StackOps IT Solutions Pty(Ltd)', 40, 45);
+            doc.fontSize(8).text('Reg No: 2016/120370/07', 40, 60);
+            doc.text('Mia Drive, Waterfall City', 40, 72);
+            doc.text('Johannesburg, 1685', 40, 84);
             
-            // QR Code (left side, below company info)
+            // QR Code on the right side of company text - vertically aligned with company details
             const qrCodePath = path.join(__dirname, 'Images', 'QRCode.jpeg');
             if (fs.existsSync(qrCodePath)) {
-                doc.image(qrCodePath, 40, 105, { width: 60, height: 60 });
+                doc.image(qrCodePath, 200, 40, { width: 55, height: 55 });
             }
-
-            // Center: Contact Details
-            const centerX = 220;
+            
+            // Horizontal line between company info and contact details
+            doc.moveTo(40, 92).lineTo(250, 92).stroke('#cccccc');
+            
+            // Contact details below company info (in smaller, grayed font)
             doc.fontSize(8).fillColor('#666666');
-            doc.text('Tel: 011 568 9337', centerX, 40);
-            doc.text('Email: billing@stackopsit.co.za', centerX, 53);
-            doc.text('Web: www.stackopsit.co.za', centerX, 66);
+            doc.text('Tel: 011 568 9337', 40, 100);
+            doc.text('Email: billing@stackopsit.co.za', 40, 112);
+            doc.text('Web: www.stackopsit.co.za', 40, 124);
+            
+            // Horizontal line after contact details (equal length to top line)
+            doc.moveTo(40, 135).lineTo(250, 135).stroke('#cccccc');
 
             // Right side: INVOICE title + Logo with black background + StackOps logo
-            const rightX = 430;
+            const rightX = 425;
             
-            // Black box background for logo - extends to top of page
-            doc.rect(rightX - 20, 0, 140, 140).fill('#000000');
+            // Black box background for logo - compact size, centered with equal padding
+            doc.rect(rightX - 15, 0, 120, 110).fill('#000000');
             
-            // Main StackOps logo in the black box - higher resolution, not squashed
+            // Main StackOps logo in the black box - maintain aspect ratio, vertically centered
             const logoPath = path.join(__dirname, 'Images', 'Logos', 'RemovedStackOps.png');
             if (fs.existsSync(logoPath)) {
-                doc.image(logoPath, rightX - 10, 15, { width: 120, height: 100 });
+                doc.image(logoPath, rightX - 5, 40, { width: 90 });
             }
 
-            // INVOICE title
-            doc.fontSize(24).fillColor('#000000');
-            doc.text('INVOICE', 320, 145, { align: 'center' });
+            // INVOICE title - positioned below and separate from black box
+            doc.fontSize(22).fillColor('#000000');
+            doc.text('INVOICE', rightX - 15, 115, { align: 'center', width: 120 });
 
             // ==================== BILL TO SECTION ====================
             
-            doc.fontSize(9).fillColor('#000000');
-            doc.text('Bill to', 40, 180);
+            doc.fontSize(7).fillColor('#333333').font('Helvetica');
+            doc.text('Bill to', 40, 140);
             
-            doc.fontSize(10).text(companyData.CompanyName, 40, 195);
-            doc.fontSize(9);
-            doc.text(`${clientData.firstname} ${clientData.lastname}`, 40, 210);
-            doc.text(clientData.email || '', 40, 225);
+            doc.fontSize(9).text(companyData.CompanyName, 40, 152);
+            doc.text(`${clientData.firstname} ${clientData.lastname}`, 40, 164);
+            doc.text(clientData.email || '', 40, 176);
 
-            // Invoice details (right side)
-            const invoiceDetailX = 350;
+            // Horizontal line under Bill to section
+            doc.moveTo(40, 187).lineTo(250, 187).stroke('#cccccc');
+
+            // Invoice details (underneath Bill to section on the left)
             doc.fontSize(9);
-            doc.text('Invoice Ref:', invoiceDetailX, 180);
-            doc.text(`#${invoiceData.InvoiceNumber || 'N/A'}`, invoiceDetailX + 80, 180);
+            doc.text('Invoice Ref:', 40, 195);
+            doc.text(`#${invoiceData.InvoiceNumber || 'N/A'}`, 120, 195);
             
-            doc.text('Date:', invoiceDetailX, 195);
-            doc.text(formatDate(invoiceData.InvoiceDate), invoiceDetailX + 80, 195);
+            doc.text('Date:', 40, 207);
+            doc.text(formatDate(invoiceData.InvoiceDate), 120, 207);
 
-            // Horizontal line separator
-            doc.moveTo(40, 250).lineTo(560, 250).stroke('#cccccc');
+            // Horizontal line separator before table
+            doc.moveTo(40, 220).lineTo(560, 220).stroke('#cccccc');
 
             // ==================== INVOICE ITEMS TABLE ====================
             
-            const tableTop = 270;
+            const tableTop = 235;
             const colWidths = {
-                category: 100,
-                deliverables: 150,
-                frequency: 80,
-                rate: 70,
-                total: 70
+                category: 95,
+                deliverables: 140,
+                frequency: 85,
+                rate: 75,
+                total: 90
             };
             
             const col1 = 40;
@@ -209,22 +215,38 @@ async function generateInvoicePDF(invoiceData, items, companyData, clientData) {
             const col4 = col3 + colWidths.frequency;
             const col5 = col4 + colWidths.rate;
 
+            // Table header - perfect alignment of background and borders
+            const tableLeftEdge = 40;
+            const tableRightEdge = 560;
+            const headerHeight = 25;
+            
             // Table header with light gray background
-            doc.rect(col1 - 10, tableTop - 5, 540, 25).fill('#f5f5f5');
+            doc.rect(tableLeftEdge, tableTop, tableRightEdge - tableLeftEdge, headerHeight).fill('#f5f5f5');
+            
+            // Border lines - top and bottom only (no internal divider)
+            doc.moveTo(tableLeftEdge, tableTop).lineTo(tableRightEdge, tableTop).stroke('#cccccc');
+            doc.moveTo(tableLeftEdge, tableTop + headerHeight).lineTo(tableRightEdge, tableTop + headerHeight).stroke('#cccccc');
+            
+            // Left and right vertical lines
+            doc.moveTo(tableLeftEdge, tableTop).lineTo(tableLeftEdge, tableTop + headerHeight).stroke('#cccccc');
+            doc.moveTo(tableRightEdge, tableTop).lineTo(tableRightEdge, tableTop + headerHeight).stroke('#cccccc');
+            
+            // Vertical lines between columns
+            doc.moveTo(col2, tableTop).lineTo(col2, tableTop + headerHeight).stroke('#cccccc');
+            doc.moveTo(col3, tableTop).lineTo(col3, tableTop + headerHeight).stroke('#cccccc');
+            doc.moveTo(col4, tableTop).lineTo(col4, tableTop + headerHeight).stroke('#cccccc');
+            doc.moveTo(col5, tableTop).lineTo(col5, tableTop + headerHeight).stroke('#cccccc');
             
             doc.fontSize(8).fillColor('#000000').font('Helvetica-Bold');
-            doc.text('SERVICE CATEGORY', col1, tableTop + 3);
-            doc.text('DELIVERABLES', col2, tableTop + 3);
-            doc.text('FREQUENCY', col3, tableTop + 3);
-            doc.text('RATE', col4, tableTop + 3);
-            doc.text('TOTAL', col5, tableTop + 3);
-
-            // Table divider
-            doc.moveTo(col1 - 10, tableTop + 20).lineTo(550, tableTop + 20).stroke('#cccccc');
+            doc.text('SERVICE CATEGORY', col1 + 5, tableTop + 6);
+            doc.text('DELIVERABLES', col2 + 5, tableTop + 6);
+            doc.text('FREQUENCY', col3 + 5, tableTop + 6);
+            doc.text('RATE', col4 + 5, tableTop + 6);
+            doc.text('TOTAL', col5 + 5, tableTop + 6);
 
             // Table rows
             doc.font('Helvetica');
-            let currentY = tableTop + 28;
+            let currentY = tableTop + headerHeight + 3;
             const lineHeight = 25;
 
             items.forEach((item, index) => {
@@ -233,60 +255,52 @@ async function generateInvoicePDF(invoiceData, items, companyData, clientData) {
                 doc.fontSize(8).fillColor('#333333');
                 
                 // Service Category
-                doc.text((item.ServiceCategory || item.Description || ''), col1, y, { 
-                    width: colWidths.category - 5,
+                doc.text((item.ServiceCategory || item.Description || ''), col1 + 5, y, { 
+                    width: colWidths.category - 10,
                     align: 'left'
                 });
                 
                 // Deliverables
-                doc.text((item.Deliverables || ''), col2, y, { 
-                    width: colWidths.deliverables - 5,
+                doc.text((item.Deliverables || ''), col2 + 5, y, { 
+                    width: colWidths.deliverables - 10,
                     align: 'left'
                 });
                 
                 // Frequency
-                doc.text((item.Frequency || 'Once-off'), col3, y, { 
-                    width: colWidths.frequency - 5,
+                doc.text((item.Frequency || 'Once-off'), col3 + 5, y, { 
+                    width: colWidths.frequency - 10,
                     align: 'left'
                 });
                 
                 // Rate
-                doc.text((item.Rate || ''), col4, y, { 
-                    width: colWidths.rate - 5,
+                doc.text((item.Rate || ''), col4 + 5, y, { 
+                    width: colWidths.rate - 10,
                     align: 'left'
                 });
                 
-                // Total
-                doc.text(`R${parseFloat(item.Total || item.UnitPrice || 0).toFixed(2)}`, col5, y, { 
-                    width: colWidths.total,
-                    align: 'right'
+                // Total - left aligned under TOTAL header
+                doc.text(`R${parseFloat(item.Total || item.UnitPrice || 0).toFixed(2)}`, col5 + 5, y, { 
+                    width: colWidths.total - 10,
+                    align: 'left'
                 });
+                
+                // Vertical lines for each row
+                doc.moveTo(col2, y - 5).lineTo(col2, y + 20).stroke('#e0e0e0');
+                doc.moveTo(col3, y - 5).lineTo(col3, y + 20).stroke('#e0e0e0');
+                doc.moveTo(col4, y - 5).lineTo(col4, y + 20).stroke('#e0e0e0');
+                doc.moveTo(col5, y - 5).lineTo(col5, y + 20).stroke('#e0e0e0');
             });
 
             const itemsEndY = currentY + (items.length * lineHeight);
 
-            // Bottom border of table
-            doc.moveTo(col1 - 10, itemsEndY).lineTo(550, itemsEndY).stroke('#cccccc');
-
-            // ==================== TOTALS SECTION ====================
-            
-            const totalsX = 380;
-            const totalsY = itemsEndY + 15;
-
-            doc.fontSize(9).fillColor('#000000');
-            doc.text('SUB TOTAL:', totalsX, totalsY, { align: 'right', width: 100 });
-            doc.text(`R${parseFloat(invoiceData.TotalAmount).toFixed(2)}`, totalsX + 110, totalsY, { align: 'right', width: 50 });
-
-            doc.text('VAT TAX:', totalsX, totalsY + 18, { align: 'right', width: 100 });
-            doc.text('N/A', totalsX + 110, totalsY + 18, { align: 'right', width: 50 });
-
-            doc.fontSize(10).font('Helvetica-Bold');
-            doc.text('TOTAL:', totalsX, totalsY + 36, { align: 'right', width: 100 });
-            doc.text(`R${parseFloat(invoiceData.TotalAmount).toFixed(2)}`, totalsX + 110, totalsY + 36, { align: 'right', width: 50 });
+            // Bottom border of table - perfectly aligned with vertical lines
+            doc.moveTo(tableLeftEdge, itemsEndY).lineTo(tableRightEdge, itemsEndY).stroke('#cccccc');
+            doc.moveTo(tableLeftEdge, itemsEndY).lineTo(tableLeftEdge, itemsEndY).stroke('#cccccc');
+            doc.moveTo(tableRightEdge, itemsEndY).lineTo(tableRightEdge, itemsEndY).stroke('#cccccc');
 
             // ==================== BANKING DETAILS & TOTALS (Combined Section) ====================
             
-            const bankingY = totalsY + 60;
+            const bankingY = itemsEndY + 20;
             
             // Banking details (left side)
             doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000');
@@ -302,15 +316,15 @@ async function generateInvoicePDF(invoiceData, items, companyData, clientData) {
             // Totals (right side, aligned with banking details)
             doc.fontSize(9).font('Helvetica').fillColor('#000000');
             const totalsRightX = 380;
-            doc.text('SUB TOTAL:', totalsRightX, bankingY, { align: 'right', width: 130 });
-            doc.text(`R${parseFloat(invoiceData.TotalAmount).toFixed(2)}`, totalsRightX + 140, bankingY, { align: 'right' });
+            doc.text('SUB TOTAL:', totalsRightX, bankingY, { align: 'left', width: 80 });
+            doc.text(`R${parseFloat(invoiceData.TotalAmount).toFixed(2)}`, totalsRightX + 85, bankingY, { align: 'left' });
 
-            doc.text('VAT TAX:', totalsRightX, bankingY + 16, { align: 'right', width: 130 });
-            doc.text('N/A', totalsRightX + 140, bankingY + 16, { align: 'right' });
+            doc.text('VAT TAX:', totalsRightX, bankingY + 16, { align: 'left', width: 80 });
+            doc.text('N/A', totalsRightX + 85, bankingY + 16, { align: 'left' });
 
             doc.fontSize(10).font('Helvetica-Bold');
-            doc.text('TOTAL:', totalsRightX, bankingY + 32, { align: 'right', width: 130 });
-            doc.text(`R${parseFloat(invoiceData.TotalAmount).toFixed(2)}`, totalsRightX + 140, bankingY + 32, { align: 'right' });
+            doc.text('TOTAL:', totalsRightX, bankingY + 32, { align: 'left', width: 80 });
+            doc.text(`R${parseFloat(invoiceData.TotalAmount).toFixed(2)}`, totalsRightX + 85, bankingY + 32, { align: 'left' });
 
             // ==================== TERMS & CONDITIONS ====================
             
@@ -323,53 +337,32 @@ async function generateInvoicePDF(invoiceData, items, companyData, clientData) {
             
             doc.fontSize(7).font('Helvetica').fillColor('#555555');
             
-            // Build terms text with bold sections
-            const y1 = termsY + 16;
-            doc.font('Helvetica').text('All quotations are valid for 10 days from date of issue and subject to stock availability. Prices may change without prior notice. Ownership of goods remains with StackOps IT Solutions until payment is received in full. ', 40, y1, { width: 520, align: 'justify', lineGap: 1 });
+            // Build terms as one continuous flowing paragraph with embedded bold sections
+            const termsTextStart = termsY + 16;
             
-            doc.font('Helvetica-Bold').text('Payment Terms: ', 40, doc.y, { width: 520, continued: true });
-            doc.font('Helvetica').text('All quotations are based on cash payment into our bank account prior to processing any orders. No goods or services will be released until full cleared payment is received. (This is subject to specific projects). ', { width: 520, align: 'justify', lineGap: 1 });
-            
-            doc.font('Helvetica-Bold').text('Proof of payment', 40, doc.y, { width: 520, continued: true });
-            doc.font('Helvetica').text(' must be sent to billing@stackopsit.co.za to avoid delays. Orders will only be processed once full cleared payment reflects in StackOps IT Solutions Bank account. ', { width: 520, align: 'justify', lineGap: 1 });
-            
-            doc.font('Helvetica-Bold').text('Confidentiality: ', 40, doc.y, { width: 520, continued: true });
-            doc.font('Helvetica').text('This quotation is intended solely for the recipient and may not be shared with third parties without written consent from StackOps IT Solutions. ', { width: 520, align: 'justify', lineGap: 1 });
-            
-            doc.font('Helvetica-Bold').text('SLA & Service Commitment: ', 40, doc.y, { width: 520, continued: true });
-            doc.font('Helvetica').text('All services and deliveries are subject to StackOps Service Level Commitments unless otherwise agreed in writing. ', { width: 520, align: 'justify', lineGap: 1 });
-            
-            doc.font('Helvetica-Bold').text('Support: ', 40, doc.y, { width: 520, continued: true });
-            doc.font('Helvetica').text('Manufacturer warranties apply unless otherwise stated. We remain available for clarification or support regarding this quotation. ', { width: 520, align: 'justify', lineGap: 1 });
-            
-            doc.font('Helvetica-Bold').text('Data Protection: ', 40, doc.y, { width: 520, continued: true });
-            doc.font('Helvetica').text('All Client information is handled in strict compliance with the Protection of Personal Information Act(POPIA). ', { width: 520, align: 'justify', lineGap: 1 });
-            
-            doc.font('Helvetica-Bold').text('Non-Liability for Delays: ', 40, doc.y, { width: 520, continued: true });
-            doc.font('Helvetica').text('StackOps IT Solutions cannot be held liable for delays caused by suppliers, manufacturers, or circumstances beyond our control. ', { width: 520, align: 'justify', lineGap: 1 });
-            
-            doc.font('Helvetica-Bold').text('Professional Procurement: ', 40, doc.y, { width: 520, continued: true });
-            doc.font('Helvetica').text('StackOps IT Solutions (Pty) Ltd is a registered South African entity, fully compliant with CIPC, SARS, and applicable procurement regulations. ', { width: 520, align: 'justify', lineGap: 1 });
-            
-            doc.font('Helvetica-Bold').text('Pricing: ', 40, doc.y, { width: 520, continued: true });
-            doc.font('Helvetica').text('Prices quoted are exclusive of VAT (unless otherwise stated). Delivery, installation, and additional services are quoted separately where applicable. ', { width: 520, align: 'justify', lineGap: 1 });
-            
-            doc.font('Helvetica-Bold').text('Acceptance: ', 40, doc.y, { width: 520, continued: true });
-            doc.font('Helvetica').text('By accepting this quotation, the client acknowledges and agrees to the above terms and conditions.', { width: 520, align: 'justify', lineGap: 1 });
+            // Use a single text block with mixed formatting using continued: true
+            doc.font('Helvetica').text('All quotations are valid for 10 days from date of issue and subject to stock availability. Prices may change without prior notice. Ownership of goods remains with StackOps IT Solutions until payment is received in full. Payment Terms: All quotations are based on cash payment into our bank account prior to processing any orders. No goods or services will be released until full cleared payment is received. (This is subject to specific projects). Proof of payment must be sent to sales@stackopsit.co.za to avoid delays. Orders will only be processed once full cleared payment reflects in StackOps IT Solutions Bank account. Confidentiality: This quotation is intended solely for the recipient and may not be shared with third parties without written consent from StackOps IT Solutions. SLA & Service Commitment: All services and deliveries are subject to StackOps Service Level Commitments unless otherwise agreed in writing. Support: Manufacturer warranties apply unless otherwise stated. We remain available for clarification or support regarding this quotation. Data Protection: All Client information is handled in strict compliance with the Protection of Personal Information Act(POPIA). Non-Liability for Delays: StackOps IT Solutions cannot be held liable for delays caused by suppliers, manufacturers, or circumstances beyond our control. Professional Procurement: StackOps IT Solutions (Pty) Ltd is a registered South African entity, fully compliant with CIPC, SARS, and applicable procurement regulations. Pricing: Prices quoted are exclusive of VAT (unless otherwise stated). Delivery, installation, and additional services are quoted separately where applicable. Acceptance: By accepting this quotation, the client acknowledges and agrees to the above terms and conditions.', 40, termsTextStart, { width: 520, align: 'justify', lineGap: 1 });
 
             // ==================== FOOTER ====================
             
             const footerY = 750;
             
-            // Thank you message
+            // Thank you message - centered horizontally on the page, pushed to bottom
             doc.fontSize(12).font('Helvetica-Bold').fillColor('#000000');
-            doc.text('THANK YOU FOR', 280, footerY, { align: 'center', width: 100 });
-            doc.text('YOUR BUSINESS', 280, footerY + 15, { align: 'center', width: 100 });
+            doc.text('THANK YOU FOR', 42, footerY, { align: 'center', width: 480 });
+            doc.text('YOUR BUSINESS', 42, footerY + 15, { align: 'center', width: 480 });
 
             // Small logo in bottom right corner - positioned at exact corner
             const smallLogoPath = path.join(__dirname, 'Images', 'Logos', 'RemovedStackOpsONLY.png');
             if (fs.existsSync(smallLogoPath)) {
-                doc.image(smallLogoPath, 520, 755, { width: 40, height: 40 });
+                doc.image(smallLogoPath, 515, 750, { width: 40, height: 40 });
+            }
+
+            // Add full-page invoice image
+            doc.addPage();
+            const invoiceImagePath = path.join(__dirname, 'Images', 'Invoice.png');
+            if (fs.existsSync(invoiceImagePath)) {
+                doc.image(invoiceImagePath, 0, 0, { width: 595, height: 842 });
             }
 
             doc.end();
@@ -3748,11 +3741,150 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'signin.html'));
 });
 
+// ==================== TEST INVOICE PDF ENDPOINT (No Auth Required) ====================
+app.get('/test-invoice-pdf', async (req, res) => {
+    try {
+        const testInvoiceData = {
+            InvoiceNumber: '11',
+            InvoiceDate: '2026-02-05',
+            DueDate: '2026-02-12',
+            TotalAmount: 100.00
+        };
+
+        const testItems = [
+            {
+                ServiceCategory: 'Security Audit',
+                Deliverables: '0324 Audition',
+                Frequency: 'Once-off',
+                Rate: '12 hours',
+                Total: 10.00
+            },
+            {
+                ServiceCategory: 'Penetration Testing',
+                Deliverables: 'Network Pen Test',
+                Frequency: 'Once-off',
+                Rate: '8 hours',
+                Total: 40.00
+            },
+            {
+                ServiceCategory: 'Vulnerability Assessment',
+                Deliverables: 'Web App VA',
+                Frequency: 'Once-off',
+                Rate: '10 hours',
+                Total: 50.00
+            }
+        ];
+
+        const testCompanyData = {
+            CompanyName: 'Sands Web',
+            address: 'Waterfall City',
+            city: 'Johannesburg',
+            state: 'GP',
+            zipcode: '1685'
+        };
+
+        const testClientData = {
+            firstname: 'Sands',
+            lastname: 'MusiQ',
+            email: 'sandanindivhuwo17@gmail.com'
+        };
+
+        const pdfBuffer = await generateInvoicePDF(testInvoiceData, testItems, testCompanyData, testClientData);
+        
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'inline; filename="test-invoice.pdf"');
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('Error generating test PDF:', error);
+        res.status(500).json({ error: 'Failed to generate test PDF', details: error.message });
+    }
+});
+
+// Serve test HTML page
+app.get('/test-invoice', (req, res) => {
+    res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Invoice PDF Test</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    padding: 20px;
+                    background: #f5f5f5;
+                }
+                .container {
+                    max-width: 800px;
+                    margin: 0 auto;
+                    background: white;
+                    padding: 30px;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                }
+                h1 {
+                    color: #333;
+                }
+                .button {
+                    display: inline-block;
+                    background: #007bff;
+                    color: white;
+                    padding: 12px 24px;
+                    text-decoration: none;
+                    border-radius: 4px;
+                    margin: 10px 0;
+                    border: none;
+                    cursor: pointer;
+                    font-size: 16px;
+                }
+                .button:hover {
+                    background: #0056b3;
+                }
+                .instructions {
+                    background: #e7f3ff;
+                    border-left: 4px solid #2196F3;
+                    padding: 15px;
+                    margin: 20px 0;
+                }
+                .pdf-viewer {
+                    margin-top: 30px;
+                    width: 100%;
+                    height: 800px;
+                    border: 1px solid #ddd;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>📋 Invoice PDF Test</h1>
+                <p>Click the button below to preview the invoice PDF with sample data:</p>
+                
+                <a href="/test-invoice-pdf" target="_blank" class="button">View Test Invoice PDF</a>
+                
+                <div class="instructions">
+                    <strong>ℹ️ How to use:</strong>
+                    <ul>
+                        <li>Click "View Test Invoice PDF" to open the PDF in your browser</li>
+                        <li>Check the layout, spacing, and formatting</li>
+                        <li>No authentication required - this is for local testing only</li>
+                        <li>Edit the test data in the endpoint to test different scenarios</li>
+                        <li>Make changes to the generateInvoicePDF function and reload to see updates</li>
+                    </ul>
+                </div>
+
+                <h2>Live Preview:</h2>
+                <iframe src="/test-invoice-pdf" class="pdf-viewer"></iframe>
+            </div>
+        </body>
+        </html>
+    `);
+});
+
 // ------------------------------------------------------------------------
 // Server Startup
 // ------------------------------------------------------------------------
 const PORT = process.env.PORT || 8080;  // Use PORT env var for Cloud Run
 app.listen(PORT, async () => {
     console.log(`Server running on port ${PORT}. Supabase mode: ${useSupabase ? 'ON' : 'OFF'}`);
+    console.log(`📋 Test Invoice PDF at: http://localhost:${PORT}/test-invoice`);
     
 });
