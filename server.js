@@ -11,6 +11,7 @@ const fs = require('fs');
 const OpenAI = require('openai');
 const {SecretManagerServiceClient} = require('@google-cloud/secret-manager');
 const { Webhook } = require('svix');
+const SVGtoPDF = require('svg-to-pdfkit');
 
 // invoice payment endpoints 
 require("dotenv").config();
@@ -134,96 +135,103 @@ async function generateInvoicePDF(invoiceData, items, companyData, clientData) {
 
             // ==================== HEADER SECTION ====================
             
-            // Left side: Company info (vertically) + QR Code on the right of text
-            doc.fontSize(9).fillColor('#333333');
-            doc.text('StackOps IT Solutions Pty(Ltd)', 40, 45);
-            doc.fontSize(8).text('Reg No: 2016/120370/07', 40, 60);
-            doc.text('Mia Drive, Waterfall City', 40, 72);
-            doc.text('Johannesburg, 1685', 40, 84);
+            // Right side: Logo with black background (Narrow and Tall)
+            const logoBoxWidth = 95;
+            const logoBoxHeight = 100; // Decreased height
+            const logoBoxX = 480; // Pushed more to the left
             
-            // QR Code on the right side of company text - vertically aligned with company details
-            const qrCodePath = path.join(__dirname, 'Images', 'QRCode.jpeg');
-            if (fs.existsSync(qrCodePath)) {
-                doc.image(qrCodePath, 200, 40, { width: 55, height: 55 });
-            }
+            doc.rect(logoBoxX, 0, logoBoxWidth, logoBoxHeight).fill('#000000');
             
-            // Horizontal line between company info and contact details
-            doc.moveTo(40, 92).lineTo(250, 92).stroke('#cccccc');
-            
-            // Contact details below company info (in smaller, grayed font)
-            doc.fontSize(8).fillColor('#666666');
-            doc.text('Tel: 011 568 9337', 40, 100);
-            doc.text('Email: billing@stackopsit.co.za', 40, 112);
-            doc.text('Web: www.stackopsit.co.za', 40, 124);
-            
-            // Horizontal line after contact details (equal length to top line)
-            doc.moveTo(40, 135).lineTo(250, 135).stroke('#cccccc');
-
-            // Right side: INVOICE title + Logo with black background + StackOps logo
-            const rightX = 425;
-            
-            // Black box background for logo - compact size, centered with equal padding
-            doc.rect(rightX - 15, 0, 120, 110).fill('#000000');
-            
-            // Main StackOps logo in the black box - maintain aspect ratio, vertically centered
+            // StackOps logo in the black box
             const logoPath = path.join(__dirname, 'Images', 'Logos', 'RemovedStackOps.png');
             if (fs.existsSync(logoPath)) {
-                doc.image(logoPath, rightX - 5, 40, { width: 90 });
+                doc.image(logoPath, logoBoxX + 3, 30, { width: 80 });
             }
 
-            // INVOICE title - positioned below and separate from black box
-            doc.fontSize(22).fillColor('#000000');
-            doc.text('INVOICE', rightX - 15, 115, { align: 'center', width: 120 });
+            // INVOICE title and Horizontal Line
+            doc.fontSize(28).fillColor('#4a4a4a').font('Helvetica');
+            const invoiceText = 'INVOICE';
+            const invoiceWidth = doc.widthOfString(invoiceText);
+            const invoiceX = logoBoxX - invoiceWidth - 70;
+            const invoiceY = 30;
+            
+            doc.text(invoiceText, invoiceX, invoiceY);
+            
+            // Horizontal line from beginning of page (full width: 0) to INVOICE - HEADER ZONE FULL WIDTH
+            doc.moveTo(0, invoiceY + 18).lineTo(invoiceX - 10, invoiceY + 18).stroke('#333333');
+
+            // Left side: Company info - starting straight from the beginning of the page (MARGIN 0)
+            const startX = 0;
+            doc.fontSize(10).fillColor('#333333').font('Helvetica');
+            doc.text('Stackops IT Solutions Pty(Ltd)', startX, 75);
+            doc.fontSize(9).text('Reg No: 2016/120370/07', startX, 90);
+            doc.text('Mia Drive, Waterfall City', startX, 102);
+            doc.text('Johannesburg, 1685', startX, 114);
+            
+            // QR Code to the right of company details
+            const qrCodePath = path.join(__dirname, 'Images', 'QRCode.jpeg');
+            if (fs.existsSync(qrCodePath)) {
+                doc.image(qrCodePath, 170, 75, { width: 55, height: 55 });
+            }
+            
+            // Horizontal line separator (only extends to 250 from left edge)
+            doc.moveTo(startX, 135).lineTo(250, 135).stroke('#cccccc');
+            
+            // Contact details below company info
+            doc.fontSize(8).fillColor('#666666');
+            doc.text('Tel: 011 568 9337', startX + 110, 145);
+            doc.text('Email: billing@stackopsit.co.za', startX + 110, 157);
+            doc.text('Web: www.stackopsit.co.za', startX + 110, 169);
+            
+            // Horizontal line separator
+            doc.moveTo(startX, 185).lineTo(250, 185).stroke('#cccccc');
 
             // ==================== BILL TO SECTION ====================
             
-            doc.fontSize(7).fillColor('#333333').font('Helvetica');
-            doc.text('Bill to', 40, 140);
+            doc.fontSize(8).fillColor('#333333').font('Helvetica-Bold');
+            doc.text('Bill to', startX, 195);
             
-            doc.fontSize(9).text(companyData.CompanyName, 40, 152);
-            doc.text(`${clientData.firstname} ${clientData.lastname}`, 40, 164);
-            doc.text(clientData.email || '', 40, 176);
+            doc.fontSize(8).fillColor('#666666');
+            doc.text(companyData.CompanyName, startX + 110, 195);
+            doc.text(`${clientData.firstname} ${clientData.lastname}`, startX + 110, 210);
+            doc.text(clientData.email || '', startX + 110, 225);
 
             // Horizontal line under Bill to section
-            doc.moveTo(40, 187).lineTo(250, 187).stroke('#cccccc');
+            doc.moveTo(startX, 240).lineTo(250, 240).stroke('#cccccc');
 
-            // Invoice details (underneath Bill to section on the left)
-            doc.fontSize(9);
-            doc.text('Invoice Ref:', 40, 195);
-            doc.text(`#${invoiceData.InvoiceNumber || 'N/A'}`, 120, 195);
+            // Invoice details
+            doc.fontSize(9).font('Helvetica-Bold');
+            doc.text('Invoice Ref:', startX, 250);
+            doc.font('Helvetica').text(`#${invoiceData.InvoiceNumber || 'N/A'}`, startX + 70, 250);
             
-            doc.text('Date:', 40, 207);
-            doc.text(formatDate(invoiceData.InvoiceDate), 120, 207);
-
-            // Horizontal line separator before table
-            doc.moveTo(40, 220).lineTo(560, 220).stroke('#cccccc');
+            doc.font('Helvetica-Bold').text('Date:', startX, 265);
+            doc.font('Helvetica').text(formatDate(invoiceData.InvoiceDate), startX + 70, 265);
+            // Horizontal line separator before table (MAIN CONTENT STARTS HERE - MARGIN 20-575)
+            doc.moveTo(20, 300).lineTo(575, 300).stroke('#cccccc');
 
             // ==================== INVOICE ITEMS TABLE ====================
             
-            const tableTop = 235;
+            const tableTop = 340;
             const colWidths = {
-                category: 95,
-                deliverables: 140,
+                category: 100,
+                deliverables: 160,
                 frequency: 85,
-                rate: 75,
-                total: 90
+                rate: 85,
+                total: 85
             };
             
-            const col1 = 40;
+            const col1 = 20;
             const col2 = col1 + colWidths.category;
             const col3 = col2 + colWidths.deliverables;
             const col4 = col3 + colWidths.frequency;
             const col5 = col4 + colWidths.rate;
 
-            // Table header - perfect alignment of background and borders
-            const tableLeftEdge = 40;
-            const tableRightEdge = 560;
+            // Table header
+            const tableLeftEdge = 20;
+            const tableRightEdge = 575;
             const headerHeight = 25;
             
-            // Table header with light gray background
-            doc.rect(tableLeftEdge, tableTop, tableRightEdge - tableLeftEdge, headerHeight).fill('#f5f5f5');
-            
-            // Border lines - top and bottom only (no internal divider)
+            // Border lines - top and bottom
             doc.moveTo(tableLeftEdge, tableTop).lineTo(tableRightEdge, tableTop).stroke('#cccccc');
             doc.moveTo(tableLeftEdge, tableTop + headerHeight).lineTo(tableRightEdge, tableTop + headerHeight).stroke('#cccccc');
             
@@ -238,60 +246,65 @@ async function generateInvoicePDF(invoiceData, items, companyData, clientData) {
             doc.moveTo(col5, tableTop).lineTo(col5, tableTop + headerHeight).stroke('#cccccc');
             
             doc.fontSize(8).fillColor('#000000').font('Helvetica-Bold');
-            doc.text('SERVICE CATEGORY', col1 + 5, tableTop + 6);
-            doc.text('DELIVERABLES', col2 + 5, tableTop + 6);
-            doc.text('FREQUENCY', col3 + 5, tableTop + 6);
-            doc.text('RATE', col4 + 5, tableTop + 6);
-            doc.text('TOTAL', col5 + 5, tableTop + 6);
+            doc.text('SERVICE CATEGORY', col1 + 5, tableTop + 8);
+            doc.text('DELIVERABLES', col2 + 5, tableTop + 8);
+            doc.text('FREQUENCY', col3 + 5, tableTop + 8);
+            doc.text('RATE', col4 + 5, tableTop + 8);
+            doc.text('TOTAL', col5 + 5, tableTop + 8);
 
             // Table rows
             doc.font('Helvetica');
-            let currentY = tableTop + headerHeight + 3;
-            const lineHeight = 25;
+            let currentY = tableTop + headerHeight;
+            const rowHeight = 25;
 
             items.forEach((item, index) => {
-                const y = currentY + (index * lineHeight);
+                const y = currentY + (index * rowHeight);
                 
                 doc.fontSize(8).fillColor('#333333');
                 
                 // Service Category
-                doc.text((item.ServiceCategory || item.Description || ''), col1 + 5, y, { 
+                doc.text((item.ServiceCategory || item.Description || ''), col1 + 5, y + 8, { 
                     width: colWidths.category - 10,
                     align: 'left'
                 });
                 
                 // Deliverables
-                doc.text((item.Deliverables || ''), col2 + 5, y, { 
+                doc.text((item.Deliverables || ''), col2 + 5, y + 8, { 
                     width: colWidths.deliverables - 10,
                     align: 'left'
                 });
                 
                 // Frequency
-                doc.text((item.Frequency || 'Once-off'), col3 + 5, y, { 
+                doc.text((item.Frequency || 'Once-off'), col3 + 5, y + 8, { 
                     width: colWidths.frequency - 10,
                     align: 'left'
                 });
                 
                 // Rate
-                doc.text((item.Rate || ''), col4 + 5, y, { 
+                doc.text((item.Rate || ''), col4 + 5, y + 8, { 
                     width: colWidths.rate - 10,
                     align: 'left'
                 });
                 
-                // Total - left aligned under TOTAL header
-                doc.text(`R${parseFloat(item.Total || item.UnitPrice || 0).toFixed(2)}`, col5 + 5, y, { 
+                // Total
+                doc.text(`R${parseFloat(item.Total || item.UnitPrice || 0).toFixed(2)}`, col5 + 5, y + 8, { 
                     width: colWidths.total - 10,
                     align: 'left'
                 });
                 
-                // Vertical lines for each row
-                doc.moveTo(col2, y - 5).lineTo(col2, y + 20).stroke('#e0e0e0');
-                doc.moveTo(col3, y - 5).lineTo(col3, y + 20).stroke('#e0e0e0');
-                doc.moveTo(col4, y - 5).lineTo(col4, y + 20).stroke('#e0e0e0');
-                doc.moveTo(col5, y - 5).lineTo(col5, y + 20).stroke('#e0e0e0');
+                // Horizontal line for this cell/row
+                doc.moveTo(tableLeftEdge, y + rowHeight).lineTo(tableRightEdge, y + rowHeight).stroke('#cccccc');
+
+                // Vertical lines for each row to ensure they are continuous
+                doc.moveTo(tableLeftEdge, y).lineTo(tableLeftEdge, y + rowHeight).stroke('#cccccc');
+                doc.moveTo(col2, y).lineTo(col2, y + rowHeight).stroke('#cccccc');
+                doc.moveTo(col3, y).lineTo(col3, y + rowHeight).stroke('#cccccc');
+                doc.moveTo(col4, y).lineTo(col4, y + rowHeight).stroke('#cccccc');
+                doc.moveTo(col5, y).lineTo(col5, y + rowHeight).stroke('#cccccc');
+                doc.moveTo(tableRightEdge, y).lineTo(tableRightEdge, y + rowHeight).stroke('#cccccc');
             });
 
-            const itemsEndY = currentY + (items.length * lineHeight);
+            const itemsEndY = currentY + (items.length * rowHeight);
 
             // Bottom border of table - perfectly aligned with vertical lines
             doc.moveTo(tableLeftEdge, itemsEndY).lineTo(tableRightEdge, itemsEndY).stroke('#cccccc');
@@ -300,18 +313,22 @@ async function generateInvoicePDF(invoiceData, items, companyData, clientData) {
 
             // ==================== BANKING DETAILS & TOTALS (Combined Section) ====================
             
+            // Horizontal line separator before table (MAIN CONTENT STARTS HERE - MARGIN 20-575)
+            //doc.moveTo(20, 300).lineTo(575, 300).stroke('#cccccc');
+
             const bankingY = itemsEndY + 20;
+            const contentX = 20;
             
             // Banking details (left side)
             doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000');
-            doc.text('BANKING DETAILS', 40, bankingY);
+            doc.text('BANKING DETAILS', contentX, bankingY);
             
             doc.fontSize(8).font('Helvetica').fillColor('#333333');
-            doc.text('Bank: Standard Bank Business', 40, bankingY + 16);
-            doc.text('Account Name: StackOps IT Solutions', 40, bankingY + 28);
-            doc.text('Acc Number: 10255699752', 40, bankingY + 40);
-            doc.text('Branch Code: 050205', 40, bankingY + 52);
-            doc.text('Acc Type: Current', 40, bankingY + 64);
+            doc.text('Bank: Standard Bank Business', contentX, bankingY + 16);
+            doc.text('Account Name: StackOps IT Solutions', contentX, bankingY + 28);
+            doc.text('Acc Number: 10255699752', contentX, bankingY + 40);
+            doc.text('Branch Code: 050205', contentX, bankingY + 52);
+            doc.text('Acc Type: Current', contentX, bankingY + 64);
 
             // Totals (right side, aligned with banking details)
             doc.fontSize(9).font('Helvetica').fillColor('#000000');
@@ -329,33 +346,81 @@ async function generateInvoicePDF(invoiceData, items, companyData, clientData) {
             // ==================== TERMS & CONDITIONS ====================
             
             const termsY = bankingY + 110;
+            const mainContentLeft = 20;
+            const mainContentRight = 575;
+            const mainContentWidth = mainContentRight - mainContentLeft;
             
-            doc.moveTo(40, termsY - 10).lineTo(560, termsY - 10).stroke('#cccccc');
+            doc.moveTo(mainContentLeft, termsY - 30).lineTo(mainContentRight, termsY - 30).stroke('#cccccc');
+            doc.moveTo(mainContentLeft, termsY - 120).lineTo(mainContentRight, termsY - 120).stroke('#cccccc');
             
+            // Container size
+            const boxWidth = 60;
+            const boxHeight = 20;
+
+            const boxX = 7;
+            const boxY = termsY - 28;
+
+            const svg = fs.readFileSync('Images/yoco.svg', 'utf8');
+
+            SVGtoPDF(doc, svg, boxX + 6, boxY + 6, {
+            width: boxWidth - 12,
+            height: boxHeight - 12,
+            preserveAspectRatio: 'xMidYMid meet'
+            });
+
+
+
+
+            doc.moveTo(mainContentLeft, termsY - 5).lineTo(mainContentRight, termsY - 5).stroke('#cccccc');
+            doc.moveTo(mainContentLeft, termsY + 120).lineTo(mainContentRight, termsY+ 120).stroke('#cccccc');
+
+    
+
             doc.fontSize(8).font('Helvetica-Bold').fillColor('#000000');
-            doc.text('TERMS & CONDITIONS', 40, termsY);
+            doc.text('TERMS & CONDITIONS', mainContentLeft, termsY);
             
             doc.fontSize(7).font('Helvetica').fillColor('#555555');
             
-            // Build terms as one continuous flowing paragraph with embedded bold sections
+            // Build terms as one continuous flowing paragraph
             const termsTextStart = termsY + 16;
-            
-            // Use a single text block with mixed formatting using continued: true
-            doc.font('Helvetica').text('All quotations are valid for 10 days from date of issue and subject to stock availability. Prices may change without prior notice. Ownership of goods remains with StackOps IT Solutions until payment is received in full. Payment Terms: All quotations are based on cash payment into our bank account prior to processing any orders. No goods or services will be released until full cleared payment is received. (This is subject to specific projects). Proof of payment must be sent to sales@stackopsit.co.za to avoid delays. Orders will only be processed once full cleared payment reflects in StackOps IT Solutions Bank account. Confidentiality: This quotation is intended solely for the recipient and may not be shared with third parties without written consent from StackOps IT Solutions. SLA & Service Commitment: All services and deliveries are subject to StackOps Service Level Commitments unless otherwise agreed in writing. Support: Manufacturer warranties apply unless otherwise stated. We remain available for clarification or support regarding this quotation. Data Protection: All Client information is handled in strict compliance with the Protection of Personal Information Act(POPIA). Non-Liability for Delays: StackOps IT Solutions cannot be held liable for delays caused by suppliers, manufacturers, or circumstances beyond our control. Professional Procurement: StackOps IT Solutions (Pty) Ltd is a registered South African entity, fully compliant with CIPC, SARS, and applicable procurement regulations. Pricing: Prices quoted are exclusive of VAT (unless otherwise stated). Delivery, installation, and additional services are quoted separately where applicable. Acceptance: By accepting this quotation, the client acknowledges and agrees to the above terms and conditions.', 40, termsTextStart, { width: 520, align: 'justify', lineGap: 1 });
+            const termsFont = 'Helvetica';
+            const termsBold = 'Helvetica-Bold';
+            const options = { width: mainContentWidth, align: 'justify', lineGap: 1, continued: true };
 
-            // ==================== FOOTER ====================
+            doc.font(termsFont).text('All quotations are valid for 10 days from date of issue and subject to stock availability. Prices may change without prior notice. Ownership of goods remains with StackOps IT Solutions until payment is received in full. ', mainContentLeft, termsTextStart, options)
+            .font(termsBold).text('Payment Terms: ', options)
+            .font(termsFont).text('All quotations are based on cash payment into our bank account prior to processing any orders. No goods or services will be released until full cleared payment is received. (This is subject to specific projects). ', options)
+            .font(termsBold).text('Proof of payment ', options)
+            .font(termsFont).text('must be sent to ', options)
+            .font(termsBold).text('sales@stackopsit.co.za ', options)
+            .font(termsFont).text('to avoid delays. Orders will only be processed once full cleared payment reflects in StackOps IT Solutions Bank account. ', options)
+            .font(termsBold).text('Confidentiality: ', options)
+            .font(termsFont).text('This quotation is intended solely for the recipient and may not be shared with third parties without written consent from StackOps IT Solutions. SLA & Service Commitment: All services and deliveries are subject to StackOps Service Level Commitments unless otherwise agreed in writing. ', options)
+            .font(termsBold).text('Support: ', options)
+            .font(termsFont).text('Manufacturer warranties apply unless otherwise stated. We remain available for clarification or support regarding this quotation. ', options)
+            .font(termsBold).text('Data Protection: ', options)
+            .font(termsFont).text('All Client information is handled in strict compliance with the Protection of Personal Information Act(POPIA). Non-Liability for Delays: StackOps IT Solutions cannot be held liable for delays caused by suppliers, manufacturers, or circumstances beyond our control. Professional Procurement: StackOps IT Solutions (Pty) Ltd is a registered South African entity, fully compliant with CIPC, SARS, and applicable procurement regulations. ', options)
+            .font(termsBold).text('Pricing: ', options)
+            // Set continued to false for the final segment
+            .font(termsFont).text('Prices quoted are exclusive of VAT (unless otherwise stated). Delivery, installation, and additional services are quoted separately where applicable. Acceptance: By accepting this quotation, the client acknowledges and agrees to the above terms and conditions.', { ...options, continued: false });
+                        // ==================== FOOTER ====================
+            
+            // ==================== FOOTER ZONE (Own margins: 50-545 for equal padding) ====================
             
             const footerY = 750;
+            const footerLeftMargin = 50;
+            const footerRightMargin = 545;
+            const footerContentWidth = footerRightMargin - footerLeftMargin;
             
-            // Thank you message - centered horizontally on the page, pushed to bottom
+            // Thank you message - centered within footer margins
             doc.fontSize(12).font('Helvetica-Bold').fillColor('#000000');
-            doc.text('THANK YOU FOR', 42, footerY, { align: 'center', width: 480 });
-            doc.text('YOUR BUSINESS', 42, footerY + 15, { align: 'center', width: 480 });
+            doc.text('THANK YOU FOR', footerLeftMargin, footerY + 20, { align: 'center', width: footerContentWidth });
+            doc.text('YOUR BUSINESS', footerLeftMargin, footerY + 35, { align: 'center', width: footerContentWidth });
 
-            // Small logo in bottom right corner - positioned at exact corner
+            // Small logo in bottom right corner - aligned to footer right margin
             const smallLogoPath = path.join(__dirname, 'Images', 'Logos', 'RemovedStackOpsONLY.png');
             if (fs.existsSync(smallLogoPath)) {
-                doc.image(smallLogoPath, 515, 750, { width: 40, height: 40 });
+                doc.image(smallLogoPath, footerRightMargin + 20, 810, { width: 25, height: 25 });
             }
 
             // Add full-page invoice image
@@ -614,22 +679,51 @@ async function runInvoiceAutomation() {
                  FROM Invoices i
                  JOIN Companies c ON i.CompanyID = c.ID
                  JOIN Users u ON c.ID = u.CompanyID
-                 WHERE LOWER(i.Status) = 'paid' AND (i.PaidEmailSent = FALSE OR ? = TRUE)`,
+                 WHERE LOWER(i.Status) = 'paid' 
+                   AND (i.PaidEmailSent = FALSE OR ? = TRUE)
+                   AND u.Role = 'Client'
+                 ORDER BY i.InvoiceID`, // Removed GROUP BY to get all, but we will group in JS
                 [AUTOMATION_CONFIG.TEST_MODE]
             );
+
+            // Group paid invoices by email to send consolidated confirmations
+            const paidByEmail = {};
+            for (const inv of paidInvoices) {
+                if (!paidByEmail[inv.email]) {
+                    paidByEmail[inv.email] = {
+                        firstname: inv.firstname,
+                        lastname: inv.lastname,
+                        invoices: []
+                    };
+                }
+                // Avoid duplicates in the group if multiple users share an email (though rare with Client role)
+                if (!paidByEmail[inv.email].invoices.some(i => i.InvoiceID === inv.InvoiceID)) {
+                    paidByEmail[inv.email].invoices.push(inv);
+                }
+            }
             
-            for (const invoice of paidInvoices) {
-                console.log(`[Automation] Sending payment confirmation for Invoice #${invoice.InvoiceNumber}`);
+            for (const email in paidByEmail) {
+                const data = paidByEmail[email];
+                const invoiceNumbers = data.invoices.map(i => i.InvoiceNumber).join(', #');
+                
+                console.log(`[Automation] Sending consolidated payment confirmation for Invoices #${invoiceNumbers} to ${email}`);
                 const emailBody = `
                     <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-                        <p>Good day ${invoice.lastname},</p>
-                        <p>This is a confirmation that your payment for <b>Invoice #${invoice.InvoiceNumber}</b> has been received and confirmed.</p>
+                        <p>Good day ${data.lastname},</p>
+                        <p>This is a confirmation that your payment for <b>Invoice #${invoiceNumbers}</b> has been received and confirmed.</p>
                         <p>Thank you for your business!</p>
                         <p>Best regards,<br><b>StackOps IT Solutions Team</b></p>
                     </div>
                 `;
-                await sendBillingEmail(invoice.email, `Payment Confirmed - Invoice #${invoice.InvoiceNumber}`, emailBody, true);
-                await pool.query("UPDATE Invoices SET PaidEmailSent = TRUE WHERE InvoiceID = ?", [invoice.InvoiceID]);
+                
+                try {
+                    await sendBillingEmail(email, `Payment Confirmed - Invoice #${invoiceNumbers}`, emailBody, true);
+                    for (const inv of data.invoices) {
+                        await pool.query("UPDATE Invoices SET PaidEmailSent = TRUE WHERE InvoiceID = ?", [inv.InvoiceID]);
+                    }
+                } catch (e) {
+                    console.error(`[Automation] Failed to send consolidated paid email to ${email}:`, e);
+                }
             }
 
             // B. Handle OVERDUE reminders
@@ -638,41 +732,75 @@ async function runInvoiceAutomation() {
                  FROM Invoices i
                  JOIN Companies c ON i.CompanyID = c.ID
                  JOIN Users u ON c.ID = u.CompanyID
-                 WHERE LOWER(i.Status) = 'overdue' AND (i.LastReminderDate IS NULL OR i.LastReminderDate < ? OR ? = TRUE)`,
+                 WHERE LOWER(i.Status) = 'overdue' 
+                   AND (i.LastReminderDate IS NULL OR i.LastReminderDate < ? OR ? = TRUE)
+                   AND u.Role = 'Client'
+                 ORDER BY i.InvoiceID`,
                 [todayStr, AUTOMATION_CONFIG.TEST_MODE]
             );
 
-            for (const invoice of overdueInvoices) {
-                const dueDate = new Date(invoice.DueDate);
-                const diffTime = Math.abs(now - dueDate);
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            // Group overdue invoices by email to send consolidated reminders
+            const overdueByEmail = {};
+            for (const inv of overdueInvoices) {
+                if (!overdueByEmail[inv.email]) {
+                    overdueByEmail[inv.email] = {
+                        firstname: inv.firstname,
+                        lastname: inv.lastname,
+                        invoices: []
+                    };
+                }
+                if (!overdueByEmail[inv.email].invoices.some(i => i.InvoiceID === inv.InvoiceID)) {
+                    overdueByEmail[inv.email].invoices.push(inv);
+                }
+            }
+
+            for (const email in overdueByEmail) {
+                const data = overdueByEmail[email];
+                const invoiceNumbers = data.invoices.map(i => i.InvoiceNumber).join(', #');
                 
-                let subject = `Overdue Payment Reminder - Invoice #${invoice.InvoiceNumber}`;
-                let messagePrefix = `<p>This is a reminder that your payment for <b>Invoice #${invoice.InvoiceNumber}</b> was due on ${dueDate.toLocaleDateString()}.</p>`;
-                
-                if (diffDays >= AUTOMATION_CONFIG.FINE_DAYS_THRESHOLD) {
-                    subject = `URGENT: Overdue Payment & Fine Warning - Invoice #${invoice.InvoiceNumber}`;
+                let subject = `Overdue Payment Reminder - Invoice #${invoiceNumbers}`;
+                let messagePrefix = `<p>This is a reminder that your payment for <b>Invoice #${invoiceNumbers}</b> is overdue.</p>`;
+                let totalDue = 0;
+                let hasUrgent = false;
+
+                data.invoices.forEach(inv => {
+                    totalDue += parseFloat(inv.TotalAmount);
+                    const dueDate = new Date(inv.DueDate);
+                    const diffDays = Math.ceil(Math.abs(now - dueDate) / (1000 * 60 * 60 * 24));
+                    if (diffDays >= AUTOMATION_CONFIG.FINE_DAYS_THRESHOLD) {
+                        hasUrgent = true;
+                    }
+                });
+
+                if (hasUrgent) {
+                    subject = `URGENT: Overdue Payment & Fine Warning - Invoice #${invoiceNumbers}`;
                     messagePrefix = `
                         <p style="color: red; font-weight: bold;">URGENT NOTICE</p>
-                        <p>This is a final reminder that your payment for <b>Invoice #${invoice.InvoiceNumber}</b> is now ${diffDays} days overdue.</p>
+                        <p>This is a final reminder that your payment for <b>Invoice #${invoiceNumbers}</b> is significantly overdue.</p>
                         <p>Please note that as per our terms, a fine is now being applied to your account due to the delay.</p>
                     `;
                 }
 
-                console.log(`[Automation] Sending overdue reminder for Invoice #${invoice.InvoiceNumber} (${diffDays} days)`);
+                console.log(`[Automation] Sending consolidated overdue reminder for Invoices #${invoiceNumbers} to ${email}`);
                 const emailBody = `
                     <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-                        <p>Good day ${invoice.lastname},</p>
+                        <p>Good day ${data.lastname},</p>
                         ${messagePrefix}
-                        <p>Amount Due: R${parseFloat(invoice.TotalAmount).toFixed(2)}</p>
+                        <p>Total Amount Due: R${totalDue.toFixed(2)}</p>
                         <p>Please settle this amount as soon as possible to avoid further action.</p>
                         <p>If you have already made payment, please ignore this email.</p>
                         <p>Best regards,<br><b>StackOps IT Solutions Team</b></p>
                     </div>
                 `;
                 
-                await sendBillingEmail(invoice.email, subject, emailBody, true);
-                await pool.query("UPDATE Invoices SET LastReminderDate = ? WHERE InvoiceID = ?", [todayStr, invoice.InvoiceID]);
+                try {
+                    await sendBillingEmail(email, subject, emailBody, true);
+                    for (const inv of data.invoices) {
+                        await pool.query("UPDATE Invoices SET LastReminderDate = ? WHERE InvoiceID = ?", [todayStr, inv.InvoiceID]);
+                    }
+                } catch (e) {
+                    console.error(`[Automation] Failed to send consolidated overdue email to ${email}:`, e);
+                }
             }
         }
     } catch (error) {
@@ -2525,6 +2653,9 @@ app.post("/webhook/yoco", express.raw({ type: "application/json" }), async (req,
     try {
       await connection.beginTransaction();
 
+      const processedInvoices = [];
+      let targetClient = null;
+
       for (const invId of invoiceIds) {
         const [existing] = await connection.query(
           "SELECT status FROM yoco_payments WHERE invoice_id = ? LIMIT 1",
@@ -2563,7 +2694,7 @@ app.post("/webhook/yoco", express.raw({ type: "application/json" }), async (req,
            FROM Invoices i
            JOIN Companies c ON i.CompanyID = c.ID
            JOIN Users u ON c.ID = u.CompanyID
-           WHERE i.InvoiceID = ?
+           WHERE i.InvoiceID = ? AND u.Role = 'Client'
            LIMIT 1`,
           [invId]
         );
@@ -2571,15 +2702,23 @@ app.post("/webhook/yoco", express.raw({ type: "application/json" }), async (req,
         console.log(`[YOCO WEBHOOK] 🎉 SUCCESS: Invoice ${invId} PAID`);
 
         if (details.length) {
-          const inv = details[0];
-          await sendBillingEmail(
-            inv.email,
-            `Payment Received - Invoice #${inv.InvoiceNumber}`,
-            `<p>Hi ${inv.firstname},</p>
-             <p>We have successfully received your payment for Invoice #${inv.InvoiceNumber}. Thank you!</p>`,
-            true
-          ).catch(e => console.error(`[YOCO WEBHOOK] Failed to send email for invoice ${invId}:`, e));
+          processedInvoices.push(details[0].InvoiceNumber);
+          if (!targetClient) targetClient = details[0];
         }
+      }
+
+      if (targetClient && processedInvoices.length > 0) {
+        const invoiceNumbers = processedInvoices.length > 1 
+          ? processedInvoices.join(', #') 
+          : processedInvoices[0];
+
+        await sendBillingEmail(
+          targetClient.email,
+          `Payment Received - Invoice #${invoiceNumbers}`,
+          `<p>Hi ${targetClient.firstname},</p>
+           <p>We have successfully received your payment for Invoice #${invoiceNumbers}. Thank you!</p>`,
+          true
+        ).catch(e => console.error(`[YOCO WEBHOOK] Failed to send consolidated email:`, e));
       }
 
       await connection.commit();

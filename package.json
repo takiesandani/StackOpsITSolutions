@@ -33,6 +33,7 @@
     "nodemailer": "^7.0.6",
     "openai": "^4.20.0",
     "pdfkit": "^0.17.2",
+    "svg-to-pdfkit": "^0.1.8",
     "svix": "^1.84.1"
   }
 }
