@@ -106,12 +106,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                     method: 'POST',
                     headers,
                     body: JSON.stringify({
-                        CompanyID: companyId,
-                        ClientName: clientName,
-                        ClientEmail: clientEmail || null,
-                        ClientPhone: clientPhone || null
+                        name: clientName.trim(),
+                        email: clientEmail?.trim() || null,
+                        companyId: companyId
                     })
                 });
+
 
                 if (!response.ok) {
                     const error = await response.json();
@@ -121,11 +121,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const result = await response.json();
                 
                 // Add the new client to the dropdown and select it
+                const client = result.client;
+
                 const option = document.createElement('option');
-                option.value = result.ClientID;
-                option.textContent = `${clientName} (${clientEmail || 'N/A'})`;
+                option.value = client.id;
+                option.textContent = `${client.firstname} ${client.lastname} (${client.email || 'N/A'})`;
+
                 clientSelect.appendChild(option);
-                clientSelect.value = result.ClientID;
+                clientSelect.value = client.id;
+                clientSelect.disabled = false;
+
 
                 alert(`Client "${clientName}" created successfully!`);
                 createClientModal.classList.remove('active');
