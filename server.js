@@ -2095,7 +2095,7 @@ app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
                 Our team provides professional, ethical, and transparent IT services, ensuring measurable value, operational efficiency,
                 and compliance with industry best practices.
                 View our Privacy Policy and Terms of Service here:
-                <a href="https://stackops.co.za" style="color:#666666;text-decoration:underline;">
+                <a href="https://stackopsit.co.za/" style="color:#666666;text-decoration:underline;">
                     StackOps IT Solutions | Your Complete IT Force
                 </a>
             </p>
