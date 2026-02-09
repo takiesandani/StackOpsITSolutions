@@ -149,13 +149,13 @@ async function generateInvoicePDF(invoiceData, items, companyData, clientData) {
             }
 
             // INVOICE title and Horizontal Line
-            doc.fontSize(28).fillColor('#4a4a4a').font('Helvetica');
+            doc.fontSize(22).fillColor('#4a4a4a').font('Helvetica');
             const invoiceText = 'INVOICE';
             const invoiceWidth = doc.widthOfString(invoiceText);
             const invoiceX = logoBoxX - invoiceWidth - 70;
             const invoiceY = 30;
             
-            doc.text(invoiceText, invoiceX, invoiceY);
+            doc.text(invoiceText, invoiceX, invoiceY + 10);
             
             // Horizontal line from beginning of page (full width: 0) to INVOICE - HEADER ZONE FULL WIDTH
             doc.moveTo(0, invoiceY + 18).lineTo(invoiceX - 10, invoiceY + 18).stroke('#333333');
@@ -372,14 +372,14 @@ async function generateInvoicePDF(invoiceData, items, companyData, clientData) {
 
 
             doc.moveTo(mainContentLeft, termsY - 5).lineTo(mainContentRight, termsY - 5).stroke('#cccccc');
-            doc.moveTo(mainContentLeft, termsY + 120).lineTo(mainContentRight, termsY+ 120).stroke('#cccccc');
+            doc.moveTo(mainContentLeft, termsY + 180).lineTo(mainContentRight, termsY + 180).stroke('#cccccc');
 
     
 
             doc.fontSize(8).font('Helvetica-Bold').fillColor('#000000');
             doc.text('TERMS & CONDITIONS', mainContentLeft, termsY);
             
-            doc.fontSize(7).font('Helvetica').fillColor('#555555');
+            doc.fontSize(9).font('Helvetica').fillColor('#555555');
             
             // Build terms as one continuous flowing paragraph
             const termsTextStart = termsY + 16;
@@ -420,7 +420,7 @@ async function generateInvoicePDF(invoiceData, items, companyData, clientData) {
             // Small logo in bottom right corner - aligned to footer right margin
             const smallLogoPath = path.join(__dirname, 'Images', 'Logos', 'RemovedStackOpsONLY.png');
             if (fs.existsSync(smallLogoPath)) {
-                doc.image(smallLogoPath, footerRightMargin + 20, 810, { width: 25, height: 25 });
+                doc.image(smallLogoPath, footerRightMargin + 28, 818, { width: 25, height: 25 });
             }
 
             // Add full-page invoice image
@@ -678,11 +678,13 @@ async function runInvoiceAutomation() {
                 `SELECT i.*, c.companyname as CompanyName, u.firstname, u.lastname, u.email 
                  FROM Invoices i
                  JOIN Companies c ON i.CompanyID = c.ID
-                 JOIN Users u ON c.ID = u.CompanyID
+                 JOIN Users u ON u.id = (
+                     SELECT id FROM Users 
+                     WHERE CompanyID = c.ID AND Role = 'Client' 
+                     LIMIT 1
+                 )
                  WHERE LOWER(i.Status) = 'paid' 
-                   AND (i.PaidEmailSent = FALSE OR ? = TRUE)
-                   AND u.Role = 'Client'
-                 ORDER BY i.InvoiceID`, // Removed GROUP BY to get all, but we will group in JS
+                   AND (i.PaidEmailSent = FALSE OR ? = TRUE)`, 
                 [AUTOMATION_CONFIG.TEST_MODE]
             );
 
@@ -709,7 +711,8 @@ async function runInvoiceAutomation() {
                 console.log(`[Automation] Sending consolidated payment confirmation for Invoices #${invoiceNumbers} to ${email}`);
                 const emailBody = `
                     <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-                        <p>Good day ${data.lastname},</p>
+                        <p>Dear ${data.firstname},</p> 
+                        <p>I hope you are well.</p>
                         <p>This is a confirmation that your payment for <b>Invoice #${invoiceNumbers}</b> has been received and confirmed.</p>
                         <p>Thank you for your business!</p>
                         <p>Best regards,<br><b>StackOps IT Solutions Team</b></p>
@@ -735,6 +738,7 @@ async function runInvoiceAutomation() {
                  WHERE LOWER(i.Status) = 'overdue' 
                    AND (i.LastReminderDate IS NULL OR i.LastReminderDate < ? OR ? = TRUE)
                    AND u.Role = 'Client'
+                 GROUP BY i.InvoiceID
                  ORDER BY i.InvoiceID`,
                 [todayStr, AUTOMATION_CONFIG.TEST_MODE]
             );
@@ -784,7 +788,7 @@ async function runInvoiceAutomation() {
                 console.log(`[Automation] Sending consolidated overdue reminder for Invoices #${invoiceNumbers} to ${email}`);
                 const emailBody = `
                     <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-                        <p>Good day ${data.lastname},</p>
+                        <p>Dear ${data.lastname},</p>
                         ${messagePrefix}
                         <p>Total Amount Due: R${totalDue.toFixed(2)}</p>
                         <p>Please settle this amount as soon as possible to avoid further action.</p>
@@ -2003,32 +2007,100 @@ app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
 
       // UPDATED: Send Email with Payment Link
       const emailBody = `
-        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-            <p>Good day ${clientData.lastname},</p>
-            <p>I hope this email finds you well.</p>
-            <p>Please find the attached document below as your invoice.</p>
-            <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+       <div style="
+                font-family: 'Avenir Next LT Pro Light', 'Avenir Next', Avenir, Helvetica, Arial, sans-serif;
+                line-height: 1.6;
+                color: #333;
+            ">
+            <p>Dear ${clientData.lastname},</p>
+
+            <p>I hope you are well.</p>
+
+            <p>Please find attached invoice <strong>[#${nextInvoiceNumber}]</strong>.</p>
+
+            <p><strong>Invoice Summary:</strong></p>
+
+            <table style="width:100%; border-collapse:collapse; margin-top:20px; font-family:'Avenir Next LT Pro Light','Avenir Next',Avenir,Helvetica,Arial,sans-serif;">
                 <tr>
-                    <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 150px;">Invoice Number:</td>
-                    <td style="padding: 10px; border: 1px solid #ddd;">#${nextInvoiceNumber}</td>
+                    <td style="padding:10px; border:1px solid #ddd; font-weight:600; width:150px;">Invoice Number:</td>
+                    <td style="padding:10px; border:1px solid #ddd;">#${nextInvoiceNumber}</td>
                 </tr>
                 <tr>
-                    <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold;">Invoice Date:</td>
-                    <td style="padding: 10px; border: 1px solid #ddd;">${new Date(InvoiceDate).toLocaleDateString()}</td>
+                    <td style="padding:10px; border:1px solid #ddd; font-weight:600;">Invoice Date:</td>
+                    <td style="padding:10px; border:1px solid #ddd;">${new Date(InvoiceDate).toLocaleDateString()}</td>
                 </tr>
                 <tr>
-                    <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold;">Due Date:</td>
-                    <td style="padding: 10px; border: 1px solid #ddd;">${new Date(DueDate).toLocaleDateString()}</td>
+                    <td style="padding:10px; border:1px solid #ddd; font-weight:600;">Due Date:</td>
+                    <td style="padding:10px; border:1px solid #ddd;">${new Date(DueDate).toLocaleDateString()}</td>
                 </tr>
                 <tr>
-                    <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold;">Total Amount:</td>
-                    <td style="padding: 10px; border: 1px solid #ddd;">R${parseFloat(TotalAmount).toFixed(2)}</td>
+                    <td style="padding:10px; border:1px solid #ddd; font-weight:600;">Total Amount:</td>
+                    <td style="padding:10px; border:1px solid #ddd;">R${parseFloat(TotalAmount).toFixed(2)}</td>
                 </tr>
             </table>
-            ${paymentUrl ? `<p style="margin-top: 20px;"><strong>Payment Link:</strong> <a href="${paymentUrl}" target="_blank">Click here to pay securely via YOCO</a></p>` : '<p style="margin-top: 20px; color: red;">Note: Payment link could not be generated. Please contact support for payment instructions.</p>'}
-            <p>If you have any questions, please contact us at billing@stackopsit.co.za or 011 568 9337.</p>
-            <p>Best regards,<br><b>StackOps IT Solutions Team</b></p>
+
+            <p style="margin-top:20px;">
+                To make payment quick and convenient, you may use the secure payment link below:
+            </p>
+
+            ${
+            paymentUrl
+                ? `<p style="margin-top:10px;"><strong>Payment Link:</strong>
+                <a href="${paymentUrl}" target="_blank">Click here to pay securely via YOCO</a>
+                </p>`
+                : `<p style="margin-top:10px; color:red;">
+                Note: Payment link could not be generated. Please contact support for payment instructions.
+                </p>`
+            }
+
+            <p>
+                If you have any questions, please contact us at
+                <a href="mailto:billing@stackopsit.co.za">billing@stackopsit.co.za</a>
+                or 011 568 9337.
+            </p>
+
+            <p>
+                Best regards,<br>
+                <strong>StackOps IT Solutions Team</strong>
+            </p>
+
+            <img
+                src="Images/EmailSignature.jpg"
+                alt="StackOps IT Solutions"
+                style="width:100%; max-width:400px; margin-top:10px;"
+            >
+
+            <p style="
+                font-size:9.5px;
+                line-height:1.4;
+                color:#666666;
+                font-family:'Avenir Next LT Pro Light','Avenir Next',Avenir,Helvetica,Arial,sans-serif;
+                margin:12px 0 0 0;
+            ">
+                StackOps IT Solutions (Pty) Ltd | Reg. No: 2016/120370/07 | B-BBEE Level: 1 Contributor: 135% | CSD Supplier: MAAA164124.
+                Legally registered in South Africa, providing IT support, cybersecurity, governance, infrastructure, consulting services,
+                and procurement of IT hardware in compliance with all applicable laws and regulations.
+                All client information is protected in accordance with the Protection of Personal Information Act (POPIA) and our internal
+                privacy and security policies. We are committed to safeguarding your data and ensuring confidentiality, integrity, and lawful
+                processing at all times.
+                All information, proposals, and pricing are accurate at the time of sending and governed by our Master Service Agreement (MSA)
+                or client-specific contracts. Prices may be subject to change due to economic, regulatory, or supplier factors, with clients
+                notified in advance.
+                This email and attachments are confidential and intended solely for the named recipient(s). If received in error, please
+                notify the sender immediately, delete the message, and do not disclose, copy, or distribute its contents.
+                Unauthorized use of this communication is strictly prohibited.
+                Emails are not guaranteed virus-free; StackOps IT Solutions accepts no liability for any damage, loss, or unauthorized access
+                arising from this communication.
+                StackOps IT Solutions is committed to business continuity, data security, and reliable technology operations.
+                Our team provides professional, ethical, and transparent IT services, ensuring measurable value, operational efficiency,
+                and compliance with industry best practices.
+                View our Privacy Policy and Terms of Service here:
+                <a href="https://stackops.co.za" style="color:#666666;text-decoration:underline;">
+                    StackOps IT Solutions | Your Complete IT Force
+                </a>
+            </p>
         </div>
+
       `;
 
       try {
@@ -2712,13 +2784,21 @@ app.post("/webhook/yoco", express.raw({ type: "application/json" }), async (req,
           ? processedInvoices.join(', #') 
           : processedInvoices[0];
 
-        await sendBillingEmail(
-          targetClient.email,
-          `Payment Received - Invoice #${invoiceNumbers}`,
-          `<p>Hi ${targetClient.firstname},</p>
-           <p>We have successfully received your payment for Invoice #${invoiceNumbers}. Thank you!</p>`,
-          true
-        ).catch(e => console.error(`[YOCO WEBHOOK] Failed to send consolidated email:`, e));
+        try {
+          await sendBillingEmail(
+            targetClient.email,
+            `Payment Received - Invoice #${invoiceNumbers}`,
+            `<p>Hi ${targetClient.firstname},</p>
+             <p>We have successfully received your payment for Invoice #${invoiceNumbers}. Thank you!</p>`,
+            true
+          );
+          // Mark as sent so the automation doesn't send it again
+          for (const invId of invoiceIds) {
+            await connection.query("UPDATE Invoices SET PaidEmailSent = TRUE WHERE InvoiceID = ?", [invId]);
+          }
+        } catch (e) {
+          console.error(`[YOCO WEBHOOK] Failed to send consolidated email:`, e);
+        }
       }
 
       await connection.commit();
