@@ -2065,7 +2065,7 @@ app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
             </p>
 
             <img
-                src="Images/EmailSignature.jpg"
+                src="https://ibb.co/B5D9VrZb"
                 alt="StackOps IT Solutions"
                 style="width:100%; max-width:400px; margin-top:10px;"
             >
