@@ -1738,61 +1738,39 @@ app.get('/api/admin/clients', authenticateToken, async (req, res) => {
 // This endpoint creates a lightweight client record without full registration
 // Ideal for automation and quick invoice creation workflows
 app.post('/api/admin/clients/quick-add', authenticateToken, async (req, res) => {
+    const { name, email, companyId } = req.body;
+
+    if (!name || !companyId) {
+        return res.status(400).json({ error: 'Client name and company are required' });
+    }
+
+    const parts = name.trim().split(' ');
+    const firstName = parts.shift();
+    const lastName = parts.join(' ') || '';
+
     try {
-        if (!pool) {
-            return res.status(500).json({ error: 'Database connection unavailable' });
-        }
-
-        const { CompanyID, ClientName, ClientEmail, ClientPhone } = req.body;
-
-        if (!CompanyID || !ClientName) {
-            return res.status(400).json({ error: 'CompanyID and ClientName are required' });
-        }
-
-        // Split client name into first and last name
-        const nameParts = ClientName.trim().split(' ');
-        const firstName = nameParts[0];
-        const lastName = nameParts.slice(1).join(' ') || nameParts[0];
-
-        // Insert into ClientQuickAdd table for reference
-        const [quickAddResult] = await pool.query(
-            `INSERT INTO ClientQuickAdd (CompanyID, ClientName, ClientEmail, ClientPhone)
-             VALUES (?, ?, ?, ?)`,
-            [CompanyID, ClientName, ClientEmail || null, ClientPhone || null]
-        );
-
-        const quickClientID = quickAddResult.insertId;
-
-        // Also create a Users record for the client (marked as quick-added)
-        const [userResult] = await pool.query(
-            `INSERT INTO Users (FirstName, LastName, Email, Contact, PasswordHash, IsActive, Role, CompanyID, IsQuickAdd)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-                firstName,
-                lastName,
-                ClientEmail || `quickadd_${quickClientID}@automated.local`,
-                ClientPhone || '',
-                bcrypt.hashSync('QUICK_ADD_NO_PASSWORD', 10), // Placeholder password
-                1, // IsActive = true
-                'Client', // Default role
-                CompanyID,
-                1 // IsQuickAdd = true
-            ]
+        const [result] = await pool.query(
+            `INSERT INTO Users (firstname, lastname, email, role, companyid, isactive)
+             VALUES (?, ?, ?, 'invoice_client', ?, 1)`,
+            [firstName, lastName, email || null, companyId]
         );
 
         res.json({
-            ClientID: userResult.insertId,
-            QuickClientID: quickClientID,
-            ClientName: ClientName,
-            ClientEmail: ClientEmail,
-            ClientPhone: ClientPhone,
-            message: 'Client created successfully for invoice automation'
+            success: true,
+            client: {
+                id: result.insertId,
+                firstname: firstName,
+                lastname: lastName,
+                email
+            }
         });
-    } catch (error) {
-        console.error('Error creating quick-add client:', error);
-        res.status(500).json({ error: 'Failed to create client. ' + error.message });
+
+    } catch (err) {
+        console.error('Quick add client error:', err);
+        res.status(500).json({ error: 'Failed to create client' });
     }
 });
+
 
 // Get invoices - optionally filtered by company or client
 app.get('/api/admin/invoices', authenticateToken, async (req, res) => {
