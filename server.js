@@ -2043,10 +2043,10 @@ app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
             </p>
 
             <img
-                src="https://i.ibb.co/B5D9VrZb/EmailSignature.jpg"
-                alt="StackOps IT Solutions"
-                width="400"
-                style="display:block; max-width:400px; width:100%; margin-top:10px;"
+            src="https://i.ibb.co/LWJ2qqY/Signature-Billing.jpg"
+            alt="StackOps IT Solutions"
+            width="400"
+            style="display:block; max-width:400px; width:100%; height:auto; margin-top:10px;"
             >
 
             <p style="
