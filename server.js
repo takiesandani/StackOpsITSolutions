@@ -708,6 +708,35 @@ async function runInvoiceAutomation() {
                 const data = paidByEmail[email];
                 const invoiceNumbers = data.invoices.map(i => i.InvoiceNumber).join(', #');
                 
+                const totalPaid = data.invoices.reduce((sum, inv) => sum + parseFloat(inv.TotalAmount || 0), 0);
+                const receiptHtml = `
+                    <div style="margin-top: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9; max-width: 400px;">
+                        <h3 style="margin-top: 0; color: #333; border-bottom: 1px solid #ccc; padding-bottom: 10px;">Payment Receipt</h3>
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <thead>
+                                <tr>
+                                    <th style="text-align: left; padding: 5px 0;">Description</th>
+                                    <th style="text-align: right; padding: 5px 0;">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${data.invoices.map(inv => `
+                                    <tr>
+                                        <td style="padding: 5px 0;">Invoice #${inv.InvoiceNumber}</td>
+                                        <td style="text-align: right; padding: 5px 0;">R ${parseFloat(inv.TotalAmount).toFixed(2)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                            <tfoot>
+                                <tr style="border-top: 2px solid #333; font-weight: bold;">
+                                    <td style="padding: 10px 0 5px 0;">TOTAL PAID</td>
+                                    <td style="text-align: right; padding: 10px 0 5px 0;">R ${totalPaid.toFixed(2)}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                `;
+
                 console.log(`[Automation] Sending consolidated payment confirmation for Invoices #${invoiceNumbers} to ${email}`);
                 const emailBody = `
                     <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
@@ -715,7 +744,49 @@ async function runInvoiceAutomation() {
                         <p>I hope you are well.</p>
                         <p>This is a confirmation that your payment for <b>Invoice #${invoiceNumbers}</b> has been received and confirmed.</p>
                         <p>Thank you for your business!</p>
+                        ${receiptHtml}
                         <p>Best regards,<br><b>StackOps IT Solutions Team</b></p>
+                        <img
+                            src="https://i.ibb.co/LWJ2qqY/Signature-Billing.jpg"
+                            alt="StackOps IT Solutions"
+                            width="400"
+                            style="display:block; max-width:400px; width:100%; height:auto; margin-top:10px;"
+                        >
+
+                            <p style="
+                                font-size:8.5px;
+                                line-height:1.4;
+                                color:#666666;
+                                font-family:'Avenir Next LT Pro Light','Avenir Next',Avenir,Helvetica,Arial,sans-serif;
+                                margin:0.5px 0 0 0;
+                            ">
+                                <strong>StackOps IT Solutions (Pty) Ltd</strong> |
+                                <strong>Reg. No:</strong> 2016/120370/07 |
+                                <strong>B-BBEE Level</strong>: 1 Contributor: 135% |
+                                <strong>CSD Supplier:</strong> MAAA164124.
+                                Legally registered in South Africa, providing IT support, cybersecurity, governance, infrastructure, consulting services,
+                                and procurement of IT hardware in compliance with all applicable laws and regulations.
+                                All client information is protected in accordance with the
+                                <strong>Protection of Personal Information Act (POPIA)</strong> and our internal
+                                privacy and security policies. We are committed to safeguarding your data and ensuring confidentiality, integrity, and lawful
+                                processing at all times.
+                                All information, proposals, and pricing are accurate at the time of sending and governed by our Master Service Agreement (MSA)
+                                or client-specific contracts. Prices may be subject to change due to economic, regulatory, or supplier factors, with clients
+                                notified in advance.
+                                This email and attachments are confidential and intended solely for the named recipient(s). If received in error, please
+                                notify the sender immediately, delete the message, and do not disclose, copy, or distribute its contents.
+                                Unauthorized use of this communication is strictly prohibited.
+                                Emails are not guaranteed virus-free; StackOps IT Solutions accepts no liability for any damage, loss, or unauthorized access
+                                arising from this communication.
+                                StackOps IT Solutions is committed to business continuity, data security, and reliable technology operations.
+                                Our team provides professional, ethical, and transparent IT services, ensuring measurable value, operational efficiency,
+                                and compliance with industry best practices.
+                                <strong>View our Privacy Policy and Terms of Service here:</strong>
+                                <a href="https://stackopsit.co.za/"
+                                style="color:#1a73e8; text-decoration:underline;">
+                                    StackOps IT Solutions | Your Complete IT Force
+                                </a>
+                            </p>
                     </div>
                 `;
                 
@@ -782,6 +853,47 @@ async function runInvoiceAutomation() {
                         <p style="color: red; font-weight: bold;">URGENT NOTICE</p>
                         <p>This is a final reminder that your payment for <b>Invoice #${invoiceNumbers}</b> is significantly overdue.</p>
                         <p>Please note that as per our terms, a fine is now being applied to your account due to the delay.</p>
+                                  <img
+                                    src="https://i.ibb.co/LWJ2qqY/Signature-Billing.jpg"
+                                    alt="StackOps IT Solutions"
+                                    width="400"
+                                    style="display:block; max-width:400px; width:100%; height:auto; margin-top:10px;"
+                                    >
+
+                                    <p style="
+                                        font-size:8.5px;
+                                        line-height:1.4;
+                                        color:#666666;
+                                        font-family:'Avenir Next LT Pro Light','Avenir Next',Avenir,Helvetica,Arial,sans-serif;
+                                        margin:0.5px 0 0 0;
+                                    ">
+                                        <strong>StackOps IT Solutions (Pty) Ltd</strong> |
+                                        <strong>Reg. No:</strong> 2016/120370/07 |
+                                        <strong>B-BBEE Level</strong>: 1 Contributor: 135% |
+                                        <strong>CSD Supplier:</strong> MAAA164124.
+                                        Legally registered in South Africa, providing IT support, cybersecurity, governance, infrastructure, consulting services,
+                                        and procurement of IT hardware in compliance with all applicable laws and regulations.
+                                        All client information is protected in accordance with the
+                                        <strong>Protection of Personal Information Act (POPIA)</strong> and our internal
+                                        privacy and security policies. We are committed to safeguarding your data and ensuring confidentiality, integrity, and lawful
+                                        processing at all times.
+                                        All information, proposals, and pricing are accurate at the time of sending and governed by our Master Service Agreement (MSA)
+                                        or client-specific contracts. Prices may be subject to change due to economic, regulatory, or supplier factors, with clients
+                                        notified in advance.
+                                        This email and attachments are confidential and intended solely for the named recipient(s). If received in error, please
+                                        notify the sender immediately, delete the message, and do not disclose, copy, or distribute its contents.
+                                        Unauthorized use of this communication is strictly prohibited.
+                                        Emails are not guaranteed virus-free; StackOps IT Solutions accepts no liability for any damage, loss, or unauthorized access
+                                        arising from this communication.
+                                        StackOps IT Solutions is committed to business continuity, data security, and reliable technology operations.
+                                        Our team provides professional, ethical, and transparent IT services, ensuring measurable value, operational efficiency,
+                                        and compliance with industry best practices.
+                                        <strong>View our Privacy Policy and Terms of Service here:</strong>
+                                        <a href="https://stackopsit.co.za/"
+                                        style="color:#1a73e8; text-decoration:underline;">
+                                            StackOps IT Solutions | Your Complete IT Force
+                                        </a>
+                                    </p>
                     `;
                 }
 
@@ -794,6 +906,47 @@ async function runInvoiceAutomation() {
                         <p>Please settle this amount as soon as possible to avoid further action.</p>
                         <p>If you have already made payment, please ignore this email.</p>
                         <p>Best regards,<br><b>StackOps IT Solutions Team</b></p>
+                        <img
+                            src="https://i.ibb.co/LWJ2qqY/Signature-Billing.jpg"
+                            alt="StackOps IT Solutions"
+                            width="400"
+                            style="display:block; max-width:400px; width:100%; height:auto; margin-top:10px;"
+                            >
+
+                            <p style="
+                                font-size:8.5px;
+                                line-height:1.4;
+                                color:#666666;
+                                font-family:'Avenir Next LT Pro Light','Avenir Next',Avenir,Helvetica,Arial,sans-serif;
+                                margin:0.5px 0 0 0;
+                            ">
+                                <strong>StackOps IT Solutions (Pty) Ltd</strong> |
+                                <strong>Reg. No:</strong> 2016/120370/07 |
+                                <strong>B-BBEE Level</strong>: 1 Contributor: 135% |
+                                <strong>CSD Supplier:</strong> MAAA164124.
+                                Legally registered in South Africa, providing IT support, cybersecurity, governance, infrastructure, consulting services,
+                                and procurement of IT hardware in compliance with all applicable laws and regulations.
+                                All client information is protected in accordance with the
+                                <strong>Protection of Personal Information Act (POPIA)</strong> and our internal
+                                privacy and security policies. We are committed to safeguarding your data and ensuring confidentiality, integrity, and lawful
+                                processing at all times.
+                                All information, proposals, and pricing are accurate at the time of sending and governed by our Master Service Agreement (MSA)
+                                or client-specific contracts. Prices may be subject to change due to economic, regulatory, or supplier factors, with clients
+                                notified in advance.
+                                This email and attachments are confidential and intended solely for the named recipient(s). If received in error, please
+                                notify the sender immediately, delete the message, and do not disclose, copy, or distribute its contents.
+                                Unauthorized use of this communication is strictly prohibited.
+                                Emails are not guaranteed virus-free; StackOps IT Solutions accepts no liability for any damage, loss, or unauthorized access
+                                arising from this communication.
+                                StackOps IT Solutions is committed to business continuity, data security, and reliable technology operations.
+                                Our team provides professional, ethical, and transparent IT services, ensuring measurable value, operational efficiency,
+                                and compliance with industry best practices.
+                                <strong>View our Privacy Policy and Terms of Service here:</strong>
+                                <a href="https://stackopsit.co.za/"
+                                style="color:#1a73e8; text-decoration:underline;">
+                                    StackOps IT Solutions | Your Complete IT Force
+                                </a>
+                            </p>
                     </div>
                 `;
                 
@@ -2711,6 +2864,7 @@ app.post("/webhook/yoco", express.raw({ type: "application/json" }), async (req,
 
       const processedInvoices = [];
       let targetClient = null;
+      const paymentReceiptItems = [];
 
       for (const invId of invoiceIds) {
         const [existing] = await connection.query(
@@ -2738,10 +2892,12 @@ app.post("/webhook/yoco", express.raw({ type: "application/json" }), async (req,
           [invId]
         );
 
+        let amountPaid = 0;
         if (paymentRow.length) {
+          amountPaid = paymentRow[0].amount / 100;
           await connection.query(
             "INSERT INTO Payments (InvoiceID, AmountPaid, PaymentDate, Method) VALUES (?, ?, NOW(), 'YOCO')",
-            [invId, paymentRow[0].amount / 100]
+            [invId, amountPaid]
           );
         }
 
@@ -2760,6 +2916,10 @@ app.post("/webhook/yoco", express.raw({ type: "application/json" }), async (req,
         if (details.length) {
           processedInvoices.push(details[0].InvoiceNumber);
           if (!targetClient) targetClient = details[0];
+          paymentReceiptItems.push({
+            number: details[0].InvoiceNumber,
+            amount: amountPaid
+          });
         }
       }
 
@@ -2768,12 +2928,91 @@ app.post("/webhook/yoco", express.raw({ type: "application/json" }), async (req,
           ? processedInvoices.join(', #') 
           : processedInvoices[0];
 
+        const totalPaid = paymentReceiptItems.reduce((sum, item) => sum + item.amount, 0);
+        const receiptHtml = `
+          <div style="margin-top: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9; max-width: 400px;">
+            <h3 style="margin-top: 0; color: #333; border-bottom: 1px solid #ccc; padding-bottom: 10px;">Payment Receipt</h3>
+            <table style="width: 100%; border-collapse: collapse;">
+              <thead>
+                <tr>
+                  <th style="text-align: left; padding: 5px 0;">Description</th>
+                  <th style="text-align: right; padding: 5px 0;">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${paymentReceiptItems.map(item => `
+                  <tr>
+                    <td style="padding: 5px 0;">Invoice #${item.number}</td>
+                    <td style="text-align: right; padding: 5px 0;">R ${item.amount.toFixed(2)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+              <tfoot>
+                <tr style="border-top: 2px solid #333; font-weight: bold;">
+                  <td style="padding: 10px 0 5px 0;">TOTAL PAID</td>
+                  <td style="text-align: right; padding: 10px 0 5px 0;">R ${totalPaid.toFixed(2)}</td>
+                </tr>
+              </tfoot>
+            </table>
+            <p style="font-size: 12px; color: #666; margin-top: 15px; font-style: italic;">Payment Method: YOCO Card Payment</p>
+          </div>
+        `;
+
         try {
           await sendBillingEmail(
             targetClient.email,
             `Payment Received - Invoice #${invoiceNumbers}`,
-            `<p>Hi ${targetClient.firstname},</p>
-             <p>We have successfully received your payment for Invoice #${invoiceNumbers}. Thank you!</p>`,
+            `<p>Dear ${targetClient.firstname},</p>
+             <p>We have successfully received your payment for <strong>Invoice #${invoiceNumbers}</strong>. Thank you for your business!</p>
+             <p>Please allow us <strong>24 hours</strong> to process your payment. We will send a final confirmation once the process is complete.</p>
+             ${receiptHtml}
+             <p>
+                If you have any questions, please contact us at
+                <a href="mailto:billing@stackopsit.co.za">billing@stackopsit.co.za</a>
+                or 011 568 9337.
+             </p>
+             <img
+            src="https://i.ibb.co/LWJ2qqY/Signature-Billing.jpg"
+            alt="StackOps IT Solutions"
+            width="400"
+            style="display:block; max-width:400px; width:100%; height:auto; margin-top:10px;"
+            >
+
+            <p style="
+                font-size:8.5px;
+                line-height:1.4;
+                color:#666666;
+                font-family:'Avenir Next LT Pro Light','Avenir Next',Avenir,Helvetica,Arial,sans-serif;
+                margin:0.5px 0 0 0;
+            ">
+                <strong>StackOps IT Solutions (Pty) Ltd</strong> |
+                <strong>Reg. No:</strong> 2016/120370/07 |
+                <strong>B-BBEE Level</strong>: 1 Contributor: 135% |
+                <strong>CSD Supplier:</strong> MAAA164124.
+                Legally registered in South Africa, providing IT support, cybersecurity, governance, infrastructure, consulting services,
+                and procurement of IT hardware in compliance with all applicable laws and regulations.
+                All client information is protected in accordance with the
+                <strong>Protection of Personal Information Act (POPIA)</strong> and our internal
+                privacy and security policies. We are committed to safeguarding your data and ensuring confidentiality, integrity, and lawful
+                processing at all times.
+                All information, proposals, and pricing are accurate at the time of sending and governed by our Master Service Agreement (MSA)
+                or client-specific contracts. Prices may be subject to change due to economic, regulatory, or supplier factors, with clients
+                notified in advance.
+                This email and attachments are confidential and intended solely for the named recipient(s). If received in error, please
+                notify the sender immediately, delete the message, and do not disclose, copy, or distribute its contents.
+                Unauthorized use of this communication is strictly prohibited.
+                Emails are not guaranteed virus-free; StackOps IT Solutions accepts no liability for any damage, loss, or unauthorized access
+                arising from this communication.
+                StackOps IT Solutions is committed to business continuity, data security, and reliable technology operations.
+                Our team provides professional, ethical, and transparent IT services, ensuring measurable value, operational efficiency,
+                and compliance with industry best practices.
+                <strong>View our Privacy Policy and Terms of Service here:</strong>
+                <a href="https://stackopsit.co.za/"
+                style="color:#1a73e8; text-decoration:underline;">
+                    StackOps IT Solutions | Your Complete IT Force
+                </a>
+            </p>
+             `,
             true
           );
           // Mark as sent so the automation doesn't send it again
