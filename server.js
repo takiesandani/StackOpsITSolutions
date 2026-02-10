@@ -2049,7 +2049,7 @@ app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
             >
 
             <p style="
-                font-size:9.5px;
+                font-size:8.5px;
                 line-height:1.4;
                 color:#666666;
                 font-family:'Avenir Next LT Pro Light','Avenir Next',Avenir,Helvetica,Arial,sans-serif;
