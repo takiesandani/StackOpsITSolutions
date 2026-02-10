@@ -2050,10 +2050,10 @@ app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
 
             <p style="
                 font-size:9.5px;
-                line-height: 0.9;
+                line-height:1.4;
                 color:#666666;
                 font-family:'Avenir Next LT Pro Light','Avenir Next',Avenir,Helvetica,Arial,sans-serif;
-                margin:12px 0 0 0;
+                margin:0.5px 0 0 0;
             ">
                 <strong>StackOps IT Solutions (Pty) Ltd</strong> |
                 <strong>Reg. No:</strong> 2016/120370/07 |
