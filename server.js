@@ -2050,15 +2050,19 @@ app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
 
             <p style="
                 font-size:9.5px;
-                line-height:1.4;
+                line-height: 0.9;
                 color:#666666;
                 font-family:'Avenir Next LT Pro Light','Avenir Next',Avenir,Helvetica,Arial,sans-serif;
                 margin:12px 0 0 0;
             ">
-                StackOps IT Solutions (Pty) Ltd | Reg. No: 2016/120370/07 | B-BBEE Level: 1 Contributor: 135% | CSD Supplier: MAAA164124.
+                <strong>StackOps IT Solutions (Pty) Ltd</strong> |
+                <strong>Reg. No:</strong> 2016/120370/07 |
+                <strong>B-BBEE Level</strong>: 1 Contributor: 135% |
+                <strong>CSD Supplier:</strong> MAAA164124.
                 Legally registered in South Africa, providing IT support, cybersecurity, governance, infrastructure, consulting services,
                 and procurement of IT hardware in compliance with all applicable laws and regulations.
-                All client information is protected in accordance with the Protection of Personal Information Act (POPIA) and our internal
+                All client information is protected in accordance with the
+                <strong>Protection of Personal Information Act (POPIA)</strong> and our internal
                 privacy and security policies. We are committed to safeguarding your data and ensuring confidentiality, integrity, and lawful
                 processing at all times.
                 All information, proposals, and pricing are accurate at the time of sending and governed by our Master Service Agreement (MSA)
@@ -2072,11 +2076,13 @@ app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
                 StackOps IT Solutions is committed to business continuity, data security, and reliable technology operations.
                 Our team provides professional, ethical, and transparent IT services, ensuring measurable value, operational efficiency,
                 and compliance with industry best practices.
-                View our Privacy Policy and Terms of Service here:
-                <a href="https://stackopsit.co.za/" style="color:#666666;text-decoration:underline;">
+                <strong>View our Privacy Policy and Terms of Service here:</strong>
+                <a href="https://stackopsit.co.za/"
+                style="color:#1a73e8; text-decoration:underline;">
                     StackOps IT Solutions | Your Complete IT Force
                 </a>
             </p>
+
         </div>
 
       `;
