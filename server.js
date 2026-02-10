@@ -2038,7 +2038,7 @@ app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
             </p>
 
             <p>
-                Best regards,
+                Best regards,<br>
             </p>
 
             <img
