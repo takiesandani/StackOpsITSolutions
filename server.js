@@ -25,7 +25,6 @@ app.use(express.json({
     }
 }));
 app.use(express.urlencoded({ extended: true }));
-app.use(express.urlencoded({ extended: true }));
 app.use(cors());
 
 // Rate limiting for chatbot - simple in-memory store (consider Redis for production)
@@ -128,10 +127,10 @@ function generatePayFastSignature(data, passphrase = null) {
  */
 async function generatePayFastLink(paymentData) {
     try {
-        const merchantId = await getSecret('PAYFAST_MERCHANT_ID') || process.env.PAYFAST_MERCHANT_ID || '33653577';
-        const merchantKey = await getSecret('PAYFAST_MERCHANT_KEY') || process.env.PAYFAST_MERCHANT_KEY || 'jtpn8dfwfog8g';
-        const passphrase = await getSecret('PAYFAST_PASSPHRASE') || process.env.PAYFAST_PASSPHRASE || 'jt7NOE43FZPn';
-        const mode = await getSecret('PAYFAST_MODE') || process.env.PAYFAST_MODE || 'live';
+        const merchantId = await getSecret('PAYFAST_MERCHANT_ID') || '33653577';
+        const merchantKey = await getSecret('PAYFAST_MERCHANT_KEY') || 'jtpn8dfwfog8g';
+        const passphrase = await getSecret('PAYFAST_PASSPHRASE') || 'jt7NOE43FZPn';
+        const mode = await getSecret('PAYFAST_MODE') || 'live';
         
         const baseUrl = mode === 'sandbox' 
             ? 'https://sandbox.payfast.co.za/eng/process' 
@@ -140,9 +139,9 @@ async function generatePayFastLink(paymentData) {
         const data = {
             merchant_id: merchantId,
             merchant_key: merchantKey,
-            return_url: process.env.PAYFAST_RETURN_URL || 'https://stackopsit.co.za/success',
-            cancel_url: process.env.PAYFAST_CANCEL_URL || 'https://stackopsit.co.za/cancel',
-            notify_url: process.env.PAYFAST_NOTIFY_URL || 'https://stackops-backend-475222.uc.r.appspot.com/api/payfast/itn',
+            return_url: 'https://stackopsit.co.za/success',
+            cancel_url: 'https://stackopsit.co.za/cancel',
+            notify_url: 'https://stackops-backend-475222.uc.r.appspot.com/api/payfast/itn',
             ...paymentData
         };
 
