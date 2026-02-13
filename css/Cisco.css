@@ -1,0 +1,149 @@
+.logo-placeholder,
+.company-info-placeholder {
+    max-width: 160px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+}
+
+.company-info-placeholder {
+    justify-content: flex-end;
+}
+
+.header-image {
+    width: 100%;
+    height: auto;
+    object-fit: contain;
+}
+
+/* Responsive scaling */
+@media (max-width: 600px) {
+    .logo-placeholder,
+    .company-info-placeholder {
+        max-width: 120px;
+        height: 40px;
+    }
+}
+
+/* ================= FULL IMAGE SECTION ================= */
+.content-single {
+    margin-top: 48px;
+}
+
+.image-full {
+    width: 100%;
+    min-height: 520px; /* Increase height */
+    display: flex;
+    align-items: stretch;
+}
+
+.full-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover; /* IMPORTANT */
+    display: block;
+    border-radius: 0;
+}
+
+/* Responsive height adjustment */
+@media (max-width: 900px) {
+    .image-full {
+        min-height: 420px;
+    }
+}
+
+@media (max-width: 600px) {
+    .image-full {
+        min-height: 320px;
+    }
+}
+
+/* ================= HOW WE DO IT BETTER ================= */
+.how-better {
+    margin-top: 64px;
+}
+
+.better-title {
+    font-size: 36px;
+    font-weight: 700;
+    margin-bottom: 32px;
+}
+
+.better-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 32px;
+}
+
+.better-grid h3 {
+    font-size: 18px;
+    margin-bottom: 8px;
+}
+
+.better-grid p {
+    font-size: 14px;
+    color: #4b5563;
+}
+
+.better-grid ul {
+    margin-top: 8px;
+    padding-left: 18px;
+    font-size: 14px;
+    color: #4b5563;
+}
+
+.number {
+    color: #7cc242;
+    font-weight: 700;
+    font-size: 18px;
+}
+
+/* ================= FULL WIDTH GRAY ================= */
+.full-gray {
+    width: 100vw;
+    background: #2f3b40;
+    margin-top: 72px;
+    margin-left: calc(-50vw + 50%);
+}
+
+.gray-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 56px 24px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 48px;
+    color: #ffffff;
+}
+
+.gray-inner h3 {
+    color: #7cc242;
+    margin-bottom: 16px;
+}
+
+.gray-inner p {
+    font-size: 14px;
+    line-height: 1.6;
+    margin-bottom: 16px;
+}
+
+/* ================= RESPONSIVE ================= */
+@media (max-width: 900px) {
+    .better-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .gray-inner {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 600px) {
+    .better-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .better-title {
+        font-size: 28px;
+    }
+}

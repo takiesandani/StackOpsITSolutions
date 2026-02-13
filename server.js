@@ -100,6 +100,71 @@ function formatDateToMySQL(date) {
     return date.toISOString().slice(0, 19).replace('T', ' ');
 }
 
+/**
+ * Generate PayFast signature
+ * @param {Object} data - The data to sign
+ * @param {string} passphrase - PayFast passphrase
+ * @returns {string} - MD5 signature
+ */
+function generatePayFastSignature(data, passphrase = null) {
+    let pfOutput = "";
+    // PayFast requires parameters in the exact order they are sent, excluding signature
+    for (let key in data) {
+        if (Object.prototype.hasOwnProperty.call(data, key) && key !== "signature" && data[key] !== "" && data[key] !== null && data[key] !== undefined) {
+            pfOutput += `${key}=${encodeURIComponent(String(data[key]).trim()).replace(/%20/g, "+")}&`;
+        }
+    }
+
+    let getString = pfOutput.slice(0, -1);
+    if (passphrase) {
+        getString += `&passphrase=${encodeURIComponent(passphrase.trim()).replace(/%20/g, "+")}`;
+    }
+
+    return crypto.createHash("md5").update(getString).digest("hex");
+}
+
+/**
+ * Generate PayFast payment link
+ */
+async function generatePayFastLink(paymentData) {
+    try {
+        const merchantId = await getSecret('PAYFAST_MERCHANT_ID') || process.env.PAYFAST_MERCHANT_ID || '33653577';
+        const merchantKey = await getSecret('PAYFAST_MERCHANT_KEY') || process.env.PAYFAST_MERCHANT_KEY || 'jtpn8dfwfog8g';
+        const passphrase = await getSecret('PAYFAST_PASSPHRASE') || process.env.PAYFAST_PASSPHRASE || 'jt7NOE43FZPn';
+        const mode = await getSecret('PAYFAST_MODE') || process.env.PAYFAST_MODE || 'live';
+        
+        const baseUrl = mode === 'sandbox' 
+            ? 'https://sandbox.payfast.co.za/eng/process' 
+            : 'https://www.payfast.co.za/eng/process';
+
+        const data = {
+            merchant_id: merchantId,
+            merchant_key: merchantKey,
+            return_url: process.env.PAYFAST_RETURN_URL || 'https://stackopsit.co.za/success',
+            cancel_url: process.env.PAYFAST_CANCEL_URL || 'https://stackopsit.co.za/cancel',
+            notify_url: process.env.PAYFAST_NOTIFY_URL || 'https://stackops-backend-475222.uc.r.appspot.com/api/payfast/itn',
+            ...paymentData
+        };
+
+        // Ensure amount is formatted to 2 decimal places
+        if (data.amount) {
+            data.amount = parseFloat(data.amount).toFixed(2);
+        }
+
+        const signature = generatePayFastSignature(data, passphrase);
+        data.signature = signature;
+
+        const queryString = Object.keys(data)
+            .map(key => `${key}=${encodeURIComponent(String(data[key]).trim()).replace(/%20/g, "+")}`)
+            .join('&');
+
+        return `${baseUrl}?${queryString}`;
+    } catch (error) {
+        console.error('Error generating PayFast link:', error);
+        return null;
+    }
+}
+
 // connecting to nodemailer to send emails from contact form
 const transporter = nodemailer.createTransport({
     host: 'smtpout.secureserver.net', // Default used (not provided in prompt)
@@ -609,6 +674,39 @@ async function ensureDatabaseSchema() {
             console.log('Adding LastReminderDate column to Invoices table...');
             await pool.query("ALTER TABLE Invoices ADD COLUMN LastReminderDate DATE DEFAULT NULL");
         }
+
+        // Create payfast_payments table if it doesn't exist
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS payfast_payments (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                invoice_id INT,
+                m_payment_id VARCHAR(100),
+                pf_payment_id VARCHAR(100),
+                payment_status VARCHAR(50),
+                amount DECIMAL(10, 2),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX (invoice_id),
+                INDEX (m_payment_id)
+            )
+        `);
+
+        // Create yoco_payments table if it doesn't exist
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS yoco_payments (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                invoice_id INT,
+                yoco_checkout_id VARCHAR(100),
+                redirect_url TEXT,
+                amount INT,
+                status VARCHAR(50),
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX (invoice_id),
+                INDEX (yoco_checkout_id)
+            )
+        `);
     } catch (err) {
         console.error('ensureDatabaseSchema error:', err);
     }
@@ -2063,46 +2161,76 @@ app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
         }
       }
 
-      // NEW: Create YOCO payment for the invoice
-      let paymentUrl = null;
-      let yocoCheckoutId = null;
+      // NEW: Create Payment Links (PayFast and YOCO)
+      let yocoPaymentUrl = null;
+      let payfastPaymentUrl = null;
+      
+      // Fetch client details first for payment links
+      const [clientRows] = await connection.query(
+        'SELECT firstname, lastname, email FROM Users WHERE ID = ?', 
+        [UserID]
+      );
+      const clientDataForLinks = clientRows[0];
+
+      // 1. PayFast Integration (Primary)
+      try {
+        if (clientDataForLinks) {
+          payfastPaymentUrl = await generatePayFastLink({
+            amount: TotalAmount,
+            item_name: `Invoice #${nextInvoiceNumber}`,
+            item_description: `Payment for StackOps IT Solutions Invoice #${nextInvoiceNumber}`,
+            name_first: clientDataForLinks.firstname,
+            name_last: clientDataForLinks.lastname,
+            email_address: clientDataForLinks.email,
+            m_payment_id: `INV-${nextInvoiceNumber}-${invoiceId}`,
+            custom_int1: invoiceId,
+            custom_str1: nextInvoiceNumber.toString()
+          });
+
+          if (payfastPaymentUrl) {
+            // Store in payfast_payments table
+            await connection.query(
+              "INSERT INTO payfast_payments (invoice_id, m_payment_id, amount, status) VALUES (?, ?, ?, 'pending')",
+              [invoiceId, `INV-${nextInvoiceNumber}-${invoiceId}`, TotalAmount]
+            );
+          }
+        }
+      } catch (payfastError) {
+        console.error("Error creating PayFast payment:", payfastError);
+      }
+
+      // 2. YOCO Integration (Secondary)
       try {
         const yocoSecretKey = await getSecret('YOCO_SECRET_KEY');
-        if (!yocoSecretKey) {
-          throw new Error('YOCO secret key not found in Secret Manager or environment variables');
-        }
+        if (yocoSecretKey) {
+          const amountInCents = Math.round(parseFloat(TotalAmount) * 100);
+          const yocoResponse = await fetch("https://payments.yoco.com/api/checkouts", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${yocoSecretKey}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              amount: amountInCents,
+              currency: "ZAR",
+              description: `Payment for Invoice #${nextInvoiceNumber}`,
+              metadata: {
+                invoiceId: invoiceId.toString()
+              }
+            })
+          });
 
-        const amountInCents = Math.round(parseFloat(TotalAmount) * 100);  // Convert to cents
-        const yocoResponse = await fetch("https://payments.yoco.com/api/checkouts", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${yocoSecretKey}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            amount: amountInCents,
-            currency: "ZAR",
-            description: `Payment for Invoice #${nextInvoiceNumber}`,
-            metadata: {
-              invoiceId: invoiceId.toString()
-            }
-          })
-        });
-
-        const yocoData = await yocoResponse.json();
-        if (yocoData.id && yocoData.redirectUrl) {
-          paymentUrl = yocoData.redirectUrl;
-          yocoCheckoutId = yocoData.id;
-
-          // Store in yoco_payments table
-          await connection.query(
-            "INSERT INTO yoco_payments (invoice_id, yoco_checkout_id, redirect_url, amount, status) VALUES (?, ?, ?, ?, 'pending')",
-            [invoiceId, yocoCheckoutId, paymentUrl, amountInCents]
-          );
+          const yocoData = await yocoResponse.json();
+          if (yocoData.id && yocoData.redirectUrl) {
+            yocoPaymentUrl = yocoData.redirectUrl;
+            await connection.query(
+              "INSERT INTO yoco_payments (invoice_id, yoco_checkout_id, redirect_url, amount, status) VALUES (?, ?, ?, ?, 'pending')",
+              [invoiceId, yocoData.id, yocoPaymentUrl, amountInCents]
+            );
+          }
         }
       } catch (yocoError) {
         console.error("Error creating YOCO payment:", yocoError);
-        // Continue without payment link; email will note this
       }
 
       // Fetch company and client details for PDF and Email
@@ -2110,13 +2238,9 @@ app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
         'SELECT companyname AS CompanyName, address, city, state, zipcode FROM Companies WHERE ID = ?', 
         [CompanyID]
       );
-      const [clientRows] = await connection.query(
-        'SELECT firstname, lastname, email FROM Users WHERE ID = ?', 
-        [UserID]
-      );
       
       const companyData = companyRows[0];
-      const clientData = clientRows[0];
+      const clientData = clientDataForLinks;
 
       if (!clientData) {
         throw new Error(`Client with ID ${UserID} not found`);
@@ -2136,7 +2260,7 @@ app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
       // Generate PDF
       const pdfBuffer = await generateInvoicePDF(invoiceData, Items, companyData, clientData);
 
-      // UPDATED: Send Email with Payment Link
+      // UPDATED: Send Email with Payment Links
       const emailBody = `
        <div style="
                 font-family: 'Avenir Next LT Pro Light', 'Avenir Next', Avenir, Helvetica, Arial, sans-serif;
@@ -2171,20 +2295,36 @@ app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
             </table>
 
             <p style="margin-top:20px;">
-                To make payment quick and convenient, you may use the secure payment link below:
+                To make payment quick and convenient, you may use the secure payment links below:
             </p>
 
-            ${
-            paymentUrl
-                ? `<p style="margin-top:10px;"><strong>Payment Link:</strong>
-                <a href="${paymentUrl}" target="_blank">Click here to pay securely via YOCO</a>
-                </p>`
-                : `<p style="margin-top:10px; color:red;">
-                Note: Payment link could not be generated. Please contact support for payment instructions.
-                </p>`
-            }
+            <div style="margin-top:20px; padding:15px; border:1px solid #eee; border-radius:8px; background-color:#fcfcfc;">
+                <h3 style="margin-top:0; color:#333; font-size:16px;">Option 1: Pay via PayFast (Instant EFT, Cards, etc.)</h3>
+                ${
+                payfastPaymentUrl
+                    ? `<p style="margin-top:10px;">
+                    <a href="${payfastPaymentUrl}" target="_blank" style="display:inline-block; padding:10px 20px; background-color:#bf2026; color:white; text-decoration:none; border-radius:5px; font-weight:bold;">Pay Now via PayFast</a>
+                    </p>`
+                    : `<p style="margin-top:10px; color:red;">
+                    Note: PayFast link could not be generated.
+                    </p>`
+                }
+            </div>
 
-            <p>
+            <div style="margin-top:20px; padding:15px; border:1px solid #eee; border-radius:8px; background-color:#fcfcfc;">
+                <h3 style="margin-top:0; color:#333; font-size:16px;">Option 2: Pay via YOCO (Cards)</h3>
+                ${
+                yocoPaymentUrl
+                    ? `<p style="margin-top:10px;">
+                    <a href="${yocoPaymentUrl}" target="_blank" style="display:inline-block; padding:10px 20px; background-color:#0070ba; color:white; text-decoration:none; border-radius:5px; font-weight:bold;">Pay Now via YOCO</a>
+                    </p>`
+                    : `<p style="margin-top:10px; color:red;">
+                    Note: YOCO link could not be generated.
+                    </p>`
+                }
+            </div>
+
+            <p style="margin-top:20px;">
                 If you have any questions, please contact us at
                 <a href="mailto:billing@stackopsit.co.za">billing@stackopsit.co.za</a>
                 or 011 568 9337.
@@ -2801,6 +2941,84 @@ app.post("/api/create-payment", authenticateToken, async (req, res) => {
     } catch (err) {
         console.error("❌ Payment Error:", err.message);
         res.status(500).json({ error: "Payment creation failed" });
+    }
+});
+
+app.post("/api/payfast/itn", async (req, res) => {
+    console.log("[PAYFAST ITN] 📥 Notification received");
+    
+    // PayFast sends data as URL-encoded POST
+    const data = req.body;
+    
+    try {
+        const passphrase = await getSecret('PAYFAST_PASSPHRASE') || process.env.PAYFAST_PASSPHRASE || 'jt7NOE43FZPn';
+        
+        // 1. Verify Signature
+        const signature = data.signature;
+        const verificationData = { ...data };
+        delete verificationData.signature;
+        
+        const generatedSignature = generatePayFastSignature(verificationData, passphrase);
+        
+        if (signature !== generatedSignature) {
+            console.error("[PAYFAST ITN] ❌ Signature verification failed");
+            // PayFast recommends returning 200 even if signature fails to stop retries, 
+            // but logging it as an error is important for debugging.
+            return res.sendStatus(200); 
+        }
+        
+        // 2. Process Payment
+        const mPaymentId = data.m_payment_id;
+        const pfPaymentId = data.pf_payment_id;
+        const paymentStatus = data.payment_status;
+        const amountGross = parseFloat(data.amount_gross);
+        const invoiceId = data.custom_int1;
+
+        console.log(`[PAYFAST ITN] Status: ${paymentStatus}, Invoice: ${invoiceId}, Amount: ${amountGross}`);
+
+        if (paymentStatus === "COMPLETE") {
+            const connection = await pool.getConnection();
+            try {
+                await connection.beginTransaction();
+                
+                // Update Invoice status
+                await connection.query(
+                    "UPDATE Invoices SET Status = 'Paid' WHERE InvoiceID = ?",
+                    [invoiceId]
+                );
+                
+                // Update PayFast payment record
+                await connection.query(
+                    "UPDATE payfast_payments SET pf_payment_id = ?, payment_status = ?, updated_at = NOW() WHERE m_payment_id = ?",
+                    [pfPaymentId, paymentStatus, mPaymentId]
+                );
+                
+                // Add to Payments table for history
+                await connection.query(
+                    "INSERT INTO Payments (InvoiceID, Amount, PaymentDate, PaymentMethod, ReferenceNumber) VALUES (?, ?, NOW(), 'PayFast', ?)",
+                    [invoiceId, amountGross, pfPaymentId]
+                );
+                
+                await connection.commit();
+                console.log(`[PAYFAST ITN] ✅ Invoice ${invoiceId} marked as PAID`);
+            } catch (error) {
+                await connection.rollback();
+                console.error("[PAYFAST ITN] ❌ Database error:", error);
+            } finally {
+                connection.release();
+            }
+        } else {
+            // Update status even if not COMPLETE (e.g., CANCELLED, FAILED)
+            await pool.query(
+                "UPDATE payfast_payments SET pf_payment_id = ?, payment_status = ?, updated_at = NOW() WHERE m_payment_id = ?",
+                [pfPaymentId, paymentStatus, mPaymentId]
+            );
+        }
+        
+        res.sendStatus(200);
+    } catch (error) {
+        console.error("[PAYFAST ITN] ❌ Processing error:", error);
+        res.sendStatus(500);
     }
 });
 

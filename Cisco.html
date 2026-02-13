@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Duo MSP & StackOps – Solution Overview</title>
+    <link rel="stylesheet" href="css/Cisco.css" />
+
+    <style>
+        :root {
+            --primary-green: #7cc242;
+            --dark-text: #1f2933;
+            --muted-text: #4b5563;
+            --max-width: 1200px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #ffffff;
+            color: var(--dark-text);
+            line-height: 1.6;
+        }
+
+        .page {
+            max-width: var(--max-width);
+            margin: 0 auto;
+            padding: 32px 24px 64px;
+        }
+
+        /* ================= HEADER ================= */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 48px;
+        }
+
+        .logo-placeholder {
+            width: 120px;
+            height: 40px;
+        }
+
+        .company-info {
+            text-align: right;
+            font-size: 13px;
+            color: var(--muted-text);
+        }
+
+        /* ================= HERO ================= */
+        .hero-title {
+            font-size: clamp(32px, 4vw, 48px);
+            font-weight: 400;
+            margin-bottom: 24px;
+        }
+
+        .section-title {
+            color: var(--primary-green);
+            font-weight: 300;
+            font-size: 20px;
+            margin-bottom: 12px;
+        }
+
+        .description {
+            max-width: 700px;
+            font-size: 16px;
+            color: var(--muted-text);
+        }
+
+        /* ================= MAIN GRID ================= */
+        .content-grid {
+            display: grid;
+            grid-template-columns: 1.2fr 1fr;
+            margin-top: 48px;
+            gap: 0;
+        }
+
+        /* ================= IMAGE AREA ================= */
+        .image-placeholder {
+            width: 100%;
+            min-height: 380px;
+            border: 2px dashed #cccccc;
+        }
+
+        /* ================= FOOTER ================= */
+        .footer {
+            margin-top: 32px;
+            font-size: 11px;
+            color: #9ca3af;
+        }
+
+        /* ================= RESPONSIVE ================= */
+        @media (max-width: 900px) {
+            .content-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .features-panel {
+                grid-template-columns: 1fr;
+            }
+
+            .features-panel h3 {
+                grid-column: span 1;
+            }
+
+            .company-info {
+                text-align: left;
+                margin-top: 12px;
+            }
+
+            .header {
+                flex-direction: column;
+                gap: 16px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <main class="page">
+
+        <!-- HEADER -->
+        <header class="header">
+            <div class="logo-placeholder">
+                <img src="Images/DUO.png" alt="Duo Access Management" style="width: 100%; height: auto; object-fit: contain;" />
+            </div>
+
+            <!-- RIGHT COMPANY INFO IMAGE -->
+            <div class="company-info-placeholder">
+                <img
+                    src="Images/Logos/StackOpsLogo - Artboard1.png"
+                    alt="StackOps Company Information"
+                    class="header-image"
+                />
+            </div>
+        </header>
+
+        <!-- HERO -->
+        <section>
+            <h1 class="hero-title">Duo MSP & Stackops Solution <br /> Overview</h1>
+
+            <h2 class="section-title">What is Duo?</h2>
+            <p class="description">
+                Duo Access Management is a security solution that gives you layers of
+                authentication protection and access control by confirming that you're
+                really who you say you are before access is granted to your accounts and
+                corporate data. With Duo, even if someone knows your password, unless they
+                have your trusted device – mobile phone, tablet, token, or Apple Watch –
+                Duo can stop them in their tracks.
+            </p>
+        </section>
+
+        <section class="content-single">
+
+            <div class="image-full">
+                <img
+                    src="Images/CiscoD.png"
+                    alt="Cisco Duo How We Do It"
+                    class="full-image"
+                />
+            </div>
+
+        </section>
+
+        <!-- HOW WE DO IT BETTER -->
+        <section class="page how-better">
+            <h2 class="better-title">How we do it better</h2>
+
+            <div class="better-grid">
+                <div>
+                    <span class="number">01</span>
+                    <h3>Speed to Security</h3>
+                    <p>
+                        Rapid deployments, faster end-user adoption, and the
+                        ability to respond quickly to changing threats.
+                    </p>
+                    <ul>
+                        <li>Deployments can take minutes and can be staged over time for easy adoption.</li>
+                        <li>Flexible end-user enrollment options ensure users are enrolled when and how they need.</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <p>
+                        Focus on growing your business, rather than restricting it.
+                    </p>
+                    <ul>
+                        <li>Duo is a cloud-based security system that can quickly integrate with new and existing applications.</li>
+                        <li>Custom app integrations and on-premise support are also available.</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <span class="number">02</span>
+                    <h3>Enable Business Agility</h3>
+                    <p>
+                        Stay flexible with a hybrid work environment without slowing down users.
+                    </p>
+                </div>
+
+                <div>
+                    <span class="number">03</span>
+                    <h3>Enable Business Agility</h3>
+                    <ul>
+                        <li>Enable users to securely use personal or company-provided devices.</li>
+                        <li>Allow self-remediation without help desk tickets.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- FULL WIDTH GRAY SECTION -->
+        <section class="full-gray">
+            <div class="gray-inner">
+
+                <div class="gray-left">
+                    <h3>How Others Use Duo</h3>
+                    <p>
+                        <strong>Meet and Exceed Security Compliance Initiatives:</strong><br>
+                        Duo helps customers meet compliance standards including Cyber Liability
+                        Insurance requirements and the new FTC Safeguards rules.
+                    </p>
+
+                    <p>
+                        <strong>Reduce MFA Fatigue:</strong><br>
+                        With Duo Single-Sign On, Passwordless, and Remembered Devices,
+                        users won’t need to constantly re-authenticate.
+                    </p>
+                </div>
+
+                <div class="gray-right">
+                    <p>
+                        <strong>Security by Group:</strong><br>
+                        Flexible policy design at the application, group, or global level
+                        ensures only authorized users gain access.
+                    </p>
+
+                    <p>
+                        <strong>Secure OS Logon:</strong><br>
+                        Ensure endpoint security by protecting Windows or macOS login,
+                        including offline access and server access.
+                    </p>
+                </div>
+
+            </div>
+        </section>
+
+    </main>
+</body>
+</html>
