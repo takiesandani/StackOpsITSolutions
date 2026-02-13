@@ -127,9 +127,9 @@ function generatePayFastSignature(data, passphrase = null) {
  */
 async function generatePayFastLink(paymentData) {
     try {
-        const merchantId = await getSecret('PAYFAST_MERCHANT_ID') || '33653577';
-        const merchantKey = await getSecret('PAYFAST_MERCHANT_KEY') || 'jtpn8dfwfog8g';
-        const passphrase = await getSecret('PAYFAST_PASSPHRASE') || 'jt7NOE43FZPn';
+        const merchantId = await getSecret('PAYFAST_MERCHANT_ID');
+        const merchantKey = await getSecret('PAYFAST_MERCHANT_KEY');
+        const passphrase = await getSecret('PAYFAST_PASSPHRASE');
         const mode = await getSecret('PAYFAST_MODE') || 'live';
         
         const baseUrl = mode === 'sandbox' 
