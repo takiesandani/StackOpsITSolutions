@@ -116,7 +116,7 @@ function generatePayFastSignature(data, passphrase = null) {
 
     let getString = pfOutput.slice(0, -1);
     if (passphrase) {
-        getString += `&passphrase=${encodeURIComponent(passphrase.trim()).replace(/%20/g, "+")}`;
+        getString += `&passphrase=${passphrase.trim()}`;
     }
 
     return crypto.createHash("md5").update(getString).digest("hex");
@@ -154,6 +154,7 @@ async function generatePayFastLink(paymentData) {
         data.signature = signature;
 
         const queryString = Object.keys(data)
+            .filter(key => data[key] !== "" && data[key] !== null && data[key] !== undefined)
             .map(key => `${key}=${encodeURIComponent(String(data[key]).trim()).replace(/%20/g, "+")}`)
             .join('&');
 
