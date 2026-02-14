@@ -107,16 +107,18 @@ function formatDateToMySQL(date) {
  */
 function generatePayFastSignature(data, passphrase = null) {
     let pfOutput = "";
-    // PayFast requires parameters in the exact order they are sent, excluding signature
     for (let key in data) {
-        if (Object.prototype.hasOwnProperty.call(data, key) && key !== "signature" && data[key] !== "" && data[key] !== null && data[key] !== undefined) {
-            pfOutput += `${key}=${encodeURIComponent(String(data[key]).trim()).replace(/%20/g, "+")}&`;
+        if (Object.prototype.hasOwnProperty.call(data, key) && key !== "signature") {
+            const value = data[key];
+            if (value !== "" && value !== null && value !== undefined) {
+                pfOutput += `${key}=${encodeURIComponent(String(value).trim()).replace(/%20/g, "+")}&`;
+            }
         }
     }
 
     let getString = pfOutput.slice(0, -1);
-    if (passphrase) {
-        getString += `&passphrase=${passphrase.trim()}`;
+    if (passphrase && passphrase.trim() !== "") {
+        getString += `&passphrase=${encodeURIComponent(passphrase.trim()).replace(/%20/g, "+")}`;
     }
 
     return crypto.createHash("md5").update(getString).digest("hex");
@@ -136,19 +138,23 @@ async function generatePayFastLink(paymentData) {
             ? 'https://sandbox.payfast.co.za/eng/process' 
             : 'https://www.payfast.co.za/eng/process';
 
+        // Order of properties is important for consistency with signature loop
         const data = {
             merchant_id: merchantId,
             merchant_key: merchantKey,
             return_url: 'https://stackopsit.co.za/success',
             cancel_url: 'https://stackopsit.co.za/cancel',
             notify_url: 'https://stackops-backend-475222.uc.r.appspot.com/api/payfast/itn',
-            ...paymentData
+            name_first: paymentData.name_first,
+            name_last: paymentData.name_last,
+            email_address: paymentData.email_address,
+            m_payment_id: paymentData.m_payment_id,
+            amount: parseFloat(paymentData.amount).toFixed(2),
+            item_name: paymentData.item_name,
+            item_description: paymentData.item_description,
+            custom_int1: paymentData.custom_int1,
+            custom_str1: paymentData.custom_str1
         };
-
-        // Ensure amount is formatted to 2 decimal places
-        if (data.amount) {
-            data.amount = parseFloat(data.amount).toFixed(2);
-        }
 
         const signature = generatePayFastSignature(data, passphrase);
         data.signature = signature;
@@ -3465,7 +3471,7 @@ async function getSecret(secretName) {
     
     try {
         const [version] = await secretClient.accessSecretVersion({ name });
-        return version.payload.data.toString();
+        return version.payload.data.toString().trim();
     } catch (error) {
         console.error(`Error accessing secret ${secretName}:`, error);
         // Fallback to environment variable if secret not found
