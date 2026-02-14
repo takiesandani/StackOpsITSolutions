@@ -1087,6 +1087,14 @@ app.get('/admin/register', (req, res) => {
     res.sendFile(path.join(__dirname, 'signup.html'));
 });
 
+app.get('/success', (req, res) => {
+    res.sendFile(path.join(__dirname, 'success.html'));
+});
+
+app.get('/cancel', (req, res) => {
+    res.redirect('/Home.html');
+});
+
 // API endpoint to get available time slots for a given date (updated from original)
 app.get('/api/schedule', async (req, res) => {
     const { date } = req.query;
