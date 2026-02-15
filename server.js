@@ -439,8 +439,15 @@ async function generateInvoicePDF(invoiceData, items, companyData, clientData) {
             preserveAspectRatio: 'xMidYMid meet'
             });
 
-
-
+            const payfastPath = path.join(__dirname, 'Images', 'Payfast.jpg');
+            if (fs.existsSync(payfastPath)) {
+                doc.image(payfastPath, boxX + boxWidth + 2, boxY + 3, { 
+                    width: boxWidth - 10, 
+                    height: boxHeight - 5,
+                    align: 'center',
+                    valign: 'center'
+                });
+            }
 
             doc.moveTo(mainContentLeft, termsY - 5).lineTo(mainContentRight, termsY - 5).stroke('#cccccc');
             doc.moveTo(mainContentLeft, termsY + 180).lineTo(mainContentRight, termsY + 180).stroke('#cccccc');
