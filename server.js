@@ -2998,6 +2998,16 @@ app.post("/api/payfast/itn", async (req, res) => {
         console.log(`[PAYFAST ITN] Status: ${paymentStatus}, Invoice: ${invoiceId}, Amount: ${amountGross}`);
 
         if (paymentStatus === "COMPLETE") {
+            const [existing] = await pool.query(
+                "SELECT payment_status FROM payfast_payments WHERE m_payment_id = ?",
+                [mPaymentId]
+            );
+
+            if (existing.length && existing[0].payment_status === "COMPLETE") {
+                console.log(`[PAYFAST ITN] ℹ️ Payment ${mPaymentId} already processed`);
+                return res.sendStatus(200);
+            }
+
             const connection = await pool.getConnection();
             try {
                 await connection.beginTransaction();
@@ -3016,8 +3026,8 @@ app.post("/api/payfast/itn", async (req, res) => {
                 
                 // Add to Payments table for history
                 await connection.query(
-                    "INSERT INTO Payments (InvoiceID, Amount, PaymentDate, PaymentMethod, ReferenceNumber) VALUES (?, ?, NOW(), 'PayFast', ?)",
-                    [invoiceId, amountGross, pfPaymentId]
+                    "INSERT INTO Payments (InvoiceID, AmountPaid, PaymentDate, Method) VALUES (?, ?, NOW(), 'PayFast')",
+                    [invoiceId, amountGross]
                 );
                 
                 await connection.commit();
