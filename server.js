@@ -3183,6 +3183,7 @@ app.post("/api/payfast/itn", async (req, res) => {
               console.error(`[PAYFAST ITN] Failed to send confirmation email:`, e);
             }
           }
+        }
       }
 
       await connection.commit();
