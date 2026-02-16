@@ -105,6 +105,7 @@ function formatDateToMySQL(date) {
  * @param {string} passphrase - PayFast passphrase
  * @returns {string} - MD5 signature
  */
+
 function generatePayFastSignature(data, passphrase = null) {
     let pfOutput = "";
     for (let key in data) {
@@ -127,6 +128,8 @@ function generatePayFastSignature(data, passphrase = null) {
 /**
  * Generate PayFast payment link
  */
+
+
 async function generatePayFastLink(paymentData) {
     try {
         const merchantId = await getSecret('PAYFAST_MERCHANT_ID');
@@ -2966,92 +2969,238 @@ app.post("/api/create-payment", authenticateToken, async (req, res) => {
 });
 
 app.post("/api/payfast/itn", async (req, res) => {
-    console.log("[PAYFAST ITN] 📥 Notification received");
-    
-    // PayFast sends data as URL-encoded POST
-    const data = req.body;
-    
-    try {
-        const passphrase = await getSecret('PAYFAST_PASSPHRASE') || process.env.PAYFAST_PASSPHRASE || 'jt7NOE43FZPn';
-        
-        // 1. Verify Signature
-        const signature = data.signature;
-        const verificationData = { ...data };
-        delete verificationData.signature;
-        
-        const generatedSignature = generatePayFastSignature(verificationData, passphrase);
-        
-        if (signature !== generatedSignature) {
-            console.error("[PAYFAST ITN] ❌ Signature verification failed");
-            // PayFast recommends returning 200 even if signature fails to stop retries, 
-            // but logging it as an error is important for debugging.
-            return res.sendStatus(200); 
-        }
-        
-        // 2. Process Payment
-        const mPaymentId = data.m_payment_id;
-        const pfPaymentId = data.pf_payment_id;
-        const paymentStatus = data.payment_status;
-        const amountGross = parseFloat(data.amount_gross);
-        const invoiceId = data.custom_int1;
+  console.log("[PAYFAST ITN] 📥 Notification received");
 
-        console.log(`[PAYFAST ITN] Status: ${paymentStatus}, Invoice: ${invoiceId}, Amount: ${amountGross}`);
+  const data = req.body;
 
-        if (paymentStatus === "COMPLETE") {
-            const [existing] = await pool.query(
-                "SELECT payment_status FROM payfast_payments WHERE m_payment_id = ?",
-                [mPaymentId]
-            );
+  try {
+    const passphrase = await getSecret("PAYFAST_PASSPHRASE");
 
-            if (existing.length && existing[0].payment_status === "COMPLETE") {
-                console.log(`[PAYFAST ITN] ℹ️ Payment ${mPaymentId} already processed`);
-                return res.sendStatus(200);
-            }
+    /* ===============================
+       1️⃣ VERIFY PAYFAST SIGNATURE
+    =============================== */
+    const receivedSignature = data.signature;
+    const verificationData = { ...data };
+    delete verificationData.signature;
 
-            const connection = await pool.getConnection();
-            try {
-                await connection.beginTransaction();
-                
-                // Update Invoice status
-                await connection.query(
-                    "UPDATE Invoices SET Status = 'Paid' WHERE InvoiceID = ?",
-                    [invoiceId]
-                );
-                
-                // Update PayFast payment record
-                await connection.query(
-                    "UPDATE payfast_payments SET pf_payment_id = ?, payment_status = ?, updated_at = NOW() WHERE m_payment_id = ?",
-                    [pfPaymentId, paymentStatus, mPaymentId]
-                );
-                
-                // Add to Payments table for history
-                await connection.query(
-                    "INSERT INTO Payments (InvoiceID, AmountPaid, PaymentDate, Method) VALUES (?, ?, NOW(), 'PayFast')",
-                    [invoiceId, amountGross]
-                );
-                
-                await connection.commit();
-                console.log(`[PAYFAST ITN] ✅ Invoice ${invoiceId} marked as PAID`);
-            } catch (error) {
-                await connection.rollback();
-                console.error("[PAYFAST ITN] ❌ Database error:", error);
-            } finally {
-                connection.release();
-            }
-        } else {
-            // Update status even if not COMPLETE (e.g., CANCELLED, FAILED)
-            await pool.query(
-                "UPDATE payfast_payments SET pf_payment_id = ?, payment_status = ?, updated_at = NOW() WHERE m_payment_id = ?",
-                [pfPaymentId, paymentStatus, mPaymentId]
-            );
-        }
-        
-        res.sendStatus(200);
-    } catch (error) {
-        console.error("[PAYFAST ITN] ❌ Processing error:", error);
-        res.sendStatus(500);
+    const generatedSignature = generatePayFastSignature(
+      verificationData,
+      passphrase
+    );
+
+    if (receivedSignature !== generatedSignature) {
+      console.error("[PAYFAST ITN] ❌ Invalid signature");
+      return res.sendStatus(200); // PayFast requires 200
     }
+
+    /* ===============================
+       2️⃣ EXTRACT PAYFAST DATA
+    =============================== */
+    const {
+      m_payment_id,
+      pf_payment_id,
+      payment_status,
+      amount_gross,
+      custom_int1: invoiceId
+    } = data;
+
+    if (!m_payment_id || !invoiceId) {
+      console.error("[PAYFAST ITN] ❌ Missing payment or invoice reference");
+      return res.sendStatus(200);
+    }
+
+    console.log(
+      `[PAYFAST ITN] Status=${payment_status} | Invoice=${invoiceId}`
+    );
+
+    const connection = await pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      /* ===============================
+         3️⃣ ENSURE payfast_payments EXISTS
+      =============================== */
+      const [existingPayment] = await connection.query(
+        "SELECT payment_status FROM payfast_payments WHERE m_payment_id = ?",
+        [m_payment_id]
+      );
+
+      if (!existingPayment.length) {
+        await connection.query(
+          `INSERT INTO payfast_payments
+           (m_payment_id, invoice_id, pf_payment_id, amount, payment_status, created_at)
+           VALUES (?, ?, ?, ?, ?, NOW())`,
+          [
+            m_payment_id,
+            invoiceId,
+            pf_payment_id || null,
+            parseFloat(amount_gross),
+            payment_status
+          ]
+        );
+      } else {
+        await connection.query(
+          `UPDATE payfast_payments
+           SET pf_payment_id = ?,
+               payment_status = ?,
+               updated_at = NOW()
+           WHERE m_payment_id = ?`,
+          [pf_payment_id, payment_status, m_payment_id]
+        );
+      }
+
+      /* ===============================
+         4️⃣ PROCESS SUCCESSFUL PAYMENT
+      =============================== */
+      if (payment_status === "COMPLETE") {
+
+        // 🔒 Prevent double processing
+        const [alreadyPaid] = await connection.query(
+          "SELECT 1 FROM Payments WHERE InvoiceID = ? AND Method = 'PayFast' LIMIT 1",
+          [invoiceId]
+        );
+
+        if (!alreadyPaid.length) {
+
+          // ✅ Mark invoice as PAID (overrides Pending / Overdue)
+          await connection.query(
+            "UPDATE Invoices SET Status = 'Paid' WHERE InvoiceID = ?",
+            [invoiceId]
+          );
+
+          // ✅ Insert payment history
+          await connection.query(
+            `INSERT INTO Payments
+             (InvoiceID, AmountPaid, PaymentDate, Method)
+             VALUES (?, ?, NOW(), 'PayFast')`,
+            [invoiceId, parseFloat(amount_gross)]
+          );
+
+          console.log(`[PAYFAST ITN] ✅ Invoice ${invoiceId} marked as PAID`);
+
+          // 📧 Send Confirmation Email (Immediately)
+          // This also prevents the morning automation from sending it again
+          const [details] = await connection.query(
+            `SELECT i.InvoiceNumber, u.email, u.firstname
+             FROM Invoices i
+             JOIN Companies c ON i.CompanyID = c.ID
+             JOIN Users u ON c.ID = u.CompanyID
+             WHERE i.InvoiceID = ? AND u.Role = 'Client'
+             LIMIT 1`,
+            [invoiceId]
+          );
+
+          if (details.length) {
+            const targetClient = details[0];
+            const receiptHtml = `
+              <div style="margin-top: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9; max-width: 400px;">
+                <h3 style="margin-top: 0; color: #333; border-bottom: 1px solid #ccc; padding-bottom: 10px;">Payment Receipt</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                  <thead>
+                    <tr>
+                      <th style="text-align: left; padding: 5px 0;">Description</th>
+                      <th style="text-align: right; padding: 5px 0;">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td style="padding: 5px 0;">Invoice #${targetClient.InvoiceNumber}</td>
+                      <td style="text-align: right; padding: 5px 0;">R ${parseFloat(amount_gross).toFixed(2)}</td>
+                    </tr>
+                  </tbody>
+                  <tfoot>
+                    <tr style="border-top: 2px solid #333; font-weight: bold;">
+                      <td style="padding: 10px 0 5px 0;">TOTAL PAID</td>
+                      <td style="text-align: right; padding: 10px 0 5px 0;">R ${parseFloat(amount_gross).toFixed(2)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+                <p style="font-size: 12px; color: #666; margin-top: 15px; font-style: italic;">Payment Method: PayFast Online Payment</p>
+              </div>
+            `;
+
+            try {
+              await sendBillingEmail(
+                targetClient.email,
+                `Payment Received - Invoice #${targetClient.InvoiceNumber}`,
+                `<div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                 <p>Dear ${targetClient.firstname},</p>
+                 <p>We have successfully received your payment for <strong>Invoice #${targetClient.InvoiceNumber}</strong> via PayFast. Thank you for your business!</p>
+                 <p>Please allow us <strong>24 hours</strong> to process your payment. We will send a final confirmation once the process is complete.</p>
+                 ${receiptHtml}
+                 <p>
+                    If you have any questions, please contact us at
+                    <a href="mailto:billing@stackopsit.co.za">billing@stackopsit.co.za</a>
+                    or 011 568 9337.
+                 </p>
+                 <img
+                src="https://i.ibb.co/LWJ2qqY/Signature-Billing.jpg"
+                alt="StackOps IT Solutions"
+                width="400"
+                style="display:block; max-width:400px; width:100%; height:auto; margin-top:10px;"
+                >
+                <p style="
+                    font-size:8.5px;
+                    line-height:1.4;
+                    color:#666666;
+                    font-family:'Avenir Next LT Pro Light','Avenir Next',Avenir,Helvetica,Arial,sans-serif;
+                    margin:0.5px 0 0 0;
+                ">
+                    <strong>StackOps IT Solutions (Pty) Ltd</strong> |
+                    <strong>Reg. No:</strong> 2016/120370/07 |
+                    <strong>B-BBEE Level</strong>: 1 Contributor: 135% |
+                    <strong>CSD Supplier:</strong> MAAA164124.
+                    Legally registered in South Africa, providing IT support, cybersecurity, governance, infrastructure, consulting services,
+                    and procurement of IT hardware in compliance with all applicable laws and regulations.
+                    All client information is protected in accordance with the
+                    <strong>Protection of Personal Information Act (POPIA)</strong> and our internal
+                    privacy and security policies. We are committed to safeguarding your data and ensuring confidentiality, integrity, and lawful
+                    processing at all times.
+                    All information, proposals, and pricing are accurate at the time of sending and governed by our Master Service Agreement (MSA)
+                    or client-specific contracts. Prices may be subject to change due to economic, regulatory, or supplier factors, with clients
+                    notified in advance.
+                    This email and attachments are confidential and intended solely for the named recipient(s). If received in error, please
+                    notify the sender immediately, delete the message, and do not disclose, copy, or distribute its contents.
+                    Unauthorized use of this communication is strictly prohibited.
+                    Emails are not guaranteed virus-free; StackOps IT Solutions accepts no liability for any damage, loss, or unauthorized access
+                    arising from this communication.
+                    StackOps IT Solutions is committed to business continuity, data security, and reliable technology operations.
+                    Our team provides professional, ethical, and transparent IT services, ensuring measurable value, operational efficiency,
+                    and compliance with industry best practices.
+                    <strong>View our Privacy Policy and Terms of Service here:</strong>
+                    <a href="https://stackopsit.co.za/"
+                    style="color:#1a73e8; text-decoration:underline;">
+                        StackOps IT Solutions | Your Complete IT Force
+                    </a>
+                </p>
+                </div>`,
+                true
+              );
+              // Mark as sent to prevent morning automation
+              await connection.query("UPDATE Invoices SET PaidEmailSent = TRUE WHERE InvoiceID = ?", [invoiceId]);
+            } catch (e) {
+              console.error(`[PAYFAST ITN] Failed to send confirmation email:`, e);
+            }
+          }
+      }
+
+      await connection.commit();
+      return res.sendStatus(200);
+    } catch (dbErr) {
+      await connection.rollback();
+      console.error("[PAYFAST ITN] ❌ DATABASE ERROR:", dbErr);
+      return res.sendStatus(200);
+    } finally {
+      connection.release();
+    }
+  } catch (err) {
+    console.error("[PAYFAST ITN] ❌ ITN ERROR:", err);
+    return res.sendStatus(200);
+  }
 });
+
+
 
 app.post("/webhook/yoco", express.raw({ type: "application/json" }), async (req, res) => {
   console.log("[YOCO WEBHOOK] 📥 Event received");
