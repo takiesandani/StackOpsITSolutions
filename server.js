@@ -108,6 +108,9 @@ function formatDateToMySQL(date) {
 
 function generatePayFastSignature(data, passphrase = null) {
     let pfOutput = "";
+    
+    // PayFast ITN signature requires fields to be in the same order they were received.
+    // When 'data' is a parsed req.body, JS engines typically preserve the insertion order.
     for (let key in data) {
         if (Object.prototype.hasOwnProperty.call(data, key) && key !== "signature") {
             const value = data[key];
@@ -798,7 +801,8 @@ async function runInvoiceAutomation() {
                      LIMIT 1
                  )
                  WHERE LOWER(i.Status) = 'paid' 
-                   AND (i.PaidEmailSent = FALSE OR ? = TRUE)`, 
+                   AND (i.PaidEmailSent = FALSE OR ? = TRUE)
+                   AND NOT EXISTS (SELECT 1 FROM Payments p WHERE p.InvoiceID = i.InvoiceID AND p.Method = 'PayFast')`, 
                 [AUTOMATION_CONFIG.TEST_MODE]
             );
 
@@ -2214,7 +2218,7 @@ app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
           if (payfastPaymentUrl) {
             // Store in payfast_payments table
             await connection.query(
-              "INSERT INTO payfast_payments (invoice_id, m_payment_id, amount, status) VALUES (?, ?, ?, 'pending')",
+              "INSERT INTO payfast_payments (invoice_id, m_payment_id, amount, payment_status) VALUES (?, ?, ?, 'pending')",
               [invoiceId, `INV-${nextInvoiceNumber}-${invoiceId}`, TotalAmount]
             );
           }
@@ -2969,12 +2973,13 @@ app.post("/api/create-payment", authenticateToken, async (req, res) => {
 });
 
 app.post("/api/payfast/itn", async (req, res) => {
-  console.log("[PAYFAST ITN] 📥 Notification received");
+  console.log("[PAYFAST ITN] 📥 Notification received:", JSON.stringify(req.body, null, 2));
 
   const data = req.body;
 
   try {
     const passphrase = await getSecret("PAYFAST_PASSPHRASE");
+    console.log("[PAYFAST ITN] Passphrase retrieved:", passphrase ? "YES" : "NO");
 
     /* ===============================
        1️⃣ VERIFY PAYFAST SIGNATURE
@@ -2988,10 +2993,13 @@ app.post("/api/payfast/itn", async (req, res) => {
       passphrase
     );
 
+    console.log(`[PAYFAST ITN] Signature Check - Received: ${receivedSignature}, Generated: ${generatedSignature}`);
+
     if (receivedSignature !== generatedSignature) {
       console.error("[PAYFAST ITN] ❌ Invalid signature");
       return res.sendStatus(200); // PayFast requires 200
     }
+    console.log("[PAYFAST ITN] ✅ Signature verified");
 
     /* ===============================
        2️⃣ EXTRACT PAYFAST DATA
@@ -3001,17 +3009,27 @@ app.post("/api/payfast/itn", async (req, res) => {
       pf_payment_id,
       payment_status,
       amount_gross,
-      custom_int1: invoiceId
+      custom_int1
     } = data;
 
-    if (!m_payment_id || !invoiceId) {
-      console.error("[PAYFAST ITN] ❌ Missing payment or invoice reference");
-      return res.sendStatus(200);
+    let invoiceId = custom_int1;
+
+    console.log(`[PAYFAST ITN] Data: Status=${payment_status}, m_payment_id=${m_payment_id}, amount=${amount_gross}, custom_int1=${invoiceId}`);
+
+    if (!invoiceId && m_payment_id) {
+       console.log(`[PAYFAST ITN] 🔍 Attempting to find invoiceId from m_payment_id: ${m_payment_id}`);
+       // m_payment_id format is INV-Number-ID
+       const parts = m_payment_id.split("-");
+       if (parts.length >= 3) {
+         invoiceId = parts[parts.length - 1];
+         console.log(`[PAYFAST ITN] Found invoiceId: ${invoiceId} from m_payment_id`);
+       }
     }
 
-    console.log(
-      `[PAYFAST ITN] Status=${payment_status} | Invoice=${invoiceId}`
-    );
+    if (!invoiceId) {
+      console.error("[PAYFAST ITN] ❌ Missing invoice reference");
+      return res.sendStatus(200);
+    }
 
     const connection = await pool.getConnection();
 
