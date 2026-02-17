@@ -110,7 +110,8 @@ function generatePayFastSignature(data, passphrase = null) {
     let pfOutput = "";
     
     // PayFast ITN signature requires fields to be in the same order they were received.
-    // When 'data' is a parsed req.body, JS engines typically preserve the insertion order.
+    // For ITN specifically, it's safer to iterate through all fields provided except 'signature'.
+    // For link generation, the order we set in the object is preserved.
     for (let key in data) {
         if (Object.prototype.hasOwnProperty.call(data, key) && key !== "signature") {
             const value = data[key];
@@ -125,7 +126,14 @@ function generatePayFastSignature(data, passphrase = null) {
         getString += `&passphrase=${encodeURIComponent(passphrase.trim()).replace(/%20/g, "+")}`;
     }
 
-    return crypto.createHash("md5").update(getString).digest("hex");
+    const signature = crypto.createHash("md5").update(getString).digest("hex");
+    // Detailed logging for ITN debugging
+    if (data.m_payment_id || data.pf_payment_id) {
+        console.log(`[PAYFAST SIGNATURE DEBUG] Data Keys: ${Object.keys(data).join(", ")}`);
+        console.log(`[PAYFAST SIGNATURE DEBUG] String to hash: "${getString}"`);
+        console.log(`[PAYFAST SIGNATURE DEBUG] Resulting signature: "${signature}"`);
+    }
+    return signature;
 }
 
 /**
@@ -3032,19 +3040,23 @@ app.post("/api/payfast/itn", async (req, res) => {
     }
 
     const connection = await pool.getConnection();
+    console.log("[PAYFAST ITN] 🔌 Database connection established");
 
     try {
       await connection.beginTransaction();
+      console.log("[PAYFAST ITN] 🏁 Transaction started");
 
       /* ===============================
          3️⃣ ENSURE payfast_payments EXISTS
       =============================== */
+      console.log(`[PAYFAST ITN] 🔍 Checking if m_payment_id ${m_payment_id} exists in payfast_payments`);
       const [existingPayment] = await connection.query(
         "SELECT payment_status FROM payfast_payments WHERE m_payment_id = ?",
         [m_payment_id]
       );
 
       if (!existingPayment.length) {
+        console.log("[PAYFAST ITN] ➕ Inserting new record into payfast_payments");
         await connection.query(
           `INSERT INTO payfast_payments
            (m_payment_id, invoice_id, pf_payment_id, amount, payment_status, created_at)
@@ -3058,6 +3070,7 @@ app.post("/api/payfast/itn", async (req, res) => {
           ]
         );
       } else {
+        console.log("[PAYFAST ITN] 🔄 Updating existing record in payfast_payments");
         await connection.query(
           `UPDATE payfast_payments
            SET pf_payment_id = ?,
@@ -3071,34 +3084,39 @@ app.post("/api/payfast/itn", async (req, res) => {
       /* ===============================
          4️⃣ PROCESS SUCCESSFUL PAYMENT
       =============================== */
+      console.log(`[PAYFAST ITN] Processing payment status: ${payment_status}`);
       if (payment_status === "COMPLETE") {
 
         // 🔒 Prevent double processing
+        console.log(`[PAYFAST ITN] 🔒 Checking if Invoice ${invoiceId} is already marked as paid via PayFast`);
         const [alreadyPaid] = await connection.query(
           "SELECT 1 FROM Payments WHERE InvoiceID = ? AND Method = 'PayFast' LIMIT 1",
           [invoiceId]
         );
 
         if (!alreadyPaid.length) {
+          console.log(`[PAYFAST ITN] 🆗 Invoice ${invoiceId} not processed yet. Updating...`);
 
           // ✅ Mark invoice as PAID (overrides Pending / Overdue)
-          await connection.query(
+          const [invUpdate] = await connection.query(
             "UPDATE Invoices SET Status = 'Paid' WHERE InvoiceID = ?",
             [invoiceId]
           );
+          console.log(`[PAYFAST ITN] 📝 Invoices table update result:`, invUpdate);
 
           // ✅ Insert payment history
-          await connection.query(
+          const [payInsert] = await connection.query(
             `INSERT INTO Payments
              (InvoiceID, AmountPaid, PaymentDate, Method)
              VALUES (?, ?, NOW(), 'PayFast')`,
             [invoiceId, parseFloat(amount_gross)]
           );
+          console.log(`[PAYFAST ITN] 📝 Payments table insert result:`, payInsert);
 
           console.log(`[PAYFAST ITN] ✅ Invoice ${invoiceId} marked as PAID`);
 
           // 📧 Send Confirmation Email (Immediately)
-          // This also prevents the morning automation from sending it again
+          console.log(`[PAYFAST ITN] 📧 Fetching details for confirmation email for Invoice ${invoiceId}`);
           const [details] = await connection.query(
             `SELECT i.InvoiceNumber, u.email, u.firstname
              FROM Invoices i
@@ -3111,6 +3129,7 @@ app.post("/api/payfast/itn", async (req, res) => {
 
           if (details.length) {
             const targetClient = details[0];
+            console.log(`[PAYFAST ITN] 📧 Found client: ${targetClient.email}. Sending email...`);
             const receiptHtml = `
               <div style="margin-top: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9; max-width: 400px;">
                 <h3 style="margin-top: 0; color: #333; border-bottom: 1px solid #ccc; padding-bottom: 10px;">Payment Receipt</h3>
@@ -3195,16 +3214,25 @@ app.post("/api/payfast/itn", async (req, res) => {
                 </div>`,
                 true
               );
+              console.log(`[PAYFAST ITN] 📧 Confirmation email sent to ${targetClient.email}`);
               // Mark as sent to prevent morning automation
               await connection.query("UPDATE Invoices SET PaidEmailSent = TRUE WHERE InvoiceID = ?", [invoiceId]);
+              console.log(`[PAYFAST ITN] 📝 Marked PaidEmailSent = TRUE for Invoice ${invoiceId}`);
             } catch (e) {
-              console.error(`[PAYFAST ITN] Failed to send confirmation email:`, e);
+              console.error(`[PAYFAST ITN] ❌ Failed to send confirmation email:`, e);
             }
+          } else {
+            console.warn(`[PAYFAST ITN] ⚠️ Could not find client details for Invoice ${invoiceId}`);
           }
+        } else {
+          console.log(`[PAYFAST ITN] ℹ️ Invoice ${invoiceId} was already marked as PAID. Skipping duplicate processing.`);
         }
+      } else {
+        console.log(`[PAYFAST ITN] ℹ️ Payment status is not COMPLETE (Status: ${payment_status}). No invoice update performed.`);
       }
 
       await connection.commit();
+      console.log("[PAYFAST ITN] ✅ Transaction committed successfully");
       return res.sendStatus(200);
     } catch (dbErr) {
       await connection.rollback();
