@@ -18,13 +18,28 @@ require("dotenv").config();
 
 
 const app = express();
-// FIND THIS AT THE TOP OF YOUR server.js AND REPLACE IT:
+// Middleware for parsing bodies with raw support (critical for payment signatures)
 app.use(express.json({
     verify: (req, res, buf) => {
-        req.rawBody = buf.toString(); // This saves the exact raw string for signature check
+        req.rawBody = buf.toString();
     }
 }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ 
+    extended: true,
+    verify: (req, res, buf) => {
+        req.rawBody = buf.toString();
+    }
+}));
+
+// GLOBAL REQUEST LOGGER for PayFast/Yoco Debugging
+app.use((req, res, next) => {
+    if (req.path.includes('payfast') || req.path.includes('yoco')) {
+        console.log(`[DEBUG] Incoming ${req.method} request to ${req.path} from ${req.ip}`);
+        console.log(`[DEBUG] Headers: ${JSON.stringify(req.headers)}`);
+    }
+    next();
+});
+
 app.use(cors());
 
 // Rate limiting for chatbot - simple in-memory store (consider Redis for production)
@@ -158,7 +173,7 @@ async function generatePayFastLink(paymentData) {
             merchant_key: merchantKey,
             return_url: 'https://stackopsit.co.za/success',
             cancel_url: 'https://stackopsit.co.za/cancel',
-            notify_url: 'https://stackops-backend-475222.uc.r.appspot.com/api/payfast/itn',
+            notify_url: 'https://stackopsit.co.za/api/payfast/itn',
             name_first: paymentData.name_first,
             name_last: paymentData.name_last,
             email_address: paymentData.email_address,
@@ -2981,33 +2996,38 @@ app.post("/api/create-payment", authenticateToken, async (req, res) => {
 });
 
 app.post("/api/payfast/itn", async (req, res) => {
-  console.log("[PAYFAST ITN] 📥 Notification received:", JSON.stringify(req.body, null, 2));
+  // 1️⃣ ACKNOWLEDGE IMMEDIATELY (PayFast requires a 200 OK within seconds)
+  res.sendStatus(200);
+
+  console.log("[PAYFAST ITN] 📥 Notification received & acknowledged:", JSON.stringify(req.body, null, 2));
 
   const data = req.body;
 
-  try {
-    const passphrase = await getSecret("PAYFAST_PASSPHRASE");
-    console.log("[PAYFAST ITN] Passphrase retrieved:", passphrase ? "YES" : "NO");
+  // Run the rest in background so we don't block the response
+  (async () => {
+    try {
+      const passphrase = await getSecret("PAYFAST_PASSPHRASE");
+      console.log("[PAYFAST ITN] Passphrase retrieved:", passphrase ? "YES" : "NO");
 
-    /* ===============================
-       1️⃣ VERIFY PAYFAST SIGNATURE
-    =============================== */
-    const receivedSignature = data.signature;
-    const verificationData = { ...data };
-    delete verificationData.signature;
+      /* ===============================
+         1️⃣ VERIFY PAYFAST SIGNATURE
+      =============================== */
+      const receivedSignature = data.signature;
+      const verificationData = { ...data };
+      delete verificationData.signature;
 
-    const generatedSignature = generatePayFastSignature(
-      verificationData,
-      passphrase
-    );
+      const generatedSignature = generatePayFastSignature(
+        verificationData,
+        passphrase
+      );
 
-    console.log(`[PAYFAST ITN] Signature Check - Received: ${receivedSignature}, Generated: ${generatedSignature}`);
+      console.log(`[PAYFAST ITN] Signature Check - Received: ${receivedSignature}, Generated: ${generatedSignature}`);
 
-    if (receivedSignature !== generatedSignature) {
-      console.error("[PAYFAST ITN] ❌ Invalid signature");
-      return res.sendStatus(200); // PayFast requires 200
-    }
-    console.log("[PAYFAST ITN] ✅ Signature verified");
+      if (receivedSignature !== generatedSignature) {
+        console.error("[PAYFAST ITN] ❌ Invalid signature - Background processing aborted");
+        return;
+      }
+      console.log("[PAYFAST ITN] ✅ Signature verified");
 
     /* ===============================
        2️⃣ EXTRACT PAYFAST DATA
@@ -3233,18 +3253,16 @@ app.post("/api/payfast/itn", async (req, res) => {
 
       await connection.commit();
       console.log("[PAYFAST ITN] ✅ Transaction committed successfully");
-      return res.sendStatus(200);
     } catch (dbErr) {
-      await connection.rollback();
+      if (connection) await connection.rollback();
       console.error("[PAYFAST ITN] ❌ DATABASE ERROR:", dbErr);
-      return res.sendStatus(200);
     } finally {
-      connection.release();
+      if (connection) connection.release();
     }
   } catch (err) {
-    console.error("[PAYFAST ITN] ❌ ITN ERROR:", err);
-    return res.sendStatus(200);
+    console.error("[PAYFAST ITN] ❌ ITN BACKGROUND ERROR:", err);
   }
+ })();
 });
 
 
