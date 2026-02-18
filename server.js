@@ -888,7 +888,7 @@ async function runInvoiceAutomation() {
                         ${receiptHtml}
                         <p>Best regards,<br><b>StackOps IT Solutions Team</b></p>
                         <img
-                            src="https://i.ibb.co/LWJ2qqY/Signature-Billing.jpg"
+                            src=https://i.postimg.cc/RF4nP48L/Email-Signature.jpg
                             alt="StackOps IT Solutions"
                             width="400"
                             style="display:block; max-width:400px; width:100%; height:auto; margin-top:10px;"
@@ -995,7 +995,7 @@ async function runInvoiceAutomation() {
                         <p>This is a final reminder that your payment for <b>Invoice #${invoiceNumbers}</b> is significantly overdue.</p>
                         <p>Please note that as per our terms, a fine is now being applied to your account due to the delay.</p>
                                   <img
-                                    src="https://i.ibb.co/LWJ2qqY/Signature-Billing.jpg"
+                                    src=https://i.postimg.cc/RF4nP48L/Email-Signature.jpg
                                     alt="StackOps IT Solutions"
                                     width="400"
                                     style="display:block; max-width:400px; width:100%; height:auto; margin-top:10px;"
@@ -1048,7 +1048,7 @@ async function runInvoiceAutomation() {
                         <p>If you have already made payment, please ignore this email.</p>
                         <p>Best regards,<br><b>StackOps IT Solutions Team</b></p>
                         <img
-                            src="https://i.ibb.co/LWJ2qqY/Signature-Billing.jpg"
+                            src=https://i.postimg.cc/RF4nP48L/Email-Signature.jpg
                             alt="StackOps IT Solutions"
                             width="400"
                             style="display:block; max-width:400px; width:100%; height:auto; margin-top:10px;"
@@ -2386,7 +2386,7 @@ app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
             </p>
 
             <img
-            src="https://i.ibb.co/LWJ2qqY/Signature-Billing.jpg"
+            src=https://i.postimg.cc/RF4nP48L/Email-Signature.jpg
             alt="StackOps IT Solutions"
             width="400"
             style="display:block; max-width:400px; width:100%; height:auto; margin-top:10px;"
@@ -3003,9 +3003,11 @@ app.post("/api/payfast/itn", async (req, res) => {
 
   const data = req.body;
 
-  // Run the rest in background so we don't block the response
-  (async () => {
+    (async () => {
     try {
+      const rawBody = req.rawBody || "";
+      console.log("[PAYFAST ITN] 📦 Raw Body for signature check:", rawBody);
+
       const passphrase = await getSecret("PAYFAST_PASSPHRASE");
       console.log("[PAYFAST ITN] Passphrase retrieved:", passphrase ? "YES" : "NO");
 
@@ -3013,21 +3015,51 @@ app.post("/api/payfast/itn", async (req, res) => {
          1️⃣ VERIFY PAYFAST SIGNATURE
       =============================== */
       const receivedSignature = data.signature;
-      const verificationData = { ...data };
-      delete verificationData.signature;
+      
+      // Standard PayFast ITN signature check: Take raw POST string, remove signature, append passphrase.
+      // 1. Remove the signature field from the raw body string
+      let signaturePos = rawBody.indexOf('&signature=');
+      if (signaturePos === -1) {
+          // Fallback: Check if it's the first param or at the end
+          signaturePos = rawBody.indexOf('signature=');
+      }
 
-      const generatedSignature = generatePayFastSignature(
-        verificationData,
-        passphrase
-      );
+      let stringToHash = rawBody;
+      if (signaturePos > -1) {
+          // If signature is the last param (most common)
+          stringToHash = rawBody.substring(0, signaturePos);
+          // If signature was in the middle, handle the trailing part
+          const rest = rawBody.substring(signaturePos + 11 + (receivedSignature?.length || 0));
+          if (rest && rest.startsWith('&')) {
+              stringToHash += rest;
+          } else if (rest) {
+              stringToHash += rest;
+          }
+      }
+
+      // 2. Append Passphrase
+      if (passphrase && passphrase.trim() !== "") {
+          stringToHash += `&passphrase=${encodeURIComponent(passphrase.trim()).replace(/%20/g, "+")}`;
+      }
+
+      const generatedSignature = crypto.createHash("md5").update(stringToHash).digest("hex");
 
       console.log(`[PAYFAST ITN] Signature Check - Received: ${receivedSignature}, Generated: ${generatedSignature}`);
+      console.log(`[PAYFAST ITN] String used for hash: "${stringToHash}"`);
 
       if (receivedSignature !== generatedSignature) {
         console.error("[PAYFAST ITN] ❌ Invalid signature - Background processing aborted");
-        return;
+        
+        // Final fallback: Try the reconstruction logic again but with more fields if needed
+        const secondTry = generatePayFastSignature(data, passphrase);
+        if (receivedSignature === secondTry) {
+            console.log("[PAYFAST ITN] ✅ Signature matched on secondary reconstruction logic");
+        } else {
+            return;
+        }
+      } else {
+        console.log("[PAYFAST ITN] ✅ Signature verified using rawBody");
       }
-      console.log("[PAYFAST ITN] ✅ Signature verified");
 
     /* ===============================
        2️⃣ EXTRACT PAYFAST DATA
@@ -3192,7 +3224,7 @@ app.post("/api/payfast/itn", async (req, res) => {
                     or 011 568 9337.
                  </p>
                  <img
-                src="https://i.ibb.co/LWJ2qqY/Signature-Billing.jpg"
+                src=https://i.postimg.cc/RF4nP48L/Email-Signature.jpg
                 alt="StackOps IT Solutions"
                 width="400"
                 style="display:block; max-width:400px; width:100%; height:auto; margin-top:10px;"
@@ -3435,7 +3467,7 @@ app.post("/webhook/yoco", express.raw({ type: "application/json" }), async (req,
                 or 011 568 9337.
              </p>
              <img
-            src="https://i.ibb.co/LWJ2qqY/Signature-Billing.jpg"
+            src=https://i.postimg.cc/RF4nP48L/Email-Signature.jpg
             alt="StackOps IT Solutions"
             width="400"
             style="display:block; max-width:400px; width:100%; height:auto; margin-top:10px;"
