@@ -3216,7 +3216,6 @@ app.post("/api/payfast/itn", async (req, res) => {
                 `<div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
                  <p>Dear ${targetClient.firstname},</p>
                  <p>We have successfully received your payment for <strong>Invoice #${targetClient.InvoiceNumber}</strong> via PayFast. Thank you for your business!</p>
-                 <p>Please allow us <strong>24 hours</strong> to process your payment. We will send a final confirmation once the process is complete.</p>
                  ${receiptHtml}
                  <p>
                     If you have any questions, please contact us at
