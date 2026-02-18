@@ -152,11 +152,14 @@
                                     <input type="tel" id="new-client-phone" class="form-control" placeholder="+1 (555) 000-0000">
                                 </div>
 
+                                <div class="form-group" id="company-name-group">
+                                    <label for="new-company-name">Company Name *</label>
+                                    <input type="text" id="new-company-name" class="form-control" placeholder="Company Name" required>
+                                </div>
+
                                 <div class="form-group" style="display: none;">
-                                    <label for="new-client-company">Company *</label>
-                                    <select id="new-client-company" class="form-select" required disabled>
-                                        <option value="">Will be auto-filled</option>
-                                    </select>
+                                    <label for="new-client-company">Company ID</label>
+                                    <input type="hidden" id="new-client-company">
                                 </div>
 
                                 <div class="modal-actions">

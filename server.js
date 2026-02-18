@@ -2040,10 +2040,10 @@ app.get('/api/admin/clients', authenticateToken, async (req, res) => {
 // This endpoint creates a lightweight client record without full registration
 // Ideal for automation and quick invoice creation workflows
 app.post('/api/admin/clients/quick-add', authenticateToken, async (req, res) => {
-    const { name, email, companyId } = req.body;
+    const { name, email, companyId, companyName } = req.body;
 
-    if (!name || !companyId) {
-        return res.status(400).json({ error: 'Client name and company are required' });
+    if (!name || (!companyId && !companyName)) {
+        return res.status(400).json({ error: 'Client name and company (ID or Name) are required' });
     }
 
     const parts = name.trim().split(' ');
@@ -2051,10 +2051,23 @@ app.post('/api/admin/clients/quick-add', authenticateToken, async (req, res) => 
     const lastName = parts.join(' ') || '';
 
     try {
+        let finalCompanyId = companyId;
+        let createdCompany = null;
+
+        if (!finalCompanyId && companyName) {
+            // Create new company
+            const [companyResult] = await pool.query(
+                `INSERT INTO Companies (CompanyName) VALUES (?)`,
+                [companyName]
+            );
+            finalCompanyId = companyResult.insertId;
+            createdCompany = { id: finalCompanyId, name: companyName };
+        }
+
         const [result] = await pool.query(
             `INSERT INTO Users (firstname, lastname, email, role, companyid, isactive)
              VALUES (?, ?, ?, 'invoice_client', ?, 1)`,
-            [firstName, lastName, email || null, companyId]
+            [firstName, lastName, email || null, finalCompanyId]
         );
 
         res.json({
@@ -2064,7 +2077,8 @@ app.post('/api/admin/clients/quick-add', authenticateToken, async (req, res) => 
                 firstname: firstName,
                 lastname: lastName,
                 email
-            }
+            },
+            company: createdCompany
         });
 
     } catch (err) {
@@ -2438,7 +2452,7 @@ app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
           emailBody, 
           true,
           [{
-            filename: `Invoice_${nextInvoiceNumber}.pdf`,
+            filename: `StackOpsInvoice_${nextInvoiceNumber}.pdf`,
             content: pdfBuffer
           }]
         );

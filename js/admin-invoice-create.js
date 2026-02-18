@@ -67,11 +67,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (createNewClientBtn) {
         createNewClientBtn.addEventListener('click', (e) => {
             e.preventDefault();
-            if (!companySelect.value) {
-                alert('Please select a company first');
-                return;
+            const companyId = companySelect.value;
+            const companyNameInput = document.getElementById('new-company-name');
+            const companyIdInput = document.getElementById('new-client-company');
+
+            if (companyId) {
+                const companyName = companySelect.options[companySelect.selectedIndex].textContent;
+                companyNameInput.value = companyName;
+                companyIdInput.value = companyId;
+            } else {
+                companyNameInput.value = '';
+                companyIdInput.value = '';
             }
-            document.getElementById('new-client-company').value = companySelect.value;
             createClientModal.classList.add('active');
         });
     }
@@ -99,7 +106,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const clientName = document.getElementById('new-client-name').value;
             const clientEmail = document.getElementById('new-client-email').value;
             const clientPhone = document.getElementById('new-client-phone').value;
-            const companyId = companySelect.value;
+            const companyName = document.getElementById('new-company-name').value;
+            const companyId = document.getElementById('new-client-company').value;
 
             try {
                 const response = await fetch('/api/admin/clients/quick-add', {
@@ -108,7 +116,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                     body: JSON.stringify({
                         name: clientName.trim(),
                         email: clientEmail?.trim() || null,
-                        companyId: companyId
+                        phone: clientPhone?.trim() || null,
+                        companyId: companyId || null,
+                        companyName: companyName.trim()
                     })
                 });
 
@@ -122,6 +132,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 
                 // Add the new client to the dropdown and select it
                 const client = result.client;
+                const company = result.company;
+
+                // If a new company was created, add it to the company dropdown
+                if (company && !companyId) {
+                    const companyOption = document.createElement('option');
+                    companyOption.value = company.id;
+                    companyOption.textContent = company.name;
+                    companySelect.appendChild(companyOption);
+                    companySelect.value = company.id;
+                }
 
                 const option = document.createElement('option');
                 option.value = client.id;
