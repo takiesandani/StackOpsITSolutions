@@ -776,7 +776,7 @@ setTimeout(() => {
 const AUTOMATION_CONFIG = {
     ENABLED: true,
     CHECK_HOUR: 0,             // 00:00 for status updates (Pending -> Overdue)
-    EMAIL_HOUR: 8,             // 08:00 for email reminders (8 hours after check)
+    EMAIL_HOUR: 6,             // 08:00 for email reminders (8 hours after check)
     FINE_DAYS_THRESHOLD: 3,     // 3 days overdue for fine message
     TEST_MODE: false,          // If true, ignores hour checks and allows repeat emails
     INTERVAL_MS: 60 * 60 * 1000 // Check frequency (default: 1 hour)
