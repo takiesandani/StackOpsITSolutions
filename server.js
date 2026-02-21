@@ -888,7 +888,7 @@ async function runInvoiceAutomation() {
                         ${receiptHtml}
                         <p>Best regards,<br><b>StackOps IT Solutions Team</b></p>
                         <img
-                            src=https://i.postimg.cc/RF4nP48L/Email-Signature.jpg
+                            src=https://i.postimg.cc/Pr25Gv6k/signature.png
                             alt="StackOps IT Solutions"
                             width="400"
                             style="display:block; max-width:400px; width:100%; height:auto; margin-top:10px;"
@@ -995,7 +995,7 @@ async function runInvoiceAutomation() {
                         <p>This is a final reminder that your payment for <b>Invoice #${invoiceNumbers}</b> is significantly overdue.</p>
                         <p>Please note that as per our terms, a fine is now being applied to your account due to the delay.</p>
                                   <img
-                                    src=https://i.postimg.cc/RF4nP48L/Email-Signature.jpg
+                                    src=https://i.postimg.cc/Pr25Gv6k/signature.png
                                     alt="StackOps IT Solutions"
                                     width="400"
                                     style="display:block; max-width:400px; width:100%; height:auto; margin-top:10px;"
@@ -1048,7 +1048,7 @@ async function runInvoiceAutomation() {
                         <p>If you have already made payment, please ignore this email.</p>
                         <p>Best regards,<br><b>StackOps IT Solutions Team</b></p>
                         <img
-                            src=https://i.postimg.cc/RF4nP48L/Email-Signature.jpg
+                            src=https://i.postimg.cc/Pr25Gv6k/signature.png
                             alt="StackOps IT Solutions"
                             width="400"
                             style="display:block; max-width:400px; width:100%; height:auto; margin-top:10px;"
@@ -2401,7 +2401,7 @@ app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
 
 
             <img 
-                src="https://i.postimg.cc/RF4nP48L/Email-Signature.jpg" 
+                src="https://i.postimg.cc/Pr25Gv6k/signature.png" 
                 width="425" 
                 style="display:block; width:425px; max-width:100%; height:auto;"
                 >
@@ -3237,7 +3237,7 @@ app.post("/api/payfast/itn", async (req, res) => {
                     or 011 568 9337.
                  </p>
                  <img
-                src=https://i.postimg.cc/RF4nP48L/Email-Signature.jpg
+                src=https://i.postimg.cc/Pr25Gv6k/signature.png
                 alt="StackOps IT Solutions"
                 width="400"
                 style="display:block; max-width:400px; width:100%; height:auto; margin-top:10px;"
@@ -3480,7 +3480,7 @@ app.post("/webhook/yoco", express.raw({ type: "application/json" }), async (req,
                 or 011 568 9337.
              </p>
              <img
-            src=https://i.postimg.cc/RF4nP48L/Email-Signature.jpg
+            src=https://i.postimg.cc/Pr25Gv6k/signature.png
             alt="StackOps IT Solutions"
             width="400"
             style="display:block; max-width:400px; width:100%; height:auto; margin-top:10px;"
