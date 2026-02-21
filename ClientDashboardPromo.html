@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client Dashboard - StackOps IT Solutions</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        /* Override and extend styles */
+        * {
+            font-weight: 100;
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            font-weight: 200;
+        }
+
+        body {
+            background: linear-gradient(rgba(0, 0, 0, 0.219), rgb(0, 0, 0)),
+                url('Images/Website.png') no-repeat center center;
+            background-size: cover;
+            background-attachment: fixed;
+        }
+
+        .background {
+            display: none;
+        }
+
+        /* ===== MAIN CONTENT ===== */
+        main {
+            margin-top: 2rem;
+        }
+
+        /* ===== HERO SECTION ===== */
+        .hero-section {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: clamp(2rem, 5vw, 4rem) clamp(1.5rem, 3vw, 3rem);
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: clamp(1.5rem, 3vw, 3rem);
+            align-items: center;
+        }
+
+        .hero-section h1 {
+            font-size: clamp(1.5rem, 4vw, 2.5rem);
+            line-height: 1.3;
+            margin-bottom: clamp(1rem, 2vw, 1.5rem);
+            color: white;
+            font-weight: 200;
+        }
+
+        .hero-section h1 span {
+            color: var(--primary);
+        }
+
+        .hero-section p {
+            font-size: clamp(0.75rem, 1.5vw, 0.95rem);
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: clamp(1rem, 2vw, 2rem);
+            line-height: 1.7;
+            font-weight: 100;
+        }
+
+        .credential-box {
+            background: rgba(0, 102, 255, 0.1);
+            border: 1px solid rgba(0, 102, 255, 0.3);
+            border-radius: 12px;
+            padding: clamp(1rem, 2vw, 1.5rem);
+            margin-bottom: clamp(1rem, 2vw, 1.5rem);
+            display: flex;
+            gap: 1rem;
+            align-items: flex-start;
+        }
+
+        .credential-icon {
+            font-size: clamp(1.2rem, 2vw, 1.8rem);
+            color: var(--primary);
+            flex-shrink: 0;
+        }
+
+        .credential-text h4 {
+            font-size: clamp(0.8rem, 1.2vw, 0.95rem);
+            margin-bottom: 0.3rem;
+            color: white;
+            font-weight: 200;
+        }
+
+        .credential-text p {
+            font-size: clamp(0.7rem, 1vw, 0.85rem);
+            color: rgba(255, 255, 255, 0.7);
+            margin: 0;
+            font-weight: 100;
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: clamp(0.5rem, 1vw, 1rem);
+            flex-wrap: wrap;
+            margin-top: clamp(1rem, 2vw, 2rem);
+        }
+
+        /* ===== GLOWING BUTTON STYLES ===== */
+        .glow-wrap {
+            position: relative;
+            width: fit-content;
+            height: auto;
+            border-radius: 40px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0, 102, 255, 0.3);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .glow-wrap:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(0, 102, 255, 0.6), 0 8px 20px rgba(0, 102, 255, 0.3);
+        }
+
+        .glowing-border-layer {
+            position: absolute;
+            top: -60px;
+            left: -60px;
+            width: 280px;
+            height: 180px;
+            z-index: 1;
+            background: conic-gradient(#0068e0 0%, hsla(207, 100%, 50%, 0) 25%, #0084ff00 50%, #0077ff00 75%, #005ae0 100%);
+            animation: spin 3s linear infinite;
+        }
+
+        .btn {
+            position: relative;
+            z-index: 10;
+            font-weight: 200;
+            font-size: clamp(0.75rem, 1vw, 0.9rem);
+            padding: clamp(0.6rem, 1.2vw, 0.85rem) clamp(1.2rem, 2vw, 1.8rem);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            color: white;
+            background: transparent;
+            border: none;
+            border-radius: 40px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+            margin: 2px;
+        }
+
+        .btn:hover {
+            color: var(--primary);
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .hero-image img {
+            width: 100%;
+            border-radius: 15px;
+            box-shadow: 0 0 20px rgba(51, 115, 255, 0.411);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        /* ===== FEATURES SECTION ===== */
+        section {
+            padding: clamp(3rem, 8vw, 5rem) 0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 clamp(1rem, 3vw, 2rem);
+        }
+
+        .section-title h2 {
+            font-size: clamp(1.5rem, 4vw, 2.2rem);
+            font-weight: 200;
+            margin-bottom: clamp(0.5rem, 1vw, 1rem);
+            color: white;
+        }
+
+        .section-title p {
+            font-size: clamp(0.75rem, 1.5vw, 0.95rem);
+            font-weight: 100;
+            color: rgba(255, 255, 255, 0.7);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: clamp(1.5rem, 2vw, 2rem);
+            margin-top: clamp(2rem, 4vw, 3rem);
+        }
+
+        .feature-card {
+            background: rgba(255, 255, 255, 0.041);
+            backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: inset 0 6px 10px rgba(255, 255, 255, 0.226), inset 0 -10px 20px rgba(0, 0, 0, 0.25), 0 15px 40px rgba(0, 0, 0, 0.45);
+            border-radius: 15px;
+            padding: clamp(1.2rem, 2vw, 2rem);
+            transition: all 0.35s ease;
+            position: relative;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 0 12px rgba(26, 130, 255, 0.45), 0 10px 22px rgba(5, 36, 105, 0.35);
+        }
+
+        .feature-icon {
+            font-size: clamp(1.5rem, 2.5vw, 2rem);
+            color: var(--primary);
+            margin-bottom: clamp(0.8rem, 1.5vw, 1.2rem);
+        }
+
+        .feature-card h3 {
+            font-size: clamp(0.9rem, 1.5vw, 1.1rem);
+            margin-bottom: clamp(0.5rem, 1vw, 0.8rem);
+            color: white;
+            font-weight: 200;
+        }
+
+        .feature-card p {
+            font-size: clamp(0.7rem, 1.2vw, 0.85rem);
+            color: rgba(255, 255, 255, 0.7);
+            line-height: 1.6;
+            font-weight: 100;
+        }
+
+        /* ===== PROJECTS SHOWCASE ===== */
+        .projects-showcase {
+            background: rgba(255, 255, 255, 0.041);
+            backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: inset 0 6px 10px rgba(255, 255, 255, 0.226), inset 0 -10px 20px rgba(0, 0, 0, 0.25), 0 15px 40px rgba(0, 0, 0, 0.45);
+            border-radius: 15px;
+            margin-top: clamp(2rem, 4vw, 3rem);
+            margin-bottom: clamp(2rem, 4vw, 3rem);
+        }
+
+        .projects-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: clamp(1rem, 2vw, 1.5rem);
+            margin-top: clamp(1.5rem, 3vw, 2rem);
+        }
+
+        .project-item {
+            background: rgba(255, 255, 255, 0.041);
+            backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            padding: clamp(1rem, 2vw, 1.5rem);
+            text-align: center;
+            transition: all 0.35s ease;
+        }
+
+        .project-item:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 0 12px rgba(26, 130, 255, 0.45), 0 10px 22px rgba(5, 36, 105, 0.35);
+        }
+
+        .project-icon {
+            font-size: clamp(1.5rem, 2.5vw, 2rem);
+            color: var(--primary);
+            margin-bottom: clamp(0.5rem, 1vw, 0.8rem);
+        }
+
+        .project-item h4 {
+            font-size: clamp(0.8rem, 1.3vw, 0.95rem);
+            margin-bottom: 0.3rem;
+            color: white;
+            font-weight: 200;
+        }
+
+        .project-item p {
+            font-size: clamp(0.7rem, 1vw, 0.8rem);
+            color: rgba(255, 255, 255, 0.7);
+            margin: 0;
+            font-weight: 100;
+        }
+
+        /* ===== DASHBOARD PREVIEW ===== */
+        .preview-image {
+            margin-top: clamp(1.5rem, 3vw, 2.5rem);
+        }
+
+        .preview-image img {
+            width: 100%;
+            border-radius: 15px;
+            box-shadow: 0 0 20px rgba(51, 115, 255, 0.411);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            transition: transform 0.35s ease;
+        }
+
+        .preview-image:hover img {
+            transform: scale(1.02);
+        }
+
+        /* ===== STATS SECTION ===== */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: clamp(1.5rem, 2vw, 2rem);
+        }
+
+        .stat-box {
+            background: rgba(255, 255, 255, 0.041);
+            backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: inset 0 6px 10px rgba(255, 255, 255, 0.226), inset 0 -10px 20px rgba(0, 0, 0, 0.25), 0 15px 40px rgba(0, 0, 0, 0.45);
+            border-radius: 15px;
+            padding: clamp(1.5rem, 2.5vw, 2rem);
+            text-align: center;
+            transition: all 0.35s ease;
+        }
+
+        .stat-box:hover {
+            transform: translateY(-5px);
+        }
+
+        .stat-number {
+            font-size: clamp(1.5rem, 3vw, 2rem);
+            color: var(--primary);
+            font-weight: 200;
+            margin-bottom: 0.3rem;
+        }
+
+        .stat-label {
+            font-size: clamp(0.75rem, 1.2vw, 0.9rem);
+            color: rgba(255, 255, 255, 0.7);
+            font-weight: 100;
+        }
+
+        /* ===== CTA SECTION ===== */
+        .cta-section {
+            background: rgba(255, 255, 255, 0.041);
+            backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: inset 0 6px 10px rgba(255, 255, 255, 0.226), inset 0 -10px 20px rgba(0, 0, 0, 0.25), 0 15px 40px rgba(0, 0, 0, 0.45);
+            border-radius: 15px;
+            padding: clamp(2rem, 4vw, 3rem);
+            text-align: center;
+            max-width: 900px;
+            margin: clamp(2rem, 4vw, 3rem) auto;
+        }
+
+        .cta-section h2 {
+            font-size: clamp(1.4rem, 3vw, 2rem);
+            margin-bottom: clamp(0.8rem, 1.5vw, 1rem);
+            color: white;
+            font-weight: 200;
+        }
+
+        .cta-section p {
+            font-size: clamp(0.75rem, 1.3vw, 0.95rem);
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: clamp(1rem, 2vw, 1.5rem);
+            font-weight: 100;
+        }
+
+        .cta-buttons {
+            display: flex;
+            gap: clamp(0.5rem, 1vw, 1rem);
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        /* ===== BENEFITS SECTION ===== */
+        .benefits-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: clamp(1.5rem, 3vw, 3rem);
+            align-items: center;
+            margin-top: clamp(2rem, 4vw, 3rem);
+        }
+
+        .benefit-item {
+            display: flex;
+            gap: clamp(0.8rem, 1.5vw, 1.2rem);
+            margin-bottom: clamp(1rem, 1.5vw, 1.3rem);
+        }
+
+        .benefit-check {
+            width: clamp(32px, 4vw, 40px);
+            height: clamp(32px, 4vw, 40px);
+            background: var(--primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 0.9rem;
+            flex-shrink: 0;
+            font-weight: 200;
+        }
+
+        .benefit-text h4 {
+            font-size: clamp(0.8rem, 1.3vw, 0.95rem);
+            margin-bottom: 0.3rem;
+            color: white;
+            font-weight: 200;
+        }
+
+        .benefit-text p {
+            font-size: clamp(0.7rem, 1vw, 0.85rem);
+            color: rgba(255, 255, 255, 0.7);
+            margin: 0;
+            font-weight: 100;
+        }
+
+        .benefits-image img {
+            width: 100%;
+            border-radius: 15px;
+            box-shadow: 0 0 20px rgba(51, 115, 255, 0.411);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        /* ===== FOOTER ===== */
+        footer {
+            margin-top: clamp(3rem, 6vw, 4rem);
+        }
+
+        /* ===== SCROLL ANIMATIONS ===== */
+        .fade-in-left {
+            opacity: 0;
+            transform: translateX(-50px);
+        }
+
+        .fade-in-left.animate {
+            animation: fadeInLeft 0.8s ease-out forwards;
+        }
+
+        .fade-in-right {
+            opacity: 0;
+            transform: translateX(50px);
+        }
+
+        .fade-in-right.animate {
+            animation: fadeInRight 0.8s ease-out forwards;
+        }
+
+        @keyframes fadeInLeft {
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        @keyframes fadeInRight {
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        /* Alternating left/right animations for feature cards */
+        .feature-card:nth-child(odd) {
+            animation-direction: normal;
+        }
+
+        .feature-card:nth-child(even) {
+            animation-direction: normal;
+        }
+
+        .feature-card:nth-child(1) { animation-delay: 0.1s; }
+        .feature-card:nth-child(2) { animation-delay: 0.2s; }
+        .feature-card:nth-child(3) { animation-delay: 0.3s; }
+        .feature-card:nth-child(4) { animation-delay: 0.1s; }
+        .feature-card:nth-child(5) { animation-delay: 0.2s; }
+        .feature-card:nth-child(6) { animation-delay: 0.3s; }
+
+        /* Alternating left/right for projects */
+        .project-item:nth-child(odd) {
+            animation-direction: normal;
+        }
+
+        .project-item:nth-child(even) {
+            animation-direction: normal;
+        }
+
+        .project-item:nth-child(1) { animation-delay: 0.1s; }
+        .project-item:nth-child(2) { animation-delay: 0.2s; }
+        .project-item:nth-child(3) { animation-delay: 0.3s; }
+        .project-item:nth-child(4) { animation-delay: 0.1s; }
+        .project-item:nth-child(5) { animation-delay: 0.2s; }
+        .project-item:nth-child(6) { animation-delay: 0.3s; }
+
+        /* Alternating for stats */
+        .stat-box:nth-child(odd) {
+            animation-direction: normal;
+        }
+
+        .stat-box:nth-child(even) {
+            animation-direction: normal;
+        }
+
+        .stat-box:nth-child(1) { animation-delay: 0.1s; }
+        .stat-box:nth-child(2) { animation-delay: 0.2s; }
+        .stat-box:nth-child(3) { animation-delay: 0.3s; }
+        .stat-box:nth-child(4) { animation-delay: 0.4s; }
+
+        /* Alternating for benefits */
+        .benefit-item:nth-child(odd) {
+            animation-direction: normal;
+        }
+
+        .benefit-item:nth-child(even) {
+            animation-direction: normal;
+        }
+
+        .benefit-item:nth-child(1) { animation-delay: 0.1s; }
+        .benefit-item:nth-child(2) { animation-delay: 0.2s; }
+        .benefit-item:nth-child(3) { animation-delay: 0.3s; }
+        .benefit-item:nth-child(4) { animation-delay: 0.4s; }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 1024px) {
+            .hero-section {
+                grid-template-columns: 1fr;
+            }
+
+            .benefits-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            header {
+                margin: 0.5rem 1rem;
+                padding: 0.8rem 1.5rem;
+            }
+
+            .nav-links {
+                gap: clamp(0.5rem, 1.5vw, 1rem);
+            }
+
+            .projects-grid {
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .cta-buttons {
+                flex-direction: row;
+                justify-content: center;
+                gap: clamp(0.5rem, 1vw, 1rem);
+                flex-wrap: wrap;
+            }
+
+            .cta-buttons .glow-wrap {
+                width: fit-content;
+            }
+
+            .hero-buttons .glow-wrap {
+                width: fit-content;
+            }
+        }
+
+        @media (max-width: 480px) {
+            header {
+                margin: 0.5rem 0.5rem;
+                padding: 0.8rem 1rem;
+            }
+
+            .hero-section {
+                padding: 1.5rem 1rem;
+            }
+
+            .hero-buttons {
+                flex-direction: column;
+                gap: 0.8rem;
+                align-items: center;
+            }
+
+            .hero-buttons .glow-wrap {
+                width: fit-content;
+            }
+
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .projects-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .benefits-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .cta-buttons {
+                flex-direction: column;
+                gap: 0.8rem;
+                align-items: center;
+            }
+
+            .cta-buttons .glow-wrap {
+                width: fit-content;
+            }
+
+            .nav-links {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="background"></div>
+
+    <main>
+        <header class="site-header">
+            <a href="/" class="logo">
+                
+                    <img src="Images/Logos/RemovedStackOps.png" alt="Stackops IT Solutions Logo" >
+                
+            </a>
+            <div id="hamburger" class="hamburger">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+
+            <ul class="nav-links" id="nav-links">
+                <li><a href="Home.html">Home</a></li>
+                <li><a href="about.html">About</a></li>
+                <li><a href="service.html" class="active">Solutions</a></li>
+                <li><a href="approach.html">Our Approach</a></li>
+                <li><a href="contact.html">Contact Us</a></li>
+                <li><a href="consultation.html">Book a consultation</a></li>
+                <li><a href="ClientPortal.html">ClientPortal</a></li>
+                <li class="Shop"><a href="#" id="shop-link">Shop</a></li>
+            </ul>
+        </header>
+
+        <!-- ===== HERO SECTION ===== -->
+        <section class="hero-section">
+            <div>
+                <h1>Your Complete IT Portal <span>Command Center</span></h1>
+                <p>Monitor your IT infrastructure, manage projects, track security metrics, and stay connected with our dedicated support team—all from one unified dashboard.</p>
+
+                <div class="credential-box">
+                    <div class="credential-icon">
+                        <i class="fas fa-envelope-open"></i>
+                    </div>
+                    <div class="credential-text">
+                        <h4>Credentials Ready to Use</h4>
+                        <p>Check your email for login credentials to access your personalized dashboard immediately.</p>
+                    </div>
+                </div>
+
+                <div class="credential-box">
+                    <div class="credential-icon">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <div class="credential-text">
+                        <h4>Ready to Become a Client?</h4>
+                        <p>Experience enterprise-grade IT solutions and join hundreds of satisfied clients. Start your transformation today.</p>
+                    </div>
+                </div>
+
+                <div class="hero-buttons">
+                    <div class="glow-wrap">
+                        <div class="glowing-border-layer"></div>
+                        <a href="ClientPortal.html" class="btn">
+                            <i class="fas fa-sign-in-alt"></i> Access Dashboard
+                        </a>
+                    </div>
+                    <div class="glow-wrap">
+                        <div class="glowing-border-layer"></div>
+                        <a href="contact.html" class="btn btn-outline">
+                            <i class="fas fa-handshake"></i> Become a Client
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="hero-image">
+                <img src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=600&q=80" alt="Dashboard Interface">
+            </div>
+        </section>
+
+        <!-- ===== FEATURES SECTION ===== -->
+        <section>
+            <div class="container">
+                <div class="section-title">
+                    <h2>Powerful Features at Your Fingertips</h2>
+                    <p>Everything you need to manage, monitor, and optimize your IT infrastructure in real-time</p>
+                </div>
+
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-chart-line"></i>
+                        </div>
+                        <h3>Real-Time Monitoring</h3>
+                        <p>Track your IT infrastructure health, security scores, and uptime metrics in real-time with live dashboards and instant alerts.</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-lock"></i>
+                        </div>
+                        <h3>Security Management</h3>
+                        <p>Monitor critical risks, manage Cisco DUO licenses, and maintain enterprise-grade security standards with detailed risk assessments.</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-folder-open"></i>
+                        </div>
+                        <h3>Project Management</h3>
+                        <p>Organize and track all your IT projects in one place, with detailed status updates and comprehensive project analytics.</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-robot"></i>
+                        </div>
+                        <h3>AI-Powered Chatbot</h3>
+                        <p>Get instant answers to your questions with our intelligent chatbot, available 24/7 to support your needs.</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-file-invoice"></i>
+                        </div>
+                        <h3>Billing & Invoices</h3>
+                        <p>Manage your billing information, view invoices, and track payments all in one convenient location.</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-headset"></i>
+                        </div>
+                        <h3>24/7 Support Access</h3>
+                        <p>Direct access to our support team, service desk tracking, and real-time ticket management for immediate assistance.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== BENEFITS SECTION ===== -->
+        <section>
+            <div class="container">
+                <div class="section-title">
+                    <h2>Why Choose Our Client Portal?</h2>
+                    <p>Enterprise-grade features designed for your success</p>
+                </div>
+
+                <div class="benefits-grid">
+                    <div>
+                        <div class="benefit-item">
+                            <div class="benefit-check">
+                                <i class="fas fa-check"></i>
+                            </div>
+                            <div class="benefit-text">
+                                <h4>Multi-Service Integration</h4>
+                                <p>Unified access to all your IT services: Microsoft 365, Backup & Recovery, Cloud Services, and more.</p>
+                            </div>
+                        </div>
+
+                        <div class="benefit-item">
+                            <div class="benefit-check">
+                                <i class="fas fa-check"></i>
+                            </div>
+                            <div class="benefit-text">
+                                <h4>Advanced Security</h4>
+                                <p>Multi-factor authentication and encrypted connections protect your sensitive business data.</p>
+                            </div>
+                        </div>
+
+                        <div class="benefit-item">
+                            <div class="benefit-check">
+                                <i class="fas fa-check"></i>
+                            </div>
+                            <div class="benefit-text">
+                                <h4>Real-Time Analytics</h4>
+                                <p>Comprehensive insights into your IT infrastructure with detailed charts and performance metrics.</p>
+                            </div>
+                        </div>
+
+                        <div class="benefit-item">
+                            <div class="benefit-check">
+                                <i class="fas fa-check"></i>
+                            </div>
+                            <div class="benefit-text">
+                                <h4>Mobile Responsive</h4>
+                                <p>Access your dashboard from any device - desktop, tablet, or mobile phone.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="benefits-image">
+                        <img src="https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=600&q=80" alt="Benefits">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== PROJECTS SHOWCASE ===== -->
+        <section class="projects-showcase">
+            <div class="container">
+                <div class="section-title">
+                    <h2>Manage All Your IT Projects</h2>
+                    <p>Track and monitor various IT services and solutions from your dashboard</p>
+                </div>
+
+                <div class="projects-grid">
+                    <div class="project-item">
+                        <div class="project-icon">
+                            <i class="fas fa-id-card"></i>
+                        </div>
+                        <h4>Cisco DUO Licenses</h4>
+                        <p>Enterprise Identity & Access Management - Monitor active usage and license allocation</p>
+                    </div>
+
+                    <div class="project-item">
+                        <div class="project-icon">
+                            <i class="fas fa-globe"></i>
+                        </div>
+                        <h4>Microsoft 365</h4>
+                        <p>Proactive tenant security insights - Real-time security and health monitoring</p>
+                    </div>
+
+                    <div class="project-item">
+                        <div class="project-icon">
+                            <i class="fas fa-headset"></i>
+                        </div>
+                        <h4>Support & Service Desk</h4>
+                        <p>Real-time support visibility - Track tickets and response times instantly</p>
+                    </div>
+
+                    <div class="project-item">
+                        <div class="project-icon">
+                            <i class="fas fa-database"></i>
+                        </div>
+                        <h4>Backup & Recovery</h4>
+                        <p>Automated protection - Ensure data safety with instant recovery capabilities</p>
+                    </div>
+
+                    <div class="project-item">
+                        <div class="project-icon">
+                            <i class="fas fa-cloud"></i>
+                        </div>
+                        <h4>Cloud Data Services</h4>
+                        <p>Optimized cloud storage - Monitor performance and redundancy levels</p>
+                    </div>
+
+                    <div class="project-item">
+                        <div class="project-icon">
+                            <i class="fas fa-shield-alt"></i>
+                        </div>
+                        <h4>Governance & Compliance</h4>
+                        <p>Risk management - Maintain compliance standards and security protocols</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== DASHBOARD PREVIEW ===== -->
+        <section>
+            <div class="container">
+                <div class="section-title">
+                    <h2>See Your Dashboard in Action</h2>
+                    <p>A glimpse into the powerful interface you'll have access to</p>
+                </div>
+
+                <div class="preview-image">
+                    <img src="https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=1000&q=80" alt="Dashboard Preview">
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== STATS SECTION ===== -->
+        <section>
+            <div class="container">
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="stat-number">500+</div>
+                        <div class="stat-label">Active Clients</div>
+                    </div>
+
+                    <div class="stat-box">
+                        <div class="stat-number">99.9%</div>
+                        <div class="stat-label">Uptime Guarantee</div>
+                    </div>
+
+                    <div class="stat-box">
+                        <div class="stat-number">24/7</div>
+                        <div class="stat-label">Support Available</div>
+                    </div>
+
+                    <div class="stat-box">
+                        <div class="stat-number">50+</div>
+                        <div class="stat-label">Integrations</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== CALL TO ACTION ===== -->
+        <div class="container">
+            <div class="cta-section">
+                <h2>Ready to Access Your Dashboard?</h2>
+                <p>Sign in with the credentials provided in your email to start managing your IT infrastructure today. Don't have an account yet?</p>
+
+                <div class="cta-buttons">
+                    <div class="glow-wrap">
+                        <div class="glowing-border-layer"></div>
+                        <a href="ClientPortal.html" class="btn">
+                            <i class="fas fa-sign-in-alt"></i> Sign In Now
+                        </a>
+                    </div>
+                    <div class="glow-wrap">
+                        <div class="glowing-border-layer"></div>
+                        <a href="contact.html" class="btn btn-outline">
+                            <i class="fas fa-phone"></i> Contact Us to Become a Client
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- ===== FOOTER ===== -->
+    <footer>
+        <div class="container">
+            <div class="menu-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 2rem; margin-bottom: 2rem;">
+                <div>
+                    <h4 style="color: var(--primary); font-weight: 200; margin-bottom: 1rem; font-size: clamp(0.9rem, 1.5vw, 1rem);">Quick Links</h4>
+                    <a href="Home.html" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);">Home</a>
+                    <a href="about.html" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);">About Us</a>
+                    <a href="service.html" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);">Services</a>
+                    <a href="contact.html" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);">Contact</a>
+                </div>
+
+                <div>
+                    <h4 style="color: var(--primary); font-weight: 200; margin-bottom: 1rem; font-size: clamp(0.9rem, 1.5vw, 1rem);">Services</h4>
+                    <a href="service.html" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);">Infrastructure Solutions</a>
+                    <a href="service.html" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);">Cybersecurity</a>
+                    <a href="service.html" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);">Managed Services</a>
+                    <a href="service.html" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);">Cloud Services</a>
+                </div>
+
+                <div>
+                    <h4 style="color: var(--primary); font-weight: 200; margin-bottom: 1rem; font-size: clamp(0.9rem, 1.5vw, 1rem);">Support</h4>
+                    <a href="contact.html" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);">Contact Support</a>
+                    <a href="consultation.html" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);">Request Consultation</a>
+                    <a href="ClientPortal.html" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);">Client Portal</a>
+                </div>
+
+                <div>
+                    <h4 style="color: var(--primary); font-weight: 200; margin-bottom: 1rem; font-size: clamp(0.9rem, 1.5vw, 1rem);">Connect With Us</h4>
+                    <a href="https://facebook.com" target="_blank" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);"><i class="fab fa-facebook"></i> Facebook</a>
+                    <a href="https://linkedin.com" target="_blank" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);"><i class="fab fa-linkedin"></i> LinkedIn</a>
+                    <a href="https://twitter.com" target="_blank" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);"><i class="fab fa-twitter"></i> Twitter</a>
+                </div>
+            </div>
+
+            <div style="text-align: center; color: rgba(255, 255, 255, 0.5); padding-top: 2rem; border-top: 1px solid rgba(255, 255, 255, 0.1); font-size: clamp(0.7rem, 1vw, 0.85rem); font-weight: 100;">
+                <p>&copy; 2026 StackOps IT Solutions. All rights reserved. | <a href="#" style="color: rgba(255, 255, 255, 0.5);">Privacy Policy</a> | <a href="#" style="color: rgba(255, 255, 255, 0.5);">Terms of Service</a></p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Smooth scrolling for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function(e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth' });
+                }
+            });
+        });
+
+        // Intersection Observer for scroll animations
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -100px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach((entry, index) => {
+                if (entry.isIntersecting) {
+                    const element = entry.target;
+                    const elementIndex = Array.from(element.parentElement.children).indexOf(element);
+                    
+                    // Add fade-in-left for odd indices, fade-in-right for even
+                    if (elementIndex % 2 === 0) {
+                        element.classList.add('fade-in-left');
+                    } else {
+                        element.classList.add('fade-in-right');
+                    }
+                    
+                    element.classList.add('animate');
+                }
+            });
+        }, observerOptions);
+
+        // Apply observer to all animated elements
+        document.querySelectorAll('.feature-card, .stat-box, .benefit-item, .project-item').forEach(el => {
+            observer.observe(el);
+        });
+    </script>
+</body>
+</html>

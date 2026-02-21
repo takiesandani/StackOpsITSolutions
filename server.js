@@ -2399,12 +2399,12 @@ app.post('/api/admin/invoices', authenticateToken, async (req, res) => {
                 Best regards,<br>
             </p>
 
-            <img
-            src=https://i.postimg.cc/RF4nP48L/Email-Signature.jpg
-            alt="StackOps IT Solutions"
-            width="400"
-            style="display:block; max-width:400px; width:100%; height:auto; margin-top:10px;"
-            >
+
+            <img 
+                src="https://i.postimg.cc/RF4nP48L/Email-Signature.jpg" 
+                width="425" 
+                style="display:block; width:425px; max-width:100%; height:auto;"
+                >
 
             <p style="
                 font-size:8.5px;
