@@ -6080,3 +6080,74 @@ footer a:hover {
     
     }
 }
+
+/* Target only the specific dimension shown in your screenshot */
+@media screen and (min-width: 1500px) and (max-width: 1600px) {
+
+    .text-overlay5 {
+        position: absolute;
+        right: 4%; /* Pushes text to the right side */
+        text-align: left;
+        z-index: 10;
+        width: 400px;
+    }
+
+    .sub-heading {
+        font-size: 14px;
+        color: #cccccc;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 10px;
+        font-weight: 400;
+    }
+
+    .main-heading {
+        font-size: 64px; /* Large, bold impact */
+        color: #ffffff;
+        line-height: 1.1;
+        margin-bottom: 30px;
+        font-family: 'Orbitron', sans-serif; /* Use a tech-style font if available */
+        letter-spacing: 2px;
+    }
+
+    /* Button Styling */
+    .glow-wrap-face3 .link-content-face3{
+        position: relative;
+        display: inline-block;
+        padding: 12px 35px;
+        border-radius: 50px;
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        text-decoration: none !important;
+        border-radius: clamp(20px, 2.6vw, 28px) !important;
+        background: #000000 !important;
+        color: #9900ff !important;
+        font-size: clamp(0.85rem, 1.2vw, 1.1rem) !important;
+        font-weight: 200 !important;
+        letter-spacing: clamp(1.5px, 0.2vw, 2px) !important;
+        cursor: pointer !important;
+        z-index: 2 !important;
+        transition: color 0.3s !important;
+        pointer-events: auto !important;
+        padding: 0 !important;
+    }
+
+    .glowing-border-layer-face3 {
+      position: absolute;
+      top: -80px;
+      left: -80px;
+      width: 360px;
+      height: 210px;
+      z-index: 1;
+      background: conic-gradient(
+        #7b00e0 0%,
+        hsla(207, 100%, 50%, 0) 25%,
+        #0084ff00 50%,
+        #0077ff00 75%,
+        #a000e0 100%
+      );
+      animation: spin 3s linear infinite;
+    }
+
+}
