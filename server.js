@@ -778,8 +778,8 @@ const AUTOMATION_CONFIG = {
     CHECK_HOUR: 0,             // 00:00 for status updates (Pending -> Overdue)
     EMAIL_HOUR: 6,             // 08:00 for email reminders (8 hours after check)
     FINE_DAYS_THRESHOLD: 3,     // 3 days overdue for fine message
-    TEST_MODE: false,          // If true, ignores hour checks and allows repeat emails
-    INTERVAL_MS: 60 * 60 * 1000 // Check frequency (default: 1 hour)
+    TEST_MODE: true,           // If true, ignores hour checks and allows repeat emails
+    INTERVAL_MS: 10000         // Check frequency (10 seconds for testing)
 };
 
 async function runInvoiceAutomation() {
@@ -818,11 +818,7 @@ async function runInvoiceAutomation() {
                 `SELECT i.*, c.companyname as CompanyName, u.firstname, u.lastname, u.email 
                  FROM Invoices i
                  JOIN Companies c ON i.CompanyID = c.ID
-                 JOIN Users u ON u.id = (
-                     SELECT id FROM Users 
-                     WHERE CompanyID = c.ID AND Role = 'Client' 
-                     LIMIT 1
-                 )
+                 LEFT JOIN Users u ON u.CompanyID = c.ID AND u.Role = 'Client'
                  WHERE LOWER(i.Status) = 'paid' 
                    AND (i.PaidEmailSent = FALSE OR ? = TRUE)
                    AND NOT EXISTS (SELECT 1 FROM Payments p WHERE p.InvoiceID = i.InvoiceID AND p.Method = 'PayFast')`, 
@@ -832,6 +828,10 @@ async function runInvoiceAutomation() {
             // Group paid invoices by email to send consolidated confirmations
             const paidByEmail = {};
             for (const inv of paidInvoices) {
+                if (!inv.email) {
+                    console.warn(`[Automation] Invoice #${inv.InvoiceNumber} has no email contact - skipping paid confirmation`);
+                    continue;
+                }
                 if (!paidByEmail[inv.email]) {
                     paidByEmail[inv.email] = {
                         firstname: inv.firstname,
@@ -943,14 +943,12 @@ async function runInvoiceAutomation() {
 
             // B. Handle OVERDUE reminders
             const [overdueInvoices] = await pool.query(
-                `SELECT i.*, c.companyname as CompanyName, u.firstname, u.lastname, u.email 
+                `SELECT DISTINCT i.*, c.companyname as CompanyName, u.firstname, u.lastname, u.email 
                  FROM Invoices i
                  JOIN Companies c ON i.CompanyID = c.ID
-                 JOIN Users u ON c.ID = u.CompanyID
+                 LEFT JOIN Users u ON c.ID = u.CompanyID AND u.Role = 'Client'
                  WHERE LOWER(i.Status) = 'overdue' 
                    AND (i.LastReminderDate IS NULL OR i.LastReminderDate < ? OR ? = TRUE)
-                   AND u.Role = 'Client'
-                 GROUP BY i.InvoiceID
                  ORDER BY i.InvoiceID`,
                 [todayStr, AUTOMATION_CONFIG.TEST_MODE]
             );
@@ -958,6 +956,10 @@ async function runInvoiceAutomation() {
             // Group overdue invoices by email to send consolidated reminders
             const overdueByEmail = {};
             for (const inv of overdueInvoices) {
+                if (!inv.email) {
+                    console.warn(`[Automation] Invoice #${inv.InvoiceNumber} has no email contact - skipping`);
+                    continue;
+                }
                 if (!overdueByEmail[inv.email]) {
                     overdueByEmail[inv.email] = {
                         firstname: inv.firstname,
@@ -994,47 +996,6 @@ async function runInvoiceAutomation() {
                         <p style="color: red; font-weight: bold;">URGENT NOTICE</p>
                         <p>This is a final reminder that your payment for <b>Invoice #${invoiceNumbers}</b> is significantly overdue.</p>
                         <p>Please note that as per our terms, a fine is now being applied to your account due to the delay.</p>
-                                  <img
-                                    src=https://i.postimg.cc/Pr25Gv6k/signature.png
-                                    alt="StackOps IT Solutions"
-                                    width="400"
-                                    style="display:block; max-width:400px; width:100%; height:auto; margin-top:10px;"
-                                    >
-
-                                    <p style="
-                                        font-size:8.5px;
-                                        line-height:1.4;
-                                        color:#666666;
-                                        font-family:'Avenir Next LT Pro Light','Avenir Next',Avenir,Helvetica,Arial,sans-serif;
-                                        margin:0.5px 0 0 0;
-                                    ">
-                                        <strong>StackOps IT Solutions (Pty) Ltd</strong> |
-                                        <strong>Reg. No:</strong> 2016/120370/07 |
-                                        <strong>B-BBEE Level</strong>: 1 Contributor: 135% |
-                                        <strong>CSD Supplier:</strong> MAAA164124.
-                                        Legally registered in South Africa, providing IT support, cybersecurity, governance, infrastructure, consulting services,
-                                        and procurement of IT hardware in compliance with all applicable laws and regulations.
-                                        All client information is protected in accordance with the
-                                        <strong>Protection of Personal Information Act (POPIA)</strong> and our internal
-                                        privacy and security policies. We are committed to safeguarding your data and ensuring confidentiality, integrity, and lawful
-                                        processing at all times.
-                                        All information, proposals, and pricing are accurate at the time of sending and governed by our Master Service Agreement (MSA)
-                                        or client-specific contracts. Prices may be subject to change due to economic, regulatory, or supplier factors, with clients
-                                        notified in advance.
-                                        This email and attachments are confidential and intended solely for the named recipient(s). If received in error, please
-                                        notify the sender immediately, delete the message, and do not disclose, copy, or distribute its contents.
-                                        Unauthorized use of this communication is strictly prohibited.
-                                        Emails are not guaranteed virus-free; StackOps IT Solutions accepts no liability for any damage, loss, or unauthorized access
-                                        arising from this communication.
-                                        StackOps IT Solutions is committed to business continuity, data security, and reliable technology operations.
-                                        Our team provides professional, ethical, and transparent IT services, ensuring measurable value, operational efficiency,
-                                        and compliance with industry best practices.
-                                        <strong>View our Privacy Policy and Terms of Service here:</strong>
-                                        <a href="https://stackopsit.co.za/"
-                                        style="color:#1a73e8; text-decoration:underline;">
-                                            StackOps IT Solutions | Your Complete IT Force
-                                        </a>
-                                    </p>
                     `;
                 }
 
@@ -1042,11 +1003,12 @@ async function runInvoiceAutomation() {
                 const emailBody = `
                     <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
                         <p>Dear ${data.lastname},</p>
+                        <p>I hope this email finds you well.</p>
                         ${messagePrefix}
                         <p>Total Amount Due: R${totalDue.toFixed(2)}</p>
                         <p>Please settle this amount as soon as possible to avoid further action.</p>
                         <p>If you have already made payment, please ignore this email.</p>
-                        <p>Best regards,<br><b>StackOps IT Solutions Team</b></p>
+                        <p>Kind regards,<br><b>StackOps IT Solutions Team</b></p>
                         <img
                             src=https://i.postimg.cc/Pr25Gv6k/signature.png
                             alt="StackOps IT Solutions"

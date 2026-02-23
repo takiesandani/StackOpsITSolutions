@@ -128,6 +128,31 @@
             animation: spin 3s linear infinite;
         }
 
+        .link-content {
+            position: relative;
+            z-index: 10;
+            font-weight: 200;
+            font-size: clamp(0.7rem, 0.95vw, 0.85rem);
+            padding: clamp(0.4rem, 0.8vw, 0.6rem) clamp(1rem, 1.8vw, 1.5rem);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            color: white;
+            background: black;
+            border: none;
+            border-radius: 40px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+            margin: 2px;
+        }
+
+        .link-content:hover {
+            color: var(--primary);
+        }
+
         .btn {
             position: relative;
             z-index: 10;
@@ -432,20 +457,20 @@
         /* ===== SCROLL ANIMATIONS ===== */
         .fade-in-left {
             opacity: 0;
-            transform: translateX(-50px);
+            transform: translateX(-80px);
         }
 
         .fade-in-left.animate {
-            animation: fadeInLeft 0.8s ease-out forwards;
+            animation: fadeInLeft 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
         }
 
         .fade-in-right {
             opacity: 0;
-            transform: translateX(50px);
+            transform: translateX(80px);
         }
 
         .fade-in-right.animate {
-            animation: fadeInRight 0.8s ease-out forwards;
+            animation: fadeInRight 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
         }
 
         @keyframes fadeInLeft {
@@ -462,65 +487,65 @@
             }
         }
 
-        /* Alternating left/right animations for feature cards */
-        .feature-card:nth-child(odd) {
-            animation-direction: normal;
+        /* Feature cards - initially hidden */
+        .feature-card {
+            opacity: 0;
         }
 
-        .feature-card:nth-child(even) {
-            animation-direction: normal;
+        .feature-card.animate {
+            opacity: 1;
         }
 
-        .feature-card:nth-child(1) { animation-delay: 0.1s; }
-        .feature-card:nth-child(2) { animation-delay: 0.2s; }
-        .feature-card:nth-child(3) { animation-delay: 0.3s; }
-        .feature-card:nth-child(4) { animation-delay: 0.1s; }
-        .feature-card:nth-child(5) { animation-delay: 0.2s; }
-        .feature-card:nth-child(6) { animation-delay: 0.3s; }
+        .feature-card:nth-child(1) { animation-delay: 0.05s; }
+        .feature-card:nth-child(2) { animation-delay: 0.15s; }
+        .feature-card:nth-child(3) { animation-delay: 0.25s; }
+        .feature-card:nth-child(4) { animation-delay: 0.05s; }
+        .feature-card:nth-child(5) { animation-delay: 0.15s; }
+        .feature-card:nth-child(6) { animation-delay: 0.25s; }
 
-        /* Alternating left/right for projects */
-        .project-item:nth-child(odd) {
-            animation-direction: normal;
+        /* Project items - initially hidden */
+        .project-item {
+            opacity: 0;
         }
 
-        .project-item:nth-child(even) {
-            animation-direction: normal;
+        .project-item.animate {
+            opacity: 1;
         }
 
-        .project-item:nth-child(1) { animation-delay: 0.1s; }
-        .project-item:nth-child(2) { animation-delay: 0.2s; }
-        .project-item:nth-child(3) { animation-delay: 0.3s; }
-        .project-item:nth-child(4) { animation-delay: 0.1s; }
-        .project-item:nth-child(5) { animation-delay: 0.2s; }
-        .project-item:nth-child(6) { animation-delay: 0.3s; }
+        .project-item:nth-child(1) { animation-delay: 0.05s; }
+        .project-item:nth-child(2) { animation-delay: 0.15s; }
+        .project-item:nth-child(3) { animation-delay: 0.25s; }
+        .project-item:nth-child(4) { animation-delay: 0.05s; }
+        .project-item:nth-child(5) { animation-delay: 0.15s; }
+        .project-item:nth-child(6) { animation-delay: 0.25s; }
 
-        /* Alternating for stats */
-        .stat-box:nth-child(odd) {
-            animation-direction: normal;
+        /* Stat boxes - initially hidden */
+        .stat-box {
+            opacity: 0;
         }
 
-        .stat-box:nth-child(even) {
-            animation-direction: normal;
+        .stat-box.animate {
+            opacity: 1;
         }
 
-        .stat-box:nth-child(1) { animation-delay: 0.1s; }
-        .stat-box:nth-child(2) { animation-delay: 0.2s; }
-        .stat-box:nth-child(3) { animation-delay: 0.3s; }
-        .stat-box:nth-child(4) { animation-delay: 0.4s; }
+        .stat-box:nth-child(1) { animation-delay: 0.05s; }
+        .stat-box:nth-child(2) { animation-delay: 0.15s; }
+        .stat-box:nth-child(3) { animation-delay: 0.25s; }
+        .stat-box:nth-child(4) { animation-delay: 0.35s; }
 
-        /* Alternating for benefits */
-        .benefit-item:nth-child(odd) {
-            animation-direction: normal;
+        /* Benefit items - initially hidden */
+        .benefit-item {
+            opacity: 0;
         }
 
-        .benefit-item:nth-child(even) {
-            animation-direction: normal;
+        .benefit-item.animate {
+            opacity: 1;
         }
 
-        .benefit-item:nth-child(1) { animation-delay: 0.1s; }
-        .benefit-item:nth-child(2) { animation-delay: 0.2s; }
-        .benefit-item:nth-child(3) { animation-delay: 0.3s; }
-        .benefit-item:nth-child(4) { animation-delay: 0.4s; }
+        .benefit-item:nth-child(1) { animation-delay: 0.05s; }
+        .benefit-item:nth-child(2) { animation-delay: 0.15s; }
+        .benefit-item:nth-child(3) { animation-delay: 0.25s; }
+        .benefit-item:nth-child(4) { animation-delay: 0.35s; }
 
         /* ===== RESPONSIVE ===== */
         @media (max-width: 1024px) {
@@ -622,30 +647,32 @@
 <body>
     <div class="background"></div>
 
-    <main>
-        <header class="site-header">
-            <a href="/" class="logo">
-                
-                    <img src="Images/Logos/RemovedStackOps.png" alt="Stackops IT Solutions Logo" >
-                
-            </a>
-            <div id="hamburger" class="hamburger">
-                <span></span>
-                <span></span>
-                <span></span>
-            </div>
+    <header class="site-header">
+        <a href="/" class="logo">
+            
+                <img src="Images/Logos/RemovedStackOps.png" alt="Stackops IT Solutions Logo" >
+            
+        </a>
+        <div id="hamburger" class="hamburger">
+            <span></span>
+            <span></span>
+            <span></span>
+        </div>
 
-            <ul class="nav-links" id="nav-links">
-                <li><a href="Home.html">Home</a></li>
-                <li><a href="about.html">About</a></li>
-                <li><a href="service.html" class="active">Solutions</a></li>
-                <li><a href="approach.html">Our Approach</a></li>
-                <li><a href="contact.html">Contact Us</a></li>
-                <li><a href="consultation.html">Book a consultation</a></li>
-                <li><a href="ClientPortal.html">ClientPortal</a></li>
-                <li class="Shop"><a href="#" id="shop-link">Shop</a></li>
-            </ul>
-        </header>
+        <ul class="nav-links" id="nav-links">
+            <li><a href="Home.html">Home</a></li>
+            <li><a href="about.html">About</a></li>
+            <li><a href="service.html" class="active">Solutions</a></li>
+            <li><a href="approach.html">Our Approach</a></li>
+            <li><a href="contact.html">Contact Us</a></li>
+            <li><a href="consultation.html">Book a consultation</a></li>
+            <li><a href="ClientPortal.html">ClientPortal</a></li>
+            <li class="Shop"><a href="#" id="shop-link">Shop</a></li>
+        </ul>
+    </header>
+
+    <main>
+
 
         <!-- ===== HERO SECTION ===== -->
         <section class="hero-section">
@@ -676,13 +703,13 @@
                 <div class="hero-buttons">
                     <div class="glow-wrap">
                         <div class="glowing-border-layer"></div>
-                        <a href="ClientPortal.html" class="btn">
+                        <a href="ClientPortal.html" class="link-content">
                             <i class="fas fa-sign-in-alt"></i> Access Dashboard
                         </a>
                     </div>
                     <div class="glow-wrap">
                         <div class="glowing-border-layer"></div>
-                        <a href="contact.html" class="btn btn-outline">
+                        <a href="contact.html" class="link-content">
                             <i class="fas fa-handshake"></i> Become a Client
                         </a>
                     </div>
@@ -921,13 +948,13 @@
                 <div class="cta-buttons">
                     <div class="glow-wrap">
                         <div class="glowing-border-layer"></div>
-                        <a href="ClientPortal.html" class="btn">
+                        <a href="ClientPortal.html" class="link-content">
                             <i class="fas fa-sign-in-alt"></i> Sign In Now
                         </a>
                     </div>
                     <div class="glow-wrap">
                         <div class="glowing-border-layer"></div>
-                        <a href="contact.html" class="btn btn-outline">
+                        <a href="contact.html" class="link-content">
                             <i class="fas fa-phone"></i> Contact Us to Become a Client
                         </a>
                     </div>
