@@ -822,6 +822,143 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
+    <!-- Authentication Handler - Must load before other scripts -->
+    <script>
+        /**
+         * Authentication Handler for Client Portal
+         * Verifies JWT token and manages authenticated session
+         */
+        
+        let authToken = null;
+        let clientData = null;
+        
+        async function initializeAuth() {
+            try {
+                // Check for token in localStorage
+                authToken = localStorage.getItem('token');
+                
+                if (!authToken) {
+                    console.log('No token found. Redirecting to login...');
+                    redirectToLogin();
+                    return;
+                }
+                
+                // Verify token is valid by making a simple API call
+                const verified = await verifyToken();
+                
+                if (!verified) {
+                    console.log('Token verification failed. Redirecting to login...');
+                    redirectToLogin();
+                    return;
+                }
+                
+                // Try to load client data from localStorage
+                const clientDataStr = localStorage.getItem('clientData');
+                if (clientDataStr) {
+                    try {
+                        clientData = JSON.parse(clientDataStr);
+                    } catch (e) {
+                        console.error('Failed to parse client data:', e);
+                    }
+                }
+                
+                // Update UI with client name if available
+                if (clientData && clientData.email) {
+                    updateClientDisplay(clientData.email);
+                }
+                
+                // Show dashboard section
+                showDashboard();
+                
+            } catch (error) {
+                console.error('Authentication initialization failed:', error);
+                redirectToLogin();
+            }
+        }
+        
+        async function verifyToken() {
+            try {
+                // Make a simple API call to verify the token is still valid
+                const response = await fetch('/api/client/latest-invoice', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.status === 401) {
+                    console.log('Token expired or invalid');
+                    return false;
+                }
+                
+                if (response.status === 403) {
+                    console.log('Access forbidden');
+                    return false;
+                }
+                
+                return response.ok;
+                
+            } catch (error) {
+                console.error('Token verification error:', error);
+                return false;
+            }
+        }
+        
+        function updateClientDisplay(email) {
+            // Update username display in header
+            const userNameElement = document.getElementById('user-name');
+            const userNameMobileElement = document.getElementById('user-name-mobile');
+            
+            if (userNameElement) {
+                userNameElement.textContent = email || 'Client';
+            }
+            if (userNameMobileElement) {
+                userNameMobileElement.textContent = email || 'Client';
+            }
+        }
+        
+        function showDashboard() {
+            // Hide login section if visible
+            const loginSection = document.getElementById('login-section');
+            if (loginSection) {
+                loginSection.classList.remove('active');
+                loginSection.style.display = 'none';
+            }
+            
+            // Show dashboard section
+            const dashboardSection = document.getElementById('dashboard-section');
+            if (dashboardSection) {
+                dashboardSection.style.display = 'block';
+            }
+        }
+        
+        function redirectToLogin() {
+            // Clear stored data
+            localStorage.removeItem('token');
+            localStorage.removeItem('clientData');
+            
+            // Redirect to signin page
+            window.location.href = '/signin.html';
+        }
+        
+        function logout() {
+            // Clear stored data
+            localStorage.removeItem('token');
+            localStorage.removeItem('clientData');
+            
+            // Redirect to home page
+            window.location.href = '/Home.html';
+        }
+        
+        // Initialize authentication when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeAuth);
+        } else {
+            initializeAuth();
+        }
+    </script>
+
     <script src="js/script.js"></script>
     <script src="js/clientportal.js"></script>
     <script src="js/chatbot.js"></script>

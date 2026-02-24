@@ -402,7 +402,13 @@ function handleMfaVerification() {
     .then(data => {
         if (data.success) {
             if (data.accessToken) {
-                localStorage.setItem('authToken', data.accessToken);
+                // Store token with correct key for auth system
+                localStorage.setItem('token', data.accessToken);
+            }
+            
+            // Store client data for display
+            if (data.user) {
+                localStorage.setItem('clientData', JSON.stringify(data.user));
             }
             
             // Store user session
@@ -419,6 +425,8 @@ function handleMfaVerification() {
             } else if (data.user && data.user.firstName) {
                 displayName = data.user.firstName;
                 sessionStorage.setItem('userFirstName', data.user.firstName);
+            } else if (data.user && data.user.email) {
+                displayName = data.user.email;
             }
             
             document.getElementById('user-name').textContent = displayName;
@@ -471,68 +479,13 @@ function handleLogout() {
         return;
     }
 
-    // Clear any local session state used by the client portal
-    sessionStorage.removeItem('userEmail');
-    sessionStorage.removeItem('isLoggedIn');
-    sessionStorage.removeItem('loginTime');
-
-    // Clear JWT auth token issued by the backend
-    localStorage.removeItem('authToken');
-
-    // Reset UI (for safety if we stay on the page)
-    const dashboardSection = document.getElementById('dashboard-section');
-    const loginSection = document.getElementById('login-section');
-    if (dashboardSection && loginSection) {
-        dashboardSection.classList.remove('active');
-        loginSection.classList.add('active');
-        resetDashboard();
-    }
-
-    // Hide chatbot
-    const chatWidget = document.getElementById('chatWidget');
-    if (chatWidget) {
-        chatWidget.style.display = 'none';
-    }
-
-    // Redirect to public home page so protected views aren't visible
-    window.location.href = 'Home.html';
+    // Call global logout function which handles all cleanup and redirection
+    logout();
 }
 
 function setupSessionManagement() {
-    const isLoggedIn = sessionStorage.getItem('isLoggedIn');
-    const userEmail = sessionStorage.getItem('userEmail');
-    const userFirstName = sessionStorage.getItem('userFirstName');
-    const userLastName = sessionStorage.getItem('userLastName');
-    const token = localStorage.getItem('authToken');
-    
-    if (isLoggedIn === 'true' && userEmail && token) {
-        document.getElementById('login-section').classList.remove('active');
-        document.getElementById('dashboard-section').classList.add('active');
-        
-        // Display user's full name if available, otherwise fallback to email prefix
-        let displayName = 'Client';
-        if (userFirstName && userLastName) {
-            displayName = `${userFirstName} ${userLastName}`;
-        } else if (userFirstName) {
-            displayName = userFirstName;
-        } else {
-            displayName = userEmail.split('@')[0];
-        }
-        
-        document.getElementById('user-name').textContent = displayName;
-        const userNameMobile = document.getElementById('user-name-mobile');
-        if (userNameMobile) {
-            userNameMobile.textContent = displayName;
-        }
-        
-        // Load billing card if user is logged in
-        initializeBillingCard();
-        
-        // Initialize chatbot if user is logged in
-        if (typeof window.initChatbot === 'function') {
-            window.initChatbot();
-        }
-    }
+    // Session is now managed by the global initializeAuth function
+    // which checks for a valid token on page load and displays user info
 }
 
 function validateEmail(email) {
@@ -547,7 +500,7 @@ function showError(message) {
 
 // Updated: fetchDuoStats - Now with better error handling, loading states, and retries
 async function fetchDuoStats(retryCount = 0) {
-    const token = localStorage.getItem('authToken');
+    const token = localStorage.getItem('token');
     const isLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
     
     // Only fetch if user is logged in and has a token
@@ -1148,7 +1101,7 @@ async function initializeBillingCard() {
     const billingCard = document.getElementById('billing-card');
     if (!billingCard) return;
     
-    const token = localStorage.getItem('authToken');
+    const token = localStorage.getItem('token');
     
     if (!token) {
         billingCard.innerHTML = '<p style="color: #bdbdbd; text-align: center; padding: 20px;">Please log in to view billing information.</p>';

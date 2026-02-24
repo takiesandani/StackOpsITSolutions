@@ -753,9 +753,16 @@ class StackOpsChatbot {
         }
 
         try {
-            const response = await fetch(`${this.API_URL}/api/chat-public`, {
+            const token = localStorage.getItem('token');
+            const headers = { 'Content-Type': 'application/json' };
+            
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const response = await fetch(`${this.API_URL}/api/chat`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: headers,
                 body: JSON.stringify({
                     message,
                     sessionId: this.sessionId,
