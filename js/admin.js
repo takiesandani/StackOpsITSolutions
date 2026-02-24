@@ -136,8 +136,13 @@ document.addEventListener("DOMContentLoaded", () => {
     };
     
     const fetchBookings = async () => {
+        // Skip if bookings element doesn't exist (moved to admin-appointments page)
+        if (!bookingsListEl) {
+            return;
+        }
+        
         try {
-            // FIXED: Changed from 'accessToken' to 'authToken'
+            // FIXED: Changed from 'accessToken' to 'authToken' 
             const token = localStorage.getItem('authToken'); 
             
             if (!token) {
@@ -179,8 +184,9 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         } catch (error) {
             console.error("Failed to fetch bookings:", error);
-            bookingsListEl.innerHTML = '<li>Error loading bookings.</li>'; 
-        }
+            if (bookingsListEl) {
+                bookingsListEl.innerHTML = '<li>Error loading bookings.</li>';
+            }
     };
     
     prevMonthBtn.onclick = () => {

@@ -2575,6 +2575,7 @@ app.get('/api/admin/appointments', authenticateToken, async (req, res) => {
         
         const [appointments] = await pool.query(`
             SELECT * FROM appointment 
+            WHERE is_available = 0 AND status = 'pending'
             ORDER BY date DESC, time ASC
         `);
         
@@ -2582,6 +2583,26 @@ app.get('/api/admin/appointments', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error('Error fetching appointments:', error);
         res.status(500).json({ error: 'Failed to fetch appointments' });
+    }
+});
+
+// Get completed appointments
+app.get('/api/admin/appointments/completed', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        
+        const [appointments] = await pool.query(`
+            SELECT * FROM appointment 
+            WHERE status = 'completed'
+            ORDER BY date DESC, time ASC
+        `);
+        
+        res.json(appointments);
+    } catch (error) {
+        console.error('Error fetching completed appointments:', error);
+        res.status(500).json({ error: 'Failed to fetch completed appointments' });
     }
 });
 
@@ -2606,6 +2627,50 @@ app.get('/api/admin/appointments/date/:date', authenticateToken, async (req, res
     }
 });
 
+// Clear all appointments (MUST come before :id route to match correctly)
+app.delete('/api/admin/appointments/clear-all', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        
+        const [result] = await pool.query(`
+            DELETE FROM appointment
+        `);
+        
+        res.json({ 
+            message: 'All appointments cleared successfully',
+            deletedCount: result.affectedRows
+        });
+    } catch (error) {
+        console.error('Error clearing appointments:', error);
+        res.status(500).json({ error: 'Failed to clear appointments' });
+    }
+});
+
+// Mark appointment as complete (update status, don't delete)
+app.put('/api/admin/appointments/:id/complete', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        
+        const { id } = req.params;
+        const [result] = await pool.query(`
+            UPDATE appointment SET status = 'completed' WHERE id = ?
+        `, [id]);
+        
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Appointment not found' });
+        }
+        
+        res.json({ message: 'Appointment marked as complete' });
+    } catch (error) {
+        console.error('Error completing appointment:', error);
+        res.status(500).json({ error: 'Failed to complete appointment' });
+    }
+});
+
 // Delete appointment
 app.delete('/api/admin/appointments/:id', authenticateToken, async (req, res) => {
     try {
@@ -2626,50 +2691,6 @@ app.delete('/api/admin/appointments/:id', authenticateToken, async (req, res) =>
     } catch (error) {
         console.error('Error deleting appointment:', error);
         res.status(500).json({ error: 'Failed to delete appointment' });
-    }
-});
-
-// Mark appointment as complete (delete it)
-app.put('/api/admin/appointments/:id/complete', authenticateToken, async (req, res) => {
-    try {
-        if (!pool) {
-            return res.status(500).json({ error: 'Database connection unavailable' });
-        }
-        
-        const { id } = req.params;
-        const [result] = await pool.query(`
-            DELETE FROM appointment WHERE id = ?
-        `, [id]);
-        
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ error: 'Appointment not found' });
-        }
-        
-        res.json({ message: 'Appointment marked as complete' });
-    } catch (error) {
-        console.error('Error completing appointment:', error);
-        res.status(500).json({ error: 'Failed to complete appointment' });
-    }
-});
-
-// Clear all appointments
-app.delete('/api/admin/appointments/clear-all', authenticateToken, async (req, res) => {
-    try {
-        if (!pool) {
-            return res.status(500).json({ error: 'Database connection unavailable' });
-        }
-        
-        const [result] = await pool.query(`
-            DELETE FROM appointment
-        `);
-        
-        res.json({ 
-            message: 'All appointments cleared successfully',
-            deletedCount: result.affectedRows
-        });
-    } catch (error) {
-        console.error('Error clearing appointments:', error);
-        res.status(500).json({ error: 'Failed to clear appointments' });
     }
 });
 

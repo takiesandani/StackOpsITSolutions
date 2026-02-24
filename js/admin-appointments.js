@@ -20,7 +20,6 @@ function setupEventListeners() {
     });
     
     // Filter listeners
-    document.getElementById('status-filter').addEventListener('change', applyFilters);
     document.getElementById('date-filter').addEventListener('change', applyFilters);
     document.getElementById('search-filter').addEventListener('keyup', applyFilters);
 
@@ -64,27 +63,32 @@ function setupEventListeners() {
 async function loadAppointments() {
     try {
         const token = localStorage.getItem('authToken');
-        const response = await fetch('/api/admin/appointments', {
+        
+        // Load pending appointments
+        const pendingResponse = await fetch('/api/admin/appointments', {
             headers: { 'Authorization': `Bearer ${token}` }
         });
 
-        if (response.status === 401) {
+        if (pendingResponse.status === 401) {
             window.location.href = 'signin.html';
             return;
         }
 
-        if (!response.ok) {
+        if (!pendingResponse.ok) {
             throw new Error('Failed to load appointments');
         }
 
-        allAppointments = await response.json();
+        allAppointments = await pendingResponse.json();
         applyFilters();
         renderAppointments();
+        
+        // Load completed appointments
+        loadCompletedAppointments();
     } catch (error) {
         console.error('Error loading appointments:', error);
         document.getElementById('appointments-tbody').innerHTML = `
             <tr>
-                <td colspan="9" style="text-align: center; color: red;">
+                <td colspan="8" style="text-align: center; color: red;">
                     Error loading appointments: ${error.message}
                 </td>
             </tr>
@@ -92,19 +96,29 @@ async function loadAppointments() {
     }
 }
 
+async function loadCompletedAppointments() {
+    try {
+        const token = localStorage.getItem('authToken');
+        const response = await fetch('/api/admin/appointments/completed', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to load completed appointments');
+        }
+
+        const completed = await response.json();
+        renderCompletedAppointments(completed);
+    } catch (error) {
+        console.error('Error loading completed appointments:', error);
+    }
+}
+
 function applyFilters() {
-    const statusFilter = document.getElementById('status-filter').value;
     const dateFilter = document.getElementById('date-filter').value;
     const searchFilter = document.getElementById('search-filter').value.toLowerCase();
 
     filteredAppointments = allAppointments.filter(apt => {
-        // Status filter
-        if (statusFilter) {
-            const isBooked = apt.clientName && apt.clientName.trim() !== '';
-            if (statusFilter === 'booked' && !isBooked) return false;
-            if (statusFilter === 'available' && isBooked) return false;
-        }
-
         // Date filter
         if (dateFilter && apt.date !== dateFilter) return false;
 
@@ -131,7 +145,7 @@ function renderAppointments() {
     if (filteredAppointments.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="9" style="text-align: center; padding: 20px;">
+                <td colspan="8" style="text-align: center; padding: 20px;">
                     No appointments found
                 </td>
             </tr>
@@ -149,19 +163,12 @@ function renderAppointments() {
             <td>${apt.phone || '-'}</td>
             <td>${apt.service || '-'}</td>
             <td>
-                <span class="status-badge ${apt.is_available ? 'available' : 'booked'}">
-                    ${apt.is_available ? 'Available' : 'Booked'}
-                </span>
-            </td>
-            <td>
                 <button class="btn btn-small" onclick="viewAppointment(${apt.id})">
                     <i class="fas fa-eye"></i> View
                 </button>
-                ${!apt.is_available ? `
                 <button class="btn btn-small btn-success" onclick="markComplete(${apt.id})">
                     <i class="fas fa-check"></i> Complete
                 </button>
-                ` : ''}
             </td>
         </tr>
     `).join('');
@@ -182,11 +189,9 @@ function viewAppointment(appointmentId) {
     document.getElementById('modal-service').textContent = appointment.service || 'N/A';
     document.getElementById('modal-message').textContent = appointment.message || 'No additional notes';
 
-    // Setup complete button
+    // Setup complete button - all appointments in this tab are booked
     const completeBtn = document.getElementById('complete-btn');
-    if (appointment.is_available || !appointment.clientName) {
-        completeBtn.style.display = 'none';
-    } else {
+    if (completeBtn) {
         completeBtn.style.display = 'inline-block';
         completeBtn.onclick = () => markComplete(appointmentId);
     }
@@ -247,6 +252,40 @@ async function deleteAppointment(appointmentId) {
         console.error('Error deleting appointment:', error);
         alert('Error deleting appointment');
     }
+}
+
+function renderCompletedAppointments(completed) {
+    const tbody = document.getElementById('completed-tbody');
+
+    if (!tbody) return;
+
+    if (completed.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="8" style="text-align: center; padding: 20px; color: #999;">
+                    No completed appointments yet
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    tbody.innerHTML = completed.map(apt => `
+        <tr>
+            <td>${formatDate(apt.date)}</td>
+            <td>${apt.time}</td>
+            <td>${apt.clientName || '-'}</td>
+            <td>${apt.companyName || '-'}</td>
+            <td>${apt.email || '-'}</td>
+            <td>${apt.phone || '-'}</td>
+            <td>${apt.service || '-'}</td>
+            <td>
+                <button class="btn btn-small" onclick="viewAppointment(${apt.id})">
+                    <i class="fas fa-eye"></i> View
+                </button>
+            </td>
+        </tr>
+    `).join('');
 }
 
 function formatDate(dateString) {
