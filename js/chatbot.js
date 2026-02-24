@@ -894,11 +894,26 @@ class StackOpsChatbot {
     }
 }
 
-// Initialize chatbot when DOM is ready
+// Global function to initialize chatbot after login
+window.initChatbot = function() {
+    // Only initialize if not already initialized
+    if (!document.getElementById('chatbot-widget')) {
+        new StackOpsChatbot();
+    }
+};
+
+// For non-ClientPortal pages: Initialize chatbot when DOM is ready
+// But NOT for ClientPortal - it will be initialized after login
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
-        new StackOpsChatbot();
+        // Only auto-initialize if NOT on ClientPortal page
+        if (!window.location.pathname.includes('ClientPortal.html')) {
+            new StackOpsChatbot();
+        }
     });
 } else {
-    new StackOpsChatbot();
+    // Only auto-initialize if NOT on ClientPortal page
+    if (!window.location.pathname.includes('ClientPortal.html')) {
+        new StackOpsChatbot();
+    }
 }
