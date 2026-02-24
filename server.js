@@ -2629,6 +2629,50 @@ app.delete('/api/admin/appointments/:id', authenticateToken, async (req, res) =>
     }
 });
 
+// Mark appointment as complete (delete it)
+app.put('/api/admin/appointments/:id/complete', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        
+        const { id } = req.params;
+        const [result] = await pool.query(`
+            DELETE FROM appointment WHERE id = ?
+        `, [id]);
+        
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Appointment not found' });
+        }
+        
+        res.json({ message: 'Appointment marked as complete' });
+    } catch (error) {
+        console.error('Error completing appointment:', error);
+        res.status(500).json({ error: 'Failed to complete appointment' });
+    }
+});
+
+// Clear all appointments
+app.delete('/api/admin/appointments/clear-all', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        
+        const [result] = await pool.query(`
+            DELETE FROM appointment
+        `);
+        
+        res.json({ 
+            message: 'All appointments cleared successfully',
+            deletedCount: result.affectedRows
+        });
+    } catch (error) {
+        console.error('Error clearing appointments:', error);
+        res.status(500).json({ error: 'Failed to clear appointments' });
+    }
+});
+
 // Get projects (if Projects table exists)
 app.get('/api/admin/projects', authenticateToken, async (req, res) => {
     try {

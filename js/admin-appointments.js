@@ -12,6 +12,13 @@ function setupEventListeners() {
     // Refresh button
     document.getElementById('refresh-btn').addEventListener('click', loadAppointments);
     
+    // Clear all button
+    document.getElementById('clear-all-btn').addEventListener('click', () => {
+        if (confirm('Are you sure you want to clear ALL appointments? This cannot be undone!')) {
+            clearAllAppointments();
+        }
+    });
+    
     // Filter listeners
     document.getElementById('status-filter').addEventListener('change', applyFilters);
     document.getElementById('date-filter').addEventListener('change', applyFilters);
@@ -150,6 +157,11 @@ function renderAppointments() {
                 <button class="btn btn-small" onclick="viewAppointment(${apt.id})">
                     <i class="fas fa-eye"></i> View
                 </button>
+                ${!apt.is_available ? `
+                <button class="btn btn-small btn-success" onclick="markComplete(${apt.id})">
+                    <i class="fas fa-check"></i> Complete
+                </button>
+                ` : ''}
             </td>
         </tr>
     `).join('');
@@ -170,12 +182,46 @@ function viewAppointment(appointmentId) {
     document.getElementById('modal-service').textContent = appointment.service || 'N/A';
     document.getElementById('modal-message').textContent = appointment.message || 'No additional notes';
 
+    // Setup complete button
+    const completeBtn = document.getElementById('complete-btn');
+    if (appointment.is_available || !appointment.clientName) {
+        completeBtn.style.display = 'none';
+    } else {
+        completeBtn.style.display = 'inline-block';
+        completeBtn.onclick = () => markComplete(appointmentId);
+    }
+
     // Setup delete button
     const deleteBtn = document.getElementById('delete-btn');
     deleteBtn.onclick = () => deleteAppointment(appointmentId);
 
     // Show modal
     document.getElementById('appointment-modal').style.display = 'block';
+}
+
+async function markComplete(appointmentId) {
+    if (!confirm('Mark this appointment as complete? It will be deleted from the system.')) {
+        return;
+    }
+
+    try {
+        const token = localStorage.getItem('authToken');
+        const response = await fetch(`/api/admin/appointments/${appointmentId}/complete`, {
+            method: 'PUT',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (response.ok) {
+            alert('Appointment marked as complete');
+            document.getElementById('appointment-modal').style.display = 'none';
+            loadAppointments();
+        } else {
+            alert('Failed to mark appointment as complete');
+        }
+    } catch (error) {
+        console.error('Error marking appointment complete:', error);
+        alert('Error marking appointment complete');
+    }
 }
 
 async function deleteAppointment(appointmentId) {
@@ -211,4 +257,24 @@ function formatDate(dateString) {
         month: 'short',
         day: 'numeric'
     });
+}
+
+async function clearAllAppointments() {
+    try {
+        const token = localStorage.getItem('authToken');
+        const response = await fetch('/api/admin/appointments/clear-all', {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (response.ok) {
+            alert('All appointments cleared successfully');
+            loadAppointments();
+        } else {
+            alert('Failed to clear appointments');
+        }
+    } catch (error) {
+        console.error('Error clearing appointments:', error);
+        alert('Error clearing appointments');
+    }
 }
