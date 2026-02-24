@@ -753,7 +753,7 @@ class StackOpsChatbot {
         }
 
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('authToken');
             const headers = { 'Content-Type': 'application/json' };
             
             if (token) {
