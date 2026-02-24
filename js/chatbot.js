@@ -665,7 +665,18 @@ class StackOpsChatbot {
             if (chatCorner.classList.contains('active')) {
                 messageInput.focus();
                 if (chatMessages.children.length === 0) {
-                    this.addMessage('bot', "👋 Hi! I'm StackOn, your AI assistant from StackOps IT Solutions.\n\nI can help you:\n• Learn about our services\n• Book a free consultation\n• Answer your tech questions\n\nWhat brings you here today?");
+                    // Get user's first name for personalized greeting
+                    const userFirstName = sessionStorage.getItem('userFirstName') || 'there';
+                    const isClientPortal = window.location.pathname.includes('ClientPortal.html');
+                    
+                    let greetingMessage;
+                    if (isClientPortal) {
+                        greetingMessage = `👋 Hi ${userFirstName}! I'm StackOn, your AI assistant.\n\nI can help you with:\n• Invoice details & payment\n• Account information\n• Cisco Duo license status\n\nWhat can I assist you with today?`;
+                    } else {
+                        greetingMessage = `👋 Hi! I'm StackOn, your AI assistant from StackOps IT Solutions.\n\nI can help you:\n• Learn about our services\n• Book a free consultation\n• Answer your tech questions\n\nWhat brings you here today?`;
+                    }
+                    
+                    this.addMessage('bot', greetingMessage);
                 }
             }
         });
