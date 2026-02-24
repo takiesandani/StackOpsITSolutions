@@ -187,6 +187,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (bookingsListEl) {
                 bookingsListEl.innerHTML = '<li>Error loading bookings.</li>';
             }
+        }
     };
     
     prevMonthBtn.onclick = () => {

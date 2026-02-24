@@ -2575,7 +2575,7 @@ app.get('/api/admin/appointments', authenticateToken, async (req, res) => {
         
         const [appointments] = await pool.query(`
             SELECT * FROM appointment 
-            WHERE is_available = 0 AND status = 'pending'
+            WHERE is_available = 0
             ORDER BY date DESC, time ASC
         `);
         
@@ -2595,8 +2595,9 @@ app.get('/api/admin/appointments/completed', authenticateToken, async (req, res)
         
         const [appointments] = await pool.query(`
             SELECT * FROM appointment 
-            WHERE status = 'completed'
+            WHERE is_available = 0 AND clientName IS NOT NULL
             ORDER BY date DESC, time ASC
+            LIMIT 0
         `);
         
         res.json(appointments);
