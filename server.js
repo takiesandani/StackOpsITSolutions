@@ -779,13 +779,14 @@ const AUTOMATION_CONFIG = {
     EMAIL_HOUR: 6,             // 08:00 for email reminders (8 hours after check)
     FINE_DAYS_THRESHOLD: 3,     // 3 days overdue for fine message
     TEST_MODE: false,          // If true, ignores hour checks and allows repeat emails
-    INTERVAL_MS: 5 * 60 * 1000 // Check frequency (default: 5 minutes)
+    INTERVAL_MS: 60 * 60 * 1000 // Check frequency (default: 1 hour)
 };
 
 async function runInvoiceAutomation() {
     if (!AUTOMATION_CONFIG.ENABLED || !pool) return;
 
     const now = new Date();
+    const currentHour = now.getHours();
     const todayStr = now.toISOString().split('T')[0];
 
     console.log(`[Automation] Running check at ${now.toLocaleString()}${AUTOMATION_CONFIG.TEST_MODE ? ' (TEST MODE)' : ''}`);
@@ -808,8 +809,8 @@ async function runInvoiceAutomation() {
             }
         }
 
-        // 2. EMAIL REMINDERS (Runs every interval, but limits to once a day per invoice)
-        if (AUTOMATION_CONFIG.ENABLED) {
+        // 2. EMAIL REMINDERS (Runs at EMAIL_HOUR or in TEST_MODE)
+        if (currentHour === AUTOMATION_CONFIG.EMAIL_HOUR || AUTOMATION_CONFIG.TEST_MODE) {
             console.log('[Automation] Processing email reminders...');
 
             // A. Handle PAID confirmations
