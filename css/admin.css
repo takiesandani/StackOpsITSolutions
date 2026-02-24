@@ -170,6 +170,34 @@ header.sticky {
     margin-bottom: 30px;
 }
 
+.appointments-section {
+    background: rgba(28, 28, 28, 0.7);
+    padding: 30px;
+    border-radius: 10px;
+    margin-bottom: 30px;
+}
+
+.admin-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 25px;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.admin-header h2 {
+    font-size: clamp(1.3rem, 4vw, 1.8rem);
+    color: var(--light);
+    font-weight: 300;
+}
+
+.admin-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
 .calendar-header {
     display: flex;
     justify-content: space-between;
@@ -764,10 +792,53 @@ header.sticky {
     font-weight: 200;
 }
 
+.filters-section {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+    margin-bottom: 25px;
+    padding: 15px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+}
+
 .filter-group {
     display: flex;
     gap: 10px;
     flex-wrap: wrap;
+}
+
+.filter-group label {
+    display: flex;
+    align-items: center;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.9rem;
+    font-weight: 200;
+}
+
+.filter-group select,
+.filter-group input[type="text"],
+.filter-group input[type="date"] {
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    color: var(--light);
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+}
+
+.filter-group select:focus,
+.filter-group input[type="text"]:focus,
+.filter-group input[type="date"]:focus {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: var(--primary);
+    outline: none;
+}
+
+.filter-group select option {
+    background: var(--dark);
+    color: var(--light);
 }
 
 /* Buttons */
@@ -969,6 +1040,13 @@ header.sticky {
     border-bottom: 2px solid rgba(255, 255, 255, 0.1);
     margin-bottom: 20px;
     flex-wrap: wrap;
+}
+
+.admin-tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 30px;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.1);
 }
 
 .tab-btn {
