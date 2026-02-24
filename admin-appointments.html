@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Appointments | Admin Panel</title>
+    <link rel="stylesheet" href="css/admin.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="background"></div>
+    
+    <header class="site-header">
+        <a href="/" class="logo">
+            <img src="Images/Logos/RemovedStackOps.png" alt="StackOps IT Solutions Logo">
+        </a>
+        <div class="hamburger" id="hamburger">
+            <i class="fas fa-bars"></i>
+        </div>
+        <ul class="nav-links" id="nav-links">
+            <li><a href="Admin.html">Calendar</a></li>
+            <li><a href="admin-dashboard.html">Dashboard</a></li>
+            <li><a href="signup.html">Register Client</a></li>
+            <li><a href="#" id="admin-signout">Sign Out</a></li>
+        </ul>
+    </header>
+
+    <div class="admin-container">
+        <aside class="admin-sidebar" id="admin-sidebar">
+            <div class="sidebar-header">
+                <h2>Admin Panel</h2>
+                <button class="sidebar-toggle" id="sidebar-toggle">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="admin-dashboard.html" class="nav-item">
+                    <i class="fas fa-chart-line"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="admin-companies.html" class="nav-item">
+                    <i class="fas fa-building"></i>
+                    <span>Companies</span>
+                </a>
+                <a href="admin-clients.html" class="nav-item">
+                    <i class="fas fa-users"></i>
+                    <span>Clients</span>
+                </a>
+                <a href="admin-projects.html" class="nav-item">
+                    <i class="fas fa-project-diagram"></i>
+                    <span>Projects</span>
+                </a>
+                <a href="admin-invoices.html" class="nav-item">
+                    <i class="fas fa-file-invoice"></i>
+                    <span>Invoices</span>
+                </a>
+                <a href="admin-payments.html" class="nav-item">
+                    <i class="fas fa-credit-card"></i>
+                    <span>Payments</span>
+                </a>
+                <a href="admin-appointments.html" class="nav-item active">
+                    <i class="fas fa-calendar-check"></i>
+                    <span>Appointments</span>
+                </a>
+            </nav>
+        </aside>
+
+        <main class="admin-main">
+            <div class="admin-header">
+                <h1>Consultation Appointments</h1>
+                <div class="admin-actions">
+                    <button id="refresh-btn" class="btn btn-secondary">
+                        <i class="fas fa-sync"></i> Refresh
+                    </button>
+                </div>
+            </div>
+
+            <div class="admin-content">
+                <!-- Filters Section -->
+                <div class="filters-section">
+                    <div class="filter-group">
+                        <label for="status-filter">Status:</label>
+                        <select id="status-filter">
+                            <option value="">All</option>
+                            <option value="booked">Booked</option>
+                            <option value="available">Available</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="date-filter">Date:</label>
+                        <input type="date" id="date-filter">
+                    </div>
+                    <div class="filter-group">
+                        <label for="search-filter">Search:</label>
+                        <input type="text" id="search-filter" placeholder="Name, email, or phone...">
+                    </div>
+                </div>
+
+                <!-- Appointments Table -->
+                <div class="table-container">
+                    <table class="admin-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Time</th>
+                                <th>Client Name</th>
+                                <th>Company</th>
+                                <th>Email</th>
+                                <th>Phone</th>
+                                <th>Service</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="appointments-tbody">
+                            <tr>
+                                <td colspan="9" style="text-align: center; padding: 20px;">
+                                    <i class="fas fa-spinner fa-spin"></i> Loading appointments...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Appointment Details Modal -->
+    <div id="appointment-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Appointment Details</h2>
+            <div id="modal-body">
+                <p><strong>Date:</strong> <span id="modal-date"></span></p>
+                <p><strong>Time:</strong> <span id="modal-time"></span></p>
+                <p><strong>Client Name:</strong> <span id="modal-clientName"></span></p>
+                <p><strong>Company:</strong> <span id="modal-company"></span></p>
+                <p><strong>Title:</strong> <span id="modal-title"></span></p>
+                <p><strong>Email:</strong> <span id="modal-email"></span></p>
+                <p><strong>Phone:</strong> <span id="modal-phone"></span></p>
+                <p><strong>Service:</strong> <span id="modal-service"></span></p>
+                <p><strong>Message:</strong></p>
+                <pre id="modal-message" style="background: #f5f5f5; padding: 10px; border-radius: 4px;"></pre>
+                <div class="modal-actions">
+                    <button id="delete-btn" class="btn btn-danger">
+                        <i class="fas fa-trash"></i> Delete Appointment
+                    </button>
+                    <button id="close-modal-btn" class="btn btn-secondary">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p>&copy; 2025 StackOps IT Solutions. All rights reserved.</p>
+    </footer>
+
+    <script src="js/Authentication.js"></script>
+    <script src="js/admin-appointments.js"></script>
+</body>
+</html>

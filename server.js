@@ -2562,6 +2562,73 @@ app.post('/api/admin/payments', authenticateToken, async (req, res) => {
     }
 });
 
+// ============================================
+// APPOINTMENT MANAGEMENT ENDPOINTS
+// ============================================
+
+// Get all appointments
+app.get('/api/admin/appointments', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        
+        const [appointments] = await pool.query(`
+            SELECT * FROM appointment 
+            ORDER BY date DESC, time ASC
+        `);
+        
+        res.json(appointments);
+    } catch (error) {
+        console.error('Error fetching appointments:', error);
+        res.status(500).json({ error: 'Failed to fetch appointments' });
+    }
+});
+
+// Get appointments by date
+app.get('/api/admin/appointments/date/:date', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        
+        const { date } = req.params;
+        const [appointments] = await pool.query(`
+            SELECT * FROM appointment 
+            WHERE date = ?
+            ORDER BY time ASC
+        `, [date]);
+        
+        res.json(appointments);
+    } catch (error) {
+        console.error('Error fetching appointments:', error);
+        res.status(500).json({ error: 'Failed to fetch appointments' });
+    }
+});
+
+// Delete appointment
+app.delete('/api/admin/appointments/:id', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ error: 'Database connection unavailable' });
+        }
+        
+        const { id } = req.params;
+        const [result] = await pool.query(`
+            DELETE FROM appointment WHERE id = ?
+        `, [id]);
+        
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Appointment not found' });
+        }
+        
+        res.json({ message: 'Appointment deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting appointment:', error);
+        res.status(500).json({ error: 'Failed to delete appointment' });
+    }
+});
+
 // Get projects (if Projects table exists)
 app.get('/api/admin/projects', authenticateToken, async (req, res) => {
     try {
