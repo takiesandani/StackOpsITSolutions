@@ -485,7 +485,7 @@ function handleLogout() {
     sessionStorage.removeItem('loginTime');
 
     // Clear JWT auth token issued by the backend
-    localStorage.removeItem('token');
+    localStorage.removeItem('authToken');
 
     // Reset UI (for safety if we stay on the page)
     const dashboardSection = document.getElementById('dashboard-section');
@@ -511,7 +511,7 @@ function setupSessionManagement() {
     const userEmail = sessionStorage.getItem('userEmail');
     const userFirstName = sessionStorage.getItem('userFirstName');
     const userLastName = sessionStorage.getItem('userLastName');
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('authToken');
     
     if (isLoggedIn === 'true' && userEmail && token) {
         document.getElementById('login-section').classList.remove('active');

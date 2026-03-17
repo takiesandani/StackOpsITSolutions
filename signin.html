@@ -546,8 +546,20 @@
                             localStorage.setItem('authToken', data.accessToken);
                         }
                         
+                        // Set session storage for Client Portal synchronization
+                        sessionStorage.setItem('isLoggedIn', 'true');
+                        sessionStorage.setItem('userEmail', currentEmail);
+                        sessionStorage.setItem('loginTime', new Date().getTime());
+                        
+                        if (data.user) {
+                            if (data.user.firstName) sessionStorage.setItem('userFirstName', data.user.firstName);
+                            if (data.user.lastName) sessionStorage.setItem('userLastName', data.user.lastName);
+                        }
+                        
                         showNotification('Authentication successful! Redirecting...', true);
                         setTimeout(() => {
+                            // Redirect to the URL provided by the server
+                            // (e.g., /ClientPortal.html for clients or /Admin.html for admins)
                             window.location.href = data.redirect;
                         }, 1500);
                     } else {
