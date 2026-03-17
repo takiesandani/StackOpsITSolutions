@@ -749,6 +749,26 @@ async function ensureDatabaseSchema() {
                 INDEX (yoco_checkout_id)
             )
         `);
+
+        // Create mfa_codes table if it doesn't exist
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS mfa_codes (
+                user_id INT PRIMARY KEY,
+                code VARCHAR(10) NOT NULL,
+                expires_at DATETIME NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        // Create password_resets table if it doesn't exist
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS password_resets (
+                user_id INT PRIMARY KEY,
+                token VARCHAR(255) NOT NULL,
+                expires_at DATETIME NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
     } catch (err) {
         console.error('ensureDatabaseSchema error:', err);
     }
@@ -4933,3 +4953,5 @@ app.listen(PORT, async () => {
     console.log(`📋 Test Invoice PDF at: http://localhost:${PORT}/test-invoice`);
     
 });
+
+
