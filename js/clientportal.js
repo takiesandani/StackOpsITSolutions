@@ -429,7 +429,15 @@ function handleMfaVerification() {
             
             showNotification('Authentication successful! Redirecting...', true);
             
-            // Switch to dashboard
+            // Handle cross-portal redirection (Admin vs Client)
+            if (data.redirect && !data.redirect.includes('ClientPortal.html')) {
+                setTimeout(() => {
+                    window.location.href = data.redirect;
+                }, 1500);
+                return;
+            }
+            
+            // Switch to dashboard (for normal client login on this page)
             setTimeout(() => {
                 document.getElementById('login-section').classList.remove('active');
                 document.getElementById('dashboard-section').classList.add('active');

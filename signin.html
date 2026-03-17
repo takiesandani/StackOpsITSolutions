@@ -3,9 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sign In</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <title>Sign In | StackOps IT Solutions</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
+        :root {
+            --primary: #006eff;
+            --secondary: #000000;
+            --dark: #1c1c1c;
+            --light: #ffffff;
+            --gray: #4a4a4aa1;
+            --accent-glow: #1E90FF;
+            --danger: #dc3545;
+            --warning: #ffc107;
+            --success: #28a745;
+            --info: #17a2b8;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -14,12 +27,13 @@
         }
         
         body {
-            background: #1c1c1c;
-            min-height: 80vh;
+            background: #000000;
+            min-height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
             padding: 20px;
+            overflow-x: hidden;
         }
         
         .background {
@@ -27,170 +41,300 @@
             top: 0;
             left: 0;
             width: 100%;
-            height: 110%;
+            height: 100%;
             z-index: -1;
-            background: linear-gradient(rgba(0, 0, 0, 0.603), rgb(0, 0, 0)),
+            background: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.9)),
                 url('Images/Website.png') no-repeat center center;
-            background-size: cover; /* Changed from 'cover' to 'contain' */
+            background-size: cover;
         }
-        
-        .auth-container {
+
+        .login-container {
             width: 100%;
-            max-width: 650px;
+            max-width: 450px;
+            padding: 20px;
             animation: fadeIn 0.5s ease-out;
         }
-        
-        .auth-box {
-            background: rgba(0, 0, 0, 0.145);
-            border-radius: 12px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-            padding: 30px;
-            width: 100%;
+
+        .login-box {
+            background: rgba(42, 42, 42, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 50px 40px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
         }
-        
-        h2 {
+
+        .login-header {
             text-align: center;
-            color: #bbbbbb;
-            margin-bottom: 25px;
-            font-size: 28px;
+            margin-bottom: 40px;
         }
-        
-        .form-group {
+
+        .login-logo {
+            width: 120px;
+            height: auto;
             margin-bottom: 20px;
-            position: relative;
+            filter: drop-shadow(0 0 8px rgba(0, 110, 255, 0.5));
         }
-        
-        label {
-            display: block;
+
+        .login-header h1 {
+            font-size: 2rem;
+            color: var(--light);
             margin-bottom: 8px;
             font-weight: 200;
-            color: #bcbcbc;
         }
-        
-        input {
+
+        .login-header p {
+            color: #bdbdbd;
+            font-size: 0.95rem;
+        }
+
+        .login-form {
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            position: relative;
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            font-weight: 200;
+            margin-bottom: 8px;
+            color: #bdbdbd;
+            font-size: 0.9rem;
+        }
+
+        .form-group input {
             width: 100%;
-            padding: 14px;
-            border: 2px solid #bfbfbf;
+            padding: 12px 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(0, 110, 255, 0.3);
             border-radius: 8px;
-            font-size: 16px;
-            transition: border-color 0.3s;
+            color: var(--light);
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
         }
-        
-        input:focus {
-            border-color: #4a86e8;
+
+        .form-group input:focus {
             outline: none;
+            background: rgba(255, 255, 255, 0.08);
+            border-color: var(--primary);
+            box-shadow: 0 0 10px rgba(0, 110, 255, 0.3);
         }
-        
+
         .password-toggle {
             position: absolute;
             right: 15px;
-            top: 42px;
-            color: #777;
+            top: 45px;
             cursor: pointer;
+            color: #bdbdbd;
+            transition: color 0.3s ease;
         }
-        
+
+        .password-toggle:hover {
+            color: var(--primary);
+        }
+
         .error-message {
-            color: #e53935;
-            font-size: 14px;
+            color: var(--danger);
+            font-size: 0.85rem;
             margin-top: 5px;
             display: none;
         }
-        
-        .forgot-password {
-            text-align: right;
-            margin-top: 5px;
-        }
-        
-        .forgot-password a {
-            color: #4a86e8;
-            text-decoration: none;
-            font-size: 14px;
-        }
-        
-        .forgot-password a:hover {
-            text-decoration: underline;
-        }
-        
-        .btn-primary {
+
+        /* Glow-wrap-face3 for Login Button */
+        .glow-wrap-face3 {
+            position: relative;
             width: 100%;
-            padding: 14px;
-            background: linear-gradient(to right, #0033ff, #2575fc);
-            color: white;
+            height: 50px;
+            border-radius: 25px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0, 110, 255, 0.199);
+            transition: transform 0.2s ease;
+            margin: 10px auto 0;
+        }
+
+        .glow-wrap-face3:hover {
+            transform: scale(1.02);
+        }
+
+        .glowing-border-layer-face3 {
+            position: absolute;
+            inset: -150%;
+            border-radius: 50%;
+            background: conic-gradient(
+                from 0deg,
+                #0267ff,
+                transparent 30%,
+                transparent 60%,
+                #0267ff
+            );
+            animation: spin 3s linear infinite;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .btn-login {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            height: 100%;
+            border-radius: 25px;
             border: none;
-            border-radius: 8px;
+            background: black;
+            color: #ffffff;
             font-size: 16px;
             font-weight: 200;
             cursor: pointer;
-            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            letter-spacing: 2px;
+            box-shadow: 0 4px 15px rgba(38, 117, 252, 0.45);
+            transition: all 0.3s ease;
         }
-        
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(38, 117, 252, 0.4);
+
+        .btn-login:hover {
+            box-shadow: 0 0 25px rgba(38, 117, 252, 0.85);
         }
-        
-        .btn-primary:disabled {
+
+        .btn-login:disabled {
             background: #cccccc;
             cursor: not-allowed;
-            transform: none;
             box-shadow: none;
         }
-        
-        .mfa-section {
+
+        .login-footer {
             margin-top: 25px;
-            padding-top: 20px;
-            border-top: 1px solid #eee;
-            display: none;
-        }
-        
-        .mfa-section h3 {
-            font-size: 18px;
-            color: #333;
-            margin-bottom: 15px;
             text-align: center;
         }
-        
+
+        .login-footer a {
+            color: var(--primary);
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: color 0.3s ease;
+        }
+
+        .login-footer a:hover {
+            text-decoration: underline;
+        }
+
+        .register-hint {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 0.9rem;
+            color: #bdbdbd;
+        }
+
+        .register-hint a {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .register-hint a:hover {
+            text-decoration: underline;
+        }
+
+        .mfa-section {
+            display: none;
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .mfa-section h3 {
+            font-size: 1.2rem;
+            color: var(--light);
+            margin-bottom: 15px;
+            text-align: center;
+            font-weight: 200;
+        }
+
+        .mfa-section .form-group input {
+            text-align: center;
+            font-size: 1.1rem;
+            letter-spacing: 4px;
+        }
+
         .resend-code {
             text-align: center;
             margin-top: 15px;
-            font-size: 14px;
+            font-size: 0.9rem;
         }
-        
+
         .resend-code a {
-            color: #4a86e8;
+            color: var(--primary);
             text-decoration: none;
             cursor: pointer;
+            transition: color 0.3s ease;
         }
-        
+
         .resend-code a:hover {
             text-decoration: underline;
         }
-        
+
+        .login-info {
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding-top: 25px;
+            margin-top: 25px;
+        }
+
+        .login-info p {
+            color: #bdbdbd;
+            font-size: 0.9rem;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .login-info i {
+            color: var(--primary);
+        }
+
         .notification {
             position: fixed;
             top: 20px;
             right: 20px;
             padding: 15px 20px;
             border-radius: 8px;
-            background: white;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-            transform: translateX(100%);
-            transition: transform 0.3s ease-out;
-            z-index: 1000;
+            background: rgba(42, 42, 42, 0.95);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            transform: translateX(calc(100% + 20px));
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.3s ease-out;
+            z-index: 10000;
+            color: var(--light);
+            font-size: 0.95rem;
+            min-width: 250px;
+            max-width: 400px;
         }
-        
+
         .notification.show {
             transform: translateX(0);
+            opacity: 1;
+            pointer-events: auto;
         }
-        
+
         .notification.success {
-            border-left: 4px solid #4caf50;
+            border-left: 4px solid var(--success);
         }
-        
+
         .notification.error {
-            border-left: 4px solid #e53935;
+            border-left: 4px solid var(--danger);
         }
-        
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
         @keyframes fadeIn {
             from {
                 opacity: 0;
@@ -201,24 +345,6 @@
                 transform: translateY(0);
             }
         }
-        
-        @media (max-width: 500px) {
-            .auth-box {
-                padding: 20px;
-            }
-        }
-
-        .register-hint {
-            margin-top: 18px;
-            text-align: center;
-            font-size: 0.9rem;
-            color: #bcbcbc;
-        }
-
-        .register-hint a {
-            color: #4a86e8;
-            text-decoration: underline;
-        }
     </style>
 </head>
 <body>
@@ -226,31 +352,43 @@
     
     <div class="notification" id="notification"></div>
     
-    <div class="auth-container">
-        <div class="auth-box">
-            <h2>Sign In</h2>
-            <form id="signin-form">
+    <div class="login-container">
+        <div class="login-box">
+            <div class="login-header">
+                <img src="Images/Logos/RemovedStackOps.png" alt="StackOps Logo" class="login-logo">
+                <h1>Sign In</h1>
+                <p>Access your professional IT services dashboard</p>
+            </div>
+
+            <form id="signin-form" class="login-form">
                 <div class="form-group">
-                    <label for="email">Email</label>
-                    <input type="email" id="email" name="email" required>
+                    <label for="email">Email Address</label>
+                    <input type="email" id="email" name="email" required placeholder="Enter your email">
                     <div class="error-message" id="email-error">Please enter a valid email address</div>
                 </div>
 
                 <div class="form-group">
                     <label for="password">Password</label>
-                    <input type="password" id="password" name="password" required minlength="8">
+                    <input type="password" id="password" name="password" required minlength="8" placeholder="Enter your password">
                     <i class="fas fa-eye password-toggle" id="toggle-password"></i>
                     <div class="error-message" id="password-error">Password must be at least 8 characters long</div>
                 </div>
 
-                <div class="forgot-password">
-                    <a href="forgot_password.html">Forgot Password?</a>
+                <div class="glow-wrap-face3">
+                    <div class="glowing-border-layer-face3"></div>
+                    <button type="submit" class="btn-login" id="submit-btn">
+                        <span>Sign In</span>
+                        <i class="fas fa-arrow-right"></i>
+                    </button>
                 </div>
 
-                <button type="submit" class="btn-primary" id="submit-btn">Sign In</button>
+                <div class="login-footer">
+                    <a href="forgot_password.html">Forgot Password?</a>
+                </div>
             </form>
+
             <p class="register-hint">
-                Need to onboard a new client user?
+                Need to onboard a new client?
                 <a href="signup.html">Register here</a>
             </p>
             
@@ -258,13 +396,23 @@
                 <h3>Enter MFA Code</h3>
                 <div class="form-group">
                     <label for="mfa-code">6-Digit Code</label>
-                    <input type="text" id="mfa-code" name="mfa-code" maxlength="6" pattern="\d{6}">
+                    <input type="text" id="mfa-code" name="mfa-code" maxlength="6" pattern="\d{6}" placeholder="······">
                     <div class="error-message" id="mfa-error">Invalid or expired code</div>
                 </div>
                 <div class="resend-code">
                     <a id="resend-code">Resend Code</a>
                 </div>
-                <button type="button" class="btn-primary" id="verify-btn">Verify Code</button>
+                <div class="glow-wrap-face3">
+                    <div class="glowing-border-layer-face3"></div>
+                    <button type="button" class="btn-login" id="verify-btn">
+                        <span>Verify Code</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="login-info">
+                <p><i class="fas fa-shield-alt"></i> Secure login with encryption</p>
+                <p><i class="fas fa-check-circle"></i> 24/7 Service Access</p>
             </div>
         </div>
     </div>
@@ -286,8 +434,7 @@
             const togglePassword = document.getElementById('toggle-password');
             const notification = document.getElementById('notification');
             
-            // FIXED: Use relative URLs like consultation.html (no hardcoded domain)
-            const API_BASE_URL = '/api/auth';  // Relative path, works with any domain
+            const API_BASE_URL = '/api/auth';
             
             let currentEmail = '';
             
@@ -317,7 +464,6 @@
                 // Reset error messages
                 emailError.style.display = 'none';
                 passwordError.style.display = 'none';
-                mfaError.style.display = 'none';
                 
                 const email = emailInput.value.trim();
                 const password = passwordInput.value;
@@ -340,7 +486,8 @@
                 
                 try {
                     submitBtn.disabled = true;
-                    submitBtn.textContent = 'Signing in...';
+                    const originalText = submitBtn.querySelector('span').textContent;
+                    submitBtn.querySelector('span').textContent = 'Signing in...';
                     
                     const response = await fetch(`${API_BASE_URL}/signin`, {
                         method: 'POST',
@@ -364,7 +511,7 @@
                     showNotification('An error occurred. Please try again.', false);
                 } finally {
                     submitBtn.disabled = false;
-                    submitBtn.textContent = 'Sign In';
+                    submitBtn.querySelector('span').textContent = 'Sign In';
                 }
             });
             
@@ -381,6 +528,7 @@
                 
                 try {
                     verifyBtn.disabled = true;
+                    const originalText = verifyBtn.textContent;
                     verifyBtn.textContent = 'Verifying...';
                     
                     const response = await fetch(`${API_BASE_URL}/verify-mfa`, {
@@ -394,11 +542,8 @@
                     const data = await response.json();
                     
                     if (data.success) {
-                        // FIXED: Use 'authToken' to match consultation.html and other pages
                         if (data.accessToken) {
-                            localStorage.setItem('authToken', data.accessToken);  // Changed from 'accessToken' to 'authToken'
-                        } else {
-                            console.error('MFA success but no token received.');
+                            localStorage.setItem('authToken', data.accessToken);
                         }
                         
                         showNotification('Authentication successful! Redirecting...', true);
