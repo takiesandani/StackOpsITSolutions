@@ -9,12 +9,12 @@ env_variables:
 
   # Email (Nodemailer) Credentials
   EMAIL_USER: "info@stackopsit.co.za"
-  EMAIL_PASS: "632685356nS$"
+  EMAIL_PASS: "Cxzdsaewq123$"
   SMTP_HOST: "smtpout.secureserver.net"
   SMTP_PORT: "465"
   SMTP_SECURE: "true"
   SMTP_USER: "info@stackopsit.co.za"
-  SMTP_PASS: "632685356nS$"
+  SMTP_PASS: "Cxzdsaewq123$"
 
   # Application Secret
   ACCESS_TOKEN_SECRET: "7a076e42670cfe26193655fe5f48b776defe078754ca16fb9ae0a054b354d335"

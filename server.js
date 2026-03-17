@@ -207,7 +207,7 @@ const transporter = nodemailer.createTransport({
     secure: true,                     // Default used
     auth: {
         user: 'info@stackopsit.co.za', // Hardcoded EMAIL_USER
-        pass: '632685356nS$'           // Hardcoded Email_pass
+        pass: 'Cxzdsaewq123$'           // Hardcoded Email_pass
     }
 });
 
