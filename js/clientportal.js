@@ -35,7 +35,7 @@ const mockProjects = [
         securityScore: 92,
         uptime: 99.8,
         lastUpdate: "2 hours ago",
-        icon: "fas fa-globe",
+        image: "Images/Microsoft-Solutions-Partner.png",
         cardMetrics: [
             { label: "Licences", value: ": 92%", icon: "fas fa-shield-alt" },
             { label: "Usage", value: "99.8%", icon: "fas fa-server" }
@@ -599,6 +599,16 @@ async function fetchDuoStats(retryCount = 0) {
         }
 
         // Update the project with real data
+        if (data.total_licenses === 0) {
+            console.log('[Duo Sync] No licenses found. Removing Duo project from list.');
+            const index = mockProjects.findIndex(p => p.id === duoProject.id);
+            if (index > -1) {
+                mockProjects.splice(index, 1);
+                initializeProjectsList(); // Re-initialize to update counter and display
+                return;
+            }
+        }
+
         duoProject.status = "Active";
         duoProject.cardMetrics = [
             { label: "Total Licences", value: `: ${data.total_licenses}`, icon: "fas fa-id-card" },
@@ -1331,7 +1341,7 @@ function initializeGovernanceCard() {
     
     const governanceHtml = governanceData.map(item => `
         <div class="governance-item">
-            <i class="fas fa-times-circle" style="color: red;"></i>
+            <i class="fas fa-check-circle" style="color: #28a745;"></i>
             <span class="governance-item-text">${item}</span>
         </div>
     `).join('');
