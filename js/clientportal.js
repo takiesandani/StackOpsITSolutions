@@ -30,12 +30,12 @@ const mockProjects = [
         id: 2,
         name: "Microsoft 365 security & health",
         type: "Proactive tenant security insights",
-        status: "inactive",
+        status: "active",
         risks: { critical: 2, high: 3, medium: 5 },
         securityScore: 92,
         uptime: 99.8,
         lastUpdate: "2 hours ago",
-        image: "Images/Microsoft-Solutions-Partner.png",
+        image: "https://static.vecteezy.com/system/resources/thumbnails/018/911/406/small_2x/microsoft-logo-editorial-free-vector.jpg",
         cardMetrics: [
             { label: "Licences", value: ": 92%", icon: "fas fa-shield-alt" },
             { label: "Usage", value: "99.8%", icon: "fas fa-server" }
@@ -46,7 +46,7 @@ const mockProjects = [
         id: 3,
         name: "Support & Service desk",
         type: "Real-time support visibility and tracking",
-        status: "inactive",
+        status: "active",
         risks: { critical: 1, high: 2, medium: 3 },
         securityScore: 88,
         uptime: 99.5,
@@ -62,7 +62,7 @@ const mockProjects = [
         id: 4,
         name: "Backup & recovery",
         type: "Automated protection and restore readiness",
-        status: "inactive",
+        status: "active",
         risks: { critical: 1, high: 1, medium: 1 },
         securityScore: 90,
         uptime: 99.7,
@@ -78,7 +78,7 @@ const mockProjects = [
         id: 6,
         name: "Cloud data services",
         type: "Optomized cloud storage & Database health",
-        status: "inactive",
+        status: "active",
         risks: { critical: 1, high: 1, medium: 1 },
         securityScore: 90,
         uptime: 99.7,
@@ -605,6 +605,7 @@ async function fetchDuoStats(retryCount = 0) {
             if (index > -1) {
                 mockProjects.splice(index, 1);
                 initializeProjectsList(); // Re-initialize to update counter and display
+                displayCurrentProject(); // Refresh the display
                 return;
             }
         }
@@ -624,6 +625,18 @@ async function fetchDuoStats(retryCount = 0) {
 
     } catch (error) {
         console.error('[Duo Sync] Error fetching Duo stats:', error.message);
+
+        // If error is 404 or unauthorized, assume no licenses and remove from list
+        if (error.message.includes('404') || error.message.includes('401')) {
+            console.log('[Duo Sync] No access to Duo. Removing from project list.');
+            const index = mockProjects.findIndex(p => p.id === duoProject.id);
+            if (index > -1) {
+                mockProjects.splice(index, 1);
+                initializeProjectsList();
+                displayCurrentProject();
+                return;
+            }
+        }
 
         // Fallback: Set error state
         duoProject.status = "Error";
