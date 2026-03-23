@@ -252,17 +252,25 @@
         const testimonials = [
             {
                 quote: "Stackops IT Solutions streamlined our Office 365 environment, reduced unnecessary licensing costs, and provided expert guidance on Microsoft 365 best practices. Their support has been reliable, professional, and highly valuable to our business.",
-                author: "Komofin, CEO"
+                author: "Komofin, CEO",
+                image: "Images/KomoFin.png"
             },
             {
                 quote: "Working with StackOps IT Solutions has made sourcing and supporting security hardware far easier for our business. They consistently provide quality CCTV and access control equipment, along with dependable technical and warranty support when needed. Their professionalism and responsiveness make them a partner we trust",    
-                author: "ThinkPat, CEO"
+                author: "ThinkPat, CEO",
+                image: "Images/Thinker.png"
+            },
+            {
+                quote: "StackOps IT Solutions has elevated our firm’s IT to a new standard. Their expertise in Microsoft technologies, combined with a strong focus on security and reliability, makes them a partner we trust completely",
+                author: "Managing Partner, Ramawa Attorneys",
+                image: "Images/Ramawa.png"
             }
         ];
 
         // Testimonials Slideshow
         let currentTestimonial = 0;
         let testimonialInterval;
+        let isPaused = false;
 
         function initTestimonials() {
             const slider = document.getElementById('testimonials-slider');
@@ -276,9 +284,20 @@
                 
                 orb.innerHTML = `
                     <div class="testimonial-quote">${testimonial.quote}</div>
-                    <div class="testimonial-author">${testimonial.author}</div>
+                    <div class="testimonial-footer">
+                        <img src="${testimonial.image}" alt="${testimonial.author}" class="testimonial-image">
+                        <div class="testimonial-author">${testimonial.author}</div>
+                    </div>
                 `;
                 
+                // Add hover listeners to pause rotation
+                orb.addEventListener('mouseenter', () => {
+                    isPaused = true;
+                });
+                orb.addEventListener('mouseleave', () => {
+                    isPaused = false;
+                });
+
                 slider.appendChild(orb);
 
                 // Create navigation dots
@@ -294,10 +313,12 @@
                 updateTestimonials();
             }, 50);
             
-            // Auto-rotate testimonials every 4 seconds for more dynamic feel
+            // Auto-rotate testimonials every 8 seconds
             testimonialInterval = setInterval(() => {
-                nextTestimonial();
-            }, 4000);
+                if (!isPaused) {
+                    nextTestimonial();
+                }
+            }, 8000);
         }
 
         function updateTestimonials() {
@@ -348,8 +369,10 @@
             // Reset auto-rotate timer
             clearInterval(testimonialInterval);
             testimonialInterval = setInterval(() => {
-                nextTestimonial();
-            }, 4000);
+                if (!isPaused) {
+                    nextTestimonial();
+                }
+            }, 8000);
         }
 
         // Keep auto-rotate running even on hover - testimonials move continuously
