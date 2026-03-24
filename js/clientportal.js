@@ -1234,26 +1234,13 @@ async function initializeBillingCard() {
             statusColor = '#dc3545'; // red
         }
         
-        // Show first 2 items, rest in dropdown if more than 2
-        const visibleItems = items.slice(0, 2);
-        const hiddenItems = items.slice(2);
-        const showMoreButton = items.length > 2;
-        
-        const visibleItemsHtml = visibleItems.map(item => {
+        // Display all items
+        const billingItemsHtml = items.map(item => {
             const itemTotal = (parseFloat(item.Quantity || 0) * parseFloat(item.UnitPrice || 0)).toFixed(2);
+            const serviceCategory = item.ServiceCategory || item.Category || item.Description || 'Service';
             return `
                 <div class="billing-item">
-                    <span class="billing-item-name">${item.Description || 'Service'}</span>
-                    <span class="billing-item-cost">${currency}${parseFloat(itemTotal).toLocaleString()}</span>
-                </div>
-            `;
-        }).join('');
-        
-        const hiddenItemsHtml = hiddenItems.map(item => {
-            const itemTotal = (parseFloat(item.Quantity || 0) * parseFloat(item.UnitPrice || 0)).toFixed(2);
-            return `
-                <div class="billing-item">
-                    <span class="billing-item-name">${item.Description || 'Service'}</span>
+                    <span class="billing-item-name">${serviceCategory}</span>
                     <span class="billing-item-cost">${currency}${parseFloat(itemTotal).toLocaleString()}</span>
                 </div>
             `;
@@ -1286,16 +1273,7 @@ async function initializeBillingCard() {
                 </div>
             </div>
             <div class="billing-items">
-                ${visibleItemsHtml}
-                ${showMoreButton ? `
-                    <div class="billing-items-more" id="billing-items-more" style="display: none;">
-                        ${hiddenItemsHtml}
-                    </div>
-                    <button class="billing-see-more" id="billing-see-more-btn" onclick="toggleBillingItems()">
-                        <span>See More</span>
-                        <i class="fas fa-chevron-down"></i>
-                    </button>
-                ` : ''}
+                ${billingItemsHtml}
             </div>
             <div class="billing-warning">
                 <div class="warning-icon">
