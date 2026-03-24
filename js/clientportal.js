@@ -1236,7 +1236,7 @@ async function initializeBillingCard() {
         
         // Display all items
         const billingItemsHtml = items.map(item => {
-            const itemTotal = (parseFloat(item.Quantity || 0) * parseFloat(item.UnitPrice || 0)).toFixed(2);
+            const itemTotal = parseFloat(item.Total || item.UnitPrice || 0).toFixed(2);
             const serviceCategory = item.ServiceCategory || item.Category || item.Description || 'Service';
             return `
                 <div class="billing-item">
