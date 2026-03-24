@@ -7,7 +7,21 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/mobile.css" media="screen and (max-width: 768px)">
-    <link rel="stylesheet" href="css/services.css">
+    <link rel="stylesheet" href="css/solutions-switcher.css">
+    <style>
+        body {
+            overflow-x: hidden;
+            background: linear-gradient(rgba(0, 0, 0, 0.219), rgb(0, 0, 0)),
+                url('Images/Website.png') no-repeat center center;
+            background-size: cover;
+            background-attachment: fixed;
+            background-color: #1c1c1c;
+        }
+
+        .background {
+            display: none;
+        }
+    </style>
 </head>
 
 <body>
@@ -15,9 +29,7 @@
 
     <header class="site-header">
         <a href="/" class="logo">
-            
-                <img src="Images/Logos/RemovedStackOps.png" alt="Stackops IT Solutions Logo" >
-            
+            <img src="Images/Logos/RemovedStackOps.png" alt="Stackops IT Solutions Logo" >
         </a>
         <div id="hamburger" class="hamburger">
             <span></span>
@@ -32,10 +44,384 @@
             <li><a href="approach.html">Our Approach</a></li>
             <li><a href="contact.html">Contact Us</a></li>
             <li><a href="consultation.html">Book a consultation</a></li>
-            <li><a href="ClientPortal.html">ClientPortal</a></li>
+            <li><a href="ClientDashboardPromo.html">ClientPortal</a></li>
             <li class="Shop"><a href="#" id="shop-link">Shop</a></li>
         </ul>
     </header>
+
+    <!-- SOLUTIONS SWITCHER LAYOUT -->
+    <div class="solutions-wrapper">
+        <button class="solutions-mobile-toggle" id="solutionsMobileToggle">
+            <i class="fas fa-bars"></i>
+            <span>Select a Solution</span>
+            <i class="fas fa-chevron-down"></i>
+        </button>
+        <!-- LEFT SIDEBAR MENU -->
+        <aside class="solutions-sidebar" id="solutionsSidebar">
+            <button class="solution-button active" data-solution="cisco" data-name="Cisco Duo" data-category="Security">
+                <div class="solution-button-icon">
+                    <img src="Images/cisco-duo.png" alt="Cisco Duo" />
+                </div>
+                <div class="solution-button-text">
+                    <div class="solution-button-name">Cisco Duo</div>
+                    <div class="solution-button-category">Security</div>
+                </div>
+            </button>
+
+            <button class="solution-button" data-solution="microsoft" data-name="Microsoft Partner" data-category="Enterprise">
+                <div class="solution-button-icon">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/4/44/Microsoft_logo.svg/200px-Microsoft_logo.svg.png" alt="Microsoft" />
+                </div>
+                <div class="solution-button-text">
+                    <div class="solution-button-name">Microsoft Partner</div>
+                    <div class="solution-button-category">Enterprise</div>
+                </div>
+            </button>
+        </aside>
+
+        <!-- RIGHT CONTENT AREA -->
+        <div class="solutions-content">
+            <!-- CISCO DUO SOLUTION -->
+            <section class="solution-content-section active" data-solution="cisco">
+                <!-- HERO -->
+                <div class="solution-hero">
+                    <h1 class="solution-hero-title">Duo MSP & StackOps IT Solution Overview</h1>
+                    <h2 class="solution-section-title">What is Duo?</h2>
+                    <p class="solution-description">
+                        Duo Access Management is a security solution that gives you layers of
+                        authentication protection and access control by confirming that you're
+                        really who you say you are before access is granted to your accounts and
+                        corporate data. With Duo, even if someone knows your password, unless they
+                        have your trusted device – mobile phone, tablet, token, or Apple Watch –
+                        Duo can stop them in their tracks.
+                    </p>
+                </div>
+
+                <div class="solution-image-full">
+                    <img src="Images/CiscoD.png" alt="Cisco Duo How We Do It" />
+                </div>
+
+                <!-- HOW WE DO IT BETTER -->
+                <section class="solution-how-better">
+                    <h2 class="solution-better-title">How we do it better</h2>
+                    <div class="solution-better-grid">
+                        <div>
+                            <span class="solution-number">01</span>
+                            <h3>Speed to Security</h3>
+                            <p>Rapid deployments, faster end-user adoption, and the ability to respond quickly to changing threats.</p>
+                            <ul>
+                                <li>Deployments can take minutes and can be staged over time for easy adoption.</li>
+                                <li>Flexible end-user enrollment options ensure users are enrolled when and how they need.</li>
+                            </ul>
+                        </div>
+
+                        <div>
+                            <span class="solution-number">02</span>
+                            <h3>Enable Business Agility</h3>
+                            <p>Stay flexible with a hybrid work environment without slowing down users.</p>
+                            <p>Focus on growing your business, rather than restricting it.</p>
+                            <ul>
+                                <li>Duo is a cloud-based security system that can quickly integrate with new and existing applications.</li>
+                                <li>Custom app integrations and on-premise support are also available.</li>
+                            </ul>
+                        </div>
+
+                        <div>
+                            <span class="solution-number">03</span>
+                            <h3>Reduce Friction</h3>
+                            <ul>
+                                <li>Enable users to securely use personal or company-provided devices.</li>
+                                <li>Allow self-remediation without help desk tickets.</li>
+                            </ul>
+                        </div>
+
+                        <div>
+                            <span class="solution-number">04</span>
+                            <h3>Strengthen Security</h3>
+                            <ul>
+                                <li>Protect against unauthorized access with adaptive authentication.</li>
+                                <li>Ensure compliance with industry standards and regulations.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- HOW OTHERS USE DUO -->
+                <section class="solution-use-cases">
+                    <div class="solution-use-cases-inner">
+                        <div>
+                            <h3>How Others Use Duo</h3>
+                            <p><strong>Meet and Exceed Security Compliance Initiatives:</strong><br>
+                            Duo helps customers meet compliance standards including Cyber Liability Insurance requirements and the new FTC Safeguards rules.</p>
+                            <p><strong>Reduce MFA Fatigue:</strong><br>
+                            With Duo Single-Sign On, Passwordless, and Remembered Devices, users won't need to constantly re-authenticate.</p>
+                        </div>
+
+                        <div>
+                            <p><strong>Security by Group:</strong><br>
+                            Flexible policy design at the application, group, or global level ensures only authorized users gain access.</p>
+                            <p><strong>Secure OS Logon:</strong><br>
+                            Ensure endpoint security by protecting Windows or macOS login, including offline access and server access.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- KEY FEATURES -->
+                <section class="solution-key-features">
+                    <div class="solution-features-container">
+                        <h2 class="solution-features-title">Key Features and Functionality</h2>
+                        <div class="solution-features-list">
+                            <div class="solution-feature-row">
+                                <div class="solution-feature-icon">
+                                    <img src="Images/Hand.png" alt="Authentication Methods"/>
+                                </div>
+                                <div class="solution-feature-content">
+                                    <h4>Authentication Methods <span class="solution-doc-link">(<a href="#documentation">Documentation</a>)</span></h4>
+                                    <p>There are a variety of methods users can leverage at admin discretion: Duo Push, Passcode, SMS, Phone Callback, WebAuthn, and Hardware Tokens.</p>
+                                </div>
+                            </div>
+
+                            <div class="solution-feature-row">
+                                <div class="solution-feature-icon">
+                                    <img src="Images/Phone.png" alt="Verified Push"/>
+                                </div>
+                                <div class="solution-feature-content">
+                                    <h4>Verified Push <span class="solution-doc-link">(<a href="#documentation">Documentation</a>)</span></h4>
+                                    <p>Increases security and reduces risk of push harassment and attacks by adding a verification code into the Duo Push workflow.</p>
+                                </div>
+                            </div>
+
+                            <div class="solution-feature-row">
+                                <div class="solution-feature-icon">
+                                    <img src="Images/Global.png" alt="Risk Based Authentication"/>
+                                </div>
+                                <div class="solution-feature-content">
+                                    <h4>Risk Based Authentication <span class="solution-doc-link">(<a href="#documentation">Documentation</a>)</span></h4>
+                                    <p>Detect authentication risk, prior to granting access, and automatically step-up authentication as needed.</p>
+                                </div>
+                            </div>
+
+                            <div class="solution-feature-row">
+                                <div class="solution-feature-icon">
+                                    <img src="Images/Human.png" alt="Single-Sign On"/>
+                                </div>
+                                <div class="solution-feature-content">
+                                    <h4>Single-Sign On <span class="solution-doc-link">(<a href="#documentation">Documentation</a>)</span></h4>
+                                    <p>Duo SSO is a cloud-hosted solution which acts as an identity provider that secures access to cloud applications with existing directory credentials.</p>
+                                </div>
+                            </div>
+
+                            <div class="solution-feature-row">
+                                <div class="solution-feature-icon">
+                                    <img src="Images/Pin.png" alt="Passwordless"/>
+                                </div>
+                                <div class="solution-feature-content">
+                                    <h4>Passwordless <span class="solution-doc-link">(<a href="#documentation">Documentation</a>)</span></h4>
+                                    <p>Remove the need for end-user password input while increasing security at the time of authentication into cloud and SAML-based applications.</p>
+                                </div>
+                            </div>
+
+                            <div class="solution-feature-row">
+                                <div class="solution-feature-icon">
+                                    <img src="Images/Correct.png" alt="Device Trust"/>
+                                </div>
+                                <div class="solution-feature-content">
+                                    <h4>Device Trust <span class="solution-doc-link">(<a href="#e-book">E-book</a>)</span></h4>
+                                    <p>Build out a Zero Trust strategy by identifying risky devices, enforcing contextual access policy, and report on device health without an agent.</p>
+                                    <div class="solution-sub-items">
+                                        <div class="solution-sub-item">
+                                            <span class="solution-sub-icon">✓</span>
+                                            <div><strong>Duo Device Health</strong> <span class="solution-doc-link">(<a href="#guide">Guide</a>)</span>: Helps you control access by restricting devices that don't meet requirements.</div>
+                                        </div>
+                                        <div class="solution-sub-item">
+                                            <span class="solution-sub-icon">✓</span>
+                                            <div><strong>Trust Monitor</strong> <span class="solution-doc-link">(<a href="#guide">Guide</a>)</span>: Threat detection feature that surfaces actionable security events.</div>
+                                        </div>
+                                        <div class="solution-sub-item">
+                                            <span class="solution-sub-icon">✓</span>
+                                            <div><strong>Trusted Endpoints</strong> <span class="solution-doc-link">(<a href="#guide">Guide</a>)</span>: Define and manage trusted endpoints securely.</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </section>
+
+            <!-- MICROSOFT PARTNER SOLUTION -->
+            <section class="solution-content-section" data-solution="microsoft">
+                <!-- HERO -->
+                <div class="solution-hero">
+                    <h1 class="solution-hero-title">Microsoft Enterprise Solutions & StackOps Partnership</h1>
+                    <h2 class="solution-section-title">Why Microsoft Enterprise?</h2>
+                    <p class="solution-description">
+                        Microsoft Enterprise solutions provide comprehensive business intelligence, productivity, and 
+                        security capabilities designed for organizations of all sizes. Our partnership combines Microsoft's 
+                        industry-leading platform with StackOps' specialized implementation expertise to deliver tailored 
+                        solutions that maximize ROI, enhance collaboration, and strengthen security posture across your 
+                        organization.
+                    </p>
+                </div>
+
+                <div class="solution-image-full">
+                    <img src="https://images.unsplash.com/photo-1552664730-d307ca884978?w=1200&h=400&fit=crop" alt="Microsoft Enterprise Solutions" />
+                </div>
+
+                <!-- HOW WE DO IT BETTER -->
+                <section class="solution-how-better">
+                    <h2 class="solution-better-title">How we do it better</h2>
+                    <div class="solution-better-grid">
+                        <div>
+                            <span class="solution-number">01</span>
+                            <h3>Expert Implementation</h3>
+                            <p>Microsoft Certified professionals who understand your unique business needs and implement solutions that scale.</p>
+                            <ul>
+                                <li>Rapid deployment with minimal disruption to operations.</li>
+                                <li>Best practices and industry standards integration.</li>
+                            </ul>
+                        </div>
+
+                        <div>
+                            <span class="solution-number">02</span>
+                            <h3>Integrated Ecosystem</h3>
+                            <p>Seamlessly connected solutions across Microsoft 365, Azure, and Dynamics platforms.</p>
+                            <ul>
+                                <li>Unified data management and analytics across all systems.</li>
+                                <li>Simplified IT management and governance.</li>
+                            </ul>
+                        </div>
+
+                        <div>
+                            <span class="solution-number">03</span>
+                            <h3>Enhanced Security</h3>
+                            <p>Built-in advanced security with threat protection and compliance management.</p>
+                            <ul>
+                                <li>Advanced threat detection and response capabilities.</li>
+                                <li>Compliance with global regulatory requirements.</li>
+                            </ul>
+                        </div>
+
+                        <div>
+                            <span class="solution-number">04</span>
+                            <h3>Continuous Support</h3>
+                            <p>Ongoing optimization and support to ensure your solutions evolve with your business.</p>
+                            <ul>
+                                <li>24/7 monitoring and proactive maintenance.</li>
+                                <li>Regular updates and feature enhancements.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- USE CASES -->
+                <section class="solution-use-cases">
+                    <div class="solution-use-cases-inner">
+                        <div>
+                            <h3>Enterprise Across Industries</h3>
+                            <p><strong>Drive Digital Transformation:</strong><br>
+                            Organizations worldwide use Microsoft solutions to modernize operations, improve 
+                            employee collaboration, and unlock data-driven insights.</p>
+                            <p><strong>Hybrid Work Enablement:</strong><br>
+                            Microsoft Teams, SharePoint, and cloud infrastructure support seamless collaboration 
+                            whether employees are on-site or remote.</p>
+                        </div>
+
+                        <div>
+                            <p><strong>Business Intelligence & Analytics:</strong><br>
+                            Power BI and analytics services transform raw data into actionable insights for 
+                            strategic decision-making.</p>
+                            <p><strong>Cloud-First Strategy:</strong><br>
+                            Azure cloud services provide scalability, reliability, and cost-effectiveness for 
+                            modern application deployment and management.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- KEY FEATURES -->
+                <section class="solution-key-features">
+                    <div class="solution-features-container">
+                        <h2 class="solution-features-title">Key Solutions & Features</h2>
+                        <div class="solution-features-list">
+                            <div class="solution-feature-row">
+                                <div class="solution-feature-icon">
+                                    <img src="https://th.bing.com/th/id/OIP.sh-LhPOGQVZJCBGdgHYnywHaHa?w=172&h=180&c=7&r=0&o=7&pid=1.7&rm=3" alt="Microsoft 365"/>
+                                </div>
+                                <div class="solution-feature-content">
+                                    <h4>Microsoft 365 Enterprise <span class="solution-doc-link">(<a href="#documentation">Documentation</a>)</span></h4>
+                                    <p>Integrated productivity suite with Word, Excel, PowerPoint, Teams, Exchange, and SharePoint for modern workplace collaboration.</p>
+                                </div>
+                            </div>
+
+                            <div class="solution-feature-row">
+                                <div class="solution-feature-icon">
+                                    <img src="https://upload.wikimedia.org/wikipedia/commons/a/a8/Microsoft_Azure_Logo.svg" alt="Azure"/>
+                                </div>
+                                <div class="solution-feature-content">
+                                    <h4>Azure Cloud Infrastructure <span class="solution-doc-link">(<a href="#documentation">Documentation</a>)</span></h4>
+                                    <p>Scalable cloud platform supporting virtual machines, databases, AI services, and enterprise application hosting.</p>
+                                </div>
+                            </div>
+
+                            <div class="solution-feature-row">
+                                <div class="solution-feature-icon">
+                                    <img src="https://upload.wikimedia.org/wikipedia/commons/8/8f/Power_BI_logo.svg" alt="Power BI"/>
+                                </div>
+                                <div class="solution-feature-content">
+                                    <h4>Power BI Analytics <span class="solution-doc-link">(<a href="#documentation">Documentation</a>)</span></h4>
+                                    <p>Business intelligence and data visualization tools that transform data into compelling insights and dashboards.</p>
+                                </div>
+                            </div>
+
+                            <div class="solution-feature-row">
+                                <div class="solution-feature-icon">
+                                    <img src="https://upload.wikimedia.org/wikipedia/commons/5/51/Dynamics_365_icon.svg" alt="Dynamics 365"/>
+                                </div>
+                                <div class="solution-feature-content">
+                                    <h4>Dynamics 365 ERP & CRM <span class="solution-doc-link">(<a href="#documentation">Documentation</a>)</span></h4>
+                                    <p>Enterprise resource planning and customer relationship management with AI-driven insights for business optimization.</p>
+                                </div>
+                            </div>
+
+                            <div class="solution-feature-row">
+                                <div class="solution-feature-icon">
+                                    <img src="https://upload.wikimedia.org/wikipedia/commons/e/e8/Microsoft_Defender_Logo.svg" alt="Defender"/>
+                                </div>
+                                <div class="solution-feature-content">
+                                    <h4>Microsoft Defender Security <span class="solution-doc-link">(<a href="#documentation">Documentation</a>)</span></h4>
+                                    <p>Comprehensive threat protection across endpoints, identities, cloud, and applications with advanced threat analytics.</p>
+                                </div>
+                            </div>
+
+                            <div class="solution-feature-row">
+                                <div class="solution-feature-icon">
+                                    <img src="https://upload.wikimedia.org/wikipedia/commons/8/8d/Copilot_logo.svg" alt="Copilot"/>
+                                </div>
+                                <div class="solution-feature-content">
+                                    <h4>Microsoft Copilot & AI <span class="solution-doc-link">(<a href="#documentation">Documentation</a>)</span></h4>
+                                    <p>AI-powered productivity enhancements integrated across Microsoft 365 apps and enterprise applications for intelligent automation.</p>
+                                    <div class="solution-sub-items">
+                                        <div class="solution-sub-item">
+                                            <span class="solution-sub-icon">✓</span>
+                                            <div><strong>Copilot Pro</strong> <span class="solution-doc-link">(<a href="#guide">Guide</a>)</span>: Advanced AI capabilities for knowledge work productivity.</div>
+                                        </div>
+                                        <div class="solution-sub-item">
+                                            <span class="solution-sub-icon">✓</span>
+                                            <div><strong>Microsoft Copilot Studio</strong> <span class="solution-doc-link">(<a href="#guide">Guide</a>)</span>: Create custom AI agents for your business processes.</div>
+                                        </div>
+                                        <div class="solution-sub-item">
+                                            <span class="solution-sub-icon">✓</span>
+                                            <div><strong>Azure OpenAI Services</strong> <span class="solution-doc-link">(<a href="#guide">Guide</a>)</span>: Enterprise-grade AI services with advanced language models.</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </section>
+        </div>
+    </div>
 
     <section class="page-header">
         <div class="container">
@@ -119,27 +505,6 @@
                         </div>
                     </div>
                 </div>
-                
-                <!--
-                <div class="service-item">
-                    <img src="Images/Mobile.webp" alt="Mobile Development">
-                    <div class="service-content">
-                        <h2>Mobile App Development</h2>
-                        <p>Native and cross-platform mobile applications with security built-in for a safe and seamless user experience.</p>
-                        <ul>
-                            <li><i class="fas fa-check"></i> iOS Development</li>
-                            <li><i class="fas fa-check"></i> Android Development</li>
-                            <li><i class="fas fa-check"></i> Cross-platform Apps</li>
-                            <li><i class="fas fa-check"></i> App Maintenance</li>
-                        </ul>
-                        <div class="glow-wrap">
-                          <div class="glowing-border-layer"></div>
-                          <a href="consultation.html" class="link-content">Build Mobile App</a>
-                        </div>
-                    </div>
-                </div>
-
-                -->
 
                 <div class="service-item">
                     <img src="Images/EndUser.png" alt="Mobile Development">
@@ -158,26 +523,6 @@
                         </div>
                     </div>
                 </div>
-
-                <!--
-                <div class="service-item">
-                    <img src="Images/Design.png" alt="Web Design">
-                    <div class="service-content">
-                        <h2>Web Design</h2>
-                        <p>Stunning, responsive web designs with security in mind, focusing on intuitive UI/UX for a great user experience.</p>
-                        <ul>
-                            <li><i class="fas fa-check"></i> UI/UX Design</li>
-                            <li><i class="fas fa-check"></i> Responsive Design</li>
-                            <li><i class="fas fa-check"></i> Design Systems</li>
-                            <li><i class="fas fa-check"></i> Design Maintenance</li>
-                        </ul>
-                        <div class="glow-wrap">
-                          <div class="glowing-border-layer"></div>
-                          <a href="consultation.html" class="link-content">Get Web Design</a>
-                        </div>
-                    </div>
-                </div>
-                -->
 
                 <div class="service-item">
                     <img src="Images/Governance.jpg" alt="AI Automation">
@@ -219,7 +564,6 @@
     <!-- Footer -->
     <footer>
         <div class="container">
-
             <div class="footer-content">
               <div class="footer-logo">
                   <img src="Images/Logos/RemovedStackOps.png" alt="StackOps Logo" />
@@ -242,7 +586,6 @@
                         <li><a href="service.html#web-development">POPIA</a></li>
                         <li><a href="service.html#mobile-development">Terms and condition</a></li>
                         <li><a href="service.html#web-design">Privacy Policy</a></li>
-
                     </ul>
                 </div>
                 <div class="footer-section">
@@ -258,7 +601,6 @@
                         <p>Email: <a href="mailto:support@stackopsit.co.za" >support@stackopsit.co.za</a></p>
                         <p>Email: <a href="mailto:sales@stackopsit.co.za" >sales@stackopsit.co.za</a></p>
                         <p>Address: Mia Drive, Waterfall City, Johannesburg, 1685</p>
-                        
                     </div>
             </div>
             <div class="copyright">
@@ -267,54 +609,192 @@
         </div>
     </footer>
 
+    <script src="js/script.js"></script>
 
+    <script>
+        // Solution Switcher Logic with Hover Preview
+        document.addEventListener('DOMContentLoaded', () => {
+            const sidebarButtons = document.querySelectorAll('.solution-button');
+            const contentSections = document.querySelectorAll('.solution-content-section');
+            const hamburger = document.getElementById('hamburger');
+            const solutionsSidebar = document.getElementById('solutionsSidebar');
+            const solutionsMobileToggle = document.getElementById('solutionsMobileToggle');
+            const toggleText = solutionsMobileToggle ? solutionsMobileToggle.querySelector('span') : null;
+            
+            let currentLockedSolution = 'cisco';
+            let hoverTimeout;
+            let isUserInteracting = false;
 
-        <script src="js/script.js"></script>
+            // Mobile toggle functionality
+            if (solutionsMobileToggle) {
+                solutionsMobileToggle.addEventListener('click', () => {
+                    solutionsSidebar.classList.toggle('active');
+                    solutionsMobileToggle.classList.toggle('active');
+                });
+            }
 
-        <script>
-            document.addEventListener('DOMContentLoaded', () => {
-                const hamburger = document.getElementById('hamburger');
-                let menu = null;
-
-                function openMenu() {
-                    menu = document.createElement('div');
-                    menu.id = 'minimal-menu';
-                    menu.innerHTML = `
-                        <ul>
-                            <li><a href="Home.html">Home</a></li>
-                            <li><a href="about.html">About</a></li>
-                            <li><a href="service.html">Solutions</a></li>
-                            <li><a href="approach.html">Our Approach</a></li>
-                            <li><a href="contact.html">Contact Us</a></li>
-                            <li><a href="consultation.html">Book a Consultation</a></li>
-                            <li><a href="ClientPortal.html">Client Portal</a></li>
-                            <li><a href="#">Shop</a></li>
-                        </ul>
-                    `;
-                    document.body.appendChild(menu);
-                    hamburger.classList.add('active');
-                }
-
-                function closeMenu() {
-                    if (menu) {
-                        menu.remove();
-                        menu = null;
-                        hamburger.classList.remove('active');
+            // Close mobile sidebar when clicking outside
+            document.addEventListener('click', (e) => {
+                if (window.innerWidth <= 768) {
+                    if (solutionsSidebar && !solutionsSidebar.contains(e.target) && 
+                        solutionsMobileToggle && !solutionsMobileToggle.contains(e.target)) {
+                        solutionsSidebar.classList.remove('active');
+                        solutionsMobileToggle.classList.remove('active');
                     }
                 }
+            });
 
-                hamburger.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    menu ? closeMenu() : openMenu();
+            // Initialize active state
+            updateActiveButton('cisco');
+
+            // Solution switching with hover preview
+            sidebarButtons.forEach(button => {
+                const solution = button.getAttribute('data-solution');
+                const solutionName = button.getAttribute('data-name');
+
+                // Hover enter - show preview
+                button.addEventListener('mouseenter', (e) => {
+                    if (window.innerWidth > 768) {
+                        isUserInteracting = true;
+                        clearTimeout(hoverTimeout);
+                        
+                        button.classList.add('hovering');
+                        showSolutionContent(solution, true); // true = preview mode
+                    }
                 });
 
-                document.addEventListener('click', (e) => {
-                    if (menu && !menu.contains(e.target) && e.target !== hamburger) {
-                        closeMenu();
+                // Hover leave - revert to locked solution
+                button.addEventListener('mouseleave', (e) => {
+                    if (window.innerWidth > 768) {
+                        hoverTimeout = setTimeout(() => {
+                            isUserInteracting = false;
+                            button.classList.remove('hovering');
+                            
+                            // Check if we're hovering over another button
+                            const isHoveringAnother = Array.from(sidebarButtons).some(btn => 
+                                btn !== button && btn.classList.contains('hovering')
+                            );
+                            
+                            if (!isHoveringAnother) {
+                                showSolutionContent(currentLockedSolution, false); // false = locked mode
+                            }
+                        }, 100);
+                    }
+                });
+
+                // Click - lock the solution
+                button.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    clearTimeout(hoverTimeout);
+                    
+                    // Remove active class from all buttons
+                    sidebarButtons.forEach(btn => {
+                        btn.classList.remove('active', 'hovering');
+                    });
+                    
+                    // Set new locked solution
+                    currentLockedSolution = solution;
+                    updateActiveButton(solution);
+                    showSolutionContent(solution, false); // false = locked mode
+
+                    // Update mobile toggle text
+                    if (toggleText) {
+                        toggleText.textContent = solutionName;
+                    }
+
+                    // Close sidebar on mobile after selection
+                    if (window.innerWidth <= 768) {
+                        solutionsSidebar.classList.remove('active');
+                        solutionsMobileToggle.classList.remove('active');
+                        
+                        // Scroll to content on mobile
+                        const contentArea = document.querySelector('.solutions-content');
+                        if (contentArea) {
+                            contentArea.scrollIntoView({ behavior: 'smooth' });
+                        }
                     }
                 });
             });
 
-        </script>
+            function updateActiveButton(solution) {
+                sidebarButtons.forEach(btn => {
+                    if (btn.getAttribute('data-solution') === solution) {
+                        btn.classList.add('active');
+                    } else {
+                        btn.classList.remove('active');
+                    }
+                });
+            }
+
+            function showSolutionContent(solution, isPreview) {
+                contentSections.forEach(section => {
+                    const sectionSolution = section.getAttribute('data-solution');
+                    
+                    if (sectionSolution === solution) {
+                        section.classList.remove('preview');
+                        section.classList.add('active');
+                        
+                        // Apply animation based on mode
+                        if (isPreview) {
+                            section.classList.add('preview');
+                            section.style.animation = 'slideInLeft 0.4s ease-out forwards';
+                        } else {
+                            section.style.animation = 'slideInRight 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards';
+                        }
+                    } else {
+                        section.classList.remove('active');
+                        section.classList.remove('preview');
+                    }
+                });
+            }
+
+            // Mobile hamburger menu
+            function openMenu() {
+                const menu = document.createElement('div');
+                menu.id = 'minimal-menu';
+                menu.innerHTML = `
+                    <ul>
+                        <li><a href="Home.html">Home</a></li>
+                        <li><a href="about.html">About</a></li>
+                        <li><a href="service.html">Solutions</a></li>
+                        <li><a href="approach.html">Our Approach</a></li>
+                        <li><a href="contact.html">Contact Us</a></li>
+                        <li><a href="consultation.html">Book a Consultation</a></li>
+                        <li><a href="ClientDashboardPromo.html">Client Portal</a></li>
+                        <li><a href="#">Shop</a></li>
+                    </ul>
+                `;
+                document.body.appendChild(menu);
+                hamburger.classList.add('active');
+            }
+
+            function closeMenu(menu) {
+                if (menu) {
+                    menu.remove();
+                    hamburger.classList.remove('active');
+                }
+            }
+
+            hamburger.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const existingMenu = document.getElementById('minimal-menu');
+                if (existingMenu) {
+                    closeMenu(existingMenu);
+                } else {
+                    openMenu();
+                }
+            });
+
+            document.addEventListener('click', (e) => {
+                const menu = document.getElementById('minimal-menu');
+                if (menu && !menu.contains(e.target) && e.target !== hamburger) {
+                    closeMenu(menu);
+                }
+            });
+
+            // Update copyright year
+            document.getElementById('copyright-year').textContent = new Date().getFullYear();
+        });
+    </script>
 </body>
 </html>

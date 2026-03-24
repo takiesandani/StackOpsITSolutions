@@ -375,7 +375,7 @@ class StackOpsChatbot {
                     padding: 9px 18px;
                     border-radius: 18px;
                     font-size: 14px;
-                    font-weight: 500;
+                    font-weight: 200;
                     cursor: pointer;
                     transition: all 0.2s;
                     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
