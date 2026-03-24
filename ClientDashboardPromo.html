@@ -314,6 +314,39 @@
         }
 
         /* ===== DASHBOARD PREVIEW ===== */
+        .preview-video {
+            position: relative;
+            width: 100%;
+            padding-bottom: 56.25%;
+            height: 0;
+            overflow: hidden;
+            border-radius: 15px;
+            box-shadow: 0 0 20px rgba(51, 115, 255, 0.411);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .preview-video iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+            pointer-events: none;
+        }
+
+        .preview-video::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            pointer-events: auto;
+            z-index: 10;
+        }
+
         .preview-image {
             margin-top: clamp(1.5rem, 3vw, 2.5rem);
         }
@@ -716,7 +749,7 @@
                 </div>
             </div>
             <div class="hero-image">
-                <img src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=600&q=80" alt="Dashboard Interface">
+                <img src="Images/Clientdashboard.png" alt="Dashboard Interface">
             </div>
         </section>
 
@@ -832,7 +865,7 @@
                     </div>
 
                     <div class="benefits-image">
-                        <img src="https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=600&q=80" alt="Benefits">
+                        <img src="Images/SupportDash.png" alt="Benefits">
                     </div>
                 </div>
             </div>
@@ -906,8 +939,13 @@
                     <p>A glimpse into the powerful interface you'll have access to</p>
                 </div>
 
-                <div class="preview-image">
-                    <img src="https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=1000&q=80" alt="Dashboard Preview">
+                <div class="preview-video">
+                    <iframe 
+                        src="https://www.youtube.com/embed/gKyAmhhWoj8?autoplay=1&loop=1&controls=0&modestbranding=1&fs=0&rel=0&showinfo=0&iv_load_policy=3&mute=1&playlist=gKyAmhhWoj8"
+                        title="Dashboard Preview"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                    ></iframe>
                 </div>
             </div>
         </section>
