@@ -6,6 +6,7 @@
     <title>Client Dashboard - StackOps IT Solutions</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/mobile.css" media="screen and (max-width: 768px)">
     <style>
         /* Override and extend styles */
         * {
@@ -580,7 +581,7 @@
         .benefit-item:nth-child(3) { animation-delay: 0.25s; }
         .benefit-item:nth-child(4) { animation-delay: 0.35s; }
 
-        /* ===== RESPONSIVE ===== */
+
         @media (max-width: 1024px) {
             .hero-section {
                 grid-template-columns: 1fr;
@@ -592,14 +593,6 @@
         }
 
         @media (max-width: 768px) {
-            header {
-                margin: 0.5rem 1rem;
-                padding: 0.8rem 1.5rem;
-            }
-
-            .nav-links {
-                gap: clamp(0.5rem, 1.5vw, 1rem);
-            }
 
             .projects-grid {
                 grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -626,11 +619,6 @@
         }
 
         @media (max-width: 480px) {
-            header {
-                margin: 0.5rem 0.5rem;
-                padding: 0.8rem 1rem;
-            }
-
             .hero-section {
                 padding: 1.5rem 1rem;
             }
@@ -670,16 +658,13 @@
             .cta-buttons .glow-wrap {
                 width: fit-content;
             }
-
-            .nav-links {
-                display: none;
-            }
         }
     </style>
 </head>
 <body>
     <div class="background"></div>
 
+    <!-- Header & Navigation -->
     <header class="site-header">
         <a href="/" class="logo">
             
@@ -691,15 +676,14 @@
             <span></span>
             <span></span>
         </div>
-
         <ul class="nav-links" id="nav-links">
             <li><a href="Home.html">Home</a></li>
             <li><a href="about.html">About</a></li>
-            <li><a href="service.html" class="active">Solutions</a></li>
-            <li><a href="approach.html">Our Approach</a></li>
+            <li><a href="service.html">Solutions</a></li>
+            <li><a href="approach.html" class="active">Our Approach</a></li>
             <li><a href="contact.html">Contact Us</a></li>
             <li><a href="consultation.html">Book a consultation</a></li>
-            <li><a href="ClientPortal.html">ClientPortal</a></li>
+            <li><a href="ClientDashboardPromo.html">ClientPortal</a></li>
             <li class="Shop"><a href="#" id="shop-link">Shop</a></li>
         </ul>
     </header>
@@ -736,7 +720,7 @@
                 <div class="hero-buttons">
                     <div class="glow-wrap">
                         <div class="glowing-border-layer"></div>
-                        <a href="ClientPortal.html" class="link-content">
+                        <a href="ClientDashboardPromo.html" class="link-content">
                             <i class="fas fa-sign-in-alt"></i> Sign in
                         </a>
                     </div>
@@ -987,7 +971,7 @@
                 <div class="cta-buttons">
                     <div class="glow-wrap">
                         <div class="glowing-border-layer"></div>
-                        <a href="ClientPortal.html" class="link-content">
+                        <a href="ClientDashboardPromo.html" class="link-content">
                             <i class="fas fa-sign-in-alt"></i> Sign In Now
                         </a>
                     </div>
@@ -1026,7 +1010,7 @@
                     <h4 style="color: var(--primary); font-weight: 200; margin-bottom: 1rem; font-size: clamp(0.9rem, 1.5vw, 1rem);">Support</h4>
                     <a href="contact.html" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);">Contact Support</a>
                     <a href="consultation.html" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);">Request Consultation</a>
-                    <a href="ClientPortal.html" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);">Client Portal</a>
+                    <a href="ClientDashboardPromo.html" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);">Client Portal</a>
                 </div>
 
                 <div>
@@ -1044,6 +1028,49 @@
     </footer>
 
     <script>
+
+            document.addEventListener('DOMContentLoaded', () => {
+                const hamburger = document.getElementById('hamburger');
+                let menu = null;
+
+                function openMenu() {
+                    menu = document.createElement('div');
+                    menu.id = 'minimal-menu';
+                    menu.innerHTML = `
+                        <ul>
+                            <li><a href="Home.html">Home</a></li>
+                            <li><a href="about.html">About</a></li>
+                            <li><a href="service.html">Solutions</a></li>
+                            <li><a href="approach.html">Our Approach</a></li>
+                            <li><a href="contact.html">Contact Us</a></li>
+                            <li><a href="consultation.html">Book a Consultation</a></li>
+                            <li><a href="ClientDashboardPromo.html">Client Portal</a></li>
+                            <li><a href="#">Shop</a></li>
+                        </ul>
+                    `;
+                    document.body.appendChild(menu);
+                    hamburger.classList.add('active');
+                }
+
+                function closeMenu() {
+                    if (menu) {
+                        menu.remove();
+                        menu = null;
+                        hamburger.classList.remove('active');
+                    }
+                }
+
+                hamburger.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    menu ? closeMenu() : openMenu();
+                });
+
+                document.addEventListener('click', (e) => {
+                    if (menu && !menu.contains(e.target) && e.target !== hamburger) {
+                        closeMenu();
+                    }
+                });
+            });
         // iOS YouTube video autoplay fix
         const previewVideo = document.getElementById('previewVideo');
         if (previewVideo) {
@@ -1055,33 +1082,6 @@
             document.addEventListener('play', () => {
                 previewVideo.classList.add('playing');
             }, true);
-        }
-
-        // Hamburger menu toggle
-        const hamburger = document.getElementById('hamburger');
-        const navLinks = document.getElementById('nav-links');
-
-        if (hamburger && navLinks) {
-            hamburger.addEventListener('click', function() {
-                navLinks.classList.toggle('active');
-                hamburger.classList.toggle('active');
-            });
-
-            // Close menu when a link is clicked
-            navLinks.querySelectorAll('a').forEach(link => {
-                link.addEventListener('click', function() {
-                    navLinks.classList.remove('active');
-                    hamburger.classList.remove('active');
-                });
-            });
-
-            // Close menu when clicking outside
-            document.addEventListener('click', function(event) {
-                if (!event.target.closest('header')) {
-                    navLinks.classList.remove('active');
-                    hamburger.classList.remove('active');
-                }
-            });
         }
 
         // Smooth scrolling for anchor links

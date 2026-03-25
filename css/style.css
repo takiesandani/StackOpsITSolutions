@@ -310,38 +310,6 @@ header.sticky {
     top: 9px;
 }
 
-/* Mobile menu */
-#minimal-menu {
-    position: fixed;
-    top: 70px;
-    right: 12px;
-    width: 280px;
-    background: rgba(0, 0, 0, 0.85);
-    color: #fff;
-    border-radius: 14px;
-    padding: 14px 0;
-    z-index: 10000;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.35);
-}
-
-#minimal-menu ul {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-}
-
-#minimal-menu li a {
-    display: block;
-    padding: 12px 20px;
-    color: #fff;
-    text-decoration: none;
-    font-size: 16px;
-}
-
-#minimal-menu li a:hover {
-    background: rgba(255,255,255,0.08);
-}
-
 /* Show hamburger on tablet and mobile (768px and below) */
 @media (max-width: 768px) {
     .hamburger {
@@ -350,6 +318,10 @@ header.sticky {
     
     .nav-links {
         display: none;
+    }
+    
+    .nav-links.active {
+        display: flex;
     }
 }
 

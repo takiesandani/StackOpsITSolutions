@@ -298,19 +298,22 @@
 
 .solution-image-full {
     width: 100%;
-    min-height: 176px;
+    aspect-ratio: 16 / 9;
     display: flex;
-    align-items: stretch;
-    border-radius: 8px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
     overflow: hidden;
-    margin: 12px 0;
+    margin: clamp(8px, 2vh, 20px) 0;
+    background: rgba(0, 0, 0, 0.1);
 }
 
 .solution-image-full img {
-    width: 90%;
+    width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
+    border-radius: 12px;
 }
 
 /* HOW WE DO IT BETTER */
@@ -373,10 +376,7 @@
 
 /* HOW OTHERS USE IT */
 .solution-use-cases {
-    width: 1000%;
-    position: relative;
-    left: 53%;
-    transform: translateX(-50%);
+    width: 100%;
     background: rgba(47, 59, 64, 0.5);
     margin: 22px 0 0 0;
     padding: 0;
@@ -769,8 +769,9 @@
     }
 
     .solution-image-full {
-        min-height: 180px;
-        margin: 20px 0;
+        aspect-ratio: 16 / 9;
+        margin: clamp(6px, 1.5vh, 16px) 0;
+        border-radius: 12px;
     }
 
     .solution-features-list {
@@ -823,11 +824,63 @@
         font-size: 0.85rem;
     }
 
+    .solution-image-full {
+        aspect-ratio: 4 / 3;
+        margin: clamp(4px, 1vh, 12px) 0;
+        border-radius: 10px;
+    }
+
     .solution-feature-content p {
         font-size: 0.85rem;
     }
 
     .solution-sub-item div {
         font-size: 0.8rem;
+    }
+}
+
+/* Extra small phones (320px-380px) */
+@media (max-width: 380px) {
+    .solutions-wrapper {
+        padding: 12px 8px;
+    }
+
+    .solution-image-full {
+        aspect-ratio: 4 / 3;
+        margin: clamp(2px, 0.8vh, 8px) 0;
+        border-radius: 8px;
+    }
+
+    .solution-hero-title {
+        font-size: 1rem;
+    }
+
+    .solution-description {
+        font-size: 0.8rem;
+    }
+}
+
+/* Wearables and very small devices (under 320px) */
+@media (max-width: 320px) {
+    .solutions-wrapper {
+        padding: 8px 6px;
+    }
+
+    .solution-image-full {
+        aspect-ratio: 1;
+        margin: 2px 0;
+        border-radius: 6px;
+    }
+
+    .solution-hero-title {
+        font-size: 0.9rem;
+    }
+
+    .solution-description {
+        font-size: 0.75rem;
+    }
+
+    .solution-better-grid {
+        grid-template-columns: 1fr;
     }
 }

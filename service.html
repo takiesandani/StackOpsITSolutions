@@ -29,19 +29,20 @@
 
     <header class="site-header">
         <a href="/" class="logo">
-            <img src="Images/Logos/RemovedStackOps.png" alt="Stackops IT Solutions Logo" >
+            
+                <img src="Images/Logos/RemovedStackOps.png" alt="Stackops IT Solutions Logo" >
+            
         </a>
         <div id="hamburger" class="hamburger">
             <span></span>
             <span></span>
             <span></span>
         </div>
-
         <ul class="nav-links" id="nav-links">
             <li><a href="Home.html">Home</a></li>
             <li><a href="about.html">About</a></li>
-            <li><a href="service.html" class="active">Solutions</a></li>
-            <li><a href="approach.html">Our Approach</a></li>
+            <li><a href="service.html">Solutions</a></li>
+            <li><a href="approach.html" class="active">Our Approach</a></li>
             <li><a href="contact.html">Contact Us</a></li>
             <li><a href="consultation.html">Book a consultation</a></li>
             <li><a href="ClientDashboardPromo.html">ClientPortal</a></li>
@@ -265,7 +266,7 @@
                 </div>
 
                 <div class="solution-image-full">
-                    <img src="https://images.unsplash.com/photo-1552664730-d307ca884978?w=1200&h=400&fit=crop" alt="Microsoft Enterprise Solutions" />
+                    <img src="https://images.unsplash.com/photo-1552664730-d307ca884978?w=1200&h=400&fit=contain" alt="Microsoft Enterprise Solutions" />
                 </div>
 
                 <!-- HOW WE DO IT BETTER -->
@@ -616,14 +617,14 @@
         document.addEventListener('DOMContentLoaded', () => {
             const sidebarButtons = document.querySelectorAll('.solution-button');
             const contentSections = document.querySelectorAll('.solution-content-section');
-            const hamburger = document.getElementById('hamburger');
+
             const solutionsSidebar = document.getElementById('solutionsSidebar');
             const solutionsMobileToggle = document.getElementById('solutionsMobileToggle');
             const toggleText = solutionsMobileToggle ? solutionsMobileToggle.querySelector('span') : null;
             
             let currentLockedSolution = 'cisco';
             let hoverTimeout;
-            let isUserInteracting = false;
+            let currentlyHoveringButton = null;
 
             // Mobile toggle functionality
             if (solutionsMobileToggle) {
@@ -655,9 +656,14 @@
                 // Hover enter - show preview
                 button.addEventListener('mouseenter', (e) => {
                     if (window.innerWidth > 768) {
-                        isUserInteracting = true;
                         clearTimeout(hoverTimeout);
                         
+                        // Clear previous hover
+                        if (currentlyHoveringButton && currentlyHoveringButton !== button) {
+                            currentlyHoveringButton.classList.remove('hovering');
+                        }
+                        
+                        currentlyHoveringButton = button;
                         button.classList.add('hovering');
                         showSolutionContent(solution, true); // true = preview mode
                     }
@@ -667,18 +673,12 @@
                 button.addEventListener('mouseleave', (e) => {
                     if (window.innerWidth > 768) {
                         hoverTimeout = setTimeout(() => {
-                            isUserInteracting = false;
-                            button.classList.remove('hovering');
-                            
-                            // Check if we're hovering over another button
-                            const isHoveringAnother = Array.from(sidebarButtons).some(btn => 
-                                btn !== button && btn.classList.contains('hovering')
-                            );
-                            
-                            if (!isHoveringAnother) {
+                            if (currentlyHoveringButton === button) {
+                                button.classList.remove('hovering');
+                                currentlyHoveringButton = null;
                                 showSolutionContent(currentLockedSolution, false); // false = locked mode
                             }
-                        }, 100);
+                        }, 50);
                     }
                 });
 
@@ -686,6 +686,12 @@
                 button.addEventListener('click', (e) => {
                     e.preventDefault();
                     clearTimeout(hoverTimeout);
+                    
+                    // Clear any hovering state
+                    if (currentlyHoveringButton) {
+                        currentlyHoveringButton.classList.remove('hovering');
+                        currentlyHoveringButton = null;
+                    }
                     
                     // Remove active class from all buttons
                     sidebarButtons.forEach(btn => {
@@ -748,50 +754,34 @@
                 });
             }
 
-            // Mobile hamburger menu
-            function openMenu() {
-                const menu = document.createElement('div');
-                menu.id = 'minimal-menu';
-                menu.innerHTML = `
-                    <ul>
-                        <li><a href="Home.html">Home</a></li>
-                        <li><a href="about.html">About</a></li>
-                        <li><a href="service.html">Solutions</a></li>
-                        <li><a href="approach.html">Our Approach</a></li>
-                        <li><a href="contact.html">Contact Us</a></li>
-                        <li><a href="consultation.html">Book a Consultation</a></li>
-                        <li><a href="ClientDashboardPromo.html">Client Portal</a></li>
-                        <li><a href="#">Shop</a></li>
-                    </ul>
-                `;
-                document.body.appendChild(menu);
-                hamburger.classList.add('active');
-            }
 
-            function closeMenu(menu) {
-                if (menu) {
-                    menu.remove();
-                    hamburger.classList.remove('active');
-                }
-            }
+                const hamburger = document.getElementById('hamburger');
+                const navLinks = document.getElementById('nav-links');
 
-            hamburger.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const existingMenu = document.getElementById('minimal-menu');
-                if (existingMenu) {
-                    closeMenu(existingMenu);
-                } else {
-                    openMenu();
-                }
-            });
+                hamburger.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    navLinks.classList.toggle('active');
+                    hamburger.classList.toggle('active');
+                });
 
-            document.addEventListener('click', (e) => {
-                const menu = document.getElementById('minimal-menu');
-                if (menu && !menu.contains(e.target) && e.target !== hamburger) {
-                    closeMenu(menu);
-                }
-            });
+                // Close menu when clicking a link
+                navLinks.querySelectorAll('a').forEach(link => {
+                    link.addEventListener('click', () => {
+                        navLinks.classList.remove('active');
+                        hamburger.classList.remove('active');
+                    });
+                });
 
+                // Close menu when clicking outside
+                document.addEventListener('click', (e) => {
+                    if (navLinks.classList.contains('active')) {
+                        if (!navLinks.contains(e.target) && e.target !== hamburger) {
+                            navLinks.classList.remove('active');
+                            hamburger.classList.remove('active');
+                        }
+                    }
+                });
+            
             // Update copyright year
             document.getElementById('copyright-year').textContent = new Date().getFullYear();
         });
