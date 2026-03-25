@@ -939,12 +939,13 @@
                     <p>A glimpse into the powerful interface you'll have access to</p>
                 </div>
 
-                <div class="preview-video">
+                <div class="preview-video" id="previewVideo">
                     <iframe 
                         src="https://www.youtube.com/embed/gKyAmhhWoj8?autoplay=1&loop=1&controls=0&modestbranding=1&fs=0&rel=0&showinfo=0&iv_load_policy=3&mute=1&playlist=gKyAmhhWoj8"
                         title="Dashboard Preview"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allow="autoplay *; encrypted-media"
                         allowFullScreen
+                        playsinline
                     ></iframe>
                 </div>
             </div>
@@ -1043,6 +1044,46 @@
     </footer>
 
     <script>
+        // iOS YouTube video autoplay fix
+        const previewVideo = document.getElementById('previewVideo');
+        if (previewVideo) {
+            // Enable video interaction for iOS
+            previewVideo.classList.add('playing');
+            previewVideo.querySelector('iframe').style.pointerEvents = 'auto';
+            
+            // Enable autoplay on user interaction for iOS
+            document.addEventListener('play', () => {
+                previewVideo.classList.add('playing');
+            }, true);
+        }
+
+        // Hamburger menu toggle
+        const hamburger = document.getElementById('hamburger');
+        const navLinks = document.getElementById('nav-links');
+
+        if (hamburger && navLinks) {
+            hamburger.addEventListener('click', function() {
+                navLinks.classList.toggle('active');
+                hamburger.classList.toggle('active');
+            });
+
+            // Close menu when a link is clicked
+            navLinks.querySelectorAll('a').forEach(link => {
+                link.addEventListener('click', function() {
+                    navLinks.classList.remove('active');
+                    hamburger.classList.remove('active');
+                });
+            });
+
+            // Close menu when clicking outside
+            document.addEventListener('click', function(event) {
+                if (!event.target.closest('header')) {
+                    navLinks.classList.remove('active');
+                    hamburger.classList.remove('active');
+                }
+            });
+        }
+
         // Smooth scrolling for anchor links
         document.querySelectorAll('a[href^="#"]').forEach(anchor => {
             anchor.addEventListener('click', function(e) {
