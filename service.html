@@ -41,8 +41,8 @@
         <ul class="nav-links" id="nav-links">
             <li><a href="Home.html">Home</a></li>
             <li><a href="about.html">About</a></li>
-            <li><a href="service.html">Solutions</a></li>
-            <li><a href="approach.html" class="active">Our Approach</a></li>
+            <li><a href="service.html" class="active">Solutions</a></li>
+            <li><a href="approach.html">Our Approach</a></li>
             <li><a href="contact.html">Contact Us</a></li>
             <li><a href="consultation.html">Book a consultation</a></li>
             <li><a href="ClientDashboardPromo.html">ClientPortal</a></li>
@@ -756,29 +756,43 @@
 
 
                 const hamburger = document.getElementById('hamburger');
-                const navLinks = document.getElementById('nav-links');
+                let menu = null;
+
+                function openMenu() {
+                    menu = document.createElement('div');
+                    menu.id = 'minimal-menu';
+                    menu.innerHTML = `
+                        <ul>
+                            <li><a href="Home.html">Home</a></li>
+                            <li><a href="about.html">About</a></li>
+                            <li><a href="service.html">Solutions</a></li>
+                            <li><a href="approach.html">Our Approach</a></li>
+                            <li><a href="contact.html">Contact Us</a></li>
+                            <li><a href="consultation.html">Book a Consultation</a></li>
+                            <li><a href="ClientDashboardPromo.html">Client Portal</a></li>
+                            <li><a href="#">Shop</a></li>
+                        </ul>
+                    `;
+                    document.body.appendChild(menu);
+                    hamburger.classList.add('active');
+                }
+
+                function closeMenu() {
+                    if (menu) {
+                        menu.remove();
+                        menu = null;
+                        hamburger.classList.remove('active');
+                    }
+                }
 
                 hamburger.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    navLinks.classList.toggle('active');
-                    hamburger.classList.toggle('active');
+                    menu ? closeMenu() : openMenu();
                 });
 
-                // Close menu when clicking a link
-                navLinks.querySelectorAll('a').forEach(link => {
-                    link.addEventListener('click', () => {
-                        navLinks.classList.remove('active');
-                        hamburger.classList.remove('active');
-                    });
-                });
-
-                // Close menu when clicking outside
                 document.addEventListener('click', (e) => {
-                    if (navLinks.classList.contains('active')) {
-                        if (!navLinks.contains(e.target) && e.target !== hamburger) {
-                            navLinks.classList.remove('active');
-                            hamburger.classList.remove('active');
-                        }
+                    if (menu && !menu.contains(e.target) && e.target !== hamburger) {
+                        closeMenu();
                     }
                 });
             
