@@ -1098,6 +1098,13 @@ setTimeout(runInvoiceAutomation, 5000);
 // Serve static files from the root directory (for CSS, JS, images)
 app.use(express.static(path.join(__dirname)));
 
+// ============================================
+// WHATSAPP INTEGRATION ROUTES
+// ============================================
+// Import WhatsApp router factory and mount with pool connection
+const whatsappRoutes = require('./whatsapp/routes');
+app.use('/api/whatsapp', whatsappRoutes(pool));
+
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'Home.html'));
 });
