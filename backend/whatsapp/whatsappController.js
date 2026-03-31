@@ -10,13 +10,21 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 // WhatsApp sends numbers like: 27821234567 (no + or leading 0)
 // DB may store as: 0821234567 or +27821234567 or 27821234567
 function normalizePhone(phone) {
-    if (!phone) return null;
+    if (!phone) {
+        console.log('[NORMALIZE] Input: NULL/EMPTY → Result: null');
+        return null;
+    }
     // Strip all non-digits
     let digits = phone.replace(/\D/g, '');
+    console.log(`[NORMALIZE] Input: "${phone}" → Digits only: "${digits}"`);
+    
     // Remove leading country code 27 → 0... for SA numbers stored with 0
     if (digits.startsWith('27') && digits.length === 11) {
-        return '0' + digits.slice(2); // → 0821234567
+        const result = '0' + digits.slice(2); // → 0821234567
+        console.log(`[NORMALIZE] South African format detected: "${digits}" → "${result}"`);
+        return result;
     }
+    console.log(`[NORMALIZE] Using as-is: "${digits}"`);
     return digits;
 }
 
@@ -53,25 +61,42 @@ async function findClientByPhone(pool, waPhone) {
 // ─── Get full user data (projects + invoices) ───────────────────────────────
 async function getClientData(pool, userId) {
     try {
+        console.log(`[GET_DATA] Fetching data for user ID: ${userId}`);
+        
         // Get user
         const [users] = await pool.query('SELECT * FROM Users WHERE ID = ?', [userId]);
-        if (!users.length) return { client: null, projects: [], invoices: [] };
+        if (!users.length) {
+            console.log(`[GET_DATA] ❌ User ${userId} not found in Users table`);
+            return { client: null, projects: [], invoices: [] };
+        }
+        
+        console.log(`[GET_DATA] ✅ User found:`, {
+            ID: users[0].ID,
+            Name: `${users[0].FirstName} ${users[0].LastName}`,
+            Email: users[0].Email,
+            Contact: users[0].Contact
+        });
 
         // Get projects
+        console.log(`[GET_DATA] Querying projects for user ${userId}...`);
         const [projects] = await pool.query(
             'SELECT * FROM projects WHERE client_id = ? OR user_id = ?',
             [userId, userId]
         );
+        console.log(`[GET_DATA] ✅ Found ${projects ? projects.length : 0} projects`);
 
         // Get invoices
+        console.log(`[GET_DATA] Querying invoices for user ${userId}...`);
         const [invoices] = await pool.query(
             'SELECT * FROM invoices WHERE client_id = ? OR user_id = ?',
             [userId, userId]
         );
+        console.log(`[GET_DATA] ✅ Found ${invoices ? invoices.length : 0} invoices`);
 
         return { client: users[0], projects: projects || [], invoices: invoices || [] };
     } catch (err) {
-        console.error('❌ Get client data error:', err.message);
+        console.error('[GET_DATA] ❌ Error:', err.message);
+        console.error('[GET_DATA] Stack:', err.stack);
         throw err;
     }
 }
@@ -244,25 +269,50 @@ Answer questions about their projects, invoices, and account status. Be friendly
 If they ask about paying, tell them to contact support and someone will help them arrange payment.
 Keep replies SHORT — this is WhatsApp, not email. Max 3-4 sentences unless detail is needed.`;
 
-            const completion = await openai.chat.completions.create({
-                model: 'gpt-4o-mini',
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: userText }
-                ],
-                temperature: 0.7,
-                max_tokens: 300
-            });
+            console.log(`\n[AI] Calling OpenAI API...`);
+            console.log(`[AI] Model: gpt-4o-mini`);
+            console.log(`[AI] User message: "${userText}"`);
+            console.log(`[AI] Token count: ~${systemPrompt.length / 4 + userText.length / 4} (estimate)`);
 
-            const aiReply = completion.choices[0].message.content;
+            try {
+                const completion = await openai.chat.completions.create({
+                    model: 'gpt-4o-mini',
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: userText }
+                    ],
+                    temperature: 0.7,
+                    max_tokens: 300
+                });
 
-            await sleep(800); // slight delay feels more natural
-            await sendTextMessage(senderPhone, aiReply);
+                const aiReply = completion.choices[0].message.content;
+                
+                console.log(`[AI] ✅ Response received`);
+                console.log(`[AI] Reply: "${aiReply.substring(0, 100)}..."`);
+                console.log(`[SEND] Waiting 800ms before sending...`);
 
-            console.log(`✅ Replied to ${clientName} (${senderPhone})`);
+                await sleep(800); // slight delay feels more natural
+                
+                console.log(`[SEND] Sending reply to ${senderPhone}...`);
+                await sendTextMessage(senderPhone, aiReply);
+                
+                console.log(`✅ [SUCCESS] Replied to ${clientName} (${senderPhone})`);
+                console.log('='.repeat(80) + '\n');
+
+            } catch (openaiErr) {
+                console.error(`[AI] ❌ OpenAI Error:`, openaiErr.message);
+                console.error(`[AI] Status:`, openaiErr.status);
+                console.error(`[AI] Code:`, openaiErr.code);
+                throw openaiErr;
+            }
 
         } catch (err) {
-            console.error('❌ WhatsApp handler error:', err.message);
+            console.error('\n' + '='.repeat(80));
+            console.error('❌ [HANDLER_ERROR] WhatsApp handler error');
+            console.error('❌ Message:', err.message);
+            console.error('❌ Type:', err.constructor.name);
+            console.error('❌ Stack:', err.stack);
+            console.error('='.repeat(80) + '\n');
         }
     };
 }
@@ -275,11 +325,25 @@ function verifyWebhook(req, res) {
     const token = req.query['hub.verify_token'];
     const challenge = req.query['hub.challenge'];
 
+    console.log('\n' + '='.repeat(80));
+    console.log('🔐 WEBHOOK VERIFICATION REQUEST (Handshake)');
+    console.log('='.repeat(80));
+    console.log('[HANDSHAKE] Timestamp:', new Date().toISOString());
+    console.log('[HANDSHAKE] Mode:', mode);
+    console.log('[HANDSHAKE] Token received:', token ? `${token.substring(0, 20)}...` : 'MISSING');
+    console.log('[HANDSHAKE] Expected token:', VERIFY_TOKEN ? `${VERIFY_TOKEN.substring(0, 20)}...` : 'NOT SET');
+    console.log('[HANDSHAKE] Challenge:', challenge ? `${challenge.substring(0, 20)}...` : 'MISSING');
+    console.log('[HANDSHAKE] Match:', token === VERIFY_TOKEN ? '✅ YES' : '❌ NO');
+
     if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-        console.log('✅ WhatsApp webhook verified!');
+        console.log('[HANDSHAKE] ✅ VERIFICATION SUCCESSFUL - Sending challenge back');
+        console.log('='.repeat(80) + '\n');
         res.status(200).send(challenge);
     } else {
-        console.error('❌ Webhook verification failed');
+        console.log('[HANDSHAKE] ❌ VERIFICATION FAILED');
+        if (mode !== 'subscribe') console.log('  → Mode mismatch. Got:', mode);
+        if (token !== VERIFY_TOKEN) console.log('  → Token mismatch. Expected vs got do not match');
+        console.log('='.repeat(80) + '\n');
         res.sendStatus(403);
     }
 }
