@@ -5104,14 +5104,106 @@ app.get('/test-invoice', (req, res) => {
     `);
 });
 
-// ------------------------------------------------------------------------
-// Server Startup
-// ------------------------------------------------------------------------
-const PORT = process.env.PORT || 8080;  // Use PORT env var for Cloud Run
-app.listen(PORT, async () => {
-    console.log(`Server running on port ${PORT}. Supabase mode: ${useSupabase ? 'ON' : 'OFF'}`);
-    console.log(`📋 Test Invoice PDF at: http://localhost:${PORT}/test-invoice`);
-    
+// ========================================================================
+// Health Check Endpoint (CRITICAL for Cloud Run)
+// ========================================================================
+app.get('/health', (req, res) => {
+    if (pool) {
+        res.status(200).json({ status: 'healthy', timestamp: new Date().toISOString() });
+    } else {
+        res.status(503).json({ status: 'unhealthy', error: 'Database pool not available' });
+    }
 });
+
+app.get('/ready', async (req, res) => {
+    if (!pool) {
+        return res.status(503).json({ status: 'not-ready', error: 'Database pool not available' });
+    }
+    
+    try {
+        // Test database connection
+        const connection = await pool.getConnection();
+        connection.release();
+        res.status(200).json({ status: 'ready', timestamp: new Date().toISOString() });
+    } catch (error) {
+        console.error('Readiness check failed:', error);
+        res.status(503).json({ status: 'not-ready', error: error.message });
+    }
+});
+
+// ========================================================================
+// Server Startup - CRITICAL: Must properly initialize before listening
+// ========================================================================
+async function startServer() {
+    const PORT = process.env.PORT || 8080;
+    
+    try {
+        // Step 1: Verify database pool exists
+        if (!pool) {
+            console.error('❌ CRITICAL: MySQL pool initialization failed. Database is unavailable.');
+            console.error('Check Cloud SQL connection and credentials in server.js');
+            process.exit(1);
+        }
+        
+        console.log('✅ Database pool created successfully');
+        
+        // Step 2: Test database connection
+        try {
+            const connection = await pool.getConnection();
+            connection.release();
+            console.log('✅ Database connection test successful');
+        } catch (dbError) {
+            console.error('❌ Database connection failed:', dbError.message);
+            console.error('Cloud SQL Instance may be:\n  - Down or unreachable\n  - Using wrong password\n  - Not accessible from Cloud Run');
+            process.exit(1);
+        }
+        
+        // Step 3: Start listening
+        const server = app.listen(PORT, () => {
+            console.log('');
+            console.log('═══════════════════════════════════════════════════════════');
+            console.log(`✅ Server is RUNNING on PORT ${PORT}`);
+            console.log('═══════════════════════════════════════════════════════════');
+            console.log(`Supabase mode: ${useSupabase ? 'ON' : 'OFF'}`);
+            console.log(`Process ID: ${process.pid}`);
+            console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+            console.log(`📋 Test Invoice PDF: http://localhost:${PORT}/test-invoice`);
+            console.log(`❤️  Health Check: http://localhost:${PORT}/health`);
+            console.log(`✓ Readiness Check: http://localhost:${PORT}/ready`);
+            console.log('═══════════════════════════════════════════════════════════');
+            console.log('');
+        });
+        
+        // Handle server errors
+        server.on('error', (err) => {
+            if (err.code === 'EADDRINUSE') {
+                console.error(`❌ Port ${PORT} is already in use`);
+            } else {
+                console.error('❌ Server error:', err);
+            }
+            process.exit(1);
+        });
+        
+        // Graceful shutdown
+        process.on('SIGTERM', () => {
+            console.log('SIGTERM signal received: closing server');
+            server.close(() => {
+                console.log('HTTP server closed');
+                pool.end(() => {
+                    console.log('Database pool closed');
+                    process.exit(0);
+                });
+            });
+        });
+        
+    } catch (error) {
+        console.error('❌ Failed to start server:', error.message);
+        console.error('Stack:', error.stack);
+        process.exit(1);
+    }
+}
+
+// Start server immediately
+startServer();
 
 

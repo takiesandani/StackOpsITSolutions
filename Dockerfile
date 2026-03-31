@@ -19,5 +19,13 @@ COPY . .
 # Your code (server.js) already uses process.env.PORT || 8080, so exposing 8080 is a standard practice.
 EXPOSE 8080
 
+# Set production environment
+ENV NODE_ENV=production
+ENV PORT=8080
+
+# Health check for Cloud Run (optional but recommended)
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=2 \
+  CMD node -e "require('http').get('http://localhost:8080/health', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
+
 # Run the app. The 'start' script from package.json will be executed.
 CMD [ "npm", "start" ]
