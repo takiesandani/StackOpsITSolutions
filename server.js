@@ -1098,6 +1098,15 @@ setTimeout(runInvoiceAutomation, 5000);
 // Serve static files from the root directory (for CSS, JS, images)
 app.use(express.static(path.join(__dirname)));
 
+// Health check endpoint for Cloud Run and monitoring
+app.get('/health', (req, res) => {
+    res.status(200).json({ 
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        database: pool ? 'available' : 'unavailable'
+    });
+});
+
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'Home.html'));
 });
@@ -4947,24 +4956,50 @@ app.get('/test-invoice', (req, res) => {
 // ────────────────────────────────────────────────────────────────────
 // ──── WhatsApp Integration (StackOps) ────────────────────────────────
 // ────────────────────────────────────────────────────────────────────
-const createWhatsAppRoutes = require('./backend/whatsapp/routes');
-if (pool) {
-    const whatsappRouter = createWhatsAppRoutes(pool);
-    app.use('/api/webhook', whatsappRouter);
-    console.log('✅ WhatsApp integration loaded');
-} else {
-    console.warn('⚠️  WhatsApp integration requires database pool - skipping');
+try {
+    const createWhatsAppRoutes = require('./backend/whatsapp/routes');
+    if (pool) {
+        const whatsappRouter = createWhatsAppRoutes(pool);
+        app.use('/api/webhook', whatsappRouter);
+        console.log('✅ WhatsApp integration loaded');
+    } else {
+        console.warn('⚠️  WhatsApp integration requires database pool - skipping');
+    }
+} catch (whatsappError) {
+    console.error('❌ Failed to load WhatsApp integration:', whatsappError.message);
+    console.error('Stack:', whatsappError.stack);
+    // Continue without WhatsApp - don't crash the app
 }
 
 // ────────────────────────────────────────────────────────────────────
 // Server Startup
 // ────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 8080;  // Use PORT env var for Cloud Run
-app.listen(PORT, async () => {
-    console.log(`Server running on port ${PORT}. Supabase mode: ${useSupabase ? 'ON' : 'OFF'}`);
-    console.log(`📋 Test Invoice PDF at: http://localhost:${PORT}/test-invoice`);
+
+// Add global error handlers before starting server
+process.on('uncaughtException', (error) => {
+    console.error('❌ Uncaught Exception:', error.message);
+    console.error('Stack:', error.stack);
+    process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+const server = app.listen(PORT, async () => {
+    console.log(`\n${'='.repeat(60)}`);
+    console.log(`✅ Server running on port ${PORT}`);
+    console.log(`📡 Database: ${pool ? 'Connected' : 'Not Available'}`);
+    console.log(`🔐 Supabase mode: ${useSupabase ? 'ON' : 'OFF'}`);
+    console.log(`📋 Test Invoice PDF: http://localhost:${PORT}/test-invoice`);
     console.log(`💬 WhatsApp Webhook: POST http://localhost:${PORT}/api/webhook/whatsapp`);
-    
+    console.log(`${'='.repeat(60)}\n`);
+});
+
+server.on('error', (error) => {
+    console.error('❌ Server error:', error);
+    process.exit(1);
 });
 
 
