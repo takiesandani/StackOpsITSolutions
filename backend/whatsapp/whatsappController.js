@@ -1,7 +1,18 @@
 const { sendTextMessage, sendPaymentMessage, markAsRead } = require('./whatsappService');
 const OpenAI = require('openai');
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// Initialize OpenAI lazily to ensure environment variables are loaded
+let openai = null;
+function getOpenAIClient() {
+    if (!openai) {
+        if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.includes('EXTRACT_FROM_GOOGLE_SECRETS')) {
+            console.error('[WHATSAPP_AI] ❌ OPENAI_API_KEY not set in process.env');
+            return null;
+        }
+        openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    }
+    return openai;
+}
 
 // ─── Typing simulation delay ───────────────────────────────────────────────
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -336,7 +347,10 @@ Keep replies SHORT — this is WhatsApp, not email. Max 3-4 sentences unless det
             console.log(`[AI] Token count: ~${systemPrompt.length / 4 + userText.length / 4} (estimate)`);
 
             try {
-                const completion = await openai.chat.completions.create({
+                const aiClient = getOpenAIClient();
+                if (!aiClient) throw new Error('OpenAI client not initialized');
+
+                const completion = await aiClient.chat.completions.create({
                     model: 'gpt-4o-mini',
                     messages: [
                         { role: 'system', content: systemPrompt },

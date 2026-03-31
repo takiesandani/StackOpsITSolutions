@@ -5136,20 +5136,42 @@ app.get('/test-invoice', (req, res) => {
 // ────────────────────────────────────────────────────────────────────
 // ──── WhatsApp Integration (StackOps) ────────────────────────────────
 // ────────────────────────────────────────────────────────────────────
-try {
-    const createWhatsAppRoutes = require('./backend/whatsapp/routes');
-    if (pool) {
-        const whatsappRouter = createWhatsAppRoutes(pool);
-        app.use('/api/webhook', whatsappRouter);
-        console.log('✅ WhatsApp integration loaded');
-    } else {
-        console.warn('⚠️  WhatsApp integration requires database pool - skipping');
+async function initializeWhatsApp() {
+    try {
+        const createWhatsAppRoutes = require('./backend/whatsapp/routes');
+        
+        // Load secrets from Secret Manager into process.env if they are placeholders
+        if (process.env.WHATSAPP_PHONE_NUMBER_ID?.includes('EXTRACT_FROM_GOOGLE_SECRETS')) {
+            console.log('🔄 Fetching WhatsApp secrets from Secret Manager...');
+            const phoneId = await getSecret('WHATSAPP_PHONE_NUMBER_ID');
+            const accessToken = await getSecret('WHATSAPP_ACCESS_TOKEN');
+            const verifyToken = await getSecret('WHATSAPP_VERIFY_TOKEN');
+            const openaiKey = await getSecret('OPENAI_API_KEY');
+            
+            if (phoneId) process.env.WHATSAPP_PHONE_NUMBER_ID = phoneId;
+            if (accessToken) process.env.WHATSAPP_ACCESS_TOKEN = accessToken;
+            if (verifyToken) process.env.WHATSAPP_VERIFY_TOKEN = verifyToken;
+            if (openaiKey) process.env.OPENAI_API_KEY = openaiKey;
+        }
+
+        if (pool) {
+            const whatsappRouter = createWhatsAppRoutes(pool);
+            app.use('/api/webhook', whatsappRouter);
+            console.log('✅ WhatsApp integration loaded');
+        } else {
+            console.warn('⚠️  WhatsApp integration requires database pool - skipping');
+        }
+    } catch (whatsappError) {
+        console.error('❌ Failed to load WhatsApp integration:', whatsappError.message);
+        console.error('Stack:', whatsappError.stack);
+        // Continue without WhatsApp - don't crash the app
     }
-} catch (whatsappError) {
-    console.error('❌ Failed to load WhatsApp integration:', whatsappError.message);
-    console.error('Stack:', whatsappError.stack);
-    // Continue without WhatsApp - don't crash the app
 }
+
+// Initialize WhatsApp
+initializeWhatsApp().catch(err => {
+    console.error('Failed to initialize WhatsApp:', err);
+});
 
 // ────────────────────────────────────────────────────────────────────
 // Server Startup
