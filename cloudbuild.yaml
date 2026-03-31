@@ -16,7 +16,7 @@ steps:
       'us-central1-docker.pkg.dev/stackops-backend-475222/stackops-repo/stackops-app:$COMMIT_SHA'
     ]
 
-  # 3. Deploy the new image to Cloud Run with proper health check configuration
+  # 3. Deploy the new image to Cloud Run
   - name: 'gcr.io/cloud-builders/gcloud'
     args: [
       'run',
@@ -26,12 +26,6 @@ steps:
       '--region', 'us-central1',
       '--platform', 'managed',
       '--allow-unauthenticated',
-      '--port', '8080',
-      '--timeout', '3600s',
-      '--max-instances', '10',
-      '--memory', '512Mi',
-      '--cpu', '1',
-      '--set-cloudsql-instances', 'stackops-backend-475222:us-central1:stackops-db',
       '--quiet'
     ]
 
