@@ -92,6 +92,9 @@ if (!useSupabase) {
         decimalNumbers: true,             // Return DECIMAL values as numbers
         supportBigNumbers: true,          // Support large numbers
         bigNumberStrings: false,          // Convert large numbers to strings if needed
+        connectionTimeoutMillis: 30000,   // 30 second connection timeout
+        acquireTimeoutMillis: 30000,      // 30 second acquire timeout
+        waitForConnectionsMillis: 5000,   // 5 second wait for connection from queue
         
         /*
         authPlugins: {
@@ -99,8 +102,10 @@ if (!useSupabase) {
         } */
     };
 
-    console.log(`Connecting to Cloud SQL via Socket: /cloudsql/stackops-backend-475222:us-central1:stackops-db`);
-    dbConfig.socketPath = `/cloudsql/stackops-backend-475222:us-central1:stackops-db`;
+    const socketPath = `/cloudsql/stackops-backend-475222:us-central1:stackops-db`;
+    console.log(`\n[DB] Attempting to connect to Cloud SQL via socket: ${socketPath}`);
+    console.log('[DB] Config: connectionTimeout=30s, acquireTimeout=30s');
+    dbConfig.socketPath = socketPath;
 
     try {
         // Use mysql.createPool (promise-based) for modern Node.js
@@ -114,13 +119,30 @@ if (!useSupabase) {
         });
 
         pool.on('connection', (connection) => {
-            console.log('[POOL] ✅ New connection created (pool now has', pool.pool?.activeConnections, 'active)');
+            console.log('[POOL] ✅ New connection created to Cloud SQL');
         });
 
         console.log('[POOL] ✅ MySQL pool created with settings:');
         console.log('[POOL]   - connectionLimit: 10');
         console.log('[POOL]   - queueLimit: 0 (unlimited queue)');
         console.log('[POOL]   - keepAliveInitialDelayMs: 0 (keepalive enabled)');
+        console.log('[POOL]   - connectionTimeout: 30 seconds');
+        
+        // Try a simple test connection immediately (don't wait for result)
+        pool.getConnection()
+            .then(conn => {
+                console.log('[DB] ✅ Test connection successful - Cloud SQL is reachable');
+                conn.release().catch(() => {});
+            })
+            .catch(err => {
+                console.error('[DB] ❌ Test connection failed:', err.message);
+                console.error('[DB] ❌ Cloud SQL may not be accessible from Cloud Run');
+                console.error('[DB] ❌ Check: 1) IAM permissions (Cloud SQL Client role)');
+                console.error('[DB] ❌        2) IAM bindings for Cloud Run service account');
+                console.error('[DB] ❌        3) Cloud SQL instance status (should be RUNNABLE)');
+                console.error('[DB] ❌        4) Socket path matches instance: ' + socketPath);
+                console.error('[DB] Error code:', err.code, 'Errno:', err.errno);
+            });
         
     } catch (error) {
         console.error('❌ Failed to create MySQL pool.', error);
@@ -796,11 +818,52 @@ async function ensureDatabaseSchema() {
     }
 }
 
-// Call seed availability and schema check NON-BLOCKING (after server starts)
+// Call seed availability and schema check NON-BLOCKING with retry logic
 setTimeout(() => {
-    seedAvailability().catch((error) => console.error('Seed availability failed:', error));
-    ensureDatabaseSchema().catch((error) => console.error('Schema update failed:', error));
-}, 1000);  // Delay to ensure server starts first
+    console.log('[STARTUP] Running deferred startup tasks (seedAvailability, ensureDatabaseSchema)...');
+    
+    if (!pool) {
+        console.warn('[STARTUP] ⚠️  Skipping startup tasks - database pool not available');
+        return;
+    }
+
+    // Add retry logic for database startup tasks
+    let retries = 0;
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY = 5000; // 5 seconds between retries
+
+    function runStartupTasks() {
+        Promise.all([
+            seedAvailability().catch((error) => {
+                console.error(`[STARTUP] seedAvailability failed (attempt ${retries + 1}/${MAX_RETRIES}):`, error.message);
+                if (error.code) console.error('[STARTUP] Error code:', error.code);
+                if (error.errno) console.error('[STARTUP] Error errno:', error.errno);
+                return Promise.reject(error);
+            }),
+            ensureDatabaseSchema().catch((error) => {
+                console.error(`[STARTUP] ensureDatabaseSchema failed (attempt ${retries + 1}/${MAX_RETRIES}):`, error.message);
+                if (error.code) console.error('[STARTUP] Error code:', error.code);
+                if (error.errno) console.error('[STARTUP] Error errno:', error.errno);
+                return Promise.reject(error);
+            })
+        ])
+        .then(() => {
+            console.log('[STARTUP] ✅ All startup tasks completed successfully');
+        })
+        .catch((error) => {
+            retries++;
+            if (retries < MAX_RETRIES) {
+                console.warn(`[STARTUP] ⚠️  Retrying startup tasks in ${RETRY_DELAY}ms... (${retries}/${MAX_RETRIES})`);
+                setTimeout(runStartupTasks, RETRY_DELAY);
+            } else {
+                console.error('[STARTUP] ❌ Startup tasks failed after all retries. Server continuing without these features.');
+                console.error('[STARTUP] WhatsApp and other features should still work. Check Cloud SQL connection.');
+            }
+        });
+    }
+
+    runStartupTasks();
+}, 2000);  // Bump delay to 2 seconds to allow pool initialization
 
 // --- INVOICE AUTOMATION ---
 
@@ -1106,14 +1169,39 @@ async function runInvoiceAutomation() {
             }
         }
     } catch (error) {
-        console.error('[Automation] Error during invoice automation:', error);
+        console.error('[Automation] Error during invoice automation:', error.message);
+        if (error.code) console.error('[Automation] Error code:', error.code);
+        if (error.errno) console.error('[Automation] Error errno:', error.errno);
+        // Don't crash - let it retry on next interval
     }
 }
 
-// Start the automation loop
-setInterval(runInvoiceAutomation, AUTOMATION_CONFIG.INTERVAL_MS);
-// Also run once on startup after a delay
-setTimeout(runInvoiceAutomation, 5000);
+// Wrap automation to handle connection timeouts
+const automationWithErrorHandling = async () => {
+    try {
+        if (!pool) {
+            console.warn('[Automation] ⚠️  Skipping automation - database pool not available');
+            return;
+        }
+        await runInvoiceAutomation();
+    } catch (err) {
+        console.error('[Automation] ❌ Fatal automation error:', err.message);
+        console.error('[Automation] Check database connectivity - is Cloud SQL accessible?');
+    }
+};
+
+// Start the automation loop with error handling
+setInterval(automationWithErrorHandling, AUTOMATION_CONFIG.INTERVAL_MS);
+// Also run once on startup after a delay (only if pool is ready)
+setTimeout(() => {
+    if (!pool) {
+        console.warn('[Automation] ⚠️  Skipping startup automation run - database pool not ready');
+        return;
+    }
+    automationWithErrorHandling().catch(err => {
+        console.error('[Automation] Startup automation failed:', err.message);
+    });
+}, 8000);
 
 // --- END INVOICE AUTOMATION ---
 
