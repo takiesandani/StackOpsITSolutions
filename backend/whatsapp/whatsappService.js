@@ -1,8 +1,21 @@
 const https = require('https');
 
-const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
-const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
 const API_VERSION = 'v19.0';
+
+// Hardcoded WhatsApp credentials (non-secret)
+const WHATSAPP_PHONE_NUMBER_ID = '1049233374934291';
+const WHATSAPP_TEST_NUMBER = '15556435081'; // US test number (format: country code + number, no +)
+
+/**
+ * Get current credentials - Phone ID is hardcoded, token from Secret Manager
+ */
+function getCredentials() {
+    return {
+        phoneId: WHATSAPP_PHONE_NUMBER_ID,
+        token: process.env.WHATSAPP_ACCESS_TOKEN,
+        testNumber: WHATSAPP_TEST_NUMBER
+    };
+}
 
 /**
  * Send a plain text message to a WhatsApp number
@@ -85,6 +98,8 @@ async function markAsRead(messageId) {
  * Core API caller
  */
 function callWhatsAppAPI(payload) {
+    const { phoneId: PHONE_NUMBER_ID, token: ACCESS_TOKEN } = getCredentials();
+    
     return new Promise((resolve, reject) => {
         console.log(`[API_CALL] Calling WhatsApp Graph API`);
         console.log(`[API_CALL] Phone Number ID: ${PHONE_NUMBER_ID ? '✅ SET' : '❌ NOT SET'}`);

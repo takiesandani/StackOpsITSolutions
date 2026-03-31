@@ -1,6 +1,9 @@
 const { sendTextMessage, sendPaymentMessage, markAsRead } = require('./whatsappService');
 const OpenAI = require('openai');
 
+// Hardcoded WhatsApp Verify Token (for webhook verification)
+const WHATSAPP_VERIFY_TOKEN = 'stackon_verify_token_2024';
+
 // Initialize OpenAI lazily to ensure environment variables are loaded
 let openai = null;
 function getOpenAIClient() {
@@ -143,7 +146,7 @@ function detectPaymentIntent(message) {
 }
 
 // ─── Main webhook handler ────────────────────────────────────────────────────
-async function handleIncomingMessage(pool) {
+function handleIncomingMessage(pool) {
     return async (req, res) => {
         // Always respond 200 immediately — Meta will retry if we don't
         res.sendStatus(200);
@@ -405,7 +408,7 @@ Keep replies SHORT — this is WhatsApp, not email. Max 3-4 sentences unless det
 
 // ─── Webhook verification (GET) ──────────────────────────────────────────────
 function verifyWebhook(req, res) {
-    const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
+    // Note: VERIFY_TOKEN is hardcoded above in this file
 
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];

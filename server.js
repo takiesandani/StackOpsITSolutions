@@ -3273,7 +3273,7 @@ app.post("/api/create-payment", authenticateToken, async (req, res) => {
 
     try {
         // 1. Get Secret Key
-        const yocoSecretKey = getSecret('YOCO_SECRET_KEY');
+        const yocoSecretKey = await getSecret('YOCO_SECRET_KEY');
 
         // 2. Create Yoco Checkout with Metadata
         const response = await fetch("https://payments.yoco.com/api/checkouts", {
