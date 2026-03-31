@@ -4944,13 +4944,26 @@ app.get('/test-invoice', (req, res) => {
     `);
 });
 
-// ------------------------------------------------------------------------
+// ────────────────────────────────────────────────────────────────────
+// ──── WhatsApp Integration (StackOps) ────────────────────────────────
+// ────────────────────────────────────────────────────────────────────
+const createWhatsAppRoutes = require('./backend/whatsapp/routes');
+if (pool) {
+    const whatsappRouter = createWhatsAppRoutes(pool);
+    app.use('/api/webhook', whatsappRouter);
+    console.log('✅ WhatsApp integration loaded');
+} else {
+    console.warn('⚠️  WhatsApp integration requires database pool - skipping');
+}
+
+// ────────────────────────────────────────────────────────────────────
 // Server Startup
-// ------------------------------------------------------------------------
+// ────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 8080;  // Use PORT env var for Cloud Run
 app.listen(PORT, async () => {
     console.log(`Server running on port ${PORT}. Supabase mode: ${useSupabase ? 'ON' : 'OFF'}`);
     console.log(`📋 Test Invoice PDF at: http://localhost:${PORT}/test-invoice`);
+    console.log(`💬 WhatsApp Webhook: POST http://localhost:${PORT}/api/webhook/whatsapp`);
     
 });
 
