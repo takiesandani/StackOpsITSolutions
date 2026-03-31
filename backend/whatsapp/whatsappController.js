@@ -30,6 +30,11 @@ function normalizePhone(phone) {
 
 // ─── User lookup by phone (checks Users table) ──────────────────────────────
 async function findClientByPhone(pool, waPhone) {
+    if (!pool) {
+        console.error('[PHONE_LOOKUP] ❌ CRITICAL: Database pool is NULL');
+        throw new Error('Database pool not available');
+    }
+
     const normalized = normalizePhone(waPhone);
     const variants = [
         waPhone,                    // raw: 27821234567
@@ -39,31 +44,43 @@ async function findClientByPhone(pool, waPhone) {
 
     console.log(`[PHONE_LOOKUP] Input: ${waPhone}`);
     console.log(`[PHONE_LOOKUP] Trying variants:`, variants);
+    console.log(`[PHONE_LOOKUP] Pool status: connectionLimit=${pool.pool?.connectionLimit}`);
 
     const placeholders = variants.map(() => '?').join(', ');
+    const query = `SELECT * FROM Users WHERE Contact IN (${placeholders}) LIMIT 1`;
+    
     try {
+        console.log(`[PHONE_LOOKUP] Executing SQL: ${query.substring(0, 100)}...`);
         // Query the Users table with Contact field
-        const [results] = await pool.query(
-            `SELECT * FROM Users WHERE Contact IN (${placeholders}) LIMIT 1`,
-            variants
-        );
+        const [results] = await pool.query(query, variants);
         console.log(`[PHONE_LOOKUP] Query results: ${results.length} found`);
         if (results.length > 0) {
-            console.log(`[PHONE_LOOKUP] Matched contact:`, results[0].Contact);
+            console.log(`[PHONE_LOOKUP] ✅ Matched contact:`, results[0].Contact);
+            return results[0];
         }
-        return results.length > 0 ? results[0] : null;
+        console.log(`[PHONE_LOOKUP] ⚠️  No users found with variants:`, variants);
+        return null;
     } catch (err) {
         console.error('[PHONE_LOOKUP] ❌ Database error:', err.message);
+        console.error('[PHONE_LOOKUP] Error code:', err.code);
+        console.error('[PHONE_LOOKUP] Error errno:', err.errno);
+        console.error('[PHONE_LOOKUP] Stack:', err.stack);
         throw err;
     }
 }
 
 // ─── Get full user data (projects + invoices) ───────────────────────────────
 async function getClientData(pool, userId) {
+    if (!pool) {
+        console.error('[GET_DATA] ❌ CRITICAL: Database pool is NULL');
+        throw new Error('Database pool not available');
+    }
+
     try {
         console.log(`[GET_DATA] Fetching data for user ID: ${userId}`);
         
         // Get user
+        console.log(`[GET_DATA] Querying Users table for ID=${userId}...`);
         const [users] = await pool.query('SELECT * FROM Users WHERE ID = ?', [userId]);
         if (!users.length) {
             console.log(`[GET_DATA] ❌ User ${userId} not found in Users table`);
@@ -95,7 +112,9 @@ async function getClientData(pool, userId) {
 
         return { client: users[0], projects: projects || [], invoices: invoices || [] };
     } catch (err) {
-        console.error('[GET_DATA] ❌ Error:', err.message);
+        console.error('[GET_DATA] ❌ Critical error:', err.message);
+        console.error('[GET_DATA] Error code:', err.code);
+        console.error('[GET_DATA] Error errno:', err.errno);
         console.error('[GET_DATA] Stack:', err.stack);
         throw err;
     }
@@ -119,6 +138,14 @@ async function handleIncomingMessage(pool) {
         res.sendStatus(200);
 
         try {
+            // CRITICAL: Check database pool first
+            if (!pool) {
+                console.error('\n' + '='.repeat(80));
+                console.error('❌ [CRITICAL] Database pool is NULL - cannot process message');
+                console.error('='.repeat(80) + '\n');
+                return;
+            }
+
             const body = req.body;
             console.log('[DEBUG] Webhook received:', {
                 object: body.object,
@@ -182,7 +209,23 @@ async function handleIncomingMessage(pool) {
 
             // ── Look up user ────────────────────────────────────────────
             console.log(`[LOOKUP] Searching for user with phone: ${senderPhone}`);
-            const client = await findClientByPhone(pool, senderPhone);
+            let client = null;
+            try {
+                client = await findClientByPhone(pool, senderPhone);
+            } catch (dbErr) {
+                console.error(`[LOOKUP] ❌ Database error during phone lookup:`, dbErr.message);
+                console.error(`[LOOKUP] Error type:`, dbErr.code || dbErr.errno);
+                console.error(`[LOOKUP] Full error:`, dbErr);
+                
+                // Send error message to user
+                await sendTextMessage(
+                    senderPhone,
+                    `Sorry! We're having trouble connecting to our database right now. Please try again in a moment. (DBError: ${dbErr.code || dbErr.errno})`
+                ).catch(sendErr => {
+                    console.error('[LOOKUP] ❌ Also failed to send error message:', sendErr.message);
+                });
+                return;
+            }
 
             if (!client) {
                 console.log(`[LOOKUP] ❌ User NOT found for phone: ${senderPhone}`);
@@ -215,7 +258,21 @@ async function handleIncomingMessage(pool) {
             await sleep(1200);
 
             // ── Get full data ───────────────────────────────────────────
-            const clientData = await getClientData(pool, client.ID);
+            let clientData = null;
+            try {
+                clientData = await getClientData(pool, client.ID);
+            } catch (dbErr) {
+                console.error(`[GET_DATA] ❌ Database error retrieving client data:`, dbErr.message);
+                console.error(`[GET_DATA] Error type:`, dbErr.code || dbErr.errno);
+                
+                await sendTextMessage(
+                    senderPhone,
+                    `Sorry ${clientName}, I'm having trouble retrieving your information. Please try again in a moment.`
+                ).catch(sendErr => {
+                    console.error('[GET_DATA] ❌ Failed to send error message:', sendErr.message);
+                });
+                return;
+            }
             
             const unpaidInvoices = clientData.invoices.filter(
                 inv => inv.status === 'unpaid' || inv.status === 'overdue'
@@ -235,13 +292,17 @@ async function handleIncomingMessage(pool) {
                     }
 
                     await sendTextMessage(senderPhone, replyText);
+                    console.log(`✅ [PAYMENT] Sent payment info to ${clientName}`);
 
                 } catch (err) {
-                    console.error('❌ Payment notification error:', err.message);
+                    console.error('❌ [PAYMENT] Notification error:', err.message);
+                    console.error('[PAYMENT] Stack:', err.stack);
                     await sendTextMessage(
                         senderPhone,
                         `Sorry ${clientName}, I had trouble retrieving your payment information. Please contact us directly.`
-                    );
+                    ).catch(sendErr => {
+                        console.error('[PAYMENT] ❌ Failed to send error message:', sendErr.message);
+                    });
                 }
                 return;
             }
@@ -303,7 +364,16 @@ Keep replies SHORT — this is WhatsApp, not email. Max 3-4 sentences unless det
                 console.error(`[AI] ❌ OpenAI Error:`, openaiErr.message);
                 console.error(`[AI] Status:`, openaiErr.status);
                 console.error(`[AI] Code:`, openaiErr.code);
-                throw openaiErr;
+                console.error(`[AI] Stack:`, openaiErr.stack);
+                
+                // Send fallback message
+                await sendTextMessage(
+                    senderPhone,
+                    `Sorry ${clientName}, I'm experiencing some difficulty right now. Please try again in a moment or contact support directly.`
+                ).catch(sendErr => {
+                    console.error(`[AI] ❌ Failed to send fallback message:`, sendErr.message);
+                });
+                return;
             }
 
         } catch (err) {
@@ -311,6 +381,8 @@ Keep replies SHORT — this is WhatsApp, not email. Max 3-4 sentences unless det
             console.error('❌ [HANDLER_ERROR] WhatsApp handler error');
             console.error('❌ Message:', err.message);
             console.error('❌ Type:', err.constructor.name);
+            console.error('❌ Code:', err.code);
+            console.error('❌ Errno:', err.errno);
             console.error('❌ Stack:', err.stack);
             console.error('='.repeat(80) + '\n');
         }

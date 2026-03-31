@@ -87,6 +87,11 @@ if (!useSupabase) {
         waitForConnections: true,
         connectionLimit: 10,
         queueLimit: 0,
+        enableKeepAlive: true,            // Enable TCP keepalive to prevent stale connections
+        keepAliveInitialDelayMs: 0,       // Start keepalive immediately
+        decimalNumbers: true,             // Return DECIMAL values as numbers
+        supportBigNumbers: true,          // Support large numbers
+        bigNumberStrings: false,          // Convert large numbers to strings if needed
         
         /*
         authPlugins: {
@@ -100,8 +105,25 @@ if (!useSupabase) {
     try {
         // Use mysql.createPool (promise-based) for modern Node.js
         pool = mysql.createPool(dbConfig);
+        
+        // Add pool error handlers
+        pool.on('error', (err) => {
+            console.error('[POOL] ❌ Unexpected pool error:', err.message);
+            console.error('[POOL] Error code:', err.code);
+            console.error('[POOL] Error errno:', err.errno);
+        });
+
+        pool.on('connection', (connection) => {
+            console.log('[POOL] ✅ New connection created (pool now has', pool.pool?.activeConnections, 'active)');
+        });
+
+        console.log('[POOL] ✅ MySQL pool created with settings:');
+        console.log('[POOL]   - connectionLimit: 10');
+        console.log('[POOL]   - queueLimit: 0 (unlimited queue)');
+        console.log('[POOL]   - keepAliveInitialDelayMs: 0 (keepalive enabled)');
+        
     } catch (error) {
-        console.error('Failed to create MySQL pool.', error);
+        console.error('❌ Failed to create MySQL pool.', error);
         // Fallback logic removed since Supabase is disabled
     }
 }
@@ -1105,6 +1127,76 @@ app.get('/health', (req, res) => {
         timestamp: new Date().toISOString(),
         database: pool ? 'available' : 'unavailable'
     });
+});
+
+// Database connectivity diagnostic endpoint
+app.get('/api/db-status', async (req, res) => {
+    const diagnostics = {
+        timestamp: new Date().toISOString(),
+        poolExists: !!pool,
+        poolStatus: null,
+        connectionTest: null,
+        usersTableCheck: null,
+        error: null
+    };
+
+    try {
+        if (!pool) {
+            diagnostics.error = 'Database pool not initialized';
+            return res.status(503).json(diagnostics);
+        }
+
+        // Try to get a connection from the pool
+        console.log('[DIAG] Testing database connectivity...');
+        const connection = await pool.getConnection();
+        diagnostics.connectionTest = 'success';
+        console.log('[DIAG] ✅ Got connection from pool');
+
+        // Test a simple query
+        try {
+            const [result] = await connection.query('SELECT 1 as test');
+            diagnostics.poolStatus = 'connected';
+            console.log('[DIAG] ✅ Simple query successful');
+        } catch (queryErr) {
+            diagnostics.poolStatus = 'error';
+            diagnostics.error = queryErr.message;
+            console.error('[DIAG] ❌ Query failed:', queryErr.message);
+        }
+
+        // Check Users table exists
+        try {
+            const [result] = await connection.query('SELECT COUNT(*) as count FROM Users LIMIT 1');
+            diagnostics.usersTableCheck = {
+                exists: true,
+                count: result[0].count
+            };
+            console.log('[DIAG] ✅ Users table found with', result[0].count, 'records');
+        } catch (tableErr) {
+            diagnostics.usersTableCheck = {
+                exists: false,
+                error: tableErr.message
+            };
+            console.error('[DIAG] ❌ Users table error:', tableErr.message);
+        }
+
+        // Release connection back to pool
+        try {
+            await connection.release();
+            console.log('[DIAG] ✅ Connection released back to pool');
+        } catch (releaseErr) {
+            console.error('[DIAG] ⚠️  Error releasing connection:', releaseErr.message);
+        }
+
+    } catch (err) {
+        diagnostics.error = err.message;
+        diagnostics.connectionTest = 'failed';
+        console.error('[DIAG] ❌ Diagnostics error:', err.message);
+        console.error('[DIAG] Error code:', err.code);
+        console.error('[DIAG] Error errno:', err.errno);
+    }
+
+    // Return 200 to show diagnostics even on error (can see the error details in the response)
+    res.status(200).json(diagnostics);
 });
 
 app.get('/', (req, res) => {
