@@ -29,6 +29,9 @@ async function findClientByPhone(pool, waPhone) {
         normalized,                 // 0821234567
     ].filter(Boolean);
 
+    console.log(`[PHONE_LOOKUP] Input: ${waPhone}`);
+    console.log(`[PHONE_LOOKUP] Trying variants:`, variants);
+
     const placeholders = variants.map(() => '?').join(', ');
     try {
         // Query the Users table with Contact field
@@ -36,9 +39,13 @@ async function findClientByPhone(pool, waPhone) {
             `SELECT * FROM Users WHERE Contact IN (${placeholders}) LIMIT 1`,
             variants
         );
+        console.log(`[PHONE_LOOKUP] Query results: ${results.length} found`);
+        if (results.length > 0) {
+            console.log(`[PHONE_LOOKUP] Matched contact:`, results[0].Contact);
+        }
         return results.length > 0 ? results[0] : null;
     } catch (err) {
-        console.error('❌ Phone lookup error:', err.message);
+        console.error('[PHONE_LOOKUP] ❌ Database error:', err.message);
         throw err;
     }
 }
@@ -88,22 +95,45 @@ async function handleIncomingMessage(pool) {
 
         try {
             const body = req.body;
+            console.log('[DEBUG] Webhook received:', {
+                object: body.object,
+                hasEntry: !!body.entry?.[0],
+                hasChanges: !!body.entry?.[0]?.changes?.[0],
+                timestamp: new Date().toISOString()
+            });
 
             // Validate structure
-            if (body.object !== 'whatsapp_business_account') return;
+            if (body.object !== 'whatsapp_business_account') {
+                console.log('[DEBUG] Invalid object type:', body.object);
+                return;
+            }
 
             const entry = body.entry?.[0];
             const changes = entry?.changes?.[0];
             const value = changes?.value;
 
+            console.log('[DEBUG] Webhook value details:', {
+                hasMessages: !!value?.messages?.[0],
+                hasStatuses: !!value?.statuses,
+                messageType: value?.messages?.[0]?.type,
+                from: value?.messages?.[0]?.from
+            });
+
             // Ignore status updates (delivered, read receipts)
-            if (value?.statuses) return;
+            if (value?.statuses) {
+                console.log('[DEBUG] Ignoring status update (delivered/read receipt)');
+                return;
+            }
 
             const message = value?.messages?.[0];
-            if (!message) return;
+            if (!message) {
+                console.log('[DEBUG] No message found in webhook');
+                return;
+            }
 
             // Only handle text messages for now
             if (message.type !== 'text') {
+                console.log('[DEBUG] Ignoring non-text message type:', message.type);
                 await sendTextMessage(
                     message.from,
                     "Sorry, I can only process text messages right now. Please type your question!"
@@ -115,21 +145,36 @@ async function handleIncomingMessage(pool) {
             const userText = message.text.body;
             const messageId = message.id;
 
+            console.log(`\n${'='.repeat(60)}`);
+            console.log(`📱 WhatsApp message received`);
+            console.log(`   From: ${senderPhone}`);
+            console.log(`   Text: "${userText}"`);
+            console.log(`   MessageId: ${messageId}`);
+            console.log(`${'='.repeat(60)}\n`);
+
             // Mark as read immediately
             await markAsRead(messageId).catch(() => {}); // non-critical
 
-            console.log(`📱 WhatsApp message from ${senderPhone}: "${userText}"`);
-
             // ── Look up user ────────────────────────────────────────────
+            console.log(`[LOOKUP] Searching for user with phone: ${senderPhone}`);
             const client = await findClientByPhone(pool, senderPhone);
 
             if (!client) {
+                console.log(`[LOOKUP] ❌ User NOT found for phone: ${senderPhone}`);
+                console.log(`[ACTION] Sending unrecognized number response`);
                 await sendTextMessage(
                     senderPhone,
                     `👋 Hi! I don't recognize this number in our system.\n\nPlease contact us at hello@stackon.co.za or register at our client portal to get started.`
                 );
                 return;
             }
+
+            console.log(`[LOOKUP] ✅ User FOUND:`, {
+                ID: client.ID,
+                Name: `${client.FirstName} ${client.LastName}`,
+                Contact: client.Contact,
+                Email: client.Email
+            });
 
             // ── Send Welcome Greeting ───────────────────────────────────
             const clientName = client.FirstName && client.LastName 
