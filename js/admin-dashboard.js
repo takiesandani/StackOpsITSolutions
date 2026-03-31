@@ -56,5 +56,66 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (error) {
         console.error('Error loading dashboard:', error);
     }
+
+    // WhatsApp Overdue Reminders Handler
+    const sendOverdueRemindersBtn = document.getElementById('send-overdue-reminders');
+    if (sendOverdueRemindersBtn) {
+        sendOverdueRemindersBtn.addEventListener('click', async () => {
+            const statusDiv = document.getElementById('whatsapp-status');
+            const originalButtonText = sendOverdueRemindersBtn.innerHTML;
+            
+            try {
+                sendOverdueRemindersBtn.disabled = true;
+                sendOverdueRemindersBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+                statusDiv.style.display = 'block';
+                statusDiv.className = 'status-info';
+                statusDiv.innerHTML = '<i class="fas fa-info-circle"></i> Fetching overdue invoices...';
+
+                // Fetch overdue invoices
+                const invoicesRes = await fetch('/api/admin/invoices', { headers });
+                const invoices = await invoicesRes.json();
+
+                // Filter overdue invoices
+                const today = new Date();
+                const overdueInvoices = invoices.filter(inv => {
+                    return inv.Status !== 'Paid' && inv.DueDate && new Date(inv.DueDate) < today;
+                });
+
+                if (overdueInvoices.length === 0) {
+                    statusDiv.className = 'status-success';
+                    statusDiv.innerHTML = '<i class="fas fa-check-circle"></i> No overdue invoices found!';
+                    sendOverdueRemindersBtn.innerHTML = originalButtonText;
+                    sendOverdueRemindersBtn.disabled = false;
+                    return;
+                }
+
+                // Send reminders
+                statusDiv.innerHTML = `<i class="fas fa-info-circle"></i> Sending reminders to ${overdueInvoices.length} overdue invoice(s)...`;
+
+                const response = await fetch('/api/whatsapp/send-overdue-reminders', {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({ invoices: overdueInvoices })
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    statusDiv.className = 'status-success';
+                    statusDiv.innerHTML = `<i class="fas fa-check-circle"></i> Success! Sent ${result.sent || overdueInvoices.length} WhatsApp reminder(s).`;
+                } else {
+                    const error = await response.json();
+                    statusDiv.className = 'status-error';
+                    statusDiv.innerHTML = `<i class="fas fa-exclamation-circle"></i> Error: ${error.message || 'Failed to send reminders'}`;
+                }
+            } catch (error) {
+                console.error('Error sending overdue reminders:', error);
+                statusDiv.className = 'status-error';
+                statusDiv.innerHTML = `<i class="fas fa-exclamation-circle"></i> Error: ${error.message}`;
+            } finally {
+                sendOverdueRemindersBtn.innerHTML = originalButtonText;
+                sendOverdueRemindersBtn.disabled = false;
+            }
+        });
+    }
 });
 

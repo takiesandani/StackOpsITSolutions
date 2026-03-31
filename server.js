@@ -1105,6 +1105,159 @@ app.use(express.static(path.join(__dirname)));
 const whatsappRoutes = require('./whatsapp/routes');
 app.use('/api/whatsapp', whatsappRoutes(pool));
 
+// ============================================
+// WHATSAPP OVERDUE INVOICE REMINDERS
+// ============================================
+// Endpoint to manually trigger WhatsApp reminders for overdue invoices
+// Protected by authentication token
+app.post('/api/whatsapp/send-overdue-reminders', authenticateToken, async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ success: false, error: 'Database connection unavailable' });
+        }
+
+        // Import sendTextMessage from the whatsappService
+        const whatsappService = require('./whatsapp/whatsappService');
+
+        console.log('[WHATSAPP OVERDUE REMINDERS] Starting manual reminder trigger...');
+
+        // Get all OVERDUE invoices with their client information
+        const [overdueInvoices] = await pool.query(`
+            SELECT DISTINCT
+                i.InvoiceID,
+                i.InvoiceNumber,
+                i.DueDate,
+                i.TotalAmount,
+                i.Status,
+                c.CompanyName,
+                c.ID AS CompanyID,
+                u.ID AS UserID,
+                u.FirstName,
+                u.LastName,
+                u.Contact AS WhatsAppPhone
+            FROM Invoices i
+            JOIN Companies c ON i.CompanyID = c.ID
+            JOIN Users u ON c.ID = u.CompanyID
+            WHERE LOWER(i.Status) = 'overdue'
+                AND u.Role = 'client'
+                AND u.Contact IS NOT NULL
+                AND u.Contact != ''
+            ORDER BY i.InvoiceNumber DESC
+        `);
+
+        if (overdueInvoices.length === 0) {
+            return res.json({
+                success: true,
+                messagesSent: 0,
+                message: 'No overdue invoices found with client WhatsApp numbers'
+            });
+        }
+
+        // Group by unique phone numbers to avoid duplicate messages
+        const clientsByPhone = {};
+        const messagesSent = [];
+        const messagesFailed = [];
+
+        for (const invoice of overdueInvoices) {
+            const phone = invoice.WhatsAppPhone.replace(/\D/g, ''); // Remove non-digits
+            
+            if (!clientsByPhone[phone]) {
+                clientsByPhone[phone] = {
+                    client: {
+                        name: `${invoice.FirstName} ${invoice.LastName}`.trim(),
+                        userId: invoice.UserID,
+                        companyId: invoice.CompanyID,
+                        companyName: invoice.CompanyName
+                    },
+                    invoices: []
+                };
+            }
+
+            clientsByPhone[phone].invoices.push({
+                invoiceNumber: invoice.InvoiceNumber,
+                totalAmount: invoice.TotalAmount,
+                dueDate: new Date(invoice.DueDate).toLocaleDateString('en-ZA')
+            });
+        }
+
+        // Send WhatsApp messages to each client
+        for (const phone in clientsByPhone) {
+            const clientGroup = clientsByPhone[phone];
+            const client = clientGroup.client;
+            const invoices = clientGroup.invoices;
+
+            try {
+                // Build message with all overdue invoices for this client
+                let messageText = `Hi ${client.name},\n\n`;
+                messageText += `We noticed the following invoices are overdue:\n\n`;
+
+                invoices.forEach((inv, index) => {
+                    messageText += `${index + 1}. Invoice #${inv.invoiceNumber}\n`;
+                    messageText += `   Amount: R${parseFloat(inv.totalAmount).toFixed(2)}\n`;
+                    messageText += `   Due Date: ${inv.dueDate}\n\n`;
+                });
+
+                messageText += `Please arrange payment at your earliest convenience.\n`;
+                messageText += `Contact us at billing@stackopsit.co.za if you have any questions.`;
+
+                // Normalize phone number to WhatsApp format (27XXXXXXXXX for SA numbers)
+                let normalizedPhone = phone;
+                if (normalizedPhone.startsWith('0') && normalizedPhone.length === 10) {
+                    // SA format 0XXXXXXXXX -> convert to 27XXXXXXXXX
+                    normalizedPhone = '27' + normalizedPhone.slice(1);
+                } else if (!normalizedPhone.startsWith('27') && normalizedPhone.length === 9) {
+                    // If only Digit without leading 0 or 27
+                    normalizedPhone = '27' + normalizedPhone;
+                }
+
+                console.log(`[WHATSAPP OVERDUE REMINDERS] Sending to ${normalizedPhone}: ${invoices.length} overdue invoice(s)`);
+
+                // Send the message via WhatsApp
+                await whatsappService.sendTextMessage(normalizedPhone, messageText);
+
+                messagesSent.push({
+                    phone: phone,
+                    client: client.name,
+                    invoiceCount: invoices.length,
+                    invoiceNumbers: invoices.map(i => `#${i.invoiceNumber}`).join(', ')
+                });
+
+                console.log(`[WHATSAPP OVERDUE REMINDERS] ✅ Message sent to ${client.name}`);
+
+            } catch (error) {
+                console.error(`[WHATSAPP OVERDUE REMINDERS] ❌ Failed to send to ${client.name} (${phone}):`, error.message);
+                
+                messagesFailed.push({
+                    phone: phone,
+                    client: client.name,
+                    error: error.message,
+                    invoiceCount: invoices.length
+                });
+            }
+        }
+
+        // Return summary
+        res.json({
+            success: true,
+            messagesSent: messagesSent.length,
+            messagesFailed: messagesFailed.length,
+            details: {
+                sent: messagesSent,
+                failed: messagesFailed
+            },
+            summary: `Sent ${messagesSent.length} WhatsApp reminder(s). ${messagesFailed.length > 0 ? `Failed to send ${messagesFailed.length}.` : ''}`
+        });
+
+    } catch (error) {
+        console.error('[WHATSAPP OVERDUE REMINDERS] Error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to send overdue invoice reminders',
+            details: error.message
+        });
+    }
+});
+
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'Home.html'));
 });
