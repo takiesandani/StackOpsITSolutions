@@ -420,18 +420,18 @@ function verifyWebhook(req, res) {
     console.log('[HANDSHAKE] Timestamp:', new Date().toISOString());
     console.log('[HANDSHAKE] Mode:', mode);
     console.log('[HANDSHAKE] Token received:', token ? `${token.substring(0, 20)}...` : 'MISSING');
-    console.log('[HANDSHAKE] Expected token:', VERIFY_TOKEN ? `${VERIFY_TOKEN.substring(0, 20)}...` : 'NOT SET');
+    console.log('[HANDSHAKE] Expected token:', WHATSAPP_VERIFY_TOKEN ? `${WHATSAPP_VERIFY_TOKEN.substring(0, 20)}...` : 'NOT SET');
     console.log('[HANDSHAKE] Challenge:', challenge ? `${challenge.substring(0, 20)}...` : 'MISSING');
-    console.log('[HANDSHAKE] Match:', token === VERIFY_TOKEN ? '✅ YES' : '❌ NO');
+    console.log('[HANDSHAKE] Match:', token === WHATSAPP_VERIFY_TOKEN ? '✅ YES' : '❌ NO');
 
-    if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+    if (mode === 'subscribe' && token === WHATSAPP_VERIFY_TOKEN) {
         console.log('[HANDSHAKE] ✅ VERIFICATION SUCCESSFUL - Sending challenge back');
         console.log('='.repeat(80) + '\n');
         res.status(200).send(challenge);
     } else {
         console.log('[HANDSHAKE] ❌ VERIFICATION FAILED');
         if (mode !== 'subscribe') console.log('  → Mode mismatch. Got:', mode);
-        if (token !== VERIFY_TOKEN) console.log('  → Token mismatch. Expected vs got do not match');
+        if (token !== WHATSAPP_VERIFY_TOKEN) console.log('  → Token mismatch. Expected vs got do not match');
         console.log('='.repeat(80) + '\n');
         res.sendStatus(403);
     }
