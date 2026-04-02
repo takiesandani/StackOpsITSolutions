@@ -32,9 +32,34 @@ async function fetchAccessToken() {
             console.log(`[WHATSAPP_SECRET] 🔐 Fetching ${secretName} from Google Cloud Secret Manager...`);
             
             const [version] = await secretClient.accessSecretVersion({ name });
-            const token = version.payload.data.toString().trim();
+            const rawData = version.payload.data.toString();
             
+            // Debug: Log raw token to diagnose format issues
+            console.log(`[WHATSAPP_SECRET] Raw token length: ${rawData.length}`);
+            console.log(`[WHATSAPP_SECRET] Raw token (first 30 chars): ${rawData.substring(0, 30)}`);
+            console.log(`[WHATSAPP_SECRET] Raw token (last 10 chars): ${rawData.substring(rawData.length - 10)}`);
+            
+            // Clean up the token - remove whitespace and quotes if present
+            let token = rawData.trim();
+            
+            // Remove surrounding quotes if they exist (sometimes Secret Manager returns quoted strings)
+            if ((token.startsWith('"') && token.endsWith('"')) || (token.startsWith("'") && token.endsWith("'"))) {
+                token = token.slice(1, -1);
+                console.log(`[WHATSAPP_SECRET] ⚠️ Token had surrounding quotes, removed`);
+            }
+            
+            console.log(`[WHATSAPP_SECRET] Final token length: ${token.length}`);
+            console.log(`[WHATSAPP_SECRET] Final token (first 30 chars): ${token.substring(0, 30)}`);
             console.log(`[WHATSAPP_SECRET] ✅ Token fetched successfully (${token.substring(0, 20)}...)`);
+            
+            // Validate token format (should be alphanumeric, possibly with | character)
+            if (!/^[A-Za-z0-9|]+$/.test(token)) {
+                console.warn(`[WHATSAPP_SECRET] ⚠️ WARNING: Token contains unexpected characters`);
+                // Log which characters are problematic
+                const chars = new Set(token.split('').filter(c => !/^[A-Za-z0-9|]+$/.test(c)));
+                console.warn(`[WHATSAPP_SECRET] Unexpected chars:`, Array.from(chars).join(', '));
+            }
+            
             cachedToken = token;
             return token;
         } catch (error) {
@@ -155,6 +180,11 @@ async function callWhatsAppAPI(payload) {
         console.log(`[API_CALL] Calling WhatsApp Graph API`);
         console.log(`[API_CALL] Phone Number ID: ${PHONE_NUMBER_ID ? '✅ SET' : '❌ NOT SET'}`);
         console.log(`[API_CALL] Access Token: ${ACCESS_TOKEN ? '✅ SET' : '❌ NOT SET'}`);
+        if (ACCESS_TOKEN) {
+            console.log(`[API_CALL] Token length: ${ACCESS_TOKEN.length}`);
+            console.log(`[API_CALL] Token preview: ${ACCESS_TOKEN.substring(0, 30)}...${ACCESS_TOKEN.substring(ACCESS_TOKEN.length - 10)}`);
+            console.log(`[API_CALL] Token contains pipes: ${ACCESS_TOKEN.includes('|') ? 'YES' : 'NO'}`);
+        }
         console.log(`[API_CALL] API Version: ${API_VERSION}`);
 
         const options = {
