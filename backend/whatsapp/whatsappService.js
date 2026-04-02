@@ -1,4 +1,5 @@
 const https = require('https');
+const { SecretManagerServiceClient } = require('@google-cloud/secret-manager');
 
 const API_VERSION = 'v19.0';
 
@@ -6,13 +7,63 @@ const API_VERSION = 'v19.0';
 const WHATSAPP_PHONE_NUMBER_ID = '1049233374934291';
 const WHATSAPP_TEST_NUMBER = '15556435081'; // US test number (format: country code + number, no +)
 
+// Initialize Secret Manager client
+const secretClient = new SecretManagerServiceClient();
+
+// Cache for the access token (populate on first use)
+let cachedToken = null;
+let tokenFetchPromise = null;
+
 /**
- * Get current credentials - Phone ID is hardcoded, token from Secret Manager
+ * Fetch WHATSAPP_ACCESS_TOKEN from Google Cloud Secret Manager
  */
-function getCredentials() {
+async function fetchAccessToken() {
+    // Prevent multiple simultaneous fetches
+    if (tokenFetchPromise) {
+        return tokenFetchPromise;
+    }
+
+    tokenFetchPromise = (async () => {
+        try {
+            const projectId = 'stackops-backend-475222';
+            const secretName = 'WHATSAPP_ACCESS_TOKEN';
+            const name = `projects/${projectId}/secrets/${secretName}/versions/latest`;
+            
+            console.log(`[WHATSAPP_SECRET] 🔐 Fetching ${secretName} from Google Cloud Secret Manager...`);
+            
+            const [version] = await secretClient.accessSecretVersion({ name });
+            const token = version.payload.data.toString().trim();
+            
+            console.log(`[WHATSAPP_SECRET] ✅ Token fetched successfully (${token.substring(0, 20)}...)`);
+            cachedToken = token;
+            return token;
+        } catch (error) {
+            console.error(`[WHATSAPP_SECRET] ❌ Failed to fetch token:`, error.message);
+            // Fallback to environment variable if Secret Manager fails
+            const envToken = process.env.WHATSAPP_ACCESS_TOKEN;
+            if (envToken) {
+                console.log(`[WHATSAPP_SECRET] Using fallback from process.env`);
+                cachedToken = envToken;
+                return envToken;
+            }
+            throw new Error('WHATSAPP_ACCESS_TOKEN not available in Secret Manager or environment');
+        } finally {
+            // Reset the promise so next call doesn't use cached promise
+            tokenFetchPromise = null;
+        }
+    })();
+
+    return tokenFetchPromise;
+}
+
+/**
+ * Get current credentials - Phone ID is hardcoded, token from Secret Manager (cached)
+ */
+async function getCredentials() {
+    const token = cachedToken || await fetchAccessToken();
     return {
         phoneId: WHATSAPP_PHONE_NUMBER_ID,
-        token: process.env.WHATSAPP_ACCESS_TOKEN,
+        token: token,
         testNumber: WHATSAPP_TEST_NUMBER
     };
 }
@@ -97,8 +148,8 @@ async function markAsRead(messageId) {
 /**
  * Core API caller
  */
-function callWhatsAppAPI(payload) {
-    const { phoneId: PHONE_NUMBER_ID, token: ACCESS_TOKEN } = getCredentials();
+async function callWhatsAppAPI(payload) {
+    const { phoneId: PHONE_NUMBER_ID, token: ACCESS_TOKEN } = await getCredentials();
     
     return new Promise((resolve, reject) => {
         console.log(`[API_CALL] Calling WhatsApp Graph API`);

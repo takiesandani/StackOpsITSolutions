@@ -132,7 +132,7 @@ if (!useSupabase) {
         pool.getConnection()
             .then(conn => {
                 console.log('[DB] ✅ Test connection successful - Cloud SQL is reachable');
-                conn.release().catch(() => {});
+                conn.release();
             })
             .catch(err => {
                 console.error('[DB] ❌ Test connection failed:', err.message);
