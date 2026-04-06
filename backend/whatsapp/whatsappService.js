@@ -5,6 +5,7 @@ const API_VERSION = 'v19.0';
 
 // Hardcoded WhatsApp credentials (non-secret)
 const WHATSAPP_PHONE_NUMBER_ID = '1049233374934291';
+const WHATSAPP_ACCESS_TOKEN = 'EAAMr65y5pnUBREmbaA3754O1v9DPg9pZAr76T4JnxZAlOkWOxnzKncR4Qd32W9aVsJ5upqo1F6fdAfgkeldzuJZCprtwi0BEfIcefh3B9ebm6LbnncuDatiFSYgZCZBY6BxbbDp0CcvYVFN76rHZBuhmVE9khkpQTZCYcOSIPgMeUSmBmdZAywdkLX8ml0GJW348V7IZB79doQbeVlqwP3ceWNFp14Ik0La1KoG02rR62DZAcPH9a7lMZCFNU3ZAbH8VmOFjiQBEQPJ07e8gns5UIIdeZBu9G'; // PASTE YOUR TOKEN HERE to override Secret Manager/env
 const WHATSAPP_TEST_NUMBER = '15556435081'; // US test number (format: country code + number, no +)
 
 // Initialize Secret Manager client
@@ -15,9 +16,16 @@ let cachedToken = null;
 let tokenFetchPromise = null;
 
 /**
- * Fetch WHATSAPP_ACCESS_TOKEN from Google Cloud Secret Manager
+ * Fetch WHATSAPP_ACCESS_TOKEN from Secret Manager or environment/hardcoded string
  */
 async function fetchAccessToken() {
+    // 1. Check if there is a hardcoded token at the top of this file (user requested)
+    if (WHATSAPP_ACCESS_TOKEN && WHATSAPP_ACCESS_TOKEN.trim() !== '') {
+        console.log(`[WHATSAPP_SECRET] ⚡ Using hardcoded token from top of file`);
+        cachedToken = WHATSAPP_ACCESS_TOKEN.trim();
+        return cachedToken;
+    }
+
     // Prevent multiple simultaneous fetches
     if (tokenFetchPromise) {
         return tokenFetchPromise;
@@ -192,7 +200,7 @@ async function callWhatsAppAPI(payload) {
             path: `/${API_VERSION}/${PHONE_NUMBER_ID}/messages`,
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${ACCESS_TOKEN ? ACCESS_TOKEN.substring(0, 20) + '...' : 'NOT_SET'}`,
+                'Authorization': `Bearer ${ACCESS_TOKEN || 'NOT_SET'}`,
                 'Content-Type': 'application/json',
                 'Content-Length': Buffer.byteLength(payload)
             }
