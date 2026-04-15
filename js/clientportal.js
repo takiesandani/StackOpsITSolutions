@@ -230,20 +230,38 @@ function populateIdentityCards(apiData) {
 function openIdentityDashboard() {
     console.log('[Identity Dashboard] Opening full dashboard...');
     
+    const dashboardView = document.getElementById('dashboard-view');
+    if (!dashboardView) return;
+
     // Show dashboard view
     document.getElementById('projects-view').style.display = 'none';
-    document.getElementById('dashboard-view').style.display = 'block';
+    dashboardView.style.display = 'block';
     
+    // Hide generic dashboard parts to prioritize Identity content
+    const statsGrid = dashboardView.querySelector('.stats-grid');
+    const chartsSection = dashboardView.querySelector('.charts-section');
+    const dashboardTabs = dashboardView.querySelector('.dashboard-tabs');
+    
+    if (statsGrid) statsGrid.style.display = 'none';
+    if (chartsSection) chartsSection.style.display = 'none';
+    if (dashboardTabs) dashboardTabs.style.display = 'none';
+
     // Update dashboard title
-    document.getElementById('project-name').textContent = 'Identity & Access - Full Dashboard';
-    document.getElementById('project-status').textContent = 'Active';
+    const projectName = document.getElementById('project-name');
+    const projectStatus = document.getElementById('project-status');
+    if (projectName) projectName.textContent = 'Identity & Access - Full Dashboard';
+    if (projectStatus) projectStatus.textContent = 'Active';
     
     // Update back button to go back to projects
     const backBtn = document.getElementById('btn-back');
     if (backBtn) {
         backBtn.onclick = function() {
-            document.getElementById('dashboard-view').style.display = 'none';
+            dashboardView.style.display = 'none';
             document.getElementById('projects-view').style.display = 'block';
+            
+            // Restore generic parts for other projects
+            if (statsGrid) statsGrid.style.display = 'grid';
+            if (chartsSection) chartsSection.style.display = 'grid';
         };
     }
     
@@ -795,7 +813,8 @@ async function fetchIdentityAccessData() {
     }
 }
 
-// Updated: fetchDuoStats
+// Updated: fetchDuoStats - Now with better error handling, loading states, and retries
+async function fetchDuoStats(retryCount = 0) {
     const token = localStorage.getItem('authToken');
     const isLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
     
@@ -906,7 +925,42 @@ function generateIdentityDashboardHTML() {
     
     return `
         <div class="monitoring-section" id="monitoring-section">
-            <!-- Summary Stats -->
+            <!-- Search & Filters + Table Section (Priority) -->
+            <div class="management-header">
+                <div class="users-filter-section">
+                    <h3>User Management</h3>
+                    <div class="filter-controls">
+                        <input type="text" id="user-search-input" class="search-input" placeholder="Search by name or email...">
+                        <select id="user-type-filter" class="filter-select">
+                            <option value="all">All Users</option>
+                            <option value="internal">Internal Only</option>
+                            <option value="external">External Only</option>
+                            <option value="missing-data">Missing Data</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Users Table (Full Width) -->
+            <div class="users-table-container">
+                <table class="users-table" id="users-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Job Title</th>
+                            <th>Phone</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="users-table-body">
+                        <!-- Users will be populated here -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Summary Stats (Below Table) -->
             <div class="summary-stats">
                 <div class="summary-stat-card">
                     <div class="stat-icon-box blue">
@@ -964,39 +1018,6 @@ function generateIdentityDashboardHTML() {
                         <canvas id="identityLineChart"></canvas>
                     </div>
                 </div>
-            </div>
-
-            <!-- Search & Filters -->
-            <div class="users-filter-section">
-                <h3>User Management</h3>
-                <div class="filter-controls">
-                    <input type="text" id="user-search-input" class="search-input" placeholder="Search by name or email...">
-                    <select id="user-type-filter" class="filter-select">
-                        <option value="all">All Users</option>
-                        <option value="internal">Internal Only</option>
-                        <option value="external">External Only</option>
-                        <option value="missing-data">Missing Data</option>
-                    </select>
-                </div>
-            </div>
-
-            <!-- Users Table -->
-            <div class="users-table-container">
-                <table class="users-table" id="users-table">
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>Email</th>
-                            <th>Job Title</th>
-                            <th>Phone</th>
-                            <th>Type</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody id="users-table-body">
-                        <!-- Users will be populated here -->
-                    </tbody>
-                </table>
             </div>
         </div>
     `;
