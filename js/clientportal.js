@@ -934,12 +934,22 @@ function initializeIdentityCharts() {
     const internalUsers = microsoftUsersData.filter(u => !u.isExternal).length;
     const externalUsers = microsoftUsersData.filter(u => u.isExternal).length;
     
-    // Destroy existing charts if they exist
-    if (window.identityPieChart) {
-        window.identityPieChart.destroy();
+    // Destroy existing charts if they exist and are valid Chart objects
+    if (window.identityPieChart && typeof window.identityPieChart.destroy === 'function') {
+        try {
+            window.identityPieChart.destroy();
+            console.log('[Identity Charts] Previous pie chart destroyed');
+        } catch (e) {
+            console.warn('[Identity Charts] Error destroying pie chart:', e.message);
+        }
     }
-    if (window.identityLineChart) {
-        window.identityLineChart.destroy();
+    if (window.identityLineChart && typeof window.identityLineChart.destroy === 'function') {
+        try {
+            window.identityLineChart.destroy();
+            console.log('[Identity Charts] Previous line chart destroyed');
+        } catch (e) {
+            console.warn('[Identity Charts] Error destroying line chart:', e.message);
+        }
     }
     
     // Pie Chart - User Distribution
@@ -1046,6 +1056,7 @@ function initializeIdentityCharts() {
 
 function populateIdentityTable() {
     console.log('[Identity Table] Populating users table...');
+    console.log(`[Identity Table] Total users in microsoftUsersData: ${microsoftUsersData.length}`);
     
     const tableBody = document.getElementById('users-table-body');
     const searchInput = document.getElementById('user-search-input');
@@ -1055,6 +1066,8 @@ function populateIdentityTable() {
         console.error('[Identity Table] Table body not found');
         return;
     }
+    
+    console.log('[Identity Table] Table body found, proceeding with population');
     
     // Function to render table
     const renderTable = () => {
@@ -1087,13 +1100,15 @@ function populateIdentityTable() {
             return;
         }
         
-        filteredUsers.forEach(user => {
+        filteredUsers.forEach((user, index) => {
             const row = document.createElement('tr');
+            const jobTitle = (user.jobTitle && user.jobTitle !== 'No Title') ? user.jobTitle : '<span style="color: #f87171;">Missing</span>';
+            const phone = (user.mobilePhone && user.mobilePhone !== 'N/A') ? user.mobilePhone : '<span style="color: #f87171;">Missing</span>';
             row.innerHTML = `
                 <td>${user.displayName || 'N/A'}</td>
                 <td>${user.mail || user.userPrincipalName || 'N/A'}</td>
-                <td>${user.jobTitle || '<span style="color: #f87171;">Missing</span>'}</td>
-                <td>${user.mobilePhone || '<span style="color: #f87171;">Missing</span>'}</td>
+                <td>${jobTitle}</td>
+                <td>${phone}</td>
                 <td>
                     <span class="user-type-badge ${user.isExternal ? 'external' : 'internal'}">
                         ${user.isExternal ? 'External' : 'Internal'}
@@ -1104,8 +1119,11 @@ function populateIdentityTable() {
                 </td>
             `;
             tableBody.appendChild(row);
+            if (index === 0) {
+                console.log('[Identity Table] First user added:', user.displayName);
+            }
         });
-        
+        console.log(`[Identity Table] Total rows added: ${filteredUsers.length}`);
         console.log(`[Identity Table] Rendered ${filteredUsers.length} users`);
     };
     
