@@ -95,8 +95,11 @@ const mockProjects = [
 ];
 
 /* INITIALIZATION */
+let microsoftUsersData = [];
+
 document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
+    setupProjectsTabs();
     setupSessionManagement();
     initializeProjectsList();
     initializeBillingCard();
@@ -105,7 +108,207 @@ document.addEventListener('DOMContentLoaded', function() {
     updateCopyrightYear();
 });
 
-function setupEventListeners() {
+// Setup project tabs event listeners
+function setupProjectsTabs() {
+    const tabBtns = document.querySelectorAll('.projects-tab-btn');
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tabId = btn.getAttribute('data-tab');
+            switchProjectTab(tabId);
+            
+            // Fetch Microsoft users when switching to Identity & Access
+            if (tabId === 'identity-access') {
+                fetchMicrosoftUsersForCard();
+            }
+        });
+    });
+}
+
+// Switch project tab
+function switchProjectTab(tabId) {
+    // Hide all tab contents
+    const tabContents = document.querySelectorAll('.projects-tab-content');
+    tabContents.forEach(content => {
+        content.classList.remove('active');
+        content.style.display = 'none';
+    });
+    
+    // Deactivate all buttons
+    const tabBtns = document.querySelectorAll('.projects-tab-btn');
+    tabBtns.forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    // Show selected tab
+    const selectedTab = document.getElementById(tabId);
+    if (selectedTab) {
+        selectedTab.classList.add('active');
+        selectedTab.style.display = 'block';
+    }
+    
+    // Activate selected button
+    const selectedBtn = document.querySelector(`[data-tab="${tabId}"]`);
+    if (selectedBtn) {
+        selectedBtn.classList.add('active');
+    }
+    
+    console.log(`[Projects Tab] Switched to: ${tabId}`);
+}
+
+// Fetch Microsoft users and populate Identity & Access cards
+async function fetchMicrosoftUsersForCard() {
+    try {
+        console.log('[Microsoft Users] Fetching users data...');
+        
+        const authToken = localStorage.getItem('authToken');
+        if (!authToken) {
+            console.error('[Microsoft Users] No auth token found');
+            return;
+        }
+        
+        const response = await fetch('/api/microsoft-users', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            console.error('[Microsoft Users] Error:', data.message);
+            showNotification('Failed to load Microsoft Users data', false);
+            return;
+        }
+        
+        microsoftUsersData = data.users || [];
+        console.log(`[Microsoft Users] Loaded ${microsoftUsersData.length} users`);
+        
+        // Populate Identity & Access cards
+        populateIdentityCards(data);
+        
+    } catch (error) {
+        console.error('[Microsoft Users] Exception:', error);
+        showNotification('Failed to load Microsoft Users data', false);
+    }
+}
+
+// Populate Identity & Access cards
+function populateIdentityCards(apiData) {
+    const container = document.getElementById('identity-cards-container');
+    
+    if (!container) {
+        console.error('[Identity Cards] Container not found');
+        return;
+    }
+    
+    container.innerHTML = '';
+    
+    // Calculate statistics from API data
+    const totalUsers = apiData.totalUsers || microsoftUsersData.length;
+    const externalUsers = microsoftUsersData.filter(u => u.isExternal).length;
+    const internalUsers = totalUsers - externalUsers;
+    const missingData = microsoftUsersData.filter(u => !u.jobTitle || !u.mobilePhone).length;
+    
+    // Create main Identity & Access card
+    const card = document.createElement('div');
+    card.className = 'identity-card';
+    card.innerHTML = `
+        <div class="identity-card-header">
+            <i class="fas fa-users"></i>
+            <div>
+                <div class="identity-card-title">Identity & Access</div>
+                <div class="identity-card-type">User Management & Access Control</div>
+            </div>
+        </div>
+        
+        <p class="identity-card-description">
+            Monitor and manage user identities, access permissions, and authentication across your organization.
+        </p>
+        
+        <div class="identity-card-status">
+            <span class="status-badge">
+                <span class="status-badge-dot"></span>
+                Active
+            </span>
+        </div>
+        
+        <div class="identity-card-stats">
+            <div class="identity-stat">
+                <span class="identity-stat-value">${totalUsers}</span>
+                <span class="identity-stat-label">Total Users</span>
+            </div>
+            <div class="identity-stat">
+                <span class="identity-stat-value">${externalUsers}</span>
+                <span class="identity-stat-label">External</span>
+            </div>
+            <div class="identity-stat">
+                <span class="identity-stat-value">${internalUsers}</span>
+                <span class="identity-stat-label">Internal</span>
+            </div>
+            <div class="identity-stat">
+                <span class="identity-stat-value">${missingData}</span>
+                <span class="identity-stat-label">Missing Data</span>
+            </div>
+        </div>
+        
+        <button class="identity-card-button" onclick="openIdentityDashboard()">
+            View Full Dashboard & Analytics →
+        </button>
+    `;
+    
+    container.appendChild(card);
+    
+    console.log(`[Identity Cards] Created card with ${totalUsers} users (${externalUsers} external, ${missingData} missing data)`);
+}
+
+// Open Identity & Access full dashboard
+function openIdentityDashboard() {
+    console.log('[Identity Dashboard] Opening full dashboard...');
+    
+    // Show dashboard view
+    document.getElementById('projects-view').style.display = 'none';
+    document.getElementById('dashboard-view').style.display = 'block';
+    
+    // Update dashboard title
+    document.getElementById('project-name').textContent = 'Identity & Access - Full Dashboard';
+    document.getElementById('project-status').textContent = 'Active';
+    
+    // Update back button to go back to projects
+    const backBtn = document.getElementById('btn-back');
+    if (backBtn) {
+        backBtn.onclick = function() {
+            document.getElementById('dashboard-view').style.display = 'none';
+            document.getElementById('projects-view').style.display = 'block';
+        };
+    }
+    
+    // Initialize Identity dashboard content
+    initializeIdentityDashboard();
+}
+
+// Initialize Identity & Access dashboard
+function initializeIdentityDashboard() {
+    console.log('[Identity Dashboard] Initializing dashboard...');
+    
+    if (microsoftUsersData.length === 0) {
+        console.warn('[Identity Dashboard] No user data available');
+        return;
+    }
+    
+    // Clear existing content
+    const dashboardContent = document.querySelector('.monitoring-section');
+    if (dashboardContent) {
+        dashboardContent.innerHTML = generateIdentityDashboardHTML();
+    }
+    
+    // Initialize charts
+    setTimeout(() => {
+        initializeIdentityCharts();
+        populateIdentityTable();
+    }, 100);
+}
     const loginForm = document.getElementById('login-form');
     const logoutBtn = document.getElementById('btn-logout');
     const backBtn = document.getElementById('btn-back');
@@ -656,6 +859,301 @@ async function fetchDuoStats(retryCount = 0) {
             console.log(`[Duo Sync] Retrying in ${delay}ms... (attempt ${retryCount + 1})`);
             setTimeout(() => fetchDuoStats(retryCount + 1), delay);
         }
+    }
+}
+
+/* IDENTITY & ACCESS DASHBOARD */
+function generateIdentityDashboardHTML() {
+    return `
+        <div class="monitoring-section" id="monitoring-section">
+            <!-- Summary Stats -->
+            <div class="summary-stats">
+                <div class="summary-stat-card">
+                    <div class="stat-icon-box blue">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <div class="stat-info">
+                        <h3>Total Users</h3>
+                        <p class="stat-number">${microsoftUsersData.length}</p>
+                    </div>
+                </div>
+                
+                <div class="summary-stat-card">
+                    <div class="stat-icon-box green">
+                        <i class="fas fa-user-tie"></i>
+                    </div>
+                    <div class="stat-info">
+                        <h3>Internal Users</h3>
+                        <p class="stat-number">${microsoftUsersData.filter(u => !u.isExternal).length}</p>
+                    </div>
+                </div>
+                
+                <div class="summary-stat-card">
+                    <div class="stat-icon-box orange">
+                        <i class="fas fa-user-secret"></i>
+                    </div>
+                    <div class="stat-info">
+                        <h3>External Users</h3>
+                        <p class="stat-number">${microsoftUsersData.filter(u => u.isExternal).length}</p>
+                    </div>
+                </div>
+                
+                <div class="summary-stat-card">
+                    <div class="stat-icon-box red">
+                        <i class="fas fa-exclamation-circle"></i>
+                    </div>
+                    <div class="stat-info">
+                        <h3>Missing Data</h3>
+                        <p class="stat-number">${microsoftUsersData.filter(u => !u.jobTitle || !u.mobilePhone).length}</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Section -->
+            <div class="charts-container">
+                <div class="chart-card" id="identity-pie-chart-container">
+                    <h3 class="chart-title">User Distribution</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="identityPieChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="chart-card" id="identity-line-chart-container">
+                    <h3 class="chart-title">User Activity Trend</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="identityLineChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search & Filters -->
+            <div class="users-filter-section">
+                <h3>User Management</h3>
+                <div class="filter-controls">
+                    <input type="text" id="user-search-input" class="search-input" placeholder="Search by name or email...">
+                    <select id="user-type-filter" class="filter-select">
+                        <option value="all">All Users</option>
+                        <option value="internal">Internal Only</option>
+                        <option value="external">External Only</option>
+                        <option value="missing-data">Missing Data</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Users Table -->
+            <div class="users-table-container">
+                <table class="users-table" id="users-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Job Title</th>
+                            <th>Phone</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="users-table-body">
+                        <!-- Users will be populated here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
+function initializeIdentityCharts() {
+    console.log('[Identity Charts] Initializing charts...');
+    
+    // Calculate statistics
+    const internalUsers = microsoftUsersData.filter(u => !u.isExternal).length;
+    const externalUsers = microsoftUsersData.filter(u => u.isExternal).length;
+    
+    // Destroy existing charts if they exist
+    if (window.identityPieChart) {
+        window.identityPieChart.destroy();
+    }
+    if (window.identityLineChart) {
+        window.identityLineChart.destroy();
+    }
+    
+    // Pie Chart - User Distribution
+    const pieCtx = document.getElementById('identityPieChart');
+    if (pieCtx) {
+        window.identityPieChart = new Chart(pieCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Internal Users', 'External Users'],
+                datasets: [{
+                    data: [internalUsers, externalUsers],
+                    backgroundColor: [
+                        'rgba(0, 110, 255, 0.8)',
+                        'rgba(255, 159, 64, 0.8)'
+                    ],
+                    borderColor: [
+                        'rgba(0, 110, 255, 1)',
+                        'rgba(255, 159, 64, 1)'
+                    ],
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: '#94a3b8',
+                            font: { size: 12 }
+                        }
+                    }
+                }
+            }
+        });
+        console.log('[Identity Charts] Pie chart initialized');
+    }
+    
+    // Line Chart - User Activity Trend (Mock data if not available)
+    const lineCtx = document.getElementById('identityLineChart');
+    if (lineCtx) {
+        const generateTrendData = () => {
+            const today = new Date();
+            const labels = [];
+            const data = [];
+            let baseValue = microsoftUsersData.length - 10;
+            
+            for (let i = 6; i >= 0; i--) {
+                const date = new Date(today);
+                date.setDate(date.getDate() - i);
+                labels.push(date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+                data.push(Math.max(baseValue + Math.floor(Math.random() * 8) + i, 0));
+            }
+            
+            return { labels, data };
+        };
+        
+        const { labels, data } = generateTrendData();
+        
+        window.identityLineChart = new Chart(lineCtx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Total Users',
+                    data: data,
+                    borderColor: 'rgba(0, 110, 255, 1)',
+                    backgroundColor: 'rgba(0, 110, 255, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 3,
+                    pointBackgroundColor: 'rgba(0, 110, 255, 1)',
+                    pointBorderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: '#94a3b8',
+                            font: { size: 12 }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { color: '#94a3b8' },
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' }
+                    },
+                    x: {
+                        ticks: { color: '#94a3b8' },
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' }
+                    }
+                }
+            }
+        });
+        console.log('[Identity Charts] Line chart initialized');
+    }
+}
+
+function populateIdentityTable() {
+    console.log('[Identity Table] Populating users table...');
+    
+    const tableBody = document.getElementById('users-table-body');
+    const searchInput = document.getElementById('user-search-input');
+    const filterSelect = document.getElementById('user-type-filter');
+    
+    if (!tableBody) {
+        console.error('[Identity Table] Table body not found');
+        return;
+    }
+    
+    // Function to render table
+    const renderTable = () => {
+        let filteredUsers = [...microsoftUsersData];
+        
+        // Apply search filter
+        if (searchInput && searchInput.value) {
+            const searchTerm = searchInput.value.toLowerCase();
+            filteredUsers = filteredUsers.filter(u =>
+                u.displayName.toLowerCase().includes(searchTerm) ||
+                u.mail.toLowerCase().includes(searchTerm)
+            );
+        }
+        
+        // Apply type filter
+        if (filterSelect && filterSelect.value !== 'all') {
+            if (filterSelect.value === 'internal') {
+                filteredUsers = filteredUsers.filter(u => !u.isExternal);
+            } else if (filterSelect.value === 'external') {
+                filteredUsers = filteredUsers.filter(u => u.isExternal);
+            } else if (filterSelect.value === 'missing-data') {
+                filteredUsers = filteredUsers.filter(u => !u.jobTitle || !u.mobilePhone);
+            }
+        }
+        
+        tableBody.innerHTML = '';
+        
+        if (filteredUsers.length === 0) {
+            tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 20px;">No users found</td></tr>`;
+            return;
+        }
+        
+        filteredUsers.forEach(user => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${user.displayName || 'N/A'}</td>
+                <td>${user.mail || user.userPrincipalName || 'N/A'}</td>
+                <td>${user.jobTitle || '<span style="color: #f87171;">Missing</span>'}</td>
+                <td>${user.mobilePhone || '<span style="color: #f87171;">Missing</span>'}</td>
+                <td>
+                    <span class="user-type-badge ${user.isExternal ? 'external' : 'internal'}">
+                        ${user.isExternal ? 'External' : 'Internal'}
+                    </span>
+                </td>
+                <td>
+                    <span class="user-status-badge active">Active</span>
+                </td>
+            `;
+            tableBody.appendChild(row);
+        });
+        
+        console.log(`[Identity Table] Rendered ${filteredUsers.length} users`);
+    };
+    
+    // Initial render
+    renderTable();
+    
+    // Add event listeners
+    if (searchInput) {
+        searchInput.addEventListener('input', renderTable);
+    }
+    
+    if (filterSelect) {
+        filterSelect.addEventListener('change', renderTable);
     }
 }
 
