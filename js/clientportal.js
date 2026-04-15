@@ -915,7 +915,7 @@ async function fetchDuoStats(retryCount = 0) {
             setTimeout(() => fetchDuoStats(retryCount + 1), delay);
         }
     }
-
+}
 
 /* IDENTITY & ACCESS DASHBOARD */
 function generateIdentityDashboardHTML() {
