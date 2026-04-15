@@ -3408,7 +3408,8 @@
 }
 
 .identity-users-table-container {
-    width: 100%;
+    width: 95%;
+    margin: 0 auto;
     overflow-x: auto;
     border-radius: 8px;
     background: rgba(255, 255, 255, 0.02);
@@ -3428,13 +3429,14 @@
 }
 
 .identity-users-table th {
-    padding: 16px;
+    padding: 12px 10px;
     text-align: left;
     color: rgba(0, 110, 255, 0.9);
     font-weight: 600;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    white-space: nowrap;
 }
 
 .identity-users-table tbody tr {
@@ -3447,10 +3449,11 @@
 }
 
 .identity-users-table td {
-    padding: 14px 16px;
+    padding: 10px;
     color: #d1d5db;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     vertical-align: middle;
+    word-break: break-word;
 }
 
 .user-type-badge {
@@ -3518,17 +3521,22 @@
         margin-left: auto;
     }
 
-    .identity-users-table {
-        font-size: 0.85rem;
+    .identity-users-table-container {
+        width: 98%;
+        margin: 0 auto;
     }
 
-    .identity-users-table th {
-        padding: 12px 8px;
+    .identity-users-table {
         font-size: 0.8rem;
     }
 
-    .identity-users-table td {
+    .identity-users-table th {
         padding: 10px 8px;
+        font-size: 0.75rem;
+    }
+
+    .identity-users-table td {
+        padding: 8px 6px;
         font-size: 0.8rem;
     }
 
@@ -3589,23 +3597,30 @@
         margin-left: 0;
     }
 
+    .identity-users-table-container {
+        width: 100%;
+        margin: 0 auto;
+        overflow-x: auto;
+    }
+
     .identity-users-table {
-        font-size: 0.75rem;
+        font-size: 0.7rem;
+        white-space: nowrap;
     }
 
     .identity-users-table th {
-        padding: 10px 6px;
-        font-size: 0.7rem;
+        padding: 8px 5px;
+        font-size: 0.65rem;
     }
 
     .identity-users-table td {
-        padding: 8px 6px;
-        font-size: 0.75rem;
+        padding: 6px 4px;
+        font-size: 0.7rem;
     }
 
     .user-type-badge,
     .user-status-badge {
-        padding: 3px 6px;
-        font-size: 0.6rem;
+        padding: 3px 5px;
+        font-size: 0.55rem;
     }
 }
