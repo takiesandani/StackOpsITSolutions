@@ -309,6 +309,8 @@ function initializeIdentityDashboard() {
         populateIdentityTable();
     }, 100);
 }
+
+function setupEventListeners() {
     const loginForm = document.getElementById('login-form');
     const logoutBtn = document.getElementById('btn-logout');
     const backBtn = document.getElementById('btn-back');
@@ -1888,8 +1890,6 @@ window.addEventListener('resize', () => {
 /* ============================================ */
 /* Dashboard Tabs & Microsoft Graph Integration */
 /* ============================================ */
-
-let microsoftUsersData = [];
 
 // Initialize tabs when project dashboard is loaded
 function initializeTabs() {
