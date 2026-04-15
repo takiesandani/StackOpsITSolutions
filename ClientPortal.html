@@ -422,6 +422,230 @@
                 max-width: calc(100vw - 60px);
             }
         }
+
+        /* ============================================ */
+        /* Dashboard Tabs Styles */
+        /* ============================================ */
+        .dashboard-tabs {
+            margin-bottom: 24px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 0;
+        }
+
+        .tabs-container {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            overflow-x: auto;
+            padding-bottom: 8px;
+        }
+
+        .tab-btn {
+            padding: 10px 18px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            color: #94a3b8;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 200;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+        }
+
+        .tab-btn:hover {
+            background: rgba(0, 110, 255, 0.15);
+            border-color: rgba(0, 110, 255, 0.3);
+            color: #0066FF;
+        }
+
+        .tab-btn.active {
+            background: rgba(0, 110, 255, 0.25);
+            border-color: rgba(0, 110, 255, 0.5);
+            color: #0066FF;
+            box-shadow: 0 0 12px rgba(0, 110, 255, 0.2);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* ============================================ */
+        /* Identity & Access Tab Styles */
+        /* ============================================ */
+        .identity-access-container {
+            padding: 20px 0;
+        }
+
+        .identity-controls {
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .microsoft-search-input {
+            padding: 10px 16px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(0, 110, 255, 0.2);
+            border-radius: 8px;
+            color: #e2e8f0;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .microsoft-search-input:focus {
+            outline: none;
+            border-color: #0066FF;
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: 0 0 8px rgba(0, 110, 255, 0.2);
+        }
+
+        .microsoft-search-input::placeholder {
+            color: #64748b;
+        }
+
+        .identity-filters {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .identity-filters label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #94a3b8;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 200;
+            transition: color 0.2s;
+        }
+
+        .identity-filters label:hover {
+            color: #0066FF;
+        }
+
+        .identity-filters input[type="checkbox"] {
+            cursor: pointer;
+            accent-color: #0066FF;
+        }
+
+        /* Microsoft Users Table */
+        .microsoft-users-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            font-size: 13px;
+        }
+
+        .microsoft-users-table thead {
+            background: rgba(0, 110, 255, 0.1);
+            border-bottom: 2px solid rgba(0, 110, 255, 0.2);
+        }
+
+        .microsoft-users-table th {
+            padding: 12px;
+            text-align: left;
+            color: #0066FF;
+            font-weight: 200;
+        }
+
+        .microsoft-users-table tbody tr {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            transition: background 0.2s;
+        }
+
+        .microsoft-users-table tbody tr:hover {
+            background: rgba(0, 110, 255, 0.08);
+        }
+
+        .microsoft-users-table td {
+            padding: 12px;
+            color: #bdbdbd;
+        }
+
+        .user-type {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 200;
+        }
+
+        .user-type.internal {
+            background: rgba(40, 167, 69, 0.2);
+            color: #10b981;
+        }
+
+        .user-type.external {
+            background: rgba(255, 193, 7, 0.2);
+            color: #ffc107;
+        }
+
+        .user-status {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 200;
+            background: rgba(0, 200, 100, 0.2);
+            color: #00d97f;
+        }
+
+        /* Identity Stats Section */
+        .identity-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+            padding-top: 16px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .stat-box {
+            padding: 16px;
+            background: rgba(0, 110, 255, 0.08);
+            border: 1px solid rgba(0, 110, 255, 0.15);
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-label {
+            display: block;
+            color: #94a3b8;
+            font-size: 12px;
+            font-weight: 200;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            display: block;
+            color: #0066FF;
+            font-size: 20px;
+            font-weight: 200;
+        }
+
+        .stat-value.timestamp {
+            font-size: 14px;
+            color: #bdbdbd;
+        }
     </style>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -669,7 +893,32 @@
 
                 <!-- Monitoring Details -->
                 <div class="monitoring-section">
-                    <!-- Vulnerabilities -->
+                    <!-- Tab Navigation -->
+                    <div class="dashboard-tabs" id="dashboard-tabs" style="display: none;">
+                        <div class="tabs-container">
+                            <button class="tab-btn active" data-tab="all-tab">
+                                <i class="fas fa-th-large"></i> All
+                            </button>
+                            <button class="tab-btn" data-tab="identity-tab">
+                                <i class="fas fa-users"></i> Identity & Access
+                            </button>
+                            <button class="tab-btn" data-tab="devices-tab">
+                                <i class="fas fa-laptop"></i> Devices
+                            </button>
+                            <button class="tab-btn" data-tab="applications-tab">
+                                <i class="fas fa-cubes"></i> Applications
+                            </button>
+                            <button class="tab-btn" data-tab="network-tab">
+                                <i class="fas fa-network-wired"></i> Network
+                            </button>
+                            <button class="tab-btn" data-tab="reports-tab">
+                                <i class="fas fa-file-chart-line"></i> Reports
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Tab: All (Default) -->
+                    <div id="all-tab" class="tab-content active">
                     <div class="monitor-card">
                         <h3><i class="fas fa-bug"></i> Vulnerabilities</h3>
                         <div class="vulnerability-list" id="vulnerability-list">
@@ -811,6 +1060,103 @@
                                 </div>
                                 <span class="backup-status-badge success">Active</span>
                             </div>
+                        </div>
+                    </div>
+                    </div><!-- End of all-tab -->
+
+                    <!-- Tab: Identity & Access (Microsoft Graph Data) -->
+                    <div id="identity-tab" class="tab-content" style="display: none;">
+                        <div class="monitor-card">
+                            <h3><i class="fas fa-users"></i> Microsoft Users</h3>
+                            <div class="identity-access-container">
+                                <!-- Search and Filter -->
+                                <div class="identity-controls">
+                                    <input type="text" id="microsoft-user-search" placeholder="Search by name or email..." class="microsoft-search-input">
+                                    <div class="identity-filters">
+                                        <label>
+                                            <input type="checkbox" id="filter-external" onchange="filterMicrosoftUsers()">
+                                            <span>External Users (#EXT#)</span>
+                                        </label>
+                                        <label>
+                                            <input type="checkbox" id="filter-no-jobTitle" onchange="filterMicrosoftUsers()">
+                                            <span>Missing Job Title</span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <!-- User List Table -->
+                                <table class="microsoft-users-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Display Name</th>
+                                            <th>Email</th>
+                                            <th>Job Title</th>
+                                            <th>Phone</th>
+                                            <th>Type</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="microsoft-users-tbody">
+                                        <tr>
+                                            <td colspan="6" style="text-align: center; padding: 20px; color: #bdbdbd;">
+                                                <i class="fas fa-spinner fa-spin"></i> Loading users...
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+
+                                <!-- Stats Summary -->
+                                <div class="identity-stats">
+                                    <div class="stat-box">
+                                        <span class="stat-label">Total Users</span>
+                                        <span class="stat-value" id="ms-total-users">0</span>
+                                    </div>
+                                    <div class="stat-box">
+                                        <span class="stat-label">External Users</span>
+                                        <span class="stat-value" id="ms-external-users">0</span>
+                                    </div>
+                                    <div class="stat-box">
+                                        <span class="stat-label">Missing Data</span>
+                                        <span class="stat-value" id="ms-missing-data">0</span>
+                                    </div>
+                                    <div class="stat-box">
+                                        <span class="stat-label">Last Updated</span>
+                                        <span class="stat-value timestamp" id="ms-last-updated">--:--</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab: Devices -->
+                    <div id="devices-tab" class="tab-content" style="display: none;">
+                        <div class="monitor-card">
+                            <h3><i class="fas fa-laptop"></i> Devices</h3>
+                            <p style="color: #94a3b8; padding: 20px;">Device management data will be integrated here. Coming soon...</p>
+                        </div>
+                    </div>
+
+                    <!-- Tab: Applications -->
+                    <div id="applications-tab" class="tab-content" style="display: none;">
+                        <div class="monitor-card">
+                            <h3><i class="fas fa-cubes"></i> Applications</h3>
+                            <p style="color: #94a3b8; padding: 20px;">Application data will be integrated here. Coming soon...</p>
+                        </div>
+                    </div>
+
+                    <!-- Tab: Network -->
+                    <div id="network-tab" class="tab-content" style="display: none;">
+                        <div class="monitor-card">
+                            <h3><i class="fas fa-network-wired"></i> Network</h3>
+                            <p style="color: #94a3b8; padding: 20px;">Network metrics will be integrated here. Coming soon...</p>
+                        </div>
+                    </div>
+
+                    <!-- Tab: Reports -->
+                    <div id="reports-tab" class="tab-content" style="display: none;">
+                        <div class="monitor-card">
+                            <h3><i class="fas fa-file-chart-line"></i> Reports</h3>
+                            <p style="color: #94a3b8; padding: 20px;">Report data will be integrated here. Coming soon...</p>
                         </div>
                     </div>
                 </div>

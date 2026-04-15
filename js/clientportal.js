@@ -40,7 +40,9 @@ const mockProjects = [
             { label: "Licences", value: ": 92%", icon: "fas fa-shield-alt" },
             { label: "Usage", value: "99.8%", icon: "fas fa-server" }
         ],
-        cardFooter: "IT budget saving: 12"
+        cardFooter: "IT budget saving: 12",
+        hasTabs: true,
+        microsoftGraphEnabled: true
     },
     {
         id: 3,
@@ -880,6 +882,7 @@ function viewProjectDashboard(project) {
     
     updateDashboardData(project);
     initializeCharts(project);
+    initializeTabs();
 }
 
 function goBackToProjects() {
@@ -1381,5 +1384,210 @@ window.addEventListener('resize', () => {
                 chart.resize();
             }
         });
+    }
+});
+
+/* ============================================ */
+/* Dashboard Tabs & Microsoft Graph Integration */
+/* ============================================ */
+
+let microsoftUsersData = [];
+
+// Initialize tabs when project dashboard is loaded
+function initializeTabs() {
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    const tabContents = document.querySelectorAll('.tab-content');
+    
+    // Show tabs only if project has tabs enabled
+    const dashboardTabs = document.getElementById('dashboard-tabs');
+    if (currentProject && currentProject.hasTabs) {
+        dashboardTabs.style.display = 'block';
+        
+        // Add event listeners to tab buttons
+        tabBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tabId = btn.getAttribute('data-tab');
+                switchTab(tabId, tabBtns, tabContents);
+                
+                // Fetch Microsoft users when switching to identity tab
+                if (tabId === 'identity-tab' && currentProject.microsoftGraphEnabled) {
+                    fetchMicrosoftUsersData();
+                }
+            });
+        });
+        
+        // Set default tab to "all"
+        switchTab('all-tab', tabBtns, tabContents);
+    } else {
+        dashboardTabs.style.display = 'none';
+    }
+}
+
+function switchTab(tabId, tabBtns, tabContents) {
+    // Hide all tabs
+    tabContents.forEach(content => {
+        content.classList.remove('active');
+        content.style.display = 'none';
+    });
+    
+    // Deactivate all buttons
+    tabBtns.forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    // Show selected tab
+    const selectedTab = document.getElementById(tabId);
+    if (selectedTab) {
+        selectedTab.classList.add('active');
+        selectedTab.style.display = 'block';
+    }
+    
+    // Activate selected button
+    const selectedBtn = document.querySelector(`[data-tab="${tabId}"]`);
+    if (selectedBtn) {
+        selectedBtn.classList.add('active');
+    }
+    
+    console.log(`[Tabs] Switched to tab: ${tabId}`);
+}
+
+// Fetch Microsoft users from the API
+async function fetchMicrosoftUsersData() {
+    try {
+        const token = localStorage.getItem('authToken');
+        if (!token) {
+            showNotification('Authentication required. Please log in again.', false);
+            return;
+        }
+        
+        console.log('[Microsoft Graph] Fetching users...');
+        
+        const response = await fetch('/api/microsoft-users', {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to fetch Microsoft users');
+        }
+        
+        const data = await response.json();
+        microsoftUsersData = data.users || [];
+        
+        console.log(`[Microsoft Graph] Retrieved ${microsoftUsersData.length} users`);
+        
+        populateMicrosoftUsersTable(microsoftUsersData);
+        updateIdentityStats(microsoftUsersData);
+        
+    } catch (error) {
+        console.error('[Microsoft Graph] Error fetching users:', error.message);
+        showNotification(`Failed to load Microsoft users: ${error.message}`, false);
+        
+        // Show error in table
+        const tbody = document.getElementById('microsoft-users-tbody');
+        if (tbody) {
+            tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 20px; color: #dc3545;">
+                <i class="fas fa-exclamation-circle"></i> Error loading users: ${error.message}
+            </td></tr>`;
+        }
+    }
+}
+
+// Populate the Microsoft users table
+function populateMicrosoftUsersTable(users) {
+    const tbody = document.getElementById('microsoft-users-tbody');
+    if (!tbody) return;
+    
+    if (users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #94a3b8;">No users found</td></tr>';
+        return;
+    }
+    
+    const rows = users.map(user => `
+        <tr>
+            <td>${user.displayName}</td>
+            <td>${user.email}</td>
+            <td>${user.jobTitle}</td>
+            <td>${user.phone}</td>
+            <td>
+                <span class="user-type ${user.isExternal ? 'external' : 'internal'}">
+                    ${user.isExternal ? 'External' : 'Internal'}
+                </span>
+            </td>
+            <td>
+                <span class="user-status">${user.status}</span>
+            </td>
+        </tr>
+    `).join('');
+    
+    tbody.innerHTML = rows;
+    
+    console.log('[Microsoft Graph] Table updated with ' + users.length + ' users');
+}
+
+// Update identity stats
+function updateIdentityStats(users) {
+    const totalUsers = users.length;
+    const externalUsers = users.filter(u => u.isExternal).length;
+    const missingData = users.filter(u => 
+        !u.jobTitle || u.jobTitle === 'No Title' || !u.phone || u.phone === 'N/A'
+    ).length;
+    
+    document.getElementById('ms-total-users').textContent = totalUsers;
+    document.getElementById('ms-external-users').textContent = externalUsers;
+    document.getElementById('ms-missing-data').textContent = missingData;
+    
+    // Format timestamp
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: true 
+    });
+    document.getElementById('ms-last-updated').textContent = timeStr;
+    
+    console.log(`[Identity Stats] Total: ${totalUsers}, External: ${externalUsers}, Missing Data: ${missingData}`);
+}
+
+// Filter Microsoft users based on search and checkboxes
+function filterMicrosoftUsers() {
+    const searchInput = document.getElementById('microsoft-user-search');
+    const filterExternal = document.getElementById('filter-external').checked;
+    const filterNoJobTitle = document.getElementById('filter-no-jobTitle').checked;
+    
+    const searchTerm = searchInput.value.toLowerCase();
+    
+    let filtered = microsoftUsersData.filter(user => {
+        // Search filter
+        if (searchTerm && !user.displayName.toLowerCase().includes(searchTerm) && 
+            !user.email.toLowerCase().includes(searchTerm)) {
+            return false;
+        }
+        
+        // External users filter
+        if (filterExternal && !user.isExternal) {
+            return false;
+        }
+        
+        // Missing job title filter
+        if (filterNoJobTitle && user.jobTitle && user.jobTitle !== 'No Title') {
+            return false;
+        }
+        
+        return true;
+    });
+    
+    populateMicrosoftUsersTable(filtered);
+    console.log(`[Filter] Showing ${filtered.length} of ${microsoftUsersData.length} users`);
+}
+
+// Add search input listener
+document.addEventListener('DOMContentLoaded', () => {
+    const searchInput = document.getElementById('microsoft-user-search');
+    if (searchInput) {
+        searchInput.addEventListener('input', filterMicrosoftUsers);
     }
 });

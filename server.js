@@ -16,6 +16,110 @@ const SVGtoPDF = require('svg-to-pdfkit');
 // invoice payment endpoints 
 require("dotenv").config();
 
+// ===============================
+// MULTI-TENANT CLIENT CONFIGURATION
+// ===============================
+const tenantClients = {
+  sunbird: {
+    clientId: "sunbird",
+    email: "sandanindivhuwo17@gmail.com",
+    provider: "microsoft",
+    tenantType: "microsoft-graph",
+    name: "Sunbird"
+  }
+  // Future clients can be added here
+};
+
+// Helper function to get client by user email
+function getTenantByEmail(email) {
+  return Object.values(tenantClients).find(client => 
+    client.email.toLowerCase() === email.toLowerCase()
+  );
+}
+
+// ===============================
+// MICROSOFT GRAPH - IDENTITY & ACCESS
+// ===============================
+// Token cache (in production, use Redis or database)
+const microsoftTokenCache = new Map();
+
+async function getMicrosoftGraphToken() {
+  try {
+    const tenantId = await getSecret('MICROSOFT_TENANT_ID');
+    const clientId = await getSecret('MICROSOFT_CLIENT_ID');
+    const clientSecret = await getSecret('MICROSOFT_CLIENT_SECRET');
+    
+    if (!tenantId || !clientId || !clientSecret) {
+      throw new Error('Missing Microsoft Graph credentials');
+    }
+
+    // Check cache (valid for 30 minutes)
+    const cacheKey = 'microsoft_graph_token';
+    const cachedToken = microsoftTokenCache.get(cacheKey);
+    if (cachedToken && cachedToken.expiresAt > Date.now()) {
+      console.log('[Microsoft Graph] Using cached token');
+      return cachedToken.token;
+    }
+
+    console.log('[Microsoft Graph] Requesting new token...');
+    const tokenUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
+    
+    const response = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: new URLSearchParams({
+        client_id: clientId,
+        scope: 'https://graph.microsoft.com/.default',
+        client_secret: clientSecret,
+        grant_type: 'client_credentials'
+      }).toString()
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(`Token request failed: ${errorData.error_description || response.statusText}`);
+    }
+
+    const data = await response.json();
+    const expiresAt = Date.now() + (data.expires_in * 1000) - 60000; // Cache for 1 minute less
+
+    // Store in cache
+    microsoftTokenCache.set(cacheKey, {
+      token: data.access_token,
+      expiresAt: expiresAt
+    });
+
+    console.log('[Microsoft Graph] Token obtained successfully');
+    return data.access_token;
+  } catch (error) {
+    console.error('[Microsoft Graph] Token generation failed:', error.message);
+    throw error;
+  }
+}
+
+async function fetchMicrosoftUsers(token) {
+  try {
+    const response = await fetch('https://graph.microsoft.com/v1.0/users?$top=999&$select=displayName,mail,jobTitle,mobilePhone,userPrincipalName,id', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Microsoft Graph API failed: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.value || [];
+  } catch (error) {
+    console.error('[Microsoft Graph] Failed to fetch users:', error.message);
+    throw error;
+  }
+}
 
 const app = express();
 // Middleware for parsing bodies with raw support (critical for payment signatures)
@@ -4046,6 +4150,77 @@ setTimeout(() => {
 
 // Hourly loop
 setInterval(syncDuoData, 60 * 60 * 1000);
+
+// ====================================================================================================//
+//                             MICROSOFT GRAPH - IDENTITY & ACCESS                                  //
+// ====================================================================================================//
+
+/**
+ * Route: GET /api/microsoft-users
+ * Returns: List of users from Microsoft Graph (filtered by tenant/client)
+ */
+app.get('/api/microsoft-users', authenticateToken, async (req, res) => {
+    try {
+        const userEmail = req.user.email;
+        console.log(`[Microsoft Graph] Fetching users for: ${userEmail}`);
+
+        // Get the tenant for this user
+        const tenant = getTenantByEmail(userEmail);
+        if (!tenant) {
+            console.warn(`[Microsoft Graph] User ${userEmail} does not belong to any configured tenant`);
+            return res.status(403).json({ 
+                error: 'User does not have access to Microsoft Graph data',
+                message: 'Your email is not associated with any tenant'
+            });
+        }
+
+        console.log(`[Microsoft Graph] User belongs to tenant: ${tenant.clientId}`);
+
+        // Get Microsoft Graph token
+        const token = await getMicrosoftGraphToken();
+
+        // Fetch users from Microsoft Graph
+        const users = await fetchMicrosoftUsers(token);
+
+        // Process and enrich the data
+        const processedUsers = users.map(user => ({
+          id: user.id,
+          displayName: user.displayName || 'Unknown User',
+          email: user.mail || user.userPrincipalName || 'N/A',
+          jobTitle: user.jobTitle || 'No Title',
+          phone: user.mobilePhone || 'N/A',
+          userPrincipalName: user.userPrincipalName,
+          isExternal: user.userPrincipalName && user.userPrincipalName.includes('#EXT#'),
+          status: 'active',
+          lastSync: new Date().toISOString()
+        }));
+
+        console.log(`[Microsoft Graph] Successfully retrieved ${processedUsers.length} users`);
+
+        res.json({
+          success: true,
+          tenant: tenant.clientId,
+          totalUsers: processedUsers.length,
+          users: processedUsers,
+          fetchedAt: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('[Microsoft Graph] Error fetching users:', error.message);
+        
+        if (error.message.includes('Missing Microsoft Graph credentials')) {
+            return res.status(500).json({ 
+                error: 'Microsoft Graph not configured',
+                message: 'Credentials missing from environment'
+            });
+        }
+
+        res.status(500).json({ 
+            error: 'Failed to fetch Microsoft Graph users',
+            message: error.message
+        });
+    }
+});
 
 // ====================================================================================================//
 //                                 GOOGLE CLOUD SECRET MANAGER SETUP                                   //
