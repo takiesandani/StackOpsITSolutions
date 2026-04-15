@@ -963,95 +963,29 @@
         <!-- PROJECTS VIEW -->
         <div id="projects-view" class="projects-view">
             <div class="container">
-                <!-- Tab Navigation for Projects View -->
-                <div class="projects-tabs-section">
-                    <div class="projects-tabs-container">
-                        <button class="projects-tab-btn active" data-tab="all-projects">
-                            <i class="fas fa-th-large"></i> All
+
+                <div class="projects-nav">
+                    <div class="nav-counter">
+                        <span id="project-current">1</span> / <span id="project-total">0</span> Projects
+                    </div>
+                    <div class="nav-buttons">
+                        <button class="nav-btn nav-prev" id="nav-prev" title="Previous Project">
+                            <i class="fas fa-chevron-left"></i>
                         </button>
-                        <button class="projects-tab-btn" data-tab="identity-access">
-                            <i class="fas fa-users"></i> Identity & Access
-                        </button>
-                        <button class="projects-tab-btn" data-tab="devices">
-                            <i class="fas fa-laptop"></i> Devices
-                        </button>
-                        <button class="projects-tab-btn" data-tab="applications">
-                            <i class="fas fa-cubes"></i> Applications
-                        </button>
-                        <button class="projects-tab-btn" data-tab="network">
-                            <i class="fas fa-network-wired"></i> Network
-                        </button>
-                        <button class="projects-tab-btn" data-tab="reports">
-                            <i class="fas fa-file-chart-line"></i> Reports
+                        <button class="nav-btn nav-next" id="nav-next" title="Next Project">
+                            <i class="fas fa-chevron-right"></i>
                         </button>
                     </div>
                 </div>
 
-                <!-- Tab Content: All Projects -->
-                <div id="all-projects" class="projects-tab-content active">
-                    <div class="projects-nav">
-                        <div class="nav-counter">
-                            <span id="project-current">1</span> / <span id="project-total">0</span> Projects
-                        </div>
-                        <div class="nav-buttons">
-                            <button class="nav-btn nav-prev" id="nav-prev" title="Previous Project">
-                                <i class="fas fa-chevron-left"></i>
-                            </button>
-                            <button class="nav-btn nav-next" id="nav-next" title="Next Project">
-                                <i class="fas fa-chevron-right"></i>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="projects-grid" id="projects-grid">
-                        <!-- Projects will be dynamically inserted here -->
-                    </div>
-
-                    <div id="project-preview-section" class="project-preview-section">
-                        <!-- Preview will be dynamically inserted here -->
-                    </div>
+                <div class="projects-grid" id="projects-grid">
+                    <!-- Projects will be dynamically inserted here -->
                 </div>
 
-                <!-- Tab Content: Identity & Access -->
-                <div id="identity-access" class="projects-tab-content" style="display: none;">
-                    <div class="identity-cards-container" id="identity-cards-container">
-                        <!-- Identity & Access cards will be populated here -->
-                    </div>
+                <div id="project-preview-section" class="project-preview-section">
+                    <!-- Preview will be dynamically inserted here -->
                 </div>
 
-                <!-- Tab Content: Devices (Coming Soon) -->
-                <div id="devices" class="projects-tab-content" style="display: none;">
-                    <div class="coming-soon-message">
-                        <i class="fas fa-laptop"></i>
-                        <p>Device Management - Coming Soon</p>
-                    </div>
-                </div>
-
-                <!-- Tab Content: Applications (Coming Soon) -->
-                <div id="applications" class="projects-tab-content" style="display: none;">
-                    <div class="coming-soon-message">
-                        <i class="fas fa-cubes"></i>
-                        <p>Application Insights - Coming Soon</p>
-                    </div>
-                </div>
-
-                <!-- Tab Content: Network (Coming Soon) -->
-                <div id="network" class="projects-tab-content" style="display: none;">
-                    <div class="coming-soon-message">
-                        <i class="fas fa-network-wired"></i>
-                        <p>Network Monitoring - Coming Soon</p>
-                    </div>
-                </div>
-
-                <!-- Tab Content: Reports (Coming Soon) -->
-                <div id="reports" class="projects-tab-content" style="display: none;">
-                    <div class="coming-soon-message">
-                        <i class="fas fa-file-chart-line"></i>
-                        <p>Reports & Analytics - Coming Soon</p>
-                    </div>
-                </div>
-
-                <!-- Dashboard Cards Section (Billing, Governance, Support) -->
                 <div class="dashboard-cards-section">
                     <div id="billing-card" class="dashboard-card billing-card">
                         

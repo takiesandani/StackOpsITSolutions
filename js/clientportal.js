@@ -28,25 +28,26 @@ const mockProjects = [
     },
     {
         id: 2,
-        name: "Microsoft 365 security & health",
-        type: "Proactive tenant security insights",
+        name: "Identity & Access",
+        type: "Microsoft 365 security & health",
         status: "active",
-        risks: { critical: 2, high: 3, medium: 5 },
-        securityScore: 92,
-        uptime: 99.8,
-        lastUpdate: "2 hours ago",
+        risks: { critical: 0, high: 0, medium: 0 },
+        securityScore: 0,
+        uptime: 100,
+        lastUpdate: "Loading...",
         image: "https://static.vecteezy.com/system/resources/thumbnails/018/911/406/small_2x/microsoft-logo-editorial-free-vector.jpg",
         cardMetrics: [
-            { label: "Licences", value: ": 92%", icon: "fas fa-shield-alt" },
-            { label: "Usage", value: "99.8%", icon: "fas fa-server" }
+            { label: "Total Users", value: ": ...", icon: "fas fa-users" },
+            { label: "External", value: ": ...", icon: "fas fa-user-secret" }
         ],
-        cardFooter: "IT budget saving: 12",
-        hasTabs: true,
-        microsoftGraphEnabled: true
+        cardFooter: "Fetching from Microsoft Graph...",
+        hasTabs: false,
+        microsoftGraphEnabled: true,
+        isIdentityCard: true
     },
     {
         id: 3,
-        name: "Support & Service desk",
+        name: "Devices",
         type: "Real-time support visibility and tracking",
         status: "active",
         risks: { critical: 1, high: 2, medium: 3 },
@@ -62,7 +63,7 @@ const mockProjects = [
     },
     {
         id: 4,
-        name: "Backup & recovery",
+        name: "Applications",
         type: "Automated protection and restore readiness",
         status: "active",
         risks: { critical: 1, high: 1, medium: 1 },
@@ -99,7 +100,6 @@ let microsoftUsersData = [];
 
 document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
-    setupProjectsTabs();
     setupSessionManagement();
     initializeProjectsList();
     initializeBillingCard();
@@ -110,49 +110,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Setup project tabs event listeners
 function setupProjectsTabs() {
-    const tabBtns = document.querySelectorAll('.projects-tab-btn');
-    tabBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-            const tabId = btn.getAttribute('data-tab');
-            switchProjectTab(tabId);
-            
-            // Fetch Microsoft users when switching to Identity & Access
-            if (tabId === 'identity-access') {
-                fetchMicrosoftUsersForCard();
-            }
-        });
-    });
+    // Removed - no longer using tabs
 }
 
 // Switch project tab
 function switchProjectTab(tabId) {
-    // Hide all tab contents
-    const tabContents = document.querySelectorAll('.projects-tab-content');
-    tabContents.forEach(content => {
-        content.classList.remove('active');
-        content.style.display = 'none';
-    });
-    
-    // Deactivate all buttons
-    const tabBtns = document.querySelectorAll('.projects-tab-btn');
-    tabBtns.forEach(btn => {
-        btn.classList.remove('active');
-    });
-    
-    // Show selected tab
-    const selectedTab = document.getElementById(tabId);
-    if (selectedTab) {
-        selectedTab.classList.add('active');
-        selectedTab.style.display = 'block';
-    }
-    
-    // Activate selected button
-    const selectedBtn = document.querySelector(`[data-tab="${tabId}"]`);
-    if (selectedBtn) {
-        selectedBtn.classList.add('active');
-    }
-    
-    console.log(`[Projects Tab] Switched to: ${tabId}`);
+    // Removed - no longer using tabs
 }
 
 // Fetch Microsoft users and populate Identity & Access cards
@@ -1380,9 +1343,55 @@ function viewProjectDashboard(project) {
     document.getElementById('projects-view').style.display = 'none';
     document.getElementById('dashboard-view').style.display = 'block';
     
-    updateDashboardData(project);
-    initializeCharts(project);
-    initializeTabs();
+    // If this is the Identity & Access card, fetch API data
+    if (project.isIdentityCard) {
+        fetchIdentityData(project);
+    } else {
+        updateDashboardData(project);
+        initializeCharts(project);
+        initializeTabs();
+    }
+}
+
+// Fetch Identity & Access data from API
+async function fetchIdentityData(project) {
+    try {
+        console.log('[Identity] Fetching Microsoft users...');
+        const authToken = localStorage.getItem('authToken');
+        
+        const response = await fetch('/api/microsoft-users', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || 'Failed to fetch users');
+        }
+        
+        microsoftUsersData = data.users || [];
+        
+        // Update project with API data
+        const externalUsers = microsoftUsersData.filter(u => u.isExternal).length;
+        project.cardMetrics = [
+            { label: "Total Users", value: `: ${microsoftUsersData.length}`, icon: "fas fa-users" },
+            { label: "External", value: `: ${externalUsers}`, icon: "fas fa-user-secret" }
+        ];
+        project.lastUpdate = new Date().toLocaleTimeString();
+        project.cardFooter = `Total: ${microsoftUsersData.length} users | External: ${externalUsers}`;
+        
+        updateDashboardData(project);
+        initializeIdentityDashboard();
+        
+    } catch (error) {
+        console.error('[Identity] Error:', error);
+        showNotification('Failed to load Identity & Access data', false);
+        updateDashboardData(project);
+    }
 }
 
 function goBackToProjects() {
