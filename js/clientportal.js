@@ -254,6 +254,7 @@ function openIdentityDashboard() {
 // Initialize Identity & Access dashboard
 function initializeIdentityDashboard() {
     console.log('[Identity Dashboard] Initializing dashboard...');
+    console.log(`[Identity Dashboard] Users data available: ${microsoftUsersData.length}`);
     
     if (microsoftUsersData.length === 0) {
         console.warn('[Identity Dashboard] No user data available');
@@ -263,11 +264,24 @@ function initializeIdentityDashboard() {
     // Clear existing content
     const dashboardContent = document.querySelector('.monitoring-section');
     if (dashboardContent) {
+        console.log('[Identity Dashboard] Found monitoring-section, updating content');
         dashboardContent.innerHTML = generateIdentityDashboardHTML();
+    } else {
+        console.warn('[Identity Dashboard] monitoring-section not found, creating/finding alternative');
+        // Try to find and replace the entire dashboard content area
+        const dashboardView = document.getElementById('dashboard-view');
+        if (dashboardView) {
+            // Find any content area and replace it
+            const contentArea = dashboardView.querySelector('[class*="content"], [class*="monitoring"], .dashboard-content');
+            if (contentArea) {
+                contentArea.innerHTML = generateIdentityDashboardHTML();
+            }
+        }
     }
     
     // Initialize charts
     setTimeout(() => {
+        console.log('[Identity Dashboard] Initializing charts and table');
         initializeIdentityCharts();
         populateIdentityTable();
     }, 100);
@@ -723,8 +737,65 @@ function showError(message) {
 }
 
 
-// Updated: fetchDuoStats - Now with better error handling, loading states, and retries
-async function fetchDuoStats(retryCount = 0) {
+// Fetch Identity & Access data and update card preview
+async function fetchIdentityAccessData() {
+    try {
+        const token = localStorage.getItem('authToken');
+        const isLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
+        
+        if (!token || !isLoggedIn) {
+            console.log('[Identity Access] User not logged in. Skipping fetch.');
+            return;
+        }
+
+        console.log('[Identity Access] Fetching Microsoft users...');
+        
+        const response = await fetch('/api/microsoft-users', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`API responded with status ${response.status}`);
+        }
+
+        const data = await response.json();
+        
+        if (!data.success || !data.users) {
+            throw new Error(data.message || 'Invalid response format');
+        }
+
+        microsoftUsersData = data.users || [];
+        console.log(`[Identity Access] Loaded ${microsoftUsersData.length} users`);
+
+        // Update the Identity & Access project card with real data
+        const identityProject = mockProjects.find(p => p.id === 2);
+        if (identityProject) {
+            const externalUsers = microsoftUsersData.filter(u => u.isExternal).length;
+            const internalUsers = microsoftUsersData.length - externalUsers;
+            
+            identityProject.cardMetrics = [
+                { label: "Total Users", value: `: ${microsoftUsersData.length}`, icon: "fas fa-users" },
+                { label: "External", value: `: ${externalUsers}`, icon: "fas fa-user-secret" }
+            ];
+            identityProject.cardFooter = `Internal: ${internalUsers} | External: ${externalUsers}`;
+            identityProject.lastUpdate = new Date().toLocaleTimeString();
+            
+            // Refresh the display to show updated data
+            displayCurrentProject();
+            console.log('[Identity Access] Card updated with real user data');
+        }
+
+    } catch (error) {
+        console.error('[Identity Access] Error fetching data:', error.message);
+        // Keep placeholder data if API fails
+    }
+}
+
+// Updated: fetchDuoStats
     const token = localStorage.getItem('authToken');
     const isLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
     
@@ -825,10 +896,14 @@ async function fetchDuoStats(retryCount = 0) {
             setTimeout(() => fetchDuoStats(retryCount + 1), delay);
         }
     }
-}
+
 
 /* IDENTITY & ACCESS DASHBOARD */
 function generateIdentityDashboardHTML() {
+    const internalUsers = microsoftUsersData.filter(u => !u.isExternal).length;
+    const externalUsers = microsoftUsersData.filter(u => u.isExternal).length;
+    const missingData = microsoftUsersData.filter(u => !u.jobTitle || !u.mobilePhone).length;
+    
     return `
         <div class="monitoring-section" id="monitoring-section">
             <!-- Summary Stats -->
@@ -849,7 +924,7 @@ function generateIdentityDashboardHTML() {
                     </div>
                     <div class="stat-info">
                         <h3>Internal Users</h3>
-                        <p class="stat-number">${microsoftUsersData.filter(u => !u.isExternal).length}</p>
+                        <p class="stat-number">${internalUsers}</p>
                     </div>
                 </div>
                 
@@ -859,7 +934,7 @@ function generateIdentityDashboardHTML() {
                     </div>
                     <div class="stat-info">
                         <h3>External Users</h3>
-                        <p class="stat-number">${microsoftUsersData.filter(u => u.isExternal).length}</p>
+                        <p class="stat-number">${externalUsers}</p>
                     </div>
                 </div>
                 
@@ -869,7 +944,7 @@ function generateIdentityDashboardHTML() {
                     </div>
                     <div class="stat-info">
                         <h3>Missing Data</h3>
-                        <p class="stat-number">${microsoftUsersData.filter(u => !u.jobTitle || !u.mobilePhone).length}</p>
+                        <p class="stat-number">${missingData}</p>
                     </div>
                 </div>
             </div>
@@ -1151,6 +1226,7 @@ function initializeProjectsList() {
     
     displayCurrentProject();
     fetchDuoStats();
+    fetchIdentityAccessData(); // Fetch Microsoft Graph users for the card preview
 }
 
 function displayCurrentProject() {
@@ -1436,6 +1512,14 @@ function resetDashboard() {
 
 /* DASHBOARD DATA */
 function updateDashboardData(project) {
+    // For Identity & Access, data is shown in the summary-stats section generated by generateIdentityDashboardHTML
+    // No need to update stat boxes for Identity cards
+    if (project.isIdentityCard) {
+        document.getElementById('project-name').textContent = project.name;
+        return;
+    }
+    
+    // For other projects, use original data
     document.getElementById('project-name').textContent = project.name;
     document.getElementById('stat-risks').textContent = project.risks.critical;
     document.getElementById('stat-security').textContent = project.securityScore + '%';
