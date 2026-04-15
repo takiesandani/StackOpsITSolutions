@@ -295,21 +295,73 @@ function initializeIdentityDashboard() {
 
 function setupIdentitySearch() {
     const searchInput = document.getElementById('user-search-input');
-    if (searchInput) {
-        searchInput.addEventListener('input', function() {
-            const searchTerm = this.value.toLowerCase();
-            const rows = document.querySelectorAll('#users-table-body tr');
+    const filterCheckboxes = document.querySelectorAll('.filter-checkbox input[type="checkbox"]');
+    const clearFiltersBtn = document.getElementById('btn-clear-filters');
+    const backBtn = document.getElementById('btn-back-identity');
+    
+    // Function to apply all filters and search
+    const applyFilters = () => {
+        const searchTerm = searchInput?.value.toLowerCase() || '';
+        const selectedFilters = Array.from(filterCheckboxes)
+            .filter(cb => cb.checked)
+            .map(cb => cb.dataset.filter);
+        
+        const rows = document.querySelectorAll('#users-table-body tr');
+        
+        rows.forEach(row => {
+            const name = row.cells[0]?.textContent.toLowerCase() || '';
+            const email = row.cells[1]?.textContent.toLowerCase() || '';
+            const typeCell = row.cells[4]?.textContent.toLowerCase() || '';
+            const jobTitle = row.cells[2]?.textContent.toLowerCase() || '';
+            const phone = row.cells[3]?.textContent.toLowerCase() || '';
             
-            rows.forEach(row => {
-                const name = row.cells[0]?.textContent.toLowerCase() || '';
-                const email = row.cells[1]?.textContent.toLowerCase() || '';
+            // Search filter
+            const matchesSearch = !searchTerm || name.includes(searchTerm) || email.includes(searchTerm);
+            
+            // Type filters
+            let matchesTypeFilter = true;
+            if (selectedFilters.length > 0) {
+                const isInternal = typeCell.includes('internal');
+                const isExternal = typeCell.includes('external');
+                const hasMissingData = (jobTitle.includes('missing') || phone.includes('missing'));
                 
-                if (name.includes(searchTerm) || email.includes(searchTerm)) {
-                    row.style.display = '';
-                } else {
-                    row.style.display = 'none';
-                }
-            });
+                matchesTypeFilter = 
+                    (selectedFilters.includes('internal') && isInternal) ||
+                    (selectedFilters.includes('external') && isExternal) ||
+                    (selectedFilters.includes('missing-data') && hasMissingData);
+            }
+            
+            row.style.display = (matchesSearch && matchesTypeFilter) ? '' : 'none';
+        });
+    };
+    
+    // Add event listeners
+    if (searchInput) {
+        searchInput.addEventListener('input', applyFilters);
+    }
+    
+    filterCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', applyFilters);
+    });
+    
+    if (clearFiltersBtn) {
+        clearFiltersBtn.addEventListener('click', () => {
+            filterCheckboxes.forEach(cb => cb.checked = false);
+            if (searchInput) searchInput.value = '';
+            applyFilters();
+        });
+    }
+    
+    // Back button functionality
+    if (backBtn) {
+        backBtn.addEventListener('click', () => {
+            const dashboardView = document.getElementById('dashboard-view');
+            const projectsView = document.getElementById('projects-view');
+            
+            if (dashboardView && projectsView) {
+                dashboardView.style.display = 'none';
+                projectsView.style.display = 'block';
+            }
         });
     }
 }
@@ -930,9 +982,35 @@ async function fetchDuoStats(retryCount = 0) {
 function generateIdentityDashboardHTML() {
     return `
         <div class="identity-dashboard" id="identity-monitoring-section">
-            <!-- Search Bar (Full Width) -->
-            <div class="identity-search-section">
+            <!-- Dashboard Header with Back Button and Title -->
+            <div class="identity-dashboard-header">
+                <div class="identity-header-left">
+                    <button id="btn-back-identity" class="btn-back-identity">
+                        <i class="fas fa-arrow-left"></i> Back
+                    </button>
+                    <h2 class="identity-dashboard-title">Identity & Access</h2>
+                </div>
+            </div>
+
+            <!-- Search Bar and Filters -->
+            <div class="identity-controls-section">
                 <input type="text" id="user-search-input" class="identity-search-bar" placeholder="Search by name or email...">
+                
+                <div class="identity-filters">
+                    <label class="filter-checkbox">
+                        <input type="checkbox" id="filter-internal" data-filter="internal">
+                        <span>Internal Users</span>
+                    </label>
+                    <label class="filter-checkbox">
+                        <input type="checkbox" id="filter-external" data-filter="external">
+                        <span>External Users</span>
+                    </label>
+                    <label class="filter-checkbox">
+                        <input type="checkbox" id="filter-missing-data" data-filter="missing-data">
+                        <span>Missing Data</span>
+                    </label>
+                    <button id="btn-clear-filters" class="btn-clear-filters">Clear Filters</button>
+                </div>
             </div>
 
             <!-- Users Table (Full Width) -->
