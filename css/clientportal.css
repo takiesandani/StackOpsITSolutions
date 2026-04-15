@@ -3298,7 +3298,7 @@
     border-radius: 6px;
     color: rgba(0, 110, 255, 0.9);
     cursor: pointer;
-    font-weight: 600;
+    font-weight: 200;
     font-size: 0.9rem;
     transition: all 0.3s ease;
 }
@@ -3315,7 +3315,7 @@
 
 .identity-dashboard-title {
     font-size: 1.8rem;
-    font-weight: 700;
+    font-weight: 200;
     color: #e0e0e0;
     margin: 0;
     letter-spacing: 0.5px;
@@ -3366,7 +3366,7 @@
     color: rgba(255, 255, 255, 0.6);
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    font-weight: 600;
+    font-weight: 200;
 }
 
 .stat-card-value {
@@ -3450,7 +3450,7 @@
     border-radius: 6px;
     color: rgba(220, 53, 69, 0.9);
     cursor: pointer;
-    font-weight: 600;
+    font-weight: 200;
     font-size: 0.85rem;
     transition: all 0.3s ease;
     margin-left: auto;
@@ -3487,7 +3487,7 @@
     padding: 12px 10px;
     text-align: left;
     color: rgba(0, 110, 255, 0.9);
-    font-weight: 600;
+    font-weight: 200;
     font-size: 0.85rem;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -3516,7 +3516,7 @@
     padding: 6px 12px;
     border-radius: 20px;
     font-size: 0.75rem;
-    font-weight: 600;
+    font-weight: 200;
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
@@ -3538,7 +3538,7 @@
     padding: 6px 12px;
     border-radius: 20px;
     font-size: 0.75rem;
-    font-weight: 600;
+    font-weight: 200;
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
@@ -3580,7 +3580,7 @@
 
 .chart-card-title {
     font-size: 0.9rem;
-    font-weight: 600;
+    font-weight: 200;
     color: #d1d5db;
     margin: 0 0 10px 0;
     text-align: center;
@@ -3628,14 +3628,14 @@
 
 .health-score-value {
     font-size: 2.2rem;
-    font-weight: 700;
+    font-weight: 200;
     color: #84cc16;
 }
 
 .health-score-label {
     font-size: 0.9rem;
     color: #999;
-    font-weight: 500;
+    font-weight: 200;
 }
 
 .health-score-bar {
@@ -3677,7 +3677,7 @@
 
 .missing-count {
     font-size: 1.2rem;
-    font-weight: 700;
+    font-weight: 200;
     color: #f87171;
     background: rgba(220, 53, 69, 0.15);
     padding: 2px 8px;

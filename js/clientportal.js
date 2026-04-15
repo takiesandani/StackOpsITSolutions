@@ -377,8 +377,8 @@ function initializeIdentityInsights() {
     
     // Calculate data for insights
     const missingJobTitles = microsoftUsersData.filter(u => !u.jobTitle || u.jobTitle === 'No Title' || u.jobTitle.trim() === '').length;
-    const missingPhones = microsoftUsersData.filter(u => !u.mobilePhone || (typeof u.mobilePhone === 'string' && u.mobilePhone.trim() === '')).length;
-    const completeProfiles = microsoftUsersData.filter(u => (u.jobTitle && u.jobTitle !== 'No Title' && u.jobTitle.trim() !== '') && (u.mobilePhone && typeof u.mobilePhone === 'string' && u.mobilePhone.trim() !== '')).length;
+    const missingPhones = microsoftUsersData.filter(u => !u.mobilePhone || u.mobilePhone === 'N/A' || (typeof u.mobilePhone === 'string' && u.mobilePhone.trim() === '')).length;
+    const completeProfiles = microsoftUsersData.filter(u => (u.jobTitle && u.jobTitle !== 'No Title' && u.jobTitle.trim() !== '') && (u.mobilePhone && u.mobilePhone !== 'N/A' && typeof u.mobilePhone === 'string' && u.mobilePhone.trim() !== '')).length;
     
     // Update missing data display
     document.getElementById('missingJobTitles').textContent = missingJobTitles;
@@ -433,7 +433,7 @@ function initializeIdentityCharts() {
         renderJobTitleChart(jobTitleLabels, jobTitleData);
         
         // Contact Completeness
-        const hasPhone = microsoftUsersData.filter(u => u.mobilePhone && typeof u.mobilePhone === 'string' && u.mobilePhone.trim() !== '').length;
+        const hasPhone = microsoftUsersData.filter(u => u.mobilePhone && u.mobilePhone !== 'N/A' && typeof u.mobilePhone === 'string' && u.mobilePhone.trim() !== '').length;
         const noPhone = microsoftUsersData.length - hasPhone;
         renderContactChart(hasPhone, noPhone);
         
@@ -2392,9 +2392,9 @@ function populateMicrosoftUsersTable(users) {
     const rows = users.map(user => `
         <tr>
             <td>${user.displayName}</td>
-            <td>${user.email}</td>
+            <td>${user.mail}</td>
             <td>${user.jobTitle}</td>
-            <td>${user.phone}</td>
+            <td>${user.mobilePhone}</td>
             <td>
                 <span class="user-type ${user.isExternal ? 'external' : 'internal'}">
                     ${user.isExternal ? 'External' : 'Internal'}
