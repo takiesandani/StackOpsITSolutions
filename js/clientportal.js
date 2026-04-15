@@ -285,11 +285,12 @@ function initializeIdentityDashboard() {
         dashboardView.innerHTML = generateIdentityDashboardHTML();
     }
     
-    // Initialize table population and search
+    // Initialize table population, search, and insights
     setTimeout(() => {
-        console.log('[Identity Dashboard] Initializing table and search');
+        console.log('[Identity Dashboard] Initializing table, search, and insights');
         populateIdentityTable();
         setupIdentitySearch();
+        initializeIdentityInsights();
     }, 100);
 }
 
@@ -364,6 +365,234 @@ function setupIdentitySearch() {
             }
         });
     }
+}
+
+function initializeIdentityInsights() {
+    console.log('[Identity Insights] Initializing insights and charts...');
+    
+    if (microsoftUsersData.length === 0) {
+        console.warn('[Identity Insights] No user data available');
+        return;
+    }
+    
+    // Calculate data for insights
+    const missingJobTitles = microsoftUsersData.filter(u => !u.jobTitle || u.jobTitle === 'No Title').length;
+    const missingPhones = microsoftUsersData.filter(u => !u.mobilePhone).length;
+    const completeProfiles = microsoftUsersData.length - Math.max(missingJobTitles, missingPhones);
+    
+    // Update missing data display
+    document.getElementById('missingJobTitles').textContent = missingJobTitles;
+    document.getElementById('missingPhones').textContent = missingPhones;
+    document.getElementById('completeProfiles').textContent = completeProfiles;
+    
+    // Calculate and update health score
+    const healthScore = Math.round((completeProfiles / microsoftUsersData.length) * 100);
+    document.getElementById('healthScoreValue').textContent = healthScore;
+    document.getElementById('healthScoreProgress').style.width = healthScore + '%';
+    
+    // Update risk panel
+    const hasBreakGlass = microsoftUsersData.some(u => u.mail?.toLowerCase().includes('break glass'));
+    const riskCriticalDiv = document.getElementById('riskCritical');
+    if (hasBreakGlass && riskCriticalDiv) {
+        riskCriticalDiv.style.display = 'flex';
+    }
+    
+    const riskMediumText = document.getElementById('riskMediumText');
+    if (riskMediumText) {
+        riskMediumText.textContent = `Medium Risk: ${missingJobTitles} users without job titles, ${missingPhones} users without phone`;
+    }
+    
+    // Initialize charts
+    initializeIdentityCharts();
+}
+
+function initializeIdentityCharts() {
+    console.log('[Identity Charts] Initializing all charts...');
+    
+    // Job Title Distribution
+    const jobTitleDistribution = {};
+    microsoftUsersData.forEach(u => {
+        const title = (u.jobTitle && u.jobTitle !== 'No Title') ? u.jobTitle : 'Missing';
+        jobTitleDistribution[title] = (jobTitleDistribution[title] || 0) + 1;
+    });
+    
+    // Get top 8 job titles
+    const sortedTitles = Object.entries(jobTitleDistribution).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    const jobTitleLabels = sortedTitles.map(t => t[0].substring(0, 15));
+    const jobTitleData = sortedTitles.map(t => t[1]);
+    
+    renderJobTitleChart(jobTitleLabels, jobTitleData);
+    
+    // Contact Completeness
+    const hasPhone = microsoftUsersData.filter(u => u.mobilePhone).length;
+    const noPhone = microsoftUsersData.length - hasPhone;
+    renderContactChart(hasPhone, noPhone);
+    
+    // User Type Distribution
+    const internalCount = microsoftUsersData.filter(u => !u.isExternal).length;
+    const externalCount = microsoftUsersData.filter(u => u.isExternal).length;
+    renderUserTypeChart(internalCount, externalCount);
+    
+    // Active Status
+    const activeCount = microsoftUsersData.length;
+    const inactiveCount = 0;
+    renderActiveStatusChart(activeCount, inactiveCount);
+}
+
+function renderJobTitleChart(labels, data) {
+    const ctx = document.getElementById('jobTitleChart');
+    if (!ctx) return;
+    
+    if (window.jobTitleChartInstance && typeof window.jobTitleChartInstance.destroy === 'function') {
+        window.jobTitleChartInstance.destroy();
+    }
+    
+    window.jobTitleChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Count',
+                data: data,
+                backgroundColor: 'rgba(0, 110, 255, 0.6)',
+                borderColor: 'rgba(0, 110, 255, 1)',
+                borderWidth: 1,
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            indexAxis: 'y',
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    ticks: { color: '#999' },
+                    grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                },
+                y: {
+                    ticks: { color: '#999', font: { size: 11 } },
+                    grid: { display: false }
+                }
+            }
+        }
+    });
+}
+
+function renderContactChart(hasPhone, noPhone) {
+    const ctx = document.getElementById('contactChart');
+    if (!ctx) return;
+    
+    if (window.contactChartInstance && typeof window.contactChartInstance.destroy === 'function') {
+        window.contactChartInstance.destroy();
+    }
+    
+    window.contactChartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Has Phone', 'Missing Phone'],
+            datasets: [{
+                data: [hasPhone, noPhone],
+                backgroundColor: [
+                    'rgba(34, 197, 94, 0.7)',
+                    'rgba(220, 53, 69, 0.7)'
+                ],
+                borderColor: [
+                    'rgba(34, 197, 94, 1)',
+                    'rgba(220, 53, 69, 1)'
+                ],
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    labels: { color: '#999', font: { size: 11 } }
+                }
+            }
+        }
+    });
+}
+
+function renderUserTypeChart(internal, external) {
+    const ctx = document.getElementById('userTypeChart');
+    if (!ctx) return;
+    
+    if (window.userTypeChartInstance && typeof window.userTypeChartInstance.destroy === 'function') {
+        window.userTypeChartInstance.destroy();
+    }
+    
+    window.userTypeChartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Internal', 'External'],
+            datasets: [{
+                data: [internal, external],
+                backgroundColor: [
+                    'rgba(34, 197, 94, 0.7)',
+                    'rgba(249, 115, 22, 0.7)'
+                ],
+                borderColor: [
+                    'rgba(34, 197, 94, 1)',
+                    'rgba(249, 115, 22, 1)'
+                ],
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    labels: { color: '#999', font: { size: 11 } }
+                }
+            }
+        }
+    });
+}
+
+function renderActiveStatusChart(active, inactive) {
+    const ctx = document.getElementById('activeStatusChart');
+    if (!ctx) return;
+    
+    if (window.activeStatusChartInstance && typeof window.activeStatusChartInstance.destroy === 'function') {
+        window.activeStatusChartInstance.destroy();
+    }
+    
+    window.activeStatusChartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Active', 'Inactive'],
+            datasets: [{
+                data: [active, inactive],
+                backgroundColor: [
+                    'rgba(34, 197, 94, 0.7)',
+                    'rgba(107, 114, 128, 0.7)'
+                ],
+                borderColor: [
+                    'rgba(34, 197, 94, 1)',
+                    'rgba(107, 114, 128, 1)'
+                ],
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    labels: { color: '#999', font: { size: 11 } }
+                }
+            }
+        }
+    });
 }
 
 function setupEventListeners() {
@@ -980,6 +1209,12 @@ async function fetchDuoStats(retryCount = 0) {
 
 /* IDENTITY & ACCESS DASHBOARD */
 function generateIdentityDashboardHTML() {
+    // Calculate stats
+    const totalUsers = microsoftUsersData.length;
+    const internalUsers = microsoftUsersData.filter(u => !u.isExternal).length;
+    const externalUsers = microsoftUsersData.filter(u => u.isExternal).length;
+    const activeUsers = totalUsers; // All users are active
+    
     return `
         <div class="identity-dashboard" id="identity-monitoring-section">
             <!-- Dashboard Header with Back Button and Title -->
@@ -989,6 +1224,49 @@ function generateIdentityDashboardHTML() {
                         <i class="fas fa-arrow-left"></i> Back
                     </button>
                     <h2 class="identity-dashboard-title">Identity & Access</h2>
+                </div>
+            </div>
+
+            <!-- Overview Stats (Key Metrics) -->
+            <div class="identity-stats-cards">
+                <div class="identity-stat-card">
+                    <div class="stat-card-icon" style="background: rgba(0, 110, 255, 0.2); color: rgba(0, 110, 255, 0.9);">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <div class="stat-card-content">
+                        <div class="stat-card-label">Total Users</div>
+                        <div class="stat-card-value">${totalUsers}</div>
+                    </div>
+                </div>
+
+                <div class="identity-stat-card">
+                    <div class="stat-card-icon" style="background: rgba(34, 197, 94, 0.2); color: rgba(34, 197, 94, 0.9);">
+                        <i class="fas fa-user-tie"></i>
+                    </div>
+                    <div class="stat-card-content">
+                        <div class="stat-card-label">Internal Users</div>
+                        <div class="stat-card-value">${internalUsers}</div>
+                    </div>
+                </div>
+
+                <div class="identity-stat-card">
+                    <div class="stat-card-icon" style="background: rgba(249, 115, 22, 0.2); color: rgba(249, 115, 22, 0.9);">
+                        <i class="fas fa-user-secret"></i>
+                    </div>
+                    <div class="stat-card-content">
+                        <div class="stat-card-label">External Users</div>
+                        <div class="stat-card-value">${externalUsers}</div>
+                    </div>
+                </div>
+
+                <div class="identity-stat-card">
+                    <div class="stat-card-icon" style="background: rgba(132, 204, 22, 0.2); color: rgba(132, 204, 22, 0.9);">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <div class="stat-card-content">
+                        <div class="stat-card-label">Active Users</div>
+                        <div class="stat-card-value">${activeUsers}</div>
+                    </div>
                 </div>
             </div>
 
@@ -1030,6 +1308,99 @@ function generateIdentityDashboardHTML() {
                         <!-- Users will be populated here -->
                     </tbody>
                 </table>
+            </div>
+
+            <!-- Charts & Insights Section Below Table -->
+            <div class="identity-insights-section">
+                <!-- Row 1: Charts -->
+                <div class="identity-charts-grid">
+                    <!-- Job Title Distribution -->
+                    <div class="identity-chart-card">
+                        <h4 class="chart-card-title">Job Title Distribution</h4>
+                        <div class="chart-wrapper">
+                            <canvas id="jobTitleChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Contact Completeness -->
+                    <div class="identity-chart-card">
+                        <h4 class="chart-card-title">Contact Completeness</h4>
+                        <div class="chart-wrapper">
+                            <canvas id="contactChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- User Type Distribution -->
+                    <div class="identity-chart-card">
+                        <h4 class="chart-card-title">User Type Distribution</h4>
+                        <div class="chart-wrapper">
+                            <canvas id="userTypeChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Active Status -->
+                    <div class="identity-chart-card">
+                        <h4 class="chart-card-title">Active Status</h4>
+                        <div class="chart-wrapper">
+                            <canvas id="activeStatusChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Row 2: Health Score & Missing Data -->
+                <div class="identity-health-section">
+                    <!-- User Health Score -->
+                    <div class="identity-health-card">
+                        <h4 class="chart-card-title">User Data Health Score</h4>
+                        <div class="health-score-display">
+                            <div class="health-score-gauge">
+                                <div class="health-score-value" id="healthScoreValue">0</div>
+                                <div class="health-score-label">/ 100</div>
+                            </div>
+                            <div class="health-score-bar">
+                                <div class="health-score-progress" id="healthScoreProgress" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Missing Data Breakdown -->
+                    <div class="identity-health-card">
+                        <h4 class="chart-card-title">Missing Data Breakdown</h4>
+                        <div class="missing-data-list">
+                            <div class="missing-data-item">
+                                <span class="missing-label">Missing Job Titles</span>
+                                <span class="missing-count" id="missingJobTitles">0</span>
+                            </div>
+                            <div class="missing-data-item">
+                                <span class="missing-label">Missing Phone Numbers</span>
+                                <span class="missing-count" id="missingPhones">0</span>
+                            </div>
+                            <div class="missing-data-item">
+                                <span class="missing-label">Complete Profiles</span>
+                                <span class="missing-count" id="completeProfiles">0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Row 3: Risk Panel -->
+                <div class="identity-risk-panel">
+                    <h4 class="chart-card-title">⚠️ Risk & Security Insights</h4>
+                    <div class="risk-items">
+                        <div id="riskCritical" class="risk-item risk-critical" style="display:none;">
+                            <i class="fas fa-exclamation-circle"></i>
+                            <span id="riskCriticalText">Critical: Break glass account detected</span>
+                        </div>
+                        <div class="risk-item risk-medium">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <span id="riskMediumText">Medium Risk: Users without job titles and phone numbers</span>
+                        </div>
+                        <div class="risk-item risk-low">
+                            <i class="fas fa-info-circle"></i>
+                            <span>Low Risk: Shared mailboxes detected in user list</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     `;

@@ -3320,6 +3320,60 @@
     letter-spacing: 0.5px;
 }
 
+.identity-stats-cards {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    width: 95%;
+    margin: 0 auto 15px;
+}
+
+.identity-stat-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+.identity-stat-card:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+.stat-card-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
+.stat-card-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.stat-card-label {
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.6);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+
+.stat-card-value {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #e0e0e0;
+}
+
 .identity-controls-section {
     display: flex;
     flex-direction: column;
@@ -3494,7 +3548,276 @@
     border: 1px solid rgba(34, 197, 94, 0.3);
 }
 
+/* Identity Insights Section */
+.identity-insights-section {
+    width: 95%;
+    margin: 20px auto 0;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* Charts Grid */
+.identity-charts-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+}
+
+.identity-chart-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 12px;
+    transition: all 0.3s ease;
+}
+
+.identity-chart-card:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(0, 110, 255, 0.3);
+}
+
+.chart-card-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #d1d5db;
+    margin: 0 0 10px 0;
+    text-align: center;
+}
+
+.chart-wrapper {
+    position: relative;
+    height: 200px;
+}
+
+/* Health Section */
+.identity-health-section {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+}
+
+.identity-health-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 14px;
+    transition: all 0.3s ease;
+}
+
+.identity-health-card:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(0, 110, 255, 0.3);
+}
+
+/* Health Score Display */
+.health-score-display {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+}
+
+.health-score-gauge {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    justify-content: center;
+}
+
+.health-score-value {
+    font-size: 2.2rem;
+    font-weight: 700;
+    color: #84cc16;
+}
+
+.health-score-label {
+    font-size: 0.9rem;
+    color: #999;
+    font-weight: 500;
+}
+
+.health-score-bar {
+    width: 100%;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.health-score-progress {
+    height: 100%;
+    background: linear-gradient(90deg, #ffb366 0%, #84cc16 100%);
+    transition: width 0.5s ease;
+    border-radius: 4px;
+}
+
+/* Missing Data List */
+.missing-data-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.missing-data-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 6px;
+    border-left: 3px solid rgba(220, 53, 69, 0.3);
+}
+
+.missing-label {
+    font-size: 0.85rem;
+    color: #d1d5db;
+}
+
+.missing-count {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #f87171;
+    background: rgba(220, 53, 69, 0.15);
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+
+/* Risk Panel */
+.identity-risk-panel {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 14px;
+    transition: all 0.3s ease;
+}
+
+.identity-risk-panel:hover {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: rgba(220, 53, 69, 0.2);
+}
+
+.risk-items {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.risk-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+
+.risk-critical {
+    background: rgba(220, 53, 69, 0.15);
+    border-left: 3px solid rgba(220, 53, 69, 0.6);
+    color: #f87171;
+}
+
+.risk-critical i {
+    color: #f87171;
+    font-size: 1rem;
+}
+
+.risk-medium {
+    background: rgba(249, 115, 22, 0.15);
+    border-left: 3px solid rgba(249, 115, 22, 0.6);
+    color: #ffb366;
+}
+
+.risk-medium i {
+    color: #ffb366;
+    font-size: 1rem;
+}
+
+.risk-low {
+    background: rgba(107, 114, 128, 0.15);
+    border-left: 3px solid rgba(107, 114, 128, 0.6);
+    color: #cbd5e1;
+}
+
+.risk-low i {
+    color: #cbd5e1;
+    font-size: 1rem;
+}
+
 /* Mobile Responsive - Identity Dashboard */
+@media (max-width: 768px) {
+    .identity-charts-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+    }
+
+    .identity-chart-card {
+        padding: 10px;
+    }
+
+    .chart-wrapper {
+        height: 150px;
+    }
+
+    .chart-card-title {
+        font-size: 0.8rem;
+        margin-bottom: 8px;
+    }
+
+    .identity-health-section {
+        grid-template-columns: 1fr;
+    }
+
+    .health-score-value {
+        font-size: 1.8rem;
+    }
+
+    .missing-data-item {
+        padding: 6px;
+        font-size: 0.8rem;
+    }
+
+    .missing-count {
+        font-size: 1rem;
+        padding: 2px 6px;
+    }
+
+    .risk-item {
+        padding: 8px 10px;
+        font-size: 0.8rem;
+    }
+}
+
+@media (max-width: 430px) {
+    .identity-charts-grid {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+
+    .chart-wrapper {
+        height: 180px;
+    }
+
+    .identity-health-section {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+
+    .health-score-value {
+        font-size: 1.6rem;
+    }
+
+    .risk-item {
+        padding: 8px;
+        font-size: 0.75rem;
+    }
+
+    .risk-item i {
+        font-size: 0.9rem;
+    }
+}
+
 @media (max-width: 768px) {
     .identity-dashboard {
         padding: 15px;
@@ -3503,6 +3826,30 @@
 
     .identity-dashboard-title {
         font-size: 1.4rem;
+    }
+
+    .identity-stats-cards {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+        margin-bottom: 12px;
+    }
+
+    .identity-stat-card {
+        padding: 12px 10px;
+    }
+
+    .stat-card-icon {
+        width: 36px;
+        height: 36px;
+        font-size: 1rem;
+    }
+
+    .stat-card-label {
+        font-size: 0.7rem;
+    }
+
+    .stat-card-value {
+        font-size: 1.2rem;
     }
 
     .identity-controls-section {
@@ -3571,6 +3918,30 @@
 
     .identity-dashboard-title {
         font-size: 1.2rem;
+    }
+
+    .identity-stats-cards {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+
+    .identity-stat-card {
+        padding: 10px 8px;
+    }
+
+    .stat-card-icon {
+        width: 32px;
+        height: 32px;
+        font-size: 0.9rem;
+    }
+
+    .stat-card-label {
+        font-size: 0.65rem;
+    }
+
+    .stat-card-value {
+        font-size: 1.1rem;
     }
 
     .identity-controls-section {
