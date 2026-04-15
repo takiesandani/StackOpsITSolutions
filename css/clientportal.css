@@ -3265,7 +3265,8 @@
    ============================================ */
 
 .identity-dashboard {
-    width: 100%;
+    width: 70%;
+    margin: 0 auto;
     display: flex;
     flex-direction: column;
     gap: 20px;
@@ -3324,7 +3325,7 @@
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 12px;
-    width: 95%;
+    width: 100%;
     margin: 0 auto 15px;
 }
 
@@ -3370,7 +3371,7 @@
 
 .stat-card-value {
     font-size: 1.4rem;
-    font-weight: 700;
+    font-weight: 200;
     color: #e0e0e0;
 }
 
@@ -3462,7 +3463,7 @@
 }
 
 .identity-users-table-container {
-    width: 85%;
+    width: 100%;
     margin: 0 auto;
     overflow-x: auto;
     border-radius: 8px;
@@ -3550,7 +3551,7 @@
 
 /* Identity Insights Section */
 .identity-insights-section {
-    width: 95%;
+    width: 100%;
     margin: 20px auto 0;
     display: flex;
     flex-direction: column;
@@ -3869,7 +3870,7 @@
     }
 
     .identity-users-table-container {
-        width: 98%;
+        width: 100%;
         margin: 0 auto;
     }
 

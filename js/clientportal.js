@@ -376,9 +376,9 @@ function initializeIdentityInsights() {
     }
     
     // Calculate data for insights
-    const missingJobTitles = microsoftUsersData.filter(u => !u.jobTitle || u.jobTitle === 'No Title').length;
-    const missingPhones = microsoftUsersData.filter(u => !u.mobilePhone).length;
-    const completeProfiles = microsoftUsersData.length - Math.max(missingJobTitles, missingPhones);
+    const missingJobTitles = microsoftUsersData.filter(u => !u.jobTitle || u.jobTitle === 'No Title' || u.jobTitle.trim() === '').length;
+    const missingPhones = microsoftUsersData.filter(u => !u.mobilePhone || (typeof u.mobilePhone === 'string' && u.mobilePhone.trim() === '')).length;
+    const completeProfiles = microsoftUsersData.filter(u => (u.jobTitle && u.jobTitle !== 'No Title' && u.jobTitle.trim() !== '') && (u.mobilePhone && typeof u.mobilePhone === 'string' && u.mobilePhone.trim() !== '')).length;
     
     // Update missing data display
     document.getElementById('missingJobTitles').textContent = missingJobTitles;
@@ -409,38 +409,55 @@ function initializeIdentityInsights() {
 function initializeIdentityCharts() {
     console.log('[Identity Charts] Initializing all charts...');
     
-    // Job Title Distribution
-    const jobTitleDistribution = {};
-    microsoftUsersData.forEach(u => {
-        const title = (u.jobTitle && u.jobTitle !== 'No Title') ? u.jobTitle : 'Missing';
-        jobTitleDistribution[title] = (jobTitleDistribution[title] || 0) + 1;
-    });
+    // Ensure Chart.js is loaded
+    if (typeof Chart === 'undefined') {
+        console.warn('[Identity Charts] Chart.js not loaded yet, retrying in 100ms...');
+        setTimeout(initializeIdentityCharts, 100);
+        return;
+    }
     
-    // Get top 8 job titles
-    const sortedTitles = Object.entries(jobTitleDistribution).sort((a, b) => b[1] - a[1]).slice(0, 8);
-    const jobTitleLabels = sortedTitles.map(t => t[0].substring(0, 15));
-    const jobTitleData = sortedTitles.map(t => t[1]);
-    
-    renderJobTitleChart(jobTitleLabels, jobTitleData);
-    
-    // Contact Completeness
-    const hasPhone = microsoftUsersData.filter(u => u.mobilePhone).length;
-    const noPhone = microsoftUsersData.length - hasPhone;
-    renderContactChart(hasPhone, noPhone);
-    
-    // User Type Distribution
-    const internalCount = microsoftUsersData.filter(u => !u.isExternal).length;
-    const externalCount = microsoftUsersData.filter(u => u.isExternal).length;
-    renderUserTypeChart(internalCount, externalCount);
-    
-    // Active Status
-    const activeCount = microsoftUsersData.length;
-    const inactiveCount = 0;
-    renderActiveStatusChart(activeCount, inactiveCount);
+    // Give DOM time to settle
+    setTimeout(() => {
+        // Job Title Distribution
+        const jobTitleDistribution = {};
+        microsoftUsersData.forEach(u => {
+            const title = (u.jobTitle && u.jobTitle !== 'No Title') ? u.jobTitle : 'Missing';
+            jobTitleDistribution[title] = (jobTitleDistribution[title] || 0) + 1;
+        });
+        
+        // Get top 8 job titles
+        const sortedTitles = Object.entries(jobTitleDistribution).sort((a, b) => b[1] - a[1]).slice(0, 8);
+        const jobTitleLabels = sortedTitles.map(t => t[0].substring(0, 15));
+        const jobTitleData = sortedTitles.map(t => t[1]);
+        
+        renderJobTitleChart(jobTitleLabels, jobTitleData);
+        
+        // Contact Completeness
+        const hasPhone = microsoftUsersData.filter(u => u.mobilePhone && typeof u.mobilePhone === 'string' && u.mobilePhone.trim() !== '').length;
+        const noPhone = microsoftUsersData.length - hasPhone;
+        renderContactChart(hasPhone, noPhone);
+        
+        // User Type Distribution
+        const internalCount = microsoftUsersData.filter(u => !u.isExternal).length;
+        const externalCount = microsoftUsersData.filter(u => u.isExternal).length;
+        renderUserTypeChart(internalCount, externalCount);
+        
+        // Active Status
+        const activeCount = microsoftUsersData.length;
+        const inactiveCount = 0;
+        renderActiveStatusChart(activeCount, inactiveCount);
+    }, 50);
 }
 
 function renderJobTitleChart(labels, data) {
-    const ctx = document.getElementById('jobTitleChart');
+    const canvasElement = document.getElementById('jobTitleChart');
+    if (!canvasElement) return;
+    
+    // Set canvas dimensions
+    canvasElement.width = canvasElement.parentElement.clientWidth;
+    canvasElement.height = 250;
+    
+    const ctx = canvasElement.getContext('2d');
     if (!ctx) return;
     
     if (window.jobTitleChartInstance && typeof window.jobTitleChartInstance.destroy === 'function') {
@@ -485,7 +502,14 @@ function renderJobTitleChart(labels, data) {
 }
 
 function renderContactChart(hasPhone, noPhone) {
-    const ctx = document.getElementById('contactChart');
+    const canvasElement = document.getElementById('contactChart');
+    if (!canvasElement) return;
+    
+    // Set canvas dimensions
+    canvasElement.width = canvasElement.parentElement.clientWidth;
+    canvasElement.height = 250;
+    
+    const ctx = canvasElement.getContext('2d');
     if (!ctx) return;
     
     if (window.contactChartInstance && typeof window.contactChartInstance.destroy === 'function') {
@@ -522,7 +546,14 @@ function renderContactChart(hasPhone, noPhone) {
 }
 
 function renderUserTypeChart(internal, external) {
-    const ctx = document.getElementById('userTypeChart');
+    const canvasElement = document.getElementById('userTypeChart');
+    if (!canvasElement) return;
+    
+    // Set canvas dimensions
+    canvasElement.width = canvasElement.parentElement.clientWidth;
+    canvasElement.height = 250;
+    
+    const ctx = canvasElement.getContext('2d');
     if (!ctx) return;
     
     if (window.userTypeChartInstance && typeof window.userTypeChartInstance.destroy === 'function') {
@@ -559,7 +590,14 @@ function renderUserTypeChart(internal, external) {
 }
 
 function renderActiveStatusChart(active, inactive) {
-    const ctx = document.getElementById('activeStatusChart');
+    const canvasElement = document.getElementById('activeStatusChart');
+    if (!canvasElement) return;
+    
+    // Set canvas dimensions
+    canvasElement.width = canvasElement.parentElement.clientWidth;
+    canvasElement.height = 250;
+    
+    const ctx = canvasElement.getContext('2d');
     if (!ctx) return;
     
     if (window.activeStatusChartInstance && typeof window.activeStatusChartInstance.destroy === 'function') {
@@ -1318,7 +1356,7 @@ function generateIdentityDashboardHTML() {
                     <div class="identity-chart-card">
                         <h4 class="chart-card-title">Job Title Distribution</h4>
                         <div class="chart-wrapper">
-                            <canvas id="jobTitleChart"></canvas>
+                            <canvas id="jobTitleChart" width="300" height="250"></canvas>
                         </div>
                     </div>
 
@@ -1326,7 +1364,7 @@ function generateIdentityDashboardHTML() {
                     <div class="identity-chart-card">
                         <h4 class="chart-card-title">Contact Completeness</h4>
                         <div class="chart-wrapper">
-                            <canvas id="contactChart"></canvas>
+                            <canvas id="contactChart" width="300" height="250"></canvas>
                         </div>
                     </div>
 
@@ -1334,7 +1372,7 @@ function generateIdentityDashboardHTML() {
                     <div class="identity-chart-card">
                         <h4 class="chart-card-title">User Type Distribution</h4>
                         <div class="chart-wrapper">
-                            <canvas id="userTypeChart"></canvas>
+                            <canvas id="userTypeChart" width="300" height="250"></canvas>
                         </div>
                     </div>
 
@@ -1342,7 +1380,7 @@ function generateIdentityDashboardHTML() {
                     <div class="identity-chart-card">
                         <h4 class="chart-card-title">Active Status</h4>
                         <div class="chart-wrapper">
-                            <canvas id="activeStatusChart"></canvas>
+                            <canvas id="activeStatusChart" width="300" height="250"></canvas>
                         </div>
                     </div>
                 </div>
@@ -1404,133 +1442,6 @@ function generateIdentityDashboardHTML() {
             </div>
         </div>
     `;
-}
-
-function initializeIdentityCharts() {
-    console.log('[Identity Charts] Initializing charts...');
-    
-    // Calculate statistics
-    const internalUsers = microsoftUsersData.filter(u => !u.isExternal).length;
-    const externalUsers = microsoftUsersData.filter(u => u.isExternal).length;
-    
-    // Destroy existing charts if they exist and are valid Chart objects
-    if (window.identityPieChart && typeof window.identityPieChart.destroy === 'function') {
-        try {
-            window.identityPieChart.destroy();
-            console.log('[Identity Charts] Previous pie chart destroyed');
-        } catch (e) {
-            console.warn('[Identity Charts] Error destroying pie chart:', e.message);
-        }
-    }
-    if (window.identityLineChart && typeof window.identityLineChart.destroy === 'function') {
-        try {
-            window.identityLineChart.destroy();
-            console.log('[Identity Charts] Previous line chart destroyed');
-        } catch (e) {
-            console.warn('[Identity Charts] Error destroying line chart:', e.message);
-        }
-    }
-    
-    // Pie Chart - User Distribution
-    const pieCtx = document.getElementById('identityPieChart');
-    if (pieCtx) {
-        window.identityPieChart = new Chart(pieCtx, {
-            type: 'doughnut',
-            data: {
-                labels: ['Internal Users', 'External Users'],
-                datasets: [{
-                    data: [internalUsers, externalUsers],
-                    backgroundColor: [
-                        'rgba(0, 110, 255, 0.8)',
-                        'rgba(255, 159, 64, 0.8)'
-                    ],
-                    borderColor: [
-                        'rgba(0, 110, 255, 1)',
-                        'rgba(255, 159, 64, 1)'
-                    ],
-                    borderWidth: 2
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                plugins: {
-                    legend: {
-                        labels: {
-                            color: '#94a3b8',
-                            font: { size: 12 }
-                        }
-                    }
-                }
-            }
-        });
-        console.log('[Identity Charts] Pie chart initialized');
-    }
-    
-    // Line Chart - User Activity Trend (Mock data if not available)
-    const lineCtx = document.getElementById('identityLineChart');
-    if (lineCtx) {
-        const generateTrendData = () => {
-            const today = new Date();
-            const labels = [];
-            const data = [];
-            let baseValue = microsoftUsersData.length - 10;
-            
-            for (let i = 6; i >= 0; i--) {
-                const date = new Date(today);
-                date.setDate(date.getDate() - i);
-                labels.push(date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
-                data.push(Math.max(baseValue + Math.floor(Math.random() * 8) + i, 0));
-            }
-            
-            return { labels, data };
-        };
-        
-        const { labels, data } = generateTrendData();
-        
-        window.identityLineChart = new Chart(lineCtx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Total Users',
-                    data: data,
-                    borderColor: 'rgba(0, 110, 255, 1)',
-                    backgroundColor: 'rgba(0, 110, 255, 0.1)',
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.4,
-                    pointRadius: 3,
-                    pointBackgroundColor: 'rgba(0, 110, 255, 1)',
-                    pointBorderWidth: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                plugins: {
-                    legend: {
-                        labels: {
-                            color: '#94a3b8',
-                            font: { size: 12 }
-                        }
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: { color: '#94a3b8' },
-                        grid: { color: 'rgba(255, 255, 255, 0.05)' }
-                    },
-                    x: {
-                        ticks: { color: '#94a3b8' },
-                        grid: { color: 'rgba(255, 255, 255, 0.05)' }
-                    }
-                }
-            }
-        });
-        console.log('[Identity Charts] Line chart initialized');
-    }
 }
 
 function populateIdentityTable() {
