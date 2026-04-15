@@ -29,7 +29,7 @@ const mockProjects = [
     {
         id: 2,
         name: "Identity & Access",
-        type: "Microsoft 365 security & health",
+        type: "User Management & Access Control",
         status: "active",
         risks: { critical: 0, high: 0, medium: 0 },
         securityScore: 0,

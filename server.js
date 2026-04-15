@@ -4186,9 +4186,9 @@ app.get('/api/microsoft-users', authenticateToken, async (req, res) => {
         const processedUsers = users.map(user => ({
           id: user.id,
           displayName: user.displayName || 'Unknown User',
-          email: user.mail || user.userPrincipalName || 'N/A',
+          mail: user.mail || user.userPrincipalName || 'N/A',
           jobTitle: user.jobTitle || 'No Title',
-          phone: user.mobilePhone || 'N/A',
+          mobilePhone: user.mobilePhone || 'N/A',
           userPrincipalName: user.userPrincipalName,
           isExternal: user.userPrincipalName && user.userPrincipalName.includes('#EXT#'),
           status: 'active',
