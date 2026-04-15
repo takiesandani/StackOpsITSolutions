@@ -3259,3 +3259,189 @@
         font-size: 0.9rem;
     }
 }
+
+/* ============================================
+   IDENTITY & ACCESS DASHBOARD STYLES
+   ============================================ */
+
+.identity-dashboard {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 20px;
+}
+
+.identity-search-section {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    margin-bottom: 10px;
+}
+
+.identity-search-bar {
+    width: 100%;
+    padding: 12px 16px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    color: #e0e0e0;
+    font-size: 0.95rem;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.identity-search-bar:focus {
+    outline: none;
+    border-color: rgba(0, 110, 255, 0.6);
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 20px rgba(0, 110, 255, 0.3);
+}
+
+.identity-search-bar::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.identity-users-table-container {
+    width: 100%;
+    overflow-x: auto;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.identity-users-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.identity-users-table thead {
+    background: rgba(0, 110, 255, 0.15);
+    border-bottom: 2px solid rgba(0, 110, 255, 0.3);
+}
+
+.identity-users-table th {
+    padding: 16px;
+    text-align: left;
+    color: rgba(0, 110, 255, 0.9);
+    font-weight: 600;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.identity-users-table tbody tr {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    transition: background-color 0.2s ease;
+}
+
+.identity-users-table tbody tr:hover {
+    background: rgba(0, 110, 255, 0.08);
+}
+
+.identity-users-table td {
+    padding: 14px 16px;
+    color: #d1d5db;
+    font-size: 0.9rem;
+    vertical-align: middle;
+}
+
+.user-type-badge {
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.user-type-badge.internal {
+    background: rgba(34, 197, 94, 0.2);
+    color: #86efac;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.user-type-badge.external {
+    background: rgba(249, 115, 22, 0.2);
+    color: #ffb366;
+    border: 1px solid rgba(249, 115, 22, 0.3);
+}
+
+.user-status-badge {
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.user-status-badge.active {
+    background: rgba(34, 197, 94, 0.2);
+    color: #86efac;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+/* Mobile Responsive - Identity Dashboard */
+@media (max-width: 768px) {
+    .identity-dashboard {
+        padding: 15px;
+        gap: 15px;
+    }
+
+    .identity-users-table {
+        font-size: 0.85rem;
+    }
+
+    .identity-users-table th {
+        padding: 12px 8px;
+        font-size: 0.8rem;
+    }
+
+    .identity-users-table td {
+        padding: 10px 8px;
+        font-size: 0.8rem;
+    }
+
+    .user-type-badge,
+    .user-status-badge {
+        padding: 4px 8px;
+        font-size: 0.65rem;
+    }
+}
+
+@media (max-width: 430px) {
+    .identity-dashboard {
+        padding: 12px;
+        gap: 12px;
+    }
+
+    .identity-search-bar {
+        padding: 10px 12px;
+        font-size: 0.85rem;
+    }
+
+    .identity-users-table {
+        font-size: 0.75rem;
+    }
+
+    .identity-users-table th {
+        padding: 10px 6px;
+        font-size: 0.7rem;
+    }
+
+    .identity-users-table td {
+        padding: 8px 6px;
+        font-size: 0.75rem;
+    }
+
+    .user-type-badge,
+    .user-status-badge {
+        padding: 3px 6px;
+        font-size: 0.6rem;
+    }
+}

@@ -279,30 +279,39 @@ function initializeIdentityDashboard() {
         return;
     }
     
-    // Clear existing content
-    const dashboardContent = document.querySelector('.monitoring-section');
-    if (dashboardContent) {
-        console.log('[Identity Dashboard] Found monitoring-section, updating content');
-        dashboardContent.innerHTML = generateIdentityDashboardHTML();
-    } else {
-        console.warn('[Identity Dashboard] monitoring-section not found, creating/finding alternative');
-        // Try to find and replace the entire dashboard content area
-        const dashboardView = document.getElementById('dashboard-view');
-        if (dashboardView) {
-            // Find any content area and replace it
-            const contentArea = dashboardView.querySelector('[class*="content"], [class*="monitoring"], .dashboard-content');
-            if (contentArea) {
-                contentArea.innerHTML = generateIdentityDashboardHTML();
-            }
-        }
+    // Update dashboard content with Identity-specific layout
+    const dashboardView = document.getElementById('dashboard-view');
+    if (dashboardView) {
+        dashboardView.innerHTML = generateIdentityDashboardHTML();
     }
     
-    // Initialize charts
+    // Initialize table population and search
     setTimeout(() => {
-        console.log('[Identity Dashboard] Initializing charts and table');
-        initializeIdentityCharts();
+        console.log('[Identity Dashboard] Initializing table and search');
         populateIdentityTable();
+        setupIdentitySearch();
     }, 100);
+}
+
+function setupIdentitySearch() {
+    const searchInput = document.getElementById('user-search-input');
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            const searchTerm = this.value.toLowerCase();
+            const rows = document.querySelectorAll('#users-table-body tr');
+            
+            rows.forEach(row => {
+                const name = row.cells[0]?.textContent.toLowerCase() || '';
+                const email = row.cells[1]?.textContent.toLowerCase() || '';
+                
+                if (name.includes(searchTerm) || email.includes(searchTerm)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        });
+    }
 }
 
 function setupEventListeners() {
@@ -919,31 +928,16 @@ async function fetchDuoStats(retryCount = 0) {
 
 /* IDENTITY & ACCESS DASHBOARD */
 function generateIdentityDashboardHTML() {
-    const internalUsers = microsoftUsersData.filter(u => !u.isExternal).length;
-    const externalUsers = microsoftUsersData.filter(u => u.isExternal).length;
-    const missingData = microsoftUsersData.filter(u => !u.jobTitle || !u.mobilePhone).length;
-    
     return `
-        <div class="monitoring-section" id="monitoring-section">
-            <!-- Search & Filters + Table Section (Priority) -->
-            <div class="management-header">
-                <div class="users-filter-section">
-                    <h3>User Management</h3>
-                    <div class="filter-controls">
-                        <input type="text" id="user-search-input" class="search-input" placeholder="Search by name or email...">
-                        <select id="user-type-filter" class="filter-select">
-                            <option value="all">All Users</option>
-                            <option value="internal">Internal Only</option>
-                            <option value="external">External Only</option>
-                            <option value="missing-data">Missing Data</option>
-                        </select>
-                    </div>
-                </div>
+        <div class="identity-dashboard" id="identity-monitoring-section">
+            <!-- Search Bar (Full Width) -->
+            <div class="identity-search-section">
+                <input type="text" id="user-search-input" class="identity-search-bar" placeholder="Search by name or email...">
             </div>
 
             <!-- Users Table (Full Width) -->
-            <div class="users-table-container">
-                <table class="users-table" id="users-table">
+            <div class="identity-users-table-container">
+                <table class="identity-users-table" id="users-table">
                     <thead>
                         <tr>
                             <th>Name</th>
@@ -958,66 +952,6 @@ function generateIdentityDashboardHTML() {
                         <!-- Users will be populated here -->
                     </tbody>
                 </table>
-            </div>
-
-            <!-- Summary Stats (Below Table) -->
-            <div class="summary-stats">
-                <div class="summary-stat-card">
-                    <div class="stat-icon-box blue">
-                        <i class="fas fa-users"></i>
-                    </div>
-                    <div class="stat-info">
-                        <h3>Total Users</h3>
-                        <p class="stat-number">${microsoftUsersData.length}</p>
-                    </div>
-                </div>
-                
-                <div class="summary-stat-card">
-                    <div class="stat-icon-box green">
-                        <i class="fas fa-user-tie"></i>
-                    </div>
-                    <div class="stat-info">
-                        <h3>Internal Users</h3>
-                        <p class="stat-number">${internalUsers}</p>
-                    </div>
-                </div>
-                
-                <div class="summary-stat-card">
-                    <div class="stat-icon-box orange">
-                        <i class="fas fa-user-secret"></i>
-                    </div>
-                    <div class="stat-info">
-                        <h3>External Users</h3>
-                        <p class="stat-number">${externalUsers}</p>
-                    </div>
-                </div>
-                
-                <div class="summary-stat-card">
-                    <div class="stat-icon-box red">
-                        <i class="fas fa-exclamation-circle"></i>
-                    </div>
-                    <div class="stat-info">
-                        <h3>Missing Data</h3>
-                        <p class="stat-number">${missingData}</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Charts Section -->
-            <div class="charts-container">
-                <div class="chart-card" id="identity-pie-chart-container">
-                    <h3 class="chart-title">User Distribution</h3>
-                    <div class="chart-wrapper">
-                        <canvas id="identityPieChart"></canvas>
-                    </div>
-                </div>
-                
-                <div class="chart-card" id="identity-line-chart-container">
-                    <h3 class="chart-title">User Activity Trend</h3>
-                    <div class="chart-wrapper">
-                        <canvas id="identityLineChart"></canvas>
-                    </div>
-                </div>
             </div>
         </div>
     `;
@@ -1151,90 +1085,49 @@ function initializeIdentityCharts() {
 }
 
 function populateIdentityTable() {
-    console.log('[Identity Table] Populating users table...');
-    console.log(`[Identity Table] Total users in microsoftUsersData: ${microsoftUsersData.length}`);
-    
     const tableBody = document.getElementById('users-table-body');
-    const searchInput = document.getElementById('user-search-input');
-    const filterSelect = document.getElementById('user-type-filter');
     
     if (!tableBody) {
         console.error('[Identity Table] Table body not found');
         return;
     }
     
-    console.log('[Identity Table] Table body found, proceeding with population');
+    console.log(`[Identity Table] Populating table with ${microsoftUsersData.length} users`);
     
-    // Function to render table
-    const renderTable = () => {
-        let filteredUsers = [...microsoftUsersData];
-        
-        // Apply search filter
-        if (searchInput && searchInput.value) {
-            const searchTerm = searchInput.value.toLowerCase();
-            filteredUsers = filteredUsers.filter(u =>
-                u.displayName.toLowerCase().includes(searchTerm) ||
-                u.mail.toLowerCase().includes(searchTerm)
-            );
-        }
-        
-        // Apply type filter
-        if (filterSelect && filterSelect.value !== 'all') {
-            if (filterSelect.value === 'internal') {
-                filteredUsers = filteredUsers.filter(u => !u.isExternal);
-            } else if (filterSelect.value === 'external') {
-                filteredUsers = filteredUsers.filter(u => u.isExternal);
-            } else if (filterSelect.value === 'missing-data') {
-                filteredUsers = filteredUsers.filter(u => !u.jobTitle || !u.mobilePhone);
-            }
-        }
-        
-        tableBody.innerHTML = '';
-        
-        if (filteredUsers.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 20px;">No users found</td></tr>`;
-            return;
-        }
-        
-        filteredUsers.forEach((user, index) => {
-            const row = document.createElement('tr');
-            const jobTitle = (user.jobTitle && user.jobTitle !== 'No Title') ? user.jobTitle : '<span style="color: #f87171;">Missing</span>';
-            const phone = (user.mobilePhone && user.mobilePhone !== 'N/A') ? user.mobilePhone : '<span style="color: #f87171;">Missing</span>';
-            row.innerHTML = `
-                <td>${user.displayName || 'N/A'}</td>
-                <td>${user.mail || user.userPrincipalName || 'N/A'}</td>
-                <td>${jobTitle}</td>
-                <td>${phone}</td>
-                <td>
-                    <span class="user-type-badge ${user.isExternal ? 'external' : 'internal'}">
-                        ${user.isExternal ? 'External' : 'Internal'}
-                    </span>
-                </td>
-                <td>
-                    <span class="user-status-badge active">Active</span>
-                </td>
-            `;
-            tableBody.appendChild(row);
-            if (index === 0) {
-                console.log('[Identity Table] First user added:', user.displayName);
-            }
-        });
-        console.log(`[Identity Table] Total rows added: ${filteredUsers.length}`);
-        console.log(`[Identity Table] Rendered ${filteredUsers.length} users`);
-    };
+    tableBody.innerHTML = '';
     
-    // Initial render
-    renderTable();
-    
-    // Add event listeners
-    if (searchInput) {
-        searchInput.addEventListener('input', renderTable);
+    if (microsoftUsersData.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 20px;">No users found</td></tr>`;
+        return;
     }
     
-    if (filterSelect) {
-        filterSelect.addEventListener('change', renderTable);
-    }
+    microsoftUsersData.forEach((user, index) => {
+        const row = document.createElement('tr');
+        const jobTitle = (user.jobTitle && user.jobTitle !== 'No Title') ? user.jobTitle : '<span style="color: #f87171;">Missing</span>';
+        const phone = (user.mobilePhone && user.mobilePhone !== 'N/A') ? user.mobilePhone : '<span style="color: #f87171;">Missing</span>';
+        row.innerHTML = `
+            <td>${user.displayName || 'N/A'}</td>
+            <td>${user.mail || user.userPrincipalName || 'N/A'}</td>
+            <td>${jobTitle}</td>
+            <td>${phone}</td>
+            <td>
+                <span class="user-type-badge ${user.isExternal ? 'external' : 'internal'}">
+                    ${user.isExternal ? 'External' : 'Internal'}
+                </span>
+            </td>
+            <td>
+                <span class="user-status-badge active">Active</span>
+            </td>
+        `;
+        tableBody.appendChild(row);
+        if (index === 0) {
+            console.log('[Identity Table] First user added:', user.displayName);
+        }
+    });
+    console.log(`[Identity Table] Total rows added: ${microsoftUsersData.length}`);
 }
+
+
 
 function initializeProjectsList() {
     const projectsGrid = document.getElementById('projects-grid');
