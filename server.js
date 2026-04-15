@@ -1689,8 +1689,8 @@ app.post('/api/auth/verify-mfa', async (req, res) => {
     }
 });
 
-// NEW: Protect the Client Portal route with the authentication middleware (from original)
-app.get('/ClientPortal.html', authenticateToken, (req, res) => {
+// NEW: Allow unauthenticated access to Client Portal (signin form is built in)
+app.get('/ClientPortal.html', (req, res) => {
     res.sendFile(path.join(__dirname, 'ClientPortal.html'));
 });
 
