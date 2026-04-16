@@ -162,6 +162,43 @@
     overflow-x: auto;
     width: 100%;
     margin-bottom: 32px;
+    position: relative;
+}
+
+/* Scroll indicator shadow */
+.identity-users-table-container.has-scroll::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 30px;
+    height: 100%;
+    background: linear-gradient(to left, rgba(0, 110, 255, 0.15), transparent);
+    pointer-events: none;
+    z-index: 5;
+    animation: fadePulse 2s infinite alternate;
+}
+
+@keyframes fadePulse {
+    from { opacity: 0.3; }
+    to { opacity: 1; }
+}
+
+/* Site header hiding logic */
+.site-header {
+    transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.site-header.header-hidden {
+    transform: translateY(-100%);
+    opacity: 0;
+    pointer-events: none;
+}
+
+.site-header.header-visible {
+    transform: translateY(0);
+    opacity: 1;
+    pointer-events: auto;
 }
 
 .users-table {

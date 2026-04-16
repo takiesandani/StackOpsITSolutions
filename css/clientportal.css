@@ -443,6 +443,20 @@
     gap: 30px;
     margin-top: 0;
     box-sizing: border-box;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+/* Site header visibility states */
+.site-header.header-hidden {
+    transform: translateY(-100%);
+    opacity: 0;
+    pointer-events: none;
+}
+
+.site-header.header-visible {
+    transform: translateY(0);
+    opacity: 1;
+    pointer-events: auto;
 }
 
 /* Compact header on small phones */

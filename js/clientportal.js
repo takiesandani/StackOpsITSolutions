@@ -254,6 +254,32 @@ function openIdentityDashboard() {
     if (projectName) projectName.textContent = 'Identity & Access - Full Dashboard';
     if (projectStatus) projectStatus.textContent = 'Active';
     
+    // Hide site header initially for full dashboard view
+    const siteHeader = document.querySelector('.site-header');
+    if (siteHeader) {
+        siteHeader.classList.add('header-hidden');
+        siteHeader.classList.remove('header-visible');
+    }
+
+    // Add scroll listener to show/hide header
+    const handleDashboardScroll = () => {
+        if (window.scrollY > 100) {
+            siteHeader?.classList.add('header-visible');
+            siteHeader?.classList.remove('header-hidden');
+        } else {
+            siteHeader?.classList.add('header-hidden');
+            siteHeader?.classList.remove('header-visible');
+        }
+    };
+    
+    // Make it removable
+    window.removeDashboardScroll = () => {
+        window.removeEventListener('scroll', handleDashboardScroll);
+        delete window.removeDashboardScroll;
+    };
+    
+    window.addEventListener('scroll', handleDashboardScroll);
+
     // Update back button to go back to projects
     const backBtn = document.getElementById('btn-back');
     if (backBtn) {
@@ -266,14 +292,37 @@ function openIdentityDashboard() {
         };
     }
     
-    // Initialize Identity dashboard content
-    initializeIdentityDashboard();
+    // WAIT for data to load before initializing dashboard
+    // If data is already loaded (isSunbirdDashboard = true), initialize immediately
+    if (isSunbirdDashboard && microsoftUsersData.length > 0) {
+        console.log('[Identity Dashboard] Data already loaded, initializing immediately');
+        initializeIdentityDashboard();
+    } else {
+        // Otherwise wait for data to load with timeout
+        console.log('[Identity Dashboard] Waiting for data to load...');
+        let waitTime = 0;
+        const maxWait = 5000; // Max 5 seconds
+        const checkInterval = setInterval(() => {
+            waitTime += 100;
+            if (isSunbirdDashboard && microsoftUsersData.length > 0) {
+                console.log('[Identity Dashboard] Data loaded successfully');
+                clearInterval(checkInterval);
+                initializeIdentityDashboard();
+            } else if (waitTime >= maxWait) {
+                console.warn('[Identity Dashboard] Data load timeout, initializing with available data');
+                clearInterval(checkInterval);
+                initializeIdentityDashboard();
+            }
+        }, 100);
+    }
 }
 
 // Initialize Identity & Access dashboard
 function initializeIdentityDashboard() {
     console.log('[Identity Dashboard] Initializing dashboard...');
     console.log(`[Identity Dashboard] Users data available: ${microsoftUsersData.length}`);
+    console.log(`[Identity Dashboard] Sunbird dashboard: ${isSunbirdDashboard}`);
+    console.log('[Identity Dashboard] First user sample:', microsoftUsersData[0]);
     
     if (microsoftUsersData.length === 0) {
         console.warn('[Identity Dashboard] No user data available');
@@ -304,21 +353,25 @@ function setupIdentitySearch() {
     
     // Add horizontal scroll indicator when table can be scrolled
     if (tableContainer) {
-        // Check on load
-        setTimeout(() => {
-            if (tableContainer.scrollWidth > tableContainer.clientWidth) {
-                tableContainer.classList.add('has-scroll');
-            }
-        }, 100);
-        
-        // Update as content changes or window resizes
-        window.addEventListener('resize', () => {
-            if (tableContainer.scrollWidth > tableContainer.clientWidth) {
+        const updateScrollIndicator = () => {
+            const isScrollable = tableContainer.scrollWidth > tableContainer.clientWidth;
+            const isAtEnd = tableContainer.scrollLeft + tableContainer.clientWidth >= tableContainer.scrollWidth - 10;
+            
+            if (isScrollable && !isAtEnd) {
                 tableContainer.classList.add('has-scroll');
             } else {
                 tableContainer.classList.remove('has-scroll');
             }
-        });
+        };
+
+        // Check on load
+        setTimeout(updateScrollIndicator, 300);
+        
+        // Update on scroll
+        tableContainer.addEventListener('scroll', updateScrollIndicator);
+        
+        // Update as content changes or window resizes
+        window.addEventListener('resize', updateScrollIndicator);
     }
     
     // Function to apply all filters and search
@@ -1895,6 +1948,16 @@ async function fetchIdentityAccessData() {
                         displayCurrentProject();
                     }
                     
+                    // If Identity dashboard is currently open, refresh the table
+                    const identityDashboard = document.getElementById('identity-monitoring-section');
+                    if (identityDashboard && identityDashboard.style.display !== 'none') {
+                        console.log('[Identity Access] Dashboard is open, refreshing table with fresh data');
+                        setTimeout(() => {
+                            populateIdentityTable();
+                            initializeIdentityInsights();
+                        }, 100);
+                    }
+                    
                     return; // Skip to end - Sunbird data fully loaded
                 }
             }
@@ -2457,6 +2520,7 @@ function populateIdentityTable() {
     }
 
     console.log(`[Identity Table] Populating table with ${microsoftUsersData.length} users (Sunbird: ${isSunbirdDashboard})`);
+    console.log('[Identity Table] Sample user data:', microsoftUsersData[0]);
 
     tableBody.innerHTML = '';
 
@@ -2492,8 +2556,8 @@ function populateIdentityTable() {
 
         if (isSunbirdDashboard) {
             // Render Sunbird enhanced columns
-            const jobTitle = (user.jobTitle && user.jobTitle !== 'No Title') ? user.jobTitle : '—';
-            const phone = (user.mobilePhone && user.mobilePhone !== 'N/A') ? user.mobilePhone : '—';
+            const jobTitle = (user.jobTitle && user.jobTitle !== 'No Title' && user.jobTitle.trim() !== '') ? user.jobTitle : '—';
+            const phone = (user.mobilePhone && user.mobilePhone !== 'N/A' && user.mobilePhone?.trim() !== '') ? user.mobilePhone : '—';
             
             // Fix: Handle roles array - could be array of strings or objects with name property
             const roles = user.roles || [];
@@ -2505,24 +2569,40 @@ function populateIdentityTable() {
                 : '—';
 
             // MFA Status: Show both enabled status and method count
-            const mfaStatus = user.mfaEnabled ? `✅ Yes (${user.authMethodCount})` : `❌ No`;
-            const riskBadgeClass = user.riskLevel === 'HIGH' ? 'risk-badge-high' : 
-                                  user.riskLevel === 'MEDIUM' ? 'risk-badge-medium' : 
+            const authMethodCount = user.authMethodCount || 0;
+            const mfaStatus = user.mfaEnabled ? `✅ Yes (${authMethodCount})` : `❌ No (${authMethodCount})`;
+            
+            const riskLevel = user.riskLevel || 'SAFE';
+            const riskBadgeClass = riskLevel === 'HIGH' ? 'risk-badge-high' : 
+                                  riskLevel === 'MEDIUM' ? 'risk-badge-medium' : 
                                   'risk-badge-safe';
-            const riskIcon = user.riskLevel === 'HIGH' ? '🔴' : 
-                           user.riskLevel === 'MEDIUM' ? '🟡' : 
+            const riskIcon = riskLevel === 'HIGH' ? '🔴' : 
+                           riskLevel === 'MEDIUM' ? '🟡' : 
                            '🟢';
 
             const lastSignInText = (user.lastSignIn && user.lastSignIn.dateTime) ? 
                 new Date(user.lastSignIn.dateTime).toLocaleDateString() : 'Never';
 
             // Location: Already formatted in backend as "City, Country"
-            const locationDisplay = (user.lastSignIn && user.lastSignIn.location) ? user.lastSignIn.location : 'No sign-in';
+            const locationDisplay = (user.lastSignIn && user.lastSignIn.location && user.lastSignIn.location !== 'No sign-in') ? user.lastSignIn.location : 'No sign-in';
             
             // Device: Show device name  
             let deviceDisplay = 'Unknown';
             if (user.lastSignIn && user.lastSignIn.device) {
                 deviceDisplay = user.lastSignIn.device.toLowerCase().includes('unknown') ? 'Unknown' : user.lastSignIn.device;
+            }
+
+            // Log first row for debugging
+            if (index === 0) {
+                console.log('[Identity Table] Row 0 data:', {
+                    jobTitle,
+                    roles: rolesDisplay,
+                    mfaStatus,
+                    riskLevel,
+                    lastSignInText,
+                    location: locationDisplay,
+                    device: deviceDisplay
+                });
             }
 
             row.innerHTML = `
@@ -2536,8 +2616,8 @@ function populateIdentityTable() {
                     </span>
                 </td>
                 <td>${mfaStatus}</td>
-                <td>${user.authMethodCount}</td>
-                <td><span class="${riskBadgeClass}">${riskIcon} ${user.riskLevel}</span></td>
+                <td>${authMethodCount}</td>
+                <td><span class="${riskBadgeClass}">${riskIcon} ${riskLevel}</span></td>
                 <td>
                     <span class="user-status-badge active">Active</span>
                 </td>
@@ -2876,6 +2956,19 @@ function resetDashboard() {
     document.getElementById('dashboard-view').style.display = 'none';
     currentProject = null;
     destroyCharts();
+    
+    // Restore site header if it was hidden
+    const siteHeader = document.querySelector('.site-header');
+    if (siteHeader) {
+        siteHeader.classList.remove('header-hidden');
+        siteHeader.classList.add('header-visible');
+    }
+    
+    // Remove dashboard scroll listener if it exists
+    // Note: We need to make handleDashboardScroll global or accessible
+    if (typeof window.removeDashboardScroll === 'function') {
+        window.removeDashboardScroll();
+    }
     
     previewLockedByClick = false;
     selectedProjectId = null;
