@@ -3476,6 +3476,7 @@
     width: 100%;
     border-collapse: collapse;
     background: rgba(0, 0, 0, 0.3);
+    font-size: 1.1rem;
 }
 
 .identity-users-table thead {
@@ -3484,11 +3485,11 @@
 }
 
 .identity-users-table th {
-    padding: 12px 10px;
+    padding: 16px 14px;
     text-align: left;
     color: rgba(0, 110, 255, 0.9);
     font-weight: 200;
-    font-size: 0.85rem;
+    font-size: 1.05rem;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     white-space: nowrap;
@@ -3504,9 +3505,9 @@
 }
 
 .identity-users-table td {
-    padding: 10px;
+    padding: 14px 14px;
     color: #d1d5db;
-    font-size: 0.85rem;
+    font-size: 1.05rem;
     vertical-align: middle;
     word-break: break-word;
 }
@@ -4014,8 +4015,10 @@
 /* Roles Cell in Table */
 .roles-cell {
     display: flex;
+    flex-direction: column;
     flex-wrap: wrap;
-    gap: 4px;
+    gap: 6px;
+    align-items: flex-start;
 }
 
 /* Mobile Responsive - Identity Dashboard */
@@ -4147,17 +4150,17 @@
     }
 
     .identity-users-table {
-        font-size: 0.8rem;
+        font-size: 0.95rem;
     }
 
     .identity-users-table th {
-        padding: 10px 8px;
-        font-size: 0.75rem;
+        padding: 12px 10px;
+        font-size: 0.9rem;
     }
 
     .identity-users-table td {
-        padding: 8px 6px;
-        font-size: 0.8rem;
+        padding: 10px 10px;
+        font-size: 0.95rem;
     }
 
     .user-type-badge,
@@ -4248,18 +4251,18 @@
     }
 
     .identity-users-table {
-        font-size: 0.7rem;
+        font-size: 0.85rem;
         white-space: nowrap;
     }
 
     .identity-users-table th {
-        padding: 8px 5px;
-        font-size: 0.65rem;
+        padding: 10px 7px;
+        font-size: 0.8rem;
     }
 
     .identity-users-table td {
-        padding: 6px 4px;
-        font-size: 0.7rem;
+        padding: 8px 6px;
+        font-size: 0.85rem;
     }
 
     .user-type-badge,

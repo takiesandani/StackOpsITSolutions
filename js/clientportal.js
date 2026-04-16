@@ -314,9 +314,10 @@ function setupIdentitySearch() {
         rows.forEach(row => {
             const name = row.cells[0]?.textContent.toLowerCase() || '';
             const email = row.cells[1]?.textContent.toLowerCase() || '';
-            const typeCell = row.cells[4]?.textContent.toLowerCase() || '';
             const jobTitle = row.cells[2]?.textContent.toLowerCase() || '';
             const phone = row.cells[3]?.textContent.toLowerCase() || '';
+            const rolesCell = row.cells[4]?.textContent.toLowerCase() || '';
+            const typeCell = row.cells[5]?.textContent.toLowerCase() || '';
             
             // Search filter
             const matchesSearch = !searchTerm || name.includes(searchTerm) || email.includes(searchTerm);
@@ -327,10 +328,12 @@ function setupIdentitySearch() {
                 const isInternal = typeCell.includes('internal');
                 const isExternal = typeCell.includes('external');
                 const hasMissingData = (jobTitle.includes('missing') || phone.includes('missing'));
+                const hasRoles = !rolesCell.includes('no roles') && rolesCell.trim() !== '';
                 
                 matchesTypeFilter = 
                     (selectedFilters.includes('internal') && isInternal) ||
                     (selectedFilters.includes('external') && isExternal) ||
+                    (selectedFilters.includes('admins') && hasRoles) ||
                     (selectedFilters.includes('missing-data') && hasMissingData);
             }
             
@@ -847,7 +850,7 @@ function populateRiskIndicator() {
     if (hasBreakGlass) {
         html += `
                 <div class="risk-detail-item" style="color: #dc2626;">
-                    <span>⚠️ Break Glass Account:</span>
+                    <span>⚠️ Master Admin:</span>
                     <span class="detail-value">DETECTED</span>
                 </div>
         `;
@@ -1705,6 +1708,10 @@ function generateIdentityDashboardHTML() {
                         <span>External Users</span>
                     </label>
                     <label class="filter-checkbox">
+                        <input type="checkbox" id="filter-admins" data-filter="admins">
+                        <span>👑 Admins</span>
+                    </label>
+                    <label class="filter-checkbox">
                         <input type="checkbox" id="filter-missing-data" data-filter="missing-data">
                         <span>Missing Data</span>
                     </label>
@@ -1853,7 +1860,7 @@ function generateIdentityDashboardHTML() {
                     <div class="risk-items">
                         <div id="riskCritical" class="risk-item risk-critical" style="display:none;">
                             <i class="fas fa-exclamation-circle"></i>
-                            <span id="riskCriticalText">Critical: Break glass account detected</span>
+                            <span id="riskCriticalText">Critical: Master Admin detected</span>
                         </div>
                         <div class="risk-item risk-medium">
                             <i class="fas fa-exclamation-triangle"></i>
@@ -1889,14 +1896,14 @@ function populateIdentityTable() {
     
     microsoftUsersData.forEach((user, index) => {
         const row = document.createElement('tr');
-        const jobTitle = (user.jobTitle && user.jobTitle !== 'No Title') ? user.jobTitle : '<span style="color: #f87171;">Missing</span>';
-        const phone = (user.mobilePhone && user.mobilePhone !== 'N/A') ? user.mobilePhone : '<span style="color: #f87171;">Missing</span>';
+        const jobTitle = (user.jobTitle && user.jobTitle !== 'No Title') ? user.jobTitle : '<span style="color: #999;">—</span>';
+        const phone = (user.mobilePhone && user.mobilePhone !== 'N/A') ? user.mobilePhone : '<span style="color: #999;">—</span>';
         
         // Get roles for this user
         const roles = userRolesMap[user.id] || [];
         const rolesDisplay = roles.length > 0 
-            ? roles.map(role => `<span class="role-badge">${role}</span>`).join(' ')
-            : '<span style="color: #999;">No roles</span>';
+            ? roles.map(role => `<span class="role-badge">${role}</span>`).join('')
+            : '<span style="color: #999;">—</span>';
         
         row.innerHTML = `
             <td>${user.displayName || 'N/A'}</td>
