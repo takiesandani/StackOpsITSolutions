@@ -2075,8 +2075,11 @@ function populateIdentityTable() {
                            user.riskLevel === 'MEDIUM' ? '🟡' : 
                            '🟢';
 
-            const lastSignInText = user.lastSignIn.dateTime ? 
+            const lastSignInText = (user.lastSignIn && user.lastSignIn.dateTime) ? 
                 new Date(user.lastSignIn.dateTime).toLocaleDateString() : 'Never';
+
+            const locationDisplay = (user.lastSignIn && user.lastSignIn.location) ? user.lastSignIn.location : 'Unknown';
+            const deviceDisplay = (user.lastSignIn && user.lastSignIn.device) ? user.lastSignIn.device : 'Unknown';
 
             row.innerHTML = `
                 <td>${user.displayName || 'Unknown'}</td>
@@ -2095,8 +2098,8 @@ function populateIdentityTable() {
                     <span class="user-status-badge active">Active</span>
                 </td>
                 <td>${lastSignInText}</td>
-                <td>${user.lastSignIn.location || 'Unknown'}</td>
-                <td>${user.lastSignIn.device || 'Unknown'}</td>
+                <td>${locationDisplay}</td>
+                <td>${deviceDisplay}</td>
                 <td>${phone}</td>
             `;
         } else {
