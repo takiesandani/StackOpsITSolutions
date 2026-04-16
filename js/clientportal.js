@@ -1120,19 +1120,54 @@ function renderSunbirdSummaryCards() {
     const summaryCardsDiv = document.getElementById('sunbird-summary-cards');
     if (!summaryCardsDiv || !sunbirdDashboardData) return;
 
+    const totalUsers = sunbirdDashboardData.summary.totalUsers || 1;
     const securityScore = Math.round(sunbirdDashboardData.summary.securityScore || 0);
+    const identityRiskScore = Math.round(sunbirdDashboardData.summary.identityRiskScore || 0);
     const activeUsers = sunbirdDashboardData.summary.activeUsers24h || 0;
+    const activeUsersPercentage = sunbirdDashboardData.summary.activeUsersPercentage || 0;
     const highRiskUsers = sunbirdDashboardData.summary.highRiskUsers || 0;
-    const inactiveUsers = microsoftUsersData.filter(u => {
-        if (!u.lastSignIn || !u.lastSignIn.dateTime) return true;
-        const daysInactive = Math.floor((Date.now() - new Date(u.lastSignIn.dateTime).getTime()) / (1000 * 60 * 60 * 24));
-        return daysInactive > 30;
-    }).length;
+    const inactiveUsers = sunbirdDashboardData.summary.inactiveUsers || 0;
+    const privilegedWithoutMFA = sunbirdDashboardData.summary.privilegedUsersWithoutMFA || 0;
+    const highRiskBreakdown = sunbirdDashboardData.summary.highRiskBreakdown || {};
 
+    // Update summary card values with improved context
     document.getElementById('sunbird-security-score').textContent = securityScore;
-    document.getElementById('sunbird-active-users').textContent = activeUsers;
-    document.getElementById('sunbird-high-risk').textContent = highRiskUsers;
-    document.getElementById('sunbird-inactive-users').textContent = inactiveUsers;
+    
+    // Active Users: Show count / total (percentage)
+    document.getElementById('sunbird-active-users').innerHTML = `
+        <span style="font-size: 1.3rem;">${activeUsers}</span>
+        <span style="font-size: 0.75rem; opacity: 0.7; display: block;">/ ${totalUsers} users (${activeUsersPercentage}%)</span>
+    `;
+    
+    // High Risk Users: Show breakdown with tooltip
+    const highRiskBreakdownText = `${highRiskBreakdown.adminWithoutMFA || 0} = No MFA + Admin | ${highRiskBreakdown.neverSignedIn || 0} = Never signed in | ${highRiskBreakdown.externalUser || 0} = External`;
+    const highRiskElement = document.getElementById('sunbird-high-risk');
+    highRiskElement.textContent = highRiskUsers;
+    highRiskElement.title = highRiskBreakdownText;
+    highRiskElement.style.cursor = 'help';
+    
+    // Privileged Without MFA with context
+    document.getElementById('sunbird-privileged-without-mfa').innerHTML = `
+        <span style="font-size: 1.3rem;">${privilegedWithoutMFA}</span>
+        <span style="font-size: 0.7rem; opacity: 0.7; display: block;">Admin users at risk</span>
+    `;
+    
+    // Identity Risk Score with visual indicator
+    const riskColor = identityRiskScore >= 70 ? '#dc3545' : identityRiskScore >= 40 ? '#f97316' : '#22c55e';
+    document.getElementById('sunbird-identity-risk-score').innerHTML = `
+        <span style="font-size: 1.3rem; color: ${riskColor};">${identityRiskScore}</span>
+        <span style="font-size: 0.7rem; opacity: 0.7; display: block;">/100</span>
+    `;
+    
+    // Inactive Users: Update display
+    const inactiveElement = document.getElementById('sunbird-inactive-users');
+    if (inactiveElement) {
+        const inactivePercentage = Math.round((inactiveUsers / totalUsers) * 100);
+        inactiveElement.innerHTML = `
+            <span style="font-size: 1.3rem;">${inactiveUsers}</span>
+            <span style="font-size: 0.7rem; opacity: 0.7; display: block;">${inactivePercentage}% inactive</span>
+        `;
+    }
 
     summaryCardsDiv.style.display = 'grid';
 }
@@ -1255,12 +1290,266 @@ function renderRiskDistributionPie() {
     });
 }
 
+// 🆕 Render Authentication Strength Chart
+function renderAuthenticationStrengthChart() {
+    const canvasElement = document.getElementById('authenticationStrengthChart');
+    if (!canvasElement || !sunbirdDashboardData) return;
+
+    const authStrength = sunbirdDashboardData.authenticationStrength || { passwordOnly: 0, basicMFA: 0, strongMFA: 0 };
+    canvasElement.width = 300;
+    canvasElement.height = 250;
+    
+    const ctx = canvasElement.getContext('2d');
+    if (!ctx) return;
+    
+    if (window.authStrengthInstance && typeof window.authStrengthInstance.destroy === 'function') {
+        window.authStrengthInstance.destroy();
+    }
+
+    window.authStrengthInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['❌ Password Only', '⚠️ Basic MFA', '✅ Strong MFA'],
+            datasets: [{
+                data: [authStrength.passwordOnly, authStrength.basicMFA, authStrength.strongMFA],
+                backgroundColor: [
+                    'rgba(220, 53, 69, 0.7)',
+                    'rgba(249, 115, 22, 0.7)',
+                    'rgba(34, 197, 94, 0.7)'
+                ],
+                borderColor: [
+                    'rgba(220, 53, 69, 1)',
+                    'rgba(249, 115, 22, 1)',
+                    'rgba(34, 197, 94, 1)'
+                ],
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { labels: { color: '#999', font: { size: 11, weight: 200 } }, position: 'bottom' }
+            }
+        }
+    });
+}
+
+// 🆕 Render Device Trust Analysis Chart
+function renderDeviceTrustChart() {
+    const canvasElement = document.getElementById('deviceTrustChart');
+    if (!canvasElement || !sunbirdDashboardData) return;
+
+    const deviceTrust = sunbirdDashboardData.deviceTrustAnalysis || { managed: 0, unmanaged: 0, unknown: 0 };
+    canvasElement.width = 300;
+    canvasElement.height = 250;
+    
+    const ctx = canvasElement.getContext('2d');
+    if (!ctx) return;
+    
+    if (window.deviceTrustInstance && typeof window.deviceTrustInstance.destroy === 'function') {
+        window.deviceTrustInstance.destroy();
+    }
+
+    window.deviceTrustInstance = new Chart(ctx, {
+        type: 'pie',
+        data: {
+            labels: ['✅ Managed', '⚠️ Unmanaged', '❓ Unknown'],
+            datasets: [{
+                data: [deviceTrust.managed, deviceTrust.unmanaged, deviceTrust.unknown],
+                backgroundColor: [
+                    'rgba(34, 197, 94, 0.7)',
+                    'rgba(249, 115, 22, 0.7)',
+                    'rgba(107, 114, 128, 0.7)'
+                ],
+                borderColor: [
+                    'rgba(34, 197, 94, 1)',
+                    'rgba(249, 115, 22, 1)',
+                    'rgba(107, 114, 128, 1)'
+                ],
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { labels: { color: '#999', font: { size: 11, weight: 200 } }, position: 'bottom' }
+            }
+        }
+    });
+}
+
+// 🆕 Render Role Distribution Chart
+function renderRoleDistributionChart() {
+    const canvasElement = document.getElementById('roleDistributionChart');
+    if (!canvasElement || !sunbirdDashboardData) return;
+
+    const roles = sunbirdDashboardData.topRoles || [];
+    const labels = roles.map(r => r.role.substring(0, 20)).slice(0, 8);
+    const data = roles.map(r => r.count).slice(0, 8);
+
+    canvasElement.width = 400;
+    canvasElement.height = 250;
+    
+    const ctx = canvasElement.getContext('2d');
+    if (!ctx) return;
+    
+    if (window.roleDistributionInstance && typeof window.roleDistributionInstance.destroy === 'function') {
+        window.roleDistributionInstance.destroy();
+    }
+
+    const colors = [
+        'rgba(59, 130, 246, 0.7)',
+        'rgba(34, 197, 94, 0.7)',
+        'rgba(249, 115, 22, 0.7)',
+        'rgba(139, 92, 246, 0.7)',
+        'rgba(236, 72, 153, 0.7)',
+        'rgba(14, 165, 233, 0.7)',
+        'rgba(168, 85, 247, 0.7)',
+        'rgba(59, 130, 246, 0.5)'
+    ];
+
+    window.roleDistributionInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Users',
+                data: data,
+                backgroundColor: colors.slice(0, labels.length),
+                borderColor: colors.slice(0, labels.length).map(c => c.replace('0.7', '1')),
+                borderWidth: 1
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                x: { ticks: { color: '#999' } },
+                y: { ticks: { color: '#999', font: { size: 10 } } }
+            }
+        }
+    });
+}
+
+// 🆕 Render Inactive Users Breakdown (Stacked Bar)
+function renderInactiveBreakdownChart() {
+    const canvasElement = document.getElementById('inactiveBreakdownChart');
+    if (!canvasElement || !sunbirdDashboardData) return;
+
+    const inactive = sunbirdDashboardData.inactiveBreakdown || { '0-7days': 0, '7-30days': 0, '30-90days': 0, '90+days': 0 };
+    
+    canvasElement.width = 500;
+    canvasElement.height = 150;
+    
+    const ctx = canvasElement.getContext('2d');
+    if (!ctx) return;
+    
+    if (window.inactiveBreakdownInstance && typeof window.inactiveBreakdownInstance.destroy === 'function') {
+        window.inactiveBreakdownInstance.destroy();
+    }
+
+    window.inactiveBreakdownInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: ['Inactive Users'],
+            datasets: [
+                {
+                    label: '0–7 days',
+                    data: [inactive['0-7days']],
+                    backgroundColor: 'rgba(34, 197, 94, 0.7)',
+                    borderColor: 'rgba(34, 197, 94, 1)',
+                    borderWidth: 1
+                },
+                {
+                    label: '7–30 days',
+                    data: [inactive['7-30days']],
+                    backgroundColor: 'rgba(59, 130, 246, 0.7)',
+                    borderColor: 'rgba(59, 130, 246, 1)',
+                    borderWidth: 1
+                },
+                {
+                    label: '30–90 days',
+                    data: [inactive['30-90days']],
+                    backgroundColor: 'rgba(249, 115, 22, 0.7)',
+                    borderColor: 'rgba(249, 115, 22, 1)',
+                    borderWidth: 1
+                },
+                {
+                    label: '90+ days',
+                    data: [inactive['90+days']],
+                    backgroundColor: 'rgba(220, 53, 69, 0.7)',
+                    borderColor: 'rgba(220, 53, 69, 1)',
+                    borderWidth: 1
+                }
+            ]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: { stacked: true, ticks: { color: '#999' } },
+                y: { stacked: true, ticks: { color: '#999' } }
+            },
+            plugins: {
+                legend: { labels: { color: '#999', font: { size: 10, weight: 200 } }, position: 'bottom' }
+            }
+        }
+    });
+}
+
+// 🆕 Render Identity Hygiene Score Breakdown
+function renderIdentityHygieneBreakdown() {
+    const hygieneDiv = document.getElementById('identity-hygiene-breakdown');
+    if (!hygieneDiv || !sunbirdDashboardData) return;
+
+    const hygiene = sunbirdDashboardData.hygieneLevels || { profileCompleteness: 0, authCompleteness: 0, activityCompleteness: 0 };
+    
+    hygieneDiv.innerHTML = `
+        <div style="display: grid; gap: 12px;">
+            <div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.9rem; margin-bottom: 4px;">
+                    <span>👤 Profile Completeness</span>
+                    <strong>${hygiene.profileCompleteness}%</strong>
+                </div>
+                <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
+                    <div style="width: ${hygiene.profileCompleteness}%; height: 100%; background: linear-gradient(90deg, #3b82f6, #0ea5e9); transition: width 0.3s ease;"></div>
+                </div>
+            </div>
+            <div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.9rem; margin-bottom: 4px;">
+                    <span>🔐 Auth Completeness</span>
+                    <strong>${hygiene.authCompleteness}%</strong>
+                </div>
+                <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
+                    <div style="width: ${hygiene.authCompleteness}%; height: 100%; background: linear-gradient(90deg, #22c55e, #84cc16); transition: width 0.3s ease;"></div>
+                </div>
+            </div>
+            <div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.9rem; margin-bottom: 4px;">
+                    <span>📊 Activity Completeness</span>
+                    <strong>${hygiene.activityCompleteness}%</strong>
+                </div>
+                <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
+                    <div style="width: ${hygiene.activityCompleteness}%; height: 100%; background: linear-gradient(90deg, #f97316, #ef4444); transition: width 0.3s ease;"></div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
 // Render Sign-In Insights (Top Locations, Device Breakdown, Timeline)
 function renderSignInInsights() {
     const insightsRowDiv = document.getElementById('sunbird-insights-row');
     if (!insightsRowDiv || !sunbirdDashboardData) return;
 
-    // Render Top Locations Table
+    // Render Top Locations Table with Enhanced Context
     const topLocationsBody = document.getElementById('top-locations-body');
     if (topLocationsBody && sunbirdDashboardData.signInPatterns) {
         const locations = sunbirdDashboardData.signInPatterns.topLocations || [];
@@ -1268,16 +1557,35 @@ function renderSignInInsights() {
         
         locations.slice(0, 5).forEach(location => {
             const row = document.createElement('tr');
+            // Calculate rough risk level based on sign-in success rates from users at that location
+            const usersAtLocation = sunbirdDashboardData.users.filter(u => u.lastSignIn && u.lastSignIn.location === location.location);
+            const successCount = usersAtLocation.filter(u => u.lastSignIn.status === 'Success').length;
+            const failureCount = usersAtLocation.filter(u => u.lastSignIn.status === 'Failed').length;
+            const riskBadge = failureCount > 2 ? '🔴 High' : failureCount > 0 ? '🟡 Medium' : '🟢 Safe';
+            
             row.innerHTML = `
                 <td>${location.location || 'Unknown'}</td>
                 <td><strong>${location.count || 0}</strong></td>
+                <td style="font-size: 0.85rem;">${successCount}✓ ${failureCount}✗</td>
+                <td style="font-size: 0.9rem;">${riskBadge}</td>
             `;
             topLocationsBody.appendChild(row);
         });
 
         if (locations.length === 0) {
-            topLocationsBody.innerHTML = '<tr><td colspan="2" style="text-align: center; color: #999;">No location data available</td></tr>';
+            topLocationsBody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #999;">No location data available</td></tr>';
         }
+    }
+
+    // Update table headers to show additional columns
+    const locationsTable = document.getElementById('top-locations-table');
+    if (locationsTable && locationsTable.querySelector('thead tr')) {
+        locationsTable.querySelector('thead tr').innerHTML = `
+            <th>Location</th>
+            <th>Sign-Ins</th>
+            <th>Success/Fail</th>
+            <th>Risk</th>
+        `;
     }
 
     // Render Device Breakdown Chart
@@ -1286,7 +1594,12 @@ function renderSignInInsights() {
     // Render Sign-In Timeline
     renderSignInTimeline();
 
+    // Show all analytics rows
     insightsRowDiv.style.display = 'grid';
+    const analyticsRow2 = document.getElementById('sunbird-analytics-row-2');
+    const analyticsRow3 = document.getElementById('sunbird-analytics-row-3');
+    if (analyticsRow2) analyticsRow2.style.display = 'grid';
+    if (analyticsRow3) analyticsRow3.style.display = 'grid';
 }
 
 // Render Device Breakdown Chart
@@ -1341,7 +1654,7 @@ function renderDeviceBreakdownChart() {
     });
 }
 
-// Render Sign-In Timeline
+// Render Sign-In Timeline with Enhanced Details
 function renderSignInTimeline() {
     const timelineContainer = document.getElementById('timeline-container');
     if (!timelineContainer || !sunbirdDashboardData) return;
@@ -1352,9 +1665,14 @@ function renderSignInTimeline() {
         ?.filter(u => u.lastSignIn && u.lastSignIn.dateTime)
         .map(u => ({
             user: u.displayName,
+            email: u.mail,
             date: new Date(u.lastSignIn.dateTime),
             location: u.lastSignIn.location,
-            app: u.lastSignIn.appDisplayName
+            device: u.lastSignIn.device,
+            app: u.lastSignIn.appDisplayName,
+            clientAppUsed: u.lastSignIn.clientAppUsed,
+            status: u.lastSignIn.status,
+            riskLevel: u.riskLevel
         }))
         .sort((a, b) => b.date - a.date)
         .slice(0, 10) || [];
@@ -1366,14 +1684,24 @@ function renderSignInTimeline() {
 
     signIns.forEach(signin => {
         const timeAgo = getTimeAgoString(signin.date);
+        const appName = signin.app || signin.clientAppUsed || 'Microsoft Portal';
+        const riskIcon = signin.riskLevel === 'HIGH' ? '🔴' : signin.riskLevel === 'MEDIUM' ? '🟡' : '🟢';
         const timelineItem = document.createElement('div');
         timelineItem.className = 'timeline-item';
+        timelineItem.style.borderLeftColor = signin.riskLevel === 'HIGH' ? '#dc3545' : signin.riskLevel === 'MEDIUM' ? '#f97316' : '#22c55e';
         timelineItem.innerHTML = `
-            <div class="timeline-icon">📋</div>
+            <div class="timeline-icon">${riskIcon}</div>
             <div class="timeline-info">
-                <div class="timeline-user">${signin.user}</div>
-                <div class="timeline-action">Signed in via ${signin.app || 'Unknown'}</div>
-                <div class="timeline-time">${signin.location || 'Unknown location'} • ${timeAgo}</div>
+                <div class="timeline-user" style="font-weight: 600;">${signin.user}</div>
+                <div class="timeline-action" style="font-size: 0.9rem; color: #aaa;">Signed in to ${appName}</div>
+                <div class="timeline-details" style="font-size: 0.85rem; color: #888; margin-top: 4px;">
+                    📍 ${signin.location || 'Unknown'} • 
+                    ${signin.device ? '📱 ' + (signin.device.length > 20 ? signin.device.substring(0, 20) + '...' : signin.device) : 'Device: Unknown'} • 
+                    ${timeAgo}
+                </div>
+                <div class="timeline-status" style="font-size: 0.8rem; margin-top: 4px;">
+                    ${signin.status === 'Success' ? '✅ Success' : signin.status === 'Failed' ? '❌ Failed' : '⚪ ' + signin.status}
+                </div>
             </div>
         `;
         timelineContainer.appendChild(timelineItem);
@@ -1415,6 +1743,11 @@ function renderSunbirdAnalytics() {
         renderSunbirdSummaryCards();
         renderSystemHealthRadar();
         renderRiskDistributionPie();
+        renderAuthenticationStrengthChart();
+        renderDeviceTrustChart();
+        renderRoleDistributionChart();
+        renderInactiveBreakdownChart();
+        renderIdentityHygieneBreakdown();
         renderSignInInsights();
         
         console.log('[Sunbird Analytics] All components rendered successfully');
@@ -2262,10 +2595,16 @@ function generateIdentityDashboardHTML() {
                             <th>Name</th>
                             <th>Email</th>
                             <th>Job Title</th>
-                            <th>Phone</th>
                             <th>Roles</th>
                             <th>Type</th>
+                            <th>MFA</th>
+                            <th>Auth Methods</th>
+                            <th>Risk</th>
                             <th>Status</th>
+                            <th>Last Sign-In</th>
+                            <th>Location</th>
+                            <th>Device</th>
+                            <th>Phone</th>
                         </tr>
                     </thead>
                     <tbody id="users-table-body">
@@ -2319,6 +2658,27 @@ function generateIdentityDashboardHTML() {
                             <div class="summary-card-value" id="sunbird-inactive-users">0</div>
                         </div>
                     </div>
+
+                    <div class="sunbird-summary-card">
+                        <div class="summary-card-icon" style="background: rgba(220, 53, 69, 0.2); color: rgba(220, 53, 69, 0.9);">
+                            <i class="fas fa-lock"></i>
+                        </div>
+                        <div class="summary-card-content">
+                            <div class="summary-card-label">🚨 Privileged Without MFA</div>
+                            <div class="summary-card-value" id="sunbird-privileged-without-mfa">0</div>
+                        </div>
+                    </div>
+
+                    <div class="sunbird-summary-card">
+                        <div class="summary-card-icon" style="background: rgba(249, 115, 22, 0.2); color: rgba(249, 115, 22, 0.9);">
+                            <i class="fas fa-fire"></i>
+                        </div>
+                        <div class="summary-card-content">
+                            <div class="summary-card-label">Identity Risk Score</div>
+                            <div class="summary-card-value" id="sunbird-identity-risk-score">0</div>
+                            <div class="summary-card-subtext">/100</div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Row 1: System Health Radar & Risk Distribution Pie -->
@@ -2334,6 +2694,47 @@ function generateIdentityDashboardHTML() {
                         <h4 class="chart-card-title">Risk Distribution</h4>
                         <div class="chart-wrapper">
                             <canvas id="riskDistributionPie" width="300" height="250"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Row 2: Security & Identity Analytics -->
+                <div class="sunbird-analytics-row-2" id="sunbird-analytics-row-2" style="display: none;">
+                    <div class="sunbird-analytics-card">
+                        <h4 class="chart-card-title">🔐 Authentication Strength</h4>
+                        <div class="chart-wrapper">
+                            <canvas id="authenticationStrengthChart" width="300" height="250"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="sunbird-analytics-card">
+                        <h4 class="chart-card-title">📱 Device Trust Analysis</h4>
+                        <div class="chart-wrapper">
+                            <canvas id="deviceTrustChart" width="300" height="250"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="sunbird-analytics-card">
+                        <h4 class="chart-card-title">👥 Role Distribution (Top 8)</h4>
+                        <div class="chart-wrapper">
+                            <canvas id="roleDistributionChart" width="400" height="250"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Row 3: User Health & Activity -->
+                <div class="sunbird-analytics-row-3" id="sunbird-analytics-row-3" style="display: none;">
+                    <div class="sunbird-analytics-card sunbird-analytics-card-wide">
+                        <h4 class="chart-card-title">⏱️ Inactive Users Breakdown (Days Since Last Sign-In)</h4>
+                        <div class="chart-wrapper">
+                            <canvas id="inactiveBreakdownChart" width="500" height="150"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="sunbird-analytics-card">
+                        <h4 class="chart-card-title">🧼 Identity Hygiene Score</h4>
+                        <div class="insights-content" id="identity-hygiene-breakdown">
+                            <!-- Populated dynamically -->
                         </div>
                     </div>
                 </div>
@@ -2354,13 +2755,6 @@ function generateIdentityDashboardHTML() {
                                     <!-- Populated dynamically -->
                                 </tbody>
                             </table>
-                        </div>
-                    </div>
-
-                    <div class="sunbird-insights-card">
-                        <h4 class="chart-card-title">📱 Device Breakdown</h4>
-                        <div class="chart-wrapper">
-                            <canvas id="deviceBreakdownChart" width="250" height="200"></canvas>
                         </div>
                     </div>
 
@@ -2537,8 +2931,9 @@ function populateIdentityTable() {
                 <th>MFA</th>
                 <th>Auth Methods</th>
                 <th>Risk</th>
-                <th>Status</th>
-                <th>Last Sign-In</th>
+                <th>Last Activity</th>
+                <th>Account Age</th>
+                <th>Privileged</th>
                 <th>Location</th>
                 <th>Device</th>
                 <th>Phone</th>
@@ -2547,7 +2942,7 @@ function populateIdentityTable() {
     }
 
     if (microsoftUsersData.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="${isSunbirdDashboard ? 13 : 7}" style="text-align: center; padding: 20px;">No users found</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="${isSunbirdDashboard ? 14 : 7}" style="text-align: center; padding: 20px;">No users found</td></tr>`;
         return;
     }
 
@@ -2581,7 +2976,7 @@ function populateIdentityTable() {
                            '🟢';
 
             const lastSignInText = (user.lastSignIn && user.lastSignIn.dateTime) ? 
-                new Date(user.lastSignIn.dateTime).toLocaleDateString() : 'Never';
+                getTimeAgoString(new Date(user.lastSignIn.dateTime)) : 'Never';
 
             // Location: Already formatted in backend as "City, Country"
             const locationDisplay = (user.lastSignIn && user.lastSignIn.location && user.lastSignIn.location !== 'No sign-in') ? user.lastSignIn.location : 'No sign-in';
@@ -2618,10 +3013,9 @@ function populateIdentityTable() {
                 <td>${mfaStatus}</td>
                 <td>${authMethodCount}</td>
                 <td><span class="${riskBadgeClass}">${riskIcon} ${riskLevel}</span></td>
-                <td>
-                    <span class="user-status-badge active">Active</span>
-                </td>
-                <td>${lastSignInText}</td>
+                <td><span title="${lastSignInText}">${user.lastSignIn?.daysSince || 999}d ago</span></td>
+                <td>${Math.round(user.accountAgeDays / 365)} years</td>
+                <td>${user.isPrivileged ? '👑 Yes' : 'No'}</td>
                 <td><span class="location-cell" title="${locationDisplay}">${locationDisplay}</span></td>
                 <td><span class="device-cell" title="${deviceDisplay}">${deviceDisplay}</span></td>
                 <td>${phone}</td>

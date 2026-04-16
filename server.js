@@ -101,7 +101,7 @@ async function getMicrosoftGraphToken() {
 
 async function fetchMicrosoftUsers(token) {
   try {
-    const response = await fetch('https://graph.microsoft.com/v1.0/users?$top=999&$select=displayName,mail,jobTitle,mobilePhone,userPrincipalName,id', {
+    const response = await fetch('https://graph.microsoft.com/v1.0/users?$top=999&$select=displayName,mail,jobTitle,mobilePhone,userPrincipalName,id,createdDateTime', {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -4455,6 +4455,10 @@ app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) =
             const lastSignInDate = lastSignIn?.createdDateTime ? new Date(lastSignIn.createdDateTime) : null;
             const daysSinceSignIn = lastSignInDate ? Math.floor((Date.now() - lastSignInDate) / (1000 * 60 * 60 * 24)) : 999;
 
+            // Calculate account age
+            const accountCreationDate = user.createdDateTime ? new Date(user.createdDateTime) : null;
+            const accountAgeDays = accountCreationDate ? Math.floor((Date.now() - accountCreationDate) / (1000 * 60 * 60 * 24)) : 0;
+
             // Calculate risk level
             let riskLevel = 'SAFE';
             if (hasAdminRole && !hasMFA) {
@@ -4476,15 +4480,18 @@ app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) =
                 roles: userRoles,
                 hasAdminRole: hasAdminRole,
                 isExternal: user.mail?.endsWith('.com') && !user.mail?.endsWith('sunbird.com') ? true : false,
+                isPrivileged: userRoles.length > 0, // Has any roles
                 mfaEnabled: hasMFA,
                 authMethodCount: authMethods.length,
                 riskLevel: riskLevel,
+                accountAgeDays: accountAgeDays,
                 lastSignIn: {
                     dateTime: lastSignInDate?.toISOString() || null,
                     daysSince: daysSinceSignIn,
                     location: lastSignIn?.location || 'No sign-in',
                     device: lastSignIn?.deviceDetail?.displayName || 'Unknown',
-                    appUsed: lastSignIn?.appDisplayName || 'Unknown',
+                    appDisplayName: lastSignIn?.appDisplayName,
+                    clientAppUsed: lastSignIn?.clientAppUsed,
                     status: lastSignIn?.status || 'No activity'
                 },
                 flags: {
@@ -4506,6 +4513,84 @@ app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) =
         const usersWithCompleteProfile = enrichedUsers.filter(u => 
             u.jobTitle !== 'No Title' && u.mobilePhone !== 'N/A'
         ).length;
+
+        // 🎯 NEW: A. Privileged Risk - Admins without MFA
+        const privilegedUsersWithoutMFA = enrichedUsers.filter(u => u.hasAdminRole && !u.mfaEnabled).length;
+
+        // 🎯 NEW: B. Identity Risk Score (calculated, not random)
+        let identityRiskScore = 0;
+        enrichedUsers.forEach(user => {
+            if (user.hasAdminRole && !user.mfaEnabled) identityRiskScore += 40;
+            if (user.lastSignIn.daysSince > 999) identityRiskScore += 25; // Never signed in
+            if (user.authMethodCount === 0) identityRiskScore += 20;
+            if (user.isExternal) identityRiskScore += 15;
+            if (user.riskLevel === 'MEDIUM') identityRiskScore += 10;
+            if (user.riskLevel === 'HIGH') identityRiskScore += 30;
+        });
+        identityRiskScore = Math.min(100, Math.round((identityRiskScore / (totalUsers * 40)) * 100)); // Normalize to 0-100
+
+        // 🎯 NEW: C. Inactive Users Breakdown
+        const inactiveBreakdown = {
+            '0-7days': enrichedUsers.filter(u => u.lastSignIn.daysSince >= 0 && u.lastSignIn.daysSince <= 7).length,
+            '7-30days': enrichedUsers.filter(u => u.lastSignIn.daysSince > 7 && u.lastSignIn.daysSince <= 30).length,
+            '30-90days': enrichedUsers.filter(u => u.lastSignIn.daysSince > 30 && u.lastSignIn.daysSince <= 90).length,
+            '90+days': enrichedUsers.filter(u => u.lastSignIn.daysSince > 90).length
+        };
+
+        // 🎯 NEW: E. Device Trust Analysis
+        const deviceTrustAnalysis = {
+            managed: 0,
+            unmanaged: 0,
+            unknown: 0
+        };
+        enrichedUsers.forEach(user => {
+            if (user.lastSignIn && user.lastSignIn.device) {
+                const device = user.lastSignIn.device.toLowerCase();
+                if (device.includes('unknown') || device === 'unknown') {
+                    deviceTrustAnalysis.unknown++;
+                } else if (device.includes('managed') || device.includes('iphone') || device.includes('ipad') || device.includes('android')) {
+                    deviceTrustAnalysis.managed++;
+                } else {
+                    deviceTrustAnalysis.unmanaged++;
+                }
+            } else {
+                deviceTrustAnalysis.unknown++;
+            }
+        });
+
+        // 🎯 NEW: F. Authentication Strength
+        const authenticationStrength = {
+            passwordOnly: 0,
+            basicMFA: 0,
+            strongMFA: 0 // FIDO2, Authenticator app
+        };
+        enrichedUsers.forEach(user => {
+            if (user.authMethodCount === 0 || user.authMethodCount === 1) {
+                authenticationStrength.passwordOnly++;
+            } else if (user.mfaEnabled && user.authMethodCount >= 2) {
+                authenticationStrength.basicMFA++;
+                // Note: would need detailed auth method data to differentiate strongMFA
+            }
+        });
+        authenticationStrength.strongMFA = Math.round(enrichedUsers.filter(u => u.authMethodCount > 2).length);
+
+        // 🎯 NEW: G. Role Distribution (Top roles)
+        const roleDistribution = {};
+        enrichedUsers.forEach(user => {
+            user.roles.forEach(role => {
+                roleDistribution[role.name] = (roleDistribution[role.name] || 0) + 1;
+            });
+        });
+        const topRoles = Object.entries(roleDistribution)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 8)
+            .map(([role, count]) => ({ role, count }));
+
+        // 🎯 NEW: H. Identity Hygiene Score
+        const profileCompleteness = Math.round((enrichedUsers.filter(u => u.jobTitle !== 'No Title').length / totalUsers) * 100);
+        const authCompleteness = Math.round((mfaEnabledUsers / totalUsers) * 100);
+        const activityCompleteness = Math.round((enrichedUsers.filter(u => u.lastSignIn.daysSince <= 90).length / totalUsers) * 100);
+        const identityHygieneScore = Math.round((profileCompleteness + authCompleteness + activityCompleteness) / 3);
 
         // System health metrics
         const systemHealth = {
@@ -4554,6 +4639,9 @@ app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) =
 
         console.log('[Sunbird Dashboard] Dashboard data compiled successfully');
 
+        // Calculate inactive users count
+        const inactiveUsersCount = enrichedUsers.filter(u => u.lastSignIn.daysSince > 30).length;
+
         res.json({
             success: true,
             tenant: tenant.clientId,
@@ -4561,11 +4649,21 @@ app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) =
             summary: {
                 totalUsers,
                 activeUsers24h,
+                activeUsersPercentage: Math.round((activeUsers24h / totalUsers) * 100),
+                inactiveUsers: inactiveUsersCount,
                 adminUsers,
                 mfaEnabledPercentage: mfaPercentage,
                 highRiskUsers,
+                highRiskBreakdown: {
+                    adminWithoutMFA: privilegedUsersWithoutMFA,
+                    neverSignedIn: enrichedUsers.filter(u => u.lastSignIn.daysSince > 999).length,
+                    externalUser: enrichedUsers.filter(u => u.isExternal).length
+                },
                 securityScore,
-                mediumRiskUsers
+                identityRiskScore,
+                identityHygieneScore,
+                mediumRiskUsers,
+                privilegedUsersWithoutMFA
             },
             systemHealth,
             users: enrichedUsers,
@@ -4575,6 +4673,15 @@ app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) =
                 SAFE: totalUsers - highRiskUsers - mediumRiskUsers
             },
             insights,
+            inactiveBreakdown,
+            deviceTrustAnalysis,
+            authenticationStrength,
+            topRoles,
+            hygieneLevels: {
+                profileCompleteness,
+                authCompleteness,
+                activityCompleteness
+            },
             signInPatterns: {
                 topLocations,
                 deviceBreakdown,
@@ -4583,7 +4690,8 @@ app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) =
             roleInsights: {
                 globalAdmins: enrichedUsers.filter(u => u.roles.some(r => r.name.toLowerCase().includes('global'))).length,
                 privilegedUsers: enrichedUsers.filter(u => u.roles.length > 0).length,
-                usersWithMultipleRoles: enrichedUsers.filter(u => u.roles.length > 1).length
+                usersWithMultipleRoles: enrichedUsers.filter(u => u.roles.length > 1).length,
+                roleDistribution: topRoles
             }
         });
 
