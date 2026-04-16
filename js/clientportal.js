@@ -2126,6 +2126,9 @@ function populateIdentityTable() {
             `;
         }
 
+        tableBody.appendChild(row);
+
+        if (index === 0) {
             console.log('[Identity Table] First user added:', user.displayName);
         }
     });
