@@ -1120,53 +1120,25 @@ function renderSunbirdSummaryCards() {
     const summaryCardsDiv = document.getElementById('sunbird-summary-cards');
     if (!summaryCardsDiv || !sunbirdDashboardData) return;
 
-    const totalUsers = sunbirdDashboardData.summary.totalUsers || 1;
     const securityScore = Math.round(sunbirdDashboardData.summary.securityScore || 0);
     const identityRiskScore = Math.round(sunbirdDashboardData.summary.identityRiskScore || 0);
     const activeUsers = sunbirdDashboardData.summary.activeUsers24h || 0;
     const activeUsersPercentage = sunbirdDashboardData.summary.activeUsersPercentage || 0;
     const highRiskUsers = sunbirdDashboardData.summary.highRiskUsers || 0;
-    const inactiveUsers = sunbirdDashboardData.summary.inactiveUsers || 0;
     const privilegedWithoutMFA = sunbirdDashboardData.summary.privilegedUsersWithoutMFA || 0;
-    const highRiskBreakdown = sunbirdDashboardData.summary.highRiskBreakdown || {};
 
     // Update summary card values with improved context
     document.getElementById('sunbird-security-score').textContent = securityScore;
-    
-    // Active Users: Show count / total (percentage)
-    document.getElementById('sunbird-active-users').innerHTML = `
-        <span style="font-size: 1.3rem;">${activeUsers}</span>
-        <span style="font-size: 0.75rem; opacity: 0.7; display: block;">/ ${totalUsers} users (${activeUsersPercentage}%)</span>
-    `;
-    
-    // High Risk Users: Show breakdown with tooltip
-    const highRiskBreakdownText = `${highRiskBreakdown.adminWithoutMFA || 0} = No MFA + Admin | ${highRiskBreakdown.neverSignedIn || 0} = Never signed in | ${highRiskBreakdown.externalUser || 0} = External`;
-    const highRiskElement = document.getElementById('sunbird-high-risk');
-    highRiskElement.textContent = highRiskUsers;
-    highRiskElement.title = highRiskBreakdownText;
-    highRiskElement.style.cursor = 'help';
-    
-    // Privileged Without MFA with context
-    document.getElementById('sunbird-privileged-without-mfa').innerHTML = `
-        <span style="font-size: 1.3rem;">${privilegedWithoutMFA}</span>
-        <span style="font-size: 0.7rem; opacity: 0.7; display: block;">Admin users at risk</span>
-    `;
-    
-    // Identity Risk Score with visual indicator
-    const riskColor = identityRiskScore >= 70 ? '#dc3545' : identityRiskScore >= 40 ? '#f97316' : '#22c55e';
-    document.getElementById('sunbird-identity-risk-score').innerHTML = `
-        <span style="font-size: 1.3rem; color: ${riskColor};">${identityRiskScore}</span>
-        <span style="font-size: 0.7rem; opacity: 0.7; display: block;">/100</span>
-    `;
-    
-    // Inactive Users: Update display
-    const inactiveElement = document.getElementById('sunbird-inactive-users');
-    if (inactiveElement) {
-        const inactivePercentage = Math.round((inactiveUsers / totalUsers) * 100);
-        inactiveElement.innerHTML = `
-            <span style="font-size: 1.3rem;">${inactiveUsers}</span>
-            <span style="font-size: 0.7rem; opacity: 0.7; display: block;">${inactivePercentage}% inactive</span>
-        `;
+    document.getElementById('sunbird-active-users').innerHTML = `<span style="font-size: 1.3rem;">${activeUsers}</span><span style="font-size: 0.75rem; opacity: 0.7; display: block;">${activeUsersPercentage}%</span>`;
+    document.getElementById('sunbird-high-risk').textContent = highRiskUsers;
+    document.getElementById('sunbird-privileged-without-mfa').textContent = privilegedWithoutMFA;
+    document.getElementById('sunbird-identity-risk-score').textContent = identityRiskScore;
+
+    // Update identity hygiene if the element exists
+    const hygieneElement = document.getElementById('sunbird-identity-hygiene');
+    if (hygieneElement) {
+        const hygieneScore = sunbirdDashboardData.summary.identityHygieneScore || 0;
+        hygieneElement.textContent = hygieneScore;
     }
 
     summaryCardsDiv.style.display = 'grid';
@@ -1549,7 +1521,7 @@ function renderSignInInsights() {
     const insightsRowDiv = document.getElementById('sunbird-insights-row');
     if (!insightsRowDiv || !sunbirdDashboardData) return;
 
-    // Render Top Locations Table with Enhanced Context
+    // Render Top Locations Table
     const topLocationsBody = document.getElementById('top-locations-body');
     if (topLocationsBody && sunbirdDashboardData.signInPatterns) {
         const locations = sunbirdDashboardData.signInPatterns.topLocations || [];
@@ -1557,35 +1529,16 @@ function renderSignInInsights() {
         
         locations.slice(0, 5).forEach(location => {
             const row = document.createElement('tr');
-            // Calculate rough risk level based on sign-in success rates from users at that location
-            const usersAtLocation = sunbirdDashboardData.users.filter(u => u.lastSignIn && u.lastSignIn.location === location.location);
-            const successCount = usersAtLocation.filter(u => u.lastSignIn.status === 'Success').length;
-            const failureCount = usersAtLocation.filter(u => u.lastSignIn.status === 'Failed').length;
-            const riskBadge = failureCount > 2 ? '🔴 High' : failureCount > 0 ? '🟡 Medium' : '🟢 Safe';
-            
             row.innerHTML = `
                 <td>${location.location || 'Unknown'}</td>
                 <td><strong>${location.count || 0}</strong></td>
-                <td style="font-size: 0.85rem;">${successCount}✓ ${failureCount}✗</td>
-                <td style="font-size: 0.9rem;">${riskBadge}</td>
             `;
             topLocationsBody.appendChild(row);
         });
 
         if (locations.length === 0) {
-            topLocationsBody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #999;">No location data available</td></tr>';
+            topLocationsBody.innerHTML = '<tr><td colspan="2" style="text-align: center; color: #999;">No location data available</td></tr>';
         }
-    }
-
-    // Update table headers to show additional columns
-    const locationsTable = document.getElementById('top-locations-table');
-    if (locationsTable && locationsTable.querySelector('thead tr')) {
-        locationsTable.querySelector('thead tr').innerHTML = `
-            <th>Location</th>
-            <th>Sign-Ins</th>
-            <th>Success/Fail</th>
-            <th>Risk</th>
-        `;
     }
 
     // Render Device Breakdown Chart
@@ -1654,7 +1607,7 @@ function renderDeviceBreakdownChart() {
     });
 }
 
-// Render Sign-In Timeline with Enhanced Details
+// Render Sign-In Timeline
 function renderSignInTimeline() {
     const timelineContainer = document.getElementById('timeline-container');
     if (!timelineContainer || !sunbirdDashboardData) return;
@@ -1665,14 +1618,10 @@ function renderSignInTimeline() {
         ?.filter(u => u.lastSignIn && u.lastSignIn.dateTime)
         .map(u => ({
             user: u.displayName,
-            email: u.mail,
             date: new Date(u.lastSignIn.dateTime),
             location: u.lastSignIn.location,
-            device: u.lastSignIn.device,
             app: u.lastSignIn.appDisplayName,
-            clientAppUsed: u.lastSignIn.clientAppUsed,
-            status: u.lastSignIn.status,
-            riskLevel: u.riskLevel
+            clientAppUsed: u.lastSignIn.clientAppUsed
         }))
         .sort((a, b) => b.date - a.date)
         .slice(0, 10) || [];
@@ -1685,23 +1634,14 @@ function renderSignInTimeline() {
     signIns.forEach(signin => {
         const timeAgo = getTimeAgoString(signin.date);
         const appName = signin.app || signin.clientAppUsed || 'Microsoft Portal';
-        const riskIcon = signin.riskLevel === 'HIGH' ? '🔴' : signin.riskLevel === 'MEDIUM' ? '🟡' : '🟢';
         const timelineItem = document.createElement('div');
         timelineItem.className = 'timeline-item';
-        timelineItem.style.borderLeftColor = signin.riskLevel === 'HIGH' ? '#dc3545' : signin.riskLevel === 'MEDIUM' ? '#f97316' : '#22c55e';
         timelineItem.innerHTML = `
-            <div class="timeline-icon">${riskIcon}</div>
+            <div class="timeline-icon">📋</div>
             <div class="timeline-info">
-                <div class="timeline-user" style="font-weight: 600;">${signin.user}</div>
-                <div class="timeline-action" style="font-size: 0.9rem; color: #aaa;">Signed in to ${appName}</div>
-                <div class="timeline-details" style="font-size: 0.85rem; color: #888; margin-top: 4px;">
-                    📍 ${signin.location || 'Unknown'} • 
-                    ${signin.device ? '📱 ' + (signin.device.length > 20 ? signin.device.substring(0, 20) + '...' : signin.device) : 'Device: Unknown'} • 
-                    ${timeAgo}
-                </div>
-                <div class="timeline-status" style="font-size: 0.8rem; margin-top: 4px;">
-                    ${signin.status === 'Success' ? '✅ Success' : signin.status === 'Failed' ? '❌ Failed' : '⚪ ' + signin.status}
-                </div>
+                <div class="timeline-user">${signin.user}</div>
+                <div class="timeline-action">Signed in via ${appName}</div>
+                <div class="timeline-time">${signin.location || 'Unknown location'} • ${timeAgo}</div>
             </div>
         `;
         timelineContainer.appendChild(timelineItem);
@@ -2931,9 +2871,8 @@ function populateIdentityTable() {
                 <th>MFA</th>
                 <th>Auth Methods</th>
                 <th>Risk</th>
-                <th>Last Activity</th>
-                <th>Account Age</th>
-                <th>Privileged</th>
+                <th>Status</th>
+                <th>Last Sign-In</th>
                 <th>Location</th>
                 <th>Device</th>
                 <th>Phone</th>
@@ -2942,7 +2881,7 @@ function populateIdentityTable() {
     }
 
     if (microsoftUsersData.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="${isSunbirdDashboard ? 14 : 7}" style="text-align: center; padding: 20px;">No users found</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="${isSunbirdDashboard ? 13 : 7}" style="text-align: center; padding: 20px;">No users found</td></tr>`;
         return;
     }
 
@@ -3013,9 +2952,10 @@ function populateIdentityTable() {
                 <td>${mfaStatus}</td>
                 <td>${authMethodCount}</td>
                 <td><span class="${riskBadgeClass}">${riskIcon} ${riskLevel}</span></td>
-                <td><span title="${lastSignInText}">${user.lastSignIn?.daysSince || 999}d ago</span></td>
-                <td>${Math.round(user.accountAgeDays / 365)} years</td>
-                <td>${user.isPrivileged ? '👑 Yes' : 'No'}</td>
+                <td>
+                    <span class="user-status-badge active">Active</span>
+                </td>
+                <td>${lastSignInText}</td>
                 <td><span class="location-cell" title="${locationDisplay}">${locationDisplay}</span></td>
                 <td><span class="device-cell" title="${deviceDisplay}">${deviceDisplay}</span></td>
                 <td>${phone}</td>

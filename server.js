@@ -101,7 +101,7 @@ async function getMicrosoftGraphToken() {
 
 async function fetchMicrosoftUsers(token) {
   try {
-    const response = await fetch('https://graph.microsoft.com/v1.0/users?$top=999&$select=displayName,mail,jobTitle,mobilePhone,userPrincipalName,id,createdDateTime', {
+    const response = await fetch('https://graph.microsoft.com/v1.0/users?$top=999&$select=displayName,mail,jobTitle,mobilePhone,userPrincipalName,id', {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -4455,10 +4455,6 @@ app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) =
             const lastSignInDate = lastSignIn?.createdDateTime ? new Date(lastSignIn.createdDateTime) : null;
             const daysSinceSignIn = lastSignInDate ? Math.floor((Date.now() - lastSignInDate) / (1000 * 60 * 60 * 24)) : 999;
 
-            // Calculate account age
-            const accountCreationDate = user.createdDateTime ? new Date(user.createdDateTime) : null;
-            const accountAgeDays = accountCreationDate ? Math.floor((Date.now() - accountCreationDate) / (1000 * 60 * 60 * 24)) : 0;
-
             // Calculate risk level
             let riskLevel = 'SAFE';
             if (hasAdminRole && !hasMFA) {
@@ -4480,11 +4476,9 @@ app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) =
                 roles: userRoles,
                 hasAdminRole: hasAdminRole,
                 isExternal: user.mail?.endsWith('.com') && !user.mail?.endsWith('sunbird.com') ? true : false,
-                isPrivileged: userRoles.length > 0, // Has any roles
                 mfaEnabled: hasMFA,
                 authMethodCount: authMethods.length,
                 riskLevel: riskLevel,
-                accountAgeDays: accountAgeDays,
                 lastSignIn: {
                     dateTime: lastSignInDate?.toISOString() || null,
                     daysSince: daysSinceSignIn,
@@ -4639,9 +4633,6 @@ app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) =
 
         console.log('[Sunbird Dashboard] Dashboard data compiled successfully');
 
-        // Calculate inactive users count
-        const inactiveUsersCount = enrichedUsers.filter(u => u.lastSignIn.daysSince > 30).length;
-
         res.json({
             success: true,
             tenant: tenant.clientId,
@@ -4650,7 +4641,6 @@ app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) =
                 totalUsers,
                 activeUsers24h,
                 activeUsersPercentage: Math.round((activeUsers24h / totalUsers) * 100),
-                inactiveUsers: inactiveUsersCount,
                 adminUsers,
                 mfaEnabledPercentage: mfaPercentage,
                 highRiskUsers,
