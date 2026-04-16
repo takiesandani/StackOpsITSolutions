@@ -406,6 +406,9 @@ function initializeIdentityInsights() {
     
     // Initialize charts
     initializeIdentityCharts();
+    
+    // Initialize Sunbird-specific analytics if available
+    renderSunbirdAnalytics();
 }
 
 function initializeIdentityCharts() {
@@ -1033,6 +1036,318 @@ function populateSecurityInsights() {
     
     html += '</div>';
     insightsContainer.innerHTML = html;
+}
+
+/* ============================================================== */
+/* SUNBIRD ANALYTICS RENDERING FUNCTIONS                          */
+/* ============================================================== */
+
+// Render Sunbird Summary Cards (Security Score, Risk, Activity)
+function renderSunbirdSummaryCards() {
+    const summaryCardsDiv = document.getElementById('sunbird-summary-cards');
+    if (!summaryCardsDiv || !sunbirdDashboardData) return;
+
+    const securityScore = Math.round(sunbirdDashboardData.summary.securityScore || 0);
+    const activeUsers = sunbirdDashboardData.summary.activeUsers24h || 0;
+    const highRiskUsers = sunbirdDashboardData.summary.highRiskUsers || 0;
+    const inactiveUsers = microsoftUsersData.filter(u => {
+        if (!u.lastSignIn || !u.lastSignIn.dateTime) return true;
+        const daysInactive = Math.floor((Date.now() - new Date(u.lastSignIn.dateTime).getTime()) / (1000 * 60 * 60 * 24));
+        return daysInactive > 30;
+    }).length;
+
+    document.getElementById('sunbird-security-score').textContent = securityScore;
+    document.getElementById('sunbird-active-users').textContent = activeUsers;
+    document.getElementById('sunbird-high-risk').textContent = highRiskUsers;
+    document.getElementById('sunbird-inactive-users').textContent = inactiveUsers;
+
+    summaryCardsDiv.style.display = 'grid';
+}
+
+// Render System Health Radar Chart
+function renderSystemHealthRadar() {
+    const canvasElement = document.getElementById('systemHealthRadar');
+    if (!canvasElement || !sunbirdDashboardData) return;
+
+    const health = sunbirdDashboardData.systemHealth;
+    
+    // Set canvas dimensions
+    canvasElement.width = 400;
+    canvasElement.height = 300;
+    
+    const ctx = canvasElement.getContext('2d');
+    if (!ctx) return;
+    
+    if (window.systemHealthRadarInstance && typeof window.systemHealthRadarInstance.destroy === 'function') {
+        window.systemHealthRadarInstance.destroy();
+    }
+
+    window.systemHealthRadarInstance = new Chart(ctx, {
+        type: 'radar',
+        data: {
+            labels: ['Performance', 'Availability', 'Security', 'Compliance', 'Backup'],
+            datasets: [{
+                label: 'System Health',
+                data: [
+                    health.performance || 0,
+                    health.availability || 0,
+                    health.security || 0,
+                    health.compliance || 0,
+                    health.backup || 0
+                ],
+                borderColor: 'rgba(0, 110, 255, 0.8)',
+                backgroundColor: 'rgba(0, 110, 255, 0.2)',
+                borderWidth: 2,
+                fill: true,
+                pointRadius: 4,
+                pointBackgroundColor: 'rgba(0, 110, 255, 0.9)',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    labels: { color: '#999', font: { size: 11, weight: 200 } },
+                    display: true
+                }
+            },
+            scales: {
+                r: {
+                    beginAtZero: true,
+                    max: 100,
+                    ticks: {
+                        color: '#666',
+                        font: { size: 10, weight: 200 }
+                    },
+                    grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                }
+            }
+        }
+    });
+}
+
+// Render Risk Distribution Pie Chart
+function renderRiskDistributionPie() {
+    const canvasElement = document.getElementById('riskDistributionPie');
+    if (!canvasElement || !sunbirdDashboardData) return;
+
+    const riskDist = sunbirdDashboardData.riskDistribution;
+    const highRisk = riskDist.HIGH || 0;
+    const mediumRisk = riskDist.MEDIUM || 0;
+    const safeRisk = riskDist.SAFE || 0;
+
+    // Set canvas dimensions
+    canvasElement.width = 300;
+    canvasElement.height = 250;
+    
+    const ctx = canvasElement.getContext('2d');
+    if (!ctx) return;
+    
+    if (window.riskDistributionPieInstance && typeof window.riskDistributionPieInstance.destroy === 'function') {
+        window.riskDistributionPieInstance.destroy();
+    }
+
+    window.riskDistributionPieInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['🔴 High Risk', '🟡 Medium Risk', '🟢 Safe'],
+            datasets: [{
+                data: [highRisk, mediumRisk, safeRisk],
+                backgroundColor: [
+                    'rgba(220, 53, 69, 0.7)',
+                    'rgba(249, 115, 22, 0.7)',
+                    'rgba(34, 197, 94, 0.7)'
+                ],
+                borderColor: [
+                    'rgba(220, 53, 69, 1)',
+                    'rgba(249, 115, 22, 1)',
+                    'rgba(34, 197, 94, 1)'
+                ],
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    labels: { color: '#999', font: { size: 11, weight: 200 } },
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+}
+
+// Render Sign-In Insights (Top Locations, Device Breakdown, Timeline)
+function renderSignInInsights() {
+    const insightsRowDiv = document.getElementById('sunbird-insights-row');
+    if (!insightsRowDiv || !sunbirdDashboardData) return;
+
+    // Render Top Locations Table
+    const topLocationsBody = document.getElementById('top-locations-body');
+    if (topLocationsBody && sunbirdDashboardData.signInPatterns) {
+        const locations = sunbirdDashboardData.signInPatterns.topLocations || [];
+        topLocationsBody.innerHTML = '';
+        
+        locations.slice(0, 5).forEach(location => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${location.location || 'Unknown'}</td>
+                <td><strong>${location.count || 0}</strong></td>
+            `;
+            topLocationsBody.appendChild(row);
+        });
+
+        if (locations.length === 0) {
+            topLocationsBody.innerHTML = '<tr><td colspan="2" style="text-align: center; color: #999;">No location data available</td></tr>';
+        }
+    }
+
+    // Render Device Breakdown Chart
+    renderDeviceBreakdownChart();
+
+    // Render Sign-In Timeline
+    renderSignInTimeline();
+
+    insightsRowDiv.style.display = 'grid';
+}
+
+// Render Device Breakdown Chart
+function renderDeviceBreakdownChart() {
+    const canvasElement = document.getElementById('deviceBreakdownChart');
+    if (!canvasElement || !sunbirdDashboardData) return;
+
+    const deviceData = sunbirdDashboardData.signInPatterns?.deviceBreakdown || {};
+    const labels = Object.keys(deviceData);
+    const data = Object.values(deviceData);
+
+    // Set canvas dimensions
+    canvasElement.width = 250;
+    canvasElement.height = 200;
+    
+    const ctx = canvasElement.getContext('2d');
+    if (!ctx) return;
+    
+    if (window.deviceBreakdownInstance && typeof window.deviceBreakdownInstance.destroy === 'function') {
+        window.deviceBreakdownInstance.destroy();
+    }
+
+    const colors = [
+        'rgba(59, 130, 246, 0.7)',
+        'rgba(34, 197, 94, 0.7)',
+        'rgba(249, 115, 22, 0.7)',
+        'rgba(139, 92, 246, 0.7)',
+        'rgba(236, 72, 153, 0.7)'
+    ];
+
+    window.deviceBreakdownInstance = new Chart(ctx, {
+        type: 'pie',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: colors.slice(0, labels.length),
+                borderColor: colors.slice(0, labels.length).map(c => c.replace('0.7', '1')),
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    labels: { color: '#999', font: { size: 10, weight: 200 } },
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+}
+
+// Render Sign-In Timeline
+function renderSignInTimeline() {
+    const timelineContainer = document.getElementById('timeline-container');
+    if (!timelineContainer || !sunbirdDashboardData) return;
+
+    timelineContainer.innerHTML = '';
+
+    const signIns = sunbirdDashboardData.users
+        ?.filter(u => u.lastSignIn && u.lastSignIn.dateTime)
+        .map(u => ({
+            user: u.displayName,
+            date: new Date(u.lastSignIn.dateTime),
+            location: u.lastSignIn.location,
+            app: u.lastSignIn.appDisplayName
+        }))
+        .sort((a, b) => b.date - a.date)
+        .slice(0, 10) || [];
+
+    if (signIns.length === 0) {
+        timelineContainer.innerHTML = '<p style="text-align: center; color: #999; font-size: 0.85rem;">No recent sign-ins</p>';
+        return;
+    }
+
+    signIns.forEach(signin => {
+        const timeAgo = getTimeAgoString(signin.date);
+        const timelineItem = document.createElement('div');
+        timelineItem.className = 'timeline-item';
+        timelineItem.innerHTML = `
+            <div class="timeline-icon">📋</div>
+            <div class="timeline-info">
+                <div class="timeline-user">${signin.user}</div>
+                <div class="timeline-action">Signed in via ${signin.app || 'Unknown'}</div>
+                <div class="timeline-time">${signin.location || 'Unknown location'} • ${timeAgo}</div>
+            </div>
+        `;
+        timelineContainer.appendChild(timelineItem);
+    });
+}
+
+// Helper function: Convert timestamp to "X time ago" format
+function getTimeAgoString(date) {
+    const seconds = Math.floor((new Date() - date) / 1000);
+    
+    let interval = seconds / 31536000;
+    if (interval > 1) return Math.floor(interval) + ' years ago';
+    
+    interval = seconds / 2592000;
+    if (interval > 1) return Math.floor(interval) + ' months ago';
+    
+    interval = seconds / 86400;
+    if (interval > 1) return Math.floor(interval) + ' days ago';
+    
+    interval = seconds / 3600;
+    if (interval > 1) return Math.floor(interval) + ' hours ago';
+    
+    interval = seconds / 60;
+    if (interval > 1) return Math.floor(interval) + ' minutes ago';
+    
+    return 'Just now';
+}
+
+// Master function to render all Sunbird analytics
+function renderSunbirdAnalytics() {
+    if (!isSunbirdDashboard || !sunbirdDashboardData) {
+        console.log('[Sunbird Analytics] Not Sunbird dashboard, skipping analytics');
+        return;
+    }
+
+    console.log('[Sunbird Analytics] Rendering all components...');
+    
+    try {
+        renderSunbirdSummaryCards();
+        renderSystemHealthRadar();
+        renderRiskDistributionPie();
+        renderSignInInsights();
+        
+        console.log('[Sunbird Analytics] All components rendered successfully');
+    } catch (error) {
+        console.error('[Sunbird Analytics] Error rendering components:', error);
+    }
 }
 
 function setupEventListeners() {
@@ -1878,6 +2193,104 @@ function generateIdentityDashboardHTML() {
 
             <!-- Charts & Insights Section Below Table -->
             <div class="identity-insights-section">
+                <!-- Sunbird-Specific Analytics Components (Only visible for Sunbird) -->
+                <!-- Row 0: Summary Cards (Security, Risk, Activity) -->
+                <div class="sunbird-summary-cards-row" id="sunbird-summary-cards" style="display: none;">
+                    <div class="sunbird-summary-card">
+                        <div class="summary-card-icon" style="background: rgba(0, 110, 255, 0.2); color: rgba(0, 110, 255, 0.9);">
+                            <i class="fas fa-shield-alt"></i>
+                        </div>
+                        <div class="summary-card-content">
+                            <div class="summary-card-label">Security Score</div>
+                            <div class="summary-card-value" id="sunbird-security-score">0</div>
+                            <div class="summary-card-subtext">/100</div>
+                        </div>
+                    </div>
+
+                    <div class="sunbird-summary-card">
+                        <div class="summary-card-icon" style="background: rgba(34, 197, 94, 0.2); color: rgba(34, 197, 94, 0.9);">
+                            <i class="fas fa-user-check"></i>
+                        </div>
+                        <div class="summary-card-content">
+                            <div class="summary-card-label">Active Users (24h)</div>
+                            <div class="summary-card-value" id="sunbird-active-users">0</div>
+                        </div>
+                    </div>
+
+                    <div class="sunbird-summary-card">
+                        <div class="summary-card-icon" style="background: rgba(220, 53, 69, 0.2); color: rgba(220, 53, 69, 0.9);">
+                            <i class="fas fa-exclamation-circle"></i>
+                        </div>
+                        <div class="summary-card-content">
+                            <div class="summary-card-label">High Risk Users</div>
+                            <div class="summary-card-value" id="sunbird-high-risk">0</div>
+                        </div>
+                    </div>
+
+                    <div class="sunbird-summary-card">
+                        <div class="summary-card-icon" style="background: rgba(108, 92, 231, 0.2); color: rgba(108, 92, 231, 0.9);">
+                            <i class="fas fa-user-clock"></i>
+                        </div>
+                        <div class="summary-card-content">
+                            <div class="summary-card-label">Inactive (30+ days)</div>
+                            <div class="summary-card-value" id="sunbird-inactive-users">0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Row 1: System Health Radar & Risk Distribution Pie -->
+                <div class="sunbird-analytics-row-1" id="sunbird-analytics-row-1" style="display: none;">
+                    <div class="sunbird-analytics-card sunbird-analytics-card-wide">
+                        <h4 class="chart-card-title">System Health Radar</h4>
+                        <div class="chart-wrapper">
+                            <canvas id="systemHealthRadar" width="400" height="300"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="sunbird-analytics-card">
+                        <h4 class="chart-card-title">Risk Distribution</h4>
+                        <div class="chart-wrapper">
+                            <canvas id="riskDistributionPie" width="300" height="250"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Row 2: Sign-In Insights -->
+                <div class="sunbird-insights-row" id="sunbird-insights-row" style="display: none;">
+                    <div class="sunbird-insights-card">
+                        <h4 class="chart-card-title">📍 Top Sign-In Locations</h4>
+                        <div class="insights-content">
+                            <table class="insights-table" id="top-locations-table">
+                                <thead>
+                                    <tr>
+                                        <th>Location</th>
+                                        <th>Sign-Ins</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="top-locations-body">
+                                    <!-- Populated dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="sunbird-insights-card">
+                        <h4 class="chart-card-title">📱 Device Breakdown</h4>
+                        <div class="chart-wrapper">
+                            <canvas id="deviceBreakdownChart" width="250" height="200"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="sunbird-insights-card">
+                        <h4 class="chart-card-title">📈 Sign-In Activity Timeline</h4>
+                        <div class="insights-content">
+                            <div id="timeline-container" class="timeline-container">
+                                <!-- Populated dynamically -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Row 1: Charts -->
                 <div class="identity-charts-grid">
                     <!-- Job Title Distribution -->
