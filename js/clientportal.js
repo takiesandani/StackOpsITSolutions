@@ -311,24 +311,28 @@ function setupIdentitySearch() {
         
         const rows = document.querySelectorAll('#users-table-body tr');
         
-        rows.forEach(row => {
+        rows.forEach((row, rowIndex) => {
             const name = row.cells[0]?.textContent.toLowerCase() || '';
             const email = row.cells[1]?.textContent.toLowerCase() || '';
-            const jobTitle = row.cells[2]?.textContent.toLowerCase() || '';
-            const phone = row.cells[3]?.textContent.toLowerCase() || '';
-            const rolesCell = row.cells[4]?.textContent.toLowerCase() || '';
             const typeCell = row.cells[5]?.textContent.toLowerCase() || '';
+            
+            // Get the actual user data
+            const user = microsoftUsersData[rowIndex];
+            if (!user) return;
             
             // Search filter
             const matchesSearch = !searchTerm || name.includes(searchTerm) || email.includes(searchTerm);
             
             // Type filters
             let matchesTypeFilter = true;
+            
             if (selectedFilters.length > 0) {
-                const isInternal = typeCell.includes('internal');
-                const isExternal = typeCell.includes('external');
-                const hasMissingData = (jobTitle.includes('missing') || phone.includes('missing'));
-                const hasRoles = !rolesCell.includes('no roles') && rolesCell.trim() !== '';
+                const isInternal = !user.isExternal;
+                const isExternal = user.isExternal;
+                const hasRoles = (userRolesMap[user.id] && userRolesMap[user.id].length > 0);
+                const hasMissingJobTitle = !user.jobTitle || user.jobTitle === 'No Title' || user.jobTitle.trim() === '';
+                const hasMissingPhone = !user.mobilePhone || user.mobilePhone === 'N/A' || (typeof user.mobilePhone === 'string' && user.mobilePhone.trim() === '');
+                const hasMissingData = hasMissingJobTitle || hasMissingPhone;
                 
                 matchesTypeFilter = 
                     (selectedFilters.includes('internal') && isInternal) ||
@@ -677,35 +681,60 @@ function renderRoleDistributionChart() {
     }
     
     const colors = [
-        'rgba(0, 110, 255, 0.7)',
-        'rgba(249, 115, 22, 0.7)',
-        'rgba(34, 197, 94, 0.7)',
-        'rgba(248, 113, 113, 0.7)',
-        'rgba(132, 204, 22, 0.7)',
-        'rgba(168, 85, 247, 0.7)',
-        'rgba(14, 165, 233, 0.7)',
-        'rgba(236, 72, 153, 0.7)',
-        'rgba(251, 146, 60, 0.7)',
-        'rgba(59, 130, 246, 0.7)'
+        'rgba(0, 110, 255, 0.8)',
+        'rgba(249, 115, 22, 0.8)',
+        'rgba(34, 197, 94, 0.8)',
+        'rgba(248, 113, 113, 0.8)',
+        'rgba(132, 204, 22, 0.8)',
+        'rgba(168, 85, 247, 0.8)',
+        'rgba(14, 165, 233, 0.8)',
+        'rgba(236, 72, 153, 0.8)',
+        'rgba(251, 146, 60, 0.8)',
+        'rgba(59, 130, 246, 0.8)'
     ];
     
     window.roleDistributionChartInstance = new Chart(ctx, {
-        type: 'pie',
+        type: 'bar',
         data: {
             labels: labels,
             datasets: [{
+                label: 'Number of Assignments',
                 data: data,
                 backgroundColor: colors.slice(0, labels.length),
-                borderColor: colors.slice(0, labels.length).map(c => c.replace('0.7', '1')),
-                borderWidth: 2
+                borderColor: colors.slice(0, labels.length).map(c => c.replace('0.8', '1')),
+                borderWidth: 1,
+                borderRadius: 4,
+                barThickness: 20
             }]
         },
         options: {
+            indexAxis: 'y',
             responsive: true,
             maintainAspectRatio: true,
             plugins: {
                 legend: {
-                    labels: { color: '#999', font: { size: 11 } }
+                    display: false
+                }
+            },
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    ticks: {
+                        color: '#999',
+                        font: { size: 11 }
+                    },
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.05)'
+                    }
+                },
+                y: {
+                    ticks: {
+                        color: '#999',
+                        font: { size: 11 }
+                    },
+                    grid: {
+                        display: false
+                    }
                 }
             }
         }
@@ -807,10 +836,12 @@ function populateRiskIndicator() {
         .filter(([_, roles]) => roles.some(role => role.toLowerCase().includes('admin')))
         .length;
     
-    const hasBreakGlass = microsoftUsersData.some(u => 
+    // Find break glass account
+    const breakGlassUser = microsoftUsersData.find(u => 
         u.mail?.toLowerCase().includes('break glass') || 
         u.displayName?.toLowerCase().includes('break glass')
     );
+    const hasBreakGlass = !!breakGlassUser;
     
     let riskLevel = 'LOW';
     let riskColor = '#22c55e'; // green
@@ -850,8 +881,8 @@ function populateRiskIndicator() {
     if (hasBreakGlass) {
         html += `
                 <div class="risk-detail-item" style="color: #dc2626;">
-                    <span>⚠️ Master Admin:</span>
-                    <span class="detail-value">DETECTED</span>
+                    <span>⚠️ Master Admin (Break Glass):</span>
+                    <span class="detail-value">${breakGlassUser.displayName || breakGlassUser.mail}</span>
                 </div>
         `;
     }
@@ -867,6 +898,48 @@ function populateRiskIndicator() {
     
     html += `
             </div>
+    `;
+    
+    // Add To-Do section if there are issues
+    if (hasBreakGlass || totalAdmins > 5) {
+        html += `
+            <div class="risk-todo-section" style="margin-top: 12px; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 6px; border-left: 3px solid ${riskColor};">
+                <h4 style="margin: 0 0 10px 0; font-size: 0.9rem; color: #e0e0e0;">📋 Recommended Actions:</h4>
+                <ul style="margin: 0; padding-left: 20px; list-style: disc;">
+        `;
+        
+        if (hasBreakGlass) {
+            html += `
+                    <li style="color: #d1d5db; font-size: 0.8rem; margin-bottom: 6px;">
+                        <strong>Secure Break Glass Account:</strong> Limit access, enable MFA, audit recent activities
+                    </li>
+                    <li style="color: #d1d5db; font-size: 0.8rem; margin-bottom: 6px;">
+                        <strong>Review Permissions:</strong> Ensure Break Glass is only used for emergencies
+                    </li>
+            `;
+        }
+        
+        if (totalAdmins > 5) {
+            html += `
+                    <li style="color: #d1d5db; font-size: 0.8rem; margin-bottom: 6px;">
+                        <strong>Audit Admin Roles:</strong> Remove unnecessary admin privileges from users
+                    </li>
+                    <li style="color: #d1d5db; font-size: 0.8rem; margin-bottom: 6px;">
+                        <strong>Implement Principle of Least Privilege:</strong> Assign specific admin roles instead of global admin
+                    </li>
+                    <li style="color: #d1d5db; font-size: 0.8rem;">
+                        <strong>Target Goal:</strong> Reduce admin count to 3-5 key administrators
+                    </li>
+            `;
+        }
+        
+        html += `
+                </ul>
+            </div>
+        `;
+    }
+    
+    html += `
         </div>
     `;
     
