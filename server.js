@@ -144,29 +144,6 @@ async function fetchMicrosoftRoleAssignments(token) {
   }
 }
 
-// Fetch directory roles from Microsoft Graph
-async function fetchMicrosoftDirectoryRoles(token) {
-  try {
-    const response = await fetch('https://graph.microsoft.com/v1.0/directoryRoles?$top=999', {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(`Microsoft Graph API failed: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    return data.value || [];
-  } catch (error) {
-    console.error('[Microsoft Graph] Failed to fetch directory roles:', error.message);
-    throw error;
-  }
-}
-
 const app = express();
 // Middleware for parsing bodies with raw support (critical for payment signatures)
 app.use(express.json({
@@ -4292,21 +4269,8 @@ app.get('/api/microsoft-roles', authenticateToken, async (req, res) => {
         // Get Microsoft Graph token
         const token = await getMicrosoftGraphToken();
 
-        // Fetch role assignments and directory roles
-        const [roleAssignments, directoryRoles] = await Promise.all([
-            fetchMicrosoftRoleAssignments(token),
-            fetchMicrosoftDirectoryRoles(token)
-        ]);
-
-        // Create a map of role ID to role name
-        const roleMap = {};
-        directoryRoles.forEach(role => {
-            roleMap[role.id] = {
-                id: role.id,
-                displayName: role.displayName,
-                description: role.description || ''
-            };
-        });
+        // Fetch only role assignments (includes roleDefinition via $expand)
+        const roleAssignments = await fetchMicrosoftRoleAssignments(token);
 
         // Process role assignments
         const processedAssignments = roleAssignments.map(assignment => {
@@ -4321,16 +4285,18 @@ app.get('/api/microsoft-roles', authenticateToken, async (req, res) => {
             };
         });
 
-        console.log(`[Microsoft Graph] Successfully retrieved ${processedAssignments.length} role assignments`);
+        // Extract unique roles for summary
+        const uniqueRoles = [...new Set(processedAssignments.map(a => a.roleName))];
+
+        console.log(`[Microsoft Graph] Successfully retrieved ${processedAssignments.length} role assignments covering ${uniqueRoles.length} unique roles`);
 
         res.json({
             success: true,
             tenant: tenant.clientId,
             totalAssignments: processedAssignments.length,
-            totalRoles: directoryRoles.length,
+            totalRoles: uniqueRoles.length,
             roleAssignments: processedAssignments,
-            directoryRoles: directoryRoles,
-            roleMap: roleMap,
+            uniqueRoles: uniqueRoles,
             fetchedAt: new Date().toISOString()
         });
 
