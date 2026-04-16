@@ -3550,6 +3550,46 @@
     border: 1px solid rgba(34, 197, 94, 0.3);
 }
 
+/* Sunbird Dashboard - Risk Badges */
+.risk-badge-high {
+    display: inline-block;
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-size: 0.65rem;
+    font-weight: 200;
+    background: rgba(220, 53, 69, 0.2);
+    color: #f87171;
+    border: 1px solid rgba(220, 53, 69, 0.3);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.risk-badge-medium {
+    display: inline-block;
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-size: 0.65rem;
+    font-weight: 200;
+    background: rgba(249, 115, 22, 0.2);
+    color: #ffb366;
+    border: 1px solid rgba(249, 115, 22, 0.3);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.risk-badge-safe {
+    display: inline-block;
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-size: 0.65rem;
+    font-weight: 200;
+    background: rgba(34, 197, 94, 0.2);
+    color: #86efac;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
 /* Identity Insights Section */
 .identity-insights-section {
     width: 100%;

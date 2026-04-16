@@ -144,6 +144,63 @@ async function fetchMicrosoftRoleAssignments(token) {
   }
 }
 
+// Fetch sign-in logs from Microsoft Graph (last 30 days)
+async function fetchMicrosoftSignIns(token) {
+  try {
+    // Construct filter for last 30 days
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const filterDate = thirtyDaysAgo.toISOString();
+
+    const response = await fetch(
+      `https://graph.microsoft.com/v1.0/auditLogs/signIns?$filter=createdDateTime ge ${filterDate}&$top=999&$select=createdDateTime,userPrincipalName,userId,appDisplayName,clientAppUsed,ipAddress,location,deviceDetail,status`,
+      {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Microsoft Graph API failed: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.value || [];
+  } catch (error) {
+    console.error('[Microsoft Graph] Failed to fetch sign-ins:', error.message);
+    return []; // Return empty array if sign-ins not available
+  }
+}
+
+// Fetch authentication methods for a specific user
+async function fetchUserAuthMethods(token, userId) {
+  try {
+    const response = await fetch(
+      `https://graph.microsoft.com/v1.0/users/${userId}/authentication/methods`,
+      {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    if (!response.ok) {
+      return []; // Return empty array if auth methods not available
+    }
+
+    const data = await response.json();
+    return data.value || [];
+  } catch (error) {
+    console.error(`[Microsoft Graph] Failed to fetch auth methods for ${userId}:`, error.message);
+    return [];
+  }
+}
+
 const app = express();
 // Middleware for parsing bodies with raw support (critical for payment signatures)
 app.use(express.json({
@@ -4312,6 +4369,229 @@ app.get('/api/microsoft-roles', authenticateToken, async (req, res) => {
 
         res.status(500).json({ 
             error: 'Failed to fetch Microsoft Graph roles',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * Route: GET /api/sunbird/identity-dashboard
+ * SUNBIRD CLIENT ONLY - Complete identity & access dashboard data aggregation
+ * Returns: Merged users, roles, sign-ins, auth methods with calculated metrics
+ */
+app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) => {
+    try {
+        const userEmail = req.user.email;
+        console.log(`[Sunbird Dashboard] Fetching dashboard data for: ${userEmail}`);
+
+        // Verify this is Sunbird client only
+        const tenant = getTenantByEmail(userEmail);
+        if (!tenant || tenant.clientId !== 'sunbird') {
+            console.warn(`[Sunbird Dashboard] Access denied for ${userEmail}`);
+            return res.status(403).json({ 
+                error: 'Access denied',
+                message: 'This feature is only available for Sunbird client'
+            });
+        }
+
+        console.log('[Sunbird Dashboard] User verified as Sunbird client');
+
+        // Get Microsoft Graph token
+        const token = await getMicrosoftGraphToken();
+
+        // Fetch all data in parallel
+        const [users, roleAssignments, signIns] = await Promise.all([
+            fetchMicrosoftUsers(token),
+            fetchMicrosoftRoleAssignments(token),
+            fetchMicrosoftSignIns(token)
+        ]);
+
+        console.log(`[Sunbird Dashboard] Fetched ${users.length} users, ${roleAssignments.length} role assignments, ${signIns.length} sign-ins`);
+
+        // Build user-role map
+        const userRoleMap = {};
+        roleAssignments.forEach(assignment => {
+            const principalId = assignment.principalId;
+            if (!userRoleMap[principalId]) {
+                userRoleMap[principalId] = [];
+            }
+            userRoleMap[principalId].push({
+                id: assignment.roleDefinition?.id,
+                name: assignment.roleDefinition?.displayName || 'Unknown Role'
+            });
+        });
+
+        // Build sign-in map (latest sign-in per user)
+        const latestSignInMap = {};
+        signIns.forEach(signin => {
+            const upn = signin.userPrincipalName;
+            if (!latestSignInMap[upn] || new Date(signin.createdDateTime) > new Date(latestSignInMap[upn].createdDateTime)) {
+                latestSignInMap[upn] = {
+                    createdDateTime: signin.createdDateTime,
+                    appDisplayName: signin.appDisplayName,
+                    clientAppUsed: signin.clientAppUsed,
+                    ipAddress: signin.ipAddress,
+                    location: signin.location?.city ? `${signin.location.city}, ${signin.location.countryOrRegion}` : 'Unknown Location',
+                    deviceDetail: signin.deviceDetail,
+                    status: signin.status?.errorCode === '0' ? 'Success' : 'Failed'
+                };
+            }
+        });
+
+        // Enrich user data with roles, sign-ins, and calculate risks
+        const enrichedUsers = await Promise.all(users.map(async (user) => {
+            const userRoles = userRoleMap[user.id] || [];
+            const hasAdminRole = userRoles.some(r => 
+                r.name.toLowerCase().includes('admin') || 
+                r.name.toLowerCase().includes('global')
+            );
+
+            // Fetch auth methods for MFA status
+            const authMethods = await fetchUserAuthMethods(token, user.id);
+            const hasMFA = authMethods.length > 1;
+
+            // Get latest sign-in
+            const lastSignIn = latestSignInMap[user.userPrincipalName];
+            const lastSignInDate = lastSignIn?.createdDateTime ? new Date(lastSignIn.createdDateTime) : null;
+            const daysSinceSignIn = lastSignInDate ? Math.floor((Date.now() - lastSignInDate) / (1000 * 60 * 60 * 24)) : 999;
+
+            // Calculate risk level
+            let riskLevel = 'SAFE';
+            if (hasAdminRole && !hasMFA) {
+                riskLevel = 'HIGH';
+            } else if (daysSinceSignIn > 30) {
+                riskLevel = 'MEDIUM';
+            }
+
+            // Check for unusual location (simple logic - can be enhanced)
+            const isNewLocation = lastSignIn && lastSignIn.location === 'Unknown Location';
+
+            return {
+                id: user.id,
+                displayName: user.displayName || 'Unknown User',
+                mail: user.mail,
+                userPrincipalName: user.userPrincipalName,
+                jobTitle: user.jobTitle || 'No Title',
+                mobilePhone: user.mobilePhone || 'N/A',
+                roles: userRoles,
+                hasAdminRole: hasAdminRole,
+                isExternal: user.mail?.endsWith('.com') && !user.mail?.endsWith('sunbird.com') ? true : false,
+                mfaEnabled: hasMFA,
+                authMethodCount: authMethods.length,
+                riskLevel: riskLevel,
+                lastSignIn: {
+                    dateTime: lastSignInDate?.toISOString() || null,
+                    daysSince: daysSinceSignIn,
+                    location: lastSignIn?.location || 'No sign-in',
+                    device: lastSignIn?.deviceDetail?.displayName || 'Unknown',
+                    appUsed: lastSignIn?.appDisplayName || 'Unknown',
+                    status: lastSignIn?.status || 'No activity'
+                },
+                flags: {
+                    adminWithoutMFA: hasAdminRole && !hasMFA,
+                    inactiveOver30Days: daysSinceSignIn > 30,
+                    newLocationLogin: isNewLocation
+                }
+            };
+        }));
+
+        // Calculate dashboard metrics
+        const totalUsers = enrichedUsers.length;
+        const adminUsers = enrichedUsers.filter(u => u.hasAdminRole).length;
+        const mfaEnabledUsers = enrichedUsers.filter(u => u.mfaEnabled).length;
+        const mfaPercentage = ((mfaEnabledUsers / totalUsers) * 100).toFixed(1);
+        const highRiskUsers = enrichedUsers.filter(u => u.riskLevel === 'HIGH').length;
+        const mediumRiskUsers = enrichedUsers.filter(u => u.riskLevel === 'MEDIUM').length;
+        const activeUsers24h = enrichedUsers.filter(u => u.lastSignIn.daysSince <= 1).length;
+        const usersWithCompleteProfile = enrichedUsers.filter(u => 
+            u.jobTitle !== 'No Title' && u.mobilePhone !== 'N/A'
+        ).length;
+
+        // System health metrics
+        const systemHealth = {
+            performance: Math.round((enrichedUsers.filter(u => u.lastSignIn.status === 'Success').length / totalUsers) * 100) || 0,
+            availability: Math.round(((activeUsers24h / totalUsers) * 100) || 0),
+            security: Math.round((mfaEnabledUsers / totalUsers) * 100) || 0,
+            compliance: Math.round((usersWithCompleteProfile / totalUsers) * 100) || 0,
+            backup: Math.round((enrichedUsers.filter(u => u.authMethodCount > 1).length / totalUsers) * 100) || 0
+        };
+
+        // Smart insights
+        const insights = {
+            adminsWithoutMFA: enrichedUsers.filter(u => u.flags.adminWithoutMFA),
+            inactiveUsers: enrichedUsers.filter(u => u.flags.inactiveOver30Days),
+            newLocationLogins: enrichedUsers.filter(u => u.flags.newLocationLogin)
+        };
+
+        // Device breakdown
+        const deviceBreakdown = {};
+        enrichedUsers.forEach(user => {
+            if (user.lastSignIn.device) {
+                const device = user.lastSignIn.device.toLowerCase();
+                deviceBreakdown[device] = (deviceBreakdown[device] || 0) + 1;
+            }
+        });
+
+        // Top locations
+        const locationBreakdown = {};
+        enrichedUsers.forEach(user => {
+            if (user.lastSignIn.location && user.lastSignIn.location !== 'No sign-in') {
+                locationBreakdown[user.lastSignIn.location] = (locationBreakdown[user.lastSignIn.location] || 0) + 1;
+            }
+        });
+
+        const topLocations = Object.entries(locationBreakdown)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5)
+            .map(([location, count]) => ({ location, count }));
+
+        // Calculate security score (0-100)
+        const securityScore = Math.round(
+            (mfaPercentage * 0.4) +  // MFA is 40% of score
+            ((100 - (highRiskUsers / totalUsers * 100)) * 0.3) +  // Low risk is 30%
+            ((adminUsers <= 5 ? 100 : 50) * 0.3)  // Admin count is 30%
+        );
+
+        console.log('[Sunbird Dashboard] Dashboard data compiled successfully');
+
+        res.json({
+            success: true,
+            tenant: tenant.clientId,
+            fetchedAt: new Date().toISOString(),
+            summary: {
+                totalUsers,
+                activeUsers24h,
+                adminUsers,
+                mfaEnabledPercentage: mfaPercentage,
+                highRiskUsers,
+                securityScore,
+                mediumRiskUsers
+            },
+            systemHealth,
+            users: enrichedUsers,
+            riskDistribution: {
+                HIGH: highRiskUsers,
+                MEDIUM: mediumRiskUsers,
+                SAFE: totalUsers - highRiskUsers - mediumRiskUsers
+            },
+            insights,
+            signInPatterns: {
+                topLocations,
+                deviceBreakdown,
+                avgSignInsPerUser: signIns.length / totalUsers
+            },
+            roleInsights: {
+                globalAdmins: enrichedUsers.filter(u => u.roles.some(r => r.name.toLowerCase().includes('global'))).length,
+                privilegedUsers: enrichedUsers.filter(u => u.roles.length > 0).length,
+                usersWithMultipleRoles: enrichedUsers.filter(u => u.roles.length > 1).length
+            }
+        });
+
+    } catch (error) {
+        console.error('[Sunbird Dashboard] Error:', error.message);
+        
+        res.status(500).json({ 
+            error: 'Failed to fetch dashboard data',
             message: error.message
         });
     }

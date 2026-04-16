@@ -258,8 +258,7 @@ function openIdentityDashboard() {
     const backBtn = document.getElementById('btn-back');
     if (backBtn) {
         backBtn.onclick = function() {
-            dashboardView.style.display = 'none';
-            document.getElementById('projects-view').style.display = 'block';
+            resetDashboard();
             
             // Restore generic parts for other projects
             if (statsGrid) statsGrid.style.display = 'grid';
@@ -314,7 +313,6 @@ function setupIdentitySearch() {
         rows.forEach((row, rowIndex) => {
             const name = row.cells[0]?.textContent.toLowerCase() || '';
             const email = row.cells[1]?.textContent.toLowerCase() || '';
-            const typeCell = row.cells[5]?.textContent.toLowerCase() || '';
             
             // Get the actual user data
             const user = microsoftUsersData[rowIndex];
@@ -329,7 +327,8 @@ function setupIdentitySearch() {
             if (selectedFilters.length > 0) {
                 const isInternal = !user.isExternal;
                 const isExternal = user.isExternal;
-                const hasRoles = (userRolesMap[user.id] && userRolesMap[user.id].length > 0);
+                const hasRoles = (userRolesMap[user.id] && userRolesMap[user.id].length > 0) ||
+                                (isSunbirdDashboard && user.roles && user.roles.length > 0);
                 const hasMissingJobTitle = !user.jobTitle || user.jobTitle === 'No Title' || user.jobTitle.trim() === '';
                 const hasMissingPhone = !user.mobilePhone || user.mobilePhone === 'N/A' || (typeof user.mobilePhone === 'string' && user.mobilePhone.trim() === '');
                 const hasMissingData = hasMissingJobTitle || hasMissingPhone;
@@ -365,13 +364,7 @@ function setupIdentitySearch() {
     // Back button functionality
     if (backBtn) {
         backBtn.addEventListener('click', () => {
-            const dashboardView = document.getElementById('dashboard-view');
-            const projectsView = document.getElementById('projects-view');
-            
-            if (dashboardView && projectsView) {
-                dashboardView.style.display = 'none';
-                projectsView.style.display = 'block';
-            }
+            resetDashboard();
         });
     }
 }
@@ -1493,6 +1486,10 @@ function showError(message) {
 
 
 // Fetch Identity & Access data and update card preview
+// Global variables for Sunbird dashboard
+let isSunbirdDashboard = false;
+let sunbirdDashboardData = null;
+
 async function fetchIdentityAccessData() {
     try {
         const token = localStorage.getItem('authToken');
@@ -1503,9 +1500,76 @@ async function fetchIdentityAccessData() {
             return;
         }
 
-        console.log('[Identity Access] Fetching Microsoft users and roles...');
+        console.log('[Identity Access] Attempting to fetch Sunbird dashboard data...');
         
-        // Fetch users and roles in parallel
+        // Try to fetch Sunbird enhanced dashboard first
+        try {
+            const sunbirdResponse = await fetch('/api/sunbird/identity-dashboard', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (sunbirdResponse.ok) {
+                const sunbirdData = await sunbirdResponse.json();
+                if (sunbirdData.success) {
+                    console.log('[Identity Access] Sunbird dashboard loaded successfully');
+                    isSunbirdDashboard = true;
+                    sunbirdDashboardData = sunbirdData;
+                    
+                    // Map Sunbird data to existing global variables
+                    microsoftUsersData = sunbirdData.users || [];
+                    
+                    // Build role map from enriched users
+                    userRolesMap = {};
+                    sunbirdData.users.forEach(user => {
+                        if (user.roles && user.roles.length > 0) {
+                            userRolesMap[user.id] = user.roles.map(r => r.name);
+                        }
+                    });
+                    
+                    // Build mock roles data for compatibility
+                    microsoftRolesData = [];
+                    sunbirdData.users.forEach(user => {
+                        if (user.roles) {
+                            user.roles.forEach(role => {
+                                microsoftRolesData.push({
+                                    id: role.id,
+                                    principalId: user.id,
+                                    roleName: role.name
+                                });
+                            });
+                        }
+                    });
+                    
+                    console.log('[Identity Access] Sunbird data mapped to globals');
+                    
+                    // Update card with Sunbird metrics
+                    const identityProject = mockProjects.find(p => p.id === 2);
+                    if (identityProject) {
+                        identityProject.cardMetrics = [
+                            { label: "Total Users", value: `: ${sunbirdData.summary.totalUsers}`, icon: "fas fa-users" },
+                            { label: "Active 24h", value: `: ${sunbirdData.summary.activeUsers24h}`, icon: "fas fa-check-circle" },
+                            { label: "Admin Roles", value: `: ${sunbirdData.summary.adminUsers}`, icon: "fas fa-crown" },
+                            { label: "Security Score", value: `: ${sunbirdData.summary.securityScore}/100`, icon: "fas fa-shield-alt" }
+                        ];
+                        identityProject.cardFooter = `MFA: ${sunbirdData.summary.mfaEnabledPercentage}% | Risk: ${sunbirdData.summary.highRiskUsers} High | Security: ${sunbirdData.summary.securityScore}/100`;
+                        identityProject.lastUpdate = new Date().toLocaleTimeString();
+                        displayCurrentProject();
+                    }
+                    
+                    return; // Skip to end - Sunbird data fully loaded
+                }
+            }
+        } catch (sunbirdError) {
+            console.log('[Identity Access] Sunbird endpoint not available, falling back to standard API');
+        }
+
+        // Fallback: Load standard Microsoft data
+        console.log('[Identity Access] Fetching standard Microsoft users and roles...');
+        
         const [usersResponse, rolesResponse] = await Promise.all([
             fetch('/api/microsoft-users', {
                 method: 'GET',
@@ -1952,49 +2016,116 @@ function generateIdentityDashboardHTML() {
 
 function populateIdentityTable() {
     const tableBody = document.getElementById('users-table-body');
+    const table = document.getElementById('users-table');
     
     if (!tableBody) {
         console.error('[Identity Table] Table body not found');
         return;
     }
-    
-    console.log(`[Identity Table] Populating table with ${microsoftUsersData.length} users`);
-    
+
+    console.log(`[Identity Table] Populating table with ${microsoftUsersData.length} users (Sunbird: ${isSunbirdDashboard})`);
+
     tableBody.innerHTML = '';
-    
+
+    // Update table headers based on dashboard type
+    if (isSunbirdDashboard && table) {
+        const thead = table.querySelector('thead tr');
+        if (thead) {
+            thead.innerHTML = `
+                <th>Name</th>
+                <th>Email</th>
+                <th>Job Title</th>
+                <th>Roles</th>
+                <th>Type</th>
+                <th>MFA</th>
+                <th>Auth Methods</th>
+                <th>Risk</th>
+                <th>Status</th>
+                <th>Last Sign-In</th>
+                <th>Location</th>
+                <th>Device</th>
+                <th>Phone</th>
+            `;
+        }
+    }
+
     if (microsoftUsersData.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 20px;">No users found</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="${isSunbirdDashboard ? 13 : 7}" style="text-align: center; padding: 20px;">No users found</td></tr>`;
         return;
     }
-    
+
     microsoftUsersData.forEach((user, index) => {
         const row = document.createElement('tr');
-        const jobTitle = (user.jobTitle && user.jobTitle !== 'No Title') ? user.jobTitle : '<span style="color: #999;">—</span>';
-        const phone = (user.mobilePhone && user.mobilePhone !== 'N/A') ? user.mobilePhone : '<span style="color: #999;">—</span>';
-        
-        // Get roles for this user
-        const roles = userRolesMap[user.id] || [];
-        const rolesDisplay = roles.length > 0 
-            ? roles.map(role => `<span class="role-badge">${role}</span>`).join('')
-            : '<span style="color: #999;">—</span>';
-        
-        row.innerHTML = `
-            <td>${user.displayName || 'N/A'}</td>
-            <td>${user.mail || user.userPrincipalName || 'N/A'}</td>
-            <td>${jobTitle}</td>
-            <td>${phone}</td>
-            <td class="roles-cell">${rolesDisplay}</td>
-            <td>
-                <span class="user-type-badge ${user.isExternal ? 'external' : 'internal'}">
-                    ${user.isExternal ? 'External' : 'Internal'}
-                </span>
-            </td>
-            <td>
-                <span class="user-status-badge active">Active</span>
-            </td>
-        `;
-        tableBody.appendChild(row);
-        if (index === 0) {
+
+        if (isSunbirdDashboard) {
+            // Render Sunbird enhanced columns
+            const jobTitle = (user.jobTitle && user.jobTitle !== 'No Title') ? user.jobTitle : '—';
+            const phone = (user.mobilePhone && user.mobilePhone !== 'N/A') ? user.mobilePhone : '—';
+            
+            const roles = user.roles || [];
+            const rolesDisplay = roles.length > 0 
+                ? roles.map(role => `<span class="role-badge">${role.name}</span>`).join('')
+                : '—';
+
+            const mfaStatus = user.mfaEnabled ? '✅ Yes' : '❌ No';
+            const riskBadgeClass = user.riskLevel === 'HIGH' ? 'risk-badge-high' : 
+                                  user.riskLevel === 'MEDIUM' ? 'risk-badge-medium' : 
+                                  'risk-badge-safe';
+            const riskIcon = user.riskLevel === 'HIGH' ? '🔴' : 
+                           user.riskLevel === 'MEDIUM' ? '🟡' : 
+                           '🟢';
+
+            const lastSignInText = user.lastSignIn.dateTime ? 
+                new Date(user.lastSignIn.dateTime).toLocaleDateString() : 'Never';
+
+            row.innerHTML = `
+                <td>${user.displayName || 'Unknown'}</td>
+                <td>${user.mail || user.userPrincipalName || 'N/A'}</td>
+                <td>${jobTitle}</td>
+                <td class="roles-cell">${rolesDisplay}</td>
+                <td>
+                    <span class="user-type-badge ${user.isExternal ? 'external' : 'internal'}">
+                        ${user.isExternal ? 'External' : 'Internal'}
+                    </span>
+                </td>
+                <td>${mfaStatus}</td>
+                <td>${user.authMethodCount}</td>
+                <td><span class="${riskBadgeClass}">${riskIcon} ${user.riskLevel}</span></td>
+                <td>
+                    <span class="user-status-badge active">Active</span>
+                </td>
+                <td>${lastSignInText}</td>
+                <td>${user.lastSignIn.location || 'Unknown'}</td>
+                <td>${user.lastSignIn.device || 'Unknown'}</td>
+                <td>${phone}</td>
+            `;
+        } else {
+            // Render standard columns (original)
+            const jobTitle = (user.jobTitle && user.jobTitle !== 'No Title') ? user.jobTitle : '<span style="color: #999;">—</span>';
+            const phone = (user.mobilePhone && user.mobilePhone !== 'N/A') ? user.mobilePhone : '<span style="color: #999;">—</span>';
+            
+            const roles = userRolesMap[user.id] || [];
+            const rolesDisplay = roles.length > 0 
+                ? roles.map(role => `<span class="role-badge">${role}</span>`).join('')
+                : '<span style="color: #999;">—</span>';
+
+            row.innerHTML = `
+                <td>${user.displayName || 'N/A'}</td>
+                <td>${user.mail || user.userPrincipalName || 'N/A'}</td>
+                <td>${jobTitle}</td>
+                <td>${phone}</td>
+                <td class="roles-cell">${rolesDisplay}</td>
+                <td>
+                    <span class="user-type-badge ${user.isExternal ? 'external' : 'internal'}">
+                        ${user.isExternal ? 'External' : 'Internal'}
+                    </span>
+                </td>
+                <td>
+                    <span class="user-status-badge active">Active</span>
+                </td>
+            `;
+        }
+
             console.log('[Identity Table] First user added:', user.displayName);
         }
     });
@@ -2043,13 +2174,23 @@ function displayCurrentProject() {
             });
             
             projectCard.addEventListener('click', () => {
+                const isSelected = selectedProjectId === project.id && previewLockedByClick;
+                
                 const allCards = document.querySelectorAll('.project-card');
                 allCards.forEach(card => card.classList.remove('glow-selected'));
                 
-                previewLockedByClick = true;
-                selectedProjectId = project.id;
-                projectCard.classList.add('glow-selected');
-                showProjectPreview(project);
+                if (isSelected) {
+                    // If already selected, close it
+                    previewLockedByClick = false;
+                    selectedProjectId = null;
+                    hideProjectPreview();
+                } else {
+                    // Otherwise, open it
+                    previewLockedByClick = true;
+                    selectedProjectId = project.id;
+                    projectCard.classList.add('glow-selected');
+                    showProjectPreview(project);
+                }
             });
         }
         
@@ -2277,10 +2418,7 @@ async function fetchIdentityData(project) {
 }
 
 function goBackToProjects() {
-    document.getElementById('dashboard-view').style.display = 'none';
-    document.getElementById('projects-view').style.display = 'block';
-    currentProject = null;
-    destroyCharts();
+    resetDashboard();
 }
 
 function resetDashboard() {
@@ -2291,10 +2429,8 @@ function resetDashboard() {
     
     previewLockedByClick = false;
     selectedProjectId = null;
-    const projectCard = document.querySelector('.project-card');
-    if (projectCard) {
-        projectCard.classList.remove('glow-selected');
-    }
+    const allCards = document.querySelectorAll('.project-card');
+    allCards.forEach(card => card.classList.remove('glow-selected'));
     hideProjectPreview();
 }
 
