@@ -932,6 +932,7 @@ function populateRiskIndicator() {
     
     let html = `
         <div class="risk-indicator" style="border-left: 4px solid ${riskColor}; padding-left: 15px;">
+            <!-- RISK LEVEL STATS (TOP) -->
             <div class="risk-level-display">
                 <span class="risk-emoji">${riskEmoji}</span>
                 <div class="risk-info">
@@ -951,7 +952,7 @@ function populateRiskIndicator() {
         html += `
                 <div class="risk-detail-item" style="color: #dc2626;">
                     <span>⚠️ Master Admin (Break Glass):</span>
-                    <span class="detail-value">${breakGlassUser.displayName || breakGlassUser.mail}</span>
+                    <span class="detail-value">${(breakGlassUser.displayName || breakGlassUser.mail || 'Unknown').substring(0, 50)}</span>
                 </div>
         `;
     }
@@ -969,20 +970,20 @@ function populateRiskIndicator() {
             </div>
     `;
     
-    // Add To-Do section if there are issues
+    // Add Recommended Actions section BELOW stats (if there are issues)
     if (hasBreakGlass || totalAdmins > 5) {
         html += `
-            <div class="risk-todo-section" style="margin-top: 12px; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 6px; border-left: 3px solid ${riskColor};">
-                <h4 style="margin: 0 0 10px 0; font-size: 0.9rem; color: #e0e0e0;">📋 Recommended Actions:</h4>
-                <ul style="margin: 0; padding-left: 20px; list-style: disc;">
+            <div class="risk-todo-section" style="margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 6px; border-left: 3px solid ${riskColor};">
+                <h4 style="margin: 0 0 12px 0; font-size: 0.95rem; color: #e0e0e0; font-weight: 600;">📋 Recommended Actions:</h4>
+                <ul style="margin: 0; padding-left: 20px; list-style: disc; display: flex; flex-direction: column; gap: 8px;">
         `;
         
         if (hasBreakGlass) {
             html += `
-                    <li style="color: #d1d5db; font-size: 0.8rem; margin-bottom: 6px;">
+                    <li style="color: #d1d5db; font-size: 0.8rem;">
                         <strong>Secure Break Glass Account:</strong> Limit access, enable MFA, audit recent activities
                     </li>
-                    <li style="color: #d1d5db; font-size: 0.8rem; margin-bottom: 6px;">
+                    <li style="color: #d1d5db; font-size: 0.8rem;">
                         <strong>Review Permissions:</strong> Ensure Break Glass is only used for emergencies
                     </li>
             `;
@@ -990,10 +991,10 @@ function populateRiskIndicator() {
         
         if (totalAdmins > 5) {
             html += `
-                    <li style="color: #d1d5db; font-size: 0.8rem; margin-bottom: 6px;">
+                    <li style="color: #d1d5db; font-size: 0.8rem;">
                         <strong>Audit Admin Roles:</strong> Remove unnecessary admin privileges from users
                     </li>
-                    <li style="color: #d1d5db; font-size: 0.8rem; margin-bottom: 6px;">
+                    <li style="color: #d1d5db; font-size: 0.8rem;">
                         <strong>Implement Principle of Least Privilege:</strong> Assign specific admin roles instead of global admin
                     </li>
                     <li style="color: #d1d5db; font-size: 0.8rem;">
