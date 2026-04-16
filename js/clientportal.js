@@ -97,6 +97,8 @@ const mockProjects = [
 
 /* INITIALIZATION */
 let microsoftUsersData = [];
+let microsoftRolesData = [];
+let userRolesMap = {}; // Maps userId to array of role names
 
 document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
@@ -446,6 +448,18 @@ function initializeIdentityCharts() {
         const activeCount = microsoftUsersData.length;
         const inactiveCount = 0;
         renderActiveStatusChart(activeCount, inactiveCount);
+        
+        // Role Distribution  
+        renderRoleDistributionChart();
+        
+        // Admin users list
+        populateAdminUsersList();
+        
+        // Risk indicator
+        populateRiskIndicator();
+        
+        // Security insights
+        populateSecurityInsights();
     }, 50);
 }
 
@@ -631,6 +645,325 @@ function renderActiveStatusChart(active, inactive) {
             }
         }
     });
+}
+
+// Render Role Distribution Chart
+function renderRoleDistributionChart() {
+    const canvasElement = document.getElementById('roleDistributionChart');
+    if (!canvasElement) return;
+    
+    // Count roles distribution
+    const roleDistribution = {};
+    microsoftRolesData.forEach(assignment => {
+        const roleName = assignment.roleName || 'Unknown';
+        roleDistribution[roleName] = (roleDistribution[roleName] || 0) + 1;
+    });
+    
+    const labels = Object.keys(roleDistribution).slice(0, 10); // Top 10 roles
+    const data = labels.map(role => roleDistribution[role]);
+    
+    // Set canvas dimensions
+    canvasElement.width = canvasElement.parentElement.clientWidth;
+    canvasElement.height = 250;
+    
+    const ctx = canvasElement.getContext('2d');
+    if (!ctx) return;
+    
+    if (window.roleDistributionChartInstance && typeof window.roleDistributionChartInstance.destroy === 'function') {
+        window.roleDistributionChartInstance.destroy();
+    }
+    
+    const colors = [
+        'rgba(0, 110, 255, 0.7)',
+        'rgba(249, 115, 22, 0.7)',
+        'rgba(34, 197, 94, 0.7)',
+        'rgba(248, 113, 113, 0.7)',
+        'rgba(132, 204, 22, 0.7)',
+        'rgba(168, 85, 247, 0.7)',
+        'rgba(14, 165, 233, 0.7)',
+        'rgba(236, 72, 153, 0.7)',
+        'rgba(251, 146, 60, 0.7)',
+        'rgba(59, 130, 246, 0.7)'
+    ];
+    
+    window.roleDistributionChartInstance = new Chart(ctx, {
+        type: 'pie',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: colors.slice(0, labels.length),
+                borderColor: colors.slice(0, labels.length).map(c => c.replace('0.7', '1')),
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    labels: { color: '#999', font: { size: 11 } }
+                }
+            }
+        }
+    });
+}
+
+// Populate Admin Users List
+function populateAdminUsersList() {
+    const adminListContainer = document.getElementById('admin-users-list');
+    if (!adminListContainer) return;
+    
+    const usersWithRoles = Object.entries(userRolesMap)
+        .map(([userId, roles]) => {
+            const user = microsoftUsersData.find(u => u.id === userId);
+            if (!user) return null;
+            return {
+                ...user,
+                roles: roles,
+                isGlobalAdmin: roles.some(role => role.toLowerCase().includes('global admin') || role.toLowerCase().includes('company administrator')),
+                isSecurityAdmin: roles.some(role => role.toLowerCase().includes('security admin')),
+                isPrivileged: roles.some(role => 
+                    role.toLowerCase().includes('admin') || 
+                    role.toLowerCase().includes('owner') || 
+                    role.toLowerCase().includes('manager')
+                )
+            };
+        })
+        .filter(user => user && user.isPrivileged)
+        .sort((a, b) => (b.isGlobalAdmin ? 1 : 0) - (a.isGlobalAdmin ? 1 : 0));
+    
+    if (usersWithRoles.length === 0) {
+        adminListContainer.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">No admin users found</p>';
+        return;
+    }
+    
+    let html = '<div class="admin-stats">';
+    
+    const globalAdmins = usersWithRoles.filter(u => u.isGlobalAdmin).length;
+    const securityAdmins = usersWithRoles.filter(u => u.isSecurityAdmin).length;
+    const privilegedUsers = usersWithRoles.length;
+    
+    html += `
+        <div class="admin-stat-item">
+            <span class="stat-label">👑 Global Admins:</span>
+            <span class="stat-value">${globalAdmins}</span>
+        </div>
+        <div class="admin-stat-item">
+            <span class="stat-label">🔐 Security Admins:</span>
+            <span class="stat-value">${securityAdmins}</span>
+        </div>
+        <div class="admin-stat-item">
+            <span class="stat-label">⭐ Privileged Users:</span>
+            <span class="stat-value">${privilegedUsers}</span>
+        </div>
+    </div>
+    
+    <div class="admin-users-table">
+        <div class="admin-user-header">
+            <span>User</span>
+            <span>Roles</span>
+        </div>
+    `;
+    
+    usersWithRoles.slice(0, 10).forEach(user => {
+        const rolesList = user.roles.map(role => {
+            let badgeClass = 'role-badge-normal';
+            if (role.toLowerCase().includes('global admin') || role.toLowerCase().includes('company administrator')) {
+                badgeClass = 'role-badge-critical';
+            } else if (role.toLowerCase().includes('security admin')) {
+                badgeClass = 'role-badge-warning';
+            }
+            return `<span class="${badgeClass}">${role}</span>`;
+        }).join('');
+        
+        html += `
+            <div class="admin-user-item">
+                <span class="user-name">${user.displayName || 'Unknown User'}</span>
+                <span class="user-roles">${rolesList}</span>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    
+    if (usersWithRoles.length > 10) {
+        html += `<p style="text-align: center; color: #999; font-size: 0.85em; margin-top: 10px;">+${usersWithRoles.length - 10} more admin users</p>`;
+    }
+    
+    adminListContainer.innerHTML = html;
+}
+
+// Populate Risk Indicator
+function populateRiskIndicator() {
+    const riskContainer = document.getElementById('risk-summary');
+    if (!riskContainer) return;
+    
+    const usersWithRoles = Object.keys(userRolesMap).length;
+    const totalAdmins = Object.entries(userRolesMap)
+        .filter(([_, roles]) => roles.some(role => role.toLowerCase().includes('admin')))
+        .length;
+    
+    const hasBreakGlass = microsoftUsersData.some(u => 
+        u.mail?.toLowerCase().includes('break glass') || 
+        u.displayName?.toLowerCase().includes('break glass')
+    );
+    
+    let riskLevel = 'LOW';
+    let riskColor = '#22c55e'; // green
+    let riskEmoji = '✅';
+    
+    if (hasBreakGlass) {
+        riskLevel = 'CRITICAL';
+        riskColor = '#dc2626'; // red
+        riskEmoji = '🔥';
+    } else if (totalAdmins > 5) {
+        riskLevel = 'HIGH';
+        riskColor = '#dc2626'; // red
+        riskEmoji = '🔴';
+    } else if (totalAdmins > 3) {
+        riskLevel = 'MEDIUM';
+        riskColor = '#f59e0b'; // orange
+        riskEmoji = '🟡';
+    }
+    
+    let html = `
+        <div class="risk-indicator" style="border-left: 4px solid ${riskColor}; padding-left: 15px;">
+            <div class="risk-level-display">
+                <span class="risk-emoji">${riskEmoji}</span>
+                <div class="risk-info">
+                    <span class="risk-level" style="color: ${riskColor};">${riskLevel}</span>
+                    <span class="risk-description">Risk Level</span>
+                </div>
+            </div>
+            
+            <div class="risk-details" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">
+                <div class="risk-detail-item">
+                    <span>Total Admin Users:</span>
+                    <span class="detail-value">${totalAdmins}</span>
+                </div>
+    `;
+    
+    if (hasBreakGlass) {
+        html += `
+                <div class="risk-detail-item" style="color: #dc2626;">
+                    <span>⚠️ Break Glass Account:</span>
+                    <span class="detail-value">DETECTED</span>
+                </div>
+        `;
+    }
+    
+    if (totalAdmins > 5) {
+        html += `
+                <div class="risk-detail-item" style="color: #dc2626;">
+                    <span>⚠️ Too Many Admins:</span>
+                    <span class="detail-value">${totalAdmins} users</span>
+                </div>
+        `;
+    }
+    
+    html += `
+            </div>
+        </div>
+    `;
+    
+    riskContainer.innerHTML = html;
+}
+
+// Populate Security Insights
+function populateSecurityInsights() {
+    const insightsContainer = document.getElementById('security-insights-list');
+    if (!insightsContainer) return;
+    
+    const insights = [];
+    
+    // Find users with multiple roles
+    const multiRoleUsers = Object.entries(userRolesMap)
+        .filter(([_, roles]) => roles.length > 2)
+        .map(([userId, roles]) => {
+            const user = microsoftUsersData.find(u => u.id === userId);
+            return { user: user?.displayName || 'Unknown', roleCount: roles.length, roles };
+        });
+    
+    if (multiRoleUsers.length > 0) {
+        const topUser = multiRoleUsers.sort((a, b) => b.roleCount - a.roleCount)[0];
+        insights.push({
+            icon: '⚠️',
+            title: 'Users with Multiple Admin Roles',
+            description: `${multiRoleUsers.length} user(s) have multiple roles. ${topUser.user} has ${topUser.roleCount} roles.`,
+            severity: 'warning'
+        });
+    }
+    
+    // Find external users (highest security concern)
+    const externalAdmins = Object.entries(userRolesMap)
+        .map(([userId, roles]) => {
+            const user = microsoftUsersData.find(u => u.id === userId);
+            return { user, roles };
+        })
+        .filter(({ user }) => user && user.isExternal);
+    
+    if (externalAdmins.length > 0) {
+        insights.push({
+            icon: '🔴',
+            title: 'External Users with Roles',
+            description: `${externalAdmins.length} external user(s) have administrative roles assigned.`,
+            severity: 'critical'
+        });
+    }
+    
+    // Check for users with incomplete profiles
+    const adminsWithoutPhone = Object.entries(userRolesMap)
+        .map(([userId, _]) => {
+            const user = microsoftUsersData.find(u => u.id === userId);
+            return user;
+        })
+        .filter(user => user && (!user.mobilePhone || user.mobilePhone === 'N/A')).length;
+    
+    if (adminsWithoutPhone > 0) {
+        insights.push({
+            icon: '📱',
+            title: 'Admins Without Phone',
+            description: `${adminsWithoutPhone} admin(s) don't have phone numbers on file.`,
+            severity: 'medium'
+        });
+    }
+    
+    // High admin ratio
+    const totalAdmins = Object.keys(userRolesMap).length;
+    const adminRatio = (totalAdmins / microsoftUsersData.length * 100).toFixed(1);
+    
+    if (adminRatio > 20) {
+        insights.push({
+            icon: '📊',
+            title: 'High Admin Ratio',
+            description: `${adminRatio}% of users have administrative roles (recommended: <10%).`,
+            severity: 'medium'
+        });
+    }
+    
+    if (insights.length === 0) {
+        insightsContainer.innerHTML = '<p style="text-align: center; color: #22c55e; padding: 20px;">✅ No security concerns detected</p>';
+        return;
+    }
+    
+    let html = '<div class="insights-list">';
+    
+    insights.forEach(insight => {
+        const severityClass = `insight-${insight.severity}`;
+        html += `
+            <div class="insight-item ${severityClass}">
+                <span class="insight-icon">${insight.icon}</span>
+                <div class="insight-content">
+                    <div class="insight-title">${insight.title}</div>
+                    <div class="insight-description">${insight.description}</div>
+                </div>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    insightsContainer.innerHTML = html;
 }
 
 function setupEventListeners() {
@@ -1094,40 +1427,66 @@ async function fetchIdentityAccessData() {
             return;
         }
 
-        console.log('[Identity Access] Fetching Microsoft users...');
+        console.log('[Identity Access] Fetching Microsoft users and roles...');
         
-        const response = await fetch('/api/microsoft-users', {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            }
-        });
+        // Fetch users and roles in parallel
+        const [usersResponse, rolesResponse] = await Promise.all([
+            fetch('/api/microsoft-users', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            }),
+            fetch('/api/microsoft-roles', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+        ]);
 
-        if (!response.ok) {
-            throw new Error(`API responded with status ${response.status}`);
+        if (!usersResponse.ok) {
+            throw new Error(`Users API responded with status ${usersResponse.status}`);
         }
 
-        const data = await response.json();
+        const usersData = await usersResponse.json();
         
-        if (!data.success || !data.users) {
-            throw new Error(data.message || 'Invalid response format');
+        if (!usersData.success || !usersData.users) {
+            throw new Error(usersData.message || 'Invalid users response format');
         }
 
-        microsoftUsersData = data.users || [];
+        microsoftUsersData = usersData.users || [];
         console.log(`[Identity Access] Loaded ${microsoftUsersData.length} users`);
+
+        // Process roles data if available
+        if (rolesResponse.ok) {
+            const rolesData = await rolesResponse.json();
+            if (rolesData.success && rolesData.roleAssignments) {
+                microsoftRolesData = rolesData.roleAssignments || [];
+                console.log(`[Identity Access] Loaded ${microsoftRolesData.length} role assignments`);
+                
+                // Build user roles map (userId -> array of role names)
+                buildUserRolesMap();
+            }
+        } else {
+            console.warn('[Identity Access] Could not fetch roles');
+        }
 
         // Update the Identity & Access project card with real data
         const identityProject = mockProjects.find(p => p.id === 2);
         if (identityProject) {
             const externalUsers = microsoftUsersData.filter(u => u.isExternal).length;
             const internalUsers = microsoftUsersData.length - externalUsers;
+            const adminsCount = Object.keys(userRolesMap).length;
             
             identityProject.cardMetrics = [
                 { label: "Total Users", value: `: ${microsoftUsersData.length}`, icon: "fas fa-users" },
-                { label: "External", value: `: ${externalUsers}`, icon: "fas fa-user-secret" }
+                { label: "External", value: `: ${externalUsers}`, icon: "fas fa-user-secret" },
+                { label: "Admin Roles", value: `: ${adminsCount}`, icon: "fas fa-crown" }
             ];
-            identityProject.cardFooter = `Internal: ${internalUsers} | External: ${externalUsers}`;
+            identityProject.cardFooter = `Internal: ${internalUsers} | External: ${externalUsers} | Admins: ${adminsCount}`;
             identityProject.lastUpdate = new Date().toLocaleTimeString();
             
             // Refresh the display to show updated data
@@ -1139,6 +1498,30 @@ async function fetchIdentityAccessData() {
         console.error('[Identity Access] Error fetching data:', error.message);
         // Keep placeholder data if API fails
     }
+}
+
+// Build a map of users to their assigned roles
+function buildUserRolesMap() {
+    userRolesMap = {};
+    
+    if (!microsoftRolesData || microsoftRolesData.length === 0) {
+        return;
+    }
+    
+    microsoftRolesData.forEach(assignment => {
+        const principalId = assignment.principalId;
+        const roleName = assignment.roleName || 'Unknown Role';
+        
+        if (!userRolesMap[principalId]) {
+            userRolesMap[principalId] = [];
+        }
+        
+        if (!userRolesMap[principalId].includes(roleName)) {
+            userRolesMap[principalId].push(roleName);
+        }
+    });
+    
+    console.log(`[User Roles Map] Built map for ${Object.keys(userRolesMap).length} users`);
 }
 
 // Updated: fetchDuoStats - Now with better error handling, loading states, and retries
@@ -1338,6 +1721,7 @@ function generateIdentityDashboardHTML() {
                             <th>Email</th>
                             <th>Job Title</th>
                             <th>Phone</th>
+                            <th>Roles</th>
                             <th>Type</th>
                             <th>Status</th>
                         </tr>
@@ -1421,9 +1805,51 @@ function generateIdentityDashboardHTML() {
                     </div>
                 </div>
 
-                <!-- Row 3: Risk Panel -->
+                <!-- Row 3: Admin Users & Risk Indicator -->
+                <div class="identity-admin-section">
+                    <!-- Admin Users List -->
+                    <div class="identity-admin-card">
+                        <h4 class="chart-card-title">👑 Admin Users List</h4>
+                        <div class="admin-users-container">
+                            <div id="admin-users-list">
+                                <p style="text-align: center; color: #999;">Loading admin users...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Risk Indicator -->
+                    <div class="identity-risk-card">
+                        <h4 class="chart-card-title">🚨 Risk Indicator</h4>
+                        <div class="risk-indicator-container">
+                            <div id="risk-summary">
+                                <p style="text-align: center; color: #999;">Analyzing risks...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Row 4: Role Distribution & Security Insights -->
+                <div class="identity-security-section">
+                    <!-- Role Distribution Chart -->
+                    <div class="identity-chart-card">
+                        <h4 class="chart-card-title">📊 Role Distribution</h4>
+                        <div class="chart-wrapper">
+                            <canvas id="roleDistributionChart" width="300" height="250"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Security Insights -->
+                    <div class="identity-insights-card">
+                        <h4 class="chart-card-title">⚠️ Security Insights</h4>
+                        <div id="security-insights-list" class="security-insights-container">
+                            <p style="text-align: center; color: #999;">Loading security insights...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Row 5: Detailed Risk & Security Analysis -->
                 <div class="identity-risk-panel">
-                    <h4 class="chart-card-title">⚠️ Risk & Security Insights</h4>
+                    <h4 class="chart-card-title">⚠️ Detailed Risk & Security Analysis</h4>
                     <div class="risk-items">
                         <div id="riskCritical" class="risk-item risk-critical" style="display:none;">
                             <i class="fas fa-exclamation-circle"></i>
@@ -1457,7 +1883,7 @@ function populateIdentityTable() {
     tableBody.innerHTML = '';
     
     if (microsoftUsersData.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 20px;">No users found</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 20px;">No users found</td></tr>`;
         return;
     }
     
@@ -1465,11 +1891,19 @@ function populateIdentityTable() {
         const row = document.createElement('tr');
         const jobTitle = (user.jobTitle && user.jobTitle !== 'No Title') ? user.jobTitle : '<span style="color: #f87171;">Missing</span>';
         const phone = (user.mobilePhone && user.mobilePhone !== 'N/A') ? user.mobilePhone : '<span style="color: #f87171;">Missing</span>';
+        
+        // Get roles for this user
+        const roles = userRolesMap[user.id] || [];
+        const rolesDisplay = roles.length > 0 
+            ? roles.map(role => `<span class="role-badge">${role}</span>`).join(' ')
+            : '<span style="color: #999;">No roles</span>';
+        
         row.innerHTML = `
             <td>${user.displayName || 'N/A'}</td>
             <td>${user.mail || user.userPrincipalName || 'N/A'}</td>
             <td>${jobTitle}</td>
             <td>${phone}</td>
+            <td class="roles-cell">${rolesDisplay}</td>
             <td>
                 <span class="user-type-badge ${user.isExternal ? 'external' : 'internal'}">
                     ${user.isExternal ? 'External' : 'Internal'}

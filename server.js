@@ -121,6 +121,52 @@ async function fetchMicrosoftUsers(token) {
   }
 }
 
+// Fetch all role assignments from Microsoft Graph
+async function fetchMicrosoftRoleAssignments(token) {
+  try {
+    const response = await fetch('https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments?$top=999&$expand=roleDefinition', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Microsoft Graph API failed: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.value || [];
+  } catch (error) {
+    console.error('[Microsoft Graph] Failed to fetch role assignments:', error.message);
+    throw error;
+  }
+}
+
+// Fetch directory roles from Microsoft Graph
+async function fetchMicrosoftDirectoryRoles(token) {
+  try {
+    const response = await fetch('https://graph.microsoft.com/v1.0/directoryRoles?$top=999', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Microsoft Graph API failed: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.value || [];
+  } catch (error) {
+    console.error('[Microsoft Graph] Failed to fetch directory roles:', error.message);
+    throw error;
+  }
+}
+
 const app = express();
 // Middleware for parsing bodies with raw support (critical for payment signatures)
 app.use(express.json({
@@ -4217,6 +4263,89 @@ app.get('/api/microsoft-users', authenticateToken, async (req, res) => {
 
         res.status(500).json({ 
             error: 'Failed to fetch Microsoft Graph users',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * Route: GET /api/microsoft-roles
+ * Returns: List of role assignments and directory roles from Microsoft Graph
+ */
+app.get('/api/microsoft-roles', authenticateToken, async (req, res) => {
+    try {
+        const userEmail = req.user.email;
+        console.log(`[Microsoft Graph] Fetching role assignments for: ${userEmail}`);
+
+        // Get the tenant for this user
+        const tenant = getTenantByEmail(userEmail);
+        if (!tenant) {
+            console.warn(`[Microsoft Graph] User ${userEmail} does not belong to any configured tenant`);
+            return res.status(403).json({ 
+                error: 'User does not have access to Microsoft Graph data',
+                message: 'Your email is not associated with any tenant'
+            });
+        }
+
+        console.log(`[Microsoft Graph] User belongs to tenant: ${tenant.clientId}`);
+
+        // Get Microsoft Graph token
+        const token = await getMicrosoftGraphToken();
+
+        // Fetch role assignments and directory roles
+        const [roleAssignments, directoryRoles] = await Promise.all([
+            fetchMicrosoftRoleAssignments(token),
+            fetchMicrosoftDirectoryRoles(token)
+        ]);
+
+        // Create a map of role ID to role name
+        const roleMap = {};
+        directoryRoles.forEach(role => {
+            roleMap[role.id] = {
+                id: role.id,
+                displayName: role.displayName,
+                description: role.description || ''
+            };
+        });
+
+        // Process role assignments
+        const processedAssignments = roleAssignments.map(assignment => {
+            const roleName = assignment.roleDefinition?.displayName || 'Unknown Role';
+            return {
+                id: assignment.id,
+                principalId: assignment.principalId,
+                roleId: assignment.roleDefinition?.id || assignment.roleId,
+                roleName: roleName,
+                resourceScope: assignment.resourceScope,
+                directoryScopeId: assignment.directoryScopeId
+            };
+        });
+
+        console.log(`[Microsoft Graph] Successfully retrieved ${processedAssignments.length} role assignments`);
+
+        res.json({
+            success: true,
+            tenant: tenant.clientId,
+            totalAssignments: processedAssignments.length,
+            totalRoles: directoryRoles.length,
+            roleAssignments: processedAssignments,
+            directoryRoles: directoryRoles,
+            roleMap: roleMap,
+            fetchedAt: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('[Microsoft Graph] Error fetching roles:', error.message);
+        
+        if (error.message.includes('Missing Microsoft Graph credentials')) {
+            return res.status(500).json({ 
+                error: 'Microsoft Graph not configured',
+                message: 'Credentials missing from environment'
+            });
+        }
+
+        res.status(500).json({ 
+            error: 'Failed to fetch Microsoft Graph roles',
             message: error.message
         });
     }
