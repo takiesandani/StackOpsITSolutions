@@ -3479,7 +3479,7 @@
 .identity-users-table-container {
     width: 100%;
     margin: 0 auto;
-    overflow-x: auto;
+    overflow-x: hidden;
     border-radius: 8px;
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -3792,8 +3792,8 @@
 /* Insights Content */
 .insights-content {
     flex: 1;
-    overflow-y: auto;
-    max-height: 250px;
+    overflow-y: visible;
+    max-height: none;
 }
 
 /* Insights Table */
@@ -4138,8 +4138,8 @@
 
 /* Admin Users Container */
 .admin-users-container {
-    max-height: 320px;
-    overflow-y: auto;
+    max-height: none;
+    overflow-y: visible;
 }
 
 .admin-stats {
@@ -4221,7 +4221,8 @@
 
 .risk-level-display {
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    align-items: flex-start;
     gap: 12px;
 }
 
@@ -4231,12 +4232,16 @@
 
 .risk-info {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
 }
 
 .risk-level {
     font-size: 1.1rem;
     font-weight: 600;
+    white-space: nowrap;
 }
 
 .risk-description {
@@ -4285,8 +4290,8 @@
 
 /* Security Insights Container */
 .security-insights-container {
-    max-height: 400px;
-    overflow-y: auto;
+    max-height: none;
+    overflow-y: visible;
 }
 
 .insights-list {
@@ -4369,7 +4374,7 @@
 /* Horizontal Scroll Indicator for Tables Container */
 .identity-users-table-container {
     position: relative;
-    overflow-x: auto;
+    overflow-x: hidden;
     scroll-behavior: smooth;
     border-right: 3px solid transparent;
     transition: border-right-color 0.3s ease;
@@ -4643,7 +4648,7 @@
     .identity-users-table-container {
         width: 100%;
         margin: 0 auto;
-        overflow-x: auto;
+        overflow-x: hidden;
     }
 
     .identity-users-table {
