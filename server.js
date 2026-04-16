@@ -22,7 +22,7 @@ require("dotenv").config();
 const tenantClients = {
   sunbird: {
     clientId: "sunbird",
-    email: "sandanindivhuwo17@gmail.com",
+    emails: ["sandanindivhuwo17@gmail.com", "ndamulelo@stackopsit.co.za"],
     provider: "microsoft",
     tenantType: "microsoft-graph",
     name: "Sunbird"
@@ -33,7 +33,7 @@ const tenantClients = {
 // Helper function to get client by user email
 function getTenantByEmail(email) {
   return Object.values(tenantClients).find(client => 
-    client.email.toLowerCase() === email.toLowerCase()
+    client.emails.includes(email.toLowerCase())
   );
 }
 
