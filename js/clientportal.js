@@ -941,6 +941,7 @@ function populateRiskIndicator() {
                 </div>
             </div>
             
+            <!-- LEFT COLUMN: Risk Stats -->
             <div class="risk-details" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">
                 <div class="risk-detail-item">
                     <span>Total Admin Users:</span>
@@ -950,7 +951,7 @@ function populateRiskIndicator() {
     
     if (hasBreakGlass) {
         html += `
-                <div class="risk-detail-item" style="color: #dc2626;">
+                <div class="risk-detail-item" style="color: #dc2626; margin-top: 10px;">
                     <span>⚠️ Master Admin (Break Glass):</span>
                     <span class="detail-value">${(breakGlassUser.displayName || breakGlassUser.mail || 'Unknown').substring(0, 50)}</span>
                 </div>
@@ -959,7 +960,7 @@ function populateRiskIndicator() {
     
     if (totalAdmins > 5) {
         html += `
-                <div class="risk-detail-item" style="color: #dc2626;">
+                <div class="risk-detail-item" style="color: #dc2626; margin-top: 10px;">
                     <span>⚠️ Too Many Admins:</span>
                     <span class="detail-value">${totalAdmins} users</span>
                 </div>
@@ -970,7 +971,7 @@ function populateRiskIndicator() {
             </div>
     `;
     
-    // Add Recommended Actions section BELOW stats (if there are issues)
+    // BELOW: Recommended Actions section (stacked vertically)
     if (hasBreakGlass || totalAdmins > 5) {
         html += `
             <div class="risk-todo-section" style="margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 6px; border-left: 3px solid ${riskColor};">
@@ -1028,15 +1029,19 @@ function populateSecurityInsights() {
         .filter(([_, roles]) => roles.length > 2)
         .map(([userId, roles]) => {
             const user = microsoftUsersData.find(u => u.id === userId);
-            return { user: user?.displayName || 'Unknown', roleCount: roles.length, roles };
+            return { user: user?.displayName || user?.mail || 'Unknown', roleCount: roles.length, roles };
         });
     
     if (multiRoleUsers.length > 0) {
-        const topUser = multiRoleUsers.sort((a, b) => b.roleCount - a.roleCount)[0];
+        const usersList = multiRoleUsers
+            .sort((a, b) => b.roleCount - a.roleCount)
+            .map(u => `${u.user} (${u.roleCount} roles)`)
+            .join(', ');
+        
         insights.push({
             icon: '⚠️',
             title: 'Users with Multiple Admin Roles',
-            description: `${multiRoleUsers.length} user(s) have multiple roles. ${topUser.user} has ${topUser.roleCount} roles.`,
+            description: `${multiRoleUsers.length} user(s) have multiple roles:<br><strong>${usersList}</strong>`,
             severity: 'warning'
         });
     }
@@ -1059,18 +1064,24 @@ function populateSecurityInsights() {
     }
     
     // Check for users with incomplete profiles
-    const adminsWithoutPhone = Object.entries(userRolesMap)
+    const adminsWithoutPhoneList = Object.entries(userRolesMap)
         .map(([userId, _]) => {
             const user = microsoftUsersData.find(u => u.id === userId);
             return user;
         })
-        .filter(user => user && (!user.mobilePhone || user.mobilePhone === 'N/A')).length;
+        .filter(user => user && (!user.mobilePhone || user.mobilePhone === 'N/A'));
     
-    if (adminsWithoutPhone > 0) {
+    if (adminsWithoutPhoneList.length > 0) {
+        const phonelessList = adminsWithoutPhoneList
+            .map(u => u.displayName || u.mail || 'Unknown')
+            .slice(0, 10)
+            .join(', ');
+        const moreText = adminsWithoutPhoneList.length > 10 ? `<br>... and ${adminsWithoutPhoneList.length - 10} more` : '';
+        
         insights.push({
             icon: '📱',
             title: 'Admins Without Phone',
-            description: `${adminsWithoutPhone} admin(s) don't have phone numbers on file.`,
+            description: `${adminsWithoutPhoneList.length} admin(s) don't have phone numbers on file:<br><strong>${phonelessList}</strong>${moreText}`,
             severity: 'medium'
         });
     }
@@ -2803,16 +2814,8 @@ function generateIdentityDashboardHTML() {
                     </div>
                 </div>
 
-                <!-- Row 4: Role Distribution & Security Insights -->
+                <!-- Row 4: Security Insights -->
                 <div class="identity-security-section">
-                    <!-- Role Distribution Chart -->
-                    <div class="identity-chart-card">
-                        <h4 class="chart-card-title">📊 Role Distribution</h4>
-                        <div class="chart-wrapper">
-                            <canvas id="roleDistributionChart" width="300" height="250"></canvas>
-                        </div>
-                    </div>
-
                     <!-- Security Insights -->
                     <div class="identity-insights-card">
                         <h4 class="chart-card-title">⚠️ Security Insights</h4>
