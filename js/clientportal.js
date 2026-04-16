@@ -941,28 +941,28 @@ function populateRiskIndicator() {
                 </div>
             </div>
             
-            <!-- LEFT COLUMN: Risk Stats -->
+            <!-- RISK STATS - Labels Left, Values Right -->
             <div class="risk-details" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">
-                <div class="risk-detail-item">
-                    <span>Total Admin Users:</span>
-                    <span class="detail-value">${totalAdmins}</span>
+                <div class="risk-detail-item" style="display: flex; width: 100%; font-size: 0.9rem;">
+                    <span style="flex: 0 0 auto;">Total Admin Users:</span>
+                    <span class="detail-value" style="flex: 1; text-align: right;">${totalAdmins}</span>
                 </div>
     `;
     
     if (hasBreakGlass) {
         html += `
-                <div class="risk-detail-item" style="color: #dc2626; margin-top: 10px;">
-                    <span>⚠️ Master Admin (Break Glass):</span>
-                    <span class="detail-value">${(breakGlassUser.displayName || breakGlassUser.mail || 'Unknown').substring(0, 50)}</span>
+                <div class="risk-detail-item" style="display: flex; width: 100%; color: #dc2626; margin-top: 10px; font-size: 0.9rem;">
+                    <span style="flex: 0 0 auto;">⚠️ Master Admin (Break Glass):</span>
+                    <span class="detail-value" style="flex: 1; text-align: right; color: #0066ff;">${(breakGlassUser.displayName || breakGlassUser.mail || 'Unknown').substring(0, 50)}</span>
                 </div>
         `;
     }
     
     if (totalAdmins > 5) {
         html += `
-                <div class="risk-detail-item" style="color: #dc2626; margin-top: 10px;">
-                    <span>⚠️ Too Many Admins:</span>
-                    <span class="detail-value">${totalAdmins} users</span>
+                <div class="risk-detail-item" style="display: flex; width: 100%; color: #dc2626; margin-top: 10px; font-size: 0.9rem;">
+                    <span style="flex: 0 0 auto;">⚠️ Excessive Admin Privileges:</span>
+                    <span class="detail-value" style="flex: 1; text-align: right;">${totalAdmins} users</span>
                 </div>
         `;
     }
