@@ -4260,10 +4260,65 @@
 /* Roles Cell in Table */
 .roles-cell {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     flex-wrap: wrap;
-    gap: 6px;
-    align-items: flex-start;
+    gap: 4px;
+    align-items: center;
+    max-width: 150px;
+}
+
+/* Location and Device cells with truncation and hover tooltip */
+.location-cell,
+.device-cell {
+    display: block;
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: help;
+    border-bottom: 1px dotted rgba(0, 110, 255, 0.4);
+}
+
+.location-cell:hover,
+.device-cell:hover {
+    border-bottom: 1px dotted rgba(0, 110, 255, 0.8);
+}
+
+/* Horizontal Scroll Indicator for Tables Container */
+.identity-users-table-container {
+    position: relative;
+    overflow-x: auto;
+    scroll-behavior: smooth;
+    border-right: 3px solid transparent;
+    transition: border-right-color 0.3s ease;
+}
+
+/* Right edge glow when horizontally scrollable */
+.identity-users-table-container.has-scroll {
+    border-right: 3px solid rgba(0, 110, 255, 0.4);
+    box-shadow: inset -20px 0 20px -20px rgba(0, 110, 255, 0.2);
+}
+
+/* Scroll hint before user scrolls */
+.identity-users-table-container::after {
+    content: '← Scroll for more →';
+    position: absolute;
+    bottom: -25px;
+    right: 0;
+    font-size: 0.7rem;
+    color: rgba(0, 110, 255, 0.5);
+    display: none;
+    font-weight: 200;
+    animation: pulse-hint 2s infinite;
+}
+
+.identity-users-table-container.has-scroll::after {
+    display: block;
+}
+
+@keyframes pulse-hint {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 0.8; }
 }
 
 /* Mobile Responsive - Identity Dashboard */

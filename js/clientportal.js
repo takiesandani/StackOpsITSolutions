@@ -300,6 +300,26 @@ function setupIdentitySearch() {
     const filterCheckboxes = document.querySelectorAll('.filter-checkbox input[type="checkbox"]');
     const clearFiltersBtn = document.getElementById('btn-clear-filters');
     const backBtn = document.getElementById('btn-back-identity');
+    const tableContainer = document.querySelector('.identity-users-table-container');
+    
+    // Add horizontal scroll indicator when table can be scrolled
+    if (tableContainer) {
+        // Check on load
+        setTimeout(() => {
+            if (tableContainer.scrollWidth > tableContainer.clientWidth) {
+                tableContainer.classList.add('has-scroll');
+            }
+        }, 100);
+        
+        // Update as content changes or window resizes
+        window.addEventListener('resize', () => {
+            if (tableContainer.scrollWidth > tableContainer.clientWidth) {
+                tableContainer.classList.add('has-scroll');
+            } else {
+                tableContainer.classList.remove('has-scroll');
+            }
+        });
+    }
     
     // Function to apply all filters and search
     const applyFilters = () => {
@@ -2475,12 +2495,17 @@ function populateIdentityTable() {
             const jobTitle = (user.jobTitle && user.jobTitle !== 'No Title') ? user.jobTitle : '—';
             const phone = (user.mobilePhone && user.mobilePhone !== 'N/A') ? user.mobilePhone : '—';
             
+            // Fix: Handle roles array - could be array of strings or objects with name property
             const roles = user.roles || [];
             const rolesDisplay = roles.length > 0 
-                ? roles.map(role => `<span class="role-badge">${role.name}</span>`).join('')
+                ? roles.map(role => {
+                    const roleName = typeof role === 'string' ? role : (role?.name || 'Unknown Role');
+                    return `<span class="role-badge">${roleName}</span>`;
+                }).join(' ')
                 : '—';
 
-            const mfaStatus = user.mfaEnabled ? '✅ Yes' : '❌ No';
+            // MFA Status: Show both enabled status and method count
+            const mfaStatus = user.mfaEnabled ? `✅ Yes (${user.authMethodCount})` : `❌ No`;
             const riskBadgeClass = user.riskLevel === 'HIGH' ? 'risk-badge-high' : 
                                   user.riskLevel === 'MEDIUM' ? 'risk-badge-medium' : 
                                   'risk-badge-safe';
@@ -2491,8 +2516,14 @@ function populateIdentityTable() {
             const lastSignInText = (user.lastSignIn && user.lastSignIn.dateTime) ? 
                 new Date(user.lastSignIn.dateTime).toLocaleDateString() : 'Never';
 
-            const locationDisplay = (user.lastSignIn && user.lastSignIn.location) ? user.lastSignIn.location : 'Unknown';
-            const deviceDisplay = (user.lastSignIn && user.lastSignIn.device) ? user.lastSignIn.device : 'Unknown';
+            // Location: Already formatted in backend as "City, Country"
+            const locationDisplay = (user.lastSignIn && user.lastSignIn.location) ? user.lastSignIn.location : 'No sign-in';
+            
+            // Device: Show device name  
+            let deviceDisplay = 'Unknown';
+            if (user.lastSignIn && user.lastSignIn.device) {
+                deviceDisplay = user.lastSignIn.device.toLowerCase().includes('unknown') ? 'Unknown' : user.lastSignIn.device;
+            }
 
             row.innerHTML = `
                 <td>${user.displayName || 'Unknown'}</td>
@@ -2511,8 +2542,8 @@ function populateIdentityTable() {
                     <span class="user-status-badge active">Active</span>
                 </td>
                 <td>${lastSignInText}</td>
-                <td>${locationDisplay}</td>
-                <td>${deviceDisplay}</td>
+                <td><span class="location-cell" title="${locationDisplay}">${locationDisplay}</span></td>
+                <td><span class="device-cell" title="${deviceDisplay}">${deviceDisplay}</span></td>
                 <td>${phone}</td>
             `;
         } else {
