@@ -15,6 +15,9 @@ const SUNBIRD_EMAILS = [
 // Sunbird-only card IDs that should be hidden from non-Sunbird clients
 const SUNBIRD_ONLY_CARD_IDS = [2, 3, 4]; // Identity & Access, Devices, Applications
 
+// Cards to hide from Sunbird clients
+const HIDDEN_FROM_SUNBIRD_IDS = [7]; // Backup and Recovery
+
 // Check if current user is a Sunbird client
 function isSunbirdUser() {
     const userEmail = sessionStorage.getItem('userEmail');
@@ -39,8 +42,8 @@ function getFilteredProjects() {
     }
     
     if (isSunbirdUser()) {
-        // Sunbird user - show all cards
-        return mockProjects;
+        // Sunbird user - show all cards except those hidden from them
+        return mockProjects.filter(project => !HIDDEN_FROM_SUNBIRD_IDS.includes(project.id));
     }
     
     // Other clients - hide Sunbird-only cards
@@ -122,7 +125,7 @@ const mockProjects = [
         id: 6,
         name: "Cloud data services",
         type: "Optomized cloud storage & Database health",
-        status: "active",
+        status: "inactive",
         risks: { critical: 1, high: 1, medium: 1 },
         securityScore: 90,
         uptime: 99.7,
@@ -133,6 +136,22 @@ const mockProjects = [
             { label: "Data Redundancy", value: ": 3x", icon: "fas fa-copy" }
         ],
         cardFooter: "Cloud Cost: R4,250/month"
+    },
+    {
+        id: 7,
+        name: "Backup and Recovery",
+        type: "Automated protection & Disaster recovery",
+        status: "active",
+        risks: { critical: 0, high: 1, medium: 2 },
+        securityScore: 95,
+        uptime: 99.9,
+        lastUpdate: "15 minutes ago",
+        icon: "fas fa-shield-alt",
+        cardMetrics: [
+            { label: "Restore Success", value: ": 100%", icon: "fas fa-check-circle" },
+            { label: "Data Protected", value: ": 4.5TB", icon: "fas fa-hdd" }
+        ],
+        cardFooter: "RPO: 1 Hour | RTO: 4 Hours"
     }
 ];
 
