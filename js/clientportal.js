@@ -6,6 +6,9 @@ let currentProjectIndex = 0;
 let selectedProjectId = null;
 let previewLockedByClick = false;
 
+// Track whether user has Cisco Duo linked in database
+let userHasDuoLicense = false;
+
 // Sunbird client emails - only these users can see Identity & Access, Devices, Applications
 const SUNBIRD_EMAILS = [
     'sandanindivhuwo17@gmail.com',
@@ -14,6 +17,9 @@ const SUNBIRD_EMAILS = [
 
 // Sunbird-only card IDs that should be hidden from non-Sunbird clients
 const SUNBIRD_ONLY_CARD_IDS = [2, 3, 4]; // Identity & Access, Devices, Applications
+
+// Cards to hide from Sunbird clients
+const HIDDEN_FROM_SUNBIRD_IDS = [7]; // Backup and Recovery
 
 // Check if current user is a Sunbird client
 function isSunbirdUser() {
@@ -31,20 +37,61 @@ function isSessionValid() {
     return isLoggedIn === 'true' && userEmail && token;
 }
 
+// Check if the current user has Cisco Duo licenses linked in the database
+async function checkUserDuoLicense() {
+    try {
+        const token = localStorage.getItem('authToken');
+        if (!token) {
+            console.log('[Duo Check] No auth token found');
+            userHasDuoLicense = false;
+            return false;
+        }
+
+        const response = await fetch('/api/user/has-duo-license', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            console.log('[Duo Check] API returned status:', response.status);
+            userHasDuoLicense = false;
+            return false;
+        }
+
+        const data = await response.json();
+        userHasDuoLicense = data.hasDuoLicense === true;
+        console.log('[Duo Check] User has Duo license:', userHasDuoLicense);
+        return userHasDuoLicense;
+    } catch (error) {
+        console.error('[Duo Check] Error checking Duo license:', error);
+        userHasDuoLicense = false;
+        return false;
+    }
+}
+
 // Get filtered projects based on user access level
 function getFilteredProjects() {
     if (!isSessionValid()) {
-        // Expired session - return only non-Sunbird cards
-        return mockProjects.filter(project => !SUNBIRD_ONLY_CARD_IDS.includes(project.id));
+        // Expired session - return only non-Sunbird cards and exclude Duo if not available
+        return mockProjects.filter(project => 
+            !SUNBIRD_ONLY_CARD_IDS.includes(project.id) &&
+            !(project.id === 1 && !userHasDuoLicense) // Hide Duo card if user doesn't have it
+        );
     }
     
     if (isSunbirdUser()) {
-        // Sunbird user - show all cards
-        return mockProjects;
+        // Sunbird user - show all cards except those hidden from them
+        return mockProjects.filter(project => !HIDDEN_FROM_SUNBIRD_IDS.includes(project.id));
     }
     
-    // Other clients - hide Sunbird-only cards
-    return mockProjects.filter(project => !SUNBIRD_ONLY_CARD_IDS.includes(project.id));
+    // Other clients - hide Sunbird-only cards and exclude Duo if not available
+    return mockProjects.filter(project => 
+        !SUNBIRD_ONLY_CARD_IDS.includes(project.id) &&
+        !(project.id === 1 && !userHasDuoLicense) // Hide Duo card if user doesn't have it
+    );
 }
 
 const mockProjects = [
@@ -122,7 +169,7 @@ const mockProjects = [
         id: 6,
         name: "Cloud data services",
         type: "Optomized cloud storage & Database health",
-        status: "active",
+        status: "inactive",
         risks: { critical: 1, high: 1, medium: 1 },
         securityScore: 90,
         uptime: 99.7,
@@ -133,6 +180,22 @@ const mockProjects = [
             { label: "Data Redundancy", value: ": 3x", icon: "fas fa-copy" }
         ],
         cardFooter: "Cloud Cost: R4,250/month"
+    },
+    {
+        id: 7,
+        name: "Backup and Recovery",
+        type: "Automated protection & Disaster recovery",
+        status: "active",
+        risks: { critical: 0, high: 1, medium: 2 },
+        securityScore: 95,
+        uptime: 99.9,
+        lastUpdate: "15 minutes ago",
+        icon: "fas fa-shield-alt",
+        cardMetrics: [
+            { label: "Restore Success", value: ": 100%", icon: "fas fa-check-circle" },
+            { label: "Data Protected", value: ": 4.5TB", icon: "fas fa-hdd" }
+        ],
+        cardFooter: "RPO: 1 Hour | RTO: 4 Hours"
     }
 ];
 
@@ -2118,7 +2181,10 @@ function handleMfaVerification() {
                 document.getElementById('login-section').classList.remove('active');
                 document.getElementById('dashboard-section').classList.add('active');
                 
-                fetchDuoStats()
+                // Check if user has Cisco Duo license before fetching stats
+                checkUserDuoLicense().then(() => {
+                    fetchDuoStats();
+                });
 
                 // Reset forms
                 if (loginForm) loginForm.reset();
@@ -2208,6 +2274,9 @@ function setupSessionManagement() {
         if (userNameMobile) {
             userNameMobile.textContent = displayName;
         }
+        
+        // Check if user has Cisco Duo license linked in database
+        checkUserDuoLicense();
         
         // Load billing card if user is logged in
         initializeBillingCard();
@@ -2444,12 +2513,6 @@ async function fetchDuoStats(retryCount = 0) {
     // Only fetch if user is logged in and has a token
     if (!token || !isLoggedIn) {
         console.log('[Duo Sync] User not logged in. Skipping fetch.');
-        return;
-    }
-
-    // Only fetch Duo stats for Sunbird users
-    if (!isSunbirdUser()) {
-        console.log('[Duo Sync] Non-Sunbird user. Skipping fetch.');
         return;
     }
 

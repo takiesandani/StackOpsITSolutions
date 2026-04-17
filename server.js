@@ -4174,6 +4174,38 @@ async function syncDuoData() {
 }
 
 /**
+ * Endpoint: Check if User Has Cisco Duo License
+ * Route: GET /api/user/has-duo-license
+ */
+app.get('/api/user/has-duo-license', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user.id; // From JWT token
+
+        const [rows] = await pool.query(
+            `SELECT uda.duo_id FROM user_duo_accounts uda
+             WHERE uda.user_id = ? LIMIT 1`,
+            [userId]
+        );
+
+        const hasDuoLicense = rows.length > 0;
+        
+        console.log(`[Duo Check] User ${userId} has Duo license:`, hasDuoLicense);
+        
+        res.json({
+            hasDuoLicense: hasDuoLicense,
+            userId: userId
+        });
+
+    } catch (error) {
+        console.error('[Duo Check] Error checking Duo license:', error);
+        res.status(500).json({ 
+            error: 'Failed to check Duo license',
+            hasDuoLicense: false 
+        });
+    }
+});
+
+/**
  * Endpoint: Get Duo Stats for Logged-in Client
  * Route: GET /api/duo-stats
  */
