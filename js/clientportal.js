@@ -6,6 +6,47 @@ let currentProjectIndex = 0;
 let selectedProjectId = null;
 let previewLockedByClick = false;
 
+// Sunbird client emails - only these users can see Identity & Access, Devices, Applications
+const SUNBIRD_EMAILS = [
+    'sandanindivhuwo17@gmail.com',
+    'ndamulelo@stackopsit.co.za'
+];
+
+// Sunbird-only card IDs that should be hidden from non-Sunbird clients
+const SUNBIRD_ONLY_CARD_IDS = [2, 3, 4]; // Identity & Access, Devices, Applications
+
+// Check if current user is a Sunbird client
+function isSunbirdUser() {
+    const userEmail = sessionStorage.getItem('userEmail');
+    if (!userEmail) return false;
+    return SUNBIRD_EMAILS.includes(userEmail.toLowerCase());
+}
+
+// Check if session is still valid
+function isSessionValid() {
+    const isLoggedIn = sessionStorage.getItem('isLoggedIn');
+    const userEmail = sessionStorage.getItem('userEmail');
+    const token = localStorage.getItem('authToken');
+    
+    return isLoggedIn === 'true' && userEmail && token;
+}
+
+// Get filtered projects based on user access level
+function getFilteredProjects() {
+    if (!isSessionValid()) {
+        // Expired session - return only non-Sunbird cards
+        return mockProjects.filter(project => !SUNBIRD_ONLY_CARD_IDS.includes(project.id));
+    }
+    
+    if (isSunbirdUser()) {
+        // Sunbird user - show all cards
+        return mockProjects;
+    }
+    
+    // Other clients - hide Sunbird-only cards
+    return mockProjects.filter(project => !SUNBIRD_ONLY_CARD_IDS.includes(project.id));
+}
+
 const mockProjects = [
     {
         id: 1,
@@ -120,16 +161,28 @@ function switchProjectTab(tabId) {
     // Removed - no longer using tabs
 }
 
+// ============================================
+// IDENTITY & ACCESS / MICROSOFT GRAPH APIs
+// ============================================
+// Handles user management, role assignments, and identity data
+// from Microsoft Graph, including user lists and access control
+
 // Fetch Microsoft users and populate Identity & Access cards
 async function fetchMicrosoftUsersForCard() {
     try {
-        console.log('[Microsoft Users] Fetching users data...');
-        
         const authToken = localStorage.getItem('authToken');
         if (!authToken) {
             console.error('[Microsoft Users] No auth token found');
             return;
         }
+
+        // Only fetch Microsoft users for Sunbird users
+        if (!isSunbirdUser()) {
+            console.log('[Microsoft Users] Non-Sunbird user. Skipping fetch.');
+            return;
+        }
+        
+        console.log('[Microsoft Users] Fetching users data...');
         
         const response = await fetch('/api/microsoft-users', {
             method: 'GET',
@@ -895,6 +948,12 @@ function populateAdminUsersList() {
     adminListContainer.innerHTML = html;
 }
 
+// ============================================
+// SECURITY & RISK ASSESSMENT API
+// ============================================
+// Analyzes security risks including admin privileges,
+// break glass accounts, and multi-role users
+
 // Populate Risk Indicator
 function populateRiskIndicator() {
     const riskContainer = document.getElementById('risk-summary');
@@ -1016,6 +1075,12 @@ function populateRiskIndicator() {
     
     riskContainer.innerHTML = html;
 }
+
+// ============================================
+// SECURITY INSIGHTS API
+// ============================================
+// Provides detailed security insights for multi-role users,
+// admins without phone numbers, and privilege analysis
 
 // Populate Security Insights
 function populateSecurityInsights() {
@@ -1883,6 +1948,12 @@ function togglePasswordVisibility() {
     }
 }
 
+// ============================================
+// AUTHENTICATION APIs
+// ============================================
+// Handles user login, MFA verification, password management,
+// and session management for secure access
+
 /* AUTHENTICATION */
 let currentEmail = '';
 
@@ -2158,6 +2229,12 @@ function showError(message) {
 }
 
 
+// ============================================
+// SUNBIRD IDENTITY DASHBOARD API
+// ============================================
+// Integrates with Sunbird for enhanced identity analytics,
+// user enrichment, and advanced security insights
+
 // Fetch Identity & Access data and update card preview
 // Global variables for Sunbird dashboard
 let isSunbirdDashboard = false;
@@ -2170,6 +2247,12 @@ async function fetchIdentityAccessData() {
         
         if (!token || !isLoggedIn) {
             console.log('[Identity Access] User not logged in. Skipping fetch.');
+            return;
+        }
+
+        // Only fetch Identity & Access data for Sunbird users
+        if (!isSunbirdUser()) {
+            console.log('[Identity Access] Non-Sunbird user. Skipping fetch.');
             return;
         }
 
@@ -2347,6 +2430,12 @@ function buildUserRolesMap() {
     console.log(`[User Roles Map] Built map for ${Object.keys(userRolesMap).length} users`);
 }
 
+// ============================================
+// CISCO DUO INTEGRATION API
+// ============================================
+// Fetches Duo license information and usage statistics
+// for multi-factor authentication tracking
+
 // Updated: fetchDuoStats - Now with better error handling, loading states, and retries
 async function fetchDuoStats(retryCount = 0) {
     const token = localStorage.getItem('authToken');
@@ -2355,6 +2444,12 @@ async function fetchDuoStats(retryCount = 0) {
     // Only fetch if user is logged in and has a token
     if (!token || !isLoggedIn) {
         console.log('[Duo Sync] User not logged in. Skipping fetch.');
+        return;
+    }
+
+    // Only fetch Duo stats for Sunbird users
+    if (!isSunbirdUser()) {
+        console.log('[Duo Sync] Non-Sunbird user. Skipping fetch.');
         return;
     }
 
@@ -3006,6 +3101,15 @@ function initializeProjectsList() {
     const projectsGrid = document.getElementById('projects-grid');
     projectsGrid.innerHTML = '';
     
+    // Filter projects based on user access level
+    const filteredProjects = getFilteredProjects();
+    
+    // Update the global mockProjects reference for this session
+    // (This ensures all other functions work with filtered projects)
+    const originalProjects = mockProjects.slice();
+    mockProjects.length = 0;
+    mockProjects.push(...filteredProjects);
+    
     document.getElementById('project-total').textContent = mockProjects.length;
     currentProjectIndex = 0;
     selectedProjectId = null;
@@ -3244,6 +3348,12 @@ function viewProjectDashboard(project) {
     }
 }
 
+// ============================================
+// IDENTITY & ACCESS DATA API
+// ============================================
+// Fetches detailed Microsoft user and role data
+// for the Identity & Access dashboard tab
+
 // Fetch Identity & Access data from API
 async function fetchIdentityData(project) {
     try {
@@ -3315,6 +3425,12 @@ function resetDashboard() {
     hideProjectPreview();
 }
 
+// ============================================
+// DASHBOARD DATA PROCESSING & RENDERING
+// ============================================
+// Updates dashboard statistics and project information
+// from retrieved API data
+
 /* DASHBOARD DATA */
 function updateDashboardData(project) {
     // For Identity & Access, data is shown in the summary-stats section generated by generateIdentityDashboardHTML
@@ -3331,6 +3447,12 @@ function updateDashboardData(project) {
     document.getElementById('stat-uptime').textContent = project.uptime + '%';
     document.getElementById('stat-last-update').textContent = project.lastUpdate;
 }
+
+// ============================================
+// DASHBOARD CHARTS & VISUALIZATIONS
+// ============================================
+// Initializes and manages chart.js visualizations
+// for risk, security, health, and threat analysis
 
 /* CHARTS */
 function initializeCharts(project) {
@@ -3592,6 +3714,12 @@ function updateCopyrightYear() {
         copyrightElement.textContent = new Date().getFullYear();
     }
 }
+
+// ============================================
+// BILLING & INVOICE API
+// ============================================
+// Retrieves billing information, invoices, and payment status
+// for the billing dashboard card
 
 /* BILLING & GOVERNANCE CARDS */
 async function initializeBillingCard() {
@@ -3865,6 +3993,12 @@ function switchTab(tabId, tabBtns, tabContents) {
     console.log(`[Tabs] Switched to tab: ${tabId}`);
 }
 
+// ============================================
+// MICROSOFT GRAPH USERS & ROLES API
+// ============================================
+// Fetches and displays Microsoft user data, roles, and access information
+// for the Identity tab in the dashboard
+
 // Fetch Microsoft users from the API
 async function fetchMicrosoftUsersData() {
     try {
@@ -3909,6 +4043,12 @@ async function fetchMicrosoftUsersData() {
         }
     }
 }
+
+// ============================================
+// USER DATA DISPLAY & TABLE RENDERING
+// ============================================
+// Renders Microsoft user data in tables, applies filters,
+// and displays identity analytics statistics
 
 // Populate the Microsoft users table
 function populateMicrosoftUsersTable(users) {
