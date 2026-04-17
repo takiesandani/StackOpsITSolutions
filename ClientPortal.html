@@ -1330,120 +1330,9 @@
 
                     <!-- Tab: Devices -->
                     <div id="devices-tab" class="tab-content" style="display: none;">
-                        <div class="devices-dashboard">
-                            <!-- Devices Title -->
-                            <div style="margin-bottom: 32px;">
-                                <h2 class="identity-dashboard-title">Devices & Security</h2>
-                            </div>
-
-                            <!-- TOP METRIC CARDS -->
-                            <div class="devices-metrics-grid">
-                                <div class="metric-card">
-                                    <div class="metric-card-icon"><i class="fas fa-laptop"></i></div>
-                                    <div class="metric-card-content">
-                                        <div class="metric-label">Total Devices</div>
-                                        <div class="metric-value" id="device-total">0</div>
-                                    </div>
-                                </div>
-                                <div class="metric-card">
-                                    <div class="metric-card-icon" style="color: #10b981;"><i class="fas fa-shield-check"></i></div>
-                                    <div class="metric-card-content">
-                                        <div class="metric-label">Compliance</div>
-                                        <div class="metric-value" id="device-compliance">0%</div>
-                                    </div>
-                                </div>
-                                <div class="metric-card">
-                                    <div class="metric-card-icon" style="color: #3b82f6;"><i class="fas fa-lock"></i></div>
-                                    <div class="metric-card-content">
-                                        <div class="metric-label">Encryption</div>
-                                        <div class="metric-value" id="device-encryption">0%</div>
-                                    </div>
-                                </div>
-                                <div class="metric-card">
-                                    <div class="metric-card-icon" style="color: #8b5cf6;"><i class="fas fa-clock"></i></div>
-                                    <div class="metric-card-content">
-                                        <div class="metric-label">Active (24h)</div>
-                                        <div class="metric-value" id="device-active">0</div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- CHARTS & HEALTH SCORE ROW -->
-                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 24px; margin-top: 32px;">
-                                
-                                <!-- OS Distribution Chart -->
-                                <div class="monitor-card">
-                                    <h3 style="margin: 0 0 20px 0; font-size: 14px; font-weight: 500; color: #e2e8f0;">
-                                        <i class="fas fa-chart-pie" style="margin-right: 8px; color: #0066ff;"></i>OS Distribution
-                                    </h3>
-                                    <canvas id="os-distribution-chart" height="200"></canvas>
-                                </div>
-
-                                <!-- Compliance Breakdown Chart -->
-                                <div class="monitor-card">
-                                    <h3 style="margin: 0 0 20px 0; font-size: 14px; font-weight: 500; color: #e2e8f0;">
-                                        <i class="fas fa-chart-pie" style="margin-right: 8px; color: #10b981;"></i>Compliance Status
-                                    </h3>
-                                    <canvas id="compliance-chart" height="200"></canvas>
-                                </div>
-
-                                <!-- Management Status Chart -->
-                                <div class="monitor-card">
-                                    <h3 style="margin: 0 0 20px 0; font-size: 14px; font-weight: 500; color: #e2e8f0;">
-                                        <i class="fas fa-chart-pie" style="margin-right: 8px; color: #f59e0b;"></i>Management Status
-                                    </h3>
-                                    <canvas id="management-chart" height="200"></canvas>
-                                </div>
-
-                                <!-- Device Health Score -->
-                                <div class="monitor-card">
-                                    <h3 style="margin: 0 0 20px 0; font-size: 14px; font-weight: 500; color: #e2e8f0;">
-                                        <i class="fas fa-heartbeat" style="margin-right: 8px; color: #ef4444;"></i>Health Score
-                                    </h3>
-                                    <div id="health-score-container" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 200px;">
-                                        <div id="health-score-value" style="font-size: 48px; font-weight: 200; color: #0066ff; line-height: 1;">0</div>
-                                        <div id="health-score-label" style="font-size: 12px; color: #94a3b8; margin-top: 8px;">Overall Health</div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- HIGH RISK DEVICES SECTION -->
-                            <div class="monitor-card" style="margin-top: 32px;">
-                                <h3 style="margin: 0 0 20px 0; font-size: 14px; font-weight: 500; color: #e2e8f0;">
-                                    <i class="fas fa-exclamation-triangle" style="margin-right: 8px; color: #ef4444;"></i>High Risk Devices
-                                </h3>
-                                <div id="high-risk-table-container" style="overflow-x: auto;">
-                                    <table id="high-risk-devices-table" style="width: 100%; font-size: 12px; border-collapse: collapse;">
-                                        <thead>
-                                            <tr style="border-bottom: 1px solid rgba(0, 110, 255, 0.2); color: #94a3b8; text-align: left;">
-                                                <th style="padding: 12px; font-weight: 500;">Device Name</th>
-                                                <th style="padding: 12px; font-weight: 500;">User</th>
-                                                <th style="padding: 12px; font-weight: 500;">OS</th>
-                                                <th style="padding: 12px; font-weight: 500;">Compliance</th>
-                                                <th style="padding: 12px; font-weight: 500;">Encrypted</th>
-                                                <th style="padding: 12px; font-weight: 500;">Last Sync</th>
-                                                <th style="padding: 12px; font-weight: 500;">Risk</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="high-risk-body">
-                                            <tr style="color: #94a3b8;">
-                                                <td colspan="7" style="padding: 20px; text-align: center;">Loading...</td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-
-                            <!-- ALERTS SECTION -->
-                            <div class="monitor-card" style="margin-top: 32px;">
-                                <h3 style="margin: 0 0 20px 0; font-size: 14px; font-weight: 500; color: #e2e8f0;">
-                                    <i class="fas fa-bell" style="margin-right: 8px; color: #f59e0b;"></i>Security Alerts
-                                </h3>
-                                <div id="alerts-container" style="max-height: 400px; overflow-y: auto;">
-                                    <div style="color: #94a3b8; padding: 20px; text-align: center;">Loading alerts...</div>
-                                </div>
-                            </div>
-
+                        <div class="monitor-card">
+                            <h3><i class="fas fa-laptop"></i> Devices</h3>
+                            <p style="color: #94a3b8; padding: 20px;">Device management data will be integrated here. Coming soon...</p>
                         </div>
                     </div>
 
@@ -1482,7 +1371,6 @@
     <script src="js/script.js"></script>
     <script src="js/clientportal.js"></script>
     <script src="js/chatbot.js"></script>
-    <script src="js/devices.js"></script>
 
 </body>
 </html>

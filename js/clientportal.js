@@ -94,18 +94,16 @@ const mockProjects = [
         name: "Devices",
         type: "Real-time support visibility and tracking",
         status: "active",
-        risks: { critical: 0, high: 0, medium: 0 },
-        securityScore: 0,
-        uptime: 100,
-        lastUpdate: "Loading...",
-        icon: "fas fa-laptop",
+        risks: { critical: 1, high: 2, medium: 3 },
+        securityScore: 88,
+        uptime: 99.5,
+        lastUpdate: "1 hour ago",
+        icon: "fas fa-shopping-cart",
         cardMetrics: [
-            { label: "Total Devices", value: ": ...", icon: "fas fa-laptop-medical" },
-            { label: "Compliant", value: ": ...", icon: "fas fa-shield-check" }
+            { label: "Tickets Resolved", value: ": 156", icon: "fas fa-check-circle" },
+            { label: "Avg Response Time", value: ": 2.5h", icon: "fas fa-clock" }
         ],
-        cardFooter: "Fetching from Microsoft Graph...",
-        isDevicesCard: true,
-        microsoftGraphEnabled: true
+        cardFooter: "Active Issues: 8"
     },
     {
         id: 4,
@@ -161,14 +159,6 @@ const mockProjects = [
 let microsoftUsersData = [];
 let microsoftRolesData = [];
 let userRolesMap = {}; // Maps userId to array of role names
-
-// Device Management Global Data
-let devicesSummaryData = null;
-let devicesListData = [];
-let devicesHighRiskData = [];
-let devicesDistributionsData = null;
-let devicesAlertsData = [];
-let devicesConfigsData = [];
 
 document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
@@ -3965,37 +3955,54 @@ function initializeTabs() {
     
     // Show tabs only if project has tabs enabled
     const dashboardTabs = document.getElementById('dashboard-tabs');
+    
+    // Always clear and hide all tab contents first
+    tabContents.forEach(content => {
+        content.classList.remove('active');
+        content.style.display = 'none';
+    });
+    tabBtns.forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
     if (currentProject && currentProject.hasTabs) {
         dashboardTabs.style.display = 'block';
         
-        // Add event listeners to tab buttons
+        // Add event listeners to tab buttons (remove duplicates by cloning)
         tabBtns.forEach(btn => {
+            const newBtn = btn.cloneNode(true);
+            btn.parentNode.replaceChild(newBtn, btn);
+        });
+        
+        // Query buttons again after cloning
+        const freshTabBtns = document.querySelectorAll('.tab-btn');
+        freshTabBtns.forEach(btn => {
             btn.addEventListener('click', () => {
                 const tabId = btn.getAttribute('data-tab');
-                switchTab(tabId, tabBtns, tabContents);
+                switchTab(tabId, document.querySelectorAll('.tab-btn'), document.querySelectorAll('.tab-content'));
                 
                 // Fetch Microsoft users when switching to identity tab
                 if (tabId === 'identity-tab' && currentProject.microsoftGraphEnabled) {
                     fetchMicrosoftUsersData();
                 }
-                
-                // Initialize devices dashboard when switching to devices tab
-                if (tabId === 'devices-tab' && window.devicesModule) {
-                    setTimeout(() => {
-                        window.devicesModule.initialize().catch(err => {
-                            console.error('[ClientPortal] Failed to initialize devices:', err);
-                        });
-                    }, 100);
-                }
             });
         });
         
         // Set default tab to "all"
-        switchTab('all-tab', tabBtns, tabContents);
+        const allTab = document.getElementById('all-tab');
+        if (allTab) {
+            allTab.classList.add('active');
+            allTab.style.display = 'block';
+        }
+        document.querySelector('[data-tab="all-tab"]').classList.add('active');
     } else {
         dashboardTabs.style.display = 'none';
-        // Always hide all tabs when project doesn't have tabs enabled
-        switchTab('all-tab', tabBtns, tabContents);
+        // Show the all-tab content when no project-specific tabs
+        const allTab = document.getElementById('all-tab');
+        if (allTab) {
+            allTab.classList.add('active');
+            allTab.style.display = 'block';
+        }
     }
 }
 
