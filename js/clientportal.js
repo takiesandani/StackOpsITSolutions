@@ -3978,6 +3978,15 @@ function initializeTabs() {
                 if (tabId === 'identity-tab' && currentProject.microsoftGraphEnabled) {
                     fetchMicrosoftUsersData();
                 }
+                
+                // Initialize devices dashboard when switching to devices tab
+                if (tabId === 'devices-tab' && window.devicesModule) {
+                    setTimeout(() => {
+                        window.devicesModule.initialize().catch(err => {
+                            console.error('[ClientPortal] Failed to initialize devices:', err);
+                        });
+                    }, 100);
+                }
             });
         });
         
