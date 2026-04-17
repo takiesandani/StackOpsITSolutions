@@ -92,18 +92,21 @@ const mockProjects = [
     {
         id: 3,
         name: "Devices",
-        type: "Real-time support visibility and tracking",
+        type: "Device Management & Security Compliance",
         status: "active",
-        risks: { critical: 1, high: 2, medium: 3 },
-        securityScore: 88,
-        uptime: 99.5,
-        lastUpdate: "1 hour ago",
-        icon: "fas fa-shopping-cart",
+        risks: { critical: 0, high: 0, medium: 0 },
+        securityScore: 0,
+        uptime: 100,
+        lastUpdate: "Loading...",
+        icon: "fas fa-laptop",
         cardMetrics: [
-            { label: "Tickets Resolved", value: ": 156", icon: "fas fa-check-circle" },
-            { label: "Avg Response Time", value: ": 2.5h", icon: "fas fa-clock" }
+            { label: "Total Devices", value: ": ...", icon: "fas fa-desktop" },
+            { label: "Compliant", value: ": ...", icon: "fas fa-check-circle" }
         ],
-        cardFooter: "Active Issues: 8"
+        cardFooter: "Fetching from Microsoft Intune...",
+        hasTabs: false,
+        microsoftGraphEnabled: true,
+        isDevicesCard: true
     },
     {
         id: 4,
@@ -3349,12 +3352,20 @@ function viewProjectDashboard(project) {
     currentProject = project;
     
     document.getElementById('projects-view').style.display = 'none';
-    document.getElementById('dashboard-view').style.display = 'block';
+    document.getElementById('dashboard-view').style.display = 'none';
     
     // If this is the Identity & Access card, fetch API data
     if (project.isIdentityCard) {
+        document.getElementById('dashboard-view').style.display = 'block';
         fetchIdentityData(project);
-    } else {
+    } 
+    // If this is the Devices card, fetch device data
+    else if (project.isDevicesCard) {
+        document.getElementById('devices-view').style.display = 'block';
+        fetchDevicesData(project);
+    }
+    else {
+        document.getElementById('dashboard-view').style.display = 'block';
         updateDashboardData(project);
         initializeCharts(project);
         initializeTabs();

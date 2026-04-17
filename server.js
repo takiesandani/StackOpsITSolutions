@@ -4696,6 +4696,259 @@ app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) =
 });
 
 // ====================================================================================================//
+//                        MICROSOFT GRAPH - DEVICES & SECURITY                                        //
+// ====================================================================================================//
+
+/**
+ * Fetch managed devices from Microsoft Intune/Device Management
+ */
+async function fetchMicrosoftDevices(token) {
+    const url = 'https://graph.microsoft.com/v1.0/deviceManagement/managedDevices';
+    
+    try {
+        const response = await fetch(url, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to fetch devices: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        return data.value || [];
+    } catch (error) {
+        console.error('[Microsoft Graph] Devices fetch failed:', error.message);
+        throw error;
+    }
+}
+
+/**
+ * Fetch device compliance policies
+ */
+async function fetchCompliancePolicies(token) {
+    const url = 'https://graph.microsoft.com/v1.0/deviceManagement/deviceCompliancePolicies';
+    
+    try {
+        const response = await fetch(url, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to fetch compliance policies: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        return data.value || [];
+    } catch (error) {
+        console.error('[Microsoft Graph] Compliance policies fetch failed:', error.message);
+        throw error;
+    }
+}
+
+/**
+ * Fetch security alerts
+ */
+async function fetchSecurityAlerts(token) {
+    const url = 'https://graph.microsoft.com/v1.0/security/alerts?$top=50';
+    
+    try {
+        const response = await fetch(url, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to fetch security alerts: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        return data.value || [];
+    } catch (error) {
+        console.error('[Microsoft Graph] Security alerts fetch failed:', error.message);
+        return []; // Return empty array if alerts API fails
+    }
+}
+
+/**
+ * Route: GET /api/microsoft-devices
+ * Returns: Complete devices, compliance, and security data for Devices dashboard
+ */
+app.get('/api/microsoft-devices', authenticateToken, async (req, res) => {
+    try {
+        const userEmail = req.user.email;
+        console.log(`[Devices Dashboard] Fetching device data for: ${userEmail}`);
+
+        // Get the tenant for this user
+        const tenant = getTenantByEmail(userEmail);
+        if (!tenant) {
+            console.warn(`[Devices Dashboard] User ${userEmail} does not belong to any configured tenant`);
+            return res.status(403).json({ 
+                error: 'User does not have access to device data',
+                message: 'Your email is not associated with any tenant'
+            });
+        }
+
+        // Get Microsoft Graph token
+        const token = await getMicrosoftGraphToken();
+
+        // Fetch all required data in parallel
+        const [devices, policies, alerts] = await Promise.all([
+            fetchMicrosoftDevices(token),
+            fetchCompliancePolicies(token),
+            fetchSecurityAlerts(token)
+        ]);
+
+        // Process devices data
+        const processedDevices = devices.map(device => ({
+            id: device.id,
+            deviceName: device.deviceName || 'Unknown Device',
+            userPrincipalName: device.userPrincipalName || 'N/A',
+            operatingSystem: device.operatingSystem || 'Unknown',
+            osVersion: device.osVersion || 'N/A',
+            complianceState: device.complianceState || 'unknown',
+            isEncrypted: device.isEncrypted || false,
+            encryptionStatus: device.isEncrypted ? 'Encrypted' : 'Not Encrypted',
+            managementAgent: device.managementAgent || 'Unknown',
+            lastSyncDateTime: device.lastSyncDateTime ? new Date(device.lastSyncDateTime) : null,
+            azureADRegistered: device.azureADRegistered || false,
+            deviceEnrollmentType: device.deviceEnrollmentType || 'Unknown',
+            deviceType: device.deviceType || 'Unknown',
+            activationLockEnabled: device.activationLockEnabled || false,
+            serialNumber: device.serialNumber || 'N/A',
+            physicalIds: device.physicalIds || [],
+            hasPendingActions: device.hasPendingActions || false,
+            complianceGracePeriodExpirationDateTime: device.complianceGracePeriodExpirationDateTime || null
+        }));
+
+        // Calculate device metrics
+        const totalDevices = processedDevices.length;
+        const compliantDevices = processedDevices.filter(d => d.complianceState === 'compliant').length;
+        const encryptedDevices = processedDevices.filter(d => d.isEncrypted).length;
+        const registeredDevices = processedDevices.filter(d => d.azureADRegistered).length;
+        const staleDevices = processedDevices.filter(d => {
+            if (!d.lastSyncDateTime) return true;
+            const daysSinceSync = (Date.now() - new Date(d.lastSyncDateTime).getTime()) / (1000 * 60 * 60 * 24);
+            return daysSinceSync > 7;
+        }).length;
+
+        // Device breakdown by OS
+        const osDistribution = {};
+        processedDevices.forEach(device => {
+            const os = device.operatingSystem || 'Unknown';
+            osDistribution[os] = (osDistribution[os] || 0) + 1;
+        });
+
+        // Device breakdown by management status
+        const managementStatus = {
+            managed: processedDevices.filter(d => d.managementAgent && d.managementAgent !== 'unknown').length,
+            unmanaged: processedDevices.filter(d => !d.managementAgent || d.managementAgent === 'unknown').length,
+            aadRegistered: registeredDevices
+        };
+
+        // Compliance breakdown
+        const complianceBreakdown = {
+            compliant: compliantDevices,
+            nonCompliant: processedDevices.filter(d => d.complianceState === 'noncompliant').length,
+            unknown: processedDevices.filter(d => d.complianceState === 'unknown').length
+        };
+
+        // High risk devices (not encrypted OR non-compliant OR stale)
+        const highRiskDevices = processedDevices.filter(d => 
+            !d.isEncrypted || d.complianceState !== 'compliant' || 
+            (d.lastSyncDateTime && (Date.now() - new Date(d.lastSyncDateTime).getTime()) / (1000 * 60 * 60 * 24) > 7)
+        );
+
+        // Activity breakdown
+        const activityBreakdown = {
+            active24h: processedDevices.filter(d => {
+                if (!d.lastSyncDateTime) return false;
+                const daysSinceSync = (Date.now() - new Date(d.lastSyncDateTime).getTime()) / (1000 * 60 * 60 * 24);
+                return daysSinceSync <= 1;
+            }).length,
+            stale7days: processedDevices.filter(d => {
+                if (!d.lastSyncDateTime) return false;
+                const daysSinceSync = (Date.now() - new Date(d.lastSyncDateTime).getTime()) / (1000 * 60 * 60 * 24);
+                return daysSinceSync > 7 && daysSinceSync <= 30;
+            }).length,
+            dead30days: processedDevices.filter(d => {
+                if (!d.lastSyncDateTime) return true;
+                const daysSinceSync = (Date.now() - new Date(d.lastSyncDateTime).getTime()) / (1000 * 60 * 60 * 24);
+                return daysSinceSync > 30;
+            }).length
+        };
+
+        // Device security score (0-100)
+        const encryptionPercent = totalDevices > 0 ? (encryptedDevices / totalDevices) * 100 : 0;
+        const compliancePercent = totalDevices > 0 ? (compliantDevices / totalDevices) * 100 : 0;
+        const activePercent = totalDevices > 0 ? (activityBreakdown.active24h / totalDevices) * 100 : 0;
+        const registeredPercent = totalDevices > 0 ? (registeredDevices / totalDevices) * 100 : 0;
+
+        const deviceSecurityScore = Math.round(
+            (encryptionPercent * 0.25) +
+            (compliancePercent * 0.25) +
+            (activePercent * 0.25) +
+            (registeredPercent * 0.25)
+        );
+
+        // Process security alerts (limit to 20)
+        const processedAlerts = alerts.slice(0, 20).map(alert => ({
+            id: alert.id,
+            title: alert.title || 'Unknown Alert',
+            description: alert.description || '',
+            severity: alert.severity || 'medium',
+            status: alert.status || 'newAlert',
+            createdDateTime: alert.createdDateTime || new Date().toISOString(),
+            eventDateTime: alert.eventDateTime || new Date().toISOString(),
+            sourceMaterials: alert.sourceMaterials || [],
+            vendorInformation: alert.vendorInformation?.provider || 'Unknown'
+        }));
+
+        console.log(`[Devices Dashboard] Successfully compiled device data: ${totalDevices} devices, ${processedAlerts.length} alerts`);
+
+        res.json({
+            success: true,
+            tenant: tenant.clientId,
+            fetchedAt: new Date().toISOString(),
+            summary: {
+                totalDevices,
+                compliantDevices,
+                encryptedDevices,
+                registeredDevices,
+                staleDevices,
+                highRiskDevices: highRiskDevices.length,
+                compliancePercentage: totalDevices > 0 ? Math.round((compliantDevices / totalDevices) * 100) : 0,
+                encryptionPercentage: totalDevices > 0 ? Math.round((encryptedDevices / totalDevices) * 100) : 0,
+                deviceSecurityScore
+            },
+            devices: processedDevices,
+            compliance: complianceBreakdown,
+            osDistribution,
+            managementStatus,
+            activityBreakdown,
+            highRiskDevices: highRiskDevices.slice(0, 10),
+            alerts: processedAlerts,
+            policies: policies.slice(0, 10)
+        });
+
+    } catch (error) {
+        console.error('[Devices Dashboard] Error:', error.message);
+        
+        res.status(500).json({ 
+            error: 'Failed to fetch devices dashboard data',
+            message: error.message
+        });
+    }
+});
+
+// ====================================================================================================//
 //                                 GOOGLE CLOUD SECRET MANAGER SETUP                                   //
 // ====================================================================================================//
 const secretClient = new SecretManagerServiceClient();
