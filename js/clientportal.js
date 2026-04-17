@@ -3975,6 +3975,8 @@ function initializeTabs() {
         switchTab('all-tab', tabBtns, tabContents);
     } else {
         dashboardTabs.style.display = 'none';
+        // Always hide all tabs when project doesn't have tabs enabled
+        switchTab('all-tab', tabBtns, tabContents);
     }
 }
 
