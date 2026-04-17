@@ -5781,6 +5781,311 @@ app.get('/test-invoice', (req, res) => {
     `);
 });
 
+// ════════════════════════════════════════════════════════════════════
+// SECURITY & DEVICES - REAL-TIME ALERTS API
+// ════════════════════════════════════════════════════════════════════
+
+// In-memory alert storage (in production, use database)
+const securityAlerts = [];
+const alertIdCounter = { count: 0 };
+
+// Initialize with mock alerts for demonstration
+function initializeSecurityAlerts() {
+    const mockAlerts = [
+        {
+            id: 1,
+            title: 'Malware Detected',
+            severity: 'HIGH',
+            category: 'Malware',
+            deviceId: 'DEV-001',
+            deviceName: 'LAPTOP-USER-01',
+            user: 'john.doe@company.com',
+            description: 'Trojan.Win32 detected in system memory',
+            createdDateTime: new Date(Date.now() - 5 * 60000).toISOString(),
+            status: 'active',
+            location: 'Johannesburg, South Africa',
+            ipAddress: '196.27.94.45'
+        },
+        {
+            id: 2,
+            title: 'Suspicious Sign-In Activity',
+            severity: 'MEDIUM',
+            category: 'Identity',
+            deviceId: 'DEV-002',
+            deviceName: 'DESKTOP-USER-02',
+            user: 'jane.smith@company.com',
+            description: 'Sign-in from unusual location detected',
+            createdDateTime: new Date(Date.now() - 15 * 60000).toISOString(),
+            status: 'active',
+            location: 'Cape Town, South Africa',
+            ipAddress: '41.185.34.20'
+        },
+        {
+            id: 3,
+            title: 'Device Compliance Issue',
+            severity: 'MEDIUM',
+            category: 'Compliance',
+            deviceId: 'DEV-003',
+            deviceName: 'LAPTOP-USER-03',
+            user: 'michael.johnson@company.com',
+            description: 'Device encryption disabled',
+            createdDateTime: new Date(Date.now() - 30 * 60000).toISOString(),
+            status: 'active',
+            location: 'Durban, South Africa',
+            ipAddress: '197.234.175.1'
+        },
+        {
+            id: 4,
+            title: 'Failed Login Attempts',
+            severity: 'LOW',
+            category: 'Authentication',
+            deviceId: 'DEV-004',
+            deviceName: 'DESKTOP-USER-04',
+            user: 'sarah.williams@company.com',
+            description: '5 failed login attempts detected',
+            createdDateTime: new Date(Date.now() - 45 * 60000).toISOString(),
+            status: 'resolved',
+            location: 'Pretoria, South Africa',
+            ipAddress: '102.165.44.89'
+        }
+    ];
+    
+    securityAlerts.push(...mockAlerts);
+    alertIdCounter.count = mockAlerts.length;
+}
+
+// Initialize on startup
+initializeSecurityAlerts();
+
+/**
+ * Route: GET /security/alerts
+ * Returns: Real-time security alerts with options for filtering and pagination
+ */
+app.get('/security/alerts', authenticateToken, async (req, res) => {
+    try {
+        const userEmail = req.user.email;
+        console.log(`[Security Alerts] Fetching alerts for: ${userEmail}`);
+
+        // Only Sunbird client can access alerts
+        const tenant = getTenantByEmail(userEmail);
+        if (!tenant || tenant.clientId !== 'sunbird') {
+            console.warn(`[Security Alerts] Access denied for ${userEmail}`);
+            return res.status(403).json({ 
+                error: 'Access denied',
+                message: 'Security alerts available for authorized clients only'
+            });
+        }
+
+        // Query parameters for filtering
+        const { severity, status, limit = 50, offset = 0 } = req.query;
+
+        // Filter alerts
+        let filteredAlerts = [...securityAlerts];
+
+        if (severity) {
+            filteredAlerts = filteredAlerts.filter(a => a.severity === severity.toUpperCase());
+        }
+
+        if (status) {
+            filteredAlerts = filteredAlerts.filter(a => a.status === status.toLowerCase());
+        }
+
+        // Sort by severity (HIGH > MEDIUM > LOW) then by recency
+        const severityOrder = { 'HIGH': 0, 'MEDIUM': 1, 'LOW': 2 };
+        filteredAlerts.sort((a, b) => {
+            const severityDiff = severityOrder[a.severity] - severityOrder[b.severity];
+            if (severityDiff !== 0) return severityDiff;
+            return new Date(b.createdDateTime) - new Date(a.createdDateTime);
+        });
+
+        // Calculate metrics
+        const metrics = {
+            total: securityAlerts.length,
+            active: securityAlerts.filter(a => a.status === 'active').length,
+            resolved: securityAlerts.filter(a => a.status === 'resolved').length,
+            high: securityAlerts.filter(a => a.severity === 'HIGH').length,
+            medium: securityAlerts.filter(a => a.severity === 'MEDIUM').length,
+            low: securityAlerts.filter(a => a.severity === 'LOW').length,
+            activeHigh: securityAlerts.filter(a => a.severity === 'HIGH' && a.status === 'active').length
+        };
+
+        // Pagination
+        const paginatedAlerts = filteredAlerts.slice(parseInt(offset), parseInt(offset) + parseInt(limit));
+
+        console.log(`[Security Alerts] Returned ${paginatedAlerts.length} alerts (${metrics.active} active)`);
+
+        res.json({
+            success: true,
+            alerts: paginatedAlerts,
+            metrics: metrics,
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('[Security Alerts] Error:', error.message);
+        res.status(500).json({ 
+            error: 'Failed to fetch alerts',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * Route: GET /security/alerts/:id
+ * Returns: Detailed information about a specific alert
+ */
+app.get('/security/alerts/:id', authenticateToken, async (req, res) => {
+    try {
+        const userEmail = req.user.email;
+        const alertId = parseInt(req.params.id);
+
+        // Verify authorization
+        const tenant = getTenantByEmail(userEmail);
+        if (!tenant || tenant.clientId !== 'sunbird') {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        const alert = securityAlerts.find(a => a.id === alertId);
+        if (!alert) {
+            return res.status(404).json({ error: 'Alert not found' });
+        }
+
+        // Generate remediation suggestions based on severity and category
+        const remediations = generateRemediations(alert);
+
+        res.json({
+            success: true,
+            alert: alert,
+            remediations: remediations,
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('[Security Alerts] Error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * Route: POST /security/alerts/:id/remediate
+ * Executes remediation actions for an alert
+ */
+app.post('/security/alerts/:id/remediate', authenticateToken, async (req, res) => {
+    try {
+        const userEmail = req.user.email;
+        const alertId = parseInt(req.params.id);
+        const { action } = req.body;
+
+        // Verify authorization
+        const tenant = getTenantByEmail(userEmail);
+        if (!tenant || tenant.clientId !== 'sunbird') {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        const alert = securityAlerts.find(a => a.id === alertId);
+        if (!alert) {
+            return res.status(404).json({ error: 'Alert not found' });
+        }
+
+        console.log(`[Security Alerts] Executing remedy: ${action} for alert ${alertId}`);
+
+        // Simulate executing the remediation
+        let remediationResult;
+        switch (action) {
+            case 'isolate_device':
+                remediationResult = { status: 'success', message: 'Device isolated from network', action: action };
+                alert.status = 'resolved';
+                break;
+            case 'scan_antivirus':
+                remediationResult = { status: 'success', message: 'Antivirus scan initiated', action: action };
+                break;
+            case 'reset_password':
+                remediationResult = { status: 'success', message: 'Password reset initiated', action: action };
+                alert.status = 'resolved';
+                break;
+            case 'enable_encryption':
+                remediationResult = { status: 'success', message: 'Device encryption enabled', action: action };
+                alert.status = 'resolved';
+                break;
+            case 'require_mfa':
+                remediationResult = { status: 'success', message: 'MFA requirement applied', action: action };
+                break;
+            case 'revoke_session':
+                remediationResult = { status: 'success', message: 'Active sessions revoked', action: action };
+                alert.status = 'resolved';
+                break;
+            default:
+                remediationResult = { status: 'unknown', message: 'Unknown remediation action' };
+        }
+
+        res.json({
+            success: true,
+            result: remediationResult,
+            alert: alert,
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('[Security Alerts] Remediation error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * Generate suggested remediation actions based on alert
+ */
+function generateRemediations(alert) {
+    const remediations = [];
+
+    if (alert.severity === 'HIGH') {
+        remediations.push({
+            title: 'Isolate Device',
+            description: 'Disconnect device from network',
+            action: 'isolate_device',
+            priority: 'critical'
+        });
+    }
+
+    if (alert.category === 'Malware') {
+        remediations.push({
+            title: 'Run Antivirus Scan',
+            description: 'Execute full system antivirus scan',
+            action: 'scan_antivirus',
+            priority: 'high'
+        });
+    }
+
+    if (alert.category === 'Identity' || alert.category === 'Authentication') {
+        remediations.push({
+            title: 'Force Password Reset',
+            description: 'User must change password on next login',
+            action: 'reset_password',
+            priority: 'high'
+        }, {
+            title: 'Require Multi-Factor Authentication',
+            description: 'Enforce MFA for this user',
+            action: 'require_mfa',
+            priority: 'high'
+        }, {
+            title: 'Revoke Active Sessions',
+            description: 'Terminate all active sessions',
+            action: 'revoke_session',
+            priority: 'high'
+        });
+    }
+
+    if (alert.category === 'Compliance') {
+        remediations.push({
+            title: 'Enable Encryption',
+            description: 'Enable full disk encryption',
+            action: 'enable_encryption',
+            priority: 'high'
+        });
+    }
+
+    return remediations;
+}
+
 // ────────────────────────────────────────────────────────────────────
 // ──── WhatsApp Integration (StackOps) ────────────────────────────────
 // ────────────────────────────────────────────────────────────────────
@@ -5851,5 +6156,3 @@ server.on('error', (error) => {
     console.error('❌ Server error:', error);
     process.exit(1);
 });
-
-

@@ -98,12 +98,14 @@ const mockProjects = [
         securityScore: 88,
         uptime: 99.5,
         lastUpdate: "1 hour ago",
-        icon: "fas fa-shopping-cart",
+        icon: "fas fa-laptop",
         cardMetrics: [
-            { label: "Tickets Resolved", value: ": 156", icon: "fas fa-check-circle" },
-            { label: "Avg Response Time", value: ": 2.5h", icon: "fas fa-clock" }
+            { label: "Devices Monitored", value: ": 45", icon: "fas fa-check-circle" },
+            { label: "Active Alerts", value: ": 3", icon: "fas fa-exclamation-circle" }
         ],
-        cardFooter: "Active Issues: 8"
+        cardFooter: "Security Status: Monitoring",
+        hasTabs: true,
+        hasAlerts: true
     },
     {
         id: 4,
@@ -3296,6 +3298,12 @@ function hideProjectPreview() {
     if (previewSection) {
         previewSection.classList.remove('visible');
     }
+    
+    // Clean up alerts polling when leaving dashboard
+    if (alertsPollingInterval) {
+        clearInterval(alertsPollingInterval);
+        alertsPollingInterval = null;
+    }
 }
 
 function createProjectCard(project) {
@@ -3451,6 +3459,20 @@ function updateDashboardData(project) {
     if (project.isIdentityCard) {
         document.getElementById('project-name').textContent = project.name;
         return;
+    }
+    
+    // For Devices project, update with alert data
+    if (project.hasAlerts && alertsData.length > 0) {
+        const activeAlerts = alertsData.filter(a => a.status === 'active').length;
+        const highSeverityAlerts = alertsData.filter(a => a.severity === 'HIGH' && a.status === 'active').length;
+        
+        // Update risk counts based on alerts
+        project.risks.critical = highSeverityAlerts;
+        project.risks.high = Math.max(project.risks.high, highSeverityAlerts);
+        
+        // Reduce security score based on active alerts
+        const alertPenalty = Math.min(activeAlerts * 3, 30); // Max 30% reduction
+        project.securityScore = Math.max(0, project.securityScore - alertPenalty);
     }
     
     // For other projects, use original data
@@ -3945,8 +3967,306 @@ window.addEventListener('resize', () => {
 });
 
 /* ============================================ */
+/* DEVICES TAB - REAL-TIME SECURITY ALERTS */
+/* ============================================ */
+
+let alertsData = [];
+let alertsPollingInterval = null;
+let alertsPaused = false;
+const ALERTS_POLL_INTERVAL = 30000; // 30 seconds
+
+// Fetch security alerts from API
+async function fetchSecurityAlerts() {
+    try {
+        const token = localStorage.getItem('authToken');
+        if (!token) {
+            console.warn('[Security Alerts] Auth token missing');
+            return;
+        }
+
+        const response = await fetch('/security/alerts', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to fetch alerts: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        alertsData = data.alerts || [];
+
+        console.log(`[Security Alerts] Fetched ${alertsData.length} alerts`);
+
+        // Update UI
+        updateAlertMetrics(data.metrics);
+        renderAlertsFeed();
+
+    } catch (error) {
+        console.error('[Security Alerts] Error:', error.message);
+        showNotification('Failed to fetch security alerts', false);
+    }
+}
+
+// Update alert metrics display
+function updateAlertMetrics(metrics) {
+    document.getElementById('metric-total-alerts').textContent = metrics.total || 0;
+    document.getElementById('metric-high-alerts').textContent = metrics.high || 0;
+    document.getElementById('metric-active-alerts').textContent = metrics.active || 0;
+    document.getElementById('metric-resolved-alerts').textContent = metrics.resolved || 0;
+}
+
+// Render alerts in the feed
+function renderAlertsFeed() {
+    const container = document.getElementById('alerts-container');
+    if (!container) return;
+
+    if (alertsData.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 40px; color: #10b981;">
+                <i class="fas fa-check-circle" style="font-size: 32px; margin-bottom: 12px; display: block;"></i>
+                <p>All systems secure. No active alerts.</p>
+            </div>
+        `;
+        return;
+    }
+
+    // Get active filters
+    const activeSeverities = Array.from(document.querySelectorAll('.severity-filter:checked')).map(el => el.dataset.severity);
+    const activeOnly = document.querySelector('.status-filter[data-status="active"]')?.checked || false;
+
+    // Filter alerts
+    let filteredAlerts = alertsData.filter(alert => {
+        const severityMatch = activeSeverities.includes(alert.severity);
+        const statusMatch = !activeOnly || alert.status === 'active';
+        return severityMatch && statusMatch;
+    });
+
+    if (filteredAlerts.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 40px; color: #94a3b8;">
+                <i class="fas fa-filter" style="font-size: 24px; margin-bottom: 12px; display: block;"></i>
+                <p>No alerts match your filters.</p>
+            </div>
+        `;
+        return;
+    }
+
+    // Render alerts
+    container.innerHTML = filteredAlerts.map(alert => `
+        <div class="alert-item ${alert.severity}" onclick="openAlertDetails(${alert.id})">
+            <div class="alert-icon">
+                ${getSeverityIcon(alert.severity)}
+            </div>
+            <div class="alert-content">
+                <div class="alert-title">${escapeHtml(alert.title)}</div>
+                <div class="alert-meta">
+                    <span class="alert-device">
+                        <i class="fas fa-laptop"></i>
+                        ${escapeHtml(alert.deviceName)}
+                    </span>
+                    <span class="alert-time">${getRelativeTime(alert.createdDateTime)}</span>
+                    <span class="alert-status ${alert.status}">${alert.status === 'active' ? '🔴 Active' : '✓ Resolved'}</span>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Get severity icon
+function getSeverityIcon(severity) {
+    switch(severity) {
+        case 'HIGH':
+            return '<i class="fas fa-exclamation-circle" style="color: #ef4444;"></i>';
+        case 'MEDIUM':
+            return '<i class="fas fa-info-circle" style="color: #fb923c;"></i>';
+        case 'LOW':
+            return '<i class="fas fa-check-circle" style="color: #22c55e;"></i>';
+        default:
+            return '<i class="fas fa-circle" style="color: #0066FF;"></i>';
+    }
+}
+
+// Get relative time
+function getRelativeTime(isoString) {
+    const date = new Date(isoString);
+    const now = new Date();
+    const seconds = Math.floor((now - date) / 1000);
+
+    if (seconds < 60) return 'just now';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes} min ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days}d ago`;
+    return date.toLocaleDateString();
+}
+
+// Open alert details modal
+async function openAlertDetails(alertId) {
+    try {
+        const token = localStorage.getItem('authToken');
+        const response = await fetch(`/security/alerts/${alertId}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) throw new Error('Failed to fetch alert details');
+
+        const data = await response.json();
+        const alert = data.alert;
+        const remediations = data.remediations || [];
+
+        // Populate modal
+        document.getElementById('modal-alert-title').textContent = alert.title;
+        document.getElementById('modal-severity').innerHTML = `<span style="color: ${getSeverityColor(alert.severity)};">${alert.severity}</span>`;
+        document.getElementById('modal-status').innerHTML = alert.status === 'active' 
+            ? '<span style="color: #ef4444;">🔴 Active</span>' 
+            : '<span style="color: #10b981;">✓ Resolved</span>';
+        document.getElementById('modal-category').textContent = alert.category;
+        document.getElementById('modal-time').textContent = new Date(alert.createdDateTime).toLocaleString();
+        document.getElementById('modal-device').textContent = alert.deviceName;
+        document.getElementById('modal-user').textContent = alert.user || 'N/A';
+        document.getElementById('modal-location').textContent = alert.location || 'N/A';
+        document.getElementById('modal-ip').textContent = alert.ipAddress || 'N/A';
+        document.getElementById('modal-description').textContent = alert.description;
+
+        // Populate remediation actions
+        const remediationContainer = document.getElementById('remediation-actions');
+        if (remediations.length > 0) {
+            remediationContainer.innerHTML = remediations.map(rem => `
+                <button class="remediation-btn ${rem.priority === 'critical' ? 'critical' : ''}" 
+                        onclick="executeRemediation(${alertId}, '${rem.action}', this)">
+                    <div>
+                        <div style="font-weight: 500;">${rem.title}</div>
+                        <div style="font-size: 11px; color: inherit; opacity: 0.8;">${rem.description}</div>
+                    </div>
+                    <span class="remediation-arrow">→</span>
+                </button>
+            `).join('');
+        } else {
+            remediationContainer.innerHTML = '<p style="color: #94a3b8; text-align: center;">No remediation actions available</p>';
+        }
+
+        // Show modal
+        document.getElementById('alert-details-modal').classList.add('active');
+
+    } catch (error) {
+        console.error('[Alert Details]', error);
+        showNotification('Failed to load alert details', false);
+    }
+}
+
+// Close alert details modal
+function closeAlertDetails() {
+    document.getElementById('alert-details-modal').classList.remove('active');
+}
+
+// Execute remediation
+async function executeRemediation(alertId, action, button) {
+    try {
+        button.classList.add('executing');
+        button.disabled = true;
+
+        const token = localStorage.getItem('authToken');
+        const response = await fetch(`/security/alerts/${alertId}/remediate`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ action: action })
+        });
+
+        if (!response.ok) throw new Error('Remediation failed');
+
+        const data = await response.json();
+        showNotification(`✓ ${data.result.message}`, true);
+
+        // Refresh alerts
+        await fetchSecurityAlerts();
+        closeAlertDetails();
+
+    } catch (error) {
+        console.error('[Remediation Error]', error);
+        showNotification('Remediation action failed', false);
+    } finally {
+        button.classList.remove('executing');
+        button.disabled = false;
+    }
+}
+
+// Get severity color
+function getSeverityColor(severity) {
+    switch(severity) {
+        case 'HIGH':
+            return '#ef4444';
+        case 'MEDIUM':
+            return '#fb923c';
+        case 'LOW':
+            return '#22c55e';
+        default:
+            return '#0066FF';
+    }
+}
+
+// Initialize alerts feed when Devices tab is opened
+function initializeAlertsFeed() {
+    // Fetch alerts immediately
+    fetchSecurityAlerts();
+
+    // Start polling
+    if (!alertsPollingInterval && !alertsPaused) {
+        alertsPollingInterval = setInterval(() => {
+            if (!alertsPaused) {
+                fetchSecurityAlerts();
+            }
+        }, ALERTS_POLL_INTERVAL);
+    }
+
+    // Add event listeners
+    document.getElementById('btn-refresh-alerts')?.addEventListener('click', () => {
+        fetchSecurityAlerts();
+        showNotification('Alerts refreshed', true);
+    });
+
+    document.getElementById('btn-pause-alerts')?.addEventListener('click', function() {
+        alertsPaused = !alertsPaused;
+        this.classList.toggle('active', alertsPaused);
+        this.title = alertsPaused ? 'Resume auto-refresh' : 'Pause auto-refresh';
+    });
+
+    // Filter listeners
+    document.querySelectorAll('.severity-filter, .status-filter').forEach(checkbox => {
+        checkbox.addEventListener('change', renderAlertsFeed);
+    });
+
+    // Close modal on overlay click
+    document.getElementById('alert-details-modal')?.addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeAlertDetails();
+        }
+    });
+}
+
+// Escape HTML
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+/* ============================================ */
 /* Dashboard Tabs & Microsoft Graph Integration */
 /* ============================================ */
+
 
 // Initialize tabs when project dashboard is loaded
 function initializeTabs() {
@@ -3967,6 +4287,11 @@ function initializeTabs() {
                 // Fetch Microsoft users when switching to identity tab
                 if (tabId === 'identity-tab' && currentProject.microsoftGraphEnabled) {
                     fetchMicrosoftUsersData();
+                }
+                
+                // Initialize alerts feed when switching to devices tab
+                if (tabId === 'devices-tab') {
+                    initializeAlertsFeed();
                 }
             });
         });
