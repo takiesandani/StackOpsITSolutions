@@ -473,26 +473,6 @@
     color: #f87171;
 }
 
-/* Back Button */
-.btn-back-devices {
-    background: rgba(0, 110, 255, 0.1);
-    border: 1px solid rgba(0, 110, 255, 0.2);
-    color: #0066FF;
-    padding: 10px 16px;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 200;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.btn-back-devices:hover {
-    background: rgba(0, 110, 255, 0.2);
-    border-color: rgba(0, 110, 255, 0.4);
-}
 
 /* Responsive Devices Dashboard */
 @media (max-width: 1024px) {
