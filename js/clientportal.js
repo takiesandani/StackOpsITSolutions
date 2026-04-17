@@ -94,16 +94,18 @@ const mockProjects = [
         name: "Devices",
         type: "Real-time support visibility and tracking",
         status: "active",
-        risks: { critical: 1, high: 2, medium: 3 },
-        securityScore: 88,
-        uptime: 99.5,
-        lastUpdate: "1 hour ago",
-        icon: "fas fa-shopping-cart",
+        risks: { critical: 0, high: 0, medium: 0 },
+        securityScore: 0,
+        uptime: 100,
+        lastUpdate: "Loading...",
+        icon: "fas fa-laptop",
         cardMetrics: [
-            { label: "Tickets Resolved", value: ": 156", icon: "fas fa-check-circle" },
-            { label: "Avg Response Time", value: ": 2.5h", icon: "fas fa-clock" }
+            { label: "Total Devices", value: ": ...", icon: "fas fa-laptop-medical" },
+            { label: "Compliant", value: ": ...", icon: "fas fa-shield-check" }
         ],
-        cardFooter: "Active Issues: 8"
+        cardFooter: "Fetching from Microsoft Graph...",
+        isDevicesCard: true,
+        microsoftGraphEnabled: true
     },
     {
         id: 4,
@@ -159,6 +161,14 @@ const mockProjects = [
 let microsoftUsersData = [];
 let microsoftRolesData = [];
 let userRolesMap = {}; // Maps userId to array of role names
+
+// Device Management Global Data
+let devicesSummaryData = null;
+let devicesListData = [];
+let devicesHighRiskData = [];
+let devicesDistributionsData = null;
+let devicesAlertsData = [];
+let devicesConfigsData = [];
 
 document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();

@@ -4648,6 +4648,791 @@
         margin: 0 auto;
         overflow-x: auto;
     }
+}
+
+/* ============================================================== */
+/* DEVICES DASHBOARD STYLES                                       */
+/* ============================================================== */
+
+.devices-dashboard {
+    width: 90%;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 14px;
+}
+
+.devices-dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid rgba(0, 110, 255, 0.2);
+}
+
+.devices-header-left {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.btn-back-devices {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: rgba(0, 110, 255, 0.15);
+    border: 1px solid rgba(0, 110, 255, 0.3);
+    border-radius: 6px;
+    color: rgba(0, 110, 255, 0.9);
+    cursor: pointer;
+    font-weight: 200;
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+}
+
+.btn-back-devices:hover {
+    background: rgba(0, 110, 255, 0.25);
+    border-color: rgba(0, 110, 255, 0.5);
+    color: rgba(0, 110, 255, 1);
+}
+
+.btn-back-devices i {
+    font-size: 0.85rem;
+}
+
+.devices-dashboard-title {
+    font-size: 1.4rem;
+    font-weight: 200;
+    color: #e0e0e0;
+    margin: 0;
+    letter-spacing: 0.5px;
+}
+
+/* Devices Metrics Grid - 4 columns */
+.devices-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    width: 100%;
+    margin: 0 auto 10px;
+}
+
+.metric-card {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 11px 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+.metric-card:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(0, 110, 255, 0.3);
+}
+
+.metric-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    flex-shrink: 0;
+    background: rgba(0, 110, 255, 0.15);
+    color: #006eff;
+}
+
+.metric-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.metric-label {
+    font-size: 0.65rem;
+    color: rgba(255, 255, 255, 0.6);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 200;
+}
+
+.metric-value {
+    font-size: 1.15rem;
+    font-weight: 200;
+    color: #e0e0e0;
+}
+
+/* Devices Content Grid - 3-column layout */
+.devices-content-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    width: 100%;
+    margin: 0 auto;
+}
+
+/* Monitor Card Base */
+.monitor-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(0, 110, 255, 0.15);
+    border-radius: 8px;
+    padding: 12px;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+}
+
+.monitor-card:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(0, 110, 255, 0.25);
+}
+
+.monitor-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.monitor-card-header i {
+    color: #006eff;
+    font-size: 0.95rem;
+}
+
+.monitor-card-title {
+    font-size: 0.85rem;
+    font-weight: 200;
+    color: #e0e0e0;
+    margin: 0;
+}
+
+/* Health Score Card */
+.health-score-card {
+    grid-column: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 220px;
+    padding: 20px 12px;
+}
+
+.health-score-display-large {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.health-score-value-large {
+    font-size: 2.2rem;
+    font-weight: 200;
+    color: #84cc16;
+}
+
+.health-score-label-large {
+    font-size: 0.8rem;
+    color: #94a3b8;
+    font-weight: 200;
+}
+
+.health-score-bar-container {
+    width: 100%;
+    margin-top: 12px;
+}
+
+.health-score-bar {
+    width: 100%;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 6px;
+}
+
+.health-score-progress {
+    height: 100%;
+    background: linear-gradient(90deg, #ffb366 0%, #84cc16 100%);
+    transition: width 0.5s ease;
+    border-radius: 3px;
+}
+
+.health-status-text {
+    text-align: center;
+    font-size: 0.75rem;
+    color: #94a3b8;
+    font-weight: 200;
+}
+
+/* Chart Cards - Span 1 column each */
+.os-chart-card {
+    grid-column: 2;
+}
+
+.compliance-chart-card {
+    grid-column: 3;
+}
+
+.management-chart-card {
+    grid-column: 1;
+    grid-row: 2;
+}
+
+/* Chart Container */
+.chart-container-devices {
+    position: relative;
+    height: 200px;
+    width: 100%;
+}
+
+.chart-container-devices canvas {
+    max-width: 100%;
+    height: auto;
+}
+
+/* High-Risk Devices Table - Full width in row 2 */
+.high-risk-card {
+    grid-column: 2 / 4;
+    grid-row: 2;
+}
+
+.devices-table-container {
+    width: 100%;
+    overflow-x: auto;
+    border-radius: 6px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.devices-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: rgba(0, 0, 0, 0.2);
+    font-size: 0.8rem;
+    min-width: 600px;
+}
+
+.devices-table thead {
+    background: rgba(0, 110, 255, 0.15);
+    border-bottom: 1px solid rgba(0, 110, 255, 0.2);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.devices-table th {
+    padding: 10px 9px;
+    text-align: left;
+    color: rgba(0, 110, 255, 0.8);
+    font-weight: 200;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    white-space: nowrap;
+}
+
+.devices-table td {
+    padding: 9px 9px;
+    color: #d1d5db;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    word-break: break-word;
+}
+
+.devices-table tbody tr {
+    transition: background-color 0.2s ease;
+}
+
+.devices-table tbody tr:hover {
+    background: rgba(0, 110, 255, 0.08);
+}
+
+.devices-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.device-name-cell {
+    font-weight: 200;
+    color: #e0e0e0;
+}
+
+.device-user-cell {
+    color: #94a3b8;
+}
+
+.device-os-cell {
+    color: #cbd5e1;
+}
+
+.compliance-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 200;
+    text-transform: uppercase;
+}
+
+.compliance-badge.compliant {
+    background: rgba(34, 197, 94, 0.2);
+    color: #86efac;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.compliance-badge.non-compliant {
+    background: rgba(220, 53, 69, 0.2);
+    color: #f87171;
+    border: 1px solid rgba(220, 53, 69, 0.3);
+}
+
+.encryption-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 200;
+    text-transform: uppercase;
+}
+
+.encryption-badge.encrypted {
+    background: rgba(34, 197, 94, 0.2);
+    color: #86efac;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.encryption-badge.not-encrypted {
+    background: rgba(220, 53, 69, 0.2);
+    color: #f87171;
+    border: 1px solid rgba(220, 53, 69, 0.3);
+}
+
+.last-sync-cell {
+    color: #94a3b8;
+    font-size: 0.75rem;
+}
+
+.risk-level-cell {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.risk-emoji {
+    font-size: 1rem;
+}
+
+.risk-text {
+    font-weight: 200;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+}
+
+.risk-safe {
+    color: #86efac;
+}
+
+.risk-medium {
+    color: #ffb366;
+}
+
+.risk-high {
+    color: #f87171;
+}
+
+/* No Results Message */
+.no-results-message {
+    padding: 20px;
+    text-align: center;
+    color: #94a3b8;
+    font-size: 0.85rem;
+    font-weight: 200;
+}
+
+/* Alerts Panel - Full width below charts */
+.alerts-card {
+    grid-column: 1 / -1;
+    grid-row: 3;
+}
+
+.alerts-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.alert-item-devices {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.02);
+    border-left: 3px solid;
+    border-radius: 4px;
+    transition: background 0.2s ease;
+}
+
+.alert-item-devices:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.alert-item-devices.high {
+    border-left-color: #f87171;
+}
+
+.alert-item-devices.medium {
+    border-left-color: #ffb366;
+}
+
+.alert-item-devices.low {
+    border-left-color: #60a5fa;
+}
+
+.alert-icon {
+    font-size: 1.1rem;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.alert-item-devices.high .alert-icon {
+    color: #f87171;
+}
+
+.alert-item-devices.medium .alert-icon {
+    color: #ffb366;
+}
+
+.alert-item-devices.low .alert-icon {
+    color: #60a5fa;
+}
+
+.alert-content-devices {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.alert-title {
+    color: #e0e0e0;
+    font-size: 0.8rem;
+    font-weight: 200;
+}
+
+.alert-description {
+    color: #94a3b8;
+    font-size: 0.75rem;
+    font-weight: 200;
+}
+
+.alert-time {
+    color: #666;
+    font-size: 0.7rem;
+    font-weight: 200;
+}
+
+/* Loading State */
+.devices-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+    color: #94a3b8;
+    font-size: 0.9rem;
+}
+
+.devices-loading i {
+    animation: spin-loading 1.5s linear infinite;
+    margin-right: 8px;
+}
+
+@keyframes spin-loading {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Error State */
+.devices-error {
+    padding: 15px;
+    background: rgba(220, 53, 69, 0.1);
+    border: 1px solid rgba(220, 53, 69, 0.2);
+    border-radius: 8px;
+    color: #f87171;
+    font-size: 0.85rem;
+    font-weight: 200;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.devices-error i {
+    font-size: 1rem;
+}
+
+/* Refresh Button */
+.btn-refresh-devices {
+    padding: 8px 14px;
+    background: rgba(0, 110, 255, 0.2);
+    border: 1px solid rgba(0, 110, 255, 0.3);
+    border-radius: 6px;
+    color: #006eff;
+    cursor: pointer;
+    font-weight: 200;
+    font-size: 0.8rem;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-refresh-devices:hover {
+    background: rgba(0, 110, 255, 0.3);
+    border-color: #006eff;
+}
+
+.btn-refresh-devices:active {
+    transform: scale(0.98);
+}
+
+/* Responsive Design for Devices Dashboard */
+
+@media (max-width: 1024px) {
+    .devices-metrics-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .devices-content-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .os-chart-card {
+        grid-column: 1;
+        grid-row: 1;
+    }
+
+    .compliance-chart-card {
+        grid-column: 2;
+        grid-row: 1;
+    }
+
+    .management-chart-card {
+        grid-column: 1;
+        grid-row: 2;
+    }
+
+    .high-risk-card {
+        grid-column: 2;
+        grid-row: 2;
+    }
+
+    .alerts-card {
+        grid-column: 1 / -1;
+        grid-row: 3;
+    }
+}
+
+@media (max-width: 768px) {
+    .devices-dashboard {
+        width: 95%;
+        padding: 10px;
+        gap: 10px;
+    }
+
+    .devices-metrics-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+    }
+
+    .metric-card {
+        padding: 9px 8px;
+    }
+
+    .metric-icon {
+        width: 32px;
+        height: 32px;
+        font-size: 0.85rem;
+    }
+
+    .metric-label {
+        font-size: 0.6rem;
+    }
+
+    .metric-value {
+        font-size: 1rem;
+    }
+
+    .devices-content-grid {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+
+    .health-score-card {
+        grid-column: 1;
+        grid-row: auto;
+    }
+
+    .os-chart-card {
+        grid-column: 1;
+        grid-row: auto;
+    }
+
+    .compliance-chart-card {
+        grid-column: 1;
+        grid-row: auto;
+    }
+
+    .management-chart-card {
+        grid-column: 1;
+        grid-row: auto;
+    }
+
+    .high-risk-card {
+        grid-column: 1;
+        grid-row: auto;
+    }
+
+    .alerts-card {
+        grid-column: 1;
+        grid-row: auto;
+    }
+
+    .monitor-card {
+        padding: 10px;
+    }
+
+    .monitor-card-title {
+        font-size: 0.8rem;
+    }
+
+    .chart-container-devices {
+        height: 180px;
+    }
+
+    .devices-table {
+        font-size: 0.75rem;
+    }
+
+    .devices-table th,
+    .devices-table td {
+        padding: 8px 7px;
+    }
+}
+
+@media (max-width: 480px) {
+    .devices-dashboard {
+        width: 97%;
+        padding: 8px;
+        gap: 8px;
+    }
+
+    .devices-metrics-grid {
+        grid-template-columns: 1fr;
+        gap: 6px;
+    }
+
+    .metric-card {
+        padding: 8px 7px;
+    }
+
+    .metric-icon {
+        width: 28px;
+        height: 28px;
+        font-size: 0.75rem;
+    }
+
+    .metric-label {
+        font-size: 0.55rem;
+    }
+
+    .metric-value {
+        font-size: 0.9rem;
+    }
+
+    .devices-dashboard-header {
+        gap: 10px;
+    }
+
+    .devices-dashboard-title {
+        font-size: 1.1rem;
+    }
+
+    .btn-back-devices {
+        padding: 7px 12px;
+        font-size: 0.8rem;
+    }
+
+    .monitor-card {
+        padding: 8px;
+    }
+
+    .monitor-card-header {
+        gap: 6px;
+        margin-bottom: 10px;
+        padding-bottom: 8px;
+    }
+
+    .monitor-card-title {
+        font-size: 0.75rem;
+    }
+
+    .health-score-value-large {
+        font-size: 1.8rem;
+    }
+
+    .health-score-label-large {
+        font-size: 0.7rem;
+    }
+
+    .chart-container-devices {
+        height: 160px;
+    }
+
+    .devices-table {
+        font-size: 0.7rem;
+    }
+
+    .devices-table th,
+    .devices-table td {
+        padding: 6px 5px;
+    }
+
+    .devices-table-container {
+        max-height: 250px;
+    }
+
+    .alerts-container {
+        max-height: 250px;
+    }
+
+    .alert-item-devices {
+        padding: 8px 10px;
+        gap: 8px;
+    }
+
+    .alert-title {
+        font-size: 0.75rem;
+    }
+
+    .alert-description {
+        font-size: 0.7rem;
+    }
+
+    .alert-time {
+        font-size: 0.65rem;
+    }
+
+    .no-results-message {
+        padding: 15px 10px;
+        font-size: 0.8rem;
+    }
+}
 
     .identity-users-table {
         font-size: 0.68rem;
