@@ -104,7 +104,8 @@ const mockProjects = [
             { label: "Active Alerts", value: ": 3", icon: "fas fa-exclamation-circle" }
         ],
         cardFooter: "Security Status: Monitoring",
-        hasTabs: true,
+        hasTabs: false,
+        isDevicesCard: true,
         hasAlerts: true
     },
     {
@@ -3359,10 +3360,26 @@ function viewProjectDashboard(project) {
     document.getElementById('projects-view').style.display = 'none';
     document.getElementById('dashboard-view').style.display = 'block';
     
-    // If this is the Identity & Access card, fetch API data
-    if (project.isIdentityCard) {
+    // Hide generic dashboard sections for Devices card (show only alerts feed)
+    const statsGrid = document.querySelector('.stats-grid');
+    const chartsSection = document.querySelector('.charts-section');
+    const monitoringSection = document.querySelector('.monitoring-section');
+    
+    if (project.isDevicesCard) {
+        // For Devices: hide mock data, show only real alerts feed
+        if (statsGrid) statsGrid.style.display = 'none';
+        if (chartsSection) chartsSection.style.display = 'none';
+        if (monitoringSection) monitoringSection.style.display = 'none';
+        document.getElementById('project-name').textContent = project.name;
+        initializeTabs();
+    } else if (project.isIdentityCard) {
+        // For Identity & Access: fetch API data
         fetchIdentityData(project);
     } else {
+        // For other projects: show generic dashboard
+        if (statsGrid) statsGrid.style.display = 'grid';
+        if (chartsSection) chartsSection.style.display = 'grid';
+        if (monitoringSection) monitoringSection.style.display = 'block';
         updateDashboardData(project);
         initializeCharts(project);
         initializeTabs();
@@ -3426,6 +3443,14 @@ function resetDashboard() {
     currentProject = null;
     destroyCharts();
     
+    // Restore dashboard sections for next project
+    const statsGrid = document.querySelector('.stats-grid');
+    const chartsSection = document.querySelector('.charts-section');
+    const monitoringSection = document.querySelector('.monitoring-section');
+    if (statsGrid) statsGrid.style.display = 'grid';
+    if (chartsSection) chartsSection.style.display = 'grid';
+    if (monitoringSection) monitoringSection.style.display = 'block';
+    
     // Restore site header if it was hidden
     const siteHeader = document.querySelector('.site-header');
     if (siteHeader) {
@@ -3434,7 +3459,6 @@ function resetDashboard() {
     }
     
     // Remove dashboard scroll listener if it exists
-    // Note: We need to make handleDashboardScroll global or accessible
     if (typeof window.removeDashboardScroll === 'function') {
         window.removeDashboardScroll();
     }
@@ -4300,8 +4324,15 @@ function initializeTabs() {
         switchTab('all-tab', tabBtns, tabContents);
     } else {
         dashboardTabs.style.display = 'none';
-        // Always hide all tabs when project doesn't have tabs enabled
-        switchTab('all-tab', tabBtns, tabContents);
+        
+        // For Devices card, show only devices tab content
+        if (currentProject && currentProject.isDevicesCard) {
+            switchTab('devices-tab', tabBtns, tabContents);
+            initializeAlertsFeed();
+        } else {
+            // For other projects, show all-tab
+            switchTab('all-tab', tabBtns, tabContents);
+        }
     }
 }
 

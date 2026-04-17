@@ -5789,69 +5789,10 @@ app.get('/test-invoice', (req, res) => {
 const securityAlerts = [];
 const alertIdCounter = { count: 0 };
 
-// Initialize with mock alerts for demonstration
+// Initialize without mock data - only real alerts will be shown
 function initializeSecurityAlerts() {
-    const mockAlerts = [
-        {
-            id: 1,
-            title: 'Malware Detected',
-            severity: 'HIGH',
-            category: 'Malware',
-            deviceId: 'DEV-001',
-            deviceName: 'LAPTOP-USER-01',
-            user: 'john.doe@company.com',
-            description: 'Trojan.Win32 detected in system memory',
-            createdDateTime: new Date(Date.now() - 5 * 60000).toISOString(),
-            status: 'active',
-            location: 'Johannesburg, South Africa',
-            ipAddress: '196.27.94.45'
-        },
-        {
-            id: 2,
-            title: 'Suspicious Sign-In Activity',
-            severity: 'MEDIUM',
-            category: 'Identity',
-            deviceId: 'DEV-002',
-            deviceName: 'DESKTOP-USER-02',
-            user: 'jane.smith@company.com',
-            description: 'Sign-in from unusual location detected',
-            createdDateTime: new Date(Date.now() - 15 * 60000).toISOString(),
-            status: 'active',
-            location: 'Cape Town, South Africa',
-            ipAddress: '41.185.34.20'
-        },
-        {
-            id: 3,
-            title: 'Device Compliance Issue',
-            severity: 'MEDIUM',
-            category: 'Compliance',
-            deviceId: 'DEV-003',
-            deviceName: 'LAPTOP-USER-03',
-            user: 'michael.johnson@company.com',
-            description: 'Device encryption disabled',
-            createdDateTime: new Date(Date.now() - 30 * 60000).toISOString(),
-            status: 'active',
-            location: 'Durban, South Africa',
-            ipAddress: '197.234.175.1'
-        },
-        {
-            id: 4,
-            title: 'Failed Login Attempts',
-            severity: 'LOW',
-            category: 'Authentication',
-            deviceId: 'DEV-004',
-            deviceName: 'DESKTOP-USER-04',
-            user: 'sarah.williams@company.com',
-            description: '5 failed login attempts detected',
-            createdDateTime: new Date(Date.now() - 45 * 60000).toISOString(),
-            status: 'resolved',
-            location: 'Pretoria, South Africa',
-            ipAddress: '102.165.44.89'
-        }
-    ];
-    
-    securityAlerts.push(...mockAlerts);
-    alertIdCounter.count = mockAlerts.length;
+    // Start with empty alerts - real data only
+    console.log('[Security Alerts] Initialized with empty alerts. Awaiting real API data.');
 }
 
 // Initialize on startup
