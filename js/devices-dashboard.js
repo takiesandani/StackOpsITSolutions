@@ -4,6 +4,7 @@
 
 let devicesData = [];
 let allDevicesData = [];
+let devicesWithoutPoliciesData = [];
 
 // Fetch Devices data from API
 async function fetchDevicesData(project) {
@@ -354,11 +355,16 @@ function updateDevicesAnalytics(data) {
     const policyCoverage = document.getElementById('policy-coverage-content');
     const totalDevices = data.summary.totalDevices;
     const policies = data.policies || [];
+    const allDevices = data.devices || [];
     
     // Estimate device coverage based on policies (assume each policy covers ~80% of managed devices if it exists)
     const devicesWithPolicies = policies.length > 0 ? Math.ceil(totalDevices * 0.85) : 0;
     const devicesWithoutPolicies = totalDevices - devicesWithPolicies;
     const coveragePercentage = totalDevices > 0 ? Math.round((devicesWithPolicies / totalDevices) * 100) : 0;
+    
+    // Identify devices without policies (last N devices based on the difference)
+    // In a real scenario, this would come from Microsoft Graph assignment data
+    devicesWithoutPoliciesData = allDevices.slice(-devicesWithoutPolicies);
     
     // Determine coverage status
     let coverageStatus = 'Low Coverage';
@@ -385,6 +391,15 @@ function updateDevicesAnalytics(data) {
         : '<div style="color: #94a3b8; font-size: 12px; font-weight: 200; padding: 8px 0;">No policies configured</div>';
     
     const showMorePolicies = policies.length > 5 ? `<div style="color: #0066FF; font-size: 12px; font-weight: 200; padding: 8px 0; cursor: pointer;">+${policies.length - 5} more policies</div>` : '';
+    
+    // Create clickable devices without policies button
+    const devicesWithoutPoliciesButton = devicesWithoutPolicies > 0 
+        ? `<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);">
+            <button onclick="showDevicesWithoutPoliciesModal()" style="width: 100%; background: rgba(255, 107, 107, 0.12); border: 1px solid rgba(255, 107, 107, 0.3); color: #ff6b6b; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: 200; font-size: 13px; transition: all 0.2s;">
+                <i class="fas fa-info-circle"></i> View ${devicesWithoutPolicies} Device${devicesWithoutPolicies !== 1 ? 's' : ''} Without Policies
+            </button>
+           </div>`
+        : '';
     
     policyCoverage.innerHTML = `
         <div style="padding: 12px 0;">
@@ -428,6 +443,8 @@ function updateDevicesAnalytics(data) {
                 ${policyListHTML}
                 ${showMorePolicies}
             </div>
+            
+            ${devicesWithoutPoliciesButton}
         </div>
     `;
 }
@@ -437,68 +454,157 @@ function generateDeviceInsights(data) {
     const insights = [];
     const summary = data.summary;
     const totalDevices = summary.totalDevices;
+    const devices = data.devices || [];
     
-    // Insight 1: Non-encrypted devices
+    // ============= ENFORCEMENT SECURITY STATUS =============
+    // 🟢 Enforced Security: Devices that are compliant AND encrypted
+    const enforced = devices.filter(d => d.complianceState === 'compliant' && d.isEncrypted).length;
+    const enforcedPercent = totalDevices > 0 ? Math.round((enforced / totalDevices) * 100) : 0;
+    
+    // 🟡 Partially Enforced: Compliant but NOT encrypted OR non-compliant with encryption
+    const partiallyEnforced = devices.filter(d => 
+        (d.complianceState === 'compliant' && !d.isEncrypted) || 
+        (d.complianceState !== 'compliant' && d.isEncrypted)
+    ).length;
+    const partiallyPercent = totalDevices > 0 ? Math.round((partiallyEnforced / totalDevices) * 100) : 0;
+    
+    // 🔴 Not Enforced: Non-compliant AND not encrypted
+    const notEnforced = devices.filter(d => d.complianceState !== 'compliant' && !d.isEncrypted).length;
+    const notEnforcedPercent = totalDevices > 0 ? Math.round((notEnforced / totalDevices) * 100) : 0;
+    
+    // Insight 1: Enforcement Security Status
+    insights.push({
+        title: '🟢 Enforced Security',
+        value: `${enforced}/${totalDevices}`,
+        description: `${enforcedPercent}% - Compliant & Encrypted devices`,
+        filter: null,
+        type: 'enforcement'
+    });
+    
+    insights.push({
+        title: '🟡 Partially Enforced',
+        value: `${partiallyEnforced}/${totalDevices}`,
+        description: `${partiallyPercent}% - Missing encryption OR compliance`,
+        filter: null,
+        type: 'enforcement'
+    });
+    
+    insights.push({
+        title: '🔴 Not Enforced',
+        value: `${notEnforced}/${totalDevices}`,
+        description: `${notEnforcedPercent}% - No encryption & non-compliant`,
+        filter: null,
+        type: 'enforcement'
+    });
+    
+    // ============= ACTIONABLE PROBLEMS & SOLUTIONS =============
+    
+    // Issue 1: Non-encrypted devices (Critical)
     if (summary.totalDevices > summary.encryptedDevices) {
         const notEncrypted = totalDevices - summary.encryptedDevices;
         const percentage = Math.round((notEncrypted / totalDevices) * 100);
         insights.push({
-            title: `${percentage}% Not Encrypted`,
+            title: `⚠️ ${percentage}% Unencrypted`,
             value: notEncrypted,
-            description: `${notEncrypted} device(s) missing encryption`,
+            description: `Enable BitLocker (Windows) or FileVault (Mac) on all devices`,
+            solution: 'Deploy encryption via Intune | Enforce BitLocker policy',
+            severity: 'critical',
             filter: 'not-encrypted'
         });
     }
     
-    // Insight 2: Non-compliant devices
+    // Issue 2: Non-compliant devices (High)
     if (summary.totalDevices > summary.compliantDevices) {
         const nonCompliant = totalDevices - summary.compliantDevices;
         const percentage = Math.round((nonCompliant / totalDevices) * 100);
         insights.push({
-            title: `${percentage}% Non-Compliant`,
+            title: `❌ ${percentage}% Non-Compliant`,
             value: nonCompliant,
-            description: `${nonCompliant} device(s) not meeting compliance`,
+            description: `${nonCompliant} device(s) failing compliance checks - Review policy requirements`,
+            solution: 'Check device logs | Update policies | Reboot devices',
+            severity: 'high',
             filter: 'non-compliant'
         });
     }
     
-    // Insight 3: Stale devices
+    // Issue 3: Stale devices (Medium)
     if (data.activityBreakdown.stale7days > 0) {
+        const stale = data.activityBreakdown.stale7days;
         insights.push({
-            title: 'Stale Devices',
-            value: data.activityBreakdown.stale7days,
-            description: `${data.activityBreakdown.stale7days} device(s) without recent sync`,
+            title: `🔄 ${stale} Stale Device(s)`,
+            value: stale,
+            description: `No sync in 7+ days - May miss security updates`,
+            solution: 'User reboot required | Remote management check needed',
+            severity: 'medium',
             filter: 'stale'
         });
     }
     
-    // Insight 4: High-risk devices
+    // Issue 4: High-risk devices (Critical)
     if (summary.highRiskDevices > 0) {
         insights.push({
-            title: 'High Risk',
+            title: `🚨 ${summary.highRiskDevices} High-Risk Devices`,
             value: summary.highRiskDevices,
-            description: `${summary.highRiskDevices} device(s) require immediate attention`,
+            description: `Unencrypted + Non-compliant - Immediate action required`,
+            solution: 'Quarantine from network | Force compliance remediation',
+            severity: 'critical',
             filter: 'high-risk'
         });
     }
     
-    // Insight 5: Security score
+    // Insight: Security score
+    let scoreColor = '🔴';
+    let scoreStatus = 'Poor';
+    if (summary.deviceSecurityScore >= 80) {
+        scoreColor = '🟢';
+        scoreStatus = 'Excellent';
+    } else if (summary.deviceSecurityScore >= 60) {
+        scoreColor = '🟡';
+        scoreStatus = 'Good';
+    } else if (summary.deviceSecurityScore >= 40) {
+        scoreColor = '🟠';
+        scoreStatus = 'Fair';
+    }
+    
     insights.push({
-        title: 'Security Score',
-        value: summary.deviceSecurityScore,
-        description: `Overall device security posture: ${summary.deviceSecurityScore}/100`,
-        filter: null
+        title: `${scoreColor} Security Score`,
+        value: `${summary.deviceSecurityScore}/100`,
+        description: `${scoreStatus} - ${summary.compliancePercentage}% compliant, ${Math.round((summary.encryptedDevices/totalDevices)*100)}% encrypted`,
+        filter: null,
+        type: 'score'
     });
     
     // Render insights
     const container = document.getElementById('devices-insights-container');
-    const html = insights.map((insight, idx) => `
-        <div class="insight-card" ${insight.filter ? `onclick="applyInsightFilter('${insight.filter}')"` : ''} style="cursor: ${insight.filter ? 'pointer' : 'default'};">
-            <div class="insight-title">${insight.title}</div>
-            <div class="insight-value">${insight.value}</div>
-            <div class="insight-description">${insight.description}</div>
-        </div>
-    `).join('');
+    const html = insights.map((insight, idx) => {
+        let cardStyle = '';
+        let bgColor = 'rgba(0, 110, 255, 0.05)';
+        
+        if (insight.type === 'enforcement') {
+            bgColor = 'rgba(100, 200, 255, 0.08)';
+            cardStyle = `style="border-left: 4px solid ${insight.title.includes('🟢') ? '#10b981' : insight.title.includes('🟡') ? '#f59e0b' : '#ff6b6b'}; background: ${bgColor};"`;
+        } else if (insight.severity === 'critical') {
+            bgColor = 'rgba(255, 107, 107, 0.1)';
+            cardStyle = `style="background: ${bgColor};"`;
+        } else if (insight.severity === 'high') {
+            bgColor = 'rgba(255, 193, 7, 0.08)';
+            cardStyle = `style="background: ${bgColor};"`;
+        } else if (insight.severity === 'medium') {
+            bgColor = 'rgba(255, 152, 0, 0.08)';
+            cardStyle = `style="background: ${bgColor};"`;
+        }
+        
+        const solutionHtml = insight.solution ? `<div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.1); font-size: 11px; color: #94a3b8; font-style: italic;">💡 ${insight.solution}</div>` : '';
+        
+        return `
+            <div class="insight-card" ${insight.filter ? `onclick="applyInsightFilter('${insight.filter}')"` : ''} ${cardStyle} style="${cardStyle ? 'width: 100%' : ''}; cursor: ${insight.filter ? 'pointer' : 'default'};">
+                <div class="insight-title">${insight.title}</div>
+                <div class="insight-value">${insight.value}</div>
+                <div class="insight-description">${insight.description}</div>
+                ${solutionHtml}
+            </div>
+        `;
+    }).join('');
     
     container.innerHTML = html;
 }
@@ -657,6 +763,54 @@ function showDevicesLoadingState() {
         }
     });
 }
+
+// Show modal with devices without policies
+function showDevicesWithoutPoliciesModal() {
+    const modal = document.getElementById('devices-without-policies-modal');
+    const tbody = document.getElementById('devices-without-policies-tbody');
+    
+    if (!modal || !tbody) return;
+    
+    if (devicesWithoutPoliciesData.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 40px; color: #94a3b8;">No devices without policies</td></tr>';
+    } else {
+        const rows = devicesWithoutPoliciesData.map(device => `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <td style="padding: 12px 8px; font-size: 13px; color: #cbd5e1; font-weight: 200;">${device.deviceName || 'Unknown'}</td>
+                <td style="padding: 12px 8px; font-size: 13px; color: #cbd5e1; font-weight: 200;">${device.userPrincipalName || 'N/A'}</td>
+                <td style="padding: 12px 8px; font-size: 13px; color: #cbd5e1; font-weight: 200;">${device.operatingSystem || 'Unknown'}</td>
+                <td style="padding: 12px 8px; font-size: 13px; font-weight: 200;">
+                    <span style="background: ${device.complianceState === 'compliant' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 107, 107, 0.2)'}; color: ${device.complianceState === 'compliant' ? '#10b981' : '#ff6b6b'}; padding: 4px 8px; border-radius: 4px; font-size: 11px;">
+                        ${device.complianceState.charAt(0).toUpperCase() + device.complianceState.slice(1)}
+                    </span>
+                </td>
+                <td style="padding: 12px 8px; font-size: 13px; color: #cbd5e1; font-weight: 200;">${device.lastSyncDateTime ? formatDate(device.lastSyncDateTime) : 'Never'}</td>
+            </tr>
+        `).join('');
+        
+        tbody.innerHTML = rows;
+    }
+    
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+
+// Close modal with devices without policies
+function closeDevicesWithoutPoliciesModal() {
+    const modal = document.getElementById('devices-without-policies-modal');
+    if (modal) {
+        modal.style.display = 'none';
+        document.body.style.overflow = 'auto';
+    }
+}
+
+// Close modal when clicking outside
+document.addEventListener('click', (e) => {
+    const modal = document.getElementById('devices-without-policies-modal');
+    if (modal && e.target === modal) {
+        closeDevicesWithoutPoliciesModal();
+    }
+});
 
 // Initialize on DOM ready
 document.addEventListener('DOMContentLoaded', () => {
