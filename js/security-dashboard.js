@@ -5,6 +5,12 @@
 
 let securityData = null;
 let currentSecurityFilters = {};
+let chartInstances = {
+    severity: null,
+    status: null,
+    threat: null,
+    timeline: null
+};
 
 /**
  * Main entry point: Fetch security events data from API
@@ -128,13 +134,23 @@ function updateRisksPanel(data) {
     if (data.alerts && data.alerts.length > 0) {
         const highAlerts = data.alerts.filter(a => a.severity === 'high' || a.severity === 'critical');
         if (highAlerts.length > 0) {
+            // Create detailed alert list
+            const alertDetails = highAlerts.slice(0, 3).map(alert => 
+                `<div class="alert-detail-item">
+                    <span class="alert-severity ${alert.severity}">${alert.severity.toUpperCase()}</span>
+                    <p class="alert-title">${alert.title || 'Alert'}</p>
+                </div>`
+            ).join('');
+            
             risks.push({
                 title: '⚠️ High Severity Alerts',
                 value: highAlerts.length,
                 severity: 'critical',
                 description: 'Critical security alerts detected in your environment',
-                action: 'View Alerts',
-                filter: 'alerts'
+                detailsHTML: alertDetails,
+                action: highAlerts.length > 3 ? `View All ${highAlerts.length} Alerts` : 'Dismiss',
+                filter: 'alerts',
+                isExpandableAlert: true
             });
         }
     }
@@ -182,6 +198,11 @@ function updateRisksPanel(data) {
             <p class="risk-card-title">${risk.title}</p>
             <p class="risk-card-value">${risk.value}</p>
             <p class="risk-card-desc">${risk.description}</p>
+            ${risk.detailsHTML ? `
+                <div class="alert-details-container">
+                    ${risk.detailsHTML}
+                </div>
+            ` : ''}
             <button class="risk-card-action">${risk.action}</button>
         </div>
     `).join('');
@@ -195,6 +216,14 @@ function updateRisksPanel(data) {
 function initializeSecurityCharts(data) {
     console.log('[Security] Initializing charts...');
 
+    // Destroy existing chart instances before creating new ones
+    Object.keys(chartInstances).forEach(key => {
+        if (chartInstances[key]) {
+            chartInstances[key].destroy();
+            chartInstances[key] = null;
+        }
+    });
+
     // 1. Severity Distribution (Pie)
     const severityCtx = document.getElementById('severityChart');
     if (severityCtx && data.alerts && data.alerts.length > 0) {
@@ -205,7 +234,7 @@ function initializeSecurityCharts(data) {
             low: data.alerts.filter(a => a.severity === 'low').length
         };
 
-        new Chart(severityCtx, {
+        chartInstances.severity = new Chart(severityCtx, {
             type: 'doughnut',
             data: {
                 labels: ['Critical', 'High', 'Medium', 'Low'],
@@ -231,6 +260,8 @@ function initializeSecurityCharts(data) {
 
     // 2. Incidents by Status (Bar)
     const statusCtx = document.getElementById('statusChart');
+    const statusContainer = statusCtx?.parentElement;
+    
     if (statusCtx && data.incidents && data.incidents.length > 0) {
         const statuses = {
             active: data.incidents.filter(i => i.status === 'active').length,
@@ -238,7 +269,7 @@ function initializeSecurityCharts(data) {
             resolved: data.incidents.filter(i => i.status === 'resolved').length
         };
 
-        new Chart(statusCtx, {
+        chartInstances.status = new Chart(statusCtx, {
             type: 'bar',
             data: {
                 labels: ['Active', 'In Progress', 'Resolved'],
@@ -262,6 +293,9 @@ function initializeSecurityCharts(data) {
                 }
             }
         });
+    } else if (statusContainer) {
+        // Show empty state
+        statusContainer.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 250px; color: #94a3b8; font-size: 13px; text-align: center; padding: 20px;"><span>📊 No incidents detected yet</span></div>';
     }
 
     // 3. Alert Timeline (Line)
@@ -285,7 +319,7 @@ function initializeSecurityCharts(data) {
             }
         });
 
-        new Chart(timelineCtx, {
+        chartInstances.timeline = new Chart(timelineCtx, {
             type: 'line',
             data: {
                 labels: Object.keys(hourBuckets).map(h => `${h}:00`),
@@ -317,13 +351,15 @@ function initializeSecurityCharts(data) {
 
     // 4. Threat Indicators by Type (Pie)
     const threatCtx = document.getElementById('threatChart');
+    const threatContainer = threatCtx?.parentElement;
+    
     if (threatCtx && data.threats && data.threats.length > 0) {
         const threatTypes = {};
         data.threats.forEach(threat => {
             threatTypes[threat.type] = (threatTypes[threat.type] || 0) + 1;
         });
 
-        new Chart(threatCtx, {
+        chartInstances.threat = new Chart(threatCtx, {
             type: 'doughnut',
             data: {
                 labels: Object.keys(threatTypes),
@@ -345,6 +381,9 @@ function initializeSecurityCharts(data) {
                 }
             }
         });
+    } else if (threatContainer) {
+        // Show empty state
+        threatContainer.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 250px; color: #94a3b8; font-size: 13px; text-align: center; padding: 20px;"><span>🛡️ No threat indicators detected</span></div>';
     }
 }
 
@@ -406,6 +445,14 @@ function setupSecurityBackButton() {
     const backBtn = document.getElementById('btn-back-security');
     if (backBtn) {
         backBtn.addEventListener('click', () => {
+            // Destroy all chart instances to prevent reuse errors
+            Object.keys(chartInstances).forEach(key => {
+                if (chartInstances[key]) {
+                    chartInstances[key].destroy();
+                    chartInstances[key] = null;
+                }
+            });
+            
             document.getElementById('security-events-view').style.display = 'none';
             document.getElementById('projects-view').style.display = 'block';
             currentProject = null;
