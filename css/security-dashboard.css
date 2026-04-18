@@ -1,0 +1,568 @@
+/* ==============================================
+   SECURITY & EVENTS DASHBOARD STYLES
+   Real-time SOC threat intelligence interface
+   ============================================== */
+
+.security-view {
+    display: none;
+    animation: fadeInPage 0.4s ease-in;
+}
+
+.security-view.active {
+    display: block;
+}
+
+@keyframes fadeInPage {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ==================== HEADER ==================== */
+
+.security-dashboard-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    padding: 16px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.security-dashboard-title h2 {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 200;
+    color: #e2e8f0;
+}
+
+.sec-title-section {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.sec-title-section i {
+    font-size: 28px;
+    color: #ff6b6b;
+}
+
+/* ==================== SUMMARY CARDS ==================== */
+
+.security-summary-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.security-stat-card {
+    background: rgba(30, 41, 59, 0.8);
+    border: 1px solid rgba(255, 107, 107, 0.2);
+    border-radius: 8px;
+    padding: 16px;
+    transition: all 0.3s;
+    cursor: pointer;
+}
+
+.security-stat-card.critical {
+    border-color: rgba(255, 107, 107, 0.5);
+    background: rgba(255, 107, 107, 0.08);
+}
+
+.security-stat-card.warning {
+    border-color: rgba(255, 193, 7, 0.5);
+    background: rgba(255, 193, 7, 0.08);
+}
+
+.security-stat-card.info {
+    border-color: rgba(0, 110, 255, 0.2);
+}
+
+.security-stat-card:hover {
+    border-color: rgba(255, 107, 107, 0.5);
+    box-shadow: 0 4px 12px rgba(255, 107, 107, 0.2);
+    transform: translateY(-2px);
+}
+
+.sec-stat-icon {
+    font-size: 20px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.sec-stat-icon.critical {
+    color: #ff6b6b;
+}
+
+.sec-stat-icon.warning {
+    color: #ffc107;
+}
+
+.sec-stat-icon.success {
+    color: #10b981;
+}
+
+.sec-stat-icon.info {
+    color: #0066FF;
+}
+
+.sec-stat-content h3 {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 200;
+    color: #e2e8f0;
+}
+
+.sec-stat-content p {
+    margin: 4px 0 0 0;
+    font-size: 12px;
+    font-weight: 200;
+    color: #94a3b8;
+}
+
+/* ==================== RISKS PANEL ==================== */
+
+.security-risks-section {
+    margin-bottom: 24px;
+}
+
+.security-risks-section h3 {
+    margin: 0 0 16px 0;
+    font-size: 16px;
+    font-weight: 200;
+    color: #e2e8f0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.security-risks-section i {
+    color: #ff6b6b;
+}
+
+.risks-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 12px;
+}
+
+.risk-card {
+    background: rgba(30, 41, 59, 0.8);
+    border-left: 4px solid;
+    border-radius: 6px;
+    padding: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-weight: 200;
+    font-size: 13px;
+}
+
+.risk-card.critical {
+    border-left-color: #ff6b6b;
+    background: rgba(255, 107, 107, 0.08);
+}
+
+.risk-card.critical:hover {
+    background: rgba(255, 107, 107, 0.12);
+    box-shadow: 0 4px 12px rgba(255, 107, 107, 0.15);
+}
+
+.risk-card.warning {
+    border-left-color: #ffc107;
+    background: rgba(255, 193, 7, 0.08);
+}
+
+.risk-card.warning:hover {
+    background: rgba(255, 193, 7, 0.12);
+    box-shadow: 0 4px 12px rgba(255, 193, 7, 0.15);
+}
+
+.risk-card.medium {
+    border-left-color: #f59e0b;
+    background: rgba(245, 158, 11, 0.08);
+}
+
+.risk-card.medium:hover {
+    background: rgba(245, 158, 11, 0.12);
+    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.15);
+}
+
+.risk-card-title {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 200;
+    color: #cbd5e1;
+    margin-bottom: 4px;
+}
+
+.risk-card-value {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 200;
+    color: #e2e8f0;
+    margin-bottom: 4px;
+}
+
+.risk-card-desc {
+    margin: 0;
+    font-size: 12px;
+    color: #94a3b8;
+    font-weight: 200;
+}
+
+.risk-card-action {
+    margin-top: 8px;
+    padding: 6px;
+    background: rgba(0, 110, 255, 0.1);
+    border: 1px solid rgba(0, 110, 255, 0.2);
+    border-radius: 4px;
+    color: #0066FF;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-weight: 200;
+    display: inline-block;
+}
+
+.risk-card-action:hover {
+    background: rgba(0, 110, 255, 0.2);
+    border-color: rgba(0, 110, 255, 0.4);
+}
+
+/* ==================== CHARTS SECTION ==================== */
+
+.security-charts-section {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 20px;
+    margin-bottom: 24px;
+}
+
+.chart-card {
+    background: rgba(30, 41, 59, 0.8);
+    border: 1px solid rgba(0, 110, 255, 0.15);
+    border-radius: 8px;
+    padding: 16px;
+    min-height: 300px;
+}
+
+.chart-card h3 {
+    margin: 0 0 16px 0;
+    font-size: 14px;
+    font-weight: 200;
+    color: #cbd5e1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.chart-card i {
+    color: #0066FF;
+    font-size: 16px;
+}
+
+.chart-container {
+    position: relative;
+    height: 250px;
+}
+
+.chart-card.full-width {
+    grid-column: 1 / -1;
+    min-height: 350px;
+}
+
+.chart-card.full-width .chart-container {
+    height: 300px;
+}
+
+/* ==================== INCIDENT TABLE ==================== */
+
+.incident-table-container {
+    background: rgba(30, 41, 59, 0.8);
+    border: 1px solid rgba(0, 110, 255, 0.15);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 24px;
+    overflow-x: auto;
+}
+
+.incident-table-container h3 {
+    margin: 0 0 16px 0;
+    font-size: 14px;
+    font-weight: 200;
+    color: #cbd5e1;
+}
+
+.incident-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    font-weight: 200;
+}
+
+.incident-table thead {
+    background: rgba(0, 110, 255, 0.1);
+    border-bottom: 2px solid rgba(0, 110, 255, 0.2);
+}
+
+.incident-table th {
+    padding: 12px;
+    text-align: left;
+    color: #0066FF;
+    font-weight: 200;
+}
+
+.incident-table tbody tr {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    transition: background 0.2s;
+}
+
+.incident-table tbody tr:hover {
+    background: rgba(0, 110, 255, 0.05);
+}
+
+.incident-table td {
+    padding: 12px;
+    color: #cbd5e1;
+}
+
+.severity-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 200;
+}
+
+.severity-badge.critical {
+    background: rgba(255, 107, 107, 0.2);
+    color: #ff6b6b;
+}
+
+.severity-badge.high {
+    background: rgba(255, 193, 7, 0.2);
+    color: #ffc107;
+}
+
+.severity-badge.medium {
+    background: rgba(245, 158, 11, 0.2);
+    color: #f59e0b;
+}
+
+.severity-badge.low {
+    background: rgba(16, 185, 129, 0.2);
+    color: #10b981;
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 200;
+}
+
+.status-badge.active {
+    background: rgba(255, 107, 107, 0.2);
+    color: #ff6b6b;
+}
+
+.status-badge.resolved {
+    background: rgba(16, 185, 129, 0.2);
+    color: #10b981;
+}
+
+.status-badge.inProgress {
+    background: rgba(0, 110, 255, 0.2);
+    color: #0066FF;
+}
+
+/* ==================== ACTIVITY FEED ==================== */
+
+.activity-feed-container {
+    background: rgba(30, 41, 59, 0.8);
+    border: 1px solid rgba(0, 110, 255, 0.15);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 24px;
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.activity-feed-container h3 {
+    margin: 0 0 16px 0;
+    font-size: 14px;
+    font-weight: 200;
+    color: #cbd5e1;
+}
+
+.activity-item {
+    padding: 12px;
+    border-left: 3px solid;
+    border-radius: 4px;
+    margin-bottom: 8px;
+    background: rgba(0, 0, 0, 0.2);
+    font-size: 12px;
+    font-weight: 200;
+}
+
+.activity-item.critical {
+    border-left-color: #ff6b6b;
+}
+
+.activity-item.high {
+    border-left-color: #ffc107;
+}
+
+.activity-item.medium {
+    border-left-color: #f59e0b;
+}
+
+.activity-item.low {
+    border-left-color: #0066FF;
+}
+
+.activity-item-message {
+    margin: 0;
+    color: #cbd5e1;
+    margin-bottom: 4px;
+}
+
+.activity-item-time {
+    margin: 0;
+    color: #64748b;
+    font-size: 11px;
+}
+
+/* ==================== MONITORING CARDS ==================== */
+
+.monitor-card {
+    background: rgba(30, 41, 59, 0.8);
+    border: 1px solid rgba(0, 110, 255, 0.15);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 20px;
+    color: #cbd5e1;
+}
+
+.monitor-card h3 {
+    margin: 0 0 16px 0;
+    font-size: 14px;
+    font-weight: 200;
+    color: #cbd5e1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.monitor-card i {
+    color: #0066FF;
+    font-size: 16px;
+}
+
+.monitor-card p {
+    margin: 0;
+    color: #94a3b8;
+    font-size: 13px;
+    font-weight: 200;
+    padding: 20px;
+    text-align: center;
+}
+
+/* ==================== RESPONSIVE ==================== */
+
+@media (max-width: 1024px) {
+    .security-summary-cards {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .security-charts-section {
+        grid-template-columns: 1fr;
+    }
+
+    .risks-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .security-summary-cards {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .security-dashboard-title {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .security-charts-section {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+
+    .risks-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .incident-table {
+        font-size: 12px;
+    }
+
+    .incident-table th,
+    .incident-table td {
+        padding: 8px;
+    }
+
+    .chart-card {
+        min-height: 250px;
+    }
+
+    .chart-container {
+        height: 200px;
+    }
+}
+
+/* ==================== LOADING STATE ==================== */
+
+.loading-spinner {
+    display: inline-block;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+/* ==================== SCROLLBAR ==================== */
+
+.activity-feed-container::-webkit-scrollbar {
+    width: 6px;
+}
+
+.activity-feed-container::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 10px;
+}
+
+.activity-feed-container::-webkit-scrollbar-thumb {
+    background: rgba(0, 110, 255, 0.3);
+    border-radius: 10px;
+}
+
+.activity-feed-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 110, 255, 0.5);
+}

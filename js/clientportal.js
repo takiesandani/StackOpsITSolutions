@@ -110,6 +110,25 @@ const mockProjects = [
     },
     {
         id: 4,
+        name: "Security & Events",
+        type: "Real-Time SOC Threat Intelligence & Response",
+        status: "active",
+        risks: { critical: 0, high: 0, medium: 0 },
+        securityScore: 0,
+        uptime: 100,
+        lastUpdate: "Loading...",
+        icon: "fas fa-shield-alt",
+        cardMetrics: [
+            { label: "Active Incidents", value: ": ...", icon: "fas fa-exclamation-triangle" },
+            { label: "High Alerts", value: ": ...", icon: "fas fa-bell" }
+        ],
+        cardFooter: "Fetching from Microsoft Graph Security...",
+        hasTabs: false,
+        microsoftGraphEnabled: true,
+        isSecurityCard: true
+    },
+    {
+        id: 5,
         name: "Applications",
         type: "Automated protection and restore readiness",
         status: "active",
@@ -3363,6 +3382,11 @@ function viewProjectDashboard(project) {
     else if (project.isDevicesCard) {
         document.getElementById('devices-view').style.display = 'block';
         fetchDevicesData(project);
+    }
+    // If this is the Security & Events card, fetch security data
+    else if (project.isSecurityCard) {
+        document.getElementById('security-events-view').style.display = 'block';
+        fetchSecurityEventsData(project);
     }
     else {
         document.getElementById('dashboard-view').style.display = 'block';

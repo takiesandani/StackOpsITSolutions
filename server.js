@@ -4949,8 +4949,310 @@ app.get('/api/microsoft-devices', authenticateToken, async (req, res) => {
 });
 
 // ====================================================================================================//
-//                                 GOOGLE CLOUD SECRET MANAGER SETUP                                   //
+//                         MICROSOFT GRAPH - SECURITY & EVENTS (SOC)                                //
 // ====================================================================================================//
+
+// Fetch security alerts from Microsoft Graph
+async function fetchSecurityAlerts(token) {
+    try {
+        const response = await fetch('https://graph.microsoft.com/v1.0/security/alerts?$top=50&$orderby=createdDateTime desc', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            console.log('[Security] Alerts endpoint returned:', response.status);
+            return [];
+        }
+
+        const data = await response.json();
+        return data.value || [];
+    } catch (error) {
+        console.error('[Security] Failed to fetch alerts:', error.message);
+        return [];
+    }
+}
+
+// Fetch security incidents from Microsoft Graph
+async function fetchSecurityIncidents(token) {
+    try {
+        const response = await fetch('https://graph.microsoft.com/v1.0/security/incidents?$top=50&$orderby=createdDateTime desc', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            console.log('[Security] Incidents endpoint returned:', response.status);
+            return [];
+        }
+
+        const data = await response.json();
+        return data.value || [];
+    } catch (error) {
+        console.error('[Security] Failed to fetch incidents:', error.message);
+        return [];
+    }
+}
+
+// Fetch threat indicators from Microsoft Graph
+async function fetchThreatIndicators(token) {
+    try {
+        const response = await fetch('https://graph.microsoft.com/v1.0/security/tiIndicators?$top=50&$orderby=createdDateTime desc', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            console.log('[Security] Threat Indicators endpoint returned:', response.status);
+            return [];
+        }
+
+        const data = await response.json();
+        return data.value || [];
+    } catch (error) {
+        console.error('[Security] Failed to fetch threat indicators:', error.message);
+        return [];
+    }
+}
+
+// Fetch sign-in logs for security correlation
+async function fetchSecuritySignIns(token) {
+    try {
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const filter = `createdDateTime ge ${thirtyDaysAgo.toISOString().split('T')[0]}`;
+        
+        const response = await fetch(`https://graph.microsoft.com/v1.0/auditLogs/signIns?$filter=${encodeURIComponent(filter)}&$top=100&$orderby=createdDateTime desc`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            console.log('[Security] Sign-ins endpoint returned:', response.status);
+            return [];
+        }
+
+        const data = await response.json();
+        return data.value || [];
+    } catch (error) {
+        console.error('[Security] Failed to fetch sign-ins:', error.message);
+        return [];
+    }
+}
+
+/**
+ * Route: GET /api/security-events
+ * Comprehensive SOC dashboard aggregating alerts, incidents, threat indicators, and sign-ins
+ */
+app.get('/api/security-events', authenticateToken, async (req, res) => {
+    try {
+        const userEmail = req.user.email;
+        console.log(`[Security Events] Fetching dashboard data for: ${userEmail}`);
+
+        const tenant = getTenantByEmail(userEmail);
+        if (!tenant || tenant.clientId !== 'sunbird') {
+            console.warn(`[Security Events] Access denied for ${userEmail}`);
+            return res.status(403).json({ 
+                error: 'Access denied',
+                message: 'This feature is only available for Sunbird client'
+            });
+        }
+
+        const token = await getMicrosoftGraphToken();
+
+        // Fetch all security data in parallel
+        console.log('[Security Events] Fetching security data...');
+        const [alerts, incidents, threatIndicators, signIns] = await Promise.all([
+            fetchSecurityAlerts(token),
+            fetchSecurityIncidents(token),
+            fetchThreatIndicators(token),
+            fetchSecuritySignIns(token)
+        ]);
+
+        // ===== DATA PROCESSING & CORRELATION =====
+
+        // 1. Process alerts
+        const processedAlerts = alerts.map(alert => ({
+            id: alert.id,
+            title: alert.title || 'Unknown Alert',
+            description: alert.description || '',
+            severity: alert.severity || 'medium',
+            status: alert.status || 'newAlert',
+            created: alert.createdDateTime || new Date().toISOString(),
+            eventTime: alert.eventDateTime || new Date().toISOString(),
+            category: alert.category || 'Other',
+            vendor: alert.vendorInformation?.provider || 'Microsoft'
+        }));
+
+        // 2. Process incidents
+        const processedIncidents = incidents.map(incident => ({
+            id: incident.id,
+            displayName: incident.displayName || 'Unknown Incident',
+            description: incident.description || '',
+            severity: incident.severity || 'medium',
+            status: incident.status || 'active',
+            created: incident.createdDateTime || new Date().toISOString(),
+            updated: incident.lastUpdateDateTime || new Date().toISOString(),
+            assignedTo: incident.assignedTo || 'Unassigned',
+            redirectUrl: incident.incidentUrl || '#'
+        }));
+
+        // 3. Identify suspicious sign-ins
+        const suspiciousSignIns = signIns.filter(signIn => {
+            const riskLevel = signIn.riskLevelDuringSignIn;
+            const status = signIn.status?.errorCode === 0 ? 'Success' : 'Failed';
+            return (riskLevel && riskLevel !== 'none') || status === 'Failed';
+        }).slice(0, 50).map(signIn => ({
+            id: signIn.id,
+            user: signIn.userPrincipalName || 'Unknown',
+            timestamp: signIn.createdDateTime || new Date().toISOString(),
+            ipAddress: signIn.ipAddress || 'Unknown',
+            location: signIn.location?.city ? `${signIn.location.city}, ${signIn.location.countryOrRegion}` : 'Unknown Location',
+            riskLevel: signIn.riskLevelDuringSignIn || 'none',
+            status: signIn.status?.errorCode === 0 ? 'Success' : 'Failed',
+            errorCode: signIn.status?.errorCode || 0
+        }));
+
+        // 4. Process threat indicators
+        const processedThreats = threatIndicators.slice(0, 50).map(threat => ({
+            id: threat.id,
+            indicator: threat.networkIPv4 || threat.networkIPv6 || threat.domainName || threat.fileHashValue || 'Unknown',
+            type: threat.networkIPv4 ? 'IPv4' : threat.networkIPv6 ? 'IPv6' : threat.domainName ? 'Domain' : 'FileHash',
+            severity: threat.severity || 'medium',
+            action: threat.targetProduct || 'Block',
+            description: threat.description || 'Threat detected',
+            created: threat.createdDateTime || new Date().toISOString()
+        }));
+
+        // ===== CORRELATION & INSIGHTS =====
+
+        // Count active incidents
+        const activeIncidents = processedIncidents.filter(i => 
+            i.status === 'active' || i.status === 'inProgress'
+        );
+
+        // Count high severity alerts
+        const highSeverityAlerts = processedAlerts.filter(a => 
+            a.severity === 'high' || a.severity === 'critical'
+        );
+
+        // Find users under attack (multiple failed logins or suspicious activity)
+        const userFailureMap = {};
+        suspiciousSignIns.forEach(signIn => {
+            if (signIn.status === 'Failed') {
+                userFailureMap[signIn.user] = (userFailureMap[signIn.user] || 0) + 1;
+            }
+        });
+
+        const usersUnderAttack = Object.entries(userFailureMap)
+            .filter(([user, count]) => count >= 3)
+            .map(([user, count]) => ({ user, failedAttempts: count }))
+            .sort((a, b) => b.failedAttempts - a.failedAttempts)
+            .slice(0, 10);
+
+        // Calculate security score (0-100)
+        const severityScores = {
+            'critical': 25,
+            'high': 15,
+            'medium': 5,
+            'low': 2
+        };
+        
+        let securityScore = 100;
+        for (const threat of processedThreats) {
+            securityScore -= severityScores[threat.severity] || 2;
+        }
+        for (const alert of processedAlerts.slice(0, 10)) {
+            securityScore -= severityScores[alert.severity] || 2;
+        }
+        for (const signIn of usersUnderAttack) {
+            securityScore -= (signIn.failedAttempts * 2);
+        }
+        securityScore = Math.max(0, Math.min(100, securityScore));
+
+        // ===== ACTIVITY FEED =====
+        const activityFeed = [];
+        
+        // Add incidents to feed
+        processedIncidents.slice(0, 5).forEach(incident => {
+            activityFeed.push({
+                type: 'incident',
+                message: `${incident.severity.toUpperCase()} Incident: ${incident.displayName}`,
+                timestamp: incident.created,
+                severity: incident.severity
+            });
+        });
+
+        // Add high severity alerts
+        highSeverityAlerts.slice(0, 5).forEach(alert => {
+            activityFeed.push({
+                type: 'alert',
+                message: `${alert.severity.toUpperCase()}: ${alert.title}`,
+                timestamp: alert.created,
+                severity: alert.severity
+            });
+        });
+
+        // Add suspicious sign-ins
+        suspiciousSignIns.slice(0, 5).forEach(signIn => {
+            activityFeed.push({
+                type: 'signin',
+                message: `Failed login: ${signIn.user} from ${signIn.location}`,
+                timestamp: signIn.timestamp,
+                severity: 'medium'
+            });
+        });
+
+        // Sort by timestamp
+        activityFeed.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+        console.log(`[Security Events] Compiled: ${processedAlerts.length} alerts, ${processedIncidents.length} incidents, ${processedThreats.length} threats, ${suspiciousSignIns.length} suspicious sign-ins`);
+
+        res.json({
+            success: true,
+            tenant: tenant.clientId,
+            fetchedAt: new Date().toISOString(),
+            summary: {
+                activeIncidents: activeIncidents.length,
+                highSeverityAlerts: highSeverityAlerts.length,
+                totalAlerts: processedAlerts.length,
+                threatIndicators: processedThreats.length,
+                usersUnderAttack: usersUnderAttack.length,
+                securityScore
+            },
+            incidents: processedIncidents,
+            alerts: processedAlerts,
+            threats: processedThreats,
+            signIns: {
+                all: signIns.length,
+                suspicious: suspiciousSignIns,
+                usersUnderAttack
+            },
+            activityFeed: activityFeed.slice(0, 20)
+        });
+
+    } catch (error) {
+        console.error('[Security Events] Error:', error.message);
+        
+        res.status(500).json({ 
+            error: 'Failed to fetch security events data',
+            message: error.message
+        });
+    }
+});
+
 const secretClient = new SecretManagerServiceClient();
 
 // Function to get secret from Google Cloud Secret Manager
