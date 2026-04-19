@@ -13,10 +13,10 @@ const SUNBIRD_EMAILS = [
 ];
 
 // Sunbird-only card IDs that should be hidden from non-Sunbird clients
-const SUNBIRD_ONLY_CARD_IDS = [2, 3, 4, 5]; //  Identity Protection, Devices, Applications, Email Security
+const SUNBIRD_ONLY_CARD_IDS = [2, 3, 4, 5, 7]; // Identity Protection, Devices, Security & Events, Email Security, Backup & Recovery
 
 // Cards to hide from Sunbird clients
-const HIDDEN_FROM_SUNBIRD_IDS = [7]; // Backup and Recovery
+const HIDDEN_FROM_SUNBIRD_IDS = []; // All Sunbird cards are visible to them
 
 // Check if current user is a Sunbird client
 function isSunbirdUser() {
