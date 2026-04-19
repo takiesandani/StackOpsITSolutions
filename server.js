@@ -5480,6 +5480,209 @@ app.get('/api/email-security', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * Route: GET /api/data-protection
+ * Data Protection dashboard aggregating storage and backup intelligence
+ */
+app.get('/api/data-protection', authenticateToken, async (req, res) => {
+    try {
+        const userEmail = req.user.email;
+        console.log(`[Data Protection] Fetching dashboard data for: ${userEmail}`);
+
+        const tenant = getTenantByEmail(userEmail);
+        if (!tenant || tenant.clientId !== 'sunbird') {
+            console.warn(`[Data Protection] Access denied for ${userEmail}`);
+            return res.status(403).json({ 
+                error: 'Access denied',
+                message: 'This feature is only available for Sunbird client'
+            });
+        }
+
+        const token = await getMicrosoftGraphToken();
+
+        // Fetch storage reports from Microsoft Graph
+        console.log('[Data Protection] Fetching storage reports...');
+        const [oneDriveUsage, sharePointUsage, mailboxUsage, userStats] = await Promise.all([
+            fetch('https://graph.microsoft.com/v1.0/reports/getOneDriveUsageAccountDetail', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            }).then(r => r.text()).catch(e => ''),
+            fetch('https://graph.microsoft.com/v1.0/reports/getSharePointSiteUsageDetail', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            }).then(r => r.text()).catch(e => ''),
+            fetch('https://graph.microsoft.com/v1.0/reports/getMailboxUsageDetail', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            }).then(r => r.text()).catch(e => ''),
+            fetch('https://graph.microsoft.com/v1.0/users?$select=id,displayName,lastSignInDateTime&$top=999', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            }).then(r => r.json()).catch(e => ({ value: [] }))
+        ]);
+
+        // Parse CSV data (simplified - extract GB values)
+        let oneDriveGB = 0;
+        let sharePointGB = 0;
+        let exchangeGB = 0;
+
+        // OneDrive: Extract storage GB from report
+        if (oneDriveUsage) {
+            const lines = oneDriveUsage.split('\n');
+            lines.forEach(line => {
+                const parts = line.split(',');
+                if (parts.length > 3) {
+                    const storageValue = parseFloat(parts[3]);
+                    if (!isNaN(storageValue)) {
+                        const gbValue = Math.round(storageValue / (1024 * 1024 * 1024)); // Convert bytes to GB
+                        oneDriveGB += gbValue || 0;
+                    }
+                }
+            });
+        }
+
+        // SharePoint: Extract storage GB from report
+        if (sharePointUsage) {
+            const lines = sharePointUsage.split('\n');
+            lines.forEach(line => {
+                const parts = line.split(',');
+                if (parts.length > 4) {
+                    const storageValue = parseFloat(parts[4]);
+                    if (!isNaN(storageValue)) {
+                        const gbValue = Math.round(storageValue / (1024 * 1024 * 1024)); // Convert bytes to GB
+                        sharePointGB += gbValue || 0;
+                    }
+                }
+            });
+        }
+
+        // Mailbox: Extract storage GB from report
+        if (mailboxUsage) {
+            const lines = mailboxUsage.split('\n');
+            lines.forEach(line => {
+                const parts = line.split(',');
+                if (parts.length > 4) {
+                    const storageValue = parseFloat(parts[4]);
+                    if (!isNaN(storageValue)) {
+                        const gbValue = Math.round(storageValue / (1024 * 1024 * 1024)); // Convert bytes to GB
+                        exchangeGB += gbValue || 0;
+                    }
+                }
+            });
+        }
+
+        const totalStorageGB = oneDriveGB + sharePointGB + exchangeGB;
+
+        // User statistics
+        const totalUsers = (userStats.value || []).length;
+        const now = new Date();
+        const thirtyDaysAgo = new Date(now.setDate(now.getDate() - 30));
+        
+        const activeUsers = (userStats.value || []).filter(user => {
+            const lastSignIn = new Date(user.lastSignInDateTime);
+            return lastSignIn > thirtyDaysAgo;
+        }).length;
+
+        // Storage by service
+        const storageByService = [
+            {
+                service: 'Exchange',
+                storageGB: exchangeGB,
+                icon: 'fa-envelope'
+            },
+            {
+                service: 'OneDrive',
+                storageGB: oneDriveGB,
+                icon: 'fa-cloud'
+            },
+            {
+                service: 'SharePoint',
+                storageGB: sharePointGB,
+                icon: 'fa-share-alt'
+            }
+        ];
+
+        // Determine largest service
+        const largestService = storageByService.reduce((max, current) => 
+            current.storageGB > max.storageGB ? current : max, storageByService[0]
+        );
+        const largestServicePercent = totalStorageGB > 0 
+            ? Math.round((largestService.storageGB / totalStorageGB) * 100) 
+            : 0;
+
+        // ===== BACKUP STATUS (Manual Logic - No External Backup) =====
+        // NOTE: This is manual logic since no external backup API is available
+        const backupStatus = 'No backup configured'; // Default: assume no external backup
+
+        // ===== DATA PROTECTION INSIGHTS =====
+        const insights = [];
+
+        if (backupStatus === 'No backup configured') {
+            insights.push({
+                type: 'critical',
+                message: `No external backup solution configured for ${totalStorageGB} GB of data`,
+                action: 'Configure Backup',
+                count: totalStorageGB
+            });
+        }
+
+        if (largestServicePercent > 50) {
+            insights.push({
+                type: 'warning',
+                message: `${largestService.service} holds ${largestServicePercent}% of business data`,
+                action: 'Review Distribution',
+                count: largestServicePercent
+            });
+        }
+
+        const inactiveUsersWithData = totalUsers - activeUsers;
+        if (inactiveUsersWithData > 0) {
+            insights.push({
+                type: 'info',
+                message: `${inactiveUsersWithData} inactive user${inactiveUsersWithData > 1 ? 's' : ''} still stores data`,
+                action: 'Manage Users',
+                count: inactiveUsersWithData
+            });
+        }
+
+        if (totalStorageGB > 0) {
+            insights.push({
+                type: 'warning',
+                message: `Review backup strategy to protect ${totalStorageGB} GB of critical data`,
+                action: 'View Strategy',
+                count: totalStorageGB
+            });
+        }
+
+        console.log(`[Data Protection] Compiled: ${totalStorageGB} GB total, ${activeUsers} active users, ${backupStatus}`);
+
+        res.json({
+            success: true,
+            tenant: tenant.clientId,
+            fetchedAt: new Date().toISOString(),
+            summary: {
+                totalStorageGB,
+                oneDriveStorageGB: oneDriveGB,
+                sharePointStorageGB: sharePointGB,
+                exchangeStorageGB: exchangeGB,
+                totalUsers,
+                activeUsers,
+                backupStatus,
+                largestService: largestService.service,
+                largestServicePercent,
+                inactiveUsersWithData,
+                dataProtectionScore: backupStatus === 'No backup configured' ? 30 : 65
+            },
+            storageByService,
+            insights
+        });
+
+    } catch (error) {
+        console.error('[Data Protection] Error:', error.message);
+        
+        res.status(500).json({ 
+            error: 'Failed to fetch data protection data',
+            message: error.message
+        });
+    }
+});
+
 const secretClient = new SecretManagerServiceClient();
 
 // Function to get secret from Google Cloud Secret Manager

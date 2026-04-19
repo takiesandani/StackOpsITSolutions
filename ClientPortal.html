@@ -1907,6 +1907,134 @@
                 </div>
             </div>
         </div>
+
+        <!-- Data Protection DASHBOARD VIEW -->
+        <div id="data-protection-view" class="data-protection-view" style="display: none;">
+            <div class="container-fluid">
+                <!-- Header with Back Button -->
+                <div class="data-dashboard-title">
+                    <div class="data-title-section">
+                        <button class="btn-back" id="btn-back-data-protection">
+                            <i class="fas fa-arrow-left"></i> Back to Projects
+                        </button>
+                        <i class="fas fa-shield-exclamation"></i>
+                        <h2>Data Protection Dashboard</h2>
+                    </div>
+                    <span class="project-status" id="data-protection-status">Live Monitoring</span>
+                </div>
+
+                <!-- Summary Cards Row -->
+                <div class="data-summary-cards">
+                    <div class="data-stat-card info">
+                        <div class="data-stat-icon info"><i class="fas fa-database"></i></div>
+                        <div class="data-stat-content">
+                            <h3 id="dp-total-storage">0 GB</h3>
+                            <p>Total Storage</p>
+                        </div>
+                    </div>
+
+                    <div class="data-stat-card info">
+                        <div class="data-stat-icon info"><i class="fas fa-envelope"></i></div>
+                        <div class="data-stat-content">
+                            <h3 id="dp-exchange-storage">0 GB</h3>
+                            <p>Exchange Storage</p>
+                        </div>
+                    </div>
+
+                    <div class="data-stat-card info">
+                        <div class="data-stat-icon info"><i class="fas fa-cloud"></i></div>
+                        <div class="data-stat-content">
+                            <h3 id="dp-onedrive-storage">0 GB</h3>
+                            <p>OneDrive Storage</p>
+                        </div>
+                    </div>
+
+                    <div class="data-stat-card info">
+                        <div class="data-stat-icon info"><i class="fas fa-share-alt"></i></div>
+                        <div class="data-stat-content">
+                            <h3 id="dp-sharepoint-storage">0 GB</h3>
+                            <p>SharePoint Storage</p>
+                        </div>
+                    </div>
+
+                    <div class="data-stat-card success">
+                        <div class="data-stat-icon success"><i class="fas fa-users"></i></div>
+                        <div class="data-stat-content">
+                            <h3 id="dp-active-users">0</h3>
+                            <p>Active Users</p>
+                        </div>
+                    </div>
+
+                    <div class="data-stat-card warning">
+                        <div class="data-stat-icon warning"><i class="fas fa-shield-alt"></i></div>
+                        <div class="data-stat-content">
+                            <h3 id="dp-backup-status">Loading...</h3>
+                            <p>Backup Status</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Critical Risks Panel -->
+                <div class="data-risks-panel">
+                    <h3><i class="fas fa-warning"></i> Data Protection Risks & Insights</h3>
+                    <div id="dp-risks-container" class="risks-grid">
+                        <div style="text-align: center; padding: 40px; color: #94a3b8;">
+                            <i class="fas fa-spinner fa-spin loading-spinner"></i> Loading risks...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Section -->
+                <div class="data-charts-container">
+                    <!-- Storage Distribution by Service -->
+                    <div class="chart-card">
+                        <h3><i class="fas fa-pie-chart"></i> Storage Distribution</h3>
+                        <div class="chart-container">
+                            <canvas id="dpStorageDistributionChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- User Activity -->
+                    <div class="chart-card">
+                        <h3><i class="fas fa-users"></i> User Activity</h3>
+                        <div class="chart-container">
+                            <canvas id="dpUserActivityChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Actionable Insights Panel -->
+                <div class="monitor-card">
+                    <h3><i class="fas fa-lightbulb"></i> Actionable Insights</h3>
+                    <div id="dp-insights-container" class="insights-container">
+                        <div style="text-align: center; padding: 40px; color: #94a3b8;">
+                            <i class="fas fa-spinner fa-spin loading-spinner"></i> Generating insights...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Storage by Service Table -->
+                <div class="dp-table-container">
+                    <h3><i class="fas fa-table"></i> Storage By Service</h3>
+                    <table class="data-protection-table">
+                        <thead>
+                            <tr>
+                                <th>Service</th>
+                                <th>Storage Used</th>
+                                <th>Backup Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dp-storage-tbody">
+                            <tr>
+                                <td colspan="3" style="text-align: center; padding: 20px; color: #94a3b8;">
+                                    <i class="fas fa-spinner fa-spin loading-spinner"></i> Loading data...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
     </section>
 
     <!-- Chatbot will be injected by chatbot.js -->
@@ -1918,6 +2046,7 @@
     <script src="js/devices-dashboard.js"></script>
     <script src="js/security-dashboard.js"></script>
     <script src="js/email-security-dashboard.js"></script>
+    <script src="js/data-protection-dashboard.js"></script>
     <script src="js/chatbot.js"></script>
 
 </body>

@@ -1,0 +1,241 @@
+/* ============================================== */
+/*  Data Protection DASHBOARD STYLES             */
+/*  Microsoft 365 Data Storage & Backup Insights */
+/* ============================================== */
+
+.data-protection-view {
+    display: none;
+    animation: fadeInPage 0.4s ease-in;
+}
+
+.data-protection-view.active {
+    display: block;
+}
+
+@keyframes fadeInPage {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.data-dashboard-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 32px;
+    padding: 20px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.data-title-section {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.data-title-section i {
+    font-size: 28px;
+    color: #6366f1;
+}
+
+.data-title-section h2 {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 200;
+    color: #e2e8f0;
+}
+
+.data-summary-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin-bottom: 32px;
+}
+
+.data-stat-card {
+    background: rgba(30, 41, 59, 0.8);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: 12px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: all 0.3s ease;
+}
+
+.data-stat-card:hover {
+    border-color: rgba(99, 102, 241, 0.4);
+    background: rgba(30, 41, 59, 1);
+    box-shadow: 0 4px 16px rgba(99, 102, 241, 0.15);
+}
+
+.data-stat-card.info {
+    border-color: rgba(99, 102, 241, 0.2);
+}
+
+.data-stat-card.info:hover {
+    border-color: rgba(99, 102, 241, 0.4);
+    box-shadow: 0 4px 16px rgba(99, 102, 241, 0.15);
+}
+
+.data-stat-card.success {
+    border-color: rgba(16, 185, 129, 0.2);
+}
+
+.data-stat-card.success:hover {
+    border-color: rgba(16, 185, 129, 0.4);
+    box-shadow: 0 4px 16px rgba(16, 185, 129, 0.15);
+}
+
+.data-stat-card.warning {
+    border-color: rgba(255, 193, 7, 0.2);
+}
+
+.data-stat-card.warning:hover {
+    border-color: rgba(255, 193, 7, 0.4);
+    box-shadow: 0 4px 16px rgba(255, 193, 7, 0.15);
+}
+
+.data-stat-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+}
+
+.data-stat-icon.info {
+    background: rgba(99, 102, 241, 0.2);
+    color: #6366f1;
+}
+
+.data-stat-icon.success {
+    background: rgba(16, 185, 129, 0.2);
+    color: #10b981;
+}
+
+.data-stat-icon.warning {
+    background: rgba(255, 193, 7, 0.2);
+    color: #ffc107;
+}
+
+.data-stat-content h3 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 200;
+    color: #e2e8f0;
+}
+
+.data-stat-content p {
+    margin: 0;
+    font-size: 12px;
+    color: #94a3b8;
+    font-weight: 200;
+}
+
+.data-risks-panel {
+    background: rgba(30, 41, 59, 0.8);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 32px;
+}
+
+.data-risks-panel h3 {
+    margin: 0 0 24px 0;
+    font-size: 16px;
+    font-weight: 200;
+    color: #e2e8f0;
+}
+
+.data-charts-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 20px;
+    margin-bottom: 32px;
+}
+
+.dp-table-container {
+    background: rgba(30, 41, 59, 0.8);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 32px;
+}
+
+.dp-table-container h3 {
+    margin: 0;
+    padding: 24px;
+    font-size: 16px;
+    font-weight: 200;
+    color: #e2e8f0;
+    background: rgba(99, 102, 241, 0.1);
+    border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+}
+
+.data-protection-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.data-protection-table thead {
+    background: rgba(99, 102, 241, 0.15);
+}
+
+.data-protection-table th {
+    padding: 14px 16px;
+    text-align: left;
+    color: #94a3b8;
+    font-weight: 200;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+}
+
+.data-protection-table td {
+    padding: 12px 16px;
+    color: #e2e8f0;
+    font-size: 14px;
+    font-weight: 200;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.data-protection-table tbody tr:hover {
+    background: rgba(99, 102, 241, 0.08);
+}
+
+.service-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.service-name i {
+    color: #6366f1;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .data-summary-cards {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .data-dashboard-title {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .data-charts-container {
+        grid-template-columns: 1fr;
+    }
+}

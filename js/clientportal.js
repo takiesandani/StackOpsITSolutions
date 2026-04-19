@@ -13,7 +13,7 @@ const SUNBIRD_EMAILS = [
 ];
 
 // Sunbird-only card IDs that should be hidden from non-Sunbird clients
-const SUNBIRD_ONLY_CARD_IDS = [2, 3, 4, 5]; //  Identity Protection, Devices, Applications, Email Security
+const SUNBIRD_ONLY_CARD_IDS = [2, 3, 4, 5, 6]; //  Identity Protection, Device Protection, Security & Events, Email Security, Data Protection
 
 // Cards to hide from Sunbird clients
 const HIDDEN_FROM_SUNBIRD_IDS = [7]; // Backup and Recovery
@@ -148,6 +148,25 @@ const mockProjects = [
     },
     {
         id: 6,
+        name: "Data Protection",
+        type: "Microsoft 365 Data Storage & Backup Intelligence",
+        status: "active",
+        risks: { critical: 0, high: 0, medium: 0 },
+        securityScore: 0,
+        uptime: 100,
+        lastUpdate: "Loading...",
+        image: "https://static.vecteezy.com/system/resources/thumbnails/018/911/406/small_2x/microsoft-logo-editorial-free-vector.jpg",
+        cardMetrics: [
+            { label: "Total Storage", value: ": ...", icon: "fas fa-database" },
+            { label: "Active Users", value: ": ...", icon: "fas fa-users" }
+        ],
+        cardFooter: "Fetching from Microsoft Graph Reports...",
+        hasTabs: false,
+        microsoftGraphEnabled: true,
+        isDataProtectionCard: true
+    },
+    {
+        id: 7,
         name: "Cloud data services",
         type: "Optomized cloud storage & Database health",
         status: "inactive",
@@ -163,7 +182,7 @@ const mockProjects = [
         cardFooter: "Cloud Cost: R4,250/month"
     },
     {
-        id: 7,
+        id: 8,
         name: "Backup and Recovery",
         type: "Automated protection & Disaster recovery",
         status: "active",
@@ -3399,6 +3418,15 @@ function viewProjectDashboard(project) {
         }
         document.getElementById('email-security-view').style.display = 'block';
         fetchEmailSecurityData(project);
+    }
+    // If this is the Data Protection card, fetch data protection data
+    else if (project.isDataProtectionCard) {
+        if (!document.getElementById('data-protection-view')) {
+            console.warn('[Data Protection] View element not found');
+            return;
+        }
+        document.getElementById('data-protection-view').style.display = 'block';
+        fetchDataProtectionData(project);
     }
     else {
         document.getElementById('dashboard-view').style.display = 'block';
