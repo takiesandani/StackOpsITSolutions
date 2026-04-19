@@ -5482,6 +5482,7 @@ app.get('/api/email-security', authenticateToken, async (req, res) => {
 
 /**
  * Helper: Parse CSV response from Microsoft Graph Reports API
+ * Handles both comma-separated and tab-separated formats
  */
 function parseGraphReportCSV(csvText, reportType = 'unknown') {
     try {
@@ -5491,8 +5492,14 @@ function parseGraphReportCSV(csvText, reportType = 'unknown') {
             return [];
         }
 
+        // Detect delimiter: comma or tab
+        const headerLine = lines[0];
+        const isCommaDelimited = headerLine.includes(',') && !headerLine.includes('\t');
+        const delimiter = isCommaDelimited ? ',' : '\t';
+        console.log(`[CSV Parser] ${reportType} - Detected delimiter: ${delimiter === ',' ? 'COMMA' : 'TAB'}`);
+
         // Parse header
-        const header = lines[0].split('\t').map(h => h.trim());
+        const header = headerLine.split(delimiter).map(h => h.trim());
         console.log(`[CSV Parser] ${reportType} - Headers: ${header.join(', ')}`);
         
         // Parse rows
@@ -5500,7 +5507,7 @@ function parseGraphReportCSV(csvText, reportType = 'unknown') {
         for (let i = 1; i < lines.length; i++) {
             if (!lines[i].trim()) continue;
             
-            const values = lines[i].split('\t').map(v => v.trim());
+            const values = lines[i].split(delimiter).map(v => v.trim());
             const row = {};
             
             header.forEach((key, index) => {
@@ -5512,7 +5519,7 @@ function parseGraphReportCSV(csvText, reportType = 'unknown') {
         
         console.log(`[CSV Parser] ${reportType} - Parsed ${data.length} rows`);
         if (data.length > 0) {
-            console.log(`[CSV Parser] ${reportType} - First row keys:`, Object.keys(data[0]));
+            console.log(`[CSV Parser] ${reportType} - First row:`, JSON.stringify(data[0]));
         }
         
         return data;
@@ -5595,51 +5602,16 @@ app.get('/api/backup-recovery', authenticateToken, async (req, res) => {
         const oneDriveUsers = [];
         
         oneDriveData.forEach(item => {
-            // Try multiple column name variations
-            let storageBytes = 0;
-            let ownerName = '';
-            let fileCount = 0;
-            let lastActivity = '';
-            
-            // Find storage column (try variations)
-            for (const key of Object.keys(item)) {
-                if (key.includes('Storage') && key.includes('Byte')) {
-                    storageBytes = parseInt(item[key]) || 0;
-                    break;
-                }
-            }
-            
-            // Find owner column (try variations)
-            for (const key of Object.keys(item)) {
-                if (key.includes('Owner') || key.includes('Principal') || key.includes('Display Name')) {
-                    ownerName = item[key];
-                    break;
-                }
-            }
-            
-            // Find file count (try variations)
-            for (const key of Object.keys(item)) {
-                if (key.includes('File') && (key.includes('Count') || key.includes('count'))) {
-                    fileCount = parseInt(item[key]) || 0;
-                    break;
-                }
-            }
-            
-            // Find last activity (try variations)
-            for (const key of Object.keys(item)) {
-                if (key.includes('Last') && key.includes('Activity') && key.includes('Date')) {
-                    lastActivity = item[key];
-                    break;
-                }
-            }
-            
+            const storageBytes = parseInt(item['Storage Used (Byte)'] || 0);
             oneDriveStorageBytes += storageBytes;
-            if (ownerName && storageBytes > 0) {
+            
+            if (item['Owner Principal Name'] && storageBytes > 0) {
                 oneDriveUsers.push({
-                    user: ownerName,
+                    user: item['Owner Principal Name'],
+                    displayName: item['Owner Display Name'] || item['Owner Principal Name'],
                     storage: storageBytes,
-                    lastActivity: lastActivity,
-                    files: fileCount
+                    lastActivity: item['Last Activity Date'],
+                    files: parseInt(item['File Count'] || 0)
                 });
             }
         });
@@ -5649,50 +5621,16 @@ app.get('/api/backup-recovery', authenticateToken, async (req, res) => {
         const sharePointSites = [];
         
         sharePointData.forEach(item => {
-            let storageBytes = 0;
-            let siteUrl = '';
-            let fileCount = 0;
-            let lastActivity = '';
-            
-            // Find storage column
-            for (const key of Object.keys(item)) {
-                if (key.includes('Storage') && key.includes('Byte')) {
-                    storageBytes = parseInt(item[key]) || 0;
-                    break;
-                }
-            }
-            
-            // Find site URL
-            for (const key of Object.keys(item)) {
-                if (key.includes('Site') && key.includes('URL')) {
-                    siteUrl = item[key];
-                    break;
-                }
-            }
-            
-            // Find file count
-            for (const key of Object.keys(item)) {
-                if (key.includes('File') && (key.includes('Count') || key.includes('count'))) {
-                    fileCount = parseInt(item[key]) || 0;
-                    break;
-                }
-            }
-            
-            // Find last activity
-            for (const key of Object.keys(item)) {
-                if (key.includes('Last') && key.includes('Activity') && key.includes('Date')) {
-                    lastActivity = item[key];
-                    break;
-                }
-            }
-            
+            const storageBytes = parseInt(item['Storage Used (Byte)'] || 0);
             sharePointStorageBytes += storageBytes;
-            if (siteUrl && storageBytes > 0) {
+            
+            if (item['Site URL'] && storageBytes > 0) {
                 sharePointSites.push({
-                    url: siteUrl,
+                    url: item['Site URL'],
+                    owner: item['Owner Display Name'] || item['Owner Principal Name'],
                     storage: storageBytes,
-                    lastActivity: lastActivity,
-                    files: fileCount
+                    lastActivity: item['Last Activity Date'],
+                    files: parseInt(item['File Count'] || 0)
                 });
             }
         });
@@ -5702,50 +5640,16 @@ app.get('/api/backup-recovery', authenticateToken, async (req, res) => {
         const exchangeUsers = [];
         
         exchangeData.forEach(item => {
-            let storageBytes = 0;
-            let userName = '';
-            let itemCount = 0;
-            let lastActivity = '';
-            
-            // Find storage column
-            for (const key of Object.keys(item)) {
-                if (key.includes('Storage') && key.includes('Byte')) {
-                    storageBytes = parseInt(item[key]) || 0;
-                    break;
-                }
-            }
-            
-            // Find user name
-            for (const key of Object.keys(item)) {
-                if (key.includes('User') && key.includes('Principal') && key.includes('Name')) {
-                    userName = item[key];
-                    break;
-                }
-            }
-            
-            // Find item count
-            for (const key of Object.keys(item)) {
-                if (key.includes('Item') && (key.includes('Count') || key.includes('count'))) {
-                    itemCount = parseInt(item[key]) || 0;
-                    break;
-                }
-            }
-            
-            // Find last activity
-            for (const key of Object.keys(item)) {
-                if (key.includes('Last') && key.includes('Activity') && key.includes('Date')) {
-                    lastActivity = item[key];
-                    break;
-                }
-            }
-            
+            const storageBytes = parseInt(item['Storage Used (Byte)'] || 0);
             exchangeStorageBytes += storageBytes;
-            if (userName && storageBytes > 0) {
+            
+            if (item['User Principal Name'] && storageBytes > 0) {
                 exchangeUsers.push({
-                    user: userName,
+                    user: item['User Principal Name'],
+                    displayName: item['Display Name'] || item['User Principal Name'],
                     storage: storageBytes,
-                    lastActivity: lastActivity,
-                    items: itemCount
+                    lastActivity: item['Last Activity Date'],
+                    items: parseInt(item['Item Count'] || 0)
                 });
             }
         });
