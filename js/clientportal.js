@@ -13,7 +13,7 @@ const SUNBIRD_EMAILS = [
 ];
 
 // Sunbird-only card IDs that should be hidden from non-Sunbird clients
-const SUNBIRD_ONLY_CARD_IDS = [2, 3, 4, 5, 7]; // Identity Protection, Devices, Security & Events, Email Security, Backup & Recovery
+const SUNBIRD_ONLY_CARD_IDS = [2, 3, 4, 5, 7, 8]; // Identity Protection, Devices, Security & Events, Email Security, Backup & Recovery, Applications
 
 // Cards to hide from Sunbird clients
 const HIDDEN_FROM_SUNBIRD_IDS = []; // All Sunbird cards are visible to them
@@ -180,6 +180,25 @@ const mockProjects = [
         hasTabs: false,
         microsoftGraphEnabled: true,
         isBackupRecoveryCard: true
+    },
+    {
+        id: 8,
+        name: "Applications",
+        type: "Application Access & Risk Management",
+        status: "active",
+        risks: { critical: 0, high: 0, medium: 0 },
+        securityScore: 0,
+        uptime: 100,
+        lastUpdate: "Loading...",
+        image: "https://static.vecteezy.com/system/resources/thumbnails/018/911/406/small_2x/microsoft-logo-editorial-free-vector.jpg",
+        cardMetrics: [
+            { label: "Total Applications", value: ": ...", icon: "fas fa-cubes" },
+            { label: "External Apps", value: ": ...", icon: "fas fa-exclamation-circle" }
+        ],
+        cardFooter: "Fetching from Microsoft Graph...",
+        hasTabs: false,
+        microsoftGraphEnabled: true,
+        isApplicationsCard: true
     }
 ];
 
@@ -187,6 +206,9 @@ const mockProjects = [
 let microsoftUsersData = [];
 let microsoftRolesData = [];
 let userRolesMap = {}; // Maps userId to array of role names
+let applicationsData = []; // Applications from Microsoft Graph
+let servicePrincipalsData = []; // Service Principals for app mapping
+let groupsData = []; // Groups for access mapping
 
 document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
@@ -328,7 +350,447 @@ function populateIdentityCards(apiData) {
     console.log(`[Identity Cards] Created card with ${totalUsers} users (${externalUsers} external, ${missingData} missing data)`);
 }
 
-// Open  Identity Protection full dashboard
+// ============================================
+// APPLICATIONS - FETCH DATA & CARD DISPLAY
+// ============================================
+
+// Fetch Applications data from API
+async function fetchApplicationsData() {
+    try {
+        const authToken = localStorage.getItem('authToken');
+        if (!authToken) {
+            console.error('[Applications] No auth token found');
+            return;
+        }
+
+        // Only fetch Applications for Sunbird users
+        if (!isSunbirdUser()) {
+            console.log('[Applications] Non-Sunbird user. Skipping fetch.');
+            return;
+        }
+        
+        console.log('[Applications] Fetching applications data...');
+        
+        const response = await fetch('/api/microsoft-applications', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            console.error('[Applications] Error:', data.message);
+            showNotification('Failed to load Applications data', false);
+            return;
+        }
+        
+        applicationsData = data.applications || [];
+        console.log(`[Applications] Loaded ${applicationsData.length} applications`);
+        
+        // Populate Applications card preview
+        populateApplicationsCard(data);
+        
+    } catch (error) {
+        console.error('[Applications] Exception:', error);
+        showNotification('Failed to load Applications data', false);
+    }
+}
+
+// Populate Applications card in projects view
+function populateApplicationsCard(apiData) {
+    const container = document.getElementById('applications-cards-container');
+    
+    // If container doesn't exist, create it dynamically in the grid
+    // This is handled by the project card system, so we update the project card metrics
+    const appProject = mockProjects.find(p => p.isApplicationsCard);
+    if (!appProject) return;
+    
+    // Update project card metrics
+    const totalApps = apiData.totalApplications || 0;
+    const externalApps = apiData.externalApplications || 0;
+    const highRiskApps = calculateHighRiskApplications(applicationsData);
+    
+    appProject.cardMetrics = [
+        { label: "Total Applications", value: `: ${totalApps}`, icon: "fas fa-cubes" },
+        { label: "External Apps", value: `: ${externalApps}`, icon: "fas fa-exclamation-circle" }
+    ];
+    appProject.cardFooter = `High Risk: ${highRiskApps}`;
+    
+    // Re-render project cards
+    displayCurrentProject();
+}
+
+// Calculate risk level for an application
+function calculateAppRisk(app) {
+    let riskLevel = 'safe'; // safe, medium, high
+    let riskReasons = [];
+    
+    // Check if external
+    const isExternal = app.isExternal;
+    if (isExternal) {
+        riskLevel = 'high';
+        riskReasons.push('External app connected');
+    }
+    
+    // Check for high permissions (scopes or roles)
+    const totalPermissions = (app.scopeCount || 0) + (app.roleCount || 0);
+    if (totalPermissions > 10) {
+        if (riskLevel === 'safe') riskLevel = 'medium';
+        if (riskLevel !== 'high') riskLevel = 'medium';
+        riskReasons.push('Excessive permissions detected');
+    }
+    
+    // If internal and low permissions, it's safe
+    if (!isExternal && totalPermissions <= 5) {
+        riskLevel = 'safe';
+    } else if (!isExternal && totalPermissions > 5) {
+        riskLevel = 'medium';
+        riskReasons.push('Moderate permissions');
+    }
+    
+    return {
+        level: riskLevel,
+        reasons: riskReasons
+    };
+}
+
+// Calculate number of high-risk applications
+function calculateHighRiskApplications(apps) {
+    if (!apps) return 0;
+    return apps.filter(app => calculateAppRisk(app).level === 'high').length;
+}
+
+// Open Applications full dashboard
+function openApplicationsDashboard() {
+    console.log('[Applications Dashboard] Opening full dashboard...');
+    
+    const dashboardView = document.getElementById('dashboard-view');
+    if (!dashboardView) return;
+
+    // Show dashboard view
+    document.getElementById('projects-view').style.display = 'none';
+    dashboardView.style.display = 'block';
+    
+    // Hide generic dashboard parts
+    const statsGrid = dashboardView.querySelector('.stats-grid');
+    const chartsSection = dashboardView.querySelector('.charts-section');
+    const dashboardTabs = dashboardView.querySelector('.dashboard-tabs');
+    
+    if (statsGrid) statsGrid.style.display = 'none';
+    if (chartsSection) chartsSection.style.display = 'none';
+    if (dashboardTabs) dashboardTabs.style.display = 'none';
+
+    // Update dashboard title
+    const projectName = document.getElementById('project-name');
+    const projectStatus = document.getElementById('project-status');
+    if (projectName) projectName.textContent = 'Applications - Access & Risk Management';
+    if (projectStatus) projectStatus.textContent = 'Active';
+    
+    // Hide site header initially
+    const siteHeader = document.querySelector('.site-header');
+    if (siteHeader) {
+        siteHeader.classList.add('header-hidden');
+        siteHeader.classList.remove('header-visible');
+    }
+
+    // Add scroll listener for header
+    const handleDashboardScroll = () => {
+        if (window.scrollY > 100) {
+            siteHeader?.classList.add('header-visible');
+            siteHeader?.classList.remove('header-hidden');
+        } else {
+            siteHeader?.classList.add('header-hidden');
+            siteHeader?.classList.remove('header-visible');
+        }
+    };
+    
+    window.removeApplicationsDashboardScroll = () => {
+        window.removeEventListener('scroll', handleDashboardScroll);
+        delete window.removeApplicationsDashboardScroll;
+    };
+    
+    window.addEventListener('scroll', handleDashboardScroll);
+
+    // Update back button
+    const backBtn = document.getElementById('btn-back');
+    if (backBtn) {
+        backBtn.onclick = function() {
+            resetDashboard();
+            
+            // Restore generic parts
+            if (statsGrid) statsGrid.style.display = 'grid';
+            if (chartsSection) chartsSection.style.display = 'grid';
+        };
+    }
+    
+    // Initialize dashboard if data is ready
+    if (applicationsData.length > 0) {
+        console.log('[Applications Dashboard] Data already loaded, initializing immediately');
+        initializeApplicationsDashboard();
+    } else {
+        // Fetch data first
+        console.log('[Applications Dashboard] Waiting for data to load...');
+        let waitTime = 0;
+        const maxWait = 5000;
+        const checkInterval = setInterval(() => {
+            waitTime += 100;
+            if (applicationsData.length > 0) {
+                console.log('[Applications Dashboard] Data loaded successfully');
+                clearInterval(checkInterval);
+                initializeApplicationsDashboard();
+            } else if (waitTime >= maxWait) {
+                console.warn('[Applications Dashboard] Data load timeout');
+                clearInterval(checkInterval);
+                initializeApplicationsDashboard();
+            }
+        }, 100);
+    }
+}
+
+// Initialize Applications dashboard
+function initializeApplicationsDashboard() {
+    console.log('[Applications Dashboard] Initializing...');
+    console.log(`[Applications Dashboard] Applications data: ${applicationsData.length}`);
+    
+    const dashboardView = document.getElementById('dashboard-view');
+    if (dashboardView) {
+        dashboardView.innerHTML = generateApplicationsDashboardHTML();
+    }
+    
+    // Populate dashboard content
+    setTimeout(() => {
+        console.log('[Applications Dashboard] Populating content...');
+        populateApplicationsTable();
+        initializeApplicationsCharts();
+    }, 100);
+}
+
+// Generate Applications dashboard HTML
+function generateApplicationsDashboardHTML() {
+    return `
+        <div class="applications-dashboard">
+            <!-- Top Stats Cards -->
+            <div class="apps-stats-cards">
+                <div class="apps-stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-cubes"></i>
+                    </div>
+                    <div class="stat-content">
+                        <span class="stat-value" id="totalAppsValue">0</span>
+                        <span class="stat-label">Total Applications</span>
+                    </div>
+                </div>
+                
+                <div class="apps-stat-card external">
+                    <div class="stat-icon">
+                        <i class="fas fa-exclamation-circle"></i>
+                    </div>
+                    <div class="stat-content">
+                        <span class="stat-value" id="externalAppsValue">0</span>
+                        <span class="stat-label">External Applications</span>
+                    </div>
+                </div>
+                
+                <div class="apps-stat-card risk">
+                    <div class="stat-icon">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <div class="stat-content">
+                        <span class="stat-value" id="highRiskAppsValue">0</span>
+                        <span class="stat-label">High Risk Applications</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chart Section -->
+            <div class="apps-chart-section">
+                <div class="apps-chart-container">
+                    <h3><i class="fas fa-chart-bar"></i> App Distribution</h3>
+                    <canvas id="appDistributionChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Applications Table -->
+            <div class="apps-table-container">
+                <h3><i class="fas fa-list"></i> Applications List</h3>
+                <table class="apps-table">
+                    <thead>
+                        <tr>
+                            <th>Application</th>
+                            <th>Type</th>
+                            <th>Permissions</th>
+                            <th>Risk Level</th>
+                        </tr>
+                    </thead>
+                    <tbody id="apps-table-body">
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Risk Insights Section -->
+            <div class="apps-insights-section">
+                <h3><i class="fas fa-lightbulb"></i> Risk Insights</h3>
+                <div id="apps-insights-content"></div>
+            </div>
+        </div>
+    `;
+}
+
+// Populate Applications table
+function populateApplicationsTable() {
+    const tableBody = document.getElementById('apps-table-body');
+    if (!tableBody) return;
+    
+    tableBody.innerHTML = '';
+    
+    applicationsData.forEach(app => {
+        const risk = calculateAppRisk(app);
+        const riskBadgeClass = `risk-badge-${risk.level}`;
+        const riskIcon = risk.level === 'high' ? '🔴' : risk.level === 'medium' ? '⚠️' : '✅';
+        const permissionCount = (app.scopeCount || 0) + (app.roleCount || 0);
+        
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td class="app-name">${app.name}</td>
+            <td class="app-type">${app.isExternal ? 'External' : 'Internal'}</td>
+            <td class="app-permissions">${permissionCount}</td>
+            <td class="app-risk"><span class="${riskBadgeClass}">${riskIcon} ${risk.level.charAt(0).toUpperCase() + risk.level.slice(1)}</span></td>
+        `;
+        tableBody.appendChild(row);
+    });
+    
+    // Update stats
+    const totalApps = applicationsData.length;
+    const externalApps = applicationsData.filter(a => a.isExternal).length;
+    const highRiskApps = applicationsData.filter(a => calculateAppRisk(a).level === 'high').length;
+    
+    document.getElementById('totalAppsValue').textContent = totalApps;
+    document.getElementById('externalAppsValue').textContent = externalApps;
+    document.getElementById('highRiskAppsValue').textContent = highRiskApps;
+    
+    // Update insights
+    updateApplicationsInsights(totalApps, externalApps, highRiskApps);
+}
+
+// Update Applications insights
+function updateApplicationsInsights(totalApps, externalApps, highRiskApps) {
+    const insightsContainer = document.getElementById('apps-insights-content');
+    if (!insightsContainer) return;
+    
+    let insightsHTML = '<div class="insights-list">';
+    
+    if (externalApps > 0) {
+        insightsHTML += `
+            <div class="insight-item warning">
+                <i class="fas fa-exclamation-circle"></i>
+                <span><strong>${externalApps} external app(s)</strong> connected - review access regularly</span>
+            </div>
+        `;
+    }
+    
+    if (highRiskApps > 0) {
+        insightsHTML += `
+            <div class="insight-item danger">
+                <i class="fas fa-exclamation-triangle"></i>
+                <span><strong>${highRiskApps} high-risk app(s)</strong> detected - requires attention</span>
+            </div>
+        `;
+    }
+    
+    const internalApps = totalApps - externalApps;
+    if (internalApps > 0) {
+        insightsHTML += `
+            <div class="insight-item success">
+                <i class="fas fa-check-circle"></i>
+                <span><strong>${internalApps} internal app(s)</strong> - managed by Microsoft</span>
+            </div>
+        `;
+    }
+    
+    insightsHTML += '</div>';
+    insightsContainer.innerHTML = insightsHTML;
+}
+
+// Initialize Applications charts
+function initializeApplicationsCharts() {
+    console.log('[Applications Charts] Initializing charts...');
+    
+    if (typeof Chart === 'undefined') {
+        console.warn('[Applications Charts] Chart.js not loaded yet');
+        setTimeout(initializeApplicationsCharts, 100);
+        return;
+    }
+    
+    setTimeout(() => {
+        renderAppDistributionChart();
+    }, 50);
+}
+
+// Render App Distribution Chart
+function renderAppDistributionChart() {
+    const canvasElement = document.getElementById('appDistributionChart');
+    if (!canvasElement) return;
+    
+    const internalCount = applicationsData.filter(a => !a.isExternal).length;
+    const externalCount = applicationsData.filter(a => a.isExternal).length;
+    
+    canvasElement.width = canvasElement.parentElement.clientWidth;
+    canvasElement.height = 300;
+    
+    const ctx = canvasElement.getContext('2d');
+    if (!ctx) return;
+    
+    if (window.appDistributionChartInstance && typeof window.appDistributionChartInstance.destroy === 'function') {
+        window.appDistributionChartInstance.destroy();
+    }
+    
+    window.appDistributionChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: ['Internal', 'External'],
+            datasets: [{
+                label: 'Application Count',
+                data: [internalCount, externalCount],
+                backgroundColor: [
+                    'rgba(34, 197, 94, 0.7)',
+                    'rgba(248, 113, 113, 0.7)'
+                ],
+                borderColor: [
+                    'rgba(34, 197, 94, 1)',
+                    'rgba(248, 113, 113, 1)'
+                ],
+                borderWidth: 2,
+                borderRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            indexAxis: 'y',
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    ticks: { color: '#999' },
+                    grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                },
+                y: {
+                    ticks: { color: '#999', font: { size: 12 } },
+                    grid: { display: false }
+                }
+            }
+        }
+    });
+}
+
+// Open Applications full dashboard
 function openIdentityDashboard() {
     console.log('[Identity Dashboard] Opening full dashboard...');
     
@@ -3159,6 +3621,7 @@ function initializeProjectsList() {
     displayCurrentProject();
     fetchDuoStats();
     fetchIdentityAccessData(); // Fetch Microsoft Graph users for the card preview
+    fetchApplicationsData(); // Fetch Applications data for the card preview
 }
 
 function displayCurrentProject() {
@@ -3411,6 +3874,11 @@ function viewProjectDashboard(project) {
         }
         document.getElementById('backup-recovery-view').style.display = 'block';
         fetchBackupRecoveryData(project);
+    }
+    // If this is the Applications card, fetch applications data
+    else if (project.isApplicationsCard) {
+        document.getElementById('dashboard-view').style.display = 'block';
+        openApplicationsDashboard();
     }
     else {
         document.getElementById('dashboard-view').style.display = 'block';

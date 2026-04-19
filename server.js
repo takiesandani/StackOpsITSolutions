@@ -201,6 +201,78 @@ async function fetchUserAuthMethods(token, userId) {
   }
 }
 
+// ===============================
+// APPLICATIONS & SERVICE PRINCIPALS
+// ===============================
+// Fetch service principals (applications) from Microsoft Graph
+async function fetchMicrosoftServicePrincipals(token) {
+  try {
+    const response = await fetch('https://graph.microsoft.com/v1.0/servicePrincipals?$top=999&$select=id,displayName,servicePrincipalType,publisherName,createdDateTime,appOwnerOrganizationId,appRoles,oauth2PermissionScopes', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Microsoft Graph API failed: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.value || [];
+  } catch (error) {
+    console.error('[Microsoft Graph] Failed to fetch service principals:', error.message);
+    throw error;
+  }
+}
+
+// Fetch groups from Microsoft Graph
+async function fetchMicrosoftGroups(token) {
+  try {
+    const response = await fetch('https://graph.microsoft.com/v1.0/groups?$top=999&$select=id,displayName,mailNickname', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Microsoft Graph API failed: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.value || [];
+  } catch (error) {
+    console.error('[Microsoft Graph] Failed to fetch groups:', error.message);
+    return [];
+  }
+}
+
+// Fetch app role assignments for a service principal
+async function fetchAppRoleAssignments(token, servicePrincipalId) {
+  try {
+    const response = await fetch(`https://graph.microsoft.com/v1.0/servicePrincipals/${servicePrincipalId}/appRoleAssignedTo?$top=999`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const data = await response.json();
+    return data.value || [];
+  } catch (error) {
+    console.error('[Microsoft Graph] Failed to fetch app role assignments:', error.message);
+    return [];
+  }
+}
+
 const app = express();
 // Middleware for parsing bodies with raw support (critical for payment signatures)
 app.use(express.json({
@@ -4369,6 +4441,95 @@ app.get('/api/microsoft-roles', authenticateToken, async (req, res) => {
 
         res.status(500).json({ 
             error: 'Failed to fetch Microsoft Graph roles',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * Route: GET /api/microsoft-applications
+ * Returns: List of applications and service principals from Microsoft Graph
+ */
+app.get('/api/microsoft-applications', authenticateToken, async (req, res) => {
+    try {
+        const userEmail = req.user.email;
+        console.log(`[Microsoft Graph] Fetching applications for: ${userEmail}`);
+
+        // Get the tenant for this user
+        const tenant = getTenantByEmail(userEmail);
+        if (!tenant) {
+            console.warn(`[Microsoft Graph] User ${userEmail} does not belong to any configured tenant`);
+            return res.status(403).json({ 
+                error: 'User does not have access to Microsoft Graph data',
+                message: 'Your email is not associated with any tenant'
+            });
+        }
+
+        console.log(`[Microsoft Graph] User belongs to tenant: ${tenant.clientId}`);
+
+        // Get Microsoft Graph token
+        const token = await getMicrosoftGraphToken();
+
+        // Fetch service principals, users, and groups in parallel
+        const [servicePrincipals, users, groups] = await Promise.all([
+            fetchMicrosoftServicePrincipals(token),
+            fetchMicrosoftUsers(token),
+            fetchMicrosoftGroups(token)
+        ]);
+
+        // Process applications with risk assessment
+        const processedApps = servicePrincipals.map(sp => {
+            // Detect if app is external
+            const isExternal = !sp.publisherName || !sp.publisherName.toLowerCase().includes('microsoft');
+            
+            // Count OAuth scopes as a measure of permissions
+            const scopeCount = sp.oauth2PermissionScopes ? sp.oauth2PermissionScopes.length : 0;
+            const roleCount = sp.appRoles ? sp.appRoles.length : 0;
+            
+            return {
+                id: sp.id,
+                name: sp.displayName || 'Unknown App',
+                type: sp.servicePrincipalType || 'Application',
+                isExternal: isExternal,
+                publisherName: sp.publisherName || 'Unknown',
+                createdDateTime: sp.createdDateTime,
+                scopeCount: scopeCount,
+                roleCount: roleCount,
+                appOwnerOrganizationId: sp.appOwnerOrganizationId
+            };
+        });
+
+        // Calculate app statistics
+        const totalApps = processedApps.length;
+        const externalApps = processedApps.filter(app => app.isExternal).length;
+        const microsoftApps = processedApps.filter(app => !app.isExternal).length;
+
+        console.log(`[Microsoft Graph] Successfully retrieved ${totalApps} applications (${externalApps} external, ${microsoftApps} internal)`);
+
+        res.json({
+            success: true,
+            tenant: tenant.clientId,
+            totalApplications: totalApps,
+            externalApplications: externalApps,
+            internalApplications: microsoftApps,
+            applications: processedApps,
+            userCount: users.length,
+            groupCount: groups.length,
+            fetchedAt: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('[Microsoft Graph] Error fetching applications:', error.message);
+        
+        if (error.message.includes('Missing Microsoft Graph credentials')) {
+            return res.status(500).json({ 
+                error: 'Microsoft Graph not configured',
+                message: 'Credentials missing from environment'
+            });
+        }
+
+        res.status(500).json({ 
+            error: 'Failed to fetch Microsoft Graph applications',
             message: error.message
         });
     }
