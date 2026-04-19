@@ -110,7 +110,7 @@ const mockProjects = [
     },
     {
         id: 4,
-        name: "Security & Events",
+        name: "Threat & Activity",
         type: "Real-Time SOC Threat Intelligence & Response",
         status: "active",
         risks: { critical: 0, high: 0, medium: 0 },
@@ -3383,7 +3383,7 @@ function viewProjectDashboard(project) {
         document.getElementById('devices-view').style.display = 'block';
         fetchDevicesData(project);
     }
-    // If this is the Security & Events card, fetch security data
+    // If this is the Threat & Activity card, fetch security data
     else if (project.isSecurityCard) {
         document.getElementById('security-events-view').style.display = 'block';
         fetchSecurityEventsData(project);

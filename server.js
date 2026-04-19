@@ -4949,7 +4949,7 @@ app.get('/api/microsoft-devices', authenticateToken, async (req, res) => {
 });
 
 // ====================================================================================================//
-//                         MICROSOFT GRAPH - SECURITY & EVENTS (SOC)                                //
+//                         MICROSOFT GRAPH - Threat & Activity (SOC)                                //
 // ====================================================================================================//
 
 // Fetch security alerts from Microsoft Graph

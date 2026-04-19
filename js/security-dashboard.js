@@ -1,5 +1,5 @@
 // ================================================
-// SECURITY & EVENTS DASHBOARD - FRONTEND LOGIC
+// Threat & Activity DASHBOARD - FRONTEND LOGIC
 // Real-time SOC threat intelligence interface
 // ================================================
 
