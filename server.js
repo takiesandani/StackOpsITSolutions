@@ -5253,6 +5253,233 @@ app.get('/api/security-events', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * Route: GET /api/email-security
+ * Email Security dashboard aggregating email-specific alerts and incidents
+ */
+app.get('/api/email-security', authenticateToken, async (req, res) => {
+    try {
+        const userEmail = req.user.email;
+        console.log(`[Email Security] Fetching dashboard data for: ${userEmail}`);
+
+        const tenant = getTenantByEmail(userEmail);
+        if (!tenant || tenant.clientId !== 'sunbird') {
+            console.warn(`[Email Security] Access denied for ${userEmail}`);
+            return res.status(403).json({ 
+                error: 'Access denied',
+                message: 'This feature is only available for Sunbird client'
+            });
+        }
+
+        const token = await getMicrosoftGraphToken();
+
+        // Fetch security alerts and incidents
+        console.log('[Email Security] Fetching email alerts and incidents...');
+        const [alerts, incidents] = await Promise.all([
+            fetchSecurityAlerts(token),
+            fetchSecurityIncidents(token)
+        ]);
+
+        // ===== FILTER FOR EMAIL-RELATED ALERTS =====
+        const emailKeywords = ['phishing', 'malware', 'spam', 'email', 'attachment', 'suspicious mail', 'ransomware'];
+        
+        const emailAlerts = alerts.filter(alert => {
+            const category = (alert.category || '').toLowerCase();
+            const title = (alert.title || '').toLowerCase();
+            const description = (alert.description || '').toLowerCase();
+            
+            return emailKeywords.some(keyword => 
+                category.includes(keyword) || title.includes(keyword) || description.includes(keyword)
+            );
+        });
+
+        // ===== FILTER FOR EMAIL-RELATED INCIDENTS =====
+        const emailIncidents = incidents.filter(incident => {
+            const displayName = (incident.displayName || '').toLowerCase();
+            const description = (incident.description || '').toLowerCase();
+            
+            return emailKeywords.some(keyword => 
+                displayName.includes(keyword) || description.includes(keyword)
+            );
+        });
+
+        // ===== DATA PROCESSING =====
+        const processedAlerts = emailAlerts.map(alert => ({
+            id: alert.id,
+            title: alert.title || 'Unknown Alert',
+            description: alert.description || '',
+            severity: (alert.severity || 'medium').toLowerCase(),
+            status: (alert.status || 'newAlert').toLowerCase(),
+            created: alert.createdDateTime || new Date().toISOString(),
+            category: alert.category || 'Email Threat',
+            userStates: (alert.userStates || []).map(u => ({
+                aadUserId: u.aadUserId,
+                accountName: u.accountName || 'Unknown'
+            }))
+        }));
+
+        const processedIncidents = emailIncidents.map(incident => ({
+            id: incident.id,
+            displayName: incident.displayName || 'Unknown Incident',
+            description: incident.description || '',
+            severity: (incident.severity || 'medium').toLowerCase(),
+            status: (incident.status || 'active').toLowerCase(),
+            created: incident.createdDateTime || new Date().toISOString(),
+            updated: incident.lastUpdateDateTime || new Date().toISOString(),
+            assignedTo: incident.assignedTo || 'Unassigned'
+        }));
+
+        // ===== STATISTICS =====
+        const activeThreats = processedAlerts.filter(a => 
+            a.status === 'newalert' || a.status === 'inprogress'
+        ).length;
+
+        const highSeverityAlerts = processedAlerts.filter(a => 
+            a.severity === 'high' || a.severity === 'critical'
+        ).length;
+
+        const activeIncidents = processedIncidents.filter(i => 
+            i.status === 'active' || i.status === 'inprogress'
+        ).length;
+
+        const resolvedAlerts = processedAlerts.filter(a => 
+            a.status === 'resolved' || a.status === 'dismissed'
+        ).length;
+
+        const totalAlerts = processedAlerts.length;
+        const threatResolutionRate = totalAlerts > 0 
+            ? Math.round((resolvedAlerts / totalAlerts) * 100)
+            : 0;
+
+        // Extract affected users
+        const affectedUsersSet = new Set();
+        const userThreatCount = {};
+        
+        processedAlerts.forEach(alert => {
+            alert.userStates.forEach(user => {
+                affectedUsersSet.add(user.accountName);
+                userThreatCount[user.accountName] = (userThreatCount[user.accountName] || 0) + 1;
+            });
+        });
+
+        const affectedUsers = Array.from(affectedUsersSet);
+        const mostAffectedUsers = Object.entries(userThreatCount)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 10)
+            .map(([user, count]) => ({ user, threatCount: count }));
+
+        // ===== THREAT BREAKDOWN =====
+        const threatTypes = {};
+        const severityDistribution = { high: 0, medium: 0, low: 0 };
+
+        processedAlerts.forEach(alert => {
+            // Categorize threats
+            const title = (alert.title || '').toLowerCase();
+            let threatType = 'Other';
+            if (title.includes('phish')) threatType = 'Phishing';
+            else if (title.includes('malware')) threatType = 'Malware';
+            else if (title.includes('spam')) threatType = 'Spam';
+            else if (title.includes('ransomware')) threatType = 'Ransomware';
+            
+            threatTypes[threatType] = (threatTypes[threatType] || 0) + 1;
+            
+            // Count severity
+            const severity = alert.severity || 'low';
+            if (severity === 'high' || severity === 'critical') severityDistribution.high++;
+            else if (severity === 'medium') severityDistribution.medium++;
+            else severityDistribution.low++;
+        });
+
+        // ===== SECURITY SCORE =====
+        const severityScores = {
+            'critical': 25,
+            'high': 15,
+            'medium': 5,
+            'low': 2
+        };
+        
+        let securityScore = 100;
+        for (const alert of processedAlerts.slice(0, 20)) {
+            securityScore -= severityScores[alert.severity] || 2;
+        }
+        securityScore = Math.max(0, Math.min(100, securityScore));
+
+        // ===== ACTIONABLE INSIGHTS =====
+        const insights = [];
+        
+        if (highSeverityAlerts > 0) {
+            insights.push({
+                type: 'warning',
+                message: `${highSeverityAlerts} high-severity email threat${highSeverityAlerts > 1 ? 's' : ''} detected`,
+                action: 'Review Alerts',
+                count: highSeverityAlerts
+            });
+        }
+        
+        if (affectedUsers.length > 0) {
+            insights.push({
+                type: 'info',
+                message: `${affectedUsers.length} user${affectedUsers.length > 1 ? 's' : ''} affected by email threats`,
+                action: 'View Users',
+                count: affectedUsers.length
+            });
+        }
+        
+        if (activeIncidents > 0) {
+            insights.push({
+                type: 'critical',
+                message: `${activeIncidents} unresolved incident${activeIncidents > 1 ? 's' : ''} requiring attention`,
+                action: 'View Incidents',
+                count: activeIncidents
+            });
+        }
+        
+        if (threatResolutionRate < 50) {
+            insights.push({
+                type: 'warning',
+                message: `Only ${threatResolutionRate}% of threats have been resolved`,
+                action: 'Improve Response',
+                count: threatResolutionRate
+            });
+        }
+
+        console.log(`[Email Security] Compiled: ${processedAlerts.length} email alerts, ${processedIncidents.length} incidents, ${affectedUsers.length} affected users`);
+
+        res.json({
+            success: true,
+            tenant: tenant.clientId,
+            fetchedAt: new Date().toISOString(),
+            summary: {
+                activeThreats,
+                highSeverityAlerts,
+                activeIncidents,
+                affectedUsersCount: affectedUsers.length,
+                threatResolutionRate,
+                securityScore
+            },
+            alerts: processedAlerts,
+            incidents: processedIncidents,
+            threats: {
+                byType: threatTypes,
+                bySeverity: severityDistribution
+            },
+            affectedUsers: {
+                all: affectedUsers,
+                mostTargeted: mostAffectedUsers
+            },
+            insights
+        });
+
+    } catch (error) {
+        console.error('[Email Security] Error:', error.message);
+        
+        res.status(500).json({ 
+            error: 'Failed to fetch email security data',
+            message: error.message
+        });
+    }
+});
+
 const secretClient = new SecretManagerServiceClient();
 
 // Function to get secret from Google Cloud Secret Manager
@@ -5676,7 +5903,6 @@ async function getInvoiceDetails(companyId, invoiceNumber) {
     };
 }
 
-// ... (rest of the code remains unchanged)
 async function getProjectUpdates(companyId) {
     const [projects] = await pool.query(
         `SELECT ProjectID, ProjectName, Status, EndDate

@@ -1764,6 +1764,150 @@
                 </div>
             </div>
         </div>
+
+        <!-- Email Security DASHBOARD VIEW -->
+        <div id="email-security-view" class="email-security-view" style="display: none;">
+            <div class="container-fluid">
+                <!-- Header with Back Button -->
+                <div class="email-dashboard-title">
+                    <div class="email-title-section">
+                        <button class="btn-back" id="btn-back-email">
+                            <i class="fas fa-arrow-left"></i> Back to Projects
+                        </button>
+                        <i class="fas fa-envelope-circle-check"></i>
+                        <h2>Email Security Dashboard</h2>
+                    </div>
+                    <span class="project-status" id="email-status">Live Monitoring</span>
+                </div>
+
+                <!-- Summary Cards Row -->
+                <div class="email-summary-cards">
+                    <div class="email-stat-card info">
+                        <div class="email-stat-icon info"><i class="fas fa-exclamation-triangle"></i></div>
+                        <div class="email-stat-content">
+                            <h3 id="email-active-threats">0</h3>
+                            <p>Active Email Threats</p>
+                        </div>
+                    </div>
+
+                    <div class="email-stat-card critical">
+                        <div class="email-stat-icon critical"><i class="fas fa-circle-exclamation"></i></div>
+                        <div class="email-stat-content">
+                            <h3 id="email-high-severity">0</h3>
+                            <p>High Severity Alerts</p>
+                        </div>
+                    </div>
+
+                    <div class="email-stat-card warning">
+                        <div class="email-stat-icon warning"><i class="fas fa-fire"></i></div>
+                        <div class="email-stat-content">
+                            <h3 id="email-active-incidents">0</h3>
+                            <p>Active Incidents</p>
+                        </div>
+                    </div>
+
+                    <div class="email-stat-card success">
+                        <div class="email-stat-icon success"><i class="fas fa-percent"></i></div>
+                        <div class="email-stat-content">
+                            <h3 id="email-resolution-rate">0%</h3>
+                            <p>Resolution Rate</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Critical Risks Panel -->
+                <div class="email-risks-panel">
+                    <h3><i class="fas fa-warning"></i> Critical Risks & Insights</h3>
+                    <div id="email-risks-container" class="risks-grid">
+                        <div style="text-align: center; padding: 40px; color: #94a3b8;">
+                            <i class="fas fa-spinner fa-spin loading-spinner"></i> Loading risks...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Section -->
+                <div class="email-charts-container">
+                    <!-- Threat Breakdown by Type -->
+                    <div class="chart-card">
+                        <h3><i class="fas fa-doughnut-chart"></i> Threat Types</h3>
+                        <div class="chart-container">
+                            <canvas id="emailThreatTypeChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Severity Distribution -->
+                    <div class="chart-card">
+                        <h3><i class="fas fa-pie-chart"></i> Severity Distribution</h3>
+                        <div class="chart-container">
+                            <canvas id="emailSeverityChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Threat Timeline -->
+                    <div class="chart-card full-width">
+                        <h3><i class="fas fa-chart-line"></i> Email Threat Timeline (7 Days)</h3>
+                        <div class="chart-container">
+                            <canvas id="emailTimelineChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Actionable Insights Panel -->
+                <div class="monitor-card">
+                    <h3><i class="fas fa-lightbulb"></i> Actionable Insights</h3>
+                    <div id="email-insights-container" class="insights-container">
+                        <div style="text-align: center; padding: 40px; color: #94a3b8;">
+                            <i class="fas fa-spinner fa-spin loading-spinner"></i> Generating insights...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Real-Time Feed Section -->
+                <div class="monitor-card">
+                    <h3><i class="fas fa-stream"></i> Real-Time Email Threat Feed</h3>
+                    <div class="email-feed-container" id="email-feed">
+                        <div style="text-align: center; padding: 40px; color: #94a3b8;">
+                            <i class="fas fa-spinner fa-spin loading-spinner"></i> Loading threats...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Email Alerts Table -->
+                <div class="email-table-container">
+                    <h3><i class="fas fa-table"></i> Email Security Alerts</h3>
+                    <table class="email-alerts-table">
+                        <thead>
+                            <tr>
+                                <th>Threat</th>
+                                <th>Severity</th>
+                                <th>Status</th>
+                                <th>User/Email</th>
+                                <th>Created</th>
+                                <th>Category</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="email-alerts-tbody">
+                            <tr>
+                                <td colspan="7" style="text-align: center; padding: 20px; color: #94a3b8;">
+                                    <i class="fas fa-spinner fa-spin loading-spinner"></i> Loading alerts...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Affected Users Insights -->
+                <div class="monitor-card">
+                    <h3><i class="fas fa-users"></i> Most Affected Users</h3>
+                    <div id="email-affected-users" class="affected-users-list">
+                        <div style="text-align: center; padding: 40px; color: #94a3b8;">
+                            <i class="fas fa-spinner fa-spin loading-spinner"></i> Loading user data...
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </section>
 
     <!-- Chatbot will be injected by chatbot.js -->
@@ -1774,6 +1918,7 @@
     <script src="js/clientportal.js"></script>
     <script src="js/devices-dashboard.js"></script>
     <script src="js/security-dashboard.js"></script>
+    <script src="js/email-security-dashboard.js"></script>
     <script src="js/chatbot.js"></script>
 
 </body>

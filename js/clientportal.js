@@ -13,7 +13,7 @@ const SUNBIRD_EMAILS = [
 ];
 
 // Sunbird-only card IDs that should be hidden from non-Sunbird clients
-const SUNBIRD_ONLY_CARD_IDS = [2, 3, 4]; // Identity & Access, Devices, Applications
+const SUNBIRD_ONLY_CARD_IDS = [2, 3, 4, 5]; // Identity & Access, Devices, Applications, Email Security
 
 // Cards to hide from Sunbird clients
 const HIDDEN_FROM_SUNBIRD_IDS = [7]; // Backup and Recovery
@@ -129,19 +129,22 @@ const mockProjects = [
     },
     {
         id: 5,
-        name: "Applications",
-        type: "Automated protection and restore readiness",
+        name: "Email Security",
+        type: "Email Threat Detection & Management",
         status: "active",
-        risks: { critical: 1, high: 1, medium: 1 },
-        securityScore: 90,
-        uptime: 99.7,
-        lastUpdate: "30 minutes ago",
-        icon: "fas fa-database",
+        risks: { critical: 0, high: 0, medium: 0 },
+        securityScore: 0,
+        uptime: 100,
+        lastUpdate: "Loading...",
+        icon: "fas fa-envelope-circle-check",
         cardMetrics: [
-            { label: "Last Backup", value: ": 2 hours ago", icon: "fas fa-history" },
-            { label: "Recovery Time", value: ": 15 mins", icon: "fas fa-hourglass-end" }
+            { label: "Active Threats", value: ": ...", icon: "fas fa-exclamation-triangle" },
+            { label: "High Severity", value: ": ...", icon: "fas fa-circle-exclamation" }
         ],
-        cardFooter: "Backup Status: Healthy"
+        cardFooter: "Fetching from Microsoft Graph Security...",
+        hasTabs: false,
+        microsoftGraphEnabled: true,
+        isEmailSecurityCard: true
     },
     {
         id: 6,
@@ -3387,6 +3390,15 @@ function viewProjectDashboard(project) {
     else if (project.isSecurityCard) {
         document.getElementById('security-events-view').style.display = 'block';
         fetchSecurityEventsData(project);
+    }
+    // If this is the Email Security card, fetch email security data
+    else if (project.isEmailSecurityCard) {
+        if (!document.getElementById('email-security-view')) {
+            console.warn('[Email Security] View element not found');
+            return;
+        }
+        document.getElementById('email-security-view').style.display = 'block';
+        fetchEmailSecurityData(project);
     }
     else {
         document.getElementById('dashboard-view').style.display = 'block';
