@@ -543,7 +543,7 @@
 
 .header-info h1 {
     color: var(--light);
-    font-size: 1rem;
+    font-size: 0.5rem;
 }
 
 .header-user {
@@ -2262,7 +2262,7 @@
     }
 
     .header-info h1 {
-        font-size: 1.3rem;
+        font-size: 0.3rem;
     }
 
     .header-user {
@@ -2347,7 +2347,7 @@
     }
 
     .header-info h1 {
-        font-size: 1.1rem;
+        font-size: 0.2rem;
     }
 
     .projects-header h2 {
