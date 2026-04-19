@@ -5481,6 +5481,39 @@ app.get('/api/email-security', authenticateToken, async (req, res) => {
 });
 
 /**
+ * Helper: Parse CSV response from Microsoft Graph Reports API
+ */
+function parseGraphReportCSV(csvText) {
+    try {
+        const lines = csvText.trim().split('\n');
+        if (lines.length < 2) return [];
+
+        // Parse header
+        const header = lines[0].split('\t').map(h => h.trim());
+        
+        // Parse rows
+        const data = [];
+        for (let i = 1; i < lines.length; i++) {
+            if (!lines[i].trim()) continue;
+            
+            const values = lines[i].split('\t').map(v => v.trim());
+            const row = {};
+            
+            header.forEach((key, index) => {
+                row[key] = values[index] || '';
+            });
+            
+            data.push(row);
+        }
+        
+        return data;
+    } catch (error) {
+        console.error('[CSV Parser] Error parsing CSV:', error);
+        return [];
+    }
+}
+
+/**
  * Route: GET /api/backup-recovery
  * Fetch backup and recovery data from Microsoft Graph Reports
  * Uses: OneDrive, SharePoint, Exchange storage reports
@@ -5495,26 +5528,29 @@ app.get('/api/backup-recovery', authenticateToken, async (req, res) => {
         // Fetch storage data using Microsoft Graph Reports API
         console.log('[Backup Recovery] Fetching storage reports...');
         
-        // Fetch OneDrive usage
+        // Fetch OneDrive usage (returns CSV)
         const oneDriveUrl = 'https://graph.microsoft.com/v1.0/reports/getOneDriveUsageAccountDetail(period=\'D7\')';
         const oneDriveResponse = await fetch(oneDriveUrl, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        const oneDriveData = oneDriveResponse.ok ? await oneDriveResponse.json() : { value: [] };
+        const oneDriveCSV = oneDriveResponse.ok ? await oneDriveResponse.text() : '';
+        const oneDriveData = parseGraphReportCSV(oneDriveCSV);
 
-        // Fetch SharePoint usage
+        // Fetch SharePoint usage (returns CSV)
         const sharePointUrl = 'https://graph.microsoft.com/v1.0/reports/getSharePointSiteUsageDetail(period=\'D7\')';
         const sharePointResponse = await fetch(sharePointUrl, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        const sharePointData = sharePointResponse.ok ? await sharePointResponse.json() : { value: [] };
+        const sharePointCSV = sharePointResponse.ok ? await sharePointResponse.text() : '';
+        const sharePointData = parseGraphReportCSV(sharePointCSV);
 
-        // Fetch Exchange (Mailbox) usage  
+        // Fetch Exchange (Mailbox) usage (returns CSV)
         const exchangeUrl = 'https://graph.microsoft.com/v1.0/reports/getMailboxUsageDetail(period=\'D7\')';
         const exchangeResponse = await fetch(exchangeUrl, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        const exchangeData = exchangeResponse.ok ? await exchangeResponse.json() : { value: [] };
+        const exchangeCSV = exchangeResponse.ok ? await exchangeResponse.text() : '';
+        const exchangeData = parseGraphReportCSV(exchangeCSV);
 
         // ===== DATA PROCESSING =====
 
@@ -5522,58 +5558,55 @@ app.get('/api/backup-recovery', authenticateToken, async (req, res) => {
         let oneDriveStorageBytes = 0;
         const oneDriveUsers = [];
         
-        if (oneDriveData.value && Array.isArray(oneDriveData.value)) {
-            oneDriveData.value.forEach(item => {
-                const storageBytes = parseInt(item['Storage Used (Byte)'] || 0);
-                oneDriveStorageBytes += storageBytes;
-                if (item['Owner Principal Name']) {
-                    oneDriveUsers.push({
-                        user: item['Owner Principal Name'],
-                        storage: storageBytes,
-                        lastActivity: item['Last Activity Date'],
-                        files: parseInt(item['File Count'] || 0)
-                    });
-                }
-            });
-        }
+        oneDriveData.forEach(item => {
+            // CSV column: 'Storage Used (Byte)'
+            const storageBytes = parseInt(item['Storage Used (Byte)'] || 0);
+            oneDriveStorageBytes += storageBytes;
+            if (item['Owner Principal Name']) {
+                oneDriveUsers.push({
+                    user: item['Owner Principal Name'],
+                    storage: storageBytes,
+                    lastActivity: item['Last Activity Date'],
+                    files: parseInt(item['File Count'] || 0)
+                });
+            }
+        });
 
         // Process SharePoint storage (in bytes)
         let sharePointStorageBytes = 0;
         const sharePointSites = [];
         
-        if (sharePointData.value && Array.isArray(sharePointData.value)) {
-            sharePointData.value.forEach(item => {
-                const storageBytes = parseInt(item['Storage Used (Byte)'] || 0);
-                sharePointStorageBytes += storageBytes;
-                if (item['Site URL']) {
-                    sharePointSites.push({
-                        url: item['Site URL'],
-                        storage: storageBytes,
-                        lastActivity: item['Last Activity Date'],
-                        files: parseInt(item['File Count'] || 0)
-                    });
-                }
-            });
-        }
+        sharePointData.forEach(item => {
+            // CSV column: 'Storage Used (Byte)'
+            const storageBytes = parseInt(item['Storage Used (Byte)'] || 0);
+            sharePointStorageBytes += storageBytes;
+            if (item['Site URL']) {
+                sharePointSites.push({
+                    url: item['Site URL'],
+                    storage: storageBytes,
+                    lastActivity: item['Last Activity Date'],
+                    files: parseInt(item['File Count'] || 0)
+                });
+            }
+        });
 
         // Process Exchange storage (in bytes)
         let exchangeStorageBytes = 0;
         const exchangeUsers = [];
         
-        if (exchangeData.value && Array.isArray(exchangeData.value)) {
-            exchangeData.value.forEach(item => {
-                const storageBytes = parseInt(item['Storage Used (Byte)'] || 0);
-                exchangeStorageBytes += storageBytes;
-                if (item['User Principal Name']) {
-                    exchangeUsers.push({
-                        user: item['User Principal Name'],
-                        storage: storageBytes,
-                        lastActivity: item['Last Activity Date'],
-                        items: parseInt(item['Item Count'] || 0)
-                    });
-                }
-            });
-        }
+        exchangeData.forEach(item => {
+            // CSV column: 'Storage Used (Byte)'
+            const storageBytes = parseInt(item['Storage Used (Byte)'] || 0);
+            exchangeStorageBytes += storageBytes;
+            if (item['User Principal Name']) {
+                exchangeUsers.push({
+                    user: item['User Principal Name'],
+                    storage: storageBytes,
+                    lastActivity: item['Last Activity Date'],
+                    items: parseInt(item['Item Count'] || 0)
+                });
+            }
+        });
 
         // ===== CALCULATE METRICS =====
         const totalStorageBytes = oneDriveStorageBytes + sharePointStorageBytes + exchangeStorageBytes;
