@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="css/identity-dashboard.css">
     <link rel="stylesheet" href="css/devices-dashboard.css">
     <link rel="stylesheet" href="css/security-dashboard.css">
+    <link rel="stylesheet" href="css/backup-recovery-dashboard.css">
 
     <style>
         /* Chatbot Styles */
@@ -1907,6 +1908,167 @@
                 </div>
             </div>
         </div>
+
+        <!-- Backup & Recovery Dashboard View -->
+        <div id="backup-recovery-view" class="backup-recovery-view" style="display: none;">
+            <div class="container-fluid">
+                <!-- Header with Back Button -->
+                <div class="backup-dashboard-title">
+                    <div class="backup-title-section">
+                        <button class="btn-back" id="btn-back-backup-recovery">
+                            <i class="fas fa-arrow-left"></i> Back to Projects
+                        </button>
+                        <i class="fas fa-shield-alt"></i>
+                        <h2>Backup & Recovery Dashboard</h2>
+                    </div>
+                    <span class="project-status" id="backup-status">Data Protection Active</span>
+                </div>
+
+                <!-- Summary Cards Row -->
+                <div class="backup-summary-cards">
+                    <div class="backup-stat-card info">
+                        <div class="backup-stat-icon info"><i class="fas fa-database"></i></div>
+                        <div class="backup-stat-content">
+                            <h3 id="backup-total-storage">0GB</h3>
+                            <p>Total Storage</p>
+                        </div>
+                    </div>
+
+                    <div class="backup-stat-card info">
+                        <div class="backup-stat-icon info"><i class="fas fa-cloud"></i></div>
+                        <div class="backup-stat-content">
+                            <h3 id="backup-onedrive-storage">0GB</h3>
+                            <p>OneDrive Storage</p>
+                        </div>
+                    </div>
+
+                    <div class="backup-stat-card info">
+                        <div class="backup-stat-icon info"><i class="fas fa-sitemap"></i></div>
+                        <div class="backup-stat-content">
+                            <h3 id="backup-sharepoint-storage">0GB</h3>
+                            <p>SharePoint Storage</p>
+                        </div>
+                    </div>
+
+                    <div class="backup-stat-card info">
+                        <div class="backup-stat-icon info"><i class="fas fa-envelope"></i></div>
+                        <div class="backup-stat-content">
+                            <h3 id="backup-exchange-storage">0GB</h3>
+                            <p>Exchange Storage</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Additional Metrics Row -->
+                <div class="backup-metrics-row">
+                    <div class="metric-item">
+                        <i class="fas fa-users"></i>
+                        <div>
+                            <span id="backup-active-users">0</span>
+                            <p>Active Users</p>
+                        </div>
+                    </div>
+                    <div class="metric-item">
+                        <i class="fas fa-check-circle"></i>
+                        <div>
+                            <span id="backup-services-covered">3</span>
+                            <p>Services Covered</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Critical Risks Panel -->
+                <div class="backup-risks-panel">
+                    <h3><i class="fas fa-warning"></i> Critical Risks & Insights</h3>
+                    <div id="backup-risks-container" class="risks-grid">
+                        <div style="text-align: center; padding: 40px; color: #94a3b8;">
+                            <i class="fas fa-spinner fa-spin loading-spinner"></i> Loading risks...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Section -->
+                <div class="backup-charts-container">
+                    <!-- Storage Distribution -->
+                    <div class="chart-card">
+                        <h3><i class="fas fa-pie-chart"></i> Storage Distribution</h3>
+                        <div class="chart-container">
+                            <canvas id="backupStorageChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- User Activity -->
+                    <div class="chart-card">
+                        <h3><i class="fas fa-chart-bar"></i> User Activity</h3>
+                        <div class="chart-container">
+                            <canvas id="backupActivityChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Service Comparison -->
+                    <div class="chart-card full-width">
+                        <h3><i class="fas fa-chart-line"></i> Service Storage Comparison</h3>
+                        <div class="chart-container">
+                            <canvas id="backupComparisonChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Storage Insights Panel -->
+                <div class="monitor-card">
+                    <h3><i class="fas fa-lightbulb"></i> Storage Insights</h3>
+                    <div id="backup-insights-container" class="insights-container">
+                        <div style="text-align: center; padding: 40px; color: #94a3b8;">
+                            <i class="fas fa-spinner fa-spin loading-spinner"></i> Generating insights...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Storage Data Table -->
+                <div class="backup-table-container">
+                    <h3><i class="fas fa-table"></i> Storage by Service</h3>
+                    <table class="backup-storage-table">
+                        <thead>
+                            <tr>
+                                <th>Service Area</th>
+                                <th>Storage Used</th>
+                                <th>Backup Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="backup-storage-tbody">
+                            <tr>
+                                <td colspan="3" style="text-align: center; padding: 20px; color: #94a3b8;">
+                                    <i class="fas fa-spinner fa-spin loading-spinner"></i> Loading storage data...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Advanced Insights Panel -->
+                <div class="monitor-card">
+                    <h3><i class="fas fa-tasks"></i> Actionable Insights</h3>
+                    <div id="backup-advanced-insights-container" class="advanced-insights-container">
+                        <div style="text-align: center; padding: 40px; color: #94a3b8;">
+                            <i class="fas fa-spinner fa-spin loading-spinner"></i> Generating insights...
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Backup & Recovery Detailed View Modal -->
+            <div id="backup-recovery-modal" class="backup-modal" style="display: none;">
+                <div class="backup-modal-content">
+                    <div class="backup-modal-header">
+                        <h3 id="backup-modal-title">Detailed Breakdown</h3>
+                        <button class="backup-modal-close" onclick="closeBackupModal()">&times;</button>
+                    </div>
+                    <div class="backup-modal-body" id="backup-modal-body">
+                        <!-- Content will be injected here -->
+                    </div>
+                </div>
+            </div>
+        </div>
     </section>
 
     <!-- Chatbot will be injected by chatbot.js -->
@@ -1918,6 +2080,7 @@
     <script src="js/devices-dashboard.js"></script>
     <script src="js/security-dashboard.js"></script>
     <script src="js/email-security-dashboard.js"></script>
+    <script src="js/backup-recovery-dashboard.js"></script>
     <script src="js/chatbot.js"></script>
 
 </body>

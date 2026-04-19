@@ -5480,6 +5480,203 @@ app.get('/api/email-security', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * Route: GET /api/backup-recovery
+ * Fetch backup and recovery data from Microsoft Graph Reports
+ * Uses: OneDrive, SharePoint, Exchange storage reports
+ */
+app.get('/api/backup-recovery', authenticateToken, async (req, res) => {
+    try {
+        const userEmail = req.user.email;
+        console.log(`[Backup Recovery] Fetching dashboard data for: ${userEmail}`);
+
+        const token = await getMicrosoftGraphToken();
+
+        // Fetch storage data using Microsoft Graph Reports API
+        console.log('[Backup Recovery] Fetching storage reports...');
+        
+        // Fetch OneDrive usage
+        const oneDriveUrl = 'https://graph.microsoft.com/v1.0/reports/getOneDriveUsageAccountDetail(period=\'D7\')';
+        const oneDriveResponse = await fetch(oneDriveUrl, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const oneDriveData = oneDriveResponse.ok ? await oneDriveResponse.json() : { value: [] };
+
+        // Fetch SharePoint usage
+        const sharePointUrl = 'https://graph.microsoft.com/v1.0/reports/getSharePointSiteUsageDetail(period=\'D7\')';
+        const sharePointResponse = await fetch(sharePointUrl, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const sharePointData = sharePointResponse.ok ? await sharePointResponse.json() : { value: [] };
+
+        // Fetch Exchange (Mailbox) usage  
+        const exchangeUrl = 'https://graph.microsoft.com/v1.0/reports/getMailboxUsageDetail(period=\'D7\')';
+        const exchangeResponse = await fetch(exchangeUrl, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const exchangeData = exchangeResponse.ok ? await exchangeResponse.json() : { value: [] };
+
+        // ===== DATA PROCESSING =====
+
+        // Process OneDrive storage (in bytes)
+        let oneDriveStorageBytes = 0;
+        const oneDriveUsers = [];
+        
+        if (oneDriveData.value && Array.isArray(oneDriveData.value)) {
+            oneDriveData.value.forEach(item => {
+                const storageBytes = parseInt(item['Storage Used (Byte)'] || 0);
+                oneDriveStorageBytes += storageBytes;
+                if (item['Owner Principal Name']) {
+                    oneDriveUsers.push({
+                        user: item['Owner Principal Name'],
+                        storage: storageBytes,
+                        lastActivity: item['Last Activity Date'],
+                        files: parseInt(item['File Count'] || 0)
+                    });
+                }
+            });
+        }
+
+        // Process SharePoint storage (in bytes)
+        let sharePointStorageBytes = 0;
+        const sharePointSites = [];
+        
+        if (sharePointData.value && Array.isArray(sharePointData.value)) {
+            sharePointData.value.forEach(item => {
+                const storageBytes = parseInt(item['Storage Used (Byte)'] || 0);
+                sharePointStorageBytes += storageBytes;
+                if (item['Site URL']) {
+                    sharePointSites.push({
+                        url: item['Site URL'],
+                        storage: storageBytes,
+                        lastActivity: item['Last Activity Date'],
+                        files: parseInt(item['File Count'] || 0)
+                    });
+                }
+            });
+        }
+
+        // Process Exchange storage (in bytes)
+        let exchangeStorageBytes = 0;
+        const exchangeUsers = [];
+        
+        if (exchangeData.value && Array.isArray(exchangeData.value)) {
+            exchangeData.value.forEach(item => {
+                const storageBytes = parseInt(item['Storage Used (Byte)'] || 0);
+                exchangeStorageBytes += storageBytes;
+                if (item['User Principal Name']) {
+                    exchangeUsers.push({
+                        user: item['User Principal Name'],
+                        storage: storageBytes,
+                        lastActivity: item['Last Activity Date'],
+                        items: parseInt(item['Item Count'] || 0)
+                    });
+                }
+            });
+        }
+
+        // ===== CALCULATE METRICS =====
+        const totalStorageBytes = oneDriveStorageBytes + sharePointStorageBytes + exchangeStorageBytes;
+        const totalStorageGB = parseFloat((totalStorageBytes / (1024 ** 3)).toFixed(1));
+        const oneDriveStorageGB = parseFloat((oneDriveStorageBytes / (1024 ** 3)).toFixed(1));
+        const sharePointStorageGB = parseFloat((sharePointStorageBytes / (1024 ** 3)).toFixed(1));
+        const exchangeStorageGB = parseFloat((exchangeStorageBytes / (1024 ** 3)).toFixed(1));
+
+        // Count unique users
+        const activeUserEmails = new Set([
+            ...oneDriveUsers.map(u => u.user),
+            ...exchangeUsers.map(u => u.user)
+        ]);
+        const activeUsersCount = activeUserEmails.size;
+
+        // Determine inactive users based on last activity date (if older than 30 days)
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        
+        const allUsers = [...oneDriveUsers, ...exchangeUsers];
+        const inactiveUsers = allUsers.filter(u => {
+            if (!u.lastActivity) return true;
+            const lastActivity = new Date(u.lastActivity);
+            return lastActivity < thirtyDaysAgo;
+        });
+        
+        const inactiveUsersCount = new Set(inactiveUsers.map(u => u.user)).size;
+        const inactiveUserStorageBytes = inactiveUsers.reduce((sum, u) => sum + u.storage, 0);
+        const inactiveUserStorageGB = parseFloat((inactiveUserStorageBytes / (1024 ** 3)).toFixed(1));
+
+        // Backup configuration status (manual logic - no API)
+        const backupConfigured = false; // Default: no external backup configured
+
+        // ===== BUILD RESPONSE =====
+        const summary = {
+            totalStorageGB,
+            oneDriveStorageGB,
+            sharePointStorageGB,
+            exchangeStorageGB,
+            activeUsersCount,
+            inactiveUsersCount,
+            servicesCovered: 3, // OneDrive, SharePoint, Exchange
+            backupConfigured
+        };
+
+        const storage = {
+            byService: {
+                onedrive: oneDriveStorageGB,
+                sharepoint: sharePointStorageGB,
+                exchange: exchangeStorageGB
+            },
+            inactiveUserStorageGB,
+            sites: sharePointSites.sort((a, b) => b.storage - a.storage).slice(0, 10),
+            users: allUsers.sort((a, b) => b.storage - a.storage).slice(0, 20)
+        };
+
+        // ===== INSIGHTS =====
+        const insights = [];
+        
+        if (totalStorageGB > 1000) {
+            insights.push({
+                type: 'warning',
+                message: 'Large data volume detected',
+                detail: `${totalStorageGB}GB across Microsoft 365 services`
+            });
+        }
+
+        if (inactiveUsersCount > 0) {
+            insights.push({
+                type: 'info',
+                message: `${inactiveUsersCount} inactive users holding data`,
+                detail: `${inactiveUserStorageGB}GB in inactive user accounts`
+            });
+        }
+
+        if (!backupConfigured) {
+            insights.push({
+                type: 'critical',
+                message: 'No external backup configured',
+                detail: 'Only Microsoft-native retention policies are protecting your data'
+            });
+        }
+
+        console.log(`[Backup Recovery] Compiled: ${totalStorageGB}GB total storage, ${activeUsersCount} active users`);
+
+        res.json({
+            success: true,
+            fetchedAt: new Date().toISOString(),
+            summary,
+            storage,
+            insights
+        });
+
+    } catch (error) {
+        console.error('[Backup Recovery] Error:', error.message);
+        
+        res.status(500).json({ 
+            error: 'Failed to fetch backup recovery data',
+            message: error.message
+        });
+    }
+});
+
 const secretClient = new SecretManagerServiceClient();
 
 // Function to get secret from Google Cloud Secret Manager

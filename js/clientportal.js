@@ -165,18 +165,21 @@ const mockProjects = [
     {
         id: 7,
         name: "Backup and Recovery",
-        type: "Automated protection & Disaster recovery",
+        type: "Data Protection & Disaster Recovery",
         status: "active",
-        risks: { critical: 0, high: 1, medium: 2 },
-        securityScore: 95,
-        uptime: 99.9,
-        lastUpdate: "15 minutes ago",
+        risks: { critical: 0, high: 0, medium: 0 },
+        securityScore: 0,
+        uptime: 100,
+        lastUpdate: "Loading...",
         icon: "fas fa-shield-alt",
         cardMetrics: [
-            { label: "Restore Success", value: ": 100%", icon: "fas fa-check-circle" },
-            { label: "Data Protected", value: ": 4.5TB", icon: "fas fa-hdd" }
+            { label: "Total Storage", value: ": ...", icon: "fas fa-database" },
+            { label: "Services Covered", value: ": 3", icon: "fas fa-cloud" }
         ],
-        cardFooter: "RPO: 1 Hour | RTO: 4 Hours"
+        cardFooter: "Fetching from Microsoft Graph...",
+        hasTabs: false,
+        microsoftGraphEnabled: true,
+        isBackupRecoveryCard: true
     }
 ];
 
@@ -3399,6 +3402,15 @@ function viewProjectDashboard(project) {
         }
         document.getElementById('email-security-view').style.display = 'block';
         fetchEmailSecurityData(project);
+    }
+    // If this is the Backup and Recovery card, fetch backup recovery data
+    else if (project.isBackupRecoveryCard) {
+        if (!document.getElementById('backup-recovery-view')) {
+            console.warn('[Backup Recovery] View element not found');
+            return;
+        }
+        document.getElementById('backup-recovery-view').style.display = 'block';
+        fetchBackupRecoveryData(project);
     }
     else {
         document.getElementById('dashboard-view').style.display = 'block';
