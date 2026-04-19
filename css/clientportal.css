@@ -429,7 +429,7 @@
 .site-header {
     background: rgba(28, 28, 28, 0.95);
     backdrop-filter: blur(10px);
-    border-bottom: 1px solid rgba(0, 110, 255, 0.2);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
     padding: 15px 40px;
     position: fixed;
     top: 0;
