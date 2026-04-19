@@ -5483,13 +5483,17 @@ app.get('/api/email-security', authenticateToken, async (req, res) => {
 /**
  * Helper: Parse CSV response from Microsoft Graph Reports API
  */
-function parseGraphReportCSV(csvText) {
+function parseGraphReportCSV(csvText, reportType = 'unknown') {
     try {
         const lines = csvText.trim().split('\n');
-        if (lines.length < 2) return [];
+        if (lines.length < 2) {
+            console.log(`[CSV Parser] ${reportType} - No data rows (only ${lines.length} lines)`);
+            return [];
+        }
 
         // Parse header
         const header = lines[0].split('\t').map(h => h.trim());
+        console.log(`[CSV Parser] ${reportType} - Headers: ${header.join(', ')}`);
         
         // Parse rows
         const data = [];
@@ -5504,6 +5508,11 @@ function parseGraphReportCSV(csvText) {
             });
             
             data.push(row);
+        }
+        
+        console.log(`[CSV Parser] ${reportType} - Parsed ${data.length} rows`);
+        if (data.length > 0) {
+            console.log(`[CSV Parser] ${reportType} - First row keys:`, Object.keys(data[0]));
         }
         
         return data;
@@ -5534,7 +5543,7 @@ app.get('/api/backup-recovery', authenticateToken, async (req, res) => {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         const oneDriveCSV = oneDriveResponse.ok ? await oneDriveResponse.text() : '';
-        const oneDriveData = parseGraphReportCSV(oneDriveCSV);
+        const oneDriveData = parseGraphReportCSV(oneDriveCSV, 'OneDrive');
 
         // Fetch SharePoint usage (returns CSV)
         const sharePointUrl = 'https://graph.microsoft.com/v1.0/reports/getSharePointSiteUsageDetail(period=\'D7\')';
@@ -5542,7 +5551,7 @@ app.get('/api/backup-recovery', authenticateToken, async (req, res) => {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         const sharePointCSV = sharePointResponse.ok ? await sharePointResponse.text() : '';
-        const sharePointData = parseGraphReportCSV(sharePointCSV);
+        const sharePointData = parseGraphReportCSV(sharePointCSV, 'SharePoint');
 
         // Fetch Exchange (Mailbox) usage (returns CSV)
         const exchangeUrl = 'https://graph.microsoft.com/v1.0/reports/getMailboxUsageDetail(period=\'D7\')';
@@ -5550,7 +5559,7 @@ app.get('/api/backup-recovery', authenticateToken, async (req, res) => {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         const exchangeCSV = exchangeResponse.ok ? await exchangeResponse.text() : '';
-        const exchangeData = parseGraphReportCSV(exchangeCSV);
+        const exchangeData = parseGraphReportCSV(exchangeCSV, 'Exchange');
 
         // ===== DATA PROCESSING =====
 
@@ -5559,15 +5568,51 @@ app.get('/api/backup-recovery', authenticateToken, async (req, res) => {
         const oneDriveUsers = [];
         
         oneDriveData.forEach(item => {
-            // CSV column: 'Storage Used (Byte)'
-            const storageBytes = parseInt(item['Storage Used (Byte)'] || 0);
+            // Try multiple column name variations
+            let storageBytes = 0;
+            let ownerName = '';
+            let fileCount = 0;
+            let lastActivity = '';
+            
+            // Find storage column (try variations)
+            for (const key of Object.keys(item)) {
+                if (key.includes('Storage') && key.includes('Byte')) {
+                    storageBytes = parseInt(item[key]) || 0;
+                    break;
+                }
+            }
+            
+            // Find owner column (try variations)
+            for (const key of Object.keys(item)) {
+                if (key.includes('Owner') || key.includes('Principal') || key.includes('Display Name')) {
+                    ownerName = item[key];
+                    break;
+                }
+            }
+            
+            // Find file count (try variations)
+            for (const key of Object.keys(item)) {
+                if (key.includes('File') && (key.includes('Count') || key.includes('count'))) {
+                    fileCount = parseInt(item[key]) || 0;
+                    break;
+                }
+            }
+            
+            // Find last activity (try variations)
+            for (const key of Object.keys(item)) {
+                if (key.includes('Last') && key.includes('Activity') && key.includes('Date')) {
+                    lastActivity = item[key];
+                    break;
+                }
+            }
+            
             oneDriveStorageBytes += storageBytes;
-            if (item['Owner Principal Name']) {
+            if (ownerName && storageBytes > 0) {
                 oneDriveUsers.push({
-                    user: item['Owner Principal Name'],
+                    user: ownerName,
                     storage: storageBytes,
-                    lastActivity: item['Last Activity Date'],
-                    files: parseInt(item['File Count'] || 0)
+                    lastActivity: lastActivity,
+                    files: fileCount
                 });
             }
         });
@@ -5577,15 +5622,50 @@ app.get('/api/backup-recovery', authenticateToken, async (req, res) => {
         const sharePointSites = [];
         
         sharePointData.forEach(item => {
-            // CSV column: 'Storage Used (Byte)'
-            const storageBytes = parseInt(item['Storage Used (Byte)'] || 0);
+            let storageBytes = 0;
+            let siteUrl = '';
+            let fileCount = 0;
+            let lastActivity = '';
+            
+            // Find storage column
+            for (const key of Object.keys(item)) {
+                if (key.includes('Storage') && key.includes('Byte')) {
+                    storageBytes = parseInt(item[key]) || 0;
+                    break;
+                }
+            }
+            
+            // Find site URL
+            for (const key of Object.keys(item)) {
+                if (key.includes('Site') && key.includes('URL')) {
+                    siteUrl = item[key];
+                    break;
+                }
+            }
+            
+            // Find file count
+            for (const key of Object.keys(item)) {
+                if (key.includes('File') && (key.includes('Count') || key.includes('count'))) {
+                    fileCount = parseInt(item[key]) || 0;
+                    break;
+                }
+            }
+            
+            // Find last activity
+            for (const key of Object.keys(item)) {
+                if (key.includes('Last') && key.includes('Activity') && key.includes('Date')) {
+                    lastActivity = item[key];
+                    break;
+                }
+            }
+            
             sharePointStorageBytes += storageBytes;
-            if (item['Site URL']) {
+            if (siteUrl && storageBytes > 0) {
                 sharePointSites.push({
-                    url: item['Site URL'],
+                    url: siteUrl,
                     storage: storageBytes,
-                    lastActivity: item['Last Activity Date'],
-                    files: parseInt(item['File Count'] || 0)
+                    lastActivity: lastActivity,
+                    files: fileCount
                 });
             }
         });
@@ -5595,15 +5675,50 @@ app.get('/api/backup-recovery', authenticateToken, async (req, res) => {
         const exchangeUsers = [];
         
         exchangeData.forEach(item => {
-            // CSV column: 'Storage Used (Byte)'
-            const storageBytes = parseInt(item['Storage Used (Byte)'] || 0);
+            let storageBytes = 0;
+            let userName = '';
+            let itemCount = 0;
+            let lastActivity = '';
+            
+            // Find storage column
+            for (const key of Object.keys(item)) {
+                if (key.includes('Storage') && key.includes('Byte')) {
+                    storageBytes = parseInt(item[key]) || 0;
+                    break;
+                }
+            }
+            
+            // Find user name
+            for (const key of Object.keys(item)) {
+                if (key.includes('User') && key.includes('Principal') && key.includes('Name')) {
+                    userName = item[key];
+                    break;
+                }
+            }
+            
+            // Find item count
+            for (const key of Object.keys(item)) {
+                if (key.includes('Item') && (key.includes('Count') || key.includes('count'))) {
+                    itemCount = parseInt(item[key]) || 0;
+                    break;
+                }
+            }
+            
+            // Find last activity
+            for (const key of Object.keys(item)) {
+                if (key.includes('Last') && key.includes('Activity') && key.includes('Date')) {
+                    lastActivity = item[key];
+                    break;
+                }
+            }
+            
             exchangeStorageBytes += storageBytes;
-            if (item['User Principal Name']) {
+            if (userName && storageBytes > 0) {
                 exchangeUsers.push({
-                    user: item['User Principal Name'],
+                    user: userName,
                     storage: storageBytes,
-                    lastActivity: item['Last Activity Date'],
-                    items: parseInt(item['Item Count'] || 0)
+                    lastActivity: lastActivity,
+                    items: itemCount
                 });
             }
         });
