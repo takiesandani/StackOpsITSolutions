@@ -552,6 +552,18 @@
     gap: 20px;
 }
 
+.sunbird-logo-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.sunbird-logo-img {
+    height: 32px;
+    width: auto;
+    object-fit: contain;
+}
+
 .user-name {
     color: #bdbdbd;
     font-size: 0.95rem;
@@ -3300,6 +3312,29 @@
     display: flex;
     align-items: center;
     gap: 15px;
+}
+
+.powered-by-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: rgba(0, 110, 255, 0.1);
+    border: 1px solid rgba(0, 110, 255, 0.2);
+    border-radius: 6px;
+    margin-left: auto;
+}
+
+.powered-by-logo {
+    height: 20px;
+    width: auto;
+    object-fit: contain;
+}
+
+.powered-by-badge span {
+    font-size: 0.85rem;
+    font-weight: 200;
+    color: #94a3b8;
 }
 
 .btn-back-identity {

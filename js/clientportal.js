@@ -79,7 +79,7 @@ const mockProjects = [
         securityScore: 0,
         uptime: 100,
         lastUpdate: "Loading...",
-        image: "https://static.vecteezy.com/system/resources/thumbnails/018/911/406/small_2x/microsoft-logo-editorial-free-vector.jpg",
+        icon: "fas fa-shield-alt",
         cardMetrics: [
             { label: "Total Users", value: ": ...", icon: "fas fa-users" },
             { label: "External", value: ": ...", icon: "fas fa-user-secret" }
@@ -98,7 +98,7 @@ const mockProjects = [
         securityScore: 0,
         uptime: 100,
         lastUpdate: "Loading...",
-        image: "https://static.vecteezy.com/system/resources/thumbnails/018/911/406/small_2x/microsoft-logo-editorial-free-vector.jpg",
+        icon: "fas fa-laptop",
         cardMetrics: [
             { label: "Total Devices", value: ": ...", icon: "fas fa-desktop" },
             { label: "Compliant", value: ": ...", icon: "fas fa-check-circle" }
@@ -117,7 +117,7 @@ const mockProjects = [
         securityScore: 0,
         uptime: 100,
         lastUpdate: "Loading...",
-        image: "https://static.vecteezy.com/system/resources/thumbnails/018/911/406/small_2x/microsoft-logo-editorial-free-vector.jpg",
+        icon: "fas fa-envelope-open-text",
         cardMetrics: [
             { label: "Active Threats", value: ": ...", icon: "fas fa-exclamation-triangle" },
             { label: "High Severity", value: ": ...", icon: "fas fa-circle-exclamation" }
@@ -136,7 +136,7 @@ const mockProjects = [
         securityScore: 0,
         uptime: 100,
         lastUpdate: "Loading...",
-        image: "https://static.vecteezy.com/system/resources/thumbnails/018/911/406/small_2x/microsoft-logo-editorial-free-vector.jpg",
+        icon: "fas fa-bell-slash",
         cardMetrics: [
             { label: "Active Incidents", value: ": ...", icon: "fas fa-exclamation-triangle" },
             { label: "High Alerts", value: ": ...", icon: "fas fa-bell" }
@@ -190,7 +190,7 @@ const mockProjects = [
         securityScore: 0,
         uptime: 100,
         lastUpdate: "Loading...",
-        image: "https://static.vecteezy.com/system/resources/thumbnails/018/911/406/small_2x/microsoft-logo-editorial-free-vector.jpg",
+        icon: "fas fa-cubes",
         cardMetrics: [
             { label: "Total Applications", value: ": ...", icon: "fas fa-cubes" },
             { label: "External Apps", value: ": ...", icon: "fas fa-exclamation-circle" }
@@ -584,12 +584,14 @@ function initializeApplicationsDashboard() {
 function generateApplicationsDashboardHTML() {
     return `
         <div class="applications-dashboard">
-            <!-- Dashboard Header with Back Button -->
+            <!-- Dashboard Header with Back Button and Title -->
             <div class="dashboard-header">
-                <button class="btn-back-dashboard" id="btn-back-identity" onclick="resetDashboard()">
-                    <i class="fas fa-arrow-left"></i> Back to Projects
-                </button>
-                <h2 class="dashboard-heading">Applications - Access & Risk Management</h2>
+                <div class="dashboard-header-left">
+                    <button class="btn-back-dashboard" id="btn-back-identity" onclick="resetDashboard()">
+                        <i class="fas fa-arrow-left"></i> Back
+                    </button>
+                    <h2 class="dashboard-heading">Applications - Access & Risk Management</h2>
+                </div>
             </div>
 
             <!-- Top Stats Cards -->
@@ -2825,6 +2827,8 @@ function handleMfaVerification() {
                 
                 // Reload billing card with new token
                 initializeBillingCard();
+                initializeGovernanceCard();
+                initializeSupportCard();
                 
                 // Initialize chatbot after login
                 if (typeof window.initChatbot === 'function') {
@@ -3254,6 +3258,10 @@ function generateIdentityDashboardHTML() {
                         <i class="fas fa-arrow-left"></i> Back
                     </button>
                     <h2 class="identity-dashboard-title"> Identity Protection</h2>
+                    <div class="powered-by-badge">
+                        <img src="https://static.vecteezy.com/system/resources/thumbnails/018/911/406/small_2x/microsoft-logo-editorial-free-vector.jpg" alt="Microsoft" class="powered-by-logo">
+                        <span>Powered by Microsoft Graph</span>
+                    </div>
                 </div>
             </div>
 
@@ -4597,13 +4605,26 @@ window.toggleBillingItems = function() {
 
 function initializeGovernanceCard() {
     const governanceCard = document.getElementById('governance-card');
+    if (!governanceCard) return;
     
-    const governanceData = [
+    const isSunbird = isSunbirdUser();
+    
+    let governanceData = [
         'Change Management',
         'End-user awareness',
         'Configurations',
         'Site documentation'
     ];
+    
+    // For Sunbird, we split Governance and Compliance
+    if (isSunbird) {
+        governanceData = [
+            'Change Management',
+            'Site documentation',
+            'Project Roadmaps',
+            'Asset Management'
+        ];
+    }
     
     const governanceHtml = governanceData.map(item => `
         <div class="governance-item">
@@ -4615,7 +4636,7 @@ function initializeGovernanceCard() {
     governanceCard.innerHTML = `
         <div class="governance-card-header">
             <i class="fas fa-shield-alt"></i>
-            <h3>Governance & Compliance</h3>
+            <h3>${isSunbird ? 'Governance' : 'Governance & Compliance'}</h3>
         </div>
         <div class="governance-content">
             ${governanceHtml}
@@ -4625,27 +4646,59 @@ function initializeGovernanceCard() {
 
 function initializeSupportCard() {
     const supportCard = document.getElementById('support-card');
+    if (!supportCard) return;
     
-    supportCard.innerHTML = `
-        <div class="secondary-card-header">
-            <i class="fas fa-headset"></i>
-            <h3>Support & SLA</h3>
-        </div>
-        <div class="governance-content">
-            <div class="governance-item">
-                <i class="fas fa-clock"></i>
-                <span class="governance-item-text"><strong>8am - 5pm Priority Support</strong> - Response in 1 hour</span>
+    const isSunbird = isSunbirdUser();
+    
+    if (isSunbird) {
+        // For Sunbird, this becomes the Compliance card
+        supportCard.innerHTML = `
+            <div class="secondary-card-header">
+                <i class="fas fa-certificate"></i>
+                <h3>Compliance</h3>
             </div>
-            <div class="governance-item">
-                <i class="fas fa-phone"></i>
-                <span class="governance-item-text"><strong>Dedicated Support Team</strong> - 1 assigned engineer</span>
+            <div class="governance-content">
+                <div class="governance-item">
+                    <i class="fas fa-check-circle" style="color: #28a745;"></i>
+                    <span class="governance-item-text">End-user awareness</span>
+                </div>
+                <div class="governance-item">
+                    <i class="fas fa-check-circle" style="color: #28a745;"></i>
+                    <span class="governance-item-text">MFA Enforcement</span>
+                </div>
+                <div class="governance-item">
+                    <i class="fas fa-check-circle" style="color: #28a745;"></i>
+                    <span class="governance-item-text">POPIA Compliance</span>
+                </div>
+                <div class="governance-item">
+                    <i class="fas fa-check-circle" style="color: #28a745;"></i>
+                    <span class="governance-item-text">ISO 27001 Readiness</span>
+                </div>
             </div>
-            <div class="governance-item">
-                <i class="fas fa-tachometer-alt"></i>
-                <span class="governance-item-text"><strong>99.9% Uptime SLA</strong> - Guaranteed availability</span>
+        `;
+    } else {
+        // Standard Support & SLA card for other clients
+        supportCard.innerHTML = `
+            <div class="secondary-card-header">
+                <i class="fas fa-headset"></i>
+                <h3>Support & SLA</h3>
             </div>
-        </div>
-    `;
+            <div class="governance-content">
+                <div class="governance-item">
+                    <i class="fas fa-clock"></i>
+                    <span class="governance-item-text"><strong>8am - 5pm Priority Support</strong> - Response in 1 hour</span>
+                </div>
+                <div class="governance-item">
+                    <i class="fas fa-phone"></i>
+                    <span class="governance-item-text"><strong>Dedicated Support Team</strong> - 1 assigned engineer</span>
+                </div>
+                <div class="governance-item">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span class="governance-item-text"><strong>99.9% Uptime SLA</strong> - Guaranteed availability</span>
+                </div>
+            </div>
+        `;
+    }
 }
 
 /* RESIZE HANDLER */
