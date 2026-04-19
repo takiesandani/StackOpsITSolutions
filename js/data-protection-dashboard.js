@@ -1,5 +1,5 @@
 // ================================================
-// Data Protection DASHBOARD - FRONTEND LOGIC
+// Backup and Recovery DASHBOARD - FRONTEND LOGIC
 // Microsoft 365 Data Storage & Backup Intelligence
 // ================================================
 
@@ -11,11 +11,11 @@ let dataProtectionChartInstances = {
 };
 
 /**
- * Main entry point: Fetch data protection data from API
+ * Main entry point: Fetch Backup and Recovery data from API
  */
 async function fetchDataProtectionData(project) {
     try {
-        console.log('[Data Protection] Fetching data protection metrics...');
+        console.log('[Backup and Recovery] Fetching dashboard metrics...');
         const authToken = localStorage.getItem('authToken');
         
         const response = await fetch('/api/data-protection', {

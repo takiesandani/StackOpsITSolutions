@@ -148,7 +148,7 @@ const mockProjects = [
     },
     {
         id: 6,
-        name: "Data Protection",
+        name: "Backup and Recovery",
         type: "Microsoft 365 Data Storage & Backup Intelligence",
         status: "active",
         risks: { critical: 0, high: 0, medium: 0 },

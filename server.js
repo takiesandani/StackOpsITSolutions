@@ -5482,16 +5482,17 @@ app.get('/api/email-security', authenticateToken, async (req, res) => {
 
 /**
  * Route: GET /api/data-protection
- * Data Protection dashboard aggregating storage and backup intelligence
+ * Backup and Recovery dashboard aggregating storage and backup intelligence
+ * Reports: OneDrive usage, SharePoint usage, Mailbox usage
  */
 app.get('/api/data-protection', authenticateToken, async (req, res) => {
     try {
         const userEmail = req.user.email;
-        console.log(`[Data Protection] Fetching dashboard data for: ${userEmail}`);
+        console.log(`[Backup and Recovery] Fetching dashboard data for: ${userEmail}`);
 
         const tenant = getTenantByEmail(userEmail);
         if (!tenant || tenant.clientId !== 'sunbird') {
-            console.warn(`[Data Protection] Access denied for ${userEmail}`);
+            console.warn(`[Backup and Recovery] Access denied for ${userEmail}`);
             return res.status(403).json({ 
                 error: 'Access denied',
                 message: 'This feature is only available for Sunbird client'
@@ -5500,72 +5501,68 @@ app.get('/api/data-protection', authenticateToken, async (req, res) => {
 
         const token = await getMicrosoftGraphToken();
 
-        // Fetch storage reports from Microsoft Graph
-        console.log('[Data Protection] Fetching storage reports...');
+        // Fetch storage reports from Microsoft Graph (TSV format)
+        console.log('[Backup and Recovery] Fetching storage reports...');
         const [oneDriveUsage, sharePointUsage, mailboxUsage, userStats] = await Promise.all([
-            fetch('https://graph.microsoft.com/v1.0/reports/getOneDriveUsageAccountDetail', {
+            fetch('https://graph.microsoft.com/v1.0/reports/getOneDriveUsageAccountDetail(period=\'D7\')', {
                 headers: { 'Authorization': `Bearer ${token}` }
-            }).then(r => r.text()).catch(e => ''),
-            fetch('https://graph.microsoft.com/v1.0/reports/getSharePointSiteUsageDetail', {
+            }).then(r => r.text()).catch(e => { console.error('[BR] OneDrive error:', e); return ''; }),
+            fetch('https://graph.microsoft.com/v1.0/reports/getSharePointSiteUsageDetail(period=\'D7\')', {
                 headers: { 'Authorization': `Bearer ${token}` }
-            }).then(r => r.text()).catch(e => ''),
-            fetch('https://graph.microsoft.com/v1.0/reports/getMailboxUsageDetail', {
+            }).then(r => r.text()).catch(e => { console.error('[BR] SharePoint error:', e); return ''; }),
+            fetch('https://graph.microsoft.com/v1.0/reports/getMailboxUsageDetail(period=\'D7\')', {
                 headers: { 'Authorization': `Bearer ${token}` }
-            }).then(r => r.text()).catch(e => ''),
+            }).then(r => r.text()).catch(e => { console.error('[BR] Mailbox error:', e); return ''; }),
             fetch('https://graph.microsoft.com/v1.0/users?$select=id,displayName,lastSignInDateTime&$top=999', {
                 headers: { 'Authorization': `Bearer ${token}` }
-            }).then(r => r.json()).catch(e => ({ value: [] }))
+            }).then(r => r.json()).catch(e => { console.error('[BR] Users error:', e); return { value: [] }; })
         ]);
 
-        // Parse CSV data (simplified - extract GB values)
-        let oneDriveGB = 0;
-        let sharePointGB = 0;
-        let exchangeGB = 0;
+        // Helper function to parse TSV/CSV and extract numeric values
+        function extractStorageFromReport(reportData, columnIndex) {
+            if (!reportData || reportData.trim().length === 0) {
+                console.log(`[BR] No report data for column ${columnIndex}`);
+                return 0;
+            }
+            
+            const lines = reportData.split('\n').filter(line => line.trim());
+            console.log(`[BR] Report has ${lines.length} lines`);
+            
+            if (lines.length <= 1) {
+                console.log(`[BR] Only headers, no data rows`);
+                return 0; // No data rows (only headers)
+            }
 
-        // OneDrive: Extract storage GB from report
-        if (oneDriveUsage) {
-            const lines = oneDriveUsage.split('\n');
-            lines.forEach(line => {
-                const parts = line.split(',');
-                if (parts.length > 3) {
-                    const storageValue = parseFloat(parts[3]);
-                    if (!isNaN(storageValue)) {
-                        const gbValue = Math.round(storageValue / (1024 * 1024 * 1024)); // Convert bytes to GB
-                        oneDriveGB += gbValue || 0;
+            let totalBytes = 0;
+            let rowsProcessed = 0;
+            
+            for (let i = 1; i < lines.length; i++) { // Skip header row
+                // Split by tab first (TSV format), fallback to comma (CSV)
+                const parts = lines[i].includes('\t') ? lines[i].split('\t') : lines[i].split(',');
+                
+                if (parts.length > columnIndex) {
+                    const rawValue = parts[columnIndex].replace(/"/g, '').trim();
+                    const storageValue = parseFloat(rawValue);
+                    
+                    if (!isNaN(storageValue) && storageValue > 0) {
+                        totalBytes += storageValue; // Already in bytes from Microsoft
+                        rowsProcessed++;
                     }
                 }
-            });
+            }
+            
+            const gbValue = Math.round(totalBytes / (1024 * 1024 * 1024)); // Convert to GB
+            console.log(`[BR] Column ${columnIndex}: ${rowsProcessed} rows, ${gbValue} GB total`);
+            return gbValue;
         }
 
-        // SharePoint: Extract storage GB from report
-        if (sharePointUsage) {
-            const lines = sharePointUsage.split('\n');
-            lines.forEach(line => {
-                const parts = line.split(',');
-                if (parts.length > 4) {
-                    const storageValue = parseFloat(parts[4]);
-                    if (!isNaN(storageValue)) {
-                        const gbValue = Math.round(storageValue / (1024 * 1024 * 1024)); // Convert bytes to GB
-                        sharePointGB += gbValue || 0;
-                    }
-                }
-            });
-        }
-
-        // Mailbox: Extract storage GB from report
-        if (mailboxUsage) {
-            const lines = mailboxUsage.split('\n');
-            lines.forEach(line => {
-                const parts = line.split(',');
-                if (parts.length > 4) {
-                    const storageValue = parseFloat(parts[4]);
-                    if (!isNaN(storageValue)) {
-                        const gbValue = Math.round(storageValue / (1024 * 1024 * 1024)); // Convert bytes to GB
-                        exchangeGB += gbValue || 0;
-                    }
-                }
-            });
-        }
+        // Extract storage metrics from reports
+        // OneDrive: Column 4 = Storage Used (bytes)
+        // SharePoint: Column 5 = Storage Used (bytes)  
+        // Mailbox: Column 6 = Storage Used (bytes)
+        let oneDriveGB = extractStorageFromReport(oneDriveUsage, 4);
+        let sharePointGB = extractStorageFromReport(sharePointUsage, 5);
+        let exchangeGB = extractStorageFromReport(mailboxUsage, 6);
 
         const totalStorageGB = oneDriveGB + sharePointGB + exchangeGB;
 
@@ -5610,7 +5607,7 @@ app.get('/api/data-protection', authenticateToken, async (req, res) => {
         // NOTE: This is manual logic since no external backup API is available
         const backupStatus = 'No backup configured'; // Default: assume no external backup
 
-        // ===== DATA PROTECTION INSIGHTS =====
+        // ===== BACKUP AND RECOVERY INSIGHTS =====
         const insights = [];
 
         if (backupStatus === 'No backup configured') {
@@ -5650,7 +5647,7 @@ app.get('/api/data-protection', authenticateToken, async (req, res) => {
             });
         }
 
-        console.log(`[Data Protection] Compiled: ${totalStorageGB} GB total, ${activeUsers} active users, ${backupStatus}`);
+        console.log(`[Backup and Recovery] Compiled: ${totalStorageGB} GB total, ${activeUsers} active users, ${backupStatus}`);
 
         res.json({
             success: true,
@@ -5674,7 +5671,7 @@ app.get('/api/data-protection', authenticateToken, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('[Data Protection] Error:', error.message);
+        console.error('[Backup and Recovery] Error:', error.message);
         
         res.status(500).json({ 
             error: 'Failed to fetch data protection data',
