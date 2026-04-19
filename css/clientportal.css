@@ -60,7 +60,7 @@
     width: 120px;
     height: auto;
     margin-bottom: 20px;
-    filter: drop-shadow(0 0 8px rgba(0, 110, 255, 0.5));
+    filter: drop-shadow(0 0 8px rgba(255, 119, 0, 0.5));
 }
 
 .login-header h1 {
@@ -5483,4 +5483,4 @@
     .security-insights-container {
         max-height: 240px;
     }
-}
+
