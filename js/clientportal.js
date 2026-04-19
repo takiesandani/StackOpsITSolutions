@@ -98,7 +98,7 @@ const mockProjects = [
         securityScore: 0,
         uptime: 100,
         lastUpdate: "Loading...",
-        icon: "fas fa-laptop",
+        image: "https://static.vecteezy.com/system/resources/thumbnails/018/911/406/small_2x/microsoft-logo-editorial-free-vector.jpg",
         cardMetrics: [
             { label: "Total Devices", value: ": ...", icon: "fas fa-desktop" },
             { label: "Compliant", value: ": ...", icon: "fas fa-check-circle" }
@@ -117,7 +117,7 @@ const mockProjects = [
         securityScore: 0,
         uptime: 100,
         lastUpdate: "Loading...",
-        icon: "fas fa-envelope-circle-check",
+        image: "https://static.vecteezy.com/system/resources/thumbnails/018/911/406/small_2x/microsoft-logo-editorial-free-vector.jpg",
         cardMetrics: [
             { label: "Active Threats", value: ": ...", icon: "fas fa-exclamation-triangle" },
             { label: "High Severity", value: ": ...", icon: "fas fa-circle-exclamation" }
@@ -136,7 +136,7 @@ const mockProjects = [
         securityScore: 0,
         uptime: 100,
         lastUpdate: "Loading...",
-        icon: "fas fa-shield-alt",
+        image: "https://static.vecteezy.com/system/resources/thumbnails/018/911/406/small_2x/microsoft-logo-editorial-free-vector.jpg",
         cardMetrics: [
             { label: "Active Incidents", value: ": ...", icon: "fas fa-exclamation-triangle" },
             { label: "High Alerts", value: ": ...", icon: "fas fa-bell" }
