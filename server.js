@@ -4478,13 +4478,42 @@ app.get('/api/microsoft-applications', authenticateToken, async (req, res) => {
         ]);
 
         // Process applications with risk assessment
-        const processedApps = servicePrincipals.map(sp => {
+        const processedApps = await Promise.all(servicePrincipals.map(async (sp) => {
             // Detect if app is external
             const isExternal = !sp.publisherName || !sp.publisherName.toLowerCase().includes('microsoft');
             
             // Count OAuth scopes as a measure of permissions
             const scopeCount = sp.oauth2PermissionScopes ? sp.oauth2PermissionScopes.length : 0;
             const roleCount = sp.appRoles ? sp.appRoles.length : 0;
+            
+            // Fetch app role assignments (users/groups assigned to app)
+            let assignedCount = 0;
+            let assignedGroups = [];
+            try {
+                const response = await fetch(`https://graph.microsoft.com/v1.0/servicePrincipals/${sp.id}/appRoleAssignedTo?$top=999`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const assignments = data.value || [];
+                    
+                    // Count unique principals (users and groups)
+                    assignedCount = assignments.length;
+                    
+                    // Extract group names if available
+                    assignedGroups = assignments
+                        .filter(a => a.principalType === 'Group')
+                        .map(a => a.principalDisplayName)
+                        .filter((v, i, a) => a.indexOf(v) === i); // unique
+                }
+            } catch (error) {
+                console.error(`[Microsoft Graph] Failed to fetch assignments for ${sp.displayName}:`, error.message);
+            }
             
             return {
                 id: sp.id,
@@ -4495,14 +4524,17 @@ app.get('/api/microsoft-applications', authenticateToken, async (req, res) => {
                 createdDateTime: sp.createdDateTime,
                 scopeCount: scopeCount,
                 roleCount: roleCount,
-                appOwnerOrganizationId: sp.appOwnerOrganizationId
+                appOwnerOrganizationId: sp.appOwnerOrganizationId,
+                userCount: assignedCount,
+                assignedGroups: assignedGroups
             };
-        });
+        }));
 
         // Calculate app statistics
         const totalApps = processedApps.length;
         const externalApps = processedApps.filter(app => app.isExternal).length;
         const microsoftApps = processedApps.filter(app => !app.isExternal).length;
+        const topAppsbyUsers = processedApps.sort((a, b) => b.userCount - a.userCount).slice(0, 5);
 
         console.log(`[Microsoft Graph] Successfully retrieved ${totalApps} applications (${externalApps} external, ${microsoftApps} internal)`);
 
@@ -4513,6 +4545,7 @@ app.get('/api/microsoft-applications', authenticateToken, async (req, res) => {
             externalApplications: externalApps,
             internalApplications: microsoftApps,
             applications: processedApps,
+            topAppsByUsers: topAppsbyUsers,
             userCount: users.length,
             groupCount: groups.length,
             fetchedAt: new Date().toISOString()

@@ -443,12 +443,24 @@ function calculateAppRisk(app) {
         riskReasons.push('Excessive permissions detected');
     }
     
-    // If internal and low permissions, it's safe
-    if (!isExternal && totalPermissions <= 5) {
-        riskLevel = 'safe';
-    } else if (!isExternal && totalPermissions > 5) {
+    // Check for high user count
+    const userCount = app.userCount || 0;
+    if (userCount > 50) {
+        if (riskLevel !== 'high') riskLevel = 'high';
+        riskReasons.push('App has high user access');
+    } else if (userCount > 20 && riskLevel === 'safe') {
         riskLevel = 'medium';
-        riskReasons.push('Moderate permissions');
+        riskReasons.push('App has high user access');
+    }
+    
+    // If internal and low permissions and low users, it's safe
+    if (!isExternal && totalPermissions <= 5 && userCount <= 20) {
+        riskLevel = 'safe';
+    } else if (!isExternal && totalPermissions > 5 && !riskReasons.includes('Excessive permissions detected')) {
+        riskLevel = 'medium';
+        if (!riskReasons.includes('Moderate permissions')) {
+            riskReasons.push('Moderate permissions');
+        }
     }
     
     return {
@@ -572,6 +584,14 @@ function initializeApplicationsDashboard() {
 function generateApplicationsDashboardHTML() {
     return `
         <div class="applications-dashboard">
+            <!-- Dashboard Header with Back Button -->
+            <div class="dashboard-header">
+                <button class="btn-back-dashboard" id="btn-back-identity" onclick="resetDashboard()">
+                    <i class="fas fa-arrow-left"></i> Back to Projects
+                </button>
+                <h2 class="dashboard-heading">Applications - Access & Risk Management</h2>
+            </div>
+
             <!-- Top Stats Cards -->
             <div class="apps-stats-cards">
                 <div class="apps-stat-card">
@@ -603,6 +623,16 @@ function generateApplicationsDashboardHTML() {
                         <span class="stat-label">High Risk Applications</span>
                     </div>
                 </div>
+                
+                <div class="apps-stat-card users">
+                    <div class="stat-icon">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <div class="stat-content">
+                        <span class="stat-value" id="avgUsersValue">0</span>
+                        <span class="stat-label">Avg Users per App</span>
+                    </div>
+                </div>
             </div>
 
             <!-- Chart Section -->
@@ -610,6 +640,11 @@ function generateApplicationsDashboardHTML() {
                 <div class="apps-chart-container">
                     <h3><i class="fas fa-chart-bar"></i> App Distribution</h3>
                     <canvas id="appDistributionChart"></canvas>
+                </div>
+                
+                <div class="apps-chart-container">
+                    <h3><i class="fas fa-chart-pie"></i> Top 5 Apps by Users</h3>
+                    <canvas id="topAppsChart"></canvas>
                 </div>
             </div>
 
@@ -621,6 +656,7 @@ function generateApplicationsDashboardHTML() {
                         <tr>
                             <th>Application</th>
                             <th>Type</th>
+                            <th>Users</th>
                             <th>Permissions</th>
                             <th>Risk Level</th>
                         </tr>
@@ -628,6 +664,12 @@ function generateApplicationsDashboardHTML() {
                     <tbody id="apps-table-body">
                     </tbody>
                 </table>
+            </div>
+
+            <!-- Access & Assignments Section -->
+            <div class="apps-access-section">
+                <h3><i class="fas fa-key"></i> Access Overview</h3>
+                <div id="apps-access-content"></div>
             </div>
 
             <!-- Risk Insights Section -->
@@ -651,11 +693,13 @@ function populateApplicationsTable() {
         const riskBadgeClass = `risk-badge-${risk.level}`;
         const riskIcon = risk.level === 'high' ? '🔴' : risk.level === 'medium' ? '⚠️' : '✅';
         const permissionCount = (app.scopeCount || 0) + (app.roleCount || 0);
+        const userCount = app.userCount || 0;
         
         const row = document.createElement('tr');
         row.innerHTML = `
             <td class="app-name">${app.name}</td>
             <td class="app-type">${app.isExternal ? 'External' : 'Internal'}</td>
+            <td class="app-users"><strong>${userCount}</strong></td>
             <td class="app-permissions">${permissionCount}</td>
             <td class="app-risk"><span class="${riskBadgeClass}">${riskIcon} ${risk.level.charAt(0).toUpperCase() + risk.level.slice(1)}</span></td>
         `;
@@ -666,14 +710,88 @@ function populateApplicationsTable() {
     const totalApps = applicationsData.length;
     const externalApps = applicationsData.filter(a => a.isExternal).length;
     const highRiskApps = applicationsData.filter(a => calculateAppRisk(a).level === 'high').length;
+    const totalUsers = applicationsData.reduce((sum, a) => sum + (a.userCount || 0), 0);
+    const avgUsers = totalApps > 0 ? Math.round(totalUsers / totalApps) : 0;
     
     document.getElementById('totalAppsValue').textContent = totalApps;
     document.getElementById('externalAppsValue').textContent = externalApps;
     document.getElementById('highRiskAppsValue').textContent = highRiskApps;
+    document.getElementById('avgUsersValue').textContent = avgUsers;
+    
+    // Update access overview
+    updateApplicationsAccessOverview(totalUsers, externalApps);
     
     // Update insights
     updateApplicationsInsights(totalApps, externalApps, highRiskApps);
 }
+
+// Update Applications access overview
+function updateApplicationsAccessOverview(totalUsers, externalApps) {
+    const accessContainer = document.getElementById('apps-access-content');
+    if (!accessContainer) return;
+    
+    const appsWithUsers = applicationsData.filter(a => a.userCount > 0);
+    const appsWithoutUsers = applicationsData.filter(a => a.userCount === 0);
+    
+    let accessHTML = '<div class="access-grid">';
+    
+    accessHTML += `
+        <div class="access-card">
+            <h4>User Assignments</h4>
+            <p class="access-stat">${totalUsers} <span>total users assigned</span></p>
+            <small>${appsWithUsers.length} apps have users assigned</small>
+        </div>
+        
+        <div class="access-card">
+            <h4>Apps Without Access</h4>
+            <p class="access-stat">${appsWithoutUsers.length} <span>apps have no assigned users</span></p>
+            <small>Consider removing or archiving unused apps</small>
+        </div>
+        
+        <div class="access-card">
+            <h4>Risk Summary</h4>
+            <p class="access-stat">${externalApps} <span>external apps</span></p>
+            <small>Require additional security review</small>
+        </div>
+    `;
+    
+    // Show top apps by user count
+    const topApps = applicationsData
+        .filter(a => a.userCount > 0)
+        .sort((a, b) => b.userCount - a.userCount)
+        .slice(0, 3);
+    
+    if (topApps.length > 0) {
+        accessHTML += `
+            <div class="access-card full-width">
+                <h4>Top 3 Apps by User Count</h4>
+                <div class="top-apps-list">
+        `;
+        
+        topApps.forEach(app => {
+            const risk = calculateAppRisk(app);
+            const riskColor = risk.level === 'high' ? 'danger' : risk.level === 'medium' ? 'warning' : 'success';
+            accessHTML += `
+                <div class="top-app-item">
+                    <div class="app-info">
+                        <span class="app-name">${app.name}</span>
+                        <span class="app-type">${app.isExternal ? 'External' : 'Internal'}</span>
+                    </div>
+                    <div class="user-badge ${riskColor}">${app.userCount} users</div>
+                </div>
+            `;
+        });
+        
+        accessHTML += `
+                </div>
+            </div>
+        `;
+    }
+    
+    accessHTML += '</div>';
+    accessContainer.innerHTML = accessHTML;
+}
+
 
 // Update Applications insights
 function updateApplicationsInsights(totalApps, externalApps, highRiskApps) {
@@ -726,6 +844,7 @@ function initializeApplicationsCharts() {
     
     setTimeout(() => {
         renderAppDistributionChart();
+        renderTopAppsChart();
     }, 50);
 }
 
@@ -790,7 +909,76 @@ function renderAppDistributionChart() {
     });
 }
 
-// Open Applications full dashboard
+// Render Top Apps by Users Chart
+function renderTopAppsChart() {
+    const canvasElement = document.getElementById('topAppsChart');
+    if (!canvasElement) return;
+    
+    const topApps = applicationsData
+        .sort((a, b) => b.userCount - a.userCount)
+        .slice(0, 5);
+    
+    if (topApps.length === 0) return;
+    
+    const labels = topApps.map(a => a.name.substring(0, 15));
+    const data = topApps.map(a => a.userCount || 0);
+    
+    canvasElement.width = canvasElement.parentElement.clientWidth;
+    canvasElement.height = 300;
+    
+    const ctx = canvasElement.getContext('2d');
+    if (!ctx) return;
+    
+    if (window.topAppsChartInstance && typeof window.topAppsChartInstance.destroy === 'function') {
+        window.topAppsChartInstance.destroy();
+    }
+    
+    const colors = [
+        'rgba(0, 110, 255, 0.8)',
+        'rgba(249, 115, 22, 0.8)',
+        'rgba(34, 197, 94, 0.8)',
+        'rgba(248, 113, 113, 0.8)',
+        'rgba(168, 85, 247, 0.8)'
+    ];
+    
+    window.topAppsChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'User Count',
+                data: data,
+                backgroundColor: colors.slice(0, labels.length),
+                borderColor: colors.slice(0, labels.length).map(c => c.replace('0.8', '1')),
+                borderWidth: 2,
+                borderRadius: 6
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    ticks: { color: '#999' },
+                    grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                },
+                y: {
+                    ticks: { color: '#999', font: { size: 11 } },
+                    grid: { display: false }
+                }
+            }
+        }
+    });
+}
+
+// Open Identity full dashboard
 function openIdentityDashboard() {
     console.log('[Identity Dashboard] Opening full dashboard...');
     
