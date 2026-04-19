@@ -5542,7 +5542,16 @@ app.get('/api/backup-recovery', authenticateToken, async (req, res) => {
         const oneDriveResponse = await fetch(oneDriveUrl, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        const oneDriveCSV = oneDriveResponse.ok ? await oneDriveResponse.text() : '';
+        console.log(`[Backup Recovery] OneDrive response status: ${oneDriveResponse.status}`);
+        console.log(`[Backup Recovery] OneDrive response headers:`, {
+            contentType: oneDriveResponse.headers.get('content-type'),
+            contentLength: oneDriveResponse.headers.get('content-length')
+        });
+        
+        const oneDriveCSV = await oneDriveResponse.text();
+        console.log(`[Backup Recovery] OneDrive CSV length: ${oneDriveCSV.length}`);
+        console.log(`[Backup Recovery] OneDrive CSV preview (first 300 chars):`, oneDriveCSV.substring(0, 300));
+        
         const oneDriveData = parseGraphReportCSV(oneDriveCSV, 'OneDrive');
 
         // Fetch SharePoint usage (returns CSV)
@@ -5550,7 +5559,16 @@ app.get('/api/backup-recovery', authenticateToken, async (req, res) => {
         const sharePointResponse = await fetch(sharePointUrl, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        const sharePointCSV = sharePointResponse.ok ? await sharePointResponse.text() : '';
+        console.log(`[Backup Recovery] SharePoint response status: ${sharePointResponse.status}`);
+        console.log(`[Backup Recovery] SharePoint response headers:`, {
+            contentType: sharePointResponse.headers.get('content-type'),
+            contentLength: sharePointResponse.headers.get('content-length')
+        });
+        
+        const sharePointCSV = await sharePointResponse.text();
+        console.log(`[Backup Recovery] SharePoint CSV length: ${sharePointCSV.length}`);
+        console.log(`[Backup Recovery] SharePoint CSV preview (first 300 chars):`, sharePointCSV.substring(0, 300));
+        
         const sharePointData = parseGraphReportCSV(sharePointCSV, 'SharePoint');
 
         // Fetch Exchange (Mailbox) usage (returns CSV)
@@ -5558,7 +5576,16 @@ app.get('/api/backup-recovery', authenticateToken, async (req, res) => {
         const exchangeResponse = await fetch(exchangeUrl, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        const exchangeCSV = exchangeResponse.ok ? await exchangeResponse.text() : '';
+        console.log(`[Backup Recovery] Exchange response status: ${exchangeResponse.status}`);
+        console.log(`[Backup Recovery] Exchange response headers:`, {
+            contentType: exchangeResponse.headers.get('content-type'),
+            contentLength: exchangeResponse.headers.get('content-length')
+        });
+        
+        const exchangeCSV = await exchangeResponse.text();
+        console.log(`[Backup Recovery] Exchange CSV length: ${exchangeCSV.length}`);
+        console.log(`[Backup Recovery] Exchange CSV preview (first 300 chars):`, exchangeCSV.substring(0, 300));
+        
         const exchangeData = parseGraphReportCSV(exchangeCSV, 'Exchange');
 
         // ===== DATA PROCESSING =====
@@ -5736,6 +5763,11 @@ app.get('/api/backup-recovery', authenticateToken, async (req, res) => {
             ...exchangeUsers.map(u => u.user)
         ]);
         const activeUsersCount = activeUserEmails.size;
+
+        console.log(`[Backup Recovery] OneDrive: ${oneDriveStorageBytes} bytes, ${oneDriveUsers.length} users`);
+        console.log(`[Backup Recovery] SharePoint: ${sharePointStorageBytes} bytes, ${sharePointSites.length} sites`);
+        console.log(`[Backup Recovery] Exchange: ${exchangeStorageBytes} bytes, ${exchangeUsers.length} users`);
+        console.log(`[Backup Recovery] Total: ${oneDriveStorageBytes + sharePointStorageBytes + exchangeStorageBytes} bytes, ${activeUsersCount} active users`);
 
         // Determine inactive users based on last activity date (if older than 30 days)
         const thirtyDaysAgo = new Date();
