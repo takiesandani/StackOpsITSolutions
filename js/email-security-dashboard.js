@@ -9,6 +9,7 @@ let emailChartInstances = {
     severity: null,
     timeline: null
 };
+let currentEmailAlertFilter = null; // Track active user filter
 
 /**
  * Main entry point: Fetch email security data from API
@@ -445,25 +446,59 @@ function populateEmailSecurityFeed(alerts) {
 /**
  * Populate email alerts table
  */
-function populateEmailAlertsTable(alerts) {
+function populateEmailAlertsTable(alerts, filterByUser = null) {
     console.log('[Email Security] Populating alerts table...');
     const tbody = document.getElementById('email-alerts-tbody');
+    const tableContainer = document.querySelector('.email-table-container');
     
     if (!tbody) return;
 
-    if (!alerts || alerts.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px; color: #94a3b8;">No email alerts found</td></tr>';
+    // Update filter state
+    currentEmailAlertFilter = filterByUser;
+
+    // Filter alerts if user filter is active
+    let displayAlerts = alerts;
+    if (filterByUser) {
+        displayAlerts = alerts.filter(alert => {
+            const alertUsers = alert.userStates && alert.userStates.length > 0
+                ? alert.userStates.map(u => u.accountName)
+                : ['Unknown'];
+            return alertUsers.includes(filterByUser);
+        });
+    }
+
+    // Update table header to show filter status
+    if (tableContainer) {
+        let headerHTML = '<h3><i class="fas fa-table"></i> Email Security Alerts';
+        if (filterByUser) {
+            headerHTML += ` - Filtered by: <strong>${filterByUser}</strong>
+                <button class="clear-filter-btn" onclick="clearEmailAlertsFilter()">✕ Clear Filter</button>`;
+        }
+        headerHTML += '</h3>';
+        
+        const headerElement = tableContainer.querySelector('h3');
+        if (headerElement) {
+            headerElement.outerHTML = headerHTML;
+        }
+    }
+
+    if (!displayAlerts || displayAlerts.length === 0) {
+        const message = filterByUser 
+            ? `No alerts found for user: ${filterByUser}`
+            : 'No email alerts found';
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 20px; color: #94a3b8;">${message}</td></tr>`;
         return;
     }
 
-    const tableHTML = alerts.map(alert => {
+    const tableHTML = displayAlerts.map(alert => {
         const user = alert.userStates && alert.userStates.length > 0 
             ? alert.userStates[0].accountName 
             : 'Unknown';
         const createdDate = new Date(alert.created).toLocaleDateString();
+        const isFiltered = currentEmailAlertFilter && user === currentEmailAlertFilter;
         
         return `
-            <tr class="alert-row ${alert.severity}">
+            <tr class="alert-row ${alert.severity}${isFiltered ? ' filtered-highlight' : ''}">
                 <td>
                     <div class="threat-title">
                         <i class="fas fa-exclamation-triangle"></i>
@@ -483,17 +518,12 @@ function populateEmailAlertsTable(alerts) {
                 <td>${user}</td>
                 <td>${createdDate}</td>
                 <td>${alert.category}</td>
-                <td>
-                    <button class="action-btn" onclick="expandAlert('${alert.id}')" title="View Details">
-                        <i class="fas fa-chevron-right"></i>
-                    </button>
-                </td>
             </tr>
         `;
     }).join('');
 
     tbody.innerHTML = tableHTML;
-    console.log(`[Email Security] Table populated with ${alerts.length} alerts`);
+    console.log(`[Email Security] Table populated with ${displayAlerts.length} alerts${filterByUser ? ` for user: ${filterByUser}` : ''}`);
 }
 
 /**
@@ -640,25 +670,36 @@ function filterEmailAlerts(filterType) {
     }
 }
 
+
+
 /**
- * Helper: Expand alert details
+ * Helper: View user alerts (filters table to show only their alerts)
  */
-function expandAlert(alertId) {
-    console.log(`[Email Security] Expanding alert: ${alertId}`);
-    const alert = emailSecurityData.alerts.find(a => a.id === alertId);
-    if (alert) {
-        alert('Alert Details:\n' + JSON.stringify(alert, null, 2));
+function viewUserAlerts(userName) {
+    console.log(`[Email Security] Viewing alerts for user: ${userName}`);
+    
+    // Re-populate table with filter applied
+    if (emailSecurityData && emailSecurityData.alerts) {
+        populateEmailAlertsTable(emailSecurityData.alerts, userName);
+    }
+    
+    // Scroll to filtered table
+    const alertsTable = document.querySelector('.email-table-container');
+    if (alertsTable) {
+        setTimeout(() => {
+            alertsTable.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
     }
 }
 
 /**
- * Helper: View user alerts
+ * Helper: Clear email alerts filter and show all alerts
  */
-function viewUserAlerts(userName) {
-    console.log(`[Email Security] Viewing alerts for user: ${userName}`);
-    const alertsTable = document.querySelector('.email-table-container');
-    if (alertsTable) {
-        alertsTable.scrollIntoView({ behavior: 'smooth' });
+function clearEmailAlertsFilter() {
+    console.log('[Email Security] Clearing alerts filter');
+    
+    if (emailSecurityData && emailSecurityData.alerts) {
+        populateEmailAlertsTable(emailSecurityData.alerts, null);
     }
 }
 
@@ -667,6 +708,10 @@ function viewUserAlerts(userName) {
  */
 function handleInsightAction(action) {
     console.log(`[Email Security] Handling action: ${action}`);
+    // Clear any existing filters and show all alerts
+    if (emailSecurityData && emailSecurityData.alerts) {
+        populateEmailAlertsTable(emailSecurityData.alerts, null);
+    }
     const alertsTable = document.querySelector('.email-table-container');
     if (alertsTable) {
         alertsTable.scrollIntoView({ behavior: 'smooth' });

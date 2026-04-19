@@ -38,7 +38,7 @@ function getTenantByEmail(email) {
 }
 
 // ===============================
-// MICROSOFT GRAPH - IDENTITY & ACCESS
+// MICROSOFT GRAPH -  Identity Protection
 // ===============================
 // Token cache (in production, use Redis or database)
 const microsoftTokenCache = new Map();
@@ -4232,7 +4232,7 @@ setTimeout(() => {
 setInterval(syncDuoData, 60 * 60 * 1000);
 
 // ====================================================================================================//
-//                             MICROSOFT GRAPH - IDENTITY & ACCESS                                  //
+//                             MICROSOFT GRAPH -  Identity Protection                                  //
 // ====================================================================================================//
 
 /**
@@ -4376,7 +4376,7 @@ app.get('/api/microsoft-roles', authenticateToken, async (req, res) => {
 
 /**
  * Route: GET /api/sunbird/identity-dashboard
- * SUNBIRD CLIENT ONLY - Complete identity & access dashboard data aggregation
+ * SUNBIRD CLIENT ONLY - Complete  Identity Protection dashboard data aggregation
  * Returns: Merged users, roles, sign-ins, auth methods with calculated metrics
  */
 app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) => {

@@ -1016,6 +1016,32 @@
     font-size: 14px;
     font-weight: 200;
     color: #cbd5e1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.clear-filter-btn {
+    background: rgba(255, 107, 107, 0.2);
+    color: #ff6b6b;
+    border: 1px solid #ff6b6b;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 200;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.clear-filter-btn:hover {
+    background: rgba(255, 107, 107, 0.3);
+    box-shadow: 0 0 8px rgba(255, 107, 107, 0.3);
 }
 
 .email-alerts-table {
@@ -1044,6 +1070,11 @@
 
 .email-alerts-table tbody tr:hover {
     background: rgba(255, 107, 107, 0.05);
+}
+
+.email-alerts-table tbody tr.filtered-highlight {
+    background: rgba(255, 107, 107, 0.15) !important;
+    border-left: 3px solid #ff6b6b;
 }
 
 .email-alerts-table td {

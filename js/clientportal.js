@@ -6,14 +6,14 @@ let currentProjectIndex = 0;
 let selectedProjectId = null;
 let previewLockedByClick = false;
 
-// Sunbird client emails - only these users can see Identity & Access, Devices, Applications
+// Sunbird client emails - only these users can see  Identity Protection, Devices, Applications
 const SUNBIRD_EMAILS = [
     'sandanindivhuwo17@gmail.com',
     'ndamulelo@stackopsit.co.za'
 ];
 
 // Sunbird-only card IDs that should be hidden from non-Sunbird clients
-const SUNBIRD_ONLY_CARD_IDS = [2, 3, 4, 5]; // Identity & Access, Devices, Applications, Email Security
+const SUNBIRD_ONLY_CARD_IDS = [2, 3, 4, 5]; //  Identity Protection, Devices, Applications, Email Security
 
 // Cards to hide from Sunbird clients
 const HIDDEN_FROM_SUNBIRD_IDS = [7]; // Backup and Recovery
@@ -54,7 +54,7 @@ const mockProjects = [
     {
         id: 1,
         name: "Cisco Duo Licenses",
-        type: "Enterprise Identity & Access Management",
+        type: "Enterprise  Identity Protection Management",
         status: "Syncing...", // Changed from Active
         risks: { critical: 0, high: 0, medium: 0 },
         securityScore: 100,
@@ -72,7 +72,7 @@ const mockProjects = [
     },
     {
         id: 2,
-        name: "Identity & Access",
+        name: " Identity Protection",
         type: "User Management & Access Control",
         status: "active",
         risks: { critical: 0, high: 0, medium: 0 },
@@ -91,7 +91,7 @@ const mockProjects = [
     },
     {
         id: 3,
-        name: "Devices",
+        name: "Device Protection",
         type: "Device Management & Security Compliance",
         status: "active",
         risks: { critical: 0, high: 0, medium: 0 },
@@ -107,25 +107,6 @@ const mockProjects = [
         hasTabs: false,
         microsoftGraphEnabled: true,
         isDevicesCard: true
-    },
-    {
-        id: 4,
-        name: "Threat & Activity",
-        type: "Real-Time SOC Threat Intelligence & Response",
-        status: "active",
-        risks: { critical: 0, high: 0, medium: 0 },
-        securityScore: 0,
-        uptime: 100,
-        lastUpdate: "Loading...",
-        icon: "fas fa-shield-alt",
-        cardMetrics: [
-            { label: "Active Incidents", value: ": ...", icon: "fas fa-exclamation-triangle" },
-            { label: "High Alerts", value: ": ...", icon: "fas fa-bell" }
-        ],
-        cardFooter: "Fetching from Microsoft Graph Security...",
-        hasTabs: false,
-        microsoftGraphEnabled: true,
-        isSecurityCard: true
     },
     {
         id: 5,
@@ -145,6 +126,25 @@ const mockProjects = [
         hasTabs: false,
         microsoftGraphEnabled: true,
         isEmailSecurityCard: true
+    },
+    {
+        id: 4,
+        name: "Security & Events",
+        type: "Real-Time SOC Threat Intelligence & Response",
+        status: "active",
+        risks: { critical: 0, high: 0, medium: 0 },
+        securityScore: 0,
+        uptime: 100,
+        lastUpdate: "Loading...",
+        icon: "fas fa-shield-alt",
+        cardMetrics: [
+            { label: "Active Incidents", value: ": ...", icon: "fas fa-exclamation-triangle" },
+            { label: "High Alerts", value: ": ...", icon: "fas fa-bell" }
+        ],
+        cardFooter: "Fetching from Microsoft Graph Security...",
+        hasTabs: false,
+        microsoftGraphEnabled: true,
+        isSecurityCard: true
     },
     {
         id: 6,
@@ -206,12 +206,12 @@ function switchProjectTab(tabId) {
 }
 
 // ============================================
-// IDENTITY & ACCESS / MICROSOFT GRAPH APIs
+//  Identity Protection / MICROSOFT GRAPH APIs
 // ============================================
 // Handles user management, role assignments, and identity data
 // from Microsoft Graph, including user lists and access control
 
-// Fetch Microsoft users and populate Identity & Access cards
+// Fetch Microsoft users and populate  Identity Protection cards
 async function fetchMicrosoftUsersForCard() {
     try {
         const authToken = localStorage.getItem('authToken');
@@ -247,7 +247,7 @@ async function fetchMicrosoftUsersForCard() {
         microsoftUsersData = data.users || [];
         console.log(`[Microsoft Users] Loaded ${microsoftUsersData.length} users`);
         
-        // Populate Identity & Access cards
+        // Populate  Identity Protection cards
         populateIdentityCards(data);
         
     } catch (error) {
@@ -256,7 +256,7 @@ async function fetchMicrosoftUsersForCard() {
     }
 }
 
-// Populate Identity & Access cards
+// Populate  Identity Protection cards
 function populateIdentityCards(apiData) {
     const container = document.getElementById('identity-cards-container');
     
@@ -273,14 +273,14 @@ function populateIdentityCards(apiData) {
     const internalUsers = totalUsers - externalUsers;
     const missingData = microsoftUsersData.filter(u => !u.jobTitle || !u.mobilePhone).length;
     
-    // Create main Identity & Access card
+    // Create main  Identity Protection card
     const card = document.createElement('div');
     card.className = 'identity-card';
     card.innerHTML = `
         <div class="identity-card-header">
             <i class="fas fa-users"></i>
             <div>
-                <div class="identity-card-title">Identity & Access</div>
+                <div class="identity-card-title"> Identity Protection</div>
                 <div class="identity-card-type">User Management & Access Control</div>
             </div>
         </div>
@@ -325,7 +325,7 @@ function populateIdentityCards(apiData) {
     console.log(`[Identity Cards] Created card with ${totalUsers} users (${externalUsers} external, ${missingData} missing data)`);
 }
 
-// Open Identity & Access full dashboard
+// Open  Identity Protection full dashboard
 function openIdentityDashboard() {
     console.log('[Identity Dashboard] Opening full dashboard...');
     
@@ -348,7 +348,7 @@ function openIdentityDashboard() {
     // Update dashboard title
     const projectName = document.getElementById('project-name');
     const projectStatus = document.getElementById('project-status');
-    if (projectName) projectName.textContent = 'Identity & Access - Full Dashboard';
+    if (projectName) projectName.textContent = ' Identity Protection - Full Dashboard';
     if (projectStatus) projectStatus.textContent = 'Active';
     
     // Hide site header initially for full dashboard view
@@ -414,7 +414,7 @@ function openIdentityDashboard() {
     }
 }
 
-// Initialize Identity & Access dashboard
+// Initialize  Identity Protection dashboard
 function initializeIdentityDashboard() {
     console.log('[Identity Dashboard] Initializing dashboard...');
     console.log(`[Identity Dashboard] Users data available: ${microsoftUsersData.length}`);
@@ -2279,7 +2279,7 @@ function showError(message) {
 // Integrates with Sunbird for enhanced identity analytics,
 // user enrichment, and advanced security insights
 
-// Fetch Identity & Access data and update card preview
+// Fetch  Identity Protection data and update card preview
 // Global variables for Sunbird dashboard
 let isSunbirdDashboard = false;
 let sunbirdDashboardData = null;
@@ -2294,7 +2294,7 @@ async function fetchIdentityAccessData() {
             return;
         }
 
-        // Only fetch Identity & Access data for Sunbird users
+        // Only fetch  Identity Protection data for Sunbird users
         if (!isSunbirdUser()) {
             console.log('[Identity Access] Non-Sunbird user. Skipping fetch.');
             return;
@@ -2424,7 +2424,7 @@ async function fetchIdentityAccessData() {
             console.warn('[Identity Access] Could not fetch roles');
         }
 
-        // Update the Identity & Access project card with real data
+        // Update the  Identity Protection project card with real data
         const identityProject = mockProjects.find(p => p.id === 2);
         if (identityProject) {
             const externalUsers = microsoftUsersData.filter(u => u.isExternal).length;
@@ -2584,7 +2584,7 @@ async function fetchDuoStats(retryCount = 0) {
     }
 }
 
-/* IDENTITY & ACCESS DASHBOARD */
+/*  Identity Protection DASHBOARD */
 function generateIdentityDashboardHTML() {
     // Calculate stats
     const totalUsers = microsoftUsersData.length;
@@ -2600,7 +2600,7 @@ function generateIdentityDashboardHTML() {
                     <button id="btn-back-identity" class="btn-back-identity">
                         <i class="fas fa-arrow-left"></i> Back
                     </button>
-                    <h2 class="identity-dashboard-title">Identity & Access</h2>
+                    <h2 class="identity-dashboard-title"> Identity Protection</h2>
                 </div>
             </div>
 
@@ -3376,7 +3376,7 @@ function viewProjectDashboard(project) {
     document.getElementById('projects-view').style.display = 'none';
     document.getElementById('dashboard-view').style.display = 'none';
     
-    // If this is the Identity & Access card, fetch API data
+    // If this is the  Identity Protection card, fetch API data
     if (project.isIdentityCard) {
         document.getElementById('dashboard-view').style.display = 'block';
         fetchIdentityData(project);
@@ -3409,12 +3409,12 @@ function viewProjectDashboard(project) {
 }
 
 // ============================================
-// IDENTITY & ACCESS DATA API
+//  Identity Protection DATA API
 // ============================================
 // Fetches detailed Microsoft user and role data
-// for the Identity & Access dashboard tab
+// for the  Identity Protection dashboard tab
 
-// Fetch Identity & Access data from API
+// Fetch  Identity Protection data from API
 async function fetchIdentityData(project) {
     try {
         console.log('[Identity] Fetching Microsoft users...');
@@ -3450,7 +3450,7 @@ async function fetchIdentityData(project) {
         
     } catch (error) {
         console.error('[Identity] Error:', error);
-        showNotification('Failed to load Identity & Access data', false);
+        showNotification('Failed to load  Identity Protection data', false);
         updateDashboardData(project);
     }
 }
@@ -3493,7 +3493,7 @@ function resetDashboard() {
 
 /* DASHBOARD DATA */
 function updateDashboardData(project) {
-    // For Identity & Access, data is shown in the summary-stats section generated by generateIdentityDashboardHTML
+    // For  Identity Protection, data is shown in the summary-stats section generated by generateIdentityDashboardHTML
     // No need to update stat boxes for Identity cards
     if (project.isIdentityCard) {
         document.getElementById('project-name').textContent = project.name;
