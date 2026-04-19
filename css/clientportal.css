@@ -5631,7 +5631,7 @@
     display: flex;
     flex-direction: column;
     position: relative;
-    padding: 16px;
+    padding: 0;
     max-height: 380px;
     overflow-y: auto;
 }
@@ -5641,6 +5641,7 @@
     display: none;
     opacity: 0;
     transition: opacity 0.3s ease;
+    padding: 16px;
 }
 
 .card-tab-content.active {
@@ -5664,6 +5665,8 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
+    background: transparent;
+    border: none;
 }
 
 .alerts-list {
@@ -5834,6 +5837,8 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
+    background: transparent;
+    border: none;
 }
 
 /* Minimal Backup Stats */
@@ -6100,8 +6105,12 @@
     }
 
     .card-tabs-content {
-        padding: 12px;
         max-height: 350px;
+        padding: 0;
+    }
+
+    .card-tab-content {
+        padding: 12px;
     }
 
     .backup-stats-minimal {
@@ -6160,8 +6169,12 @@
     }
 
     .card-tabs-content {
-        padding: 10px;
+        padding: 0;
         max-height: 320px;
+    }
+
+    .card-tab-content {
+        padding: 10px;
     }
 
     .alert-item {

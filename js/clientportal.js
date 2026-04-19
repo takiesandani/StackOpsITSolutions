@@ -4855,16 +4855,34 @@ function switchCardTab(tabName) {
 
 // Navigate to full dashboards
 function switchDashboard(dashboardType) {
-    const dashboardMap = {
-        'security': 'identity-dashboard',
-        'backup': 'backup-recovery-dashboard'
-    };
-    
-    const dashboardId = dashboardMap[dashboardType];
-    if (dashboardId) {
-        const dashboardElement = document.getElementById(dashboardId);
-        if (dashboardElement) {
-            dashboardElement.scrollIntoView({ behavior: 'smooth' });
+    if (dashboardType === 'security') {
+        // Show dashboard view and navigate to identity tab
+        const dashboardView = document.getElementById('dashboard-view');
+        if (dashboardView) {
+            dashboardView.style.display = 'block';
+            const identityTab = document.getElementById('identity-tab');
+            if (identityTab) {
+                // Hide other tabs and show identity tab
+                document.querySelectorAll('.tab-content').forEach(tab => {
+                    tab.style.display = 'none';
+                });
+                identityTab.style.display = 'block';
+                
+                // Update active tab button
+                document.querySelectorAll('.tab-btn').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                document.querySelector('[data-tab="identity-tab"]').classList.add('active');
+                
+                identityTab.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+    } else if (dashboardType === 'backup') {
+        // Show backup recovery view
+        const backupView = document.getElementById('backup-recovery-view');
+        if (backupView) {
+            backupView.style.display = 'block';
+            backupView.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
     }
 }
