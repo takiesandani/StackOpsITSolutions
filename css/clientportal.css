@@ -5567,18 +5567,18 @@
 
 .card-tab-btn {
     flex: 1;
-    padding: 14px 16px;
+    padding: 8px 12px;
     background: transparent;
     border: none;
     border-bottom: 3px solid transparent;
     color: #bdbdbd;
-    font-size: 0.9rem;
+    font-size: 0.8rem;
     font-weight: 200;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 6px;
     transition: all 0.3s ease;
     position: relative;
     letter-spacing: 0.5px;
@@ -5586,7 +5586,7 @@
 }
 
 .card-tab-btn i {
-    font-size: 1rem;
+    font-size: 0.85rem;
     transition: all 0.3s ease;
 }
 
@@ -5631,8 +5631,9 @@
     display: flex;
     flex-direction: column;
     position: relative;
-    padding: 19.4px;
-    min-height: 450px;
+    padding: 16px;
+    max-height: 380px;
+    overflow-y: auto;
 }
 
 /* Individual Tab Content */
@@ -5640,7 +5641,6 @@
     display: none;
     opacity: 0;
     transition: opacity 0.3s ease;
-    animation: fadeIn 0.4s ease-out;
 }
 
 .card-tab-content.active {
@@ -5663,247 +5663,105 @@
 .security-alerts-card {
     display: flex;
     flex-direction: column;
-    gap: 14px;
-}
-
-.security-alerts-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
     gap: 12px;
-    margin-bottom: 8px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.security-alerts-header .header-content h4 {
-    color: var(--light);
-    font-size: 1.102rem;
-    margin: 0 0 4px 0;
-    font-weight: 200;
+.alerts-list {
     display: flex;
-    align-items: center;
+    flex-direction: column;
     gap: 8px;
 }
 
-.security-alerts-header .header-content h4 i {
-    color: #f87171;
-    font-size: 1.1rem;
-}
-
-.security-alerts-header .subtitle {
-    color: #bdbdbd;
-    font-size: 0.75rem;
-    margin: 0;
-    font-weight: 200;
-}
-
-.alert-badge-large {
-    padding: 5px 12px;
-    background: rgba(220, 53, 69, 0.2);
-    color: var(--danger);
-    border-radius: 20px;
-    font-size: 0.75rem;
-    font-weight: 200;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    white-space: nowrap;
-}
-
-.security-section {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.section-title {
-    color: #e0e0e0;
-    font-size: 0.85rem;
-    margin: 0;
-    font-weight: 200;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.section-title i {
-    color: #f87171;
-    font-size: 0.9rem;
-}
-
-/* Incidents List */
-.incidents-list {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.incident-item {
-    padding: 12px;
-    background: rgba(255, 255, 255, 0.02);
-    border-left: 3px solid;
-    border-radius: 6px;
-    transition: all 0.3s ease;
-}
-
-.incident-item.critical {
-    border-left-color: #f87171;
-    background: rgba(220, 53, 69, 0.08);
-}
-
-.incident-item:hover {
-    background: rgba(255, 255, 255, 0.04);
-}
-
-.incident-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
-    gap: 10px;
-}
-
-.incident-title {
-    color: #e0e0e0;
-    font-size: 0.9rem;
-    font-weight: 200;
-}
-
-.incident-severity {
-    display: inline-block;
-    padding: 4px 8px;
-    background: rgba(220, 53, 69, 0.2);
-    color: #f87171;
-    border-radius: 4px;
-    font-size: 0.7rem;
-    font-weight: 200;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    white-space: nowrap;
-}
-
-.incident-severity.critical {
-    background: rgba(220, 53, 69, 0.25);
-    color: #ef4444;
-}
-
-.incident-description {
-    color: #cbd5e1;
-    font-size: 0.8rem;
-    margin: 0 0 8px 0;
-    line-height: 1.4;
-}
-
-.incident-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 14px;
-    padding: 8px 0;
-    margin-bottom: 8px;
-    font-size: 0.75rem;
-    color: #94a3b8;
-}
-
-.meta-item {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
-.meta-item i {
-    color: #666;
-    font-size: 0.7rem;
-}
-
-.incident-solution {
-    background: rgba(0, 110, 255, 0.08);
-    border: 1px solid rgba(0, 110, 255, 0.15);
-    border-radius: 4px;
-    padding: 8px 10px;
-    margin-top: 8px;
-    font-size: 0.75rem;
-}
-
-.incident-solution strong {
-    color: #006eff;
-    display: block;
-    margin-bottom: 6px;
-    font-weight: 200;
-}
-
-.incident-solution ul {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.incident-solution li {
-    color: #cbd5e1;
-    padding-left: 16px;
-    position: relative;
-    font-weight: 200;
-}
-
-.incident-solution li::before {
-    content: '•';
-    position: absolute;
-    left: 0;
-    color: #006eff;
-}
-
-.no-active-message {
-    text-align: center;
-    padding: 20px;
-    color: #94a3b8;
-    font-size: 0.85rem;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-}
-
-.no-active-message i {
-    font-size: 1.8rem;
-    color: #28a745;
-}
-
-/* Updated Alerts List - Security & Alerts specific */
-.security-alerts-card .alerts-list {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.security-alerts-card .alert-item {
+.alert-item {
     display: flex;
     gap: 10px;
     align-items: flex-start;
-    padding: 12px;
+    padding: 10px;
     background: rgba(255, 255, 255, 0.02);
     border-left: 3px solid;
-    border-radius: 6px;
-    transition: all 0.3s ease;
+    border-radius: 4px;
+    transition: all 0.2s ease;
 }
 
-.security-alerts-card .alert-item:hover {
+.alert-item:hover {
     background: rgba(255, 255, 255, 0.04);
 }
 
-.security-alerts-card .alert-item.alert-high {
-    border-left-color: #f59e0b;
-    background: rgba(245, 158, 11, 0.08);
+.alert-item.alert-critical {
+    border-left-color: #f87171;
 }
 
-.security-alerts-card .alert-item.alert-medium {
-    border-left-color: #f97316;
-    background: rgba(249, 115, 22, 0.08);
+.alert-item.alert-high {
+    border-left-color: #f59e0b;
+}
+
+.alert-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    flex-shrink: 0;
+}
+
+.alert-item.alert-critical .alert-icon {
+    background: rgba(220, 53, 69, 0.15);
+    color: #f87171;
+}
+
+.alert-item.alert-high .alert-icon {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+}
+
+.alert-content h5 {
+    color: #e0e0e0;
+    font-size: 0.8rem;
+    margin: 0 0 3px 0;
+    font-weight: 200;
+}
+
+.alert-content p {
+    color: #cbd5e1;
+    font-size: 0.75rem;
+    margin: 0 0 5px 0;
+    line-height: 1.3;
+}
+
+.alert-action a {
+    color: var(--primary);
+    text-decoration: none;
+    font-size: 0.7rem;
+    font-weight: 200;
+    transition: color 0.2s ease;
+}
+
+.alert-action a:hover {
+    color: #66b3ff;
+}
+
+/* Simplified Button for Tab Dashboard Navigation */
+.btn-view-full-tab {
+    align-self: flex-start;
+    padding: 6px 12px;
+    background: rgba(0, 110, 255, 0.15);
+    border: 1px solid rgba(0, 110, 255, 0.3);
+    border-radius: 4px;
+    color: var(--primary);
+    cursor: pointer;
+    font-weight: 200;
+    font-size: 0.72rem;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.btn-view-full-tab:hover {
+    background: rgba(0, 110, 255, 0.25);
+    border-color: var(--primary);
 }
 
 .security-alerts-card .alert-icon {
@@ -5975,207 +5833,74 @@
 .backup-recovery-card {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 10px;
 }
 
-.backup-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 8px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.backup-header .header-content h4 {
-    color: var(--light);
-    font-size: 1.102rem;
-    margin: 0 0 4px 0;
-    font-weight: 200;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.backup-header .header-content h4 i {
-    color: var(--primary);
-    font-size: 1.1rem;
-}
-
-.backup-header .subtitle {
-    color: #bdbdbd;
-    font-size: 0.75rem;
-    margin: 0;
-    font-weight: 200;
-}
-
-.status-badge-large {
-    padding: 5px 12px;
-    background: rgba(40, 167, 69, 0.2);
-    color: var(--success);
-    border-radius: 20px;
-    font-size: 0.75rem;
-    font-weight: 200;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    white-space: nowrap;
-}
-
-.status-badge-large.success {
-    background: rgba(40, 167, 69, 0.2);
-    color: #86efac;
-    border: 1px solid rgba(40, 167, 69, 0.3);
-}
-
-/* Backup Summary Stats */
-.backup-summary {
+/* Minimal Backup Stats */
+.backup-stats-minimal {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-    padding: 12px;
+    gap: 8px;
+    padding: 10px;
     background: rgba(0, 110, 255, 0.08);
-    border-radius: 6px;
-    border-left: 3px solid rgba(0, 110, 255, 0.3);
+    border-radius: 4px;
+    border-left: 2px solid rgba(0, 110, 255, 0.3);
 }
 
-.summary-item {
+.stat-min {
     display: flex;
     flex-direction: column;
     align-items: center;
     text-align: center;
-    gap: 4px;
+    gap: 2px;
 }
 
-.summary-label {
-    font-size: 0.65rem;
-    color: #bdbdbd;
+.stat-label {
+    font-size: 0.6rem;
+    color: #94a3b8;
     text-transform: uppercase;
-    letter-spacing: 0.4px;
+    letter-spacing: 0.3px;
     font-weight: 200;
 }
 
-.summary-value {
-    font-size: 1.2rem;
+.stat-val {
+    font-size: 0.95rem;
     color: #006eff;
     font-weight: 200;
 }
 
-.summary-meta {
-    font-size: 0.65rem;
-    color: #666;
-    font-weight: 200;
+/* Minimal Backup List */
+.backup-list-minimal {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }
 
-/* Backup Table Container */
-.backup-table-container {
-    overflow-x: auto;
-    border-radius: 6px;
+.backup-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 8px;
     background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-left: 2px solid rgba(0, 110, 255, 0.2);
+    border-radius: 3px;
+    transition: all 0.2s ease;
 }
 
-.backup-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.8rem;
-    min-width: 600px;
+.backup-item:hover {
+    background: rgba(255, 255, 255, 0.05);
 }
 
-.backup-table thead {
-    background: rgba(0, 110, 255, 0.1);
-    border-bottom: 1px solid rgba(0, 110, 255, 0.2);
-}
-
-.backup-table th {
-    padding: 10px 10px;
-    text-align: left;
-    color: rgba(0, 110, 255, 0.85);
-    font-weight: 200;
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    white-space: nowrap;
-}
-
-.backup-table td {
-    padding: 10px 10px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    color: #d1d5db;
-}
-
-.backup-table tbody tr:hover {
-    background: rgba(0, 110, 255, 0.05);
-}
-
-.backup-table tbody tr:last-child td {
-    border-bottom: none;
-}
-
-.area-name {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+.backup-area {
     color: #e0e0e0;
-    font-weight: 200;
-    white-space: nowrap;
-}
-
-.area-name i {
-    color: var(--primary);
-    font-size: 0.85rem;
-}
-
-.storage-size {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.storage-value {
-    color: #e0e0e0;
-    font-weight: 200;
-    white-space: nowrap;
-    min-width: 50px;
-}
-
-.storage-bar {
-    display: flex;
-    height: 4px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 2px;
-    overflow: hidden;
-    min-width: 60px;
-    max-width: 100px;
-}
-
-.bar-fill {
-    background: linear-gradient(90deg, #006eff, #1e90ff);
-    height: 100%;
-    border-radius: 2px;
-}
-
-.backup-status .status-badge {
-    display: inline-block;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 0.65rem;
-    font-weight: 200;
-    text-transform: uppercase;
-    white-space: nowrap;
-}
-
-.backup-status .status-badge.success {
-    background: rgba(40, 167, 69, 0.2);
-    color: #86efac;
-    border: 1px solid rgba(40, 167, 69, 0.3);
-}
-
-.last-backup-time {
-    color: #94a3b8;
     font-size: 0.75rem;
     font-weight: 200;
-    white-space: nowrap;
+}
+
+.backup-detail {
+    color: #9ca3af;
+    font-size: 0.7rem;
+    font-weight: 200;
 }
 
 /* Red Border for Alert State (Security & Alerts with active alerts) */
@@ -6365,45 +6090,43 @@
     }
 
     .card-tab-btn {
-        padding: 12px 12px;
-        font-size: 0.8rem;
-        gap: 6px;
+        padding: 8px 10px;
+        font-size: 0.75rem;
+        gap: 4px;
     }
 
     .card-tab-btn i {
-        font-size: 0.9rem;
-    }
-
-    .card-tabs-content {
-        padding: 14px;
-        min-height: 400px;
-    }
-
-    .backup-stats {
-        grid-template-columns: 1fr;
-        gap: 8px;
-    }
-
-    .backup-summary {
-        gap: 8px;
-        padding: 10px;
-    }
-
-    .summary-label {
-        font-size: 0.6rem;
-    }
-
-    .summary-value {
-        font-size: 1rem;
-    }
-
-    .backup-table {
         font-size: 0.75rem;
     }
 
-    .backup-table th,
-    .backup-table td {
-        padding: 8px 6px;
+    .card-tabs-content {
+        padding: 12px;
+        max-height: 350px;
+    }
+
+    .backup-stats-minimal {
+        gap: 6px;
+        padding: 8px;
+    }
+
+    .stat-label {
+        font-size: 0.55rem;
+    }
+
+    .stat-val {
+        font-size: 0.85rem;
+    }
+
+    .backup-item {
+        padding: 6px;
+    }
+
+    .backup-area {
+        font-size: 0.7rem;
+    }
+
+    .backup-detail {
+        font-size: 0.65rem;
     }
 
     .security-alerts-header {
@@ -6422,75 +6145,72 @@
 
 @media (max-width: 480px) {
     .card-tabs-nav {
-        flex-wrap: wrap;
-        gap: 0;
+        gap: 2px;
     }
 
     .card-tab-btn {
         flex: 1;
-        min-width: 100%;
-        padding: 10px;
-        font-size: 0.75rem;
-        gap: 4px;
+        padding: 6px 8px;
+        font-size: 0.7rem;
+        gap: 3px;
     }
 
     .card-tab-btn i {
-        font-size: 0.8rem;
+        font-size: 0.65rem;
     }
 
     .card-tabs-content {
-        padding: 12px;
-        min-height: 350px;
-    }
-
-    .backup-stats {
-        grid-template-columns: 1fr;
-        gap: 6px;
+        padding: 10px;
+        max-height: 320px;
     }
 
     .alert-item {
-        padding: 10px 11px;
-        gap: 10px;
+        padding: 8px;
+        gap: 8px;
+    }
+
+    .alert-icon {
+        width: 20px;
+        height: 20px;
+        font-size: 0.6rem;
     }
 
     .alert-content h5 {
-        font-size: 0.85rem;
+        font-size: 0.75rem;
     }
 
     .alert-content p {
-        font-size: 0.8rem;
+        font-size: 0.7rem;
     }
 
-    .btn-view-full {
-        width: 100%;
-        justify-content: center;
-        padding: 8px 12px;
-        font-size: 0.8rem;
+    .btn-view-full-tab {
+        padding: 5px 10px;
+        font-size: 0.65rem;
     }
 
-    .backup-summary {
-        grid-template-columns: 1fr;
-        gap: 6px;
+    .backup-stats-minimal {
+        gap: 5px;
         padding: 8px;
     }
 
-    .summary-value {
-        font-size: 0.9rem;
+    .stat-label {
+        font-size: 0.5rem;
     }
 
-    .backup-table-container {
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
+    .stat-val {
+        font-size: 0.75rem;
     }
 
-    .backup-table {
-        font-size: 0.7rem;
-        min-width: 550px;
+    .backup-item {
+        padding: 5px;
     }
 
-    .backup-table th,
-    .backup-table td {
-        padding: 6px 4px;
+    .backup-area {
+        font-size: 0.65rem;
+    }
+
+    .backup-detail {
+        font-size: 0.6rem;
     }
 
     .area-name {

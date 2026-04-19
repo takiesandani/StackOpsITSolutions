@@ -4669,96 +4669,33 @@ async function initializeSunbirdTabbedCard(billingCard, token) {
 
 // Generate Security & Alerts card content
 function generateSecurityAlertsCard() {
-    const hasActiveIncidents = true; // Toggle to false to show "no active incidents"
-    
     return `
         <div class="security-alerts-card">
-            <div class="security-alerts-header">
-                <div class="header-content">
-                    <h4><i class="fas fa-exclamation-triangle"></i> Security & Alerts</h4>
-                    <p class="subtitle">Monitor active incidents and vulnerabilities</p>
+            <div class="alerts-list">
+                <div class="alert-item alert-critical">
+                    <div class="alert-icon">
+                        <i class="fas fa-lock"></i>
+                    </div>
+                    <div class="alert-content">
+                        <h5>Privileged User Without MFA</h5>
+                        <p>2 admin accounts detected without authentication</p>
+                        <span class="alert-action"><a href="#">Review →</a></span>
+                    </div>
                 </div>
-                <span class="alert-badge-large">3 Active</span>
-            </div>
-            
-            <!-- Active Incidents Section -->
-            <div class="security-section">
-                <h5 class="section-title">
-                    <i class="fas fa-fire"></i> Active Incidents
-                </h5>
-                ${hasActiveIncidents ? `
-                    <div class="incidents-list">
-                        <div class="incident-item critical">
-                            <div class="incident-header">
-                                <span class="incident-title">Privileged User Without MFA</span>
-                                <span class="incident-severity critical">🚨 CRITICAL</span>
-                            </div>
-                            <div class="incident-details">
-                                <p class="incident-description">2 admin accounts detected without multi-factor authentication enabled</p>
-                                <div class="incident-meta">
-                                    <span class="meta-item">
-                                        <i class="fas fa-map-marker-alt"></i> Location: Microsoft Entra ID
-                                    </span>
-                                    <span class="meta-item">
-                                        <i class="fas fa-clock"></i> Detected: 2 hours ago
-                                    </span>
-                                </div>
-                                <div class="incident-solution">
-                                    <strong>How to Solve:</strong>
-                                    <ul>
-                                        <li>Navigate to Microsoft Entra ID → Users</li>
-                                        <li>Enable MFA for admin accounts: john.smith@company.com, jane.doe@company.com</li>
-                                        <li>Use Security Defaults or Conditional Access policies</li>
-                                    </ul>
-                                </div>
-                            </div>
-                        </div>
+                
+                <div class="alert-item alert-high">
+                    <div class="alert-icon">
+                        <i class="fas fa-user-clock"></i>
                     </div>
-                ` : `
-                    <div class="no-active-message">
-                        <i class="fas fa-check-circle"></i>
-                        <p>No active incidents detected</p>
-                    </div>
-                `}
-            </div>
-            
-            <!-- High Severity Alerts Section -->
-            <div class="security-section">
-                <h5 class="section-title">
-                    <i class="fas fa-warning"></i> High Severity Alerts
-                </h5>
-                <div class="alerts-list">
-                    <div class="alert-item alert-high">
-                        <div class="alert-icon">
-                            <i class="fas fa-user-clock"></i>
-                        </div>
-                        <div class="alert-content">
-                            <h5>Inactive Users (30+ days)</h5>
-                            <p>8 users: sarah.j@company.com, mike.p@company.com, and 6 others</p>
-                            <div class="alert-solution">
-                                <strong>Action:</strong> Review and disable accounts or re-engage users
-                            </div>
-                            <span class="alert-action"><a href="#">Review Users →</a></span>
-                        </div>
-                    </div>
-                    
-                    <div class="alert-item alert-medium">
-                        <div class="alert-icon">
-                            <i class="fas fa-certificate"></i>
-                        </div>
-                        <div class="alert-content">
-                            <h5>Policy Update: Compliance Review Due</h5>
-                            <p>Annual security policy review required in 7 days for ISO 27001 compliance</p>
-                            <div class="alert-solution">
-                                <strong>Action:</strong> Schedule compliance review meeting with security team
-                            </div>
-                            <span class="alert-action"><a href="#">Schedule Review →</a></span>
-                        </div>
+                    <div class="alert-content">
+                        <h5>Inactive Users (30+ days)</h5>
+                        <p>8 users require review</p>
+                        <span class="alert-action"><a href="#">Review →</a></span>
                     </div>
                 </div>
             </div>
             
-            <button class="btn-view-full" onclick="alert('Full Security Dashboard')">
+            <button class="btn-view-full-tab" onclick="switchDashboard('security')">
                 <i class="fas fa-arrow-right"></i> View Full Dashboard
             </button>
         </div>
@@ -4847,110 +4784,41 @@ function generateBillingCardContent(invoice, currency) {
 function generateBackupRecoveryCard() {
     return `
         <div class="backup-recovery-card">
-            <div class="backup-header">
-                <div class="header-content">
-                    <h4><i class="fas fa-database"></i> Backup & Recovery</h4>
-                    <p class="subtitle">Backup status and recovery management</p>
+            <div class="backup-stats-minimal">
+                <div class="stat-min">
+                    <span class="stat-label">Storage</span>
+                    <span class="stat-val">247 GB</span>
                 </div>
-                <span class="status-badge-large success">Protected</span>
-            </div>
-            
-            <!-- Backup Summary Stats -->
-            <div class="backup-summary">
-                <div class="summary-item">
-                    <span class="summary-label">Total Storage</span>
-                    <span class="summary-value">247 GB</span>
-                    <span class="summary-meta">Used</span>
+                <div class="stat-min">
+                    <span class="stat-label">Users</span>
+                    <span class="stat-val">45</span>
                 </div>
-                <div class="summary-item">
-                    <span class="summary-label">Number of Users</span>
-                    <span class="summary-value">45</span>
-                    <span class="summary-meta">Protected</span>
-                </div>
-                <div class="summary-item">
-                    <span class="summary-label">Retention Period</span>
-                    <span class="summary-value">30</span>
-                    <span class="summary-meta">Days</span>
+                <div class="stat-min">
+                    <span class="stat-label">Status</span>
+                    <span class="stat-val" style="color: #86efac;">Protected</span>
                 </div>
             </div>
             
-            <!-- Backup Areas Table -->
-            <div class="backup-table-container">
-                <table class="backup-table">
-                    <thead>
-                        <tr>
-                            <th>Area</th>
-                            <th>Storage</th>
-                            <th>Status</th>
-                            <th>Last Backup</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td class="area-name">
-                                <i class="fas fa-envelope"></i> Exchange / Mailboxes
-                            </td>
-                            <td class="storage-size">
-                                <span class="storage-value">89 GB</span>
-                                <span class="storage-bar">
-                                    <span class="bar-fill" style="width: 36%"></span>
-                                </span>
-                            </td>
-                            <td class="backup-status">
-                                <span class="status-badge success">✓ Protected</span>
-                            </td>
-                            <td class="last-backup-time">Today, 2:30 AM</td>
-                        </tr>
-                        <tr>
-                            <td class="area-name">
-                                <i class="fas fa-sharealt"></i> SharePoint / OneDrive
-                            </td>
-                            <td class="storage-size">
-                                <span class="storage-value">98 GB</span>
-                                <span class="storage-bar">
-                                    <span class="bar-fill" style="width: 40%"></span>
-                                </span>
-                            </td>
-                            <td class="backup-status">
-                                <span class="status-badge success">✓ Protected</span>
-                            </td>
-                            <td class="last-backup-time">Today, 2:30 AM</td>
-                        </tr>
-                        <tr>
-                            <td class="area-name">
-                                <i class="fas fa-users"></i> Active Directory
-                            </td>
-                            <td class="storage-size">
-                                <span class="storage-value">34 GB</span>
-                                <span class="storage-bar">
-                                    <span class="bar-fill" style="width: 14%"></span>
-                                </span>
-                            </td>
-                            <td class="backup-status">
-                                <span class="status-badge success">✓ Protected</span>
-                            </td>
-                            <td class="last-backup-time">Today, 3:15 AM</td>
-                        </tr>
-                        <tr>
-                            <td class="area-name">
-                                <i class="fas fa-lock"></i> Teams & Communications
-                            </td>
-                            <td class="storage-size">
-                                <span class="storage-value">26 GB</span>
-                                <span class="storage-bar">
-                                    <span class="bar-fill" style="width: 10%"></span>
-                                </span>
-                            </td>
-                            <td class="backup-status">
-                                <span class="status-badge success">✓ Protected</span>
-                            </td>
-                            <td class="last-backup-time">Today, 2:45 AM</td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div class="backup-list-minimal">
+                <div class="backup-item">
+                    <div class="backup-area">Exchange / Mailboxes</div>
+                    <div class="backup-detail">89 GB • Protected</div>
+                </div>
+                <div class="backup-item">
+                    <div class="backup-area">SharePoint / OneDrive</div>
+                    <div class="backup-detail">98 GB • Protected</div>
+                </div>
+                <div class="backup-item">
+                    <div class="backup-area">Active Directory</div>
+                    <div class="backup-detail">34 GB • Protected</div>
+                </div>
+                <div class="backup-item">
+                    <div class="backup-area">Teams & Communications</div>
+                    <div class="backup-detail">26 GB • Protected</div>
+                </div>
             </div>
             
-            <button class="btn-view-full" onclick="alert('Full Backup & Recovery Dashboard')">
+            <button class="btn-view-full-tab" onclick="switchDashboard('backup')">
                 <i class="fas fa-arrow-right"></i> View Full Dashboard
             </button>
         </div>
@@ -4983,6 +4851,22 @@ function switchCardTab(tabName) {
     document.getElementById(`${tabName}-tab`).classList.add('active');
     
     console.log(`[Card Tabs] Switched to: ${tabName}`);
+}
+
+// Navigate to full dashboards
+function switchDashboard(dashboardType) {
+    const dashboardMap = {
+        'security': 'identity-dashboard',
+        'backup': 'backup-recovery-dashboard'
+    };
+    
+    const dashboardId = dashboardMap[dashboardType];
+    if (dashboardId) {
+        const dashboardElement = document.getElementById(dashboardId);
+        if (dashboardElement) {
+            dashboardElement.scrollIntoView({ behavior: 'smooth' });
+        }
+    }
 }
 
 // Make toggleBillingItems globally accessible
