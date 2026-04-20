@@ -217,6 +217,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeBillingCard();
     initializeGovernanceCard();
     initializeSupportCard();
+    initializeSunbirdLeftMenu();
     updateCopyrightYear();
 });
 
@@ -4463,48 +4464,10 @@ async function initializeBillingCard() {
     if (!billingCard) return;
     
     const token = localStorage.getItem('authToken');
-    const isSunbird = isSunbirdUser();
     
     if (!token) {
         billingCard.innerHTML = '<p style="color: #bdbdbd; text-align: center; padding: 20px;">Please log in to view billing information.</p>';
         return;
-    }
-    
-    // For Sunbird users, create wrapper with sidebar
-    if (isSunbird) {
-        // Create wrapper element
-        const wrapper = document.createElement('div');
-        wrapper.className = 'sunbird-cards-wrapper';
-        wrapper.id = 'sunbird-cards-wrapper';
-        
-        // Create sidebar menu
-        const sidebar = document.createElement('div');
-        sidebar.className = 'billing-sidebar-menu';
-        sidebar.innerHTML = `
-            <button class="sidebar-menu-item active" data-menu="billing" onclick="window.switchBillingMenu('billing')">
-                <i class="fas fa-file-invoice" style="margin-right: 6px;"></i>Billing Statement
-            </button>
-            <button class="sidebar-menu-item" data-menu="security" onclick="window.switchBillingMenu('security')">
-                <i class="fas fa-shield-alt" style="margin-right: 6px;"></i>Security Alerts
-            </button>
-            <button class="sidebar-menu-item" data-menu="backup" onclick="window.switchBillingMenu('backup')">
-                <i class="fas fa-hdd" style="margin-right: 6px;"></i>Backup & Recovery
-            </button>
-        `;
-        
-        // Append sidebar to wrapper
-        wrapper.appendChild(sidebar);
-        
-        // Clear billing card and append wrapper before it in DOM
-        billingCard.innerHTML = ''; // Clear any existing content
-        billingCard.parentElement.insertBefore(wrapper, billingCard);
-        
-        // Move billing card into wrapper
-        wrapper.appendChild(billingCard);
-        
-        // Remove the ::before grid positioning since we're wrapping it
-        billingCard.style.gridColumn = 'auto';
-        billingCard.style.gridRow = 'auto';
     }
     
     try {
@@ -4643,7 +4606,7 @@ window.toggleBillingItems = function() {
 
 // Switch billing menu for Sunbird users
 window.switchBillingMenu = function(menuItem) {
-    const menuItems = document.querySelectorAll('.sidebar-menu-item');
+    const menuItems = document.querySelectorAll('.sunbird-menu-item');
     menuItems.forEach(item => item.classList.remove('active'));
     
     const activeItem = document.querySelector(`[data-menu="${menuItem}"]`);
@@ -4654,6 +4617,43 @@ window.switchBillingMenu = function(menuItem) {
     // Add logic here for switching content based on menu selection
     console.log('Switched to:', menuItem);
 };
+
+// Initialize Sunbird left menu (called during dashboard initialization)
+function initializeSunbirdLeftMenu() {
+    if (!isSunbirdUser()) return;
+    
+    const dashboardCardsSection = document.querySelector('.dashboard-cards-section');
+    if (!dashboardCardsSection) return;
+    
+    // Check if wrapper already exists
+    const existingWrapper = dashboardCardsSection.parentElement;
+    if (existingWrapper.classList.contains('dashboard-with-menu')) return;
+    
+    // Create wrapper
+    const wrapper = document.createElement('div');
+    wrapper.className = 'dashboard-with-menu';
+    
+    // Create left menu
+    const leftMenu = document.createElement('div');
+    leftMenu.className = 'sunbird-left-menu';
+    leftMenu.innerHTML = `
+        <button class="sunbird-menu-item active" data-menu="billing" onclick="window.switchBillingMenu('billing')">
+            <i class="fas fa-file-invoice"></i><br>Billing Statement
+        </button>
+        <button class="sunbird-menu-item" data-menu="security" onclick="window.switchBillingMenu('security')">
+            <i class="fas fa-shield-alt"></i><br>Security Alerts
+        </button>
+        <button class="sunbird-menu-item" data-menu="backup" onclick="window.switchBillingMenu('backup')">
+            <i class="fas fa-hdd"></i><br>Backup & Recovery
+        </button>
+    `;
+    
+    // Insert wrapper before dashboard-cards-section
+    dashboardCardsSection.parentElement.insertBefore(wrapper, dashboardCardsSection);
+    
+    // Move dashboard-cards-section into wrapper
+    wrapper.appendChild(dashboardCardsSection);
+}
 
 function initializeGovernanceCard() {
     const governanceCard = document.getElementById('governance-card');

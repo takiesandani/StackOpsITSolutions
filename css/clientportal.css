@@ -1029,29 +1029,17 @@
     
 }
 
-/* SUNBIRD CARDS WRAPPER - Sidebar + Billing Card Layout */
-.sunbird-cards-wrapper {
-    display: flex;
-    gap: 16px;
-    grid-column: 1;
-    grid-row: 1 / 3;
-    align-items: flex-start;
-}
-
-/* BILLING SIDEBAR MENU - For Sunbird Users Only */
-.billing-sidebar-menu {
-    flex-shrink: 0;
-    width: 180px;
+/* SUNBIRD LEFT MENU - For Sunbird Users Only */
+.sunbird-left-menu {
     display: flex;
     flex-direction: column;
     gap: 12px;
-    padding: 16px;
-    background: transparent;
-    border-radius: 10px;
-    position: relative;
+    width: 180px;
+    flex-shrink: 0;
+    align-self: flex-start;
 }
 
-.sidebar-menu-item {
+.sunbird-menu-item {
     padding: 12px 14px;
     background: transparent;
     border: 1px solid rgba(0, 110, 255, 0.3);
@@ -1064,37 +1052,31 @@
     font-weight: 200;
     box-shadow: 0 0 12px rgba(0, 162, 255, 0.15);
     position: relative;
-    overflow: hidden;
 }
 
-.sidebar-menu-item:hover {
+.sunbird-menu-item:hover {
     color: var(--primary);
     border-color: rgba(0, 110, 255, 0.6);
     box-shadow: 0 0 18px rgba(0, 162, 255, 0.35);
     transform: translateY(-2px);
 }
 
-.sidebar-menu-item.active {
+.sunbird-menu-item.active {
     color: #ffffff;
     background: rgba(0, 110, 255, 0.15);
     border-color: var(--primary);
     box-shadow: 0 0 25px rgba(0, 162, 255, 0.5), inset 0 0 15px rgba(0, 110, 255, 0.1);
 }
 
-.sidebar-menu-item:active {
-    transform: translateY(0);
+/* Container for dashboard cards + menu */
+.dashboard-with-menu {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
 }
 
-/* Billing card adjusted for wrapper layout */
-.sunbird-cards-wrapper .billing-card {
-    grid-column: auto;
-    grid-row: auto;
+.dashboard-with-menu .dashboard-cards-section {
     flex: 1;
-    min-width: 300px;
-}
-
-.sunbird-cards-wrapper .billing-card::before {
-    /* Keep existing animation */
 }
 
 .dashboard-card-vertical-container {
