@@ -1029,6 +1029,21 @@
     
 }
 
+/* Connecting line from billing card to sidebar */
+.billing-card::after {
+    content: '';
+    position: absolute;
+    right: -20px;
+    top: 50%;
+    width: 20px;
+    height: 2px;
+    background: linear-gradient(90deg, rgba(0, 110, 255, 0.6) 0%, transparent 100%);
+    box-shadow: 0 0 10px rgba(0, 110, 255, 0.4);
+    transform: translateY(-50%);
+    pointer-events: none;
+    z-index: 5;
+}
+
 .dashboard-card-vertical-container {
     display: grid;
     grid-template-rows: 1fr 11.2px 1fr;
@@ -5520,3 +5535,516 @@
         max-height: 240px;
     }
 
+
+/* ========================================
+ * SUNBIRD CARD SWITCHER SYSTEM
+ * Only applies when Sunbird client is logged in
+ * ======================================== */
+
+/* Card Switcher Container */
+.billing-card.sunbird-switchable {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Tab Toggle Buttons */
+.card-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(0, 110, 255, 0.2);
+}
+
+.card-tab-btn {
+    padding: 8px 14px;
+    background: rgba(0, 110, 255, 0.1);
+    border: 1px solid rgba(0, 110, 255, 0.3);
+    border-radius: 6px;
+    color: #bdbdbd;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.card-tab-btn:hover {
+    background: rgba(0, 110, 255, 0.2);
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.card-tab-btn.active {
+    background: rgba(0, 110, 255, 0.3);
+    border-color: var(--primary);
+    color: var(--primary);
+    font-weight: 500;
+}
+
+.card-tab-btn i {
+    font-size: 0.9rem;
+}
+
+/* Card Content Wrapper */
+.card-content-wrapper {
+    flex: 1;
+    overflow-y: auto;
+    position: relative;
+    min-height: 300px;
+}
+
+.card-content {
+    display: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    animation: fadeIn 0.3s ease;
+}
+
+.card-content.active {
+    display: block;
+    opacity: 1;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+/* ========================================
+ * SECURITY & ALERTS CARD
+ * ======================================== */
+
+.security-alerts-content {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.security-alerts-header {
+    display: flex;
+    align-items: center;
+    gap: 11.2px;
+    margin-bottom: 8px;
+}
+
+.security-alerts-header i {
+    color: var(--danger);
+    font-size: 22.4px;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.security-alerts-header h3 {
+    color: var(--light);
+    font-size: 1.224rem;
+    margin: 0;
+    font-weight: 200;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+.alerts-status-box {
+    background: rgba(220, 53, 69, 0.1);
+    border-left: 3px solid var(--danger);
+    padding: 13.3px;
+    border-radius: 6px;
+    margin-bottom: 13.3px;
+}
+
+.alerts-status-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+    color: #bdbdbd;
+    font-size: 0.877rem;
+}
+
+.alerts-status-item:last-child {
+    margin-bottom: 0;
+}
+
+.alerts-status-label {
+    color: #bdbdbd;
+}
+
+.alerts-status-value {
+    color: var(--light);
+    font-weight: 200;
+}
+
+.alerts-critical {
+    color: var(--danger) !important;
+}
+
+.alerts-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.alert-item {
+    display: flex;
+    gap: 10px;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.02);
+    border-left: 3px solid rgba(220, 53, 69, 0.5);
+    border-radius: 4px;
+    font-size: 0.816rem;
+}
+
+.alert-item.critical {
+    background: rgba(220, 53, 69, 0.08);
+    border-left-color: var(--danger);
+}
+
+.alert-item.warning {
+    background: rgba(255, 193, 7, 0.08);
+    border-left-color: var(--warning);
+}
+
+.alert-icon {
+    flex-shrink: 0;
+    width: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.alert-icon i {
+    font-size: 13px;
+}
+
+.alert-item.critical .alert-icon i {
+    color: var(--danger);
+}
+
+.alert-item.warning .alert-icon i {
+    color: var(--warning);
+}
+
+.alert-text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.alert-title {
+    color: var(--light);
+    font-weight: 500;
+    font-size: 0.85rem;
+}
+
+.alert-description {
+    color: #bdbdbd;
+    font-size: 0.75rem;
+    line-height: 1.3;
+}
+
+.alert-time {
+    color: #888;
+    font-size: 0.7rem;
+    margin-top: 2px;
+}
+
+/* ========================================
+ * BACKUP & RECOVERY CARD
+ * ======================================== */
+
+.backup-recovery-content {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.backup-recovery-header {
+    display: flex;
+    align-items: center;
+    gap: 11.2px;
+    margin-bottom: 8px;
+}
+
+.backup-recovery-header i {
+    color: var(--success);
+    font-size: 22.4px;
+}
+
+.backup-recovery-header h3 {
+    color: var(--light);
+    font-size: 1.224rem;
+    margin: 0;
+    font-weight: 200;
+}
+
+.backup-status-box {
+    background: rgba(40, 167, 69, 0.1);
+    border-left: 3px solid var(--success);
+    padding: 13.3px;
+    border-radius: 6px;
+    margin-bottom: 13.3px;
+}
+
+.backup-status-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+    color: #bdbdbd;
+    font-size: 0.877rem;
+}
+
+.backup-status-item:last-child {
+    margin-bottom: 0;
+}
+
+.backup-status-label {
+    color: #bdbdbd;
+}
+
+.backup-status-value {
+    color: var(--light);
+    font-weight: 200;
+}
+
+.backup-status-value.success {
+    color: var(--success) !important;
+}
+
+.backup-items {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.backup-item {
+    display: flex;
+    gap: 10px;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.02);
+    border-left: 3px solid rgba(40, 167, 69, 0.5);
+    border-radius: 4px;
+    font-size: 0.816rem;
+}
+
+.backup-item.completed {
+    background: rgba(40, 167, 69, 0.08);
+    border-left-color: var(--success);
+}
+
+.backup-item.pending {
+    background: rgba(23, 162, 184, 0.08);
+    border-left-color: var(--info);
+}
+
+.backup-icon {
+    flex-shrink: 0;
+    width: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.backup-icon i {
+    font-size: 13px;
+}
+
+.backup-item.completed .backup-icon i {
+    color: var(--success);
+}
+
+.backup-item.pending .backup-icon i {
+    color: var(--info);
+}
+
+.backup-text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.backup-title {
+    color: var(--light);
+    font-weight: 500;
+    font-size: 0.85rem;
+}
+
+.backup-description {
+    color: #bdbdbd;
+    font-size: 0.75rem;
+    line-height: 1.3;
+}
+
+.backup-date {
+    color: #888;
+    font-size: 0.7rem;
+    margin-top: 2px;
+}
+
+/* ========================================
+ * VIEW FULL DASHBOARD BUTTON
+ * Using the glow-wrap design
+ * ======================================== */
+
+.card-view-dashboard-wrapper {
+    margin-top: 16px;
+    display: flex;
+    justify-content: flex-start;
+}
+
+.glow-wrap-card {
+    position: relative;
+    display: inline-block;
+    width: auto;
+    min-width: 210px;
+    height: 50px;
+    border-radius: 25px;
+    overflow: hidden;
+    box-shadow: 0 4px 15px rgba(0, 162, 255, 0.199);
+    transition: transform 0.2s ease;
+}
+
+.glow-wrap-card:hover {
+    transform: scale(1.05);
+    animation: live-glow 1.5s infinite alternate;
+}
+
+.glow-wrap-card .glowing-border-layer {
+    position: absolute;
+    top: -80px;
+    left: -80px;
+    width: 360px;
+    height: 210px;
+    z-index: 1;
+    background: conic-gradient(
+        #0068e0 0%,
+        hsla(207, 100%, 50%, 0) 25%,
+        #0084ff00 50%,
+        #0077ff00 75%,
+        #005ae0 100%
+    );
+    animation: spin 3s linear infinite;
+}
+
+.btn-view-full-card {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: calc(100% - 4px);
+    height: calc(100% - 4px);
+    padding: 0;
+    background: #000000;
+    color: #ffffff !important;
+    border: none;
+    box-shadow: none;
+    border-radius: 23px;
+    font-size: 15px;
+    font-weight: 200;
+    cursor: pointer;
+    transition: color 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    letter-spacing: 2px;
+    z-index: 2;
+    pointer-events: auto;
+}
+
+.btn-view-full-card,
+.btn-view-full-card i {
+    color: #ffffff !important;
+}
+
+.btn-view-full-card:hover {
+    color: #ffffff !important;
+    transform: none;
+    box-shadow: none;
+    animation: none;
+}
+
+.btn-view-full-card:hover i {
+    color: #ffffff !important;
+}
+
+.btn-view-full-card:active {
+    transform: none;
+}
+
+/* Close Button for Preview */
+.btn-close-preview {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: rgba(0, 110, 255, 0.2);
+    border: 1px solid rgba(0, 110, 255, 0.4);
+    color: var(--primary);
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    z-index: 10;
+    font-size: 18px;
+}
+
+.btn-close-preview:hover {
+    background: rgba(0, 110, 255, 0.4);
+    border-color: var(--primary);
+    transform: rotate(90deg);
+}
+
+.preview-header {
+    position: relative;
+}
+
+/* Responsive styles for card switcher */
+@media (max-width: 768px) {
+    .card-tabs {
+        flex-wrap: wrap;
+    }
+
+    .card-tab-btn {
+        flex: 1;
+        min-width: 80px;
+        font-size: 0.75rem;
+        padding: 6px 10px;
+    }
+
+    .glow-wrap-card {
+        min-width: 180px;
+        height: 45px;
+    }
+
+    .btn-view-full-card {
+        font-size: 13px;
+        gap: 8px;
+    }
+
+    .btn-close-preview {
+        width: 36px;
+        height: 36px;
+        font-size: 16px;
+        top: 15px;
+        right: 15px;
+    }
+}

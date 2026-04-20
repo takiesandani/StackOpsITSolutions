@@ -4457,7 +4457,85 @@ function updateCopyrightYear() {
 // Retrieves billing information, invoices, and payment status
 // for the billing dashboard card
 
-/* BILLING & GOVERNANCE CARDS */
+/* ============================================
+ * Security & Alerts Card Content (Sunbird)
+ * ============================================ */
+function generateSecurityAlertsContent() {
+    // Summary view with View Full Dashboard button
+    return `
+        <div class="security-alerts-content">
+            <div class="security-alerts-header">
+                <i class="fas fa-shield-virus"></i>
+                <h3>Security & Alerts</h3>
+            </div>
+            <div class="alerts-status-box">
+                <div class="alerts-status-item">
+                    <span class="alerts-status-label">Critical Alerts</span>
+                    <span class="alerts-status-value alerts-critical">2</span>
+                </div>
+                <div class="alerts-status-item">
+                    <span class="alerts-status-label">Total Events</span>
+                    <span class="alerts-status-value">8</span>
+                </div>
+                <div class="alerts-status-item">
+                    <span class="alerts-status-label">Last Updated</span>
+                    <span class="alerts-status-value">5 min ago</span>
+                </div>
+            </div>
+            <div class="card-view-dashboard-wrapper">
+                <div class="glow-wrap-card">
+                    <div class="glowing-border-layer"></div>
+                    <button class="btn-view-full-card" onclick="window.expandBillingCardView('security')">
+                        <i class="fas fa-arrow-right"></i>
+                        <span>View Full Dashboard</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+/* ============================================
+ * Backup & Recovery Card Content (Sunbird)
+ * ============================================ */
+function generateBackupRecoveryContent() {
+    // Summary view with View Full Dashboard button
+    return `
+        <div class="backup-recovery-content">
+            <div class="backup-recovery-header">
+                <i class="fas fa-database"></i>
+                <h3>Backup & Recovery</h3>
+            </div>
+            <div class="backup-status-box">
+                <div class="backup-status-item">
+                    <span class="backup-status-label">Last Backup</span>
+                    <span class="backup-status-value success">Completed</span>
+                </div>
+                <div class="backup-status-item">
+                    <span class="backup-status-label">Backup Size</span>
+                    <span class="backup-status-value">248.5 GB</span>
+                </div>
+                <div class="backup-status-item">
+                    <span class="backup-status-label">Recovery Time</span>
+                    <span class="backup-status-value">2 hours</span>
+                </div>
+            </div>
+            <div class="card-view-dashboard-wrapper">
+                <div class="glow-wrap-card">
+                    <div class="glowing-border-layer"></div>
+                    <button class="btn-view-full-card" onclick="window.expandBillingCardView('backup')">
+                        <i class="fas fa-arrow-right"></i>
+                        <span>View Full Dashboard</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+/* ============================================
+ * BILLING & GOVERNANCE CARDS
+ * ============================================ */
 async function initializeBillingCard() {
     const billingCard = document.getElementById('billing-card');
     if (!billingCard) return;
@@ -4488,7 +4566,110 @@ async function initializeBillingCard() {
         }
         
         const invoice = await response.json();
+        const isSunbird = isSunbirdUser();
         
+        // Sunbird switchable card system
+        if (isSunbird) {
+            billingCard.classList.add('sunbird-switchable');
+            
+            // Generate billing content
+            const currency = 'R';
+            const totalAmount = parseFloat(invoice?.TotalAmount || 0);
+            const items = invoice?.items || [];
+            const status = invoice?.Status || 'Pending';
+            
+            const dueDate = invoice?.DueDate ? new Date(invoice.DueDate) : null;
+            const dueDateString = dueDate ? dueDate.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A';
+            
+            let statusColor = '#ffc107';
+            if (status.toLowerCase() === 'paid') {
+                statusColor = '#28a745';
+            } else if (status.toLowerCase() === 'overdue') {
+                statusColor = '#dc3545';
+            }
+            
+            const billingItemsHtml = items.map(item => {
+                const itemTotal = parseFloat(item.Total || item.UnitPrice || 0).toFixed(2);
+                const serviceCategory = item.ServiceCategory || item.Category || item.Description || 'Service';
+                return `
+                    <div class="billing-item">
+                        <span class="billing-item-name">${serviceCategory}</span>
+                        <span class="billing-item-cost">${currency}${parseFloat(itemTotal).toLocaleString()}</span>
+                    </div>
+                `;
+            }).join('');
+            
+            const billingContent = `
+                <div class="billing-card-header">
+                    <i class="fas fa-credit-card"></i>
+                    <h3>Billing Statement</h3>
+                </div>
+                <div class="billing-amount">
+                    <span class="billing-currency">${currency}</span>${totalAmount.toLocaleString()}
+                </div>
+                <div class="billing-summary">
+                    <div class="billing-summary-item">
+                        <span class="billing-summary-label">Monthly Subscription</span>
+                        <span class="billing-summary-value">${currency}${totalAmount.toLocaleString()}</span>
+                    </div>
+                    <div class="billing-summary-item">
+                        <span class="billing-summary-label">Total Services</span>
+                        <span class="billing-summary-value">${items.length}</span>
+                    </div>
+                    <div class="billing-summary-item">
+                        <span class="billing-summary-label">Payment Status</span>
+                        <span class="billing-summary-value" style="color: ${statusColor}; text-transform: capitalize;">${status}</span>
+                    </div>
+                    <div class="billing-summary-item">
+                        <span class="billing-summary-label">Due Date</span>
+                        <span class="billing-summary-value" style="color: var(--primary);">${dueDateString}</span>
+                    </div>
+                </div>
+                <div class="card-view-dashboard-wrapper">
+                    <div class="glow-wrap-card">
+                        <div class="glowing-border-layer"></div>
+                        <button class="btn-view-full-card" onclick="window.expandBillingCardView('billing')">
+                            <i class="fas fa-arrow-right"></i>
+                            <span>View Full Dashboard</span>
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            // Create switchable card structure
+            const switchableHtml = `
+                <div class="card-tabs">
+                    <button class="card-tab-btn active" onclick="window.switchCardTab('security')">
+                        <i class="fas fa-shield-virus"></i>
+                        <span>Security & Alerts</span>
+                    </button>
+                    <button class="card-tab-btn" onclick="window.switchCardTab('backup')">
+                        <i class="fas fa-database"></i>
+                        <span>Backup & Recovery</span>
+                    </button>
+                    <button class="card-tab-btn" onclick="window.switchCardTab('billing')">
+                        <i class="fas fa-credit-card"></i>
+                        <span>Billing</span>
+                    </button>
+                </div>
+                <div class="card-content-wrapper">
+                    <div class="card-content active" id="security-content" data-tab="security">
+                        ${generateSecurityAlertsContent()}
+                    </div>
+                    <div class="card-content" id="backup-content" data-tab="backup">
+                        ${generateBackupRecoveryContent()}
+                    </div>
+                    <div class="card-content" id="billing-content" data-tab="billing">
+                        ${billingContent}
+                    </div>
+                </div>
+            `;
+            
+            billingCard.innerHTML = switchableHtml;
+            return;
+        }
+        
+        // Non-Sunbird clients - standard billing card
         if (!invoice) {
             billingCard.innerHTML = `
                 <div class="billing-card-header">
@@ -4505,19 +4686,16 @@ async function initializeBillingCard() {
         const items = invoice.items || [];
         const status = invoice.Status || 'Pending';
         
-        // Format due date
         const dueDate = invoice.DueDate ? new Date(invoice.DueDate) : null;
         const dueDateString = dueDate ? dueDate.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A';
         
-        // Payment status color
-        let statusColor = '#ffc107'; // yellow for pending
+        let statusColor = '#ffc107';
         if (status.toLowerCase() === 'paid') {
-            statusColor = '#28a745'; // green
+            statusColor = '#28a745';
         } else if (status.toLowerCase() === 'overdue') {
-            statusColor = '#dc3545'; // red
+            statusColor = '#dc3545';
         }
         
-        // Display all items
         const billingItemsHtml = items.map(item => {
             const itemTotal = parseFloat(item.Total || item.UnitPrice || 0).toFixed(2);
             const serviceCategory = item.ServiceCategory || item.Category || item.Description || 'Service';
@@ -4579,6 +4757,257 @@ async function initializeBillingCard() {
         `;
     }
 }
+
+/* Tab switching function for card switcher */
+window.switchCardTab = function(tabName) {
+    // Hide all card contents
+    const allContents = document.querySelectorAll('.card-content');
+    allContents.forEach(content => {
+        content.classList.remove('active');
+    });
+    
+    // Remove active class from all buttons
+    const allButtons = document.querySelectorAll('.card-tab-btn');
+    allButtons.forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    // Show selected content
+    const selectedContent = document.getElementById(`${tabName}-content`);
+    if (selectedContent) {
+        selectedContent.classList.add('active');
+    }
+    
+    // Mark selected button as active
+    const selectedButton = event?.target?.closest('.card-tab-btn');
+    if (selectedButton) {
+        selectedButton.classList.add('active');
+    }
+};
+
+/* Expand Billing Card View - Shows full dashboard similar to project cards */
+window.expandBillingCardView = function(cardType) {
+    const previewSection = document.getElementById('project-preview-section');
+    if (!previewSection) {
+        console.warn('Project preview section not found');
+        return;
+    }
+    
+    let content = '';
+    let title = '';
+    let icon = '';
+    
+    switch(cardType) {
+        case 'billing':
+            title = 'Billing Statement';
+            icon = 'fa-credit-card';
+            content = `
+                <div class="preview-header">
+                    <button class="btn-close-preview" onclick="window.closeBillingCardView()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                    <h3><i class="fas ${icon}"></i>${title}</h3>
+                </div>
+                <div style="padding: 20px;">
+                    <div class="billing-summary" style="margin-bottom: 20px;">
+                        <div class="billing-summary-item">
+                            <span class="billing-summary-label">Amount Due</span>
+                            <span class="billing-summary-value">R5,250.00</span>
+                        </div>
+                        <div class="billing-summary-item">
+                            <span class="billing-summary-label">Total Services</span>
+                            <span class="billing-summary-value">8</span>
+                        </div>
+                        <div class="billing-summary-item">
+                            <span class="billing-summary-label">Payment Status</span>
+                            <span class="billing-summary-value" style="color: #ffc107;">Pending</span>
+                        </div>
+                        <div class="billing-summary-item">
+                            <span class="billing-summary-label">Due Date</span>
+                            <span class="billing-summary-value">20 May 2024</span>
+                        </div>
+                    </div>
+                    <h4 style="color: var(--light); margin-bottom: 15px;">Service Breakdown</h4>
+                    <div class="billing-items">
+                        <div class="billing-item">
+                            <span class="billing-item-name">Identity Protection</span>
+                            <span class="billing-item-cost">R1,200.00</span>
+                        </div>
+                        <div class="billing-item">
+                            <span class="billing-item-name">Backup & Recovery</span>
+                            <span class="billing-item-cost">R800.00</span>
+                        </div>
+                        <div class="billing-item">
+                            <span class="billing-item-name">Security Monitoring</span>
+                            <span class="billing-item-cost">R1,500.00</span>
+                        </div>
+                        <div class="billing-item">
+                            <span class="billing-item-name">Device Management</span>
+                            <span class="billing-item-cost">R950.00</span>
+                        </div>
+                        <div class="billing-item">
+                            <span class="billing-item-name">Email Security</span>
+                            <span class="billing-item-cost">R800.00</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            break;
+            
+        case 'security':
+            title = 'Security & Alerts';
+            icon = 'fa-shield-virus';
+            content = `
+                <div class="preview-header">
+                    <button class="btn-close-preview" onclick="window.closeBillingCardView()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                    <h3><i class="fas ${icon}"></i>${title}</h3>
+                </div>
+                <div style="padding: 20px;">
+                    <div class="alerts-status-box" style="margin-bottom: 20px;">
+                        <div class="alerts-status-item">
+                            <span class="alerts-status-label">Critical Alerts</span>
+                            <span class="alerts-status-value alerts-critical">2</span>
+                        </div>
+                        <div class="alerts-status-item">
+                            <span class="alerts-status-label">Warning Alerts</span>
+                            <span class="alerts-status-value">3</span>
+                        </div>
+                        <div class="alerts-status-item">
+                            <span class="alerts-status-label">Total Events</span>
+                            <span class="alerts-status-value">12</span>
+                        </div>
+                        <div class="alerts-status-item">
+                            <span class="alerts-status-label">Last Updated</span>
+                            <span class="alerts-status-value">5 min ago</span>
+                        </div>
+                    </div>
+                    <h4 style="color: var(--light); margin-bottom: 15px;">Recent Alerts</h4>
+                    <div class="alerts-list">
+                        <div class="alert-item critical">
+                            <div class="alert-icon">
+                                <i class="fas fa-exclamation-triangle"></i>
+                            </div>
+                            <div class="alert-text">
+                                <div class="alert-title">Suspicious Login Activity</div>
+                                <div class="alert-description">Unusual login from Canada detected on user account</div>
+                                <div class="alert-time">15 minutes ago</div>
+                            </div>
+                        </div>
+                        <div class="alert-item critical">
+                            <div class="alert-icon">
+                                <i class="fas fa-exclamation-triangle"></i>
+                            </div>
+                            <div class="alert-text">
+                                <div class="alert-title">Multiple Failed Login Attempts</div>
+                                <div class="alert-description">5 failed attempts detected on admin account</div>
+                                <div class="alert-time">1 hour ago</div>
+                            </div>
+                        </div>
+                        <div class="alert-item warning">
+                            <div class="alert-icon">
+                                <i class="fas fa-exclamation-circle"></i>
+                            </div>
+                            <div class="alert-text">
+                                <div class="alert-title">High Risk Login</div>
+                                <div class="alert-description">Account accessed from unfamiliar location</div>
+                                <div class="alert-time">2 hours ago</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            break;
+            
+        case 'backup':
+            title = 'Backup & Recovery';
+            icon = 'fa-database';
+            content = `
+                <div class="preview-header">
+                    <button class="btn-close-preview" onclick="window.closeBillingCardView()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                    <h3><i class="fas ${icon}"></i>${title}</h3>
+                </div>
+                <div style="padding: 20px;">
+                    <div class="backup-status-box" style="margin-bottom: 20px;">
+                        <div class="backup-status-item">
+                            <span class="backup-status-label">Last Backup</span>
+                            <span class="backup-status-value success">Completed</span>
+                        </div>
+                        <div class="backup-status-item">
+                            <span class="backup-status-label">Backup Size</span>
+                            <span class="backup-status-value">248.5 GB</span>
+                        </div>
+                        <div class="backup-status-item">
+                            <span class="backup-status-label">Recovery Time</span>
+                            <span class="backup-status-value">2 hours</span>
+                        </div>
+                        <div class="backup-status-item">
+                            <span class="backup-status-label">Success Rate</span>
+                            <span class="backup-status-value">99.8%</span>
+                        </div>
+                    </div>
+                    <h4 style="color: var(--light); margin-bottom: 15px;">Backup Schedule</h4>
+                    <div class="backup-items">
+                        <div class="backup-item completed">
+                            <div class="backup-icon">
+                                <i class="fas fa-check-circle"></i>
+                            </div>
+                            <div class="backup-text">
+                                <div class="backup-title">Full System Backup</div>
+                                <div class="backup-description">Complete system backup completed successfully</div>
+                                <div class="backup-date">2024-04-20</div>
+                            </div>
+                        </div>
+                        <div class="backup-item completed">
+                            <div class="backup-icon">
+                                <i class="fas fa-check-circle"></i>
+                            </div>
+                            <div class="backup-text">
+                                <div class="backup-title">Database Backup</div>
+                                <div class="backup-description">Database snapshot and incremental backup created</div>
+                                <div class="backup-date">2024-04-20</div>
+                            </div>
+                        </div>
+                        <div class="backup-item pending">
+                            <div class="backup-icon">
+                                <i class="fas fa-clock"></i>
+                            </div>
+                            <div class="backup-text">
+                                <div class="backup-title">Incremental Backup</div>
+                                <div class="backup-description">Scheduled for next backup cycle</div>
+                                <div class="backup-date">2024-04-21</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            break;
+    }
+    
+    // Show the preview section with the full dashboard
+    previewSection.innerHTML = content;
+    previewSection.classList.add('visible');
+    previewSection.style.display = 'block';
+    previewSection.style.pointerEvents = 'auto';
+    
+    // Scroll to the preview section
+    setTimeout(() => {
+        previewSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+};
+
+/* Close the billing card view */
+window.closeBillingCardView = function() {
+    const previewSection = document.getElementById('project-preview-section');
+    if (previewSection) {
+        previewSection.classList.remove('visible');
+        previewSection.style.display = 'none';
+    }
+};
+
 
 // Make toggleBillingItems globally accessible
 window.toggleBillingItems = function() {
