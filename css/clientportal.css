@@ -5541,22 +5541,22 @@
  * Only applies when Sunbird client is logged in
  * ======================================== */
 
-/* Card Switcher Container - Side by side layout */
-.billing-card.sunbird-switchable {
-    position: relative;
-    display: grid;
-    grid-template-columns: 140px 1fr;
+/* Wrapper for sidebar + billing card */
+.sunbird-card-wrapper {
+    display: flex;
     gap: 16px;
-    padding: 19.4px !important;
+    align-items: flex-start;
 }
 
-/* Left Navigation Sidebar */
+/* Left Navigation Sidebar - OUTSIDE the billing card */
 .card-nav-sidebar {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding-right: 12px;
-    border-right: 1px solid rgba(0, 110, 255, 0.2);
+    padding: 19.4px 0;
+    width: 140px;
+    flex-shrink: 0;
+    align-self: stretch;
 }
 
 .card-nav-item {
@@ -5594,11 +5594,11 @@
     font-size: 1.1rem;
 }
 
-/* Right Content Area */
-.card-content-area {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
+/* Billing card for sunbird - content only */
+.billing-card.sunbird-switchable {
+    position: relative;
+    flex: 1;
+    padding: 19.4px !important;
 }
 
 .card-preview-content {
@@ -5612,6 +5612,7 @@
     flex-direction: column;
     gap: 12px;
     opacity: 1;
+    min-height: 0;
 }
 
 /* ========================================
@@ -5758,6 +5759,27 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
+    overflow-y: auto;
+    max-height: 100%;
+    padding-right: 8px;
+}
+
+.billing-statement-content::-webkit-scrollbar {
+    width: 4px;
+}
+
+.billing-statement-content::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+}
+
+.billing-statement-content::-webkit-scrollbar-thumb {
+    background: rgba(0, 110, 255, 0.3);
+    border-radius: 10px;
+}
+
+.billing-statement-content::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 110, 255, 0.5);
 }
 
 .billing-statement-header {
@@ -5824,6 +5846,25 @@
 .billing-summary-value {
     color: var(--light);
     font-weight: 200;
+}
+
+/* Billing items in preview */
+.billing-statement-content .billing-items {
+    max-height: 150px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.billing-statement-content .billing-item {
+    padding: 4px 0;
+    font-size: 0.75rem;
+}
+
+.billing-statement-content .billing-warning {
+    margin-top: 8px;
+    margin-bottom: 0;
+    padding: 8px;
+    gap: 8px;
 }
 
 /* ========================================
@@ -5918,18 +5959,18 @@
 
 /* Responsive styles for card switcher */
 @media (max-width: 768px) {
-    .billing-card.sunbird-switchable {
-        grid-template-columns: 1fr;
+    .sunbird-card-wrapper {
+        flex-direction: column;
         gap: 12px;
     }
 
     .card-nav-sidebar {
         flex-direction: row;
-        border-right: none;
-        border-bottom: 1px solid rgba(0, 110, 255, 0.2);
-        padding-right: 0;
-        padding-bottom: 12px;
+        width: 100%;
+        padding: 0;
         overflow-x: auto;
+        border-bottom: 1px solid rgba(0, 110, 255, 0.2);
+        padding-bottom: 12px;
     }
 
     .card-nav-item {

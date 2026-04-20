@@ -4544,6 +4544,18 @@ function generateBillingStatementContent(invoice) {
         statusColor = '#dc3545';
     }
     
+    // Generate billing items
+    const billingItemsHtml = items.map(item => {
+        const itemTotal = parseFloat(item.Total || item.UnitPrice || 0).toFixed(2);
+        const serviceCategory = item.ServiceCategory || item.Category || item.Description || 'Service';
+        return `
+            <div class="billing-item">
+                <span class="billing-item-name">${serviceCategory}</span>
+                <span class="billing-item-cost">${currency}${parseFloat(itemTotal).toLocaleString()}</span>
+            </div>
+        `;
+    }).join('');
+    
     return `
         <div class="billing-statement-content">
             <div class="billing-statement-header">
@@ -4556,20 +4568,32 @@ function generateBillingStatementContent(invoice) {
             </div>
             <div class="billing-summary">
                 <div class="billing-summary-item">
-                    <span class="billing-summary-label">Subscription</span>
+                    <span class="billing-summary-label">Monthly Subscription</span>
                     <span class="billing-summary-value">${currency}${totalAmount.toLocaleString()}</span>
                 </div>
                 <div class="billing-summary-item">
-                    <span class="billing-summary-label">Services</span>
+                    <span class="billing-summary-label">Total Services</span>
                     <span class="billing-summary-value">${items.length}</span>
                 </div>
                 <div class="billing-summary-item">
-                    <span class="billing-summary-label">Status</span>
-                    <span class="billing-summary-value" style="color: ${statusColor};">${status}</span>
+                    <span class="billing-summary-label">Payment Status</span>
+                    <span class="billing-summary-value" style="color: ${statusColor}; text-transform: capitalize;">${status}</span>
                 </div>
                 <div class="billing-summary-item">
                     <span class="billing-summary-label">Due Date</span>
-                    <span class="billing-summary-value">${dueDateString}</span>
+                    <span class="billing-summary-value" style="color: var(--primary);">${dueDateString}</span>
+                </div>
+            </div>
+            <div class="billing-items">
+                ${billingItemsHtml}
+            </div>
+            <div class="billing-warning">
+                <div class="warning-icon">
+                    <i class="fas fa-exclamation-circle"></i>
+                </div>
+                <div class="warning-text">
+                    <p><strong>Late Payment Notice:</strong></p>
+                    <p>Failure to pay by the due date may result in service interruption and increased security exposure.</p>
                 </div>
             </div>
         </div>
@@ -4615,39 +4639,51 @@ async function initializeBillingCard() {
         if (isSunbird) {
             billingCard.classList.add('sunbird-switchable');
             
-            // Generate billing content
-            const currency = 'R';
+            // Create wrapper container for sidebar + billing card (siblings)
+            const wrapper = document.createElement('div');
+            wrapper.className = 'sunbird-card-wrapper';
             
-            // Create sidebar navigation layout
-            const switchableHtml = `
-                <div class="card-nav-sidebar">
-                    <button class="card-nav-item active" onclick="window.switchCardTab('security')">
-                        <i class="fas fa-shield-virus"></i>
-                        <span>Security & Alerts</span>
-                    </button>
-                    <button class="card-nav-item" onclick="window.switchCardTab('backup')">
-                        <i class="fas fa-database"></i>
-                        <span>Backup & Recovery</span>
-                    </button>
-                    <button class="card-nav-item" onclick="window.switchCardTab('billing')">
-                        <i class="fas fa-credit-card"></i>
-                        <span>Billing</span>
-                    </button>
+            // Create and insert sidebar
+            const sidebar = document.createElement('div');
+            sidebar.className = 'card-nav-sidebar';
+            sidebar.innerHTML = `
+                <button class="card-nav-item active" onclick="window.switchCardTab('security')">
+                    <i class="fas fa-shield-virus"></i>
+                    <span>Security & Alerts</span>
+                </button>
+                <button class="card-nav-item" onclick="window.switchCardTab('backup')">
+                    <i class="fas fa-database"></i>
+                    <span>Backup & Recovery</span>
+                </button>
+                <button class="card-nav-item" onclick="window.switchCardTab('billing')">
+                    <i class="fas fa-credit-card"></i>
+                    <span>Billing</span>
+                </button>
+            `;
+            wrapper.appendChild(sidebar);
+            
+            // Billing card content only (no sidebar inside)
+            const contentHtml = `
+                <div class="card-preview-content active" id="security-content" data-tab="security">
+                    ${generateSecurityAlertsContent()}
                 </div>
-                <div class="card-content-area">
-                    <div class="card-preview-content active" id="security-content" data-tab="security">
-                        ${generateSecurityAlertsContent()}
-                    </div>
-                    <div class="card-preview-content" id="backup-content" data-tab="backup">
-                        ${generateBackupRecoveryContent()}
-                    </div>
-                    <div class="card-preview-content" id="billing-content" data-tab="billing">
-                        ${generateBillingStatementContent(invoice)}
-                    </div>
+                <div class="card-preview-content" id="backup-content" data-tab="backup">
+                    ${generateBackupRecoveryContent()}
+                </div>
+                <div class="card-preview-content" id="billing-content" data-tab="billing">
+                    ${generateBillingStatementContent(invoice)}
                 </div>
             `;
             
-            billingCard.innerHTML = switchableHtml;
+            // Set billing card content
+            billingCard.innerHTML = contentHtml;
+            
+            // Append original billing card to wrapper
+            wrapper.appendChild(billingCard);
+            
+            // Replace original billing card position with wrapper
+            billingCard.parentNode.insertBefore(wrapper, billingCard);
+            
             return;
         }
         
