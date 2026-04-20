@@ -1061,20 +1061,20 @@
 
 .sunbird-menu-item {
     flex: 0 0 10%;
-    height: 8%;
-    min-height: 8%;
-    max-height: 8%;
+    height: 5%;
+    min-height: 5%;
+    max-height: 5%;
     padding: 2px 6px;
     background: linear-gradient(160deg, rgba(6, 28, 52, 0.75) 0%, rgba(3, 18, 35, 0.85) 100%);
     border: 1px solid rgba(0, 175, 255, 0.34);
-    border-radius: 50%;
+    border-radius: 23px;
     color: #c8d7e6;
     font-size: 0.58rem;
     line-height: 1;
     cursor: pointer;
     transition: all 0.3s ease;
     text-align: center;
-    font-weight: 500;
+    font-weight: 200;
     box-shadow: inset 0 0 6px rgba(0, 145, 255, 0.05);
     position: relative;
     letter-spacing: 0.01em;
@@ -1108,6 +1108,144 @@
     border-color: #28c4ff;
     box-shadow: 0 0 12px rgba(0, 180, 255, 0.3), inset 0 0 8px rgba(100, 218, 255, 0.2);
     animation: live-glow 2.2s ease-in-out infinite;
+}
+
+.sunbird-panel-view {
+    height: 100%;
+    min-height: 0;
+    overflow: auto;
+    padding-right: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.sunbird-panel-loading,
+.sunbird-panel-error {
+    color: #b6cee8;
+    text-align: center;
+    margin: auto 0;
+    padding: 14px 8px;
+    font-size: 0.86rem;
+}
+
+.sunbird-mini-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.sunbird-mini-stat {
+    border: 1px solid rgba(0, 140, 255, 0.22);
+    background: rgba(4, 20, 40, 0.55);
+    border-radius: 8px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.sunbird-mini-stat span {
+    font-size: 0.72rem;
+    color: #9ab3c9;
+}
+
+.sunbird-mini-stat strong {
+    font-size: 0.96rem;
+    color: #eaf5ff;
+    font-weight: 600;
+}
+
+.sunbird-section-title {
+    font-size: 0.73rem;
+    color: #8aa8c5;
+    letter-spacing: 0.02em;
+}
+
+.sunbird-incidents-table-wrap {
+    border: 1px solid rgba(0, 140, 255, 0.22);
+    border-radius: 8px;
+    overflow-x: auto;
+    overflow-y: auto;
+    background: rgba(2, 12, 28, 0.55);
+}
+
+.sunbird-incidents-table {
+    width: 100%;
+    min-width: 620px;
+    border-collapse: collapse;
+}
+
+.sunbird-incidents-table th,
+.sunbird-incidents-table td {
+    white-space: nowrap;
+    padding: 8px 10px;
+    font-size: 0.72rem;
+    color: #d7e7f7;
+    border-bottom: 1px solid rgba(120, 170, 210, 0.16);
+    text-align: left;
+}
+
+.sunbird-incidents-table th {
+    color: #95b9da;
+    font-weight: 600;
+}
+
+.sunbird-empty-row {
+    text-align: center;
+    color: #8da8c1;
+}
+
+.sunbird-severity-pill {
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+}
+
+.sunbird-severity-pill.critical,
+.sunbird-severity-pill.high {
+    color: #ffddde;
+    background: rgba(220, 53, 69, 0.28);
+}
+
+.sunbird-severity-pill.medium {
+    color: #ffe9c2;
+    background: rgba(255, 193, 7, 0.2);
+}
+
+.sunbird-severity-pill.low {
+    color: #d4ffe0;
+    background: rgba(40, 167, 69, 0.2);
+}
+
+.sunbird-storage-list {
+    border: 1px solid rgba(0, 140, 255, 0.22);
+    border-radius: 8px;
+    background: rgba(2, 12, 28, 0.55);
+    overflow: hidden;
+}
+
+.sunbird-storage-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(120, 170, 210, 0.16);
+}
+
+.sunbird-storage-row:last-child {
+    border-bottom: 0;
+}
+
+.sunbird-storage-row span {
+    color: #a8c0d7;
+    font-size: 0.8rem;
+}
+
+.sunbird-storage-row strong {
+    color: #e8f4ff;
+    font-size: 0.84rem;
 }
 
 /* Container for dashboard cards + menu */
@@ -4233,7 +4371,7 @@
     margin: 2px;
     border-radius: 12px;
     font-size: 0.63rem;
-    font-weight: 500;
+    font-weight: 200;
     background: rgba(0, 110, 255, 0.2);
     color: rgba(0, 110, 255, 0.9);
     border: 1px solid rgba(0, 110, 255, 0.3);
@@ -4243,7 +4381,7 @@
     background: rgba(220, 53, 69, 0.2);
     color: #f87171;
     border-color: rgba(220, 53, 69, 0.3);
-    font-weight: 600;
+    font-weight: 200;
 }
 
 .role-badge-warning {
@@ -4258,7 +4396,7 @@
     margin: 2px;
     border-radius: 12px;
     font-size: 0.63rem;
-    font-weight: 500;
+    font-weight: 200;
     background: rgba(34, 197, 94, 0.2);
     color: rgba(34, 197, 94, 0.9);
     border: 1px solid rgba(34, 197, 94, 0.3);
@@ -4320,7 +4458,7 @@
 
 .stat-value {
     font-size: 1rem;
-    font-weight: 600;
+    font-weight: 200;
     color: #006eff;
 }
 
@@ -4336,7 +4474,7 @@
     background: rgba(255, 255, 255, 0.05);
     border-radius: 6px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    font-weight: 600;
+    font-weight: 200;
     color: #999;
     margin-bottom: 8px;
 }
@@ -4391,7 +4529,7 @@
 
 .risk-level {
     font-size: 1.1rem;
-    font-weight: 600;
+    font-weight: 200;
 }
 
 .risk-description {
@@ -4412,7 +4550,7 @@
 }
 
 .detail-value {
-    font-weight: 600;
+    font-weight: 200;
     color: #006eff;
 }
 
@@ -4484,7 +4622,7 @@
 }
 
 .insight-title {
-    font-weight: 600;
+    font-weight: 200;
     color: #e0e0e0;
     margin-bottom: 2px;
 }

@@ -209,6 +209,11 @@ let userRolesMap = {}; // Maps userId to array of role names
 let applicationsData = []; // Applications from Microsoft Graph
 let servicePrincipalsData = []; // Service Principals for app mapping
 let groupsData = []; // Groups for access mapping
+let sunbirdBillingMenuSelection = 'security';
+let cachedSunbirdBillingHtml = '';
+let cachedSunbirdSecurityData = null;
+let cachedSunbirdBackupData = null;
+let sunbirdBillingCardLockedHeight = null;
 
 document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
@@ -1734,7 +1739,7 @@ function populateRiskIndicator() {
     if (hasBreakGlass || totalAdmins > 5) {
         html += `
             <div class="risk-todo-section" style="margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 6px; border-left: 3px solid ${riskColor};">
-                <h4 style="margin: 0 0 12px 0; font-size: 0.95rem; color: #e0e0e0; font-weight: 600;">📋 Recommended Actions:</h4>
+                <h4 style="margin: 0 0 12px 0; font-size: 0.95rem; color: #e0e0e0; font-weight: 200;">📋 Recommended Actions:</h4>
                 <ul style="margin: 0; padding-left: 20px; list-style: disc; display: flex; flex-direction: column; gap: 8px;">
         `;
         
@@ -4467,6 +4472,7 @@ async function initializeBillingCard() {
     
     if (!token) {
         billingCard.innerHTML = '<p style="color: #bdbdbd; text-align: center; padding: 20px;">Please log in to view billing information.</p>';
+        cachedSunbirdBillingHtml = billingCard.innerHTML;
         return;
     }
     
@@ -4481,6 +4487,7 @@ async function initializeBillingCard() {
         if (response.status === 401 || response.status === 403) {
             // Token expired or invalid
             billingCard.innerHTML = '<p style="color: #bdbdbd; text-align: center; padding: 20px;">Session expired. Please log in again.</p>';
+            cachedSunbirdBillingHtml = billingCard.innerHTML;
             return;
         }
         
@@ -4498,6 +4505,7 @@ async function initializeBillingCard() {
                 </div>
                 <p style="color: #bdbdbd; text-align: center; padding: 20px;">No active billing</p>
             `;
+            cachedSunbirdBillingHtml = billingCard.innerHTML;
             return;
         }
         
@@ -4569,6 +4577,7 @@ async function initializeBillingCard() {
                 </div>
             </div>
         `;
+        cachedSunbirdBillingHtml = billingCard.innerHTML;
     } catch (error) {
         console.error('Error loading billing card:', error);
         billingCard.innerHTML = `
@@ -4578,7 +4587,12 @@ async function initializeBillingCard() {
             </div>
             <p style="color: #bdbdbd; text-align: center; padding: 20px;">Error loading billing information</p>
         `;
+        cachedSunbirdBillingHtml = billingCard.innerHTML;
     } finally {
+        ensureSunbirdBillingCardDimensions();
+        if (isSunbirdUser() && sunbirdBillingMenuSelection !== 'billing') {
+            window.switchBillingMenu(sunbirdBillingMenuSelection);
+        }
         // Keep Sunbird menu aligned to the rendered billing card height.
         syncSunbirdLeftMenuHeight();
     }
@@ -4608,7 +4622,9 @@ window.toggleBillingItems = function() {
 };
 
 // Switch billing menu for Sunbird users
-window.switchBillingMenu = function(menuItem) {
+window.switchBillingMenu = async function(menuItem) {
+    sunbirdBillingMenuSelection = menuItem;
+
     const menuItems = document.querySelectorAll('.sunbird-menu-item');
     menuItems.forEach(item => item.classList.remove('active'));
     
@@ -4616,10 +4632,218 @@ window.switchBillingMenu = function(menuItem) {
     if (activeItem) {
         activeItem.classList.add('active');
     }
-    
-    // Add logic here for switching content based on menu selection
-    console.log('Switched to:', menuItem);
+
+    const billingCard = document.getElementById('billing-card');
+    if (!billingCard) return;
+    billingCard.dataset.sunbirdView = menuItem;
+
+    if (menuItem === 'billing') {
+        // Always render billing view when selected so click visibly affects the container.
+        await initializeBillingCard();
+        return;
+    }
+
+    if (menuItem === 'security') {
+        await renderSunbirdSecurityAlertsView(true);
+        return;
+    }
+
+    if (menuItem === 'backup') {
+        await renderSunbirdBackupRecoveryView(true);
+    }
 };
+
+function ensureSunbirdBillingCardDimensions() {
+    if (!isSunbirdUser()) return;
+    const billingCard = document.getElementById('billing-card');
+    if (!billingCard) return;
+
+    if (!sunbirdBillingCardLockedHeight && billingCard.offsetHeight > 0) {
+        sunbirdBillingCardLockedHeight = billingCard.offsetHeight;
+    }
+
+    if (sunbirdBillingCardLockedHeight) {
+        billingCard.style.height = `${sunbirdBillingCardLockedHeight}px`;
+    }
+}
+
+async function fetchSunbirdSecurityEventsData() {
+    const token = localStorage.getItem('authToken');
+    if (!token) throw new Error('Authentication required');
+
+    const response = await fetch('/api/security-events', {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to fetch security events (${response.status})`);
+    }
+
+    const data = await response.json();
+    if (!data.success) {
+        throw new Error(data.message || 'Invalid security response');
+    }
+    return data;
+}
+
+async function fetchSunbirdBackupRecoveryData() {
+    const token = localStorage.getItem('authToken');
+    if (!token) throw new Error('Authentication required');
+
+    const response = await fetch('/api/backup-recovery', {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to fetch backup data (${response.status})`);
+    }
+
+    const data = await response.json();
+    if (!data.success) {
+        throw new Error(data.message || 'Invalid backup response');
+    }
+    return data;
+}
+
+async function renderSunbirdSecurityAlertsView(forceRefresh = false) {
+    const billingCard = document.getElementById('billing-card');
+    if (!billingCard) return;
+
+    try {
+        billingCard.innerHTML = '<div class="sunbird-panel-view"><p class="sunbird-panel-loading">Loading security alerts...</p></div>';
+
+        if (forceRefresh || !cachedSunbirdSecurityData) {
+            cachedSunbirdSecurityData = await fetchSunbirdSecurityEventsData();
+        }
+
+        const data = cachedSunbirdSecurityData;
+        const incidents = (data.incidents || []).slice(0, 10);
+        const highSeverityAlerts = data.summary?.highSeverityAlerts || 0;
+        const activeIncidents = data.summary?.activeIncidents || 0;
+
+        const rowsHtml = incidents.length
+            ? incidents.map(incident => `
+                <tr>
+                    <td>${incident.displayName || 'Unknown Incident'}</td>
+                    <td><span class="sunbird-severity-pill ${String(incident.severity || 'medium').toLowerCase()}">${incident.severity || 'medium'}</span></td>
+                    <td>${incident.status || 'active'}</td>
+                    <td>${incident.assignedTo || 'Unassigned'}</td>
+                </tr>
+            `).join('')
+            : '<tr><td colspan="4" class="sunbird-empty-row">No incidents found</td></tr>';
+
+        billingCard.innerHTML = `
+            <div class="sunbird-panel-view">
+                <div class="billing-card-header">
+                    <i class="fas fa-shield-alt"></i>
+                    <h3>Security Alerts</h3>
+                </div>
+                <div class="sunbird-mini-stats">
+                    <div class="sunbird-mini-stat">
+                        <span>High Severity Alerts</span>
+                        <strong>${highSeverityAlerts}</strong>
+                    </div>
+                    <div class="sunbird-mini-stat">
+                        <span>Security Incidents</span>
+                        <strong>${activeIncidents}</strong>
+                    </div>
+                </div>
+                <div class="sunbird-section-title">Incident Name &nbsp;|&nbsp; Severity &nbsp;|&nbsp; Status &nbsp;|&nbsp; Assigned To</div>
+                <div class="sunbird-incidents-table-wrap">
+                    <table class="sunbird-incidents-table">
+                        <thead>
+                            <tr>
+                                <th>Incident Name</th>
+                                <th>Severity</th>
+                                <th>Status</th>
+                                <th>Assigned To</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rowsHtml}</tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    } catch (error) {
+        console.error('[Sunbird Security Alerts] Error:', error);
+        billingCard.innerHTML = `
+            <div class="sunbird-panel-view">
+                <div class="billing-card-header">
+                    <i class="fas fa-shield-alt"></i>
+                    <h3>Security Alerts</h3>
+                </div>
+                <p class="sunbird-panel-error">Unable to load security alerts right now.</p>
+            </div>
+        `;
+    } finally {
+        ensureSunbirdBillingCardDimensions();
+        syncSunbirdLeftMenuHeight();
+    }
+}
+
+async function renderSunbirdBackupRecoveryView(forceRefresh = false) {
+    const billingCard = document.getElementById('billing-card');
+    if (!billingCard) return;
+
+    try {
+        billingCard.innerHTML = '<div class="sunbird-panel-view"><p class="sunbird-panel-loading">Loading backup and recovery...</p></div>';
+
+        if (forceRefresh || !cachedSunbirdBackupData) {
+            cachedSunbirdBackupData = await fetchSunbirdBackupRecoveryData();
+        }
+
+        const data = cachedSunbirdBackupData;
+        const summary = data.summary || {};
+        const byService = data.storage?.byService || {};
+
+        billingCard.innerHTML = `
+            <div class="sunbird-panel-view">
+                <div class="billing-card-header">
+                    <i class="fas fa-hdd"></i>
+                    <h3>Backup & Recovery</h3>
+                </div>
+
+                <div class="sunbird-mini-stats">
+                    <div class="sunbird-mini-stat">
+                        <span>Total Storage</span>
+                        <strong>${summary.totalStorageGB || 0} GB</strong>
+                    </div>
+                    <div class="sunbird-mini-stat">
+                        <span>Active Users</span>
+                        <strong>${summary.activeUsersCount || 0}</strong>
+                    </div>
+                </div>
+
+                <div class="sunbird-section-title">Storage by Service</div>
+                <div class="sunbird-storage-list">
+                    <div class="sunbird-storage-row"><span>OneDrive</span><strong>${byService.onedrive || 0} GB</strong></div>
+                    <div class="sunbird-storage-row"><span>SharePoint</span><strong>${byService.sharepoint || 0} GB</strong></div>
+                    <div class="sunbird-storage-row"><span>Exchange</span><strong>${byService.exchange || 0} GB</strong></div>
+                </div>
+            </div>
+        `;
+    } catch (error) {
+        console.error('[Sunbird Backup Recovery] Error:', error);
+        billingCard.innerHTML = `
+            <div class="sunbird-panel-view">
+                <div class="billing-card-header">
+                    <i class="fas fa-hdd"></i>
+                    <h3>Backup & Recovery</h3>
+                </div>
+                <p class="sunbird-panel-error">Unable to load backup and recovery data right now.</p>
+            </div>
+        `;
+    } finally {
+        ensureSunbirdBillingCardDimensions();
+        syncSunbirdLeftMenuHeight();
+    }
+}
 
 let sunbirdMenuResizeObserver = null;
 
@@ -4661,14 +4885,14 @@ function initializeSunbirdLeftMenu() {
     const leftMenu = document.createElement('div');
     leftMenu.className = 'sunbird-left-menu';
     leftMenu.innerHTML = `
-        <button class="sunbird-menu-item active" data-menu="billing" onclick="window.switchBillingMenu('billing')">
-            <i class="fas fa-file-invoice"></i><span>Billing Statement</span>
-        </button>
         <button class="sunbird-menu-item" data-menu="security" onclick="window.switchBillingMenu('security')">
             <i class="fas fa-shield-alt"></i><span>Security Alerts</span>
         </button>
         <button class="sunbird-menu-item" data-menu="backup" onclick="window.switchBillingMenu('backup')">
             <i class="fas fa-hdd"></i><span>Backup & Recovery</span>
+        </button>
+        <button class="sunbird-menu-item" data-menu="billing" onclick="window.switchBillingMenu('billing')">
+            <i class="fas fa-file-invoice"></i><span>Billing Statement</span>
         </button>
     `;
     
@@ -4679,6 +4903,7 @@ function initializeSunbirdLeftMenu() {
     wrapper.appendChild(leftMenu);
     wrapper.appendChild(dashboardCardsSection);
 
+    window.switchBillingMenu(sunbirdBillingMenuSelection);
     syncSunbirdLeftMenuHeight();
 
     // Keep menu height aligned with billing card when content changes.
