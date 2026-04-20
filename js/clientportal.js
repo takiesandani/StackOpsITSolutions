@@ -3945,12 +3945,13 @@ function syncSidePeekCardSizing() {
     const mainCard = document.querySelector('#projects-grid .project-card');
     if (!shell || !mainCard) return;
 
+    const mainCardWidth = mainCard.getBoundingClientRect().width;
     const mainCardHeight = mainCard.getBoundingClientRect().height;
-    if (mainCardHeight <= 0) return;
+    if (mainCardHeight <= 0 || mainCardWidth <= 0) return;
 
-    // Side cards must be visibly smaller than main cards.
-    const peekHeight = Math.round(mainCardHeight * 0.84);
-    shell.style.setProperty('--side-peek-card-height', `${peekHeight}px`);
+    // Match side cards to main project card size.
+    shell.style.setProperty('--side-peek-card-width', `${Math.round(mainCardWidth)}px`);
+    shell.style.setProperty('--side-peek-card-height', `${Math.round(mainCardHeight)}px`);
 }
 
 function goToPreviousProject() {
