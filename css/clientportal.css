@@ -718,7 +718,7 @@
 .side-peek-nav {
     position: absolute;
     top: 50%;
-    width: var(--side-peek-card-width, 280px);
+    width: var(--side-peek-card-width, 220px);
     border: none;
     background: transparent;
     padding: 0;
@@ -734,11 +734,11 @@
 }
 
 .side-peek-nav-left {
-    left: calc(-1 * (var(--side-peek-card-width, 280px) + 30px));
+    left: calc(-1 * (var(--side-peek-card-width, 220px) + 30px));
 }
 
 .side-peek-nav-right {
-    right: calc(-1 * (var(--side-peek-card-width, 280px) + 30px));
+    right: calc(-1 * (var(--side-peek-card-width, 220px) + 30px));
 }
 
 .side-peek-card {
