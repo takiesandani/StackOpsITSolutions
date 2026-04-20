@@ -1335,14 +1335,14 @@ body {
     width: 3px;
     border-radius: 999px;
     background-image:
-        linear-gradient(to top, rgba(0, 190, 255, 1), rgba(0, 120, 255, 0.85), rgba(0, 190, 255, 0)),
-        linear-gradient(to bottom, rgba(0, 190, 255, 1), rgba(0, 120, 255, 0.85), rgba(0, 190, 255, 0)),
-        linear-gradient(180deg, rgba(80, 185, 255, 0.25), rgba(80, 185, 255, 0.25));
+        linear-gradient(to top, rgba(251, 146, 60, 1), rgba(249, 115, 22, 0.85), rgba(249, 115, 22, 0)),
+        linear-gradient(to bottom, rgba(251, 146, 60, 1), rgba(249, 115, 22, 0.85), rgba(249, 115, 22, 0)),
+        linear-gradient(180deg, rgba(249, 115, 22, 0.25), rgba(249, 115, 22, 0.25));
     background-repeat: no-repeat;
     background-position: center 50%, center 50%, center 50%;
     background-size: 3px 0%, 3px 0%, 1px 100%;
     animation: sunbird-edge-split-flow 4s ease-in-out infinite;
-    box-shadow: 0 0 9px rgba(60, 185, 255, 0.28);
+    box-shadow: 0 0 10px rgba(249, 115, 22, 0.35);
     pointer-events: none;
     z-index: 6;
 }
@@ -1358,7 +1358,7 @@ body {
     background: transparent;
     border: none;
     border-radius: 14px;
-    color: rgba(230, 245, 255, 0.86);
+    color: var(--text-secondary);
     font-size: 0.78rem;
     line-height: 1.2;
     cursor: pointer;
@@ -1374,27 +1374,31 @@ body {
     gap: 10px;
     overflow: hidden;
     white-space: nowrap;
+    animation: none;
 }
 
 .sunbird-menu-item i {
     display: inline-block;
     font-size: 0.85rem;
     margin-bottom: 0;
-    color: rgba(160, 225, 255, 0.9);
+    color: rgba(251, 146, 60, 0.88);
     width: 18px;
     text-align: center;
 }
 
 .sunbird-menu-item:hover {
-    color: #f6fbff;
-    background: rgba(0, 145, 255, 0.10);
+    color: var(--text-primary);
+    background: transparent;
     transform: translateY(-1px);
+    animation: sunbird-tab-live-glow 1.5s ease-in-out infinite alternate;
 }
 
 .sunbird-menu-item.active {
     color: #ffffff;
-    background: rgba(0, 145, 255, 0.18);
-    box-shadow: inset 0 0 0 1px rgba(70, 205, 255, 0.18);
+    background: transparent;
+    box-shadow:
+        0 0 0 1px rgba(249, 115, 22, 0.4),
+        0 0 22px rgba(249, 115, 22, 0.22);
 }
 
 .sunbird-menu-item::before {
@@ -1405,8 +1409,8 @@ body {
     bottom: 8px;
     width: 0;
     border-radius: 999px;
-    background: linear-gradient(180deg, rgba(249, 115, 22, 0.95), rgba(0, 200, 255, 0.95));
-    box-shadow: 0 0 14px rgba(249, 115, 22, 0.45);
+    background: linear-gradient(180deg, rgba(251, 146, 60, 0.95), rgba(234, 88, 12, 0.95));
+    box-shadow: 0 0 14px rgba(249, 115, 22, 0.5);
     transition: width 0.18s ease;
 }
 
@@ -1677,9 +1681,9 @@ body {
 }
 
 .sunbird-risk-view-btn {
-    border: 1px solid rgba(0, 145, 255, 0.4);
-    background: rgba(249, 115, 22, 0.12);
-    color: #bfe4ff;
+    border: 1px solid rgba(249, 115, 22, 0.4);
+    background: rgba(249, 115, 22, 0.08);
+    color: #fed7aa;
     border-radius: 999px;
     padding: 3px 10px;
     font-size: 0.62rem;
@@ -1689,10 +1693,10 @@ body {
 }
 
 .sunbird-risk-view-btn:hover {
-    border-color: rgba(86, 196, 255, 0.7);
-    background: rgba(0, 130, 255, 0.2);
+    border-color: rgba(251, 146, 60, 0.75);
+    background: rgba(249, 115, 22, 0.16);
     color: #ffffff;
-    box-shadow: 0 0 8px rgba(0, 145, 255, 0.2);
+    box-shadow: 0 0 12px rgba(249, 115, 22, 0.28);
 }
 
 .sunbird-incidents-table {
@@ -1820,17 +1824,17 @@ body {
     transform: translateY(-50%);
     border-radius: 999px;
     background:
-        linear-gradient(90deg, rgba(72, 188, 255, 0.16), rgba(72, 188, 255, 0.16)),
+        linear-gradient(90deg, rgba(249, 115, 22, 0.18), rgba(249, 115, 22, 0.18)),
         linear-gradient(
             90deg,
-            rgba(0, 175, 255, 0) 0%,
-            rgba(0, 175, 255, 0.85) 50%,
-            rgba(0, 175, 255, 0) 100%
+            rgba(249, 115, 22, 0) 0%,
+            rgba(249, 115, 22, 0.85) 50%,
+            rgba(249, 115, 22, 0) 100%
         );
     background-repeat: no-repeat;
     background-size: 100% 2px, 220% 2px;
     background-position: center, 100% center;
-    box-shadow: 0 0 10px rgba(68, 183, 255, 0.2);
+    box-shadow: 0 0 12px rgba(249, 115, 22, 0.28);
     opacity: 0.95;
     animation: sunbird-horizontal-flow 4s linear infinite;
     pointer-events: none;
@@ -1843,6 +1847,15 @@ body {
 
 .dashboard-with-menu .dashboard-cards-section {
     width: 100%;
+}
+
+@keyframes sunbird-tab-live-glow {
+    0% {
+        box-shadow: 0 0 10px rgba(249, 115, 22, 0.18), 0 0 0 1px rgba(249, 115, 22, 0.12);
+    }
+    100% {
+        box-shadow: 0 0 26px rgba(249, 115, 22, 0.38), 0 0 0 1px rgba(249, 115, 22, 0.32);
+    }
 }
 
 @media (max-width: 768px) {
