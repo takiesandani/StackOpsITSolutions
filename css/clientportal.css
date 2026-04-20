@@ -734,11 +734,11 @@
 }
 
 .side-peek-nav-left {
-    left: calc(-1 * (var(--side-peek-card-width, 280px) + 58px));
+    left: calc(-1 * (var(--side-peek-card-width, 280px) + 30px));
 }
 
 .side-peek-nav-right {
-    right: calc(-1 * (var(--side-peek-card-width, 280px) + 58px));
+    right: calc(-1 * (var(--side-peek-card-width, 280px) + 30px));
 }
 
 .side-peek-card {
