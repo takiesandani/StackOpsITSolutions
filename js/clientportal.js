@@ -4887,8 +4887,11 @@ function buildIdentityPreviewModel() {
     const adminCount = adminSet.size;
     const usersWithoutMfa = users.filter(user => !user.mfaEnabled).length;
     const inactiveUsers = users.filter(user => {
-        const dt = user?.lastSignIn?.dateTime ? new Date(user.lastSignIn.dateTime).getTime() : 0;
-        if (!dt) return true;
+        const lastSignIn = user?.signInActivity?.lastSignInDateTime;
+
+        if (!lastSignIn) return true;
+
+        const dt = new Date(lastSignIn).getTime();
         return (now - dt) > (30 * 24 * 60 * 60 * 1000);
     }).length;
     const highRiskUsers = users.filter(user => String(user.riskLevel || '').toUpperCase() === 'HIGH').length;
@@ -4929,21 +4932,27 @@ function buildIdentityPreviewModel() {
 }
 
 function buildDevicesPreviewModel() {
+    
     const data = latestDevicesCardData || {};
     const summary = data.summary || {};
     const devices = Array.isArray(data.devices) ? data.devices : [];
     const totalDevices = summary.totalDevices || devices.length || 0;
-    const compliantDevices = summary.compliantDevices || devices.filter(d => d.complianceState === 'compliant').length;
+    const compliantDevices = devices.filter(d => d.complianceState === 'compliant').length;
+    const graceDevices = devices.filter(d => d.complianceState === 'inGracePeriod').length;
     const encryptedDevices = summary.encryptedDevices || devices.filter(d => d.isEncrypted).length;
-    const nonCompliant = Math.max(0, totalDevices - compliantDevices);
+    const nonCompliant = devices.filter(d => d.complianceState === 'noncompliant').length;
     const notEncrypted = Math.max(0, totalDevices - encryptedDevices);
     const staleDevices = data.activityBreakdown?.stale7days || 0;
-    const highRisk = devices.filter(d => d.complianceState !== 'compliant' && !d.isEncrypted).length;
-    const mediumRisk = Math.max(0, nonCompliant + staleDevices - highRisk);
-    const healthy = Math.max(0, totalDevices - highRisk - mediumRisk);
-    const keyInsight = notEncrypted > 0
-        ? `${notEncrypted} devices are not encrypted`
-        : staleDevices > 0
+    const highRisk = devices.filter(d => d.complianceState === 'noncompliant' && !d.isEncrypted).length;
+    const mediumRisk = devices.filter(d => d.complianceState === 'inGracePeriod').length;
+    const healthy = compliantDevices;
+
+    const keyInsight =
+        notEncrypted > 0
+            ? `${notEncrypted} devices are not encrypted`
+            : graceDevices > 0
+            ? `${graceDevices} devices are in grace period`
+            : staleDevices > 0
             ? `${staleDevices} devices have stale sync status`
             : 'Device security posture is healthy';
     const feed = (data.alerts || []).slice(0, 3).map(alert => ({
@@ -4954,9 +4963,9 @@ function buildDevicesPreviewModel() {
     return {
         topMetrics: [
             { label: 'Total Devices', value: totalDevices, icon: 'fas fa-desktop', tone: 'info' },
-            { label: 'Non-Compliant', value: nonCompliant, icon: 'fas fa-times-circle', tone: 'critical' },
-            { label: 'Not Encrypted', value: notEncrypted, icon: 'fas fa-lock-open', tone: 'critical' },
-            { label: 'Stale (7+ days)', value: staleDevices, icon: 'fas fa-clock', tone: 'warning' }
+            { label: 'Compliant', value: compliantDevices, icon: 'fas fa-check-circle', tone: 'success' },
+            { label: 'Grace Period', value: graceDevices, icon: 'fas fa-hourglass-half', tone: 'warning' },
+            { label: 'Non-Compliant', value: nonCompliant, icon: 'fas fa-times-circle', tone: 'critical' }
         ],
         riskBreakdown: [
             { label: 'High', value: highRisk, tone: 'critical' },
