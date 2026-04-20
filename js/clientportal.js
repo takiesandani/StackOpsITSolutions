@@ -4461,7 +4461,6 @@ function updateCopyrightYear() {
  * Security & Alerts Card Content (Sunbird)
  * ============================================ */
 function generateSecurityAlertsContent() {
-    // Summary view with View Full Dashboard button
     return `
         <div class="security-alerts-content">
             <div class="security-alerts-header">
@@ -4487,7 +4486,7 @@ function generateSecurityAlertsContent() {
                     <div class="glowing-border-layer"></div>
                     <button class="btn-view-full-card" onclick="window.expandBillingCardView('security')">
                         <i class="fas fa-arrow-right"></i>
-                        <span>View Full Dashboard</span>
+                        <span>Full</span>
                     </button>
                 </div>
             </div>
@@ -4495,11 +4494,7 @@ function generateSecurityAlertsContent() {
     `;
 }
 
-/* ============================================
- * Backup & Recovery Card Content (Sunbird)
- * ============================================ */
 function generateBackupRecoveryContent() {
-    // Summary view with View Full Dashboard button
     return `
         <div class="backup-recovery-content">
             <div class="backup-recovery-header">
@@ -4525,8 +4520,56 @@ function generateBackupRecoveryContent() {
                     <div class="glowing-border-layer"></div>
                     <button class="btn-view-full-card" onclick="window.expandBillingCardView('backup')">
                         <i class="fas fa-arrow-right"></i>
-                        <span>View Full Dashboard</span>
+                        <span>Full</span>
                     </button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function generateBillingStatementContent(invoice) {
+    const currency = 'R';
+    const totalAmount = parseFloat(invoice?.TotalAmount || 0);
+    const items = invoice?.items || [];
+    const status = invoice?.Status || 'Pending';
+    
+    const dueDate = invoice?.DueDate ? new Date(invoice.DueDate) : null;
+    const dueDateString = dueDate ? dueDate.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A';
+    
+    let statusColor = '#ffc107';
+    if (status.toLowerCase() === 'paid') {
+        statusColor = '#28a745';
+    } else if (status.toLowerCase() === 'overdue') {
+        statusColor = '#dc3545';
+    }
+    
+    return `
+        <div class="billing-statement-content">
+            <div class="billing-statement-header">
+                <i class="fas fa-credit-card"></i>
+                <h3>Billing Statement</h3>
+            </div>
+            <div class="billing-amount-display">
+                <span class="billing-currency">${currency}</span>
+                <span class="billing-amount-value">${totalAmount.toLocaleString()}</span>
+            </div>
+            <div class="billing-summary">
+                <div class="billing-summary-item">
+                    <span class="billing-summary-label">Subscription</span>
+                    <span class="billing-summary-value">${currency}${totalAmount.toLocaleString()}</span>
+                </div>
+                <div class="billing-summary-item">
+                    <span class="billing-summary-label">Services</span>
+                    <span class="billing-summary-value">${items.length}</span>
+                </div>
+                <div class="billing-summary-item">
+                    <span class="billing-summary-label">Status</span>
+                    <span class="billing-summary-value" style="color: ${statusColor};">${status}</span>
+                </div>
+                <div class="billing-summary-item">
+                    <span class="billing-summary-label">Due Date</span>
+                    <span class="billing-summary-value">${dueDateString}</span>
                 </div>
             </div>
         </div>
@@ -4574,93 +4617,32 @@ async function initializeBillingCard() {
             
             // Generate billing content
             const currency = 'R';
-            const totalAmount = parseFloat(invoice?.TotalAmount || 0);
-            const items = invoice?.items || [];
-            const status = invoice?.Status || 'Pending';
             
-            const dueDate = invoice?.DueDate ? new Date(invoice.DueDate) : null;
-            const dueDateString = dueDate ? dueDate.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A';
-            
-            let statusColor = '#ffc107';
-            if (status.toLowerCase() === 'paid') {
-                statusColor = '#28a745';
-            } else if (status.toLowerCase() === 'overdue') {
-                statusColor = '#dc3545';
-            }
-            
-            const billingItemsHtml = items.map(item => {
-                const itemTotal = parseFloat(item.Total || item.UnitPrice || 0).toFixed(2);
-                const serviceCategory = item.ServiceCategory || item.Category || item.Description || 'Service';
-                return `
-                    <div class="billing-item">
-                        <span class="billing-item-name">${serviceCategory}</span>
-                        <span class="billing-item-cost">${currency}${parseFloat(itemTotal).toLocaleString()}</span>
-                    </div>
-                `;
-            }).join('');
-            
-            const billingContent = `
-                <div class="billing-card-header">
-                    <i class="fas fa-credit-card"></i>
-                    <h3>Billing Statement</h3>
-                </div>
-                <div class="billing-amount">
-                    <span class="billing-currency">${currency}</span>${totalAmount.toLocaleString()}
-                </div>
-                <div class="billing-summary">
-                    <div class="billing-summary-item">
-                        <span class="billing-summary-label">Monthly Subscription</span>
-                        <span class="billing-summary-value">${currency}${totalAmount.toLocaleString()}</span>
-                    </div>
-                    <div class="billing-summary-item">
-                        <span class="billing-summary-label">Total Services</span>
-                        <span class="billing-summary-value">${items.length}</span>
-                    </div>
-                    <div class="billing-summary-item">
-                        <span class="billing-summary-label">Payment Status</span>
-                        <span class="billing-summary-value" style="color: ${statusColor}; text-transform: capitalize;">${status}</span>
-                    </div>
-                    <div class="billing-summary-item">
-                        <span class="billing-summary-label">Due Date</span>
-                        <span class="billing-summary-value" style="color: var(--primary);">${dueDateString}</span>
-                    </div>
-                </div>
-                <div class="card-view-dashboard-wrapper">
-                    <div class="glow-wrap-card">
-                        <div class="glowing-border-layer"></div>
-                        <button class="btn-view-full-card" onclick="window.expandBillingCardView('billing')">
-                            <i class="fas fa-arrow-right"></i>
-                            <span>View Full Dashboard</span>
-                        </button>
-                    </div>
-                </div>
-            `;
-            
-            // Create switchable card structure
+            // Create sidebar navigation layout
             const switchableHtml = `
-                <div class="card-tabs">
-                    <button class="card-tab-btn active" onclick="window.switchCardTab('security')">
+                <div class="card-nav-sidebar">
+                    <button class="card-nav-item active" onclick="window.switchCardTab('security')">
                         <i class="fas fa-shield-virus"></i>
                         <span>Security & Alerts</span>
                     </button>
-                    <button class="card-tab-btn" onclick="window.switchCardTab('backup')">
+                    <button class="card-nav-item" onclick="window.switchCardTab('backup')">
                         <i class="fas fa-database"></i>
                         <span>Backup & Recovery</span>
                     </button>
-                    <button class="card-tab-btn" onclick="window.switchCardTab('billing')">
+                    <button class="card-nav-item" onclick="window.switchCardTab('billing')">
                         <i class="fas fa-credit-card"></i>
                         <span>Billing</span>
                     </button>
                 </div>
-                <div class="card-content-wrapper">
-                    <div class="card-content active" id="security-content" data-tab="security">
+                <div class="card-content-area">
+                    <div class="card-preview-content active" id="security-content" data-tab="security">
                         ${generateSecurityAlertsContent()}
                     </div>
-                    <div class="card-content" id="backup-content" data-tab="backup">
+                    <div class="card-preview-content" id="backup-content" data-tab="backup">
                         ${generateBackupRecoveryContent()}
                     </div>
-                    <div class="card-content" id="billing-content" data-tab="billing">
-                        ${billingContent}
+                    <div class="card-preview-content" id="billing-content" data-tab="billing">
+                        ${generateBillingStatementContent(invoice)}
                     </div>
                 </div>
             `;
@@ -4761,13 +4743,13 @@ async function initializeBillingCard() {
 /* Tab switching function for card switcher */
 window.switchCardTab = function(tabName) {
     // Hide all card contents
-    const allContents = document.querySelectorAll('.card-content');
+    const allContents = document.querySelectorAll('.card-preview-content');
     allContents.forEach(content => {
         content.classList.remove('active');
     });
     
-    // Remove active class from all buttons
-    const allButtons = document.querySelectorAll('.card-tab-btn');
+    // Remove active class from all nav items
+    const allButtons = document.querySelectorAll('.card-nav-item');
     allButtons.forEach(btn => {
         btn.classList.remove('active');
     });
@@ -4778,8 +4760,8 @@ window.switchCardTab = function(tabName) {
         selectedContent.classList.add('active');
     }
     
-    // Mark selected button as active
-    const selectedButton = event?.target?.closest('.card-tab-btn');
+    // Mark selected nav item as active
+    const selectedButton = event?.target?.closest('.card-nav-item');
     if (selectedButton) {
         selectedButton.classList.add('active');
     }
