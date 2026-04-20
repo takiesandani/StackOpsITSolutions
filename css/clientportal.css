@@ -718,7 +718,7 @@
 .side-peek-nav {
     position: absolute;
     top: 50%;
-    width: 196px;
+    width: 118px;
     border: none;
     background: transparent;
     padding: 0;
@@ -734,11 +734,11 @@
 }
 
 .side-peek-nav-left {
-    left: -108px;
+    left: -146px;
 }
 
 .side-peek-nav-right {
-    right: -108px;
+    right: -146px;
 }
 
 .side-peek-card {
@@ -746,7 +746,7 @@
     overflow: hidden;
     opacity: 0.6;
     height: var(--side-peek-card-height, 130px);
-    transform: scale(0.9);
+    transform: scale(0.93);
     filter: saturate(0.75);
     box-shadow: 0 0 10px rgba(30, 144, 255, 0.25);
     transition: all 0.25s ease;
@@ -768,9 +768,31 @@
     box-shadow: none !important;
 }
 
+.side-peek-card .project-card-header {
+    align-items: center;
+    gap: 8px;
+}
+
+.side-peek-card .project-icon {
+    width: 20px;
+    height: 20px;
+    min-width: 20px;
+    min-height: 20px;
+}
+
+.side-peek-card .project-icon img {
+    width: 14px;
+    height: 14px;
+}
+
+.side-peek-card .project-icon i {
+    font-size: 0.7rem;
+}
+
 .side-peek-card .project-title h3 {
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     line-height: 1.15;
+    margin: 0;
 }
 
 .side-peek-card .project-type,

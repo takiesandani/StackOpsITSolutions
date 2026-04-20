@@ -3843,16 +3843,8 @@ function initializeProjectsList() {
     const projectsGrid = document.getElementById('projects-grid');
     projectsGrid.innerHTML = '';
     
-    // Filter projects based on user access level
-    const filteredProjects = getFilteredProjects();
-    
-    // Update the global mockProjects reference for this session
-    // (This ensures all other functions work with filtered projects)
-    const originalProjects = mockProjects.slice();
-    mockProjects.length = 0;
-    mockProjects.push(...filteredProjects);
-    
-    document.getElementById('project-total').textContent = mockProjects.length;
+    const carouselProjects = getFilteredProjects();
+    document.getElementById('project-total').textContent = carouselProjects.length;
     currentProjectIndex = 0;
     selectedProjectId = null;
     previewLockedByClick = false;
@@ -3864,13 +3856,14 @@ function initializeProjectsList() {
 }
 
 function displayCurrentProject() {
-    if (mockProjects.length === 0) return;
+    const carouselProjects = getFilteredProjects();
+    if (carouselProjects.length === 0) return;
     
     const projectsGrid = document.getElementById('projects-grid');
     projectsGrid.innerHTML = '';
     
     // Display 3 projects at a time
-    const visibleProjects = mockProjects.slice(currentProjectIndex, currentProjectIndex + 3);
+    const visibleProjects = carouselProjects.slice(currentProjectIndex, currentProjectIndex + 3);
     
     visibleProjects.forEach((project, index) => {
         const projectCard = createProjectCard(project);
@@ -3920,6 +3913,7 @@ function displayCurrentProject() {
 }
 
 function renderSidePeekCards() {
+    const carouselProjects = getFilteredProjects();
     const sidePeekPrevCard = document.getElementById('side-peek-prev-card');
     const sidePeekNextCard = document.getElementById('side-peek-next-card');
 
@@ -3928,8 +3922,8 @@ function renderSidePeekCards() {
     sidePeekPrevCard.innerHTML = '';
     sidePeekNextCard.innerHTML = '';
 
-    const prevProject = mockProjects[currentProjectIndex - 1];
-    const nextProject = mockProjects[currentProjectIndex + 3];
+    const prevProject = carouselProjects[currentProjectIndex - 1];
+    const nextProject = carouselProjects[currentProjectIndex + 3];
 
     if (prevProject) {
         const prevCard = createProjectCard(prevProject);
@@ -3955,7 +3949,7 @@ function syncSidePeekCardSizing() {
     if (mainCardHeight <= 0) return;
 
     // Side cards must be visibly smaller than main cards.
-    const peekHeight = Math.round(mainCardHeight * 0.78);
+    const peekHeight = Math.round(mainCardHeight * 0.84);
     shell.style.setProperty('--side-peek-card-height', `${peekHeight}px`);
 }
 
@@ -3969,7 +3963,8 @@ function goToPreviousProject() {
 }
 
 function goToNextProject() {
-    const maxStartIndex = Math.max(0, mockProjects.length - 3);
+    const carouselProjects = getFilteredProjects();
+    const maxStartIndex = Math.max(0, carouselProjects.length - 3);
     if (currentProjectIndex < maxStartIndex) {
         currentProjectIndex++;
         previewLockedByClick = false;
@@ -3979,12 +3974,13 @@ function goToNextProject() {
 }
 
 function updateNavigationButtons() {
+    const carouselProjects = getFilteredProjects();
     const navPrev = document.getElementById('nav-prev');
     const navNext = document.getElementById('nav-next');
     const sidePeekPrev = document.getElementById('side-peek-prev');
     const sidePeekNext = document.getElementById('side-peek-next');
 
-    const maxStartIndex = Math.max(0, mockProjects.length - 3);
+    const maxStartIndex = Math.max(0, carouselProjects.length - 3);
     const disablePrev = currentProjectIndex === 0;
     const disableNext = currentProjectIndex >= maxStartIndex;
 
