@@ -267,6 +267,14 @@ async function bootstrapDashboardDataAfterLogin() {
             fetchIdentityAccessData();
         }, 900);
     }
+
+    // Ensure Sunbird-specific menu and billing panel are attached immediately after login.
+    if (isSunbirdUser()) {
+        initializeSunbirdLeftMenu();
+        if (typeof window.switchBillingMenu === 'function') {
+            window.switchBillingMenu(sunbirdBillingMenuSelection || 'security');
+        }
+    }
 }
 
 // Setup project tabs event listeners
@@ -1093,19 +1101,21 @@ function openIdentityDashboard() {
         };
     }
     
+    // Trigger fresh fetch whenever user opens Identity dashboard.
+    fetchIdentityAccessData();
+
     // WAIT for data to load before initializing dashboard
-    // If data is already loaded (isSunbirdDashboard = true), initialize immediately
-    if (isSunbirdDashboard && microsoftUsersData.length > 0) {
+    if (microsoftUsersData.length > 0) {
         console.log('[Identity Dashboard] Data already loaded, initializing immediately');
         initializeIdentityDashboard();
     } else {
         // Otherwise wait for data to load with timeout
         console.log('[Identity Dashboard] Waiting for data to load...');
         let waitTime = 0;
-        const maxWait = 5000; // Max 5 seconds
+        const maxWait = 12000; // Max 12 seconds for slower Graph calls
         const checkInterval = setInterval(() => {
             waitTime += 100;
-            if (isSunbirdDashboard && microsoftUsersData.length > 0) {
+            if (microsoftUsersData.length > 0) {
                 console.log('[Identity Dashboard] Data loaded successfully');
                 clearInterval(checkInterval);
                 initializeIdentityDashboard();
@@ -3348,15 +3358,16 @@ async function fetchIdentityAccessData() {
                         identityProject.lastUpdate = new Date().toLocaleTimeString();
                         displayCurrentProject();
                     }
-                    
-                    // If Identity dashboard is currently open, refresh the table
-                    const identityDashboard = document.getElementById('identity-monitoring-section');
-                    if (identityDashboard && identityDashboard.style.display !== 'none') {
-                        console.log('[Identity Access] Dashboard is open, refreshing table with fresh data');
-                        setTimeout(() => {
-                            populateIdentityTable();
-                            initializeIdentityInsights();
-                        }, 100);
+
+                    // If Identity dashboard view is open, reinitialize immediately with fresh data.
+                    const dashboardView = document.getElementById('dashboard-view');
+                    const projectName = document.getElementById('project-name');
+                    const isIdentityOpen = dashboardView &&
+                        dashboardView.style.display !== 'none' &&
+                        String(projectName?.textContent || '').toLowerCase().includes('identity protection');
+                    if (isIdentityOpen) {
+                        console.log('[Identity Access] Identity dashboard open, reinitializing with fresh data');
+                        setTimeout(() => initializeIdentityDashboard(), 100);
                     }
                     
                     return; // Skip to end - Sunbird data fully loaded
@@ -3431,6 +3442,16 @@ async function fetchIdentityAccessData() {
             // Refresh the display to show updated data
             displayCurrentProject();
             console.log('[Identity Access] Card updated with real user data');
+        }
+
+        // If Identity dashboard view is open, reinitialize with updated fallback data.
+        const dashboardView = document.getElementById('dashboard-view');
+        const projectName = document.getElementById('project-name');
+        const isIdentityOpen = dashboardView &&
+            dashboardView.style.display !== 'none' &&
+            String(projectName?.textContent || '').toLowerCase().includes('identity protection');
+        if (isIdentityOpen) {
+            setTimeout(() => initializeIdentityDashboard(), 100);
         }
 
     } catch (error) {
@@ -4199,10 +4220,12 @@ function displayCurrentProject() {
 
 function renderSidePeekCards() {
     const carouselProjects = getFilteredProjects();
+    const sidePeekPrev = document.getElementById('side-peek-prev');
+    const sidePeekNext = document.getElementById('side-peek-next');
     const sidePeekPrevCard = document.getElementById('side-peek-prev-card');
     const sidePeekNextCard = document.getElementById('side-peek-next-card');
 
-    if (!sidePeekPrevCard || !sidePeekNextCard) return;
+    if (!sidePeekPrevCard || !sidePeekNextCard || !sidePeekPrev || !sidePeekNext) return;
 
     sidePeekPrevCard.innerHTML = '';
     sidePeekNextCard.innerHTML = '';
@@ -4221,6 +4244,9 @@ function renderSidePeekCards() {
         nextCard.classList.add('no-interaction');
         sidePeekNextCard.appendChild(nextCard);
     }
+
+    sidePeekPrev.classList.toggle('is-empty', !prevProject);
+    sidePeekNext.classList.toggle('is-empty', !nextProject);
 
     syncSidePeekCardSizing();
 }

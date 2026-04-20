@@ -730,6 +730,12 @@
     transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
+.side-peek-nav:disabled,
+.side-peek-nav.is-empty {
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
 .side-peek-nav-left {
     left: calc(-1 * (min(var(--side-peek-card-width), var(--side-peek-max-width)) + 18px));
 }
@@ -1471,7 +1477,9 @@
     border-radius: 8px;
     overflow-x: auto;
     overflow-y: auto;
-    max-height: 250px;
+    max-height: none;
+    min-height: 0;
+    flex: 1;
     background: rgba(2, 12, 28, 0.55);
     scrollbar-color: rgba(120, 165, 205, 0.45) transparent;
     scrollbar-width: thin;
