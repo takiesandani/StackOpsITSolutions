@@ -2,7 +2,7 @@
 
 :root {
     /* STACK CTRL — dark + orange-first, NO BLUE BG */
-    --bg-primary: rgba(255,255,255,0.041); /* Glassmorphism matching promo */
+    --bg-primary: rgba(255,255,255,0.031); /* Glassmorphism matching promo */
     --surface-card: #111827;
     --surface-secondary: #0f172a;
     --border-default: #1f2937;
@@ -29,7 +29,6 @@
 }
 
 body {
-    background: rgba(255,255,255,0.041); /* Glassmorphism bg matching promo */
     color: var(--text-primary);
 }
 
