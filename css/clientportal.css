@@ -1120,6 +1120,48 @@
     gap: 10px;
 }
 
+.billing-powered-by-badge {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(0, 140, 255, 0.25);
+    background: rgba(3, 18, 36, 0.78);
+    box-shadow: 0 0 10px rgba(0, 130, 255, 0.16);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    z-index: 12;
+    pointer-events: none;
+}
+
+.billing-powered-by-badge img {
+    width: 11px;
+    height: 11px;
+    object-fit: contain;
+}
+
+.billing-powered-by-badge span {
+    color: #9db5cb;
+    font-size: 0.62rem;
+    line-height: 1;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+}
+
+.billing-powered-by-microsoft img {
+    width: 10px;
+    height: 10px;
+}
+
+.billing-powered-by-stackops img {
+    width: 12px;
+    height: 12px;
+}
+
 .sunbird-panel-loading,
 .sunbird-panel-error {
     color: #b6cee8;

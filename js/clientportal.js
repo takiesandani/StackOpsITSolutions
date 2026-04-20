@@ -4457,6 +4457,24 @@ function updateCopyrightYear() {
     }
 }
 
+function renderPoweredByBadge(provider) {
+    if (provider === 'microsoft') {
+        return `
+            <div class="billing-powered-by-badge billing-powered-by-microsoft">
+                <img src="Images/Logos/microsoft-logo.png" alt="Microsoft" />
+                <span>Powered by Microsoft Graph</span>
+            </div>
+        `;
+    }
+
+    return `
+        <div class="billing-powered-by-badge billing-powered-by-stackops">
+            <img src="Images/Logos/RemovedStackOps.png" alt="StackOps IT Solutions" />
+            <span>Powered by StackOps IT Solutions</span>
+        </div>
+    `;
+}
+
 // ============================================
 // BILLING & INVOICE API
 // ============================================
@@ -4499,6 +4517,7 @@ async function initializeBillingCard() {
         
         if (!invoice) {
             billingCard.innerHTML = `
+                ${renderPoweredByBadge('stackops')}
                 <div class="billing-card-header">
                     <i class="fas fa-credit-card"></i>
                     <h3>Billing Statement</h3>
@@ -4539,6 +4558,7 @@ async function initializeBillingCard() {
         }).join('');
         
         billingCard.innerHTML = `
+            ${renderPoweredByBadge('stackops')}
             <div class="billing-card-header">
                 <i class="fas fa-credit-card"></i>
                 <h3>Billing Statement</h3>
@@ -4581,6 +4601,7 @@ async function initializeBillingCard() {
     } catch (error) {
         console.error('Error loading billing card:', error);
         billingCard.innerHTML = `
+            ${renderPoweredByBadge('stackops')}
             <div class="billing-card-header">
                 <i class="fas fa-credit-card"></i>
                 <h3>Billing Statement</h3>
@@ -4740,6 +4761,7 @@ async function renderSunbirdSecurityAlertsView(forceRefresh = false) {
 
         billingCard.innerHTML = `
             <div class="sunbird-panel-view">
+                ${renderPoweredByBadge('microsoft')}
                 <div class="billing-card-header">
                     <i class="fas fa-shield-alt"></i>
                     <h3>Security Alerts</h3>
@@ -4773,6 +4795,7 @@ async function renderSunbirdSecurityAlertsView(forceRefresh = false) {
         console.error('[Sunbird Security Alerts] Error:', error);
         billingCard.innerHTML = `
             <div class="sunbird-panel-view">
+                ${renderPoweredByBadge('microsoft')}
                 <div class="billing-card-header">
                     <i class="fas fa-shield-alt"></i>
                     <h3>Security Alerts</h3>
@@ -4803,6 +4826,7 @@ async function renderSunbirdBackupRecoveryView(forceRefresh = false) {
 
         billingCard.innerHTML = `
             <div class="sunbird-panel-view">
+                ${renderPoweredByBadge('microsoft')}
                 <div class="billing-card-header">
                     <i class="fas fa-hdd"></i>
                     <h3>Backup & Recovery</h3>
@@ -4831,6 +4855,7 @@ async function renderSunbirdBackupRecoveryView(forceRefresh = false) {
         console.error('[Sunbird Backup Recovery] Error:', error);
         billingCard.innerHTML = `
             <div class="sunbird-panel-view">
+                ${renderPoweredByBadge('microsoft')}
                 <div class="billing-card-header">
                     <i class="fas fa-hdd"></i>
                     <h3>Backup & Recovery</h3>
