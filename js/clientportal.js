@@ -5,6 +5,7 @@ let charts = {};
 let currentProjectIndex = 0;
 let selectedProjectId = null;
 let previewLockedByClick = false;
+let carouselProjects = [];
 
 // Sunbird client emails - only these users can see  Identity Protection, Devices, Applications
 const SUNBIRD_EMAILS = [
@@ -48,6 +49,13 @@ function getFilteredProjects() {
     
     // Other clients - hide Sunbird-only cards
     return mockProjects.filter(project => !SUNBIRD_ONLY_CARD_IDS.includes(project.id));
+}
+
+function getCarouselProjects() {
+    // Hide these two cards from the top project carousel only.
+    // Their functionality remains available elsewhere (billing menu/full views).
+    const EXCLUDED_CAROUSEL_CARD_IDS = [4, 7]; // Security & Events, Backup and Recovery
+    return getFilteredProjects().filter(project => !EXCLUDED_CAROUSEL_CARD_IDS.includes(project.id));
 }
 
 const mockProjects = [
@@ -3821,20 +3829,15 @@ function initializeProjectsList() {
     const projectsGrid = document.getElementById('projects-grid');
     projectsGrid.innerHTML = '';
     
-    // Filter projects based on user access level
-    const filteredProjects = getFilteredProjects();
+    // Filter projects for the carousel display only (keep full mockProjects intact).
+    carouselProjects = getCarouselProjects();
     
-    // Update the global mockProjects reference for this session
-    // (This ensures all other functions work with filtered projects)
-    const originalProjects = mockProjects.slice();
-    mockProjects.length = 0;
-    mockProjects.push(...filteredProjects);
-    
-    document.getElementById('project-total').textContent = mockProjects.length;
+    document.getElementById('project-total').textContent = carouselProjects.length;
     currentProjectIndex = 0;
     selectedProjectId = null;
     previewLockedByClick = false;
     
+    setupProjectCarouselInteractions();
     displayCurrentProject();
     fetchDuoStats();
     fetchIdentityAccessData(); // Fetch Microsoft Graph users for the card preview
@@ -3842,83 +3845,139 @@ function initializeProjectsList() {
 }
 
 function displayCurrentProject() {
-    if (mockProjects.length === 0) return;
-    
     const projectsGrid = document.getElementById('projects-grid');
-    projectsGrid.innerHTML = '';
-    
-    // Display 3 projects at a time
-    const visibleProjects = mockProjects.slice(currentProjectIndex, currentProjectIndex + 3);
-    
-    visibleProjects.forEach((project, index) => {
-        const projectCard = createProjectCard(project);
-        
-        if (!project.noDashboard) {
-            projectCard.addEventListener('mouseenter', () => {
-                if (!previewLockedByClick) {
-                    showProjectPreview(project);
-                }
-            });
-            
-            projectCard.addEventListener('mouseleave', () => {
-                if (!previewLockedByClick) {
-                    hideProjectPreview();
-                }
-            });
-            
-            projectCard.addEventListener('click', () => {
-                const isSelected = selectedProjectId === project.id && previewLockedByClick;
-                
-                const allCards = document.querySelectorAll('.project-card');
-                allCards.forEach(card => card.classList.remove('glow-selected'));
-                
-                if (isSelected) {
-                    // If already selected, close it
-                    previewLockedByClick = false;
-                    selectedProjectId = null;
-                    hideProjectPreview();
-                } else {
-                    // Otherwise, open it
-                    previewLockedByClick = true;
-                    selectedProjectId = project.id;
-                    projectCard.classList.add('glow-selected');
-                    showProjectPreview(project);
-                }
-            });
+    if (carouselProjects.length === 0) {
+        if (projectsGrid) {
+            projectsGrid.innerHTML = '';
+            projectsGrid.classList.remove('project-carousel');
         }
-        
+        document.getElementById('project-current').textContent = '0';
+        return;
+    }
+
+    projectsGrid.classList.add('project-carousel');
+    projectsGrid.innerHTML = '';
+
+    const count = carouselProjects.length;
+    const slots = count >= 5
+        ? [
+            { offset: -2, className: 'slot-far-left' },
+            { offset: -1, className: 'slot-left' },
+            { offset: 0, className: 'slot-center' },
+            { offset: 1, className: 'slot-right' },
+            { offset: 2, className: 'slot-far-right' }
+        ]
+        : carouselProjects.map((_, idx) => ({
+            offset: idx - Math.floor(count / 2),
+            className: idx === Math.floor(count / 2) ? 'slot-center' : (idx < Math.floor(count / 2) ? 'slot-left' : 'slot-right')
+        }));
+
+    slots.forEach(slot => {
+        const normalizedIndex = (currentProjectIndex + slot.offset + count) % count;
+        const project = carouselProjects[normalizedIndex];
+        const projectCard = createProjectCard(project);
+        projectCard.classList.add('carousel-card', slot.className);
+        projectCard.dataset.slot = slot.className;
+        attachProjectCardInteractions(projectCard, project);
         projectsGrid.appendChild(projectCard);
     });
-    
-    document.getElementById('project-current').textContent = currentProjectIndex + 1;
+
+    document.getElementById('project-current').textContent = ((currentProjectIndex % count) + count) % count + 1;
     
     updateNavigationButtons();
 }
 
+function attachProjectCardInteractions(projectCard, project) {
+    if (project.noDashboard) return;
+
+    projectCard.addEventListener('mouseenter', () => {
+        if (!previewLockedByClick) {
+            showProjectPreview(project);
+        }
+    });
+
+    projectCard.addEventListener('mouseleave', () => {
+        if (!previewLockedByClick) {
+            hideProjectPreview();
+        }
+    });
+
+    projectCard.addEventListener('click', () => {
+        const isSelected = selectedProjectId === project.id && previewLockedByClick;
+
+        const allCards = document.querySelectorAll('.project-card');
+        allCards.forEach(card => card.classList.remove('glow-selected'));
+
+        if (isSelected) {
+            previewLockedByClick = false;
+            selectedProjectId = null;
+            hideProjectPreview();
+        } else {
+            previewLockedByClick = true;
+            selectedProjectId = project.id;
+            projectCard.classList.add('glow-selected');
+            showProjectPreview(project);
+        }
+    });
+}
+
+function setupProjectCarouselInteractions() {
+    const projectsGrid = document.getElementById('projects-grid');
+    if (!projectsGrid || projectsGrid.dataset.carouselBound === 'true') return;
+
+    projectsGrid.addEventListener('click', (event) => {
+        if (event.target.closest('.project-card')) return;
+
+        const rect = projectsGrid.getBoundingClientRect();
+        const xRatio = (event.clientX - rect.left) / rect.width;
+        if (xRatio <= 0.2) {
+            goToPreviousProject();
+        } else if (xRatio >= 0.8) {
+            goToNextProject();
+        }
+    });
+
+    projectsGrid.addEventListener('mousemove', (event) => {
+        const rect = projectsGrid.getBoundingClientRect();
+        const xRatio = (event.clientX - rect.left) / rect.width;
+        projectsGrid.classList.remove('zone-left', 'zone-right');
+        if (xRatio <= 0.2) {
+            projectsGrid.classList.add('zone-left');
+        } else if (xRatio >= 0.8) {
+            projectsGrid.classList.add('zone-right');
+        }
+    });
+
+    projectsGrid.addEventListener('mouseleave', () => {
+        projectsGrid.classList.remove('zone-left', 'zone-right');
+    });
+
+    projectsGrid.dataset.carouselBound = 'true';
+}
+
 function goToPreviousProject() {
-    if (currentProjectIndex > 0) {
-        currentProjectIndex--;
-        previewLockedByClick = false;
-        selectedProjectId = null;
-        displayCurrentProject();
-    }
+    if (carouselProjects.length === 0) return;
+    currentProjectIndex = (currentProjectIndex - 1 + carouselProjects.length) % carouselProjects.length;
+    previewLockedByClick = false;
+    selectedProjectId = null;
+    displayCurrentProject();
 }
 
 function goToNextProject() {
-    if (currentProjectIndex < mockProjects.length - 1) {
-        currentProjectIndex++;
-        previewLockedByClick = false;
-        selectedProjectId = null;
-        displayCurrentProject();
-    }
+    if (carouselProjects.length === 0) return;
+    currentProjectIndex = (currentProjectIndex + 1) % carouselProjects.length;
+    previewLockedByClick = false;
+    selectedProjectId = null;
+    displayCurrentProject();
 }
 
 function updateNavigationButtons() {
     const navPrev = document.getElementById('nav-prev');
     const navNext = document.getElementById('nav-next');
-    
-    navPrev.disabled = currentProjectIndex === 0;
-    navNext.disabled = currentProjectIndex >= mockProjects.length - 1;
+
+    if (!navPrev || !navNext) return;
+    navPrev.disabled = false;
+    navNext.disabled = false;
 }
 
 function showProjectPreview(project) {
