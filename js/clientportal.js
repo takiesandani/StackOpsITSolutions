@@ -18,6 +18,9 @@ const SUNBIRD_ONLY_CARD_IDS = [2, 3, 4, 5, 7, 8]; // Identity Protection, Device
 // Cards to hide from Sunbird clients
 const HIDDEN_FROM_SUNBIRD_IDS = []; // All Sunbird cards are visible to them
 
+// Cards to hide from the main project cards UI (keep functionality in code)
+const HIDDEN_PROJECT_CARD_IDS = [4, 7]; // Security & Events, Backup and Recovery
+
 // Check if current user is a Sunbird client
 function isSunbirdUser() {
     const userEmail = sessionStorage.getItem('userEmail');
@@ -38,16 +41,25 @@ function isSessionValid() {
 function getFilteredProjects() {
     if (!isSessionValid()) {
         // Expired session - return only non-Sunbird cards
-        return mockProjects.filter(project => !SUNBIRD_ONLY_CARD_IDS.includes(project.id));
+        return mockProjects.filter(project =>
+            !SUNBIRD_ONLY_CARD_IDS.includes(project.id) &&
+            !HIDDEN_PROJECT_CARD_IDS.includes(project.id)
+        );
     }
     
     if (isSunbirdUser()) {
         // Sunbird user - show all cards except those hidden from them
-        return mockProjects.filter(project => !HIDDEN_FROM_SUNBIRD_IDS.includes(project.id));
+        return mockProjects.filter(project =>
+            !HIDDEN_FROM_SUNBIRD_IDS.includes(project.id) &&
+            !HIDDEN_PROJECT_CARD_IDS.includes(project.id)
+        );
     }
     
     // Other clients - hide Sunbird-only cards
-    return mockProjects.filter(project => !SUNBIRD_ONLY_CARD_IDS.includes(project.id));
+    return mockProjects.filter(project =>
+        !SUNBIRD_ONLY_CARD_IDS.includes(project.id) &&
+        !HIDDEN_PROJECT_CARD_IDS.includes(project.id)
+    );
 }
 
 const mockProjects = [
@@ -2494,6 +2506,8 @@ function setupEventListeners() {
     const passwordToggle = document.getElementById('password-toggle');
     const navPrev = document.getElementById('nav-prev');
     const navNext = document.getElementById('nav-next');
+    const sidePeekPrev = document.getElementById('side-peek-prev');
+    const sidePeekNext = document.getElementById('side-peek-next');
     const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
     const mobileNavClose = document.getElementById('mobile-nav-close');
     const mobileNav = document.getElementById('mobile-nav');
@@ -2581,6 +2595,14 @@ function setupEventListeners() {
 
     if (navNext) {
         navNext.addEventListener('click', goToNextProject);
+    }
+
+    if (sidePeekPrev) {
+        sidePeekPrev.addEventListener('click', goToPreviousProject);
+    }
+
+    if (sidePeekNext) {
+        sidePeekNext.addEventListener('click', goToNextProject);
     }
 
     // Mobile menu toggle
@@ -3889,10 +3911,37 @@ function displayCurrentProject() {
         
         projectsGrid.appendChild(projectCard);
     });
+
+    renderSidePeekCards();
     
     document.getElementById('project-current').textContent = currentProjectIndex + 1;
     
     updateNavigationButtons();
+}
+
+function renderSidePeekCards() {
+    const sidePeekPrevCard = document.getElementById('side-peek-prev-card');
+    const sidePeekNextCard = document.getElementById('side-peek-next-card');
+
+    if (!sidePeekPrevCard || !sidePeekNextCard) return;
+
+    sidePeekPrevCard.innerHTML = '';
+    sidePeekNextCard.innerHTML = '';
+
+    const prevProject = mockProjects[currentProjectIndex - 1];
+    const nextProject = mockProjects[currentProjectIndex + 3];
+
+    if (prevProject) {
+        const prevCard = createProjectCard(prevProject);
+        prevCard.classList.add('no-interaction');
+        sidePeekPrevCard.appendChild(prevCard);
+    }
+
+    if (nextProject) {
+        const nextCard = createProjectCard(nextProject);
+        nextCard.classList.add('no-interaction');
+        sidePeekNextCard.appendChild(nextCard);
+    }
 }
 
 function goToPreviousProject() {
@@ -3905,7 +3954,8 @@ function goToPreviousProject() {
 }
 
 function goToNextProject() {
-    if (currentProjectIndex < mockProjects.length - 1) {
+    const maxStartIndex = Math.max(0, mockProjects.length - 3);
+    if (currentProjectIndex < maxStartIndex) {
         currentProjectIndex++;
         previewLockedByClick = false;
         selectedProjectId = null;
@@ -3916,9 +3966,17 @@ function goToNextProject() {
 function updateNavigationButtons() {
     const navPrev = document.getElementById('nav-prev');
     const navNext = document.getElementById('nav-next');
-    
-    navPrev.disabled = currentProjectIndex === 0;
-    navNext.disabled = currentProjectIndex >= mockProjects.length - 1;
+    const sidePeekPrev = document.getElementById('side-peek-prev');
+    const sidePeekNext = document.getElementById('side-peek-next');
+
+    const maxStartIndex = Math.max(0, mockProjects.length - 3);
+    const disablePrev = currentProjectIndex === 0;
+    const disableNext = currentProjectIndex >= maxStartIndex;
+
+    if (navPrev) navPrev.disabled = disablePrev;
+    if (navNext) navNext.disabled = disableNext;
+    if (sidePeekPrev) sidePeekPrev.disabled = disablePrev;
+    if (sidePeekNext) sidePeekNext.disabled = disableNext;
 }
 
 function showProjectPreview(project) {

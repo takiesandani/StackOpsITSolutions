@@ -708,6 +708,64 @@
     perspective: 1000px;
 }
 
+.projects-carousel-shell {
+    position: relative;
+}
+
+.side-peek-nav {
+    position: absolute;
+    top: 50%;
+    width: 120px;
+    border: none;
+    background: transparent;
+    padding: 0;
+    transform: translateY(-50%);
+    cursor: pointer;
+    z-index: 2;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.side-peek-nav:disabled {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.side-peek-nav-left {
+    left: -92px;
+}
+
+.side-peek-nav-right {
+    right: -92px;
+}
+
+.side-peek-card {
+    border-radius: 10px;
+    overflow: hidden;
+    opacity: 0.6;
+    transform: scale(0.92);
+    filter: saturate(0.75);
+    box-shadow: 0 0 10px rgba(30, 144, 255, 0.35);
+    transition: all 0.25s ease;
+}
+
+.side-peek-nav:hover .side-peek-card {
+    opacity: 0.78;
+    filter: saturate(0.9);
+}
+
+.side-peek-card .project-card {
+    pointer-events: none;
+    transform: none !important;
+    animation: none !important;
+    box-shadow: none !important;
+}
+
+@media (max-width: 1200px) {
+    .side-peek-nav {
+        display: none;
+    }
+}
+
 .project-card {
     background: rgba(255, 255, 255, 0.04);
     
@@ -1532,26 +1590,18 @@
 @keyframes sunbird-horizontal-flow {
     0% {
         background-position: center, 100% center;
-        opacity: 0.95;
-    }
-    28% {
-        background-position: center, 100% center;
-        opacity: 0.95;
-    }
-    34% {
-        background-position: center, 0% center;
         opacity: 0.35;
+    }
+    20% {
+        background-position: center, 0% center;
+        opacity: 0.95;
     }
     78% {
         background-position: center, 0% center;
-        opacity: 0.14;
-    }
-    92% {
-        background-position: center, 100% center;
-        opacity: 0.85;
+        opacity: 0.95;
     }
     100% {
-        background-position: center, 0% center;
+        background-position: center, 100% center;
         opacity: 0.35;
     }
 }
