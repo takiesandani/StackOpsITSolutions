@@ -1062,21 +1062,27 @@
 
 .metric-content-wrap {
     display: flex;
-    flex-direction: column;
-    gap: 2px;
+    flex-direction: row;   /* put in one line */
+    align-items: center;
+    gap: 6px;
+}
+
+/* Add the ":" automatically */
+.metric-label-text::after {
+    content: ":";
+    margin-left: 2px;
 }
 
 .metric-label-text {
-    font-size: 0.64rem;
+    font-size: 0.75rem;
     color: rgba(255, 255, 255, 0.72);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    text-transform: none;   /* optional: remove ALL CAPS if you want cleaner look */
+    letter-spacing: 0.3px;
 }
 
 .metric-value-text {
-    font-size: 1rem;
+    font-size: 0.95rem;
     color: #e7eefb;
-    line-height: 1;
 }
 
 .project-info-item.metric-loading {
