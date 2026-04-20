@@ -227,6 +227,7 @@ let cachedSunbirdSecurityData = null;
 let cachedSunbirdBackupData = null;
 let sunbirdBillingCardLockedHeight = null;
 let identityRiskFocus = 'all';
+let pendingIdentityRiskFocus = 'all';
 
 document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
@@ -1274,6 +1275,17 @@ function setupIdentitySearch() {
 
     // Expose for summary risk quick filters
     window.applyIdentityRiskFilters = applyFilters;
+
+    if (pendingIdentityRiskFocus !== 'all') {
+        identityRiskFocus = pendingIdentityRiskFocus;
+        const targetCard = document.querySelector(`.sunbird-summary-card[data-risk-filter="${pendingIdentityRiskFocus}"]`);
+        if (targetCard) {
+            document.querySelectorAll('.sunbird-summary-card[data-risk-filter]').forEach(c => c.classList.remove('risk-filter-active'));
+            targetCard.classList.add('risk-filter-active');
+        }
+        pendingIdentityRiskFocus = 'all';
+        applyFilters();
+    }
 }
 
 function initializeIdentityInsights() {
@@ -2026,10 +2038,10 @@ function setupSunbirdRiskQuickFilters() {
 }
 
 function collectSunbirdRiskItems() {
-    const items = [];
+    const rawItems = [];
 
     const pushItem = (tab, risk, severity, insight) => {
-        items.push({ tab, risk, severity, insight });
+        rawItems.push({ tab, risk, severity, insight });
     };
 
     if (sunbirdDashboardData?.summary) {
@@ -2060,8 +2072,101 @@ function collectSunbirdRiskItems() {
         }
     });
 
-    return items;
+    const normalizeTab = (tab) => {
+        if (tab === 'Identity Protection') return 'Identity Protection';
+        if (tab === 'Security Alerts') return 'Security Alerts';
+        if (tab === 'Backup & Recovery') return 'Backup & Recovery';
+        return 'Applications/Others';
+    };
+
+    const dedupMap = new Map();
+    rawItems.forEach(item => {
+        const tab = normalizeTab(item.tab);
+        const key = `${tab}|${item.risk}`.toLowerCase();
+        const existing = dedupMap.get(key);
+
+        if (!existing) {
+            dedupMap.set(key, {
+                tab,
+                risk: item.risk,
+                severity: item.severity,
+                insights: [item.insight]
+            });
+            return;
+        }
+
+        // Keep highest severity across duplicates.
+        const rank = { high: 3, medium: 2, low: 1 };
+        if ((rank[item.severity] || 0) > (rank[existing.severity] || 0)) {
+            existing.severity = item.severity;
+        }
+
+        if (!existing.insights.includes(item.insight)) {
+            existing.insights.push(item.insight);
+        }
+    });
+
+    const tabOrder = {
+        'Identity Protection': 1,
+        'Security Alerts': 2,
+        'Backup & Recovery': 3,
+        'Applications/Others': 4
+    };
+    const severityRank = { high: 1, medium: 2, low: 3 };
+
+    return Array.from(dedupMap.values())
+        .map(item => ({
+            tab: item.tab,
+            risk: item.risk,
+            severity: item.severity,
+            insight: item.insights.join(' ')
+        }))
+        .sort((a, b) =>
+            (tabOrder[a.tab] || 99) - (tabOrder[b.tab] || 99) ||
+            (severityRank[a.severity] || 99) - (severityRank[b.severity] || 99) ||
+            a.risk.localeCompare(b.risk)
+        );
 }
+
+window.viewRiskFromRegister = function(encodedTab, encodedRisk) {
+    const tab = decodeURIComponent(encodedTab || '');
+    const risk = decodeURIComponent(encodedRisk || '');
+
+    if (tab === 'Identity Protection') {
+        const identityProject = mockProjects.find(p => p.id === 2 || p.isIdentityCard);
+        if (identityProject) {
+            if (/privileged without mfa/i.test(risk)) {
+                pendingIdentityRiskFocus = 'privileged-without-mfa';
+            } else if (/high risk users/i.test(risk)) {
+                pendingIdentityRiskFocus = 'high-risk-users';
+            } else if (/active users/i.test(risk)) {
+                pendingIdentityRiskFocus = 'active-users-24h';
+            } else {
+                pendingIdentityRiskFocus = 'all';
+            }
+            viewProjectDashboard(identityProject);
+        }
+        return;
+    }
+
+    if (tab === 'Security Alerts') {
+        const secProject = mockProjects.find(p => p.isSecurityCard);
+        if (secProject) viewProjectDashboard(secProject);
+        return;
+    }
+
+    if (tab === 'Backup & Recovery') {
+        const backupProject = mockProjects.find(p => p.isBackupRecoveryCard);
+        if (backupProject) viewProjectDashboard(backupProject);
+        return;
+    }
+
+    // Applications / other project card summaries
+    const appProject = mockProjects.find(p => p.isApplicationsCard) || mockProjects.find(p => p.name === 'Applications');
+    if (appProject) {
+        viewProjectDashboard(appProject);
+    }
+};
 
 async function renderSunbirdRisksView(forceRefresh = false) {
     const billingCard = document.getElementById('billing-card');
@@ -2090,9 +2195,14 @@ async function renderSunbirdRisksView(forceRefresh = false) {
                     <td>${item.risk}</td>
                     <td><span class="sunbird-risk-pill ${item.severity}">${item.severity.toUpperCase()}</span></td>
                     <td>${item.insight}</td>
+                    <td>
+                        <button class="sunbird-risk-view-btn" onclick="window.viewRiskFromRegister('${encodeURIComponent(item.tab)}','${encodeURIComponent(item.risk)}')">
+                            View
+                        </button>
+                    </td>
                 </tr>
             `).join('')
-            : '<tr><td colspan="4" class="sunbird-empty-row">No risks available</td></tr>';
+            : '<tr><td colspan="5" class="sunbird-empty-row">No risks available</td></tr>';
 
         if (!isSunbirdBillingViewActive('risks')) return;
         billingCard.innerHTML = `
@@ -2110,6 +2220,7 @@ async function renderSunbirdRisksView(forceRefresh = false) {
                                 <th>Risk</th>
                                 <th>Severity</th>
                                 <th>Insight</th>
+                                <th>Action</th>
                             </tr>
                         </thead>
                         <tbody>${rowsHtml}</tbody>

@@ -514,9 +514,9 @@ const transporter = nodemailer.createTransport({
     maxConnections: 2,
     maxMessages: 100,
     // Avoid long hangs on SMTP connect in cloud environments
-    connectionTimeout: 20000,
-    greetingTimeout: 15000,
-    socketTimeout: 20000,
+    connectionTimeout: 8000,
+    greetingTimeout: 7000,
+    socketTimeout: 8000,
     tls: {
         minVersion: 'TLSv1.2',
         rejectUnauthorized: true
@@ -888,7 +888,7 @@ const sendEmail = async (to, subject, body, isHtml = false, attachments = []) =>
     } catch (error) {
         const retryable = ['ETIMEDOUT', 'ECONNECTION', 'EAI_AGAIN'].includes(error?.code);
         if (retryable) {
-            await new Promise(r => setTimeout(r, 1000));
+            await new Promise(r => setTimeout(r, 400));
             await attemptSend(2);
             return;
         }
@@ -928,7 +928,7 @@ const sendBillingEmail = async (to, subject, body, isHtml = false, attachments =
     } catch (error) {
         const retryable = ['ETIMEDOUT', 'ECONNECTION', 'EAI_AGAIN'].includes(error?.code);
         if (retryable) {
-            await new Promise(r => setTimeout(r, 1000));
+            await new Promise(r => setTimeout(r, 400));
             await attemptSend(2);
             return;
         }
