@@ -3283,10 +3283,6 @@ function generateIdentityDashboardHTML() {
                         <i class="fas fa-arrow-left"></i> Back
                     </button>
                     <h2 class="identity-dashboard-title"> Identity Protection</h2>
-                    <div class="powered-by-badge">
-                        <img src="https://static.vecteezy.com/system/resources/thumbnails/018/911/406/small_2x/microsoft-logo-editorial-free-vector.jpg" alt="Microsoft" class="powered-by-logo">
-                        <span>Powered by Microsoft Graph</span>
-                    </div>
                 </div>
             </div>
 
@@ -4487,21 +4483,7 @@ function updateCopyrightYear() {
 }
 
 function renderPoweredByBadge(provider) {
-    if (provider === 'microsoft') {
-        return `
-            <div class="billing-powered-by-badge billing-powered-by-microsoft">
-                <img src="https://static.vecteezy.com/system/resources/thumbnails/018/911/406/small_2x/microsoft-logo-editorial-free-vector.jpg" alt="Microsoft" />
-                <span>Powered by Microsoft Graph</span>
-            </div>
-        `;
-    }
-
-    return `
-        <div class="billing-powered-by-badge billing-powered-by-stackops">
-            <img src="Images/Logos/RemovedStackOps.png" alt="StackOps IT Solutions" />
-            <span>Powered by StackOps IT Solutions</span>
-        </div>
-    `;
+    return '';
 }
 
 function renderSunbirdFullDashboardButton(target) {
@@ -4521,9 +4503,8 @@ function renderSunbirdPlaceholderView(title, icon, subtitle = 'Coming soon') {
             <div class="billing-card-header">
                 <i class="fas ${icon}"></i>
                 <h3>${title}</h3>
-                ${renderPoweredByBadge('stackops')}
             </div>
-            <p class="sunbird-panel-error" style="text-align: center;">${subtitle}</p>
+            <p class="sunbird-panel-error">${subtitle}</p>
         </div>
     `;
 }
@@ -4596,7 +4577,6 @@ async function initializeBillingCard() {
                 <div class="billing-card-header">
                     <i class="fas fa-credit-card"></i>
                     <h3>Billing Statement</h3>
-                    ${renderPoweredByBadge('stackops')}
                 </div>
                 <p style="color: #bdbdbd; text-align: center; padding: 20px;">No active billing</p>
             `;
@@ -4638,7 +4618,6 @@ async function initializeBillingCard() {
             <div class="billing-card-header">
                 <i class="fas fa-credit-card"></i>
                 <h3>Billing Statement</h3>
-                ${renderPoweredByBadge('stackops')}
             </div>
             <div class="billing-amount">
                 <span class="billing-currency">${currency}</span>${totalAmount.toLocaleString()}
@@ -4682,7 +4661,6 @@ async function initializeBillingCard() {
             <div class="billing-card-header">
                 <i class="fas fa-credit-card"></i>
                 <h3>Billing Statement</h3>
-                ${renderPoweredByBadge('stackops')}
             </div>
             <p style="color: #bdbdbd; text-align: center; padding: 20px;">Error loading billing information</p>
         `;
@@ -4742,7 +4720,8 @@ window.switchBillingMenu = async function(menuItem) {
         reports: { title: 'Reports', icon: 'fa-chart-line' },
         risks: { title: 'Risks', icon: 'fa-triangle-exclamation' },
         architecture: { title: 'Architecture', icon: 'fa-sitemap' },
-        settings: { title: 'Settings', icon: 'fa-gear' }
+        settings: { title: 'Settings', icon: 'fa-gear' },
+        sla: { title: 'SLA', icon: 'fa-handshake' }
     };
 
     if (placeholderViews[menuItem]) {
@@ -4863,7 +4842,6 @@ async function renderSunbirdSecurityAlertsView(forceRefresh = false) {
                 <div class="billing-card-header">
                     <i class="fas fa-shield-alt"></i>
                     <h3>Security Alerts</h3>
-                    ${renderPoweredByBadge('microsoft')}
                 </div>
                 <div class="sunbird-mini-stats">
                     <div class="sunbird-mini-stat">
@@ -4899,7 +4877,6 @@ async function renderSunbirdSecurityAlertsView(forceRefresh = false) {
                 <div class="billing-card-header">
                     <i class="fas fa-shield-alt"></i>
                     <h3>Security Alerts</h3>
-                    ${renderPoweredByBadge('microsoft')}
                 </div>
                 <p class="sunbird-panel-error">Unable to load security alerts right now.</p>
                 ${renderSunbirdFullDashboardButton('security')}
@@ -4933,7 +4910,6 @@ async function renderSunbirdBackupRecoveryView(forceRefresh = false) {
                 <div class="billing-card-header">
                     <i class="fas fa-hdd"></i>
                     <h3>Backup & Recovery</h3>
-                    ${renderPoweredByBadge('microsoft')}
                 </div>
 
                 <div class="sunbird-mini-stats">
@@ -4964,7 +4940,6 @@ async function renderSunbirdBackupRecoveryView(forceRefresh = false) {
                 <div class="billing-card-header">
                     <i class="fas fa-hdd"></i>
                     <h3>Backup & Recovery</h3>
-                    ${renderPoweredByBadge('microsoft')}
                 </div>
                 <p class="sunbird-panel-error">Unable to load backup and recovery data right now.</p>
                 ${renderSunbirdFullDashboardButton('backup')}
@@ -5049,6 +5024,9 @@ function initializeSunbirdLeftMenu() {
         </button>
         <button class="sunbird-menu-item" data-menu="architecture" onclick="window.switchBillingMenu('architecture')">
             <i class="fas fa-sitemap"></i><span>Architecture</span>
+        </button>
+        <button class="sunbird-menu-item" data-menu="sla" onclick="window.switchBillingMenu('sla')">
+            <i class="fas fa-handshake"></i><span>SLA</span>
         </button>
         <button class="sunbird-menu-item" data-menu="settings" onclick="window.switchBillingMenu('settings')">
             <i class="fas fa-gear"></i><span>Settings</span>

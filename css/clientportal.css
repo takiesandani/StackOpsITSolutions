@@ -1039,75 +1039,95 @@
     min-height: 280px;
     display: flex;
     flex-direction: column;
-    gap: 2%;
+    gap: 6px;
     justify-content: flex-start;
-    padding: 12px 10px;
-    border: 1px solid rgba(0, 140, 255, 0.45);
-    border-radius: 14px;
-    background:
-        radial-gradient(120% 65% at 50% 0%, rgba(0, 180, 255, 0.22) 0%, rgba(0, 180, 255, 0) 58%),
-        linear-gradient(160deg, rgba(4, 36, 72, 0.72) 0%, rgba(2, 16, 38, 0.9) 44%, rgba(2, 10, 24, 0.96) 100%);
-    box-shadow:
-        0 0 0 1px rgba(0, 190, 255, 0.26) inset,
-        0 0 30px rgba(0, 145, 255, 0.42),
-        0 0 60px rgba(0, 100, 220, 0.24),
-        0 14px 28px rgba(0, 0, 0, 0.42);
-    backdrop-filter: blur(12px) saturate(140%);
-    -webkit-backdrop-filter: blur(12px) saturate(140%);
+    padding: 10px 10px 16px;
+    border: none;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.03);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(10px) saturate(130%);
+    -webkit-backdrop-filter: blur(10px) saturate(130%);
     box-sizing: border-box;
     overflow: hidden;
     z-index: 5;
 }
 
+.sunbird-left-menu::after {
+    content: "";
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, rgba(0, 110, 255, 0.95), rgba(0, 200, 255, 0.95));
+    filter: drop-shadow(0 8px 18px rgba(0, 160, 255, 0.45));
+    opacity: 0.75;
+    pointer-events: none;
+}
+
 .sunbird-menu-item {
-    flex: 0 0 10%;
-    height: 6%;
-    min-height: 6%;
-    max-height: 6%;
-    padding: 2px 6px;
-    background: linear-gradient(160deg, rgba(6, 28, 52, 0.75) 0%, rgba(3, 18, 35, 0.85) 100%);
-    border: 1px solid rgba(0, 175, 255, 0.34);
-    border-radius: 23px;
-    color: #c8d7e6;
-    font-size: 0.58rem;
-    line-height: 1;
+    flex: 0 0 auto;
+    min-height: 34px;
+    padding: 8px 10px 8px 14px;
+    background: transparent;
+    border: none;
+    border-radius: 14px;
+    color: rgba(230, 245, 255, 0.86);
+    font-size: 0.78rem;
+    line-height: 1.2;
     cursor: pointer;
     transition: all 0.3s ease;
-    text-align: center;
-    font-weight: 200;
-    box-shadow: inset 0 0 6px rgba(0, 145, 255, 0.05);
+    text-align: left;
+    font-weight: 300;
+    box-shadow: none;
     position: relative;
-    letter-spacing: 0.01em;
+    letter-spacing: 0.02em;
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 4px;
+    justify-content: flex-start;
+    gap: 10px;
     overflow: hidden;
     white-space: nowrap;
 }
 
 .sunbird-menu-item i {
     display: inline-block;
-    font-size: 0.52rem;
+    font-size: 0.85rem;
     margin-bottom: 0;
-    color: #52b8ff;
+    color: rgba(160, 225, 255, 0.9);
+    width: 18px;
+    text-align: center;
 }
 
 .sunbird-menu-item:hover {
-    color: #f1f8ff;
-    border-color: rgba(0, 190, 255, 0.7);
-    background: linear-gradient(145deg, rgba(0, 120, 220, 0.35) 0%, rgba(0, 56, 112, 0.35) 100%);
-    box-shadow: 0 0 10px rgba(0, 162, 255, 0.26);
+    color: #f6fbff;
+    background: rgba(0, 145, 255, 0.10);
     transform: translateY(-1px);
-    animation: live-glow 2.2s ease-in-out infinite;
 }
 
 .sunbird-menu-item.active {
     color: #ffffff;
-    background: linear-gradient(135deg, rgba(0, 120, 255, 0.34) 0%, rgba(0, 45, 96, 0.45) 100%);
-    border-color: #28c4ff;
-    box-shadow: 0 0 12px rgba(0, 180, 255, 0.3), inset 0 0 8px rgba(100, 218, 255, 0.2);
-    animation: live-glow 2.2s ease-in-out infinite;
+    background: rgba(0, 145, 255, 0.18);
+    box-shadow: inset 0 0 0 1px rgba(70, 205, 255, 0.18);
+}
+
+.sunbird-menu-item::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 8px;
+    bottom: 8px;
+    width: 0;
+    border-radius: 999px;
+    background: linear-gradient(180deg, rgba(0, 110, 255, 0.95), rgba(0, 200, 255, 0.95));
+    box-shadow: 0 0 14px rgba(0, 170, 255, 0.45);
+    transition: width 0.18s ease;
+}
+
+.sunbird-menu-item.active::before {
+    width: 3px;
 }
 
 .sunbird-panel-view {
@@ -1121,21 +1141,7 @@
 }
 
 .billing-powered-by-badge {
-    margin-left: auto;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    padding: 6px 12px;
-    min-height: 26px;
-    border-radius: 999px;
-    border: 1px solid rgba(0, 140, 255, 0.25);
-    background: rgba(3, 18, 36, 0.78);
-    box-shadow: 0 0 10px rgba(0, 130, 255, 0.16);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    z-index: 12;
-    pointer-events: none;
+    display: none !important;
 }
 
 .billing-powered-by-badge img {
@@ -1165,9 +1171,9 @@
 .sunbird-panel-loading,
 .sunbird-panel-error {
     color: #b6cee8;
-    text-align: center;
-    margin: auto 0;
-    padding: 14px 8px;
+    text-align: left;
+    margin: 0;
+    padding: 10px 2px;
     font-size: 0.86rem;
 }
 
@@ -1451,21 +1457,9 @@
     top: var(--sunbird-connector-y, 50%);
     transform: translateY(-50%);
     border-radius: 999px;
-    background:
-        linear-gradient(
-            90deg,
-            rgba(70, 170, 255, 0.08) 0%,
-            rgba(90, 200, 255, 0.9) 20%,
-            rgba(70, 170, 255, 0.08) 40%,
-            rgba(90, 200, 255, 0.9) 60%,
-            rgba(70, 170, 255, 0.08) 80%,
-            rgba(70, 170, 255, 0.08) 100%
-        );
-    background-size: 160% 100%;
-    box-shadow:
-        0 0 8px rgba(80, 190, 255, 0.55),
-        0 0 14px rgba(30, 140, 255, 0.3);
-    animation: sunbird-connector-flow 3.2s ease-in-out infinite;
+    background: rgba(120, 210, 255, 0.22);
+    box-shadow: none;
+    opacity: 0.25;
     pointer-events: none;
     z-index: 4;
 }
@@ -1479,9 +1473,9 @@
     top: var(--sunbird-connector-y, 50%);
     transform: translateY(-50%);
     border-radius: 50%;
-    background: radial-gradient(circle, rgba(150, 230, 255, 1) 0%, rgba(70, 175, 255, 0.6) 60%, rgba(70, 175, 255, 0) 100%);
-    box-shadow: 0 0 12px rgba(110, 214, 255, 0.85);
-    animation: sunbird-connector-dot 2.8s ease-in-out infinite;
+    background: rgba(140, 220, 255, 0.35);
+    box-shadow: none;
+    opacity: 0.3;
     pointer-events: none;
     z-index: 5;
 }
