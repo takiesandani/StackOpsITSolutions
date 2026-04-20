@@ -3351,32 +3351,71 @@ async function fetchIdentityAccessData() {
                     isSunbirdDashboard = true;
                     sunbirdDashboardData = sunbirdData;
                     
-                    // Map Sunbird data to existing global variables
-                    microsoftUsersData = sunbirdData.users || [];
+                    // Map Sunbird data to existing global variables and ENRICH with missing fields
+                    microsoftUsersData = (sunbirdData.users || []).map(user => ({
+                        // Core identity fields
+                        id: user.id,
+                        displayName: user.displayName,
+                        mail: user.mail,
+                        userPrincipalName: user.userPrincipalName,
+                        jobTitle: user.jobTitle,
+                        mobilePhone: user.mobilePhone,
+                        isExternal: user.isExternal,
+                        
+                        // Roles (from Sunbird)
+                        roles: user.roles || [],
+                        
+                        // MFA fields (from Sunbird)
+                        mfaEnabled: user.mfaEnabled || false,
+                        authMethodCount: user.authMethods?.length || user.authMethodCount || 0,
+                        authMethods: user.authMethods || [],
+                        
+                        // Risk assessment (from Sunbird)
+                        riskLevel: user.riskLevel || 'SAFE',
+                        
+                        // Sign-in and location data (from Sunbird)
+                        lastSignIn: {
+                            dateTime: user.lastSignIn?.dateTime || user.latestSignInDateTime || null,
+                            location: user.lastSignIn?.location || user.signInLocation || 'Unknown',
+                            device: user.lastSignIn?.device || user.deviceDetail?.displayName || user.deviceName || 'Unknown Device',
+                            ipAddress: user.lastSignIn?.ipAddress || user.ipAddress || 'N/A'
+                        },
+                        
+                        // Status fields (from Sunbird)
+                        accountEnabled: user.accountEnabled !== false,
+                        
+                        // Preserve any additional Sunbird-specific fields
+                        ...user
+                    }));
+                    
+                    console.log('[Identity Access] Sunbird users enriched with MFA, Risk, and Sign-in data');
+                    console.log('[Identity Access] Sample enriched user:', microsoftUsersData[0]);
                     
                     // Build role map from enriched users
                     userRolesMap = {};
-                    sunbirdData.users.forEach(user => {
+                    microsoftUsersData.forEach(user => {
                         if (user.roles && user.roles.length > 0) {
-                            userRolesMap[user.id] = user.roles.map(r => r.name);
+                            userRolesMap[user.id] = user.roles.map(r => typeof r === 'string' ? r : (r?.name || 'Unknown Role'));
                         }
                     });
                     
                     // Build mock roles data for compatibility
                     microsoftRolesData = [];
-                    sunbirdData.users.forEach(user => {
-                        if (user.roles) {
+                    microsoftUsersData.forEach(user => {
+                        if (user.roles && user.roles.length > 0) {
                             user.roles.forEach(role => {
+                                const roleName = typeof role === 'string' ? role : (role?.name || 'Unknown Role');
                                 microsoftRolesData.push({
-                                    id: role.id,
+                                    id: role?.id || `role-${roleName}`,
                                     principalId: user.id,
-                                    roleName: role.name
+                                    roleName: roleName
                                 });
                             });
                         }
                     });
                     
                     console.log('[Identity Access] Sunbird data mapped to globals');
+                    console.log(`[Identity Access] Enriched ${microsoftUsersData.length} users with roles, MFA, risk, and sign-in data`);
                     
                     // Update card with Sunbird metrics
                     const identityProject = mockProjects.find(p => p.id === 2);
