@@ -226,6 +226,15 @@ document.addEventListener('DOMContentLoaded', function() {
     updateCopyrightYear();
 });
 
+function getSunbirdBillingActiveView() {
+    const billingCard = document.getElementById('billing-card');
+    return billingCard?.dataset?.sunbirdView || sunbirdBillingMenuSelection;
+}
+
+function isSunbirdBillingViewActive(view) {
+    return getSunbirdBillingActiveView() === view;
+}
+
 // Setup project tabs event listeners
 function setupProjectsTabs() {
     // Removed - no longer using tabs
@@ -4506,6 +4515,19 @@ function renderSunbirdFullDashboardButton(target) {
     `;
 }
 
+function renderSunbirdPlaceholderView(title, icon, subtitle = 'Coming soon') {
+    return `
+        <div class="sunbird-panel-view">
+            <div class="billing-card-header">
+                <i class="fas ${icon}"></i>
+                <h3>${title}</h3>
+                ${renderPoweredByBadge('stackops')}
+            </div>
+            <p class="sunbird-panel-error" style="text-align: center;">${subtitle}</p>
+        </div>
+    `;
+}
+
 window.openSunbirdFullDashboard = function(target) {
     const project = target === 'security'
         ? mockProjects.find(p => p.isSecurityCard)
@@ -4529,10 +4551,18 @@ window.openSunbirdFullDashboard = function(target) {
 async function initializeBillingCard() {
     const billingCard = document.getElementById('billing-card');
     if (!billingCard) return;
+
+    // Prevent async races from overwriting the active Sunbird mini-view.
+    // If the user is currently viewing another menu item, don't render billing HTML into the container.
+    if (isSunbirdUser() && billingCard.dataset?.sunbirdView && billingCard.dataset.sunbirdView !== 'billing') {
+        syncSunbirdLeftMenuHeight();
+        return;
+    }
     
     const token = localStorage.getItem('authToken');
     
     if (!token) {
+        if (isSunbirdUser() && !isSunbirdBillingViewActive('billing') && billingCard.dataset?.sunbirdView) return;
         billingCard.innerHTML = '<p style="color: #bdbdbd; text-align: center; padding: 20px;">Please log in to view billing information.</p>';
         cachedSunbirdBillingHtml = billingCard.innerHTML;
         return;
@@ -4548,6 +4578,7 @@ async function initializeBillingCard() {
         
         if (response.status === 401 || response.status === 403) {
             // Token expired or invalid
+            if (isSunbirdUser() && !isSunbirdBillingViewActive('billing')) return;
             billingCard.innerHTML = '<p style="color: #bdbdbd; text-align: center; padding: 20px;">Session expired. Please log in again.</p>';
             cachedSunbirdBillingHtml = billingCard.innerHTML;
             return;
@@ -4560,6 +4591,7 @@ async function initializeBillingCard() {
         const invoice = await response.json();
         
         if (!invoice) {
+            if (isSunbirdUser() && !isSunbirdBillingViewActive('billing')) return;
             billingCard.innerHTML = `
                 <div class="billing-card-header">
                     <i class="fas fa-credit-card"></i>
@@ -4601,6 +4633,7 @@ async function initializeBillingCard() {
             `;
         }).join('');
         
+        if (isSunbirdUser() && !isSunbirdBillingViewActive('billing')) return;
         billingCard.innerHTML = `
             <div class="billing-card-header">
                 <i class="fas fa-credit-card"></i>
@@ -4644,6 +4677,7 @@ async function initializeBillingCard() {
         cachedSunbirdBillingHtml = billingCard.innerHTML;
     } catch (error) {
         console.error('Error loading billing card:', error);
+        if (isSunbirdUser() && !isSunbirdBillingViewActive('billing')) return;
         billingCard.innerHTML = `
             <div class="billing-card-header">
                 <i class="fas fa-credit-card"></i>
@@ -4655,8 +4689,10 @@ async function initializeBillingCard() {
         cachedSunbirdBillingHtml = billingCard.innerHTML;
     } finally {
         ensureSunbirdBillingCardDimensions();
-        if (isSunbirdUser() && sunbirdBillingMenuSelection !== 'billing') {
-            window.switchBillingMenu(sunbirdBillingMenuSelection);
+        // If this renderer completed after the user navigated away, don't force-switch tabs.
+        if (isSunbirdUser() && isSunbirdBillingViewActive('billing') === false) {
+            syncSunbirdLeftMenuHeight();
+            return;
         }
         // Keep Sunbird menu aligned to the rendered billing card height.
         syncSunbirdLeftMenuHeight();
@@ -4701,6 +4737,23 @@ window.switchBillingMenu = async function(menuItem) {
     const billingCard = document.getElementById('billing-card');
     if (!billingCard) return;
     billingCard.dataset.sunbirdView = menuItem;
+
+    const placeholderViews = {
+        reports: { title: 'Reports', icon: 'fa-chart-line' },
+        risks: { title: 'Risks', icon: 'fa-triangle-exclamation' },
+        architecture: { title: 'Architecture', icon: 'fa-sitemap' },
+        settings: { title: 'Settings', icon: 'fa-gear' }
+    };
+
+    if (placeholderViews[menuItem]) {
+        billingCard.innerHTML = renderSunbirdPlaceholderView(
+            placeholderViews[menuItem].title,
+            placeholderViews[menuItem].icon
+        );
+        ensureSunbirdBillingCardDimensions();
+        syncSunbirdLeftMenuHeight();
+        return;
+    }
 
     if (menuItem === 'billing') {
         // Always render billing view when selected so click visibly affects the container.
@@ -4781,6 +4834,7 @@ async function renderSunbirdSecurityAlertsView(forceRefresh = false) {
     if (!billingCard) return;
 
     try {
+        if (!isSunbirdBillingViewActive('security')) return;
         billingCard.innerHTML = renderSunbirdPremiumLoader('Loading security alerts');
 
         if (forceRefresh || !cachedSunbirdSecurityData) {
@@ -4803,6 +4857,7 @@ async function renderSunbirdSecurityAlertsView(forceRefresh = false) {
             `).join('')
             : '<tr><td colspan="4" class="sunbird-empty-row">No incidents found</td></tr>';
 
+        if (!isSunbirdBillingViewActive('security')) return;
         billingCard.innerHTML = `
             <div class="sunbird-panel-view">
                 <div class="billing-card-header">
@@ -4838,6 +4893,7 @@ async function renderSunbirdSecurityAlertsView(forceRefresh = false) {
         `;
     } catch (error) {
         console.error('[Sunbird Security Alerts] Error:', error);
+        if (!isSunbirdBillingViewActive('security')) return;
         billingCard.innerHTML = `
             <div class="sunbird-panel-view">
                 <div class="billing-card-header">
@@ -4860,6 +4916,7 @@ async function renderSunbirdBackupRecoveryView(forceRefresh = false) {
     if (!billingCard) return;
 
     try {
+        if (!isSunbirdBillingViewActive('backup')) return;
         billingCard.innerHTML = renderSunbirdPremiumLoader('Loading backup and recovery');
 
         if (forceRefresh || !cachedSunbirdBackupData) {
@@ -4870,6 +4927,7 @@ async function renderSunbirdBackupRecoveryView(forceRefresh = false) {
         const summary = data.summary || {};
         const byService = data.storage?.byService || {};
 
+        if (!isSunbirdBillingViewActive('backup')) return;
         billingCard.innerHTML = `
             <div class="sunbird-panel-view">
                 <div class="billing-card-header">
@@ -4900,6 +4958,7 @@ async function renderSunbirdBackupRecoveryView(forceRefresh = false) {
         `;
     } catch (error) {
         console.error('[Sunbird Backup Recovery] Error:', error);
+        if (!isSunbirdBillingViewActive('backup')) return;
         billingCard.innerHTML = `
             <div class="sunbird-panel-view">
                 <div class="billing-card-header">
@@ -4981,6 +5040,18 @@ function initializeSunbirdLeftMenu() {
         </button>
         <button class="sunbird-menu-item" data-menu="billing" onclick="window.switchBillingMenu('billing')">
             <i class="fas fa-file-invoice"></i><span>Billing Statement</span>
+        </button>
+        <button class="sunbird-menu-item" data-menu="reports" onclick="window.switchBillingMenu('reports')">
+            <i class="fas fa-chart-line"></i><span>Reports</span>
+        </button>
+        <button class="sunbird-menu-item" data-menu="risks" onclick="window.switchBillingMenu('risks')">
+            <i class="fas fa-triangle-exclamation"></i><span>Risks</span>
+        </button>
+        <button class="sunbird-menu-item" data-menu="architecture" onclick="window.switchBillingMenu('architecture')">
+            <i class="fas fa-sitemap"></i><span>Architecture</span>
+        </button>
+        <button class="sunbird-menu-item" data-menu="settings" onclick="window.switchBillingMenu('settings')">
+            <i class="fas fa-gear"></i><span>Settings</span>
         </button>
     `;
     
