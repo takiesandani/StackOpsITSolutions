@@ -5613,6 +5613,7 @@
     gap: 12px;
     opacity: 1;
     min-height: 0;
+    flex: 1;
 }
 
 /* ========================================
@@ -5760,7 +5761,6 @@
     flex-direction: column;
     gap: 12px;
     overflow-y: auto;
-    max-height: 100%;
     padding-right: 8px;
 }
 
@@ -5850,20 +5850,24 @@
 
 /* Billing items in preview */
 .billing-statement-content .billing-items {
-    max-height: 150px;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
     padding-right: 4px;
 }
 
 .billing-statement-content .billing-item {
-    padding: 4px 0;
-    font-size: 0.75rem;
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    font-size: 0.8rem;
 }
 
 .billing-statement-content .billing-warning {
-    margin-top: 8px;
+    margin-top: 12px;
     margin-bottom: 0;
-    padding: 8px;
+    padding: 10px;
     gap: 8px;
 }
 
