@@ -21,7 +21,7 @@
 
 .device-stat-card {
     background: rgba(30, 41, 59, 0.8);
-    border: 1px solid rgba(0, 110, 255, 0.2);
+    border: 1px solid rgba(249, 115, 22, 0.2);
     border-radius: 12px;
     padding: 20px;
     display: flex;
@@ -31,8 +31,8 @@
 }
 
 .device-stat-card:hover {
-    border-color: rgba(0, 110, 255, 0.5);
-    box-shadow: 0 0 20px rgba(0, 110, 255, 0.15);
+    border-color: rgba(249, 115, 22, 0.5);
+    box-shadow: 0 0 20px rgba(249, 115, 22, 0.15);
     transform: translateY(-4px);
 }
 
@@ -42,10 +42,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(0, 110, 255, 0.15);
+    background: rgba(249, 115, 22, 0.15);
     border-radius: 8px;
     font-size: 24px;
-    color: #0066FF;
+    color: #f97316;
     flex-shrink: 0;
 }
 
@@ -56,7 +56,7 @@
 .device-stat-content h3 {
     font-size: 24px;
     font-weight: 200;
-    color: #0066FF;
+    color: #f97316;
     margin: 0 0 4px 0;
 }
 
@@ -81,15 +81,15 @@
 
 .chart-card {
     background: rgba(30, 41, 59, 0.8);
-    border: 1px solid rgba(0, 110, 255, 0.2);
+    border: 1px solid rgba(249, 115, 22, 0.2);
     border-radius: 12px;
     padding: 20px;
     transition: all 0.3s ease;
 }
 
 .chart-card:hover {
-    border-color: rgba(0, 110, 255, 0.4);
-    box-shadow: 0 0 16px rgba(0, 110, 255, 0.1);
+    border-color: rgba(249, 115, 22, 0.4);
+    box-shadow: 0 0 16px rgba(249, 115, 22, 0.1);
 }
 
 .chart-card h3 {
@@ -103,7 +103,7 @@
 }
 
 .chart-card h3 i {
-    color: #0066FF;
+    color: #f97316;
 }
 
 .chart-container {
@@ -121,7 +121,7 @@
 
 .devices-risk-alerts-section .monitor-card {
     background: rgba(30, 41, 59, 0.8);
-    border: 1px solid rgba(0, 110, 255, 0.2);
+    border: 1px solid rgba(249, 115, 22, 0.2);
     border-radius: 12px;
     padding: 20px;
 }
@@ -137,7 +137,7 @@
 }
 
 .monitor-card h3 i {
-    color: #0066FF;
+    color: #f97316;
 }
 
 /* High Risk Device Item */
@@ -177,8 +177,8 @@
 /* Alert Item */
 .alert-item-device {
     padding: 12px;
-    background: rgba(0, 110, 255, 0.05);
-    border-left: 3px solid #0066FF;
+    background: rgba(249, 115, 22, 0.05);
+    border-left: 3px solid #f97316;
     border-radius: 4px;
     margin-bottom: 8px;
 }
@@ -240,8 +240,8 @@
 }
 
 .activity-item {
-    background: rgba(0, 110, 255, 0.08);
-    border: 1px solid rgba(0, 110, 255, 0.15);
+    background: rgba(249, 115, 22, 0.08);
+    border: 1px solid rgba(249, 115, 22, 0.15);
     border-radius: 8px;
     padding: 12px;
     text-align: center;
@@ -258,14 +258,14 @@
 .activity-value {
     font-size: 20px;
     font-weight: 200;
-    color: #0066FF;
+    color: #f97316;
     display: block;
 }
 
 /* Insights Section */
 .insights-section {
     background: rgba(30, 41, 59, 0.8);
-    border: 1px solid rgba(0, 110, 255, 0.2);
+    border: 1px solid rgba(249, 115, 22, 0.2);
     border-radius: 12px;
     padding: 20px;
     margin-bottom: 24px;
@@ -278,8 +278,8 @@
 }
 
 .insight-card {
-    background: rgba(0, 110, 255, 0.08);
-    border: 1px solid rgba(0, 110, 255, 0.15);
+    background: rgba(249, 115, 22, 0.08);
+    border: 1px solid rgba(249, 115, 22, 0.15);
     border-radius: 8px;
     padding: 16px;
     cursor: pointer;
@@ -288,10 +288,10 @@
 }
 
 .insight-card:hover {
-    background: rgba(0, 110, 255, 0.15);
-    border-color: rgba(0, 110, 255, 0.3);
+    background: rgba(249, 115, 22, 0.15);
+    border-color: rgba(249, 115, 22, 0.3);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 110, 255, 0.1);
+    box-shadow: 0 4px 12px rgba(249, 115, 22, 0.1);
 }
 
 .insight-title {
@@ -306,7 +306,7 @@
 .insight-value {
     font-size: 24px;
     font-weight: 200;
-    color: #0066FF;
+    color: #f97316;
     margin-bottom: 8px;
 }
 
@@ -331,7 +331,7 @@
 .device-search-input {
     padding: 10px 16px;
     background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(0, 110, 255, 0.2);
+    border: 1px solid rgba(249, 115, 22, 0.2);
     border-radius: 8px;
     color: #e2e8f0;
     font-size: 14px;
@@ -341,9 +341,9 @@
 
 .device-search-input:focus {
     outline: none;
-    border-color: #0066FF;
+    border-color: #f97316;
     background: rgba(255, 255, 255, 0.08);
-    box-shadow: 0 0 8px rgba(0, 110, 255, 0.2);
+    box-shadow: 0 0 8px rgba(249, 115, 22, 0.2);
 }
 
 .device-search-input::placeholder {
@@ -368,12 +368,12 @@
 }
 
 .devices-filters label:hover {
-    color: #0066FF;
+    color: #f97316;
 }
 
 .devices-filters input[type="checkbox"] {
     cursor: pointer;
-    accent-color: #0066FF;
+    accent-color: #f97316;
 }
 
 /* Devices Table Styles */
@@ -385,14 +385,14 @@
 }
 
 .devices-table thead {
-    background: rgba(0, 110, 255, 0.1);
-    border-bottom: 2px solid rgba(0, 110, 255, 0.2);
+    background: rgba(249, 115, 22, 0.1);
+    border-bottom: 2px solid rgba(249, 115, 22, 0.2);
 }
 
 .devices-table th {
     padding: 12px;
     text-align: left;
-    color: #0066FF;
+    color: #f97316;
     font-weight: 200;
     font-size: 12px;
 }
@@ -403,7 +403,7 @@
 }
 
 .devices-table tbody tr:hover {
-    background: rgba(0, 110, 255, 0.08);
+    background: rgba(249, 115, 22, 0.08);
 }
 
 .devices-table td {

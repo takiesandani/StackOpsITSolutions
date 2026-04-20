@@ -96,7 +96,7 @@ function updateSecuritySummary(summary) {
     if (scoreElement) {
         const score = summary.securityScore || 0;
         scoreElement.textContent = score;
-        const scoreColor = score >= 75 ? '#10b981' : score >= 50 ? '#ffc107' : '#ff6b6b';
+        const scoreColor = score >= 75 ? '#22c55e' : score >= 50 ? '#f59e0b' : '#ef4444';
         scoreElement.style.color = scoreColor;
     }
 }
@@ -240,7 +240,7 @@ function initializeSecurityCharts(data) {
                 labels: ['Critical', 'High', 'Medium', 'Low'],
                 datasets: [{
                     data: [severityCount.critical, severityCount.high, severityCount.medium, severityCount.low],
-                    backgroundColor: ['#ff6b6b', '#ffc107', '#f59e0b', '#10b981'],
+                    backgroundColor: ['#ef4444', '#f97316', '#f59e0b', '#22c55e'],
                     borderColor: '#0f172a',
                     borderWidth: 2
                 }]
@@ -276,7 +276,7 @@ function initializeSecurityCharts(data) {
                 datasets: [{
                     label: 'Incidents',
                     data: [statuses.active, statuses.inProgress, statuses.resolved],
-                    backgroundColor: ['#ff6b6b', '#ffc107', '#10b981'],
+                    backgroundColor: ['#ef4444', '#f59e0b', '#22c55e'],
                     borderColor: '#0f172a',
                     borderWidth: 1
                 }]
@@ -326,11 +326,11 @@ function initializeSecurityCharts(data) {
                 datasets: [{
                     label: 'Alerts per Hour',
                     data: Object.values(hourBuckets),
-                    borderColor: '#0066FF',
-                    backgroundColor: 'rgba(0, 102, 255, 0.1)',
+                    borderColor: '#f97316',
+                    backgroundColor: 'rgba(249, 115, 22, 0.12)',
                     tensions: 0.4,
                     fill: true,
-                    pointBackgroundColor: '#0066FF',
+                    pointBackgroundColor: '#f97316',
                     pointBorderColor: '#0f172a',
                     pointRadius: 4
                 }]
@@ -365,7 +365,7 @@ function initializeSecurityCharts(data) {
                 labels: Object.keys(threatTypes),
                 datasets: [{
                     data: Object.values(threatTypes),
-                    backgroundColor: ['#ff6b6b', '#ffc107', '#f59e0b', '#0066FF'],
+                    backgroundColor: ['#ef4444', '#f59e0b', '#f97316', '#3b82f6'],
                     borderColor: '#0f172a',
                     borderWidth: 2
                 }]

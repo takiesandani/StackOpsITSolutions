@@ -817,7 +817,7 @@ function generateApplicationsDashboardHTML() {
             <div class="dashboard-header">
                 <div class="dashboard-header-left">
                     <button class="btn-back-dashboard" id="btn-back-identity" onclick="resetDashboard()">
-                        <i class="fas fa-arrow-left"></i> Back
+                        <i class="fas fa-arrow-left"></i> ← Back
                     </button>
                     <h2 class="dashboard-heading">Applications - Access & Risk Management</h2>
                 </div>
@@ -1165,7 +1165,7 @@ function renderTopAppsChart() {
     }
     
     const colors = [
-        'rgba(0, 110, 255, 0.8)',
+        'rgba(249, 115, 22, 0.8)',
         'rgba(249, 115, 22, 0.8)',
         'rgba(34, 197, 94, 0.8)',
         'rgba(248, 113, 113, 0.8)',
@@ -1622,8 +1622,8 @@ function renderJobTitleChart(labels, data) {
             datasets: [{
                 label: 'Count',
                 data: data,
-                backgroundColor: 'rgba(0, 110, 255, 0.6)',
-                borderColor: 'rgba(0, 110, 255, 1)',
+                backgroundColor: 'rgba(249, 115, 22, 0.6)',
+                borderColor: 'rgba(249, 115, 22, 1)',
                 borderWidth: 1,
                 borderRadius: 4
             }]
@@ -1811,7 +1811,7 @@ function renderRoleDistributionChart() {
     }
     
     const colors = [
-        'rgba(0, 110, 255, 0.8)',
+        'rgba(249, 115, 22, 0.8)',
         'rgba(249, 115, 22, 0.8)',
         'rgba(34, 197, 94, 0.8)',
         'rgba(248, 113, 113, 0.8)',
@@ -2020,7 +2020,7 @@ function populateRiskIndicator() {
         html += `
                 <div class="risk-detail-item" style="display: flex; width: 100%; color: #dc2626; margin-top: 10px; font-size: 0.9rem;">
                     <span style="flex: 0 0 auto;">⚠️ Master Admin (Break Glass):</span>
-                    <span class="detail-value" style="flex: 1; text-align: right; color: #0066ff;">${(breakGlassUser.displayName || breakGlassUser.mail || 'Unknown').substring(0, 50)}</span>
+                    <span class="detail-value" style="flex: 1; text-align: right; color: #f97316;">${(breakGlassUser.displayName || breakGlassUser.mail || 'Unknown').substring(0, 50)}</span>
                 </div>
         `;
     }
@@ -2480,12 +2480,12 @@ function renderSystemHealthRadar() {
                     health.compliance || 0,
                     health.backup || 0
                 ],
-                borderColor: 'rgba(0, 110, 255, 0.8)',
-                backgroundColor: 'rgba(0, 110, 255, 0.2)',
+                borderColor: 'rgba(249, 115, 22, 0.8)',
+                backgroundColor: 'rgba(249, 115, 22, 0.2)',
                 borderWidth: 2,
                 fill: true,
                 pointRadius: 4,
-                pointBackgroundColor: 'rgba(0, 110, 255, 0.9)',
+                pointBackgroundColor: 'rgba(249, 115, 22, 0.9)',
                 pointBorderColor: '#fff',
                 pointBorderWidth: 1
             }]
@@ -4011,7 +4011,7 @@ function generateIdentityDashboardHTML() {
             <div class="identity-dashboard-header">
                 <div class="identity-header-left">
                     <button id="btn-back-identity" class="btn-back-identity">
-                        <i class="fas fa-arrow-left"></i> Back
+                        <i class="fas fa-arrow-left"></i> ← Back
                     </button>
                     <h2 class="identity-dashboard-title"> Identity Protection</h2>
                 </div>
@@ -4020,7 +4020,7 @@ function generateIdentityDashboardHTML() {
             <!-- Overview Stats (Key Metrics) -->
             <div class="identity-stats-cards">
                 <div class="identity-stat-card">
-                    <div class="stat-card-icon" style="background: rgba(0, 110, 255, 0.2); color: rgba(0, 110, 255, 0.9);">
+                    <div class="stat-card-icon" style="background: rgba(249, 115, 22, 0.2); color: rgba(249, 115, 22, 0.9);">
                         <i class="fas fa-users"></i>
                     </div>
                     <div class="stat-card-content">
@@ -4117,7 +4117,7 @@ function generateIdentityDashboardHTML() {
                 <!-- Row 0: Summary Cards (Security, Risk, Activity) -->
                 <div class="sunbird-summary-cards-row" id="sunbird-summary-cards" style="display: none;">
                     <div class="sunbird-summary-card" data-risk-filter="active-users-24h">
-                        <div class="summary-card-icon" style="background: rgba(0, 110, 255, 0.2); color: rgba(0, 110, 255, 0.9);">
+                        <div class="summary-card-icon" style="background: rgba(249, 115, 22, 0.2); color: rgba(249, 115, 22, 0.9);">
                             <i class="fas fa-shield-alt"></i>
                         </div>
                         <div class="summary-card-content">
@@ -5374,12 +5374,12 @@ function initHealthChart(project) {
             datasets: [{
                 label: 'Health Score',
                 data: [92, uptime, project.securityScore, 85, 88],
-                borderColor: '#006eff',
-                backgroundColor: 'rgba(0, 110, 255, 0.2)',
-                pointBackgroundColor: '#006eff',
+                borderColor: '#f97316',
+                backgroundColor: 'rgba(249, 115, 22, 0.2)',
+                pointBackgroundColor: '#f97316',
                 pointBorderColor: '#fff',
                 pointHoverBackgroundColor: '#fff',
-                pointHoverBorderColor: '#006eff'
+                pointHoverBorderColor: '#f97316'
             }]
         },
         options: {

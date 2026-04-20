@@ -81,7 +81,8 @@
 }
 
 .security-stat-card.info {
-    border-color: rgba(0, 110, 255, 0.2);
+    border-color: rgba(59, 130, 246, 0.35);
+    background: rgba(59, 130, 246, 0.06);
 }
 
 .security-stat-card:hover {
@@ -111,7 +112,7 @@
 }
 
 .sec-stat-icon.info {
-    color: #0066FF;
+    color: #3b82f6;
 }
 
 .sec-stat-content h3 {
@@ -221,10 +222,10 @@
 .risk-card-action {
     margin-top: 8px;
     padding: 6px;
-    background: rgba(0, 110, 255, 0.1);
-    border: 1px solid rgba(0, 110, 255, 0.2);
+    background: rgba(249, 115, 22, 0.1);
+    border: 1px solid rgba(249, 115, 22, 0.2);
     border-radius: 4px;
-    color: #0066FF;
+    color: #f97316;
     font-size: 11px;
     cursor: pointer;
     transition: all 0.2s;
@@ -233,8 +234,8 @@
 }
 
 .risk-card-action:hover {
-    background: rgba(0, 110, 255, 0.2);
-    border-color: rgba(0, 110, 255, 0.4);
+    background: rgba(249, 115, 22, 0.2);
+    border-color: rgba(249, 115, 22, 0.4);
 }
 
 /* ==================== ALERT DETAILS ==================== */
@@ -300,7 +301,7 @@
 
 .chart-card {
     background: rgba(30, 41, 59, 0.8);
-    border: 1px solid rgba(0, 110, 255, 0.15);
+    border: 1px solid rgba(249, 115, 22, 0.15);
     border-radius: 8px;
     padding: 16px;
     min-height: 300px;
@@ -317,7 +318,7 @@
 }
 
 .chart-card i {
-    color: #0066FF;
+    color: #f97316;
     font-size: 16px;
 }
 
@@ -339,7 +340,7 @@
 
 .incident-table-container {
     background: rgba(30, 41, 59, 0.8);
-    border: 1px solid rgba(0, 110, 255, 0.15);
+    border: 1px solid rgba(249, 115, 22, 0.15);
     border-radius: 8px;
     padding: 16px;
     margin-bottom: 24px;
@@ -361,14 +362,14 @@
 }
 
 .incident-table thead {
-    background: rgba(0, 110, 255, 0.1);
-    border-bottom: 2px solid rgba(0, 110, 255, 0.2);
+    background: rgba(249, 115, 22, 0.1);
+    border-bottom: 2px solid rgba(249, 115, 22, 0.2);
 }
 
 .incident-table th {
     padding: 12px;
     text-align: left;
-    color: #0066FF;
+    color: #f97316;
     font-weight: 200;
 }
 
@@ -378,7 +379,7 @@
 }
 
 .incident-table tbody tr:hover {
-    background: rgba(0, 110, 255, 0.05);
+    background: rgba(249, 115, 22, 0.05);
 }
 
 .incident-table td {
@@ -433,15 +434,15 @@
 }
 
 .status-badge.inProgress {
-    background: rgba(0, 110, 255, 0.2);
-    color: #0066FF;
+    background: rgba(249, 115, 22, 0.2);
+    color: #f97316;
 }
 
 /* ==================== ACTIVITY FEED ==================== */
 
 .activity-feed-container {
     background: rgba(30, 41, 59, 0.8);
-    border: 1px solid rgba(0, 110, 255, 0.15);
+    border: 1px solid rgba(249, 115, 22, 0.15);
     border-radius: 8px;
     padding: 16px;
     margin-bottom: 24px;
@@ -479,7 +480,7 @@
 }
 
 .activity-item.low {
-    border-left-color: #0066FF;
+    border-left-color: #f97316;
 }
 
 .activity-item-message {
@@ -498,7 +499,7 @@
 
 .monitor-card {
     background: rgba(30, 41, 59, 0.8);
-    border: 1px solid rgba(0, 110, 255, 0.15);
+    border: 1px solid rgba(249, 115, 22, 0.15);
     border-radius: 8px;
     padding: 16px;
     margin-bottom: 20px;
@@ -516,7 +517,7 @@
 }
 
 .monitor-card i {
-    color: #0066FF;
+    color: #f97316;
     font-size: 16px;
 }
 
@@ -611,12 +612,12 @@
 }
 
 .activity-feed-container::-webkit-scrollbar-thumb {
-    background: rgba(0, 110, 255, 0.3);
+    background: rgba(249, 115, 22, 0.3);
     border-radius: 10px;
 }
 
 .activity-feed-container::-webkit-scrollbar-thumb:hover {
-    background: rgba(0, 110, 255, 0.5);
+    background: rgba(249, 115, 22, 0.5);
 }
 
 /* =====================================================
@@ -696,7 +697,8 @@
 }
 
 .email-stat-card.info {
-    border-color: rgba(0, 110, 255, 0.2);
+    border-color: rgba(59, 130, 246, 0.35);
+    background: rgba(59, 130, 246, 0.06);
 }
 
 .email-stat-card:hover {
@@ -726,7 +728,7 @@
 }
 
 .email-stat-icon.info {
-    color: #0066FF;
+    color: #3b82f6;
 }
 
 .email-stat-content h3 {
@@ -854,10 +856,10 @@
 .risk-action-btn {
     width: 100%;
     padding: 6px 8px;
-    background: rgba(0, 110, 255, 0.1);
-    border: 1px solid rgba(0, 110, 255, 0.2);
+    background: rgba(249, 115, 22, 0.1);
+    border: 1px solid rgba(249, 115, 22, 0.2);
     border-radius: 4px;
-    color: #0066FF;
+    color: #f97316;
     font-size: 12px;
     cursor: pointer;
     transition: all 0.2s;
@@ -865,8 +867,8 @@
 }
 
 .risk-action-btn:hover {
-    background: rgba(0, 110, 255, 0.2);
-    border-color: rgba(0, 110, 255, 0.4);
+    background: rgba(249, 115, 22, 0.2);
+    border-color: rgba(249, 115, 22, 0.4);
 }
 
 /* ==================== EMAIL CHARTS SECTION ==================== */
@@ -1141,14 +1143,14 @@
 }
 
 .status-badge.inprogress {
-    background: rgba(0, 110, 255, 0.2);
-    color: #0066FF;
+    background: rgba(249, 115, 22, 0.2);
+    color: #f97316;
 }
 
 .action-btn {
     background: none;
     border: none;
-    color: #0066FF;
+    color: #f97316;
     cursor: pointer;
     font-size: 14px;
     padding: 4px 8px;
@@ -1185,7 +1187,7 @@
 }
 
 .insight-card.info {
-    border-left-color: #0066FF;
+    border-left-color: #3b82f6;
 }
 
 .insight-header {
@@ -1221,10 +1223,10 @@
 .insight-action-btn {
     width: 100%;
     padding: 6px 8px;
-    background: rgba(0, 110, 255, 0.1);
-    border: 1px solid rgba(0, 110, 255, 0.2);
+    background: rgba(249, 115, 22, 0.1);
+    border: 1px solid rgba(249, 115, 22, 0.2);
     border-radius: 4px;
-    color: #0066FF;
+    color: #f97316;
     font-size: 12px;
     cursor: pointer;
     transition: all 0.2s;
@@ -1232,8 +1234,8 @@
 }
 
 .insight-action-btn:hover {
-    background: rgba(0, 110, 255, 0.2);
-    border-color: rgba(0, 110, 255, 0.4);
+    background: rgba(249, 115, 22, 0.2);
+    border-color: rgba(249, 115, 22, 0.4);
 }
 
 /* ==================== AFFECTED USERS LIST ==================== */
@@ -1264,7 +1266,7 @@
 }
 
 .user-item.info {
-    border-left-color: #0066FF;
+    border-left-color: #3b82f6;
 }
 
 .user-item:hover {
@@ -1310,10 +1312,10 @@
 .user-action-btn {
     white-space: nowrap;
     padding: 6px 10px;
-    background: rgba(0, 110, 255, 0.1);
-    border: 1px solid rgba(0, 110, 255, 0.2);
+    background: rgba(249, 115, 22, 0.1);
+    border: 1px solid rgba(249, 115, 22, 0.2);
     border-radius: 4px;
-    color: #0066FF;
+    color: #f97316;
     font-size: 11px;
     cursor: pointer;
     transition: all 0.2s;
@@ -1322,8 +1324,8 @@
 }
 
 .user-action-btn:hover {
-    background: rgba(0, 110, 255, 0.2);
-    border-color: rgba(0, 110, 255, 0.4);
+    background: rgba(249, 115, 22, 0.2);
+    border-color: rgba(249, 115, 22, 0.4);
 }
 
 /* ==================== RESPONSIVE EMAIL ==================== */

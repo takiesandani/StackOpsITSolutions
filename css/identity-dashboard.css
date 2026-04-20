@@ -16,7 +16,7 @@
 
 .summary-stat-card {
     background: rgba(30, 41, 59, 0.8);
-    border: 1px solid rgba(0, 110, 255, 0.2);
+    border: 1px solid rgba(249, 115, 22, 0.2);
     border-radius: 12px;
     padding: 20px;
     display: flex;
@@ -26,9 +26,9 @@
 }
 
 .summary-stat-card:hover {
-    border-color: rgba(0, 110, 255, 0.4);
+    border-color: rgba(249, 115, 22, 0.4);
     background: rgba(30, 41, 59, 1);
-    box-shadow: 0 4px 16px rgba(0, 110, 255, 0.15);
+    box-shadow: 0 4px 16px rgba(249, 115, 22, 0.15);
 }
 
 .stat-icon-box {
@@ -43,8 +43,8 @@
 }
 
 .stat-icon-box.blue {
-    background: rgba(0, 110, 255, 0.2);
-    color: #0066FF;
+    background: rgba(59, 130, 246, 0.15);
+    color: #3b82f6;
 }
 
 .stat-icon-box.green {
@@ -86,15 +86,15 @@
 
 .chart-card {
     background: rgba(30, 41, 59, 0.8);
-    border: 1px solid rgba(0, 110, 255, 0.2);
+    border: 1px solid rgba(249, 115, 22, 0.2);
     border-radius: 12px;
     padding: 24px;
     transition: all 0.3s ease;
 }
 
 .chart-card:hover {
-    border-color: rgba(0, 110, 255, 0.4);
-    box-shadow: 0 4px 16px rgba(0, 110, 255, 0.15);
+    border-color: rgba(249, 115, 22, 0.4);
+    box-shadow: 0 4px 16px rgba(249, 115, 22, 0.15);
 }
 
 .chart-title {
@@ -112,7 +112,7 @@
 /* Users Filter Section */
 .management-header {
     background: rgba(30, 41, 59, 0.6);
-    border: 1px solid rgba(0, 110, 255, 0.2);
+    border: 1px solid rgba(249, 115, 22, 0.2);
     border-radius: 12px 12px 0 0;
     padding: 20px 24px;
     margin-bottom: 0;
@@ -145,7 +145,7 @@
     flex: 1;
     padding: 10px 16px;
     background: rgba(15, 23, 42, 0.6);
-    border: 1px solid rgba(0, 110, 255, 0.3);
+    border: 1px solid rgba(249, 115, 22, 0.3);
     border-radius: 8px;
     color: #e2e8f0;
     font-size: 14px;
@@ -155,7 +155,7 @@
 /* Users Table */
 .users-table-container {
     background: rgba(30, 41, 59, 0.8);
-    border: 1px solid rgba(0, 110, 255, 0.2);
+    border: 1px solid rgba(249, 115, 22, 0.2);
     border-top: none;
     border-radius: 0 0 12px 12px;
     overflow: hidden;
@@ -173,7 +173,7 @@
     right: 0;
     width: 30px;
     height: 100%;
-    background: linear-gradient(to left, rgba(0, 110, 255, 0.15), transparent);
+    background: linear-gradient(to left, rgba(249, 115, 22, 0.15), transparent);
     pointer-events: none;
     z-index: 5;
     animation: fadePulse 2s infinite alternate;
@@ -215,7 +215,7 @@
     font-size: 12px;
     text-transform: uppercase;
     letter-spacing: 1px;
-    background: rgba(0, 110, 255, 0.15);
+    background: rgba(249, 115, 22, 0.15);
 }
 
 .users-table td {

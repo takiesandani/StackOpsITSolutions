@@ -162,8 +162,8 @@ function initializeOsDistributionChart(osDistribution) {
             datasets: [{
                 label: 'Device Count',
                 data: data,
-                backgroundColor: 'rgba(0, 110, 255, 0.6)',
-                borderColor: 'rgba(0, 110, 255, 1)',
+                backgroundColor: 'rgba(249, 115, 22, 0.65)',
+                borderColor: 'rgba(249, 115, 22, 1)',
                 borderWidth: 1
             }]
         },
@@ -210,12 +210,12 @@ function initializeManagementStatusChart(managementStatus) {
                 backgroundColor: [
                     'rgba(34, 197, 94, 0.8)',    // Green
                     'rgba(239, 68, 68, 0.8)',    // Red
-                    'rgba(0, 110, 255, 0.8)'     // Blue
+                    'rgba(59, 130, 246, 0.85)'     // Info blue
                 ],
                 borderColor: [
                     'rgba(34, 197, 94, 1)',
                     'rgba(239, 68, 68, 1)',
-                    'rgba(0, 110, 255, 1)'
+                    'rgba(59, 130, 246, 1)'
                 ],
                 borderWidth: 2
             }]
@@ -258,11 +258,11 @@ function initializeDeviceSecurityRadarChart(summary) {
             datasets: [{
                 label: 'Security Score',
                 data: [compliance, encryption, summary.deviceSecurityScore, policyScale, threatExposure],
-                borderColor: 'rgba(0, 110, 255, 1)',
-                backgroundColor: 'rgba(0, 110, 255, 0.2)',
+                borderColor: 'rgba(249, 115, 22, 1)',
+                backgroundColor: 'rgba(249, 115, 22, 0.18)',
                 borderWidth: 2,
-                pointBackgroundColor: 'rgba(0, 110, 255, 1)',
-                pointBorderColor: 'rgba(0, 110, 255, 0.5)',
+                pointBackgroundColor: 'rgba(249, 115, 22, 1)',
+                pointBorderColor: 'rgba(249, 115, 22, 0.45)',
                 pointRadius: 5,
                 pointHoverRadius: 7
             }]
@@ -417,13 +417,13 @@ function updateDevicesAnalytics(data) {
         ? policies.slice(0, 5).map(policy => {
             const policyName = policy.displayName || policy.id || 'Unknown Policy';
             return `<div style="display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
-                <div style="width: 8px; height: 8px; background: #0066FF; border-radius: 50%; margin-right: 8px;"></div>
+                <div style="width: 8px; height: 8px; background: #f97316; border-radius: 50%; margin-right: 8px;"></div>
                 <span style="color: #cbd5e1; font-size: 12px; font-weight: 200; flex: 1; word-break: break-word;">${policyName}</span>
             </div>`;
           }).join('')
         : '<div style="color: #94a3b8; font-size: 12px; font-weight: 200; padding: 8px 0;">No policies configured</div>';
     
-    const showMorePolicies = policies.length > 5 ? `<div style="color: #0066FF; font-size: 12px; font-weight: 200; padding: 8px 0; cursor: pointer;">+${policies.length - 5} more policies</div>` : '';
+    const showMorePolicies = policies.length > 5 ? `<div style="color: #f97316; font-size: 12px; font-weight: 200; padding: 8px 0; cursor: pointer;">+${policies.length - 5} more policies</div>` : '';
     
     // Create clickable devices without policies button
     const devicesWithoutPoliciesButton = devicesWithoutPolicies > 0 
@@ -443,14 +443,14 @@ function updateDevicesAnalytics(data) {
                     <div style="color: ${statusColor}; font-weight: 200; font-size: 14px;">${coverageStatus}</div>
                 </div>
                 <div style="text-align: right;">
-                    <div style="color: #0066FF; font-weight: 200; font-size: 28px; line-height: 1;">${coveragePercentage}%</div>
+                    <div style="color: #f97316; font-weight: 200; font-size: 28px; line-height: 1;">${coveragePercentage}%</div>
                     <div style="color: #94a3b8; font-weight: 200; font-size: 11px; margin-top: 2px;">of devices</div>
                 </div>
             </div>
             
             <!-- Coverage Bar -->
             <div style="height: 8px; background: rgba(255,255,255,0.08); border-radius: 4px; margin-bottom: 12px; overflow: hidden;">
-                <div style="height: 100%; width: ${coveragePercentage}%; background: linear-gradient(90deg, #0066FF, #00d4ff); border-radius: 4px;"></div>
+                <div style="height: 100%; width: ${coveragePercentage}%; background: linear-gradient(90deg, #f97316, #fb923c); border-radius: 4px;"></div>
             </div>
             
             <!-- Device Breakdown -->
@@ -468,11 +468,11 @@ function updateDevicesAnalytics(data) {
             <!-- Active Policies Count -->
             <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
                 <span style="color: #94a3b8; font-weight: 200; font-size: 12px;">Active Policies</span>
-                <span style="color: #0066FF; font-weight: 200; font-size: 14px;">${policies.length}</span>
+                <span style="color: #f97316; font-weight: 200; font-size: 14px;">${policies.length}</span>
             </div>
             
             <!-- Policy List -->
-            <div style="background: rgba(0, 110, 255, 0.05); border-radius: 6px; padding: 8px; max-height: 160px; overflow-y: auto;">
+            <div style="background: rgba(249, 115, 22, 0.06); border-radius: 6px; padding: 8px; max-height: 160px; overflow-y: auto;">
                 ${policyListHTML}
                 ${showMorePolicies}
             </div>
