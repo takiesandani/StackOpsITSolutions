@@ -1037,6 +1037,7 @@
     width: 180px;
     flex-shrink: 0;
     align-self: flex-start;
+    margin-top: 22.4px;
 }
 
 .sunbird-menu-item {
@@ -1077,6 +1078,26 @@
 
 .dashboard-with-menu .dashboard-cards-section {
     flex: 1;
+}
+
+@media (max-width: 768px) {
+    .dashboard-with-menu {
+        flex-direction: column;
+    }
+    
+    .sunbird-left-menu {
+        width: 100%;
+        flex-direction: row;
+        overflow-x: auto;
+        padding-bottom: 8px;
+        margin-top: 10px;
+    }
+    
+    .sunbird-menu-item {
+        flex: 1;
+        min-width: 140px;
+        white-space: nowrap;
+    }
 }
 
 .dashboard-card-vertical-container {

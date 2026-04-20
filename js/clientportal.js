@@ -4651,7 +4651,8 @@ function initializeSunbirdLeftMenu() {
     // Insert wrapper before dashboard-cards-section
     dashboardCardsSection.parentElement.insertBefore(wrapper, dashboardCardsSection);
     
-    // Move dashboard-cards-section into wrapper
+    // Add menu and dashboard to wrapper
+    wrapper.appendChild(leftMenu);
     wrapper.appendChild(dashboardCardsSection);
 }
 
