@@ -2492,6 +2492,10 @@ function setupEventListeners() {
     const verifyMfaBtn = document.getElementById('verify-mfa-btn');
     const resendCodeLink = document.getElementById('resend-code-link');
     const backToLoginLink = document.getElementById('back-to-login');
+    const backBtnDevices = document.getElementById('btn-back-devices');
+    const backBtnSecurity = document.getElementById('btn-back-security');
+    const backBtnEmailSecurity = document.getElementById('btn-back-email-security');
+    const backBtnBackupRecovery = document.getElementById('btn-back-backup-recovery');
 
     if (loginForm) {
         loginForm.addEventListener('submit', handleLogin);
@@ -2551,6 +2555,12 @@ function setupEventListeners() {
     if (backBtn) {
         backBtn.addEventListener('click', goBackToProjects);
     }
+
+    // Back buttons for full dashboards (non-generic views)
+    if (backBtnDevices) backBtnDevices.addEventListener('click', goBackToProjects);
+    if (backBtnSecurity) backBtnSecurity.addEventListener('click', goBackToProjects);
+    if (backBtnEmailSecurity) backBtnEmailSecurity.addEventListener('click', goBackToProjects);
+    if (backBtnBackupRecovery) backBtnBackupRecovery.addEventListener('click', goBackToProjects);
 
     if (passwordToggle) {
         passwordToggle.addEventListener('click', togglePasswordVisibility);
@@ -4144,6 +4154,16 @@ function goBackToProjects() {
 function resetDashboard() {
     document.getElementById('projects-view').style.display = 'block';
     document.getElementById('dashboard-view').style.display = 'none';
+    const devicesView = document.getElementById('devices-view');
+    const securityEventsView = document.getElementById('security-events-view');
+    const emailSecurityView = document.getElementById('email-security-view');
+    const backupRecoveryView = document.getElementById('backup-recovery-view');
+
+    if (devicesView) devicesView.style.display = 'none';
+    if (securityEventsView) securityEventsView.style.display = 'none';
+    if (emailSecurityView) emailSecurityView.style.display = 'none';
+    if (backupRecoveryView) backupRecoveryView.style.display = 'none';
+
     currentProject = null;
     destroyCharts();
     
@@ -4461,7 +4481,7 @@ function renderPoweredByBadge(provider) {
     if (provider === 'microsoft') {
         return `
             <div class="billing-powered-by-badge billing-powered-by-microsoft">
-                <img src="Images/Logos/microsoft-logo.png" alt="Microsoft" />
+                <img src="https://static.vecteezy.com/system/resources/thumbnails/018/911/406/small_2x/microsoft-logo-editorial-free-vector.jpg" alt="Microsoft" />
                 <span>Powered by Microsoft Graph</span>
             </div>
         `;
@@ -4541,10 +4561,10 @@ async function initializeBillingCard() {
         
         if (!invoice) {
             billingCard.innerHTML = `
-                ${renderPoweredByBadge('stackops')}
                 <div class="billing-card-header">
                     <i class="fas fa-credit-card"></i>
                     <h3>Billing Statement</h3>
+                    ${renderPoweredByBadge('stackops')}
                 </div>
                 <p style="color: #bdbdbd; text-align: center; padding: 20px;">No active billing</p>
             `;
@@ -4582,10 +4602,10 @@ async function initializeBillingCard() {
         }).join('');
         
         billingCard.innerHTML = `
-            ${renderPoweredByBadge('stackops')}
             <div class="billing-card-header">
                 <i class="fas fa-credit-card"></i>
                 <h3>Billing Statement</h3>
+                ${renderPoweredByBadge('stackops')}
             </div>
             <div class="billing-amount">
                 <span class="billing-currency">${currency}</span>${totalAmount.toLocaleString()}
@@ -4625,10 +4645,10 @@ async function initializeBillingCard() {
     } catch (error) {
         console.error('Error loading billing card:', error);
         billingCard.innerHTML = `
-            ${renderPoweredByBadge('stackops')}
             <div class="billing-card-header">
                 <i class="fas fa-credit-card"></i>
                 <h3>Billing Statement</h3>
+                ${renderPoweredByBadge('stackops')}
             </div>
             <p style="color: #bdbdbd; text-align: center; padding: 20px;">Error loading billing information</p>
         `;
@@ -4785,10 +4805,10 @@ async function renderSunbirdSecurityAlertsView(forceRefresh = false) {
 
         billingCard.innerHTML = `
             <div class="sunbird-panel-view">
-                ${renderPoweredByBadge('microsoft')}
                 <div class="billing-card-header">
                     <i class="fas fa-shield-alt"></i>
                     <h3>Security Alerts</h3>
+                    ${renderPoweredByBadge('microsoft')}
                 </div>
                 <div class="sunbird-mini-stats">
                     <div class="sunbird-mini-stat">
@@ -4820,10 +4840,10 @@ async function renderSunbirdSecurityAlertsView(forceRefresh = false) {
         console.error('[Sunbird Security Alerts] Error:', error);
         billingCard.innerHTML = `
             <div class="sunbird-panel-view">
-                ${renderPoweredByBadge('microsoft')}
                 <div class="billing-card-header">
                     <i class="fas fa-shield-alt"></i>
                     <h3>Security Alerts</h3>
+                    ${renderPoweredByBadge('microsoft')}
                 </div>
                 <p class="sunbird-panel-error">Unable to load security alerts right now.</p>
                 ${renderSunbirdFullDashboardButton('security')}
@@ -4852,10 +4872,10 @@ async function renderSunbirdBackupRecoveryView(forceRefresh = false) {
 
         billingCard.innerHTML = `
             <div class="sunbird-panel-view">
-                ${renderPoweredByBadge('microsoft')}
                 <div class="billing-card-header">
                     <i class="fas fa-hdd"></i>
                     <h3>Backup & Recovery</h3>
+                    ${renderPoweredByBadge('microsoft')}
                 </div>
 
                 <div class="sunbird-mini-stats">
@@ -4882,10 +4902,10 @@ async function renderSunbirdBackupRecoveryView(forceRefresh = false) {
         console.error('[Sunbird Backup Recovery] Error:', error);
         billingCard.innerHTML = `
             <div class="sunbird-panel-view">
-                ${renderPoweredByBadge('microsoft')}
                 <div class="billing-card-header">
                     <i class="fas fa-hdd"></i>
                     <h3>Backup & Recovery</h3>
+                    ${renderPoweredByBadge('microsoft')}
                 </div>
                 <p class="sunbird-panel-error">Unable to load backup and recovery data right now.</p>
                 ${renderSunbirdFullDashboardButton('backup')}
