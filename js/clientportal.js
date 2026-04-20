@@ -93,10 +93,12 @@ const mockProjects = [
         lastUpdate: "Loading...",
         icon: "fas fa-shield-alt",
         cardMetrics: [
-            { label: "Total Users", value: ": ...", icon: "fas fa-users" },
-            { label: "External", value: ": ...", icon: "fas fa-user-secret" }
+            { label: "Total Users", value: ": 0", icon: "fas fa-users" },
+            { label: "Active (24h)", value: ": 0", icon: "fas fa-user-check" },
+            { label: "Admin Roles", value: ": 0", icon: "fas fa-crown" },
+            { label: "Security Score", value: ": 0", icon: "fas fa-shield-alt" }
         ],
-        cardFooter: "Fetching from Microsoft Graph...",
+        cardFooter: "Live data",
         hasTabs: false,
         microsoftGraphEnabled: true,
         isIdentityCard: true
@@ -112,10 +114,12 @@ const mockProjects = [
         lastUpdate: "Loading...",
         icon: "fas fa-laptop",
         cardMetrics: [
-            { label: "Total Devices", value: ": ...", icon: "fas fa-desktop" },
-            { label: "Compliant", value: ": ...", icon: "fas fa-check-circle" }
+            { label: "Total Devices", value: ": 0", icon: "fas fa-desktop" },
+            { label: "Non-Compliant", value: ": 0", icon: "fas fa-times-circle" },
+            { label: "Not Encrypted", value: ": 0", icon: "fas fa-lock-open" },
+            { label: "Stale (7+ days)", value: ": 0", icon: "fas fa-clock" }
         ],
-        cardFooter: "Fetching from Microsoft Intune...",
+        cardFooter: "Live device status",
         hasTabs: false,
         microsoftGraphEnabled: true,
         isDevicesCard: true
@@ -131,10 +135,12 @@ const mockProjects = [
         lastUpdate: "Loading...",
         icon: "fas fa-envelope-open-text",
         cardMetrics: [
-            { label: "Active Threats", value: ": ...", icon: "fas fa-exclamation-triangle" },
-            { label: "High Severity", value: ": ...", icon: "fas fa-circle-exclamation" }
+            { label: "Active Threats", value: ": 0", icon: "fas fa-exclamation-triangle" },
+            { label: "High Severity", value: ": 0", icon: "fas fa-circle-exclamation" },
+            { label: "Users Targeted", value: ": 0", icon: "fas fa-user-shield" },
+            { label: "Open Incidents", value: ": 0", icon: "fas fa-bug" }
         ],
-        cardFooter: "Fetching from Microsoft Graph Security...",
+        cardFooter: "Monitoring threats",
         hasTabs: false,
         microsoftGraphEnabled: true,
         isEmailSecurityCard: true
@@ -204,10 +210,12 @@ const mockProjects = [
         lastUpdate: "Loading...",
         icon: "fas fa-cubes",
         cardMetrics: [
-            { label: "Total Applications", value: ": ...", icon: "fas fa-cubes" },
-            { label: "External Apps", value: ": ...", icon: "fas fa-exclamation-circle" }
+            { label: "Total Apps", value: ": 0", icon: "fas fa-cubes" },
+            { label: "External Apps", value: ": 0", icon: "fas fa-globe" },
+            { label: "High Risk Apps", value: ": 0", icon: "fas fa-exclamation-circle" },
+            { label: "High Access Apps", value: ": 0", icon: "fas fa-users" }
         ],
-        cardFooter: "Fetching from Microsoft Graph...",
+        cardFooter: "Access monitoring active",
         hasTabs: false,
         microsoftGraphEnabled: true,
         isApplicationsCard: true
@@ -229,6 +237,70 @@ let sunbirdBillingCardLockedHeight = null;
 let identityRiskFocus = 'all';
 let pendingIdentityRiskFocus = 'all';
 let identityFetchRequestId = 0;
+let latestDevicesCardData = null;
+let latestEmailCardData = null;
+
+function isSummaryProjectCard(project) {
+    return !!(project && (project.isIdentityCard || project.isDevicesCard || project.isEmailSecurityCard || project.isApplicationsCard));
+}
+
+function getSummaryCardStatusMeta(project) {
+    if (!project || !isSummaryProjectCard(project)) {
+        return { status: 'active', text: 'Live data', dotClass: 'ok' };
+    }
+
+    const normalizedStatus = String(project.status || '').toLowerCase();
+    if (normalizedStatus.includes('error')) {
+        return { status: 'error', text: 'Data unavailable', dotClass: 'error' };
+    }
+
+    if (normalizedStatus.includes('loading') || normalizedStatus.includes('syncing')) {
+        return { status: 'loading', text: 'Live data', dotClass: 'partial' };
+    }
+
+    return { status: 'active', text: 'Updated just now', dotClass: 'ok' };
+}
+
+function toMetricValue(value, fallback = 0) {
+    const raw = String(value ?? '').replace(':', '').trim();
+    if (!raw || raw === '...') return String(fallback);
+    return raw;
+}
+
+function normalizeSummaryMetrics(project) {
+    if (!project || !isSummaryProjectCard(project)) return Array.isArray(project?.cardMetrics) ? project.cardMetrics : [];
+
+    const defaultMetricsByCard = {
+        2: [
+            { label: "Total Users", value: ": 0", icon: "fas fa-users" },
+            { label: "Active (24h)", value: ": 0", icon: "fas fa-user-check" },
+            { label: "Admin Roles", value: ": 0", icon: "fas fa-crown" },
+            { label: "Security Score", value: ": 0", icon: "fas fa-shield-alt" }
+        ],
+        3: [
+            { label: "Total Devices", value: ": 0", icon: "fas fa-desktop" },
+            { label: "Non-Compliant", value: ": 0", icon: "fas fa-times-circle" },
+            { label: "Not Encrypted", value: ": 0", icon: "fas fa-lock-open" },
+            { label: "Stale (7+ days)", value: ": 0", icon: "fas fa-clock" }
+        ],
+        5: [
+            { label: "Active Threats", value: ": 0", icon: "fas fa-exclamation-triangle" },
+            { label: "High Severity", value: ": 0", icon: "fas fa-circle-exclamation" },
+            { label: "Users Targeted", value: ": 0", icon: "fas fa-user-shield" },
+            { label: "Open Incidents", value: ": 0", icon: "fas fa-bug" }
+        ],
+        8: [
+            { label: "Total Apps", value: ": 0", icon: "fas fa-cubes" },
+            { label: "External Apps", value: ": 0", icon: "fas fa-globe" },
+            { label: "High Risk Apps", value: ": 0", icon: "fas fa-exclamation-circle" },
+            { label: "High Access Apps", value: ": 0", icon: "fas fa-users" }
+        ]
+    };
+
+    const defaults = defaultMetricsByCard[project.id] || [];
+    const incoming = Array.isArray(project.cardMetrics) ? project.cardMetrics.slice(0, 4) : [];
+    return defaults.map((metric, index) => ({ ...metric, ...(incoming[index] || {}) })).slice(0, 4);
+}
 
 document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
@@ -259,6 +331,8 @@ async function bootstrapDashboardDataAfterLogin() {
         fetchDuoStats(),
         fetchIdentityAccessData(),
         fetchApplicationsData(),
+        fetchDevicesCardData(),
+        fetchEmailCardData(),
         initializeBillingCard()
     ]);
 
@@ -470,15 +544,112 @@ function populateApplicationsCard(apiData) {
     const totalApps = apiData.totalApplications || 0;
     const externalApps = apiData.externalApplications || 0;
     const highRiskApps = calculateHighRiskApplications(applicationsData);
-    
+    const highAccessApps = applicationsData.filter(app => (app.userCount || 0) >= 20).length;
+
+    appProject.status = 'active';
     appProject.cardMetrics = [
-        { label: "Total Applications", value: `: ${totalApps}`, icon: "fas fa-cubes" },
-        { label: "External Apps", value: `: ${externalApps}`, icon: "fas fa-exclamation-circle" }
+        { label: "Total Apps", value: `: ${totalApps}`, icon: "fas fa-cubes" },
+        { label: "External Apps", value: `: ${externalApps}`, icon: "fas fa-globe" },
+        { label: "High Risk Apps", value: `: ${highRiskApps}`, icon: "fas fa-exclamation-circle" },
+        { label: "High Access Apps", value: `: ${highAccessApps}`, icon: "fas fa-users" }
     ];
-    appProject.cardFooter = `High Risk: ${highRiskApps}`;
+    appProject.cardFooter = 'Access monitoring active';
+    appProject.lastUpdate = new Date().toLocaleTimeString();
     
     // Re-render project cards
     displayCurrentProject();
+}
+
+async function fetchDevicesCardData() {
+    const project = mockProjects.find(p => p.id === 3);
+    if (!project) return;
+
+    try {
+        const token = localStorage.getItem('authToken');
+        if (!token) return;
+
+        project.status = 'loading';
+        displayCurrentProject();
+
+        const response = await fetch('/api/microsoft-devices', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || 'Failed to fetch device metrics');
+        }
+
+        latestDevicesCardData = data;
+        const total = data.summary?.totalDevices || 0;
+        const compliant = data.summary?.compliantDevices || 0;
+        const encrypted = data.summary?.encryptedDevices || 0;
+        const stale7days = data.activityBreakdown?.stale7days || 0;
+        const nonCompliant = Math.max(0, total - compliant);
+        const notEncrypted = Math.max(0, total - encrypted);
+
+        project.status = 'active';
+        project.cardMetrics = [
+            { label: "Total Devices", value: `: ${total}`, icon: "fas fa-desktop" },
+            { label: "Non-Compliant", value: `: ${nonCompliant}`, icon: "fas fa-times-circle" },
+            { label: "Not Encrypted", value: `: ${notEncrypted}`, icon: "fas fa-lock-open" },
+            { label: "Stale (7+ days)", value: `: ${stale7days}`, icon: "fas fa-clock" }
+        ];
+        project.cardFooter = 'Live device status';
+        project.lastUpdate = new Date().toLocaleTimeString();
+        displayCurrentProject();
+    } catch (error) {
+        console.error('[Devices Card] Error:', error);
+        project.status = 'error';
+        project.cardFooter = 'Data unavailable';
+        displayCurrentProject();
+    }
+}
+
+async function fetchEmailCardData() {
+    const project = mockProjects.find(p => p.id === 5);
+    if (!project) return;
+
+    try {
+        const token = localStorage.getItem('authToken');
+        if (!token) return;
+
+        project.status = 'loading';
+        displayCurrentProject();
+
+        const response = await fetch('/api/email-security', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || 'Failed to fetch email metrics');
+        }
+
+        latestEmailCardData = data;
+        const summary = data.summary || {};
+        project.status = 'active';
+        project.cardMetrics = [
+            { label: "Active Threats", value: `: ${summary.activeThreats || 0}`, icon: "fas fa-exclamation-triangle" },
+            { label: "High Severity", value: `: ${summary.highSeverityAlerts || 0}`, icon: "fas fa-circle-exclamation" },
+            { label: "Users Targeted", value: `: ${summary.affectedUsersCount || 0}`, icon: "fas fa-user-shield" },
+            { label: "Open Incidents", value: `: ${summary.activeIncidents || 0}`, icon: "fas fa-bug" }
+        ];
+        project.cardFooter = 'Monitoring threats';
+        project.lastUpdate = new Date().toLocaleTimeString();
+        displayCurrentProject();
+    } catch (error) {
+        console.error('[Email Card] Error:', error);
+        project.status = 'error';
+        project.cardFooter = 'Data unavailable';
+        displayCurrentProject();
+    }
 }
 
 // Calculate risk level for an application
@@ -3321,6 +3492,12 @@ async function fetchIdentityAccessData() {
     const requestId = ++identityFetchRequestId;
     const isStaleRequest = () => requestId !== identityFetchRequestId;
     try {
+        const identityProjectForState = mockProjects.find(p => p.id === 2);
+        if (identityProjectForState) {
+            identityProjectForState.status = 'loading';
+            displayCurrentProject();
+        }
+
         const token = localStorage.getItem('authToken');
         const isLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
         
@@ -3432,13 +3609,15 @@ async function fetchIdentityAccessData() {
                     // Update card with Sunbird metrics
                     const identityProject = mockProjects.find(p => p.id === 2);
                     if (identityProject) {
+                        const usersWithoutMfa = (sunbirdData.users || []).filter(user => !user.mfaEnabled).length;
                         identityProject.cardMetrics = [
                             { label: "Total Users", value: `: ${sunbirdData.summary.totalUsers}`, icon: "fas fa-users" },
-                            { label: "Active 24h", value: `: ${sunbirdData.summary.activeUsers24h}`, icon: "fas fa-check-circle" },
+                            { label: "Active (24h)", value: `: ${sunbirdData.summary.activeUsers24h}`, icon: "fas fa-user-check" },
                             { label: "Admin Roles", value: `: ${sunbirdData.summary.adminUsers}`, icon: "fas fa-crown" },
-                            { label: "Security Score", value: `: ${sunbirdData.summary.securityScore}/100`, icon: "fas fa-shield-alt" }
+                            { label: "Security Score", value: `: ${sunbirdData.summary.securityScore}`, icon: "fas fa-shield-alt" }
                         ];
-                        identityProject.cardFooter = `MFA: ${sunbirdData.summary.mfaEnabledPercentage}% | Risk: ${sunbirdData.summary.highRiskUsers} High | Security: ${sunbirdData.summary.securityScore}/100`;
+                        identityProject.status = 'active';
+                        identityProject.cardFooter = usersWithoutMfa > 0 ? `${usersWithoutMfa} users without MFA` : 'Updated just now';
                         identityProject.lastUpdate = new Date().toLocaleTimeString();
                         displayCurrentProject();
                     }
@@ -3639,15 +3818,22 @@ async function fetchIdentityAccessData() {
         const identityProject = mockProjects.find(p => p.id === 2);
         if (identityProject) {
             const externalUsers = microsoftUsersData.filter(u => u.isExternal).length;
-            const internalUsers = microsoftUsersData.length - externalUsers;
             const adminsCount = Object.keys(userRolesMap).length;
+            const active24h = microsoftUsersData.filter(u => {
+                const dt = u?.lastSignIn?.dateTime ? new Date(u.lastSignIn.dateTime).getTime() : 0;
+                if (!dt) return false;
+                return (Date.now() - dt) <= (24 * 60 * 60 * 1000);
+            }).length;
+            const usersWithoutMfa = microsoftUsersData.filter(u => !u.mfaEnabled).length;
             
             identityProject.cardMetrics = [
                 { label: "Total Users", value: `: ${microsoftUsersData.length}`, icon: "fas fa-users" },
-                { label: "External", value: `: ${externalUsers}`, icon: "fas fa-user-secret" },
-                { label: "Admin Roles", value: `: ${adminsCount}`, icon: "fas fa-crown" }
+                { label: "Active (24h)", value: `: ${active24h}`, icon: "fas fa-user-check" },
+                { label: "Admin Roles", value: `: ${adminsCount}`, icon: "fas fa-crown" },
+                { label: "Security Score", value: `: ${Math.max(0, 100 - (externalUsers + usersWithoutMfa))}`, icon: "fas fa-shield-alt" }
             ];
-            identityProject.cardFooter = `Internal: ${internalUsers} | External: ${externalUsers} | Admins: ${adminsCount}`;
+            identityProject.status = 'active';
+            identityProject.cardFooter = usersWithoutMfa > 0 ? `${usersWithoutMfa} users without MFA` : 'Updated just now';
             identityProject.lastUpdate = new Date().toLocaleTimeString();
             
             // Refresh the display to show updated data
@@ -3668,7 +3854,12 @@ async function fetchIdentityAccessData() {
 
     } catch (error) {
         console.error('[Identity Access] Error fetching data:', error.message);
-        // Keep placeholder data if API fails
+        const identityProject = mockProjects.find(p => p.id === 2);
+        if (identityProject) {
+            identityProject.status = 'error';
+            identityProject.cardFooter = 'Data unavailable';
+            displayCurrentProject();
+        }
     }
 }
 
@@ -4374,6 +4565,8 @@ function initializeProjectsList() {
         fetchDuoStats();
         fetchIdentityAccessData(); // Fetch Microsoft Graph users for the card preview
         fetchApplicationsData(); // Fetch Applications data for the card preview
+        fetchDevicesCardData();
+        fetchEmailCardData();
     }
 }
 
@@ -4521,71 +4714,57 @@ function updateNavigationButtons() {
 function showProjectPreview(project) {
     let previewSection = document.getElementById('project-preview-section');
     previewSection.classList.add('visible');
-    
+
+    const previewModel = buildProjectPreviewModel(project);
+    const topMetricsHTML = previewModel.topMetrics.map(metric => `
+        <div class="preview-stat-item">
+            <div class="preview-stat-icon ${metric.tone || 'info'}">
+                <i class="${metric.icon}"></i>
+            </div>
+            <div class="preview-stat-info">
+                <span class="preview-stat-label">${metric.label}</span>
+                <span class="preview-stat-value">${metric.value}</span>
+            </div>
+        </div>
+    `).join('');
+
+    const riskBreakdownHTML = previewModel.riskBreakdown.map(item => `
+        <div class="risk-item ${item.tone}">
+            <span class="risk-label">${item.label}</span>
+            <span class="risk-value">${item.value}</span>
+        </div>
+    `).join('');
+
+    const feedHTML = (previewModel.miniFeed || []).slice(0, 3).map(item => `
+        <div class="preview-feed-item">
+            <i class="${item.icon || 'fas fa-circle'}"></i>
+            <span>${item.text}</span>
+        </div>
+    `).join('');
+
     previewSection.innerHTML = `
         <div class="preview-container" id="preview-container">
             <div class="preview-header">
                 <h3><i class="fas fa-info-circle"></i> ${project.name}</h3>
                 <p class="preview-subtitle">${project.type}</p>
             </div>
-            
-            <div class="preview-stats-grid">
-                <div class="preview-stat-item">
-                    <div class="preview-stat-icon critical">
-                        <i class="fas fa-exclamation-circle"></i>
-                    </div>
-                    <div class="preview-stat-info">
-                        <span class="preview-stat-label">Critical Risks</span>
-                        <span class="preview-stat-value">${project.risks.critical}</span>
-                    </div>
-                </div>
-                <div class="preview-stat-item">
-                    <div class="preview-stat-icon success">
-                        <i class="fas fa-shield-alt"></i>
-                    </div>
-                    <div class="preview-stat-info">
-                        <span class="preview-stat-label">Security Score</span>
-                        <span class="preview-stat-value">${project.securityScore}%</span>
-                    </div>
-                </div>
-                <div class="preview-stat-item">
-                    <div class="preview-stat-icon info">
-                        <i class="fas fa-server"></i>
-                    </div>
-                    <div class="preview-stat-info">
-                        <span class="preview-stat-label">System Uptime</span>
-                        <span class="preview-stat-value">${project.uptime}%</span>
-                    </div>
-                </div>
-                <div class="preview-stat-item">
-                    <div class="preview-stat-icon warning">
-                        <i class="fas fa-clock"></i>
-                    </div>
-                    <div class="preview-stat-info">
-                        <span class="preview-stat-label">Last Update</span>
-                        <span class="preview-stat-value">${project.lastUpdate}</span>
-                    </div>
-                </div>
+
+            <div class="preview-row preview-row-metrics">
+                ${topMetricsHTML}
             </div>
-            
-            <div class="preview-risks-detail">
+
+            <div class="preview-row preview-row-risk">
                 <h4><i class="fas fa-chart-bar"></i> Risk Breakdown</h4>
                 <div class="risk-breakdown">
-                    <div class="risk-item critical">
-                        <span class="risk-label">Critical</span>
-                        <span class="risk-value">${project.risks.critical}</span>
-                    </div>
-                    <div class="risk-item high">
-                        <span class="risk-label">High</span>
-                        <span class="risk-value">${project.risks.high}</span>
-                    </div>
-                    <div class="risk-item medium">
-                        <span class="risk-label">Medium</span>
-                        <span class="risk-value">${project.risks.medium}</span>
-                    </div>
+                    ${riskBreakdownHTML}
                 </div>
             </div>
-            
+
+            <div class="preview-row preview-row-insights">
+                <div class="preview-insight-line">${previewModel.keyInsight}</div>
+                <div class="preview-mini-feed">${feedHTML || '<div class="preview-feed-item"><i class="fas fa-check-circle"></i><span>Live activity is stable</span></div>'}</div>
+            </div>
+
             <div class="glow-wrap">
                 <div class="glowing-border-layer"></div>
                 <button class="btn-view-full-dashboard" onclick="viewProjectDashboard(mockProjects.find(p => p.id === ${project.id}))">
@@ -4610,15 +4789,37 @@ function createProjectCard(project) {
     
     const risksCount = project.risks.critical + project.risks.high + project.risks.medium;
     
+    const isSummaryCard = isSummaryProjectCard(project);
+    const metrics = isSummaryCard ? normalizeSummaryMetrics(project) : (project.cardMetrics || []);
+    const statusMeta = getSummaryCardStatusMeta(project);
+
     // Build metrics section from cardMetrics array
     let metricsHTML = '';
-    if (project.cardMetrics && project.cardMetrics.length > 0) {
-        metricsHTML = project.cardMetrics.map(metric => `
-            <div class="project-info-item">
-                <i class="${metric.icon}"></i>
-                <span>${metric.label} ${metric.value}</span>
-            </div>
-        `).join('');
+    if (metrics.length > 0) {
+        const renderMetrics = isSummaryCard ? metrics.slice(0, 4) : metrics;
+        metricsHTML = renderMetrics.map(metric => {
+            if (isSummaryCard && statusMeta.status === 'loading') {
+                return `
+                    <div class="project-info-item metric-loading">
+                        <i class="${metric.icon}"></i>
+                        <div class="metric-skeleton-wrap">
+                            <span class="metric-skeleton-label"></span>
+                            <span class="metric-skeleton-value"></span>
+                        </div>
+                    </div>
+                `;
+            }
+
+            return `
+                <div class="project-info-item">
+                    <i class="${metric.icon}"></i>
+                    <div class="metric-content-wrap">
+                        <span class="metric-label-text">${metric.label}</span>
+                        <span class="metric-value-text">${toMetricValue(metric.value)}</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
     }
     
     card.innerHTML = `
@@ -4637,6 +4838,7 @@ function createProjectCard(project) {
         </div>
         <div class="project-info">
             ${metricsHTML}
+            ${isSummaryCard ? `<div class="project-info-sync"><span class="live-status-dot ${statusMeta.dotClass}"></span>${statusMeta.text}</div>` : ''}
         </div>
         <div class="project-risks">
             <span>${project.cardFooter || 'Risks: ' + risksCount}</span>
@@ -4648,6 +4850,200 @@ function createProjectCard(project) {
     `;
     
     return card;
+}
+
+function buildProjectPreviewModel(project) {
+    if (project.isIdentityCard) return buildIdentityPreviewModel(project);
+    if (project.isDevicesCard) return buildDevicesPreviewModel(project);
+    if (project.isEmailSecurityCard) return buildEmailPreviewModel(project);
+    if (project.isApplicationsCard) return buildApplicationsPreviewModel(project);
+
+    return {
+        topMetrics: [
+            { label: 'Critical Risks', value: project.risks.critical, icon: 'fas fa-exclamation-circle', tone: 'critical' },
+            { label: 'Security Score', value: `${project.securityScore}%`, icon: 'fas fa-shield-alt', tone: 'success' },
+            { label: 'System Uptime', value: `${project.uptime}%`, icon: 'fas fa-server', tone: 'info' },
+            { label: 'Last Update', value: String(project.lastUpdate || 'Just now'), icon: 'fas fa-clock', tone: 'warning' }
+        ],
+        riskBreakdown: [
+            { label: 'High', value: project.risks.high, tone: 'critical' },
+            { label: 'Medium', value: project.risks.medium, tone: 'high' },
+            { label: 'Safe', value: Math.max(0, (project.securityScore || 0) - project.risks.high - project.risks.medium), tone: 'medium' }
+        ],
+        keyInsight: 'Security summary synced just now',
+        miniFeed: []
+    };
+}
+
+function buildIdentityPreviewModel() {
+    const users = Array.isArray(microsoftUsersData) ? microsoftUsersData : [];
+    const now = Date.now();
+    const adminSet = new Set(Object.keys(userRolesMap || {}));
+
+    users.forEach(user => {
+        if ((user.roles || []).length > 0) adminSet.add(user.id);
+    });
+
+    const adminCount = adminSet.size;
+    const usersWithoutMfa = users.filter(user => !user.mfaEnabled).length;
+    const inactiveUsers = users.filter(user => {
+        const dt = user?.lastSignIn?.dateTime ? new Date(user.lastSignIn.dateTime).getTime() : 0;
+        if (!dt) return true;
+        return (now - dt) > (30 * 24 * 60 * 60 * 1000);
+    }).length;
+    const highRiskUsers = users.filter(user => String(user.riskLevel || '').toUpperCase() === 'HIGH').length;
+    const adminWithoutMfa = users.filter(user => adminSet.has(user.id) && !user.mfaEnabled).length;
+    const mediumRiskUsers = users.filter(user => String(user.riskLevel || '').toUpperCase() === 'MEDIUM').length + Math.max(0, inactiveUsers - highRiskUsers);
+    const safeUsers = Math.max(0, users.length - highRiskUsers - mediumRiskUsers);
+
+    const recentSignIns = users
+        .filter(user => user?.lastSignIn?.dateTime)
+        .sort((a, b) => new Date(b.lastSignIn.dateTime) - new Date(a.lastSignIn.dateTime))
+        .slice(0, 3)
+        .map(user => ({
+            icon: 'fas fa-sign-in-alt',
+            text: `${user.displayName || 'User'} signed in from ${user?.lastSignIn?.location || 'Unknown'}`
+        }));
+
+    const keyInsight = adminWithoutMfa > 0
+        ? `${adminWithoutMfa} admins do not have MFA enabled`
+        : inactiveUsers > 0
+            ? `${inactiveUsers} users have not signed in within 30 days`
+            : 'Identity posture is stable across active users';
+
+    return {
+        topMetrics: [
+            { label: 'High Risk Users', value: highRiskUsers, icon: 'fas fa-user-shield', tone: 'critical' },
+            { label: 'Users Without MFA', value: usersWithoutMfa, icon: 'fas fa-key', tone: 'warning' },
+            { label: 'Privileged Accounts', value: adminCount, icon: 'fas fa-crown', tone: 'info' },
+            { label: 'Inactive (30+ days)', value: inactiveUsers, icon: 'fas fa-user-clock', tone: 'warning' }
+        ],
+        riskBreakdown: [
+            { label: 'High', value: highRiskUsers + adminWithoutMfa, tone: 'critical' },
+            { label: 'Medium', value: mediumRiskUsers, tone: 'high' },
+            { label: 'Safe', value: safeUsers, tone: 'medium' }
+        ],
+        keyInsight,
+        miniFeed: recentSignIns
+    };
+}
+
+function buildDevicesPreviewModel() {
+    const data = latestDevicesCardData || {};
+    const summary = data.summary || {};
+    const devices = Array.isArray(data.devices) ? data.devices : [];
+    const totalDevices = summary.totalDevices || devices.length || 0;
+    const compliantDevices = summary.compliantDevices || devices.filter(d => d.complianceState === 'compliant').length;
+    const encryptedDevices = summary.encryptedDevices || devices.filter(d => d.isEncrypted).length;
+    const nonCompliant = Math.max(0, totalDevices - compliantDevices);
+    const notEncrypted = Math.max(0, totalDevices - encryptedDevices);
+    const staleDevices = data.activityBreakdown?.stale7days || 0;
+    const highRisk = devices.filter(d => d.complianceState !== 'compliant' && !d.isEncrypted).length;
+    const mediumRisk = Math.max(0, nonCompliant + staleDevices - highRisk);
+    const healthy = Math.max(0, totalDevices - highRisk - mediumRisk);
+    const keyInsight = notEncrypted > 0
+        ? `${notEncrypted} devices are not encrypted`
+        : staleDevices > 0
+            ? `${staleDevices} devices have stale sync status`
+            : 'Device security posture is healthy';
+    const feed = (data.alerts || []).slice(0, 3).map(alert => ({
+        icon: 'fas fa-laptop-medical',
+        text: alert.title || alert.message || 'Device compliance updated'
+    }));
+
+    return {
+        topMetrics: [
+            { label: 'Total Devices', value: totalDevices, icon: 'fas fa-desktop', tone: 'info' },
+            { label: 'Non-Compliant', value: nonCompliant, icon: 'fas fa-times-circle', tone: 'critical' },
+            { label: 'Not Encrypted', value: notEncrypted, icon: 'fas fa-lock-open', tone: 'critical' },
+            { label: 'Stale (7+ days)', value: staleDevices, icon: 'fas fa-clock', tone: 'warning' }
+        ],
+        riskBreakdown: [
+            { label: 'High', value: highRisk, tone: 'critical' },
+            { label: 'Medium', value: mediumRisk, tone: 'high' },
+            { label: 'Healthy', value: healthy, tone: 'medium' }
+        ],
+        keyInsight,
+        miniFeed: feed
+    };
+}
+
+function buildEmailPreviewModel() {
+    const data = latestEmailCardData || {};
+    const summary = data.summary || {};
+    const threatTypes = data.threats?.byType || {};
+    const phishing = threatTypes.Phishing || threatTypes.phishing || 0;
+    const malware = threatTypes.Malware || threatTypes.malware || 0;
+    const spam = threatTypes.Spam || threatTypes.spam || 0;
+    const activeThreats = summary.activeThreats || 0;
+    const highSeverity = summary.highSeverityAlerts || 0;
+    const targetedUsers = summary.affectedUsersCount || 0;
+    const openIncidents = summary.activeIncidents || 0;
+    const keyInsight = targetedUsers > 0
+        ? `${targetedUsers} users targeted by email threats today`
+        : highSeverity > 0
+            ? 'High severity malware or phishing alert detected'
+            : 'Email threat activity is currently controlled';
+    const feed = (data.alerts || []).slice(0, 3).map(alert => ({
+        icon: 'fas fa-bell',
+        text: alert.title || alert.description || 'New email threat signal observed'
+    }));
+
+    return {
+        topMetrics: [
+            { label: 'Active Threats', value: activeThreats, icon: 'fas fa-radiation', tone: 'critical' },
+            { label: 'High Severity Alerts', value: highSeverity, icon: 'fas fa-triangle-exclamation', tone: 'critical' },
+            { label: 'Users Targeted', value: targetedUsers, icon: 'fas fa-user-shield', tone: 'warning' },
+            { label: 'Open Incidents', value: openIncidents, icon: 'fas fa-bug', tone: 'warning' }
+        ],
+        riskBreakdown: [
+            { label: 'Phishing', value: phishing, tone: 'critical' },
+            { label: 'Malware', value: malware, tone: 'high' },
+            { label: 'Spam', value: spam, tone: 'medium' }
+        ],
+        keyInsight,
+        miniFeed: feed
+    };
+}
+
+function buildApplicationsPreviewModel() {
+    const apps = Array.isArray(applicationsData) ? applicationsData : [];
+    const total = apps.length;
+    const external = apps.filter(app => app.isExternal).length;
+    const highRisk = apps.filter(app => calculateAppRisk(app).level === 'high').length;
+    const highAccess = apps.filter(app => (app.userCount || 0) >= 20).length;
+    const highBucket = apps.filter(app => app.isExternal && ((app.scopeCount || 0) + (app.roleCount || 0) > 10)).length;
+    const mediumBucket = apps.filter(app => (app.userCount || 0) > 10 && (app.userCount || 0) < 20).length;
+    const safeBucket = Math.max(0, total - highBucket - mediumBucket);
+    const topExternal = apps.filter(app => app.isExternal).sort((a, b) => (b.userCount || 0) - (a.userCount || 0))[0];
+    const keyInsight = topExternal
+        ? `External app has access to ${topExternal.userCount || 0} users`
+        : highRisk > 0
+            ? 'App with excessive permissions detected'
+            : 'Application access posture is stable';
+    const feed = apps
+        .sort((a, b) => (b.userCount || 0) - (a.userCount || 0))
+        .slice(0, 3)
+        .map(app => ({
+            icon: 'fas fa-cube',
+            text: `${app.displayName || app.name || 'Application'} activity at ${app.userCount || 0} users`
+        }));
+
+    return {
+        topMetrics: [
+            { label: 'Total Applications', value: total, icon: 'fas fa-cubes', tone: 'info' },
+            { label: 'External Applications', value: external, icon: 'fas fa-globe', tone: 'warning' },
+            { label: 'High Risk Applications', value: highRisk, icon: 'fas fa-triangle-exclamation', tone: 'critical' },
+            { label: 'Apps High Access', value: highAccess, icon: 'fas fa-users', tone: 'warning' }
+        ],
+        riskBreakdown: [
+            { label: 'High', value: highBucket, tone: 'critical' },
+            { label: 'Medium', value: mediumBucket, tone: 'high' },
+            { label: 'Safe', value: safeBucket, tone: 'medium' }
+        ],
+        keyInsight,
+        miniFeed: feed
+    };
 }
 
 function viewProjectDashboard(project) {
