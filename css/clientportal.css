@@ -1,8 +1,8 @@
 /* Client Portal Styles */
 
 :root {
-    /* STACK CTRL — dark + orange-first */
-    --bg-primary: #0a0f1c;
+    /* STACK CTRL — dark + orange-first, NO BLUE BG */
+    --bg-primary: rgba(255,255,255,0.041); /* Glassmorphism matching promo */
     --surface-card: #111827;
     --surface-secondary: #0f172a;
     --border-default: #1f2937;
@@ -29,7 +29,7 @@
 }
 
 body {
-    background: var(--bg-primary);
+    background: rgba(255,255,255,0.041); /* Glassmorphism bg matching promo */
     color: var(--text-primary);
 }
 
@@ -627,7 +627,7 @@ body {
 /* PROJECTS VIEW */
 .projects-view {
     padding: 14px 16px;
-    background: var(--bg-primary);
+    background: rgba(255,255,255,0.041); /* Glassmorphism matching promo */
 }
 
 .projects-header {
@@ -873,7 +873,7 @@ body {
 
 .project-card {
     background: var(--surface-card);
-    border: 1px solid var(--border-default);
+    border: 1px solid rgba(249,115,22,0.3);
     border-radius: 10px;
     padding: 10.2px;
     cursor: pointer;
@@ -884,7 +884,7 @@ body {
     backdrop-filter: blur(10px);
     position: relative;
     min-height: auto;
-    box-shadow: none;
+    box-shadow: 0 0 20px rgba(249,115,22,0.4), 0 10px 25px rgba(0,0,0,0.3);
 }
 
 .project-card::before {
@@ -1957,7 +1957,7 @@ body {
 
 .dashboard-card {
     background: var(--surface-card);
-    border: 1px solid var(--border-default);
+    border: 1px solid rgba(249,115,22,0.3);
     border-radius: 10px;
     padding: 19.4px;
     cursor: pointer;
@@ -1968,7 +1968,7 @@ body {
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    box-shadow: none;
+    box-shadow: 0 0 20px rgba(249,115,22,0.4), 0 10px 25px rgba(0,0,0,0.3);
 }
 
 .dashboard-card::before {
@@ -2653,7 +2653,7 @@ body {
 /* DASHBOARD VIEW — align shell spacing with devices dashboard */
 .dashboard-view {
     padding: 14px;
-    background: var(--bg-primary);
+    background: rgba(255,255,255,0.041); /* Glassmorphism matching promo */
     min-height: calc(100vh - 70px);
 }
 
