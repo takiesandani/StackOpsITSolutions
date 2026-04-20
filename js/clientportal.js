@@ -4578,6 +4578,9 @@ async function initializeBillingCard() {
             </div>
             <p style="color: #bdbdbd; text-align: center; padding: 20px;">Error loading billing information</p>
         `;
+    } finally {
+        // Keep Sunbird menu aligned to the rendered billing card height.
+        syncSunbirdLeftMenuHeight();
     }
 }
 
@@ -4618,6 +4621,21 @@ window.switchBillingMenu = function(menuItem) {
     console.log('Switched to:', menuItem);
 };
 
+let sunbirdMenuResizeObserver = null;
+
+function syncSunbirdLeftMenuHeight() {
+    if (!isSunbirdUser()) return;
+
+    const billingCard = document.getElementById('billing-card');
+    const leftMenu = document.querySelector('.sunbird-left-menu');
+    if (!billingCard || !leftMenu) return;
+
+    const billingHeight = billingCard.offsetHeight;
+    if (billingHeight > 0) {
+        leftMenu.style.height = `${billingHeight}px`;
+    }
+}
+
 // Initialize Sunbird left menu (called during dashboard initialization)
 function initializeSunbirdLeftMenu() {
     if (!isSunbirdUser()) return;
@@ -4654,6 +4672,22 @@ function initializeSunbirdLeftMenu() {
     // Add menu and dashboard to wrapper
     wrapper.appendChild(leftMenu);
     wrapper.appendChild(dashboardCardsSection);
+
+    syncSunbirdLeftMenuHeight();
+
+    // Keep menu height aligned with billing card when content changes.
+    if ('ResizeObserver' in window) {
+        const billingCard = document.getElementById('billing-card');
+        if (billingCard) {
+            if (sunbirdMenuResizeObserver) {
+                sunbirdMenuResizeObserver.disconnect();
+            }
+            sunbirdMenuResizeObserver = new ResizeObserver(() => {
+                syncSunbirdLeftMenuHeight();
+            });
+            sunbirdMenuResizeObserver.observe(billingCard);
+        }
+    }
 }
 
 function initializeGovernanceCard() {
