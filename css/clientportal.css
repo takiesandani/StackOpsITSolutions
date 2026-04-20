@@ -713,13 +713,14 @@
 .projects-carousel-shell {
     position: relative;
     overflow: visible;
-    --side-peek-max-width: 180px;
+    --side-peek-card-width: 260px;
+    --side-peek-max-width: 300px;
 }
 
 .side-peek-nav {
     position: absolute;
     top: 50%;
-    width: min(var(--side-peek-card-width, 220px), var(--side-peek-max-width));
+    width: min(var(--side-peek-card-width), var(--side-peek-max-width));
     border: none;
     background: transparent;
     padding: 0;
@@ -729,24 +730,19 @@
     transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
-.side-peek-nav:disabled {
-    opacity: 0;
-    pointer-events: none;
-}
-
 .side-peek-nav-left {
-    left: calc(-1 * (min(var(--side-peek-card-width, 220px), var(--side-peek-max-width)) + 18px));
+    left: calc(-1 * (min(var(--side-peek-card-width), var(--side-peek-max-width)) + 18px));
 }
 
 .side-peek-nav-right {
-    right: calc(-1 * (min(var(--side-peek-card-width, 220px), var(--side-peek-max-width)) + 18px));
+    right: calc(-1 * (min(var(--side-peek-card-width), var(--side-peek-max-width)) + 18px));
 }
 
 .side-peek-card {
     border-radius: 10px;
     overflow: hidden;
-    opacity: 0.28;
-    height: min(var(--side-peek-card-height, 130px), 125px);
+    opacity: 0.34;
+    height: var(--side-peek-card-height, 130px);
     transform: scale(1);
     filter: saturate(0.72);
     box-shadow: 0 0 10px rgba(30, 144, 255, 0.25);
