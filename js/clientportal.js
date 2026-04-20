@@ -226,6 +226,7 @@ let cachedSunbirdBillingHtml = '';
 let cachedSunbirdSecurityData = null;
 let cachedSunbirdBackupData = null;
 let sunbirdBillingCardLockedHeight = null;
+let identityRiskFocus = 'all';
 
 document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
@@ -245,6 +246,26 @@ function getSunbirdBillingActiveView() {
 
 function isSunbirdBillingViewActive(view) {
     return getSunbirdBillingActiveView() === view;
+}
+
+async function bootstrapDashboardDataAfterLogin() {
+    // Rebuild visible cards for the authenticated user immediately.
+    initializeProjectsList();
+
+    // Fire all key dashboard data fetches in parallel.
+    await Promise.allSettled([
+        fetchDuoStats(),
+        fetchIdentityAccessData(),
+        fetchApplicationsData(),
+        initializeBillingCard()
+    ]);
+
+    // Retry identity fetch once if Sunbird data is still empty.
+    if (isSunbirdUser() && microsoftUsersData.length === 0) {
+        setTimeout(() => {
+            fetchIdentityAccessData();
+        }, 900);
+    }
 }
 
 // Setup project tabs event listeners
@@ -1104,7 +1125,14 @@ function initializeIdentityDashboard() {
     console.log('[Identity Dashboard] First user sample:', microsoftUsersData[0]);
     
     if (microsoftUsersData.length === 0) {
-        console.warn('[Identity Dashboard] No user data available');
+        console.warn('[Identity Dashboard] No user data available yet, retrying...');
+        setTimeout(() => {
+            if (microsoftUsersData.length > 0) {
+                initializeIdentityDashboard();
+            } else {
+                fetchIdentityAccessData();
+            }
+        }, 700);
         return;
     }
     
@@ -1153,6 +1181,25 @@ function setupIdentitySearch() {
         window.addEventListener('resize', updateScrollIndicator);
     }
     
+    const isUserPrivileged = (user) => {
+        const roleNames = (user.roles || []).map(role => typeof role === 'string' ? role : (role?.name || '')).join(' ').toLowerCase();
+        return /(admin|global|privileged|security)/.test(roleNames);
+    };
+
+    const isUserActive24h = (user) => {
+        const dt = user?.lastSignIn?.dateTime ? new Date(user.lastSignIn.dateTime) : null;
+        if (!dt || Number.isNaN(dt.getTime())) return false;
+        return (Date.now() - dt.getTime()) <= (24 * 60 * 60 * 1000);
+    };
+
+    const matchesRiskFocus = (user) => {
+        if (identityRiskFocus === 'all') return true;
+        if (identityRiskFocus === 'high-risk-users') return String(user.riskLevel || '').toUpperCase() === 'HIGH';
+        if (identityRiskFocus === 'privileged-without-mfa') return isUserPrivileged(user) && !user.mfaEnabled;
+        if (identityRiskFocus === 'active-users-24h') return isUserActive24h(user);
+        return true;
+    };
+
     // Function to apply all filters and search
     const applyFilters = () => {
         const searchTerm = searchInput?.value.toLowerCase() || '';
@@ -1192,7 +1239,8 @@ function setupIdentitySearch() {
                     (selectedFilters.includes('missing-data') && hasMissingData);
             }
             
-            row.style.display = (matchesSearch && matchesTypeFilter) ? '' : 'none';
+            const matchesRisk = matchesRiskFocus(user);
+            row.style.display = (matchesSearch && matchesTypeFilter && matchesRisk) ? '' : 'none';
         });
     };
     
@@ -1209,6 +1257,10 @@ function setupIdentitySearch() {
         clearFiltersBtn.addEventListener('click', () => {
             filterCheckboxes.forEach(cb => cb.checked = false);
             if (searchInput) searchInput.value = '';
+            identityRiskFocus = 'all';
+            document.querySelectorAll('.sunbird-summary-card.risk-filter-active').forEach(card => {
+                card.classList.remove('risk-filter-active');
+            });
             applyFilters();
         });
     }
@@ -1219,6 +1271,9 @@ function setupIdentitySearch() {
             resetDashboard();
         });
     }
+
+    // Expose for summary risk quick filters
+    window.applyIdentityRiskFilters = applyFilters;
 }
 
 function initializeIdentityInsights() {
@@ -1945,6 +2000,127 @@ function renderSunbirdSummaryCards() {
     }
 
     summaryCardsDiv.style.display = 'grid';
+    setupSunbirdRiskQuickFilters();
+}
+
+function setupSunbirdRiskQuickFilters() {
+    const cards = document.querySelectorAll('.sunbird-summary-card[data-risk-filter]');
+    cards.forEach(card => {
+        card.onclick = () => {
+            const filterKey = card.dataset.riskFilter || 'all';
+
+            if (identityRiskFocus === filterKey) {
+                identityRiskFocus = 'all';
+                card.classList.remove('risk-filter-active');
+            } else {
+                identityRiskFocus = filterKey;
+                document.querySelectorAll('.sunbird-summary-card[data-risk-filter]').forEach(c => c.classList.remove('risk-filter-active'));
+                card.classList.add('risk-filter-active');
+            }
+
+            if (typeof window.applyIdentityRiskFilters === 'function') {
+                window.applyIdentityRiskFilters();
+            }
+        };
+    });
+}
+
+function collectSunbirdRiskItems() {
+    const items = [];
+
+    const pushItem = (tab, risk, severity, insight) => {
+        items.push({ tab, risk, severity, insight });
+    };
+
+    if (sunbirdDashboardData?.summary) {
+        const summary = sunbirdDashboardData.summary;
+        pushItem('Identity Protection', 'Privileged Without MFA', 'high', `${summary.privilegedUsersWithoutMFA || 0} privileged accounts without MFA.`);
+        pushItem('Identity Protection', 'High Risk Users', 'high', `${summary.highRiskUsers || 0} users classified as HIGH risk.`);
+        pushItem('Identity Protection', 'Active Users (24h)', 'medium', `${summary.activeUsers24h || 0} users active in the last 24 hours.`);
+    }
+
+    if (cachedSunbirdSecurityData?.summary) {
+        const sec = cachedSunbirdSecurityData.summary;
+        pushItem('Security Alerts', 'High Severity Alerts', 'high', `${sec.highSeverityAlerts || 0} high severity alerts currently open.`);
+        pushItem('Security Alerts', 'Active Incidents', 'high', `${sec.activeIncidents || 0} active incidents require investigation.`);
+    }
+
+    if (cachedSunbirdBackupData?.summary) {
+        const backup = cachedSunbirdBackupData.summary;
+        pushItem('Backup & Recovery', 'Storage Growth Risk', 'medium', `${backup.totalStorageGB || 0} GB protected storage to monitor for growth.`);
+        pushItem('Backup & Recovery', 'Coverage Risk', 'medium', `${backup.activeUsersCount || 0} active users currently included in coverage.`);
+    }
+
+    // Include all project-card level risk footers so we don't miss existing risk hints.
+    mockProjects.forEach(project => {
+        const footer = project.cardFooter || '';
+        if (/risk|risks|threat|alert/i.test(footer)) {
+            const severity = /high|critical/i.test(footer) ? 'high' : /medium/i.test(footer) ? 'medium' : 'low';
+            pushItem(project.name, 'Card Risk Summary', severity, footer);
+        }
+    });
+
+    return items;
+}
+
+async function renderSunbirdRisksView(forceRefresh = false) {
+    const billingCard = document.getElementById('billing-card');
+    if (!billingCard) return;
+    if (!isSunbirdBillingViewActive('risks')) return;
+
+    try {
+        billingCard.innerHTML = renderSunbirdPremiumLoader('Loading risk register');
+
+        // Pull latest risk sources where available.
+        if (forceRefresh || !cachedSunbirdSecurityData) {
+            try { cachedSunbirdSecurityData = await fetchSunbirdSecurityEventsData(); } catch (_) {}
+        }
+        if (forceRefresh || !cachedSunbirdBackupData) {
+            try { cachedSunbirdBackupData = await fetchSunbirdBackupRecoveryData(); } catch (_) {}
+        }
+        if (!sunbirdDashboardData) {
+            try { await fetchIdentityAccessData(); } catch (_) {}
+        }
+
+        const riskItems = collectSunbirdRiskItems();
+        const rowsHtml = riskItems.length
+            ? riskItems.map(item => `
+                <tr>
+                    <td>${item.tab}</td>
+                    <td>${item.risk}</td>
+                    <td><span class="sunbird-risk-pill ${item.severity}">${item.severity.toUpperCase()}</span></td>
+                    <td>${item.insight}</td>
+                </tr>
+            `).join('')
+            : '<tr><td colspan="4" class="sunbird-empty-row">No risks available</td></tr>';
+
+        if (!isSunbirdBillingViewActive('risks')) return;
+        billingCard.innerHTML = `
+            <div class="sunbird-panel-view">
+                <div class="billing-card-header">
+                    <i class="fas fa-triangle-exclamation"></i>
+                    <h3>Risks Register</h3>
+                </div>
+                <div class="sunbird-section-title">All Risks by Tab</div>
+                <div class="sunbird-risk-list-wrap">
+                    <table class="sunbird-incidents-table sunbird-risk-table">
+                        <thead>
+                            <tr>
+                                <th>Tab</th>
+                                <th>Risk</th>
+                                <th>Severity</th>
+                                <th>Insight</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rowsHtml}</tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    } finally {
+        ensureSunbirdBillingCardDimensions();
+        syncSunbirdLeftMenuHeight();
+    }
 }
 
 // Render System Health Radar Chart
@@ -2863,8 +3039,6 @@ function handleMfaVerification() {
             setTimeout(() => {
                 document.getElementById('login-section').classList.remove('active');
                 document.getElementById('dashboard-section').classList.add('active');
-                
-                fetchDuoStats()
 
                 // Reset forms
                 if (loginForm) loginForm.reset();
@@ -2872,8 +3046,8 @@ function handleMfaVerification() {
                 if (loginForm) loginForm.style.display = 'block';
                 if (mfaSection) mfaSection.style.display = 'none';
                 
-                // Reload billing card with new token
-                initializeBillingCard();
+                // Reload dashboard data now that token/session are set.
+                bootstrapDashboardDataAfterLogin();
                 initializeGovernanceCard();
                 initializeSupportCard();
                 
@@ -2958,7 +3132,7 @@ function setupSessionManagement() {
         }
         
         // Load billing card if user is logged in
-        initializeBillingCard();
+        bootstrapDashboardDataAfterLogin();
         
         // Initialize chatbot if user is logged in
         if (typeof window.initChatbot === 'function') {
@@ -3407,7 +3581,7 @@ function generateIdentityDashboardHTML() {
                 <!-- Sunbird-Specific Analytics Components (Only visible for Sunbird) -->
                 <!-- Row 0: Summary Cards (Security, Risk, Activity) -->
                 <div class="sunbird-summary-cards-row" id="sunbird-summary-cards" style="display: none;">
-                    <div class="sunbird-summary-card">
+                    <div class="sunbird-summary-card" data-risk-filter="active-users-24h">
                         <div class="summary-card-icon" style="background: rgba(0, 110, 255, 0.2); color: rgba(0, 110, 255, 0.9);">
                             <i class="fas fa-shield-alt"></i>
                         </div>
@@ -3418,7 +3592,7 @@ function generateIdentityDashboardHTML() {
                         </div>
                     </div>
 
-                    <div class="sunbird-summary-card">
+                    <div class="sunbird-summary-card" data-risk-filter="high-risk-users">
                         <div class="summary-card-icon" style="background: rgba(34, 197, 94, 0.2); color: rgba(34, 197, 94, 0.9);">
                             <i class="fas fa-user-check"></i>
                         </div>
@@ -3428,7 +3602,7 @@ function generateIdentityDashboardHTML() {
                         </div>
                     </div>
 
-                    <div class="sunbird-summary-card">
+                    <div class="sunbird-summary-card" data-risk-filter="privileged-without-mfa">
                         <div class="summary-card-icon" style="background: rgba(220, 53, 69, 0.2); color: rgba(220, 53, 69, 0.9);">
                             <i class="fas fa-exclamation-circle"></i>
                         </div>
@@ -4788,7 +4962,6 @@ window.switchBillingMenu = async function(menuItem) {
 
     const placeholderViews = {
         reports: { title: 'Reports', icon: 'fa-chart-line' },
-        risks: { title: 'Risks', icon: 'fa-triangle-exclamation' },
         architecture: { title: 'Architecture', icon: 'fa-sitemap' },
         settings: { title: 'Settings', icon: 'fa-gear' },
         sla: { title: 'SLA', icon: 'fa-handshake' }
@@ -4817,6 +4990,11 @@ window.switchBillingMenu = async function(menuItem) {
 
     if (menuItem === 'backup') {
         await renderSunbirdBackupRecoveryView(true);
+        return;
+    }
+
+    if (menuItem === 'risks') {
+        await renderSunbirdRisksView(true);
     }
 };
 
