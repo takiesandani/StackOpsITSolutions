@@ -4716,7 +4716,7 @@ async function renderSunbirdSecurityAlertsView(forceRefresh = false) {
     if (!billingCard) return;
 
     try {
-        billingCard.innerHTML = '<div class="sunbird-panel-view"><p class="sunbird-panel-loading">Loading security alerts...</p></div>';
+        billingCard.innerHTML = renderSunbirdPremiumLoader('Loading security alerts');
 
         if (forceRefresh || !cachedSunbirdSecurityData) {
             cachedSunbirdSecurityData = await fetchSunbirdSecurityEventsData();
@@ -4754,7 +4754,6 @@ async function renderSunbirdSecurityAlertsView(forceRefresh = false) {
                         <strong>${activeIncidents}</strong>
                     </div>
                 </div>
-                <div class="sunbird-section-title">Incident Name &nbsp;|&nbsp; Severity &nbsp;|&nbsp; Status &nbsp;|&nbsp; Assigned To</div>
                 <div class="sunbird-incidents-table-wrap">
                     <table class="sunbird-incidents-table">
                         <thead>
@@ -4792,7 +4791,7 @@ async function renderSunbirdBackupRecoveryView(forceRefresh = false) {
     if (!billingCard) return;
 
     try {
-        billingCard.innerHTML = '<div class="sunbird-panel-view"><p class="sunbird-panel-loading">Loading backup and recovery...</p></div>';
+        billingCard.innerHTML = renderSunbirdPremiumLoader('Loading backup and recovery');
 
         if (forceRefresh || !cachedSunbirdBackupData) {
             cachedSunbirdBackupData = await fetchSunbirdBackupRecoveryData();
@@ -4845,6 +4844,21 @@ async function renderSunbirdBackupRecoveryView(forceRefresh = false) {
     }
 }
 
+function renderSunbirdPremiumLoader(message) {
+    return `
+        <div class="sunbird-panel-view sunbird-panel-loader-wrap">
+            <div class="sunbird-premium-loader" aria-live="polite">
+                <div class="sunbird-loader-orbit"></div>
+                <div class="sunbird-loader-core"></div>
+                <div class="sunbird-loader-bars">
+                    <span></span><span></span><span></span>
+                </div>
+                <p class="sunbird-panel-loading">${message}<span class="sunbird-loader-dots"></span></p>
+            </div>
+        </div>
+    `;
+}
+
 let sunbirdMenuResizeObserver = null;
 
 function syncSunbirdLeftMenuHeight() {
@@ -4863,6 +4877,7 @@ function syncSunbirdLeftMenuHeight() {
     if (billingRect.height > 0) {
         leftMenu.style.top = `${topOffset}px`;
         leftMenu.style.height = `${billingRect.height}px`;
+        wrapper.style.setProperty('--sunbird-connector-y', `${topOffset + (billingRect.height / 2)}px`);
     }
 }
 
