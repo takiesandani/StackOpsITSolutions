@@ -4976,15 +4976,31 @@ function syncSunbirdLeftMenuHeight() {
     const wrapper = leftMenu?.parentElement;
     if (!billingCard || !leftMenu || !wrapper) return;
 
-    // Match left menu top/height exactly to billing card geometry.
+    // Keep the menu sized to its content, but vertically centered
+    // to the billing card for a "control rail" look.
     const billingRect = billingCard.getBoundingClientRect();
     const wrapperRect = wrapper.getBoundingClientRect();
-    const topOffset = billingRect.top - wrapperRect.top;
+    const billingTopOffset = billingRect.top - wrapperRect.top;
 
     if (billingRect.height > 0) {
-        leftMenu.style.top = `${topOffset}px`;
-        leftMenu.style.height = `${billingRect.height}px`;
-        wrapper.style.setProperty('--sunbird-connector-y', `${topOffset + (billingRect.height / 2)}px`);
+        // Ensure the menu hugs its items (no forced height).
+        leftMenu.style.height = 'auto';
+
+        // Measure after letting height auto-apply.
+        const menuRect = leftMenu.getBoundingClientRect();
+
+        // Align menu center to billing card center.
+        const billingCenterY = billingTopOffset + (billingRect.height / 2);
+        let desiredTop = billingCenterY - (menuRect.height / 2);
+
+        // Clamp within wrapper.
+        const maxTop = Math.max(0, wrapperRect.height - menuRect.height);
+        desiredTop = Math.max(0, Math.min(desiredTop, maxTop));
+
+        leftMenu.style.top = `${desiredTop}px`;
+
+        // Keep connector aligned to billing card center.
+        wrapper.style.setProperty('--sunbird-connector-y', `${billingCenterY}px`);
     }
 }
 

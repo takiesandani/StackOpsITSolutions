@@ -501,13 +501,25 @@ async function generatePayFastLink(paymentData) {
 }
 
 // connecting to nodemailer to send emails from contact form
+// (Hardcoded SMTP config - as requested)
 const transporter = nodemailer.createTransport({
-    host: 'smtpout.secureserver.net', // Default used (not provided in prompt)
-    port: 465,                        // Default used
-    secure: true,                     // Default used
+    host: 'smtpout.secureserver.net',
+    port: 465,
+    secure: true,
     auth: {
-        user: 'info@stackopsit.co.za', // Hardcoded EMAIL_USER
-        pass: 'Cxzdsaewq123$'           // Hardcoded Email_pass
+        user: 'info@stackopsit.co.za',
+        pass: 'Cxzdsaewq123$'
+    },
+    pool: true,
+    maxConnections: 2,
+    maxMessages: 100,
+    // Avoid long hangs on SMTP connect in cloud environments
+    connectionTimeout: 20000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000,
+    tls: {
+        minVersion: 'TLSv1.2',
+        rejectUnauthorized: true
     }
 });
 
@@ -859,12 +871,27 @@ const sendEmail = async (to, subject, body, isHtml = false, attachments = []) =>
         mailOptions.text = body;
     }
     
+    const attemptSend = async (attempt) => {
+        try {
+            console.log(`Attempting to send email to ${to}... (attempt ${attempt})`);
+            await transporter.sendMail(mailOptions);
+            console.log(`Email successfully sent to ${to}`);
+        } catch (error) {
+            const code = error?.code || error?.command || 'UNKNOWN';
+            console.error(`Failed to send email to ${to} (attempt ${attempt}):`, code, error?.message || error);
+            throw error;
+        }
+    };
+
     try {
-        console.log(`Attempting to send email to ${to}...`);
-        await transporter.sendMail(mailOptions);
-        console.log(`Email successfully sent to ${to}`);
+        await attemptSend(1);
     } catch (error) {
-        console.error(`Failed to send email to ${to}:`, error);
+        const retryable = ['ETIMEDOUT', 'ECONNECTION', 'EAI_AGAIN'].includes(error?.code);
+        if (retryable) {
+            await new Promise(r => setTimeout(r, 1000));
+            await attemptSend(2);
+            return;
+        }
         throw error; // Rethrow so the caller knows it failed
     }
 };
@@ -884,13 +911,28 @@ const sendBillingEmail = async (to, subject, body, isHtml = false, attachments =
         mailOptions.text = body;
     }
     
+    const attemptSend = async (attempt) => {
+        try {
+            console.log(`Attempting to send email to ${to}... (attempt ${attempt})`);
+            await transporter.sendMail(mailOptions);
+            console.log(`Email successfully sent to ${to}`);
+        } catch (error) {
+            const code = error?.code || error?.command || 'UNKNOWN';
+            console.error(`Failed to send email to ${to} (attempt ${attempt}):`, code, error?.message || error);
+            throw error;
+        }
+    };
+
     try {
-        console.log(`Attempting to send email to ${to}...`);
-        await transporter.sendMail(mailOptions);
-        console.log(`Email successfully sent to ${to}`);
+        await attemptSend(1);
     } catch (error) {
-        console.error(`Failed to send email to ${to}:`, error);
-        throw error; // Rethrow so the caller knows it failed
+        const retryable = ['ETIMEDOUT', 'ECONNECTION', 'EAI_AGAIN'].includes(error?.code);
+        if (retryable) {
+            await new Promise(r => setTimeout(r, 1000));
+            await attemptSend(2);
+            return;
+        }
+        throw error;
     }
 };
 
@@ -1855,8 +1897,16 @@ app.post('/api/auth/signin', async (req, res) => {
         const expiresAt = new Date(createdAt.getTime() + 10 * 60000); // 10 minutes
         
         await insertMfaCode(user.id, mfaCode, expiresAt);
-        
-        await sendEmail(user.email, 'Your MFA Code', `Your MFA code is ${mfaCode}. It will expire in 10 minutes.`);
+
+        try {
+            await sendEmail(user.email, 'Your MFA Code', `Your MFA code is ${mfaCode}. It will expire in 10 minutes.`);
+        } catch (mailErr) {
+            console.error('[Auth] Failed to send MFA email:', mailErr?.code || mailErr?.message || mailErr);
+            return res.status(503).json({
+                success: false,
+                message: "We couldn't send your verification code right now. Please try again in a minute."
+            });
+        }
         console.log('Signin successful');
         res.json({ success: true, message: "MFA code sent. Please check your email to verify your login." });
     } catch (err) {
@@ -1886,8 +1936,16 @@ app.post('/api/auth/send-mfa', async (req, res) => {
         const expiresAt = new Date(createdAt.getTime() + 10 * 60000); // 10 minutes
         
         await insertMfaCode(user.id, mfaCode, expiresAt);
-        
-        await sendEmail(user.email, 'Your MFA Code', `Your MFA code is ${mfaCode}. It will expire in 10 minutes.`);
+
+        try {
+            await sendEmail(user.email, 'Your MFA Code', `Your MFA code is ${mfaCode}. It will expire in 10 minutes.`);
+        } catch (mailErr) {
+            console.error('[Auth] Failed to resend MFA email:', mailErr?.code || mailErr?.message || mailErr);
+            return res.status(503).json({
+                success: false,
+                message: "We couldn't send your verification code right now. Please try again in a minute."
+            });
+        }
         
         res.json({ success: true, message: 'A new verification code has been sent to your email address.' });
     } catch (error) {
