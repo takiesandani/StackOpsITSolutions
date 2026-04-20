@@ -1039,7 +1039,8 @@
     min-height: 280px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 2%;
+    justify-content: flex-start;
     padding: 12px 10px;
     border: 1px solid rgba(0, 140, 255, 0.45);
     border-radius: 14px;
@@ -1059,15 +1060,17 @@
 }
 
 .sunbird-menu-item {
-    flex: 1;
-    min-height: 54px;
-    padding: 8px 10px;
+    flex: 0 0 10%;
+    height: 10%;
+    min-height: 10%;
+    max-height: 10%;
+    padding: 2px 6px;
     background: linear-gradient(160deg, rgba(6, 28, 52, 0.75) 0%, rgba(3, 18, 35, 0.85) 100%);
     border: 1px solid rgba(0, 175, 255, 0.34);
     border-radius: 10px;
     color: #c8d7e6;
-    font-size: 0.72rem;
-    line-height: 1.2;
+    font-size: 0.58rem;
+    line-height: 1;
     cursor: pointer;
     transition: all 0.3s ease;
     text-align: center;
@@ -1077,12 +1080,18 @@
         inset 0 0 10px rgba(0, 145, 255, 0.08);
     position: relative;
     letter-spacing: 0.01em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    overflow: hidden;
+    white-space: nowrap;
 }
 
 .sunbird-menu-item i {
-    display: block;
-    font-size: 0.8rem;
-    margin-bottom: 5px;
+    display: inline-block;
+    font-size: 0.52rem;
+    margin-bottom: 0;
     color: #52b8ff;
 }
 

@@ -4662,13 +4662,13 @@ function initializeSunbirdLeftMenu() {
     leftMenu.className = 'sunbird-left-menu';
     leftMenu.innerHTML = `
         <button class="sunbird-menu-item active" data-menu="billing" onclick="window.switchBillingMenu('billing')">
-            <i class="fas fa-file-invoice"></i><br>Billing Statement
+            <i class="fas fa-file-invoice"></i><span>Billing Statement</span>
         </button>
         <button class="sunbird-menu-item" data-menu="security" onclick="window.switchBillingMenu('security')">
-            <i class="fas fa-shield-alt"></i><br>Security Alerts
+            <i class="fas fa-shield-alt"></i><span>Security Alerts</span>
         </button>
         <button class="sunbird-menu-item" data-menu="backup" onclick="window.switchBillingMenu('backup')">
-            <i class="fas fa-hdd"></i><br>Backup & Recovery
+            <i class="fas fa-hdd"></i><span>Backup & Recovery</span>
         </button>
     `;
     
