@@ -1405,6 +1405,37 @@
     font-size: 0.84rem;
 }
 
+.sunbird-dashboard-btn-wrap {
+    margin-top: auto;
+    padding-top: 8px;
+    display: flex;
+    justify-content: flex-start;
+}
+
+.sunbird-dashboard-btn {
+    border: 1px solid rgba(0, 165, 255, 0.36);
+    background: linear-gradient(155deg, rgba(10, 36, 70, 0.8), rgba(4, 18, 35, 0.86));
+    color: #d7eeff;
+    border-radius: 23px;
+    padding: 6px 12px;
+    font-size: 0.68rem;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    box-shadow: 0 0 10px rgba(0, 140, 255, 0.18), inset 0 0 8px rgba(0, 170, 255, 0.06);
+}
+
+.sunbird-dashboard-btn i {
+    margin-right: 6px;
+}
+
+.sunbird-dashboard-btn:hover {
+    color: #ffffff;
+    border-color: rgba(82, 192, 255, 0.7);
+    box-shadow: 0 0 14px rgba(0, 165, 255, 0.32), inset 0 0 10px rgba(0, 170, 255, 0.15);
+}
+
 /* Container for dashboard cards + menu */
 .dashboard-with-menu {
     position: relative;

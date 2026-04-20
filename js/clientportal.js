@@ -4475,6 +4475,30 @@ function renderPoweredByBadge(provider) {
     `;
 }
 
+function renderSunbirdFullDashboardButton(target) {
+    const icon = target === 'security' ? 'fa-shield-alt' : 'fa-hdd';
+    return `
+        <div class="sunbird-dashboard-btn-wrap">
+            <button class="sunbird-dashboard-btn" onclick="window.openSunbirdFullDashboard('${target}')">
+                <i class="fas ${icon}"></i> View Full Dashboard
+            </button>
+        </div>
+    `;
+}
+
+window.openSunbirdFullDashboard = function(target) {
+    const project = target === 'security'
+        ? mockProjects.find(p => p.isSecurityCard)
+        : mockProjects.find(p => p.isBackupRecoveryCard);
+
+    if (!project) {
+        console.warn(`[Sunbird] Full dashboard target not found: ${target}`);
+        return;
+    }
+
+    viewProjectDashboard(project);
+};
+
 // ============================================
 // BILLING & INVOICE API
 // ============================================
@@ -4789,6 +4813,7 @@ async function renderSunbirdSecurityAlertsView(forceRefresh = false) {
                         <tbody>${rowsHtml}</tbody>
                     </table>
                 </div>
+                ${renderSunbirdFullDashboardButton('security')}
             </div>
         `;
     } catch (error) {
@@ -4801,6 +4826,7 @@ async function renderSunbirdSecurityAlertsView(forceRefresh = false) {
                     <h3>Security Alerts</h3>
                 </div>
                 <p class="sunbird-panel-error">Unable to load security alerts right now.</p>
+                ${renderSunbirdFullDashboardButton('security')}
             </div>
         `;
     } finally {
@@ -4849,6 +4875,7 @@ async function renderSunbirdBackupRecoveryView(forceRefresh = false) {
                     <div class="sunbird-storage-row"><span>SharePoint</span><strong>${byService.sharepoint || 0} GB</strong></div>
                     <div class="sunbird-storage-row"><span>Exchange</span><strong>${byService.exchange || 0} GB</strong></div>
                 </div>
+                ${renderSunbirdFullDashboardButton('backup')}
             </div>
         `;
     } catch (error) {
@@ -4861,6 +4888,7 @@ async function renderSunbirdBackupRecoveryView(forceRefresh = false) {
                     <h3>Backup & Recovery</h3>
                 </div>
                 <p class="sunbird-panel-error">Unable to load backup and recovery data right now.</p>
+                ${renderSunbirdFullDashboardButton('backup')}
             </div>
         `;
     } finally {
