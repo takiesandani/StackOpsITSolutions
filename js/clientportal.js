@@ -228,6 +228,7 @@ let cachedSunbirdBackupData = null;
 let sunbirdBillingCardLockedHeight = null;
 let identityRiskFocus = 'all';
 let pendingIdentityRiskFocus = 'all';
+let identityFetchRequestId = 0;
 
 document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
@@ -3317,6 +3318,8 @@ let isSunbirdDashboard = false;
 let sunbirdDashboardData = null;
 
 async function fetchIdentityAccessData() {
+    const requestId = ++identityFetchRequestId;
+    const isStaleRequest = () => requestId !== identityFetchRequestId;
     try {
         const token = localStorage.getItem('authToken');
         const isLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
@@ -3346,6 +3349,7 @@ async function fetchIdentityAccessData() {
 
             if (sunbirdResponse.ok) {
                 const sunbirdData = await sunbirdResponse.json();
+                if (isStaleRequest()) return;
                 if (sunbirdData.success) {
                     console.log('[Identity Access] Sunbird dashboard loaded successfully');
                     isSunbirdDashboard = true;
@@ -3387,9 +3391,17 @@ async function fetchIdentityAccessData() {
                         // Preserve any additional Sunbird-specific fields
                         ...user
                     }));
+                    if (isStaleRequest()) return;
                     
                     console.log('[Identity Access] Sunbird users enriched with MFA, Risk, and Sign-in data');
                     console.log('[Identity Access] Sample enriched user:', microsoftUsersData[0]);
+                    console.log('[Identity Access] Sample roles:', microsoftUsersData[0]?.roles);
+                    console.log('[Identity Access] Sample jobTitle:', microsoftUsersData[0]?.jobTitle);
+                    
+                    // Detailed logging for first 3 users
+                    microsoftUsersData.slice(0, 3).forEach((user, idx) => {
+                        console.log(`[Identity Access] User ${idx}: ${user.displayName} - roles:`, user.roles, 'jobTitle:', user.jobTitle);
+                    });
                     
                     // Build role map from enriched users
                     userRolesMap = {};
@@ -3485,6 +3497,7 @@ async function fetchIdentityAccessData() {
                 }
             })
         ]);
+        if (isStaleRequest()) return;
 
         const loadTime = performance.now() - startTime;
         console.log(`[Identity Access] Parallel API calls completed in ${loadTime.toFixed(0)}ms`);
@@ -3492,6 +3505,7 @@ async function fetchIdentityAccessData() {
         // Process Users - REQUIRED
         if (usersResult.status === 'fulfilled' && usersResult.value.ok) {
             const usersData = await usersResult.value.json();
+            if (isStaleRequest()) return;
             if (usersData.success && usersData.users) {
                 microsoftUsersData = usersData.users || [];
                 console.log(`[Identity Access] ✓ Loaded ${microsoftUsersData.length} users (${loadTime.toFixed(0)}ms)`);
@@ -3506,6 +3520,7 @@ async function fetchIdentityAccessData() {
         if (rolesResult.status === 'fulfilled' && rolesResult.value.ok) {
             try {
                 const rolesData = await rolesResult.value.json();
+                if (isStaleRequest()) return;
                 if (rolesData.success && rolesData.roleAssignments) {
                     microsoftRolesData = rolesData.roleAssignments || [];
                     buildUserRolesMap();
@@ -3522,6 +3537,7 @@ async function fetchIdentityAccessData() {
         if (mfaResult.status === 'fulfilled' && mfaResult.value.ok) {
             try {
                 const mfaData = await mfaResult.value.json();
+                if (isStaleRequest()) return;
                 if (mfaData.success && mfaData.mfaStatus) {
                     // Merge MFA data into user objects
                     mfaData.mfaStatus.forEach(mfaInfo => {
@@ -3550,6 +3566,7 @@ async function fetchIdentityAccessData() {
         if (signInResult.status === 'fulfilled' && signInResult.value.ok) {
             try {
                 const signInData = await signInResult.value.json();
+                if (isStaleRequest()) return;
                 if (signInData.success && signInData.signInLogs) {
                     // Merge sign-in data into user objects
                     const userSignInMap = {}; // userId -> latest sign-in
@@ -3637,6 +3654,7 @@ async function fetchIdentityAccessData() {
             displayCurrentProject();
             console.log('[Identity Access] Card updated with real user data');
         }
+        if (isStaleRequest()) return;
 
         // If Identity dashboard view is open, reinitialize with updated fallback data.
         const dashboardView = document.getElementById('dashboard-view');
@@ -4350,9 +4368,13 @@ function initializeProjectsList() {
     previewLockedByClick = false;
     
     displayCurrentProject();
-    fetchDuoStats();
-    fetchIdentityAccessData(); // Fetch Microsoft Graph users for the card preview
-    fetchApplicationsData(); // Fetch Applications data for the card preview
+    const token = localStorage.getItem('authToken');
+    const isLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
+    if (token && isLoggedIn) {
+        fetchDuoStats();
+        fetchIdentityAccessData(); // Fetch Microsoft Graph users for the card preview
+        fetchApplicationsData(); // Fetch Applications data for the card preview
+    }
 }
 
 function displayCurrentProject() {
@@ -4689,6 +4711,16 @@ function viewProjectDashboard(project) {
 // Fetch  Identity Protection data from API
 async function fetchIdentityData(project) {
     try {
+        // Sunbird requires enriched identity payload (roles, MFA, risk, sign-in metadata).
+        // The plain /api/microsoft-users response can overwrite this and blank table columns.
+        if (isSunbirdUser()) {
+            console.log('[Identity] Sunbird user detected, using enriched identity loader');
+            await fetchIdentityAccessData();
+            updateDashboardData(project);
+            initializeIdentityDashboard();
+            return;
+        }
+
         console.log('[Identity] Fetching Microsoft users...');
         const authToken = localStorage.getItem('authToken');
         
@@ -5118,6 +5150,17 @@ async function initializeBillingCard() {
     const token = localStorage.getItem('authToken');
     
     if (!token) {
+        const isSessionLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
+        if (isSessionLoggedIn) {
+            if (isSunbirdUser() && !isSunbirdBillingViewActive('billing') && billingCard.dataset?.sunbirdView) return;
+            billingCard.innerHTML = '<p style="color: #bdbdbd; text-align: left; padding: 20px;">Loading billing information...</p>';
+            cachedSunbirdBillingHtml = billingCard.innerHTML;
+            setTimeout(() => {
+                if (!localStorage.getItem('authToken')) return;
+                initializeBillingCard();
+            }, 450);
+            return;
+        }
         if (isSunbirdUser() && !isSunbirdBillingViewActive('billing') && billingCard.dataset?.sunbirdView) return;
         billingCard.innerHTML = '<p style="color: #bdbdbd; text-align: center; padding: 20px;">Please log in to view billing information.</p>';
         cachedSunbirdBillingHtml = billingCard.innerHTML;
