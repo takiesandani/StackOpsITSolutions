@@ -713,12 +713,13 @@
 .projects-carousel-shell {
     position: relative;
     overflow: visible;
+    --side-peek-max-width: 180px;
 }
 
 .side-peek-nav {
     position: absolute;
     top: 50%;
-    width: var(--side-peek-card-width, 220px);
+    width: min(var(--side-peek-card-width, 220px), var(--side-peek-max-width));
     border: none;
     background: transparent;
     padding: 0;
@@ -734,38 +735,97 @@
 }
 
 .side-peek-nav-left {
-    left: calc(-1 * (var(--side-peek-card-width, 220px) + 30px));
+    left: calc(-1 * (min(var(--side-peek-card-width, 220px), var(--side-peek-max-width)) + 18px));
 }
 
 .side-peek-nav-right {
-    right: calc(-1 * (var(--side-peek-card-width, 220px) + 30px));
+    right: calc(-1 * (min(var(--side-peek-card-width, 220px), var(--side-peek-max-width)) + 18px));
 }
 
 .side-peek-card {
     border-radius: 10px;
     overflow: hidden;
-    opacity: 0.34;
-    height: var(--side-peek-card-height, 130px);
+    opacity: 0.28;
+    height: min(var(--side-peek-card-height, 130px), 125px);
     transform: scale(1);
-    filter: saturate(0.8);
+    filter: saturate(0.72);
     box-shadow: 0 0 10px rgba(30, 144, 255, 0.25);
     transition: all 0.25s ease;
 }
 
 .side-peek-nav:hover .side-peek-card {
-    opacity: 0.5;
-    filter: saturate(0.9);
+    opacity: 0.42;
+    filter: saturate(0.82);
 }
 
 .side-peek-card .project-card {
     pointer-events: none;
     height: 100%;
     min-height: 0;
-    padding: 10.2px;
-    gap: 7.14px;
+    padding: 7px;
+    gap: 4px;
     transform: none !important;
     animation: none !important;
     box-shadow: none !important;
+}
+
+.side-peek-card .project-card-header {
+    gap: 6px;
+    align-items: flex-start;
+}
+
+.side-peek-card .project-icon {
+    width: 18px;
+    height: 18px;
+    min-width: 18px;
+    min-height: 18px;
+}
+
+.side-peek-card .project-icon i {
+    font-size: 0.58rem;
+}
+
+.side-peek-card .project-icon img {
+    width: 12px;
+    height: 12px;
+}
+
+.side-peek-card .project-title h3 {
+    font-size: 0.61rem;
+    line-height: 1.15;
+}
+
+.side-peek-card .project-type {
+    font-size: 0.52rem;
+    line-height: 1.1;
+    margin-top: 1px;
+}
+
+.side-peek-card .project-status-badge {
+    font-size: 0.45rem;
+    padding: 2px 5px;
+}
+
+.side-peek-card .project-info {
+    gap: 2px;
+}
+
+.side-peek-card .project-info-item {
+    font-size: 0.49rem;
+    gap: 3px;
+}
+
+.side-peek-card .project-info-item i {
+    font-size: 0.44rem;
+}
+
+.side-peek-card .project-risks {
+    font-size: 0.52rem;
+}
+
+.side-peek-card .risk-dot {
+    width: 7px;
+    height: 7px;
 }
 
 @media (max-width: 1200px) {
