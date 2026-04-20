@@ -4628,11 +4628,17 @@ function syncSunbirdLeftMenuHeight() {
 
     const billingCard = document.getElementById('billing-card');
     const leftMenu = document.querySelector('.sunbird-left-menu');
-    if (!billingCard || !leftMenu) return;
+    const wrapper = leftMenu?.parentElement;
+    if (!billingCard || !leftMenu || !wrapper) return;
 
-    const billingHeight = billingCard.offsetHeight;
-    if (billingHeight > 0) {
-        leftMenu.style.height = `${billingHeight}px`;
+    // Match left menu top/height exactly to billing card geometry.
+    const billingRect = billingCard.getBoundingClientRect();
+    const wrapperRect = wrapper.getBoundingClientRect();
+    const topOffset = billingRect.top - wrapperRect.top;
+
+    if (billingRect.height > 0) {
+        leftMenu.style.top = `${topOffset}px`;
+        leftMenu.style.height = `${billingRect.height}px`;
     }
 }
 
@@ -4790,6 +4796,7 @@ function initializeSupportCard() {
 
 /* RESIZE HANDLER */
 window.addEventListener('resize', () => {
+    syncSunbirdLeftMenuHeight();
     if (currentProject && charts.risk) {
         Object.values(charts).forEach(chart => {
             if (chart) {

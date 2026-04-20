@@ -1032,47 +1032,76 @@
 /* SUNBIRD LEFT MENU - For Sunbird Users Only */
 .sunbird-left-menu {
     position: absolute;
-    top: 22.4px;
+    top: 0;
     left: calc(-1 * (var(--sunbird-menu-width, 180px) + var(--sunbird-menu-left-gap, 28px)));
     width: var(--sunbird-menu-width, 180px);
     height: auto;
     min-height: 280px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    padding: 0;
+    gap: 8px;
+    padding: 12px 10px;
+    border: 1px solid rgba(0, 140, 255, 0.45);
+    border-radius: 14px;
+    background:
+        radial-gradient(120% 65% at 50% 0%, rgba(0, 180, 255, 0.22) 0%, rgba(0, 180, 255, 0) 58%),
+        linear-gradient(160deg, rgba(4, 36, 72, 0.72) 0%, rgba(2, 16, 38, 0.9) 44%, rgba(2, 10, 24, 0.96) 100%);
+    box-shadow:
+        0 0 0 1px rgba(0, 190, 255, 0.26) inset,
+        0 0 30px rgba(0, 145, 255, 0.42),
+        0 0 60px rgba(0, 100, 220, 0.24),
+        0 14px 28px rgba(0, 0, 0, 0.42);
+    backdrop-filter: blur(12px) saturate(140%);
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
+    box-sizing: border-box;
+    overflow: hidden;
     z-index: 5;
 }
 
 .sunbird-menu-item {
     flex: 1;
-    min-height: 78px;
-    padding: 12px 14px;
-    background: transparent;
-    border: 1px solid rgba(0, 110, 255, 0.3);
-    border-radius: 8px;
-    color: #bdbdbd;
-    font-size: 0.9rem;
+    min-height: 54px;
+    padding: 8px 10px;
+    background: linear-gradient(160deg, rgba(6, 28, 52, 0.75) 0%, rgba(3, 18, 35, 0.85) 100%);
+    border: 1px solid rgba(0, 175, 255, 0.34);
+    border-radius: 10px;
+    color: #c8d7e6;
+    font-size: 0.72rem;
+    line-height: 1.2;
     cursor: pointer;
     transition: all 0.3s ease;
     text-align: center;
-    font-weight: 200;
-    box-shadow: 0 0 12px rgba(0, 162, 255, 0.15);
+    font-weight: 500;
+    box-shadow:
+        0 0 12px rgba(0, 162, 255, 0.2),
+        inset 0 0 10px rgba(0, 145, 255, 0.08);
     position: relative;
+    letter-spacing: 0.01em;
+}
+
+.sunbird-menu-item i {
+    display: block;
+    font-size: 0.8rem;
+    margin-bottom: 5px;
+    color: #52b8ff;
 }
 
 .sunbird-menu-item:hover {
-    color: var(--primary);
-    border-color: rgba(0, 110, 255, 0.6);
-    box-shadow: 0 0 18px rgba(0, 162, 255, 0.35);
-    transform: translateY(-2px);
+    color: #f1f8ff;
+    border-color: rgba(0, 190, 255, 0.9);
+    background: linear-gradient(145deg, rgba(0, 120, 220, 0.35) 0%, rgba(0, 56, 112, 0.35) 100%);
+    box-shadow: 0 0 20px rgba(0, 162, 255, 0.45);
+    transform: translateY(-1px);
 }
 
 .sunbird-menu-item.active {
     color: #ffffff;
-    background: rgba(0, 110, 255, 0.15);
-    border-color: var(--primary);
-    box-shadow: 0 0 25px rgba(0, 162, 255, 0.5), inset 0 0 15px rgba(0, 110, 255, 0.1);
+    background: linear-gradient(135deg, rgba(0, 120, 255, 0.34) 0%, rgba(0, 45, 96, 0.45) 100%);
+    border-color: #28c4ff;
+    box-shadow:
+        0 0 24px rgba(0, 180, 255, 0.55),
+        0 0 38px rgba(0, 120, 255, 0.2),
+        inset 0 0 14px rgba(100, 218, 255, 0.34);
 }
 
 /* Container for dashboard cards + menu */
