@@ -706,22 +706,25 @@
     margin: 0 auto;
     
     perspective: 1000px;
+    position: relative;
+    z-index: 2;
 }
 
 .projects-carousel-shell {
     position: relative;
+    overflow: visible;
 }
 
 .side-peek-nav {
     position: absolute;
     top: 50%;
-    width: 120px;
+    width: 96px;
     border: none;
     background: transparent;
     padding: 0;
     transform: translateY(-50%);
     cursor: pointer;
-    z-index: 2;
+    z-index: 1;
     transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
@@ -731,20 +734,21 @@
 }
 
 .side-peek-nav-left {
-    left: -92px;
+    left: -108px;
 }
 
 .side-peek-nav-right {
-    right: -92px;
+    right: -108px;
 }
 
 .side-peek-card {
     border-radius: 10px;
     overflow: hidden;
     opacity: 0.6;
-    transform: scale(0.92);
+    height: var(--side-peek-card-height, 130px);
+    transform: scale(0.9);
     filter: saturate(0.75);
-    box-shadow: 0 0 10px rgba(30, 144, 255, 0.35);
+    box-shadow: 0 0 10px rgba(30, 144, 255, 0.25);
     transition: all 0.25s ease;
 }
 
@@ -755,9 +759,25 @@
 
 .side-peek-card .project-card {
     pointer-events: none;
+    height: 100%;
+    min-height: 0;
+    padding: 8px;
+    gap: 4px;
     transform: none !important;
     animation: none !important;
     box-shadow: none !important;
+}
+
+.side-peek-card .project-title h3 {
+    font-size: 0.75rem;
+    line-height: 1.15;
+}
+
+.side-peek-card .project-type,
+.side-peek-card .project-info,
+.side-peek-card .project-risks,
+.side-peek-card .project-status-badge {
+    display: none !important;
 }
 
 @media (max-width: 1200px) {

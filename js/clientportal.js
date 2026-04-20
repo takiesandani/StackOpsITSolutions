@@ -3942,6 +3942,21 @@ function renderSidePeekCards() {
         nextCard.classList.add('no-interaction');
         sidePeekNextCard.appendChild(nextCard);
     }
+
+    syncSidePeekCardSizing();
+}
+
+function syncSidePeekCardSizing() {
+    const shell = document.querySelector('.projects-carousel-shell');
+    const mainCard = document.querySelector('#projects-grid .project-card');
+    if (!shell || !mainCard) return;
+
+    const mainCardHeight = mainCard.getBoundingClientRect().height;
+    if (mainCardHeight <= 0) return;
+
+    // Side cards must be visibly smaller than main cards.
+    const peekHeight = Math.round(mainCardHeight * 0.78);
+    shell.style.setProperty('--side-peek-card-height', `${peekHeight}px`);
 }
 
 function goToPreviousProject() {
@@ -5233,6 +5248,7 @@ function initializeSupportCard() {
 /* RESIZE HANDLER */
 window.addEventListener('resize', () => {
     syncSunbirdLeftMenuHeight();
+    syncSidePeekCardSizing();
     if (currentProject && charts.risk) {
         Object.values(charts).forEach(chart => {
             if (chart) {
