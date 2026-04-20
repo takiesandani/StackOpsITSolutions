@@ -4444,6 +4444,38 @@
     letter-spacing: 0.5px;
 }
 
+/* SKELETON LOADER - Identity Table Loading State */
+.skeleton-row {
+    animation: skeleton-fade 1.5s ease-in-out infinite;
+}
+
+.skeleton-block {
+    height: 20px;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.05) 25%, rgba(255, 255, 255, 0.1) 50%, rgba(255, 255, 255, 0.05) 75%);
+    background-size: 200% 100%;
+    animation: skeleton-loading 1.5s infinite;
+    border-radius: 4px;
+    margin: 4px 0;
+}
+
+@keyframes skeleton-loading {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+@keyframes skeleton-fade {
+    0%, 100% {
+        opacity: 0.7;
+    }
+    50% {
+        opacity: 1;
+    }
+}
+
 /* ============================================================== */
 /* SUNBIRD ANALYTICS COMPONENTS STYLES                            */
 /* ============================================================== */

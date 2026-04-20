@@ -1153,6 +1153,9 @@ function initializeIdentityDashboard() {
         dashboardView.innerHTML = generateIdentityDashboardHTML();
     }
     
+    // Show loading skeleton immediately
+    showIdentityTableLoadingSkeleton();
+    
     // Initialize table population, search, and insights
     setTimeout(() => {
         console.log('[Identity Dashboard] Initializing table, search, and insights');
@@ -1160,6 +1163,36 @@ function initializeIdentityDashboard() {
         setupIdentitySearch();
         initializeIdentityInsights();
     }, 100);
+}
+
+// Show loading skeleton while table data loads
+function showIdentityTableLoadingSkeleton() {
+    const tableBody = document.getElementById('users-table-body');
+    if (!tableBody) return;
+    
+    tableBody.innerHTML = '';
+    
+    // Create 8 skeleton rows
+    for (let i = 0; i < 8; i++) {
+        const row = document.createElement('tr');
+        row.className = 'skeleton-row';
+        row.innerHTML = `
+            <td><div class="skeleton-block"></div></td>
+            <td><div class="skeleton-block"></div></td>
+            <td><div class="skeleton-block"></div></td>
+            <td><div class="skeleton-block"></div></td>
+            <td><div class="skeleton-block"></div></td>
+            <td><div class="skeleton-block"></div></td>
+            <td><div class="skeleton-block"></div></td>
+            <td><div class="skeleton-block"></div></td>
+            <td><div class="skeleton-block"></div></td>
+            <td><div class="skeleton-block"></div></td>
+            <td><div class="skeleton-block"></div></td>
+            <td><div class="skeleton-block"></div></td>
+            <td><div class="skeleton-block"></div></td>
+        `;
+        tableBody.appendChild(row);
+    }
 }
 
 function setupIdentitySearch() {
@@ -3377,10 +3410,13 @@ async function fetchIdentityAccessData() {
             console.log('[Identity Access] Sunbird endpoint not available, falling back to standard API');
         }
 
-        // Fallback: Load standard Microsoft data
-        console.log('[Identity Access] Fetching standard Microsoft users and roles...');
+        // Fallback: Load standard Microsoft data in PARALLEL
+        console.log('[Identity Access] Fetching standard Microsoft users, roles, and enriched data in parallel...');
         
-        const [usersResponse, rolesResponse] = await Promise.all([
+        const startTime = performance.now();
+        
+        // Fetch all endpoints in parallel using Promise.allSettled for resilience
+        const [usersResult, rolesResult, mfaResult, signInResult] = await Promise.allSettled([
             fetch('/api/microsoft-users', {
                 method: 'GET',
                 headers: {
@@ -3394,35 +3430,154 @@ async function fetchIdentityAccessData() {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 }
+            }),
+            fetch('/api/user-mfa-status', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            }),
+            fetch('/api/sign-in-logs', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
             })
         ]);
 
-        if (!usersResponse.ok) {
-            throw new Error(`Users API responded with status ${usersResponse.status}`);
-        }
+        const loadTime = performance.now() - startTime;
+        console.log(`[Identity Access] Parallel API calls completed in ${loadTime.toFixed(0)}ms`);
 
-        const usersData = await usersResponse.json();
-        
-        if (!usersData.success || !usersData.users) {
-            throw new Error(usersData.message || 'Invalid users response format');
-        }
-
-        microsoftUsersData = usersData.users || [];
-        console.log(`[Identity Access] Loaded ${microsoftUsersData.length} users`);
-
-        // Process roles data if available
-        if (rolesResponse.ok) {
-            const rolesData = await rolesResponse.json();
-            if (rolesData.success && rolesData.roleAssignments) {
-                microsoftRolesData = rolesData.roleAssignments || [];
-                console.log(`[Identity Access] Loaded ${microsoftRolesData.length} role assignments`);
-                
-                // Build user roles map (userId -> array of role names)
-                buildUserRolesMap();
+        // Process Users - REQUIRED
+        if (usersResult.status === 'fulfilled' && usersResult.value.ok) {
+            const usersData = await usersResult.value.json();
+            if (usersData.success && usersData.users) {
+                microsoftUsersData = usersData.users || [];
+                console.log(`[Identity Access] ✓ Loaded ${microsoftUsersData.length} users (${loadTime.toFixed(0)}ms)`);
+            } else {
+                throw new Error(usersData.message || 'Invalid users response format');
             }
         } else {
-            console.warn('[Identity Access] Could not fetch roles');
+            throw new Error(`Users API failed: ${usersResult.reason?.message || 'Unknown error'}`);
         }
+
+        // Process Roles - OPTIONAL
+        if (rolesResult.status === 'fulfilled' && rolesResult.value.ok) {
+            try {
+                const rolesData = await rolesResult.value.json();
+                if (rolesData.success && rolesData.roleAssignments) {
+                    microsoftRolesData = rolesData.roleAssignments || [];
+                    buildUserRolesMap();
+                    console.log(`[Identity Access] ✓ Loaded ${microsoftRolesData.length} role assignments`);
+                }
+            } catch (e) {
+                console.warn('[Identity Access] Could not process roles:', e.message);
+            }
+        } else {
+            console.warn('[Identity Access] ⚠ Roles API unavailable');
+        }
+
+        // Process MFA Status - OPTIONAL (Enriches existing users)
+        if (mfaResult.status === 'fulfilled' && mfaResult.value.ok) {
+            try {
+                const mfaData = await mfaResult.value.json();
+                if (mfaData.success && mfaData.mfaStatus) {
+                    // Merge MFA data into user objects
+                    mfaData.mfaStatus.forEach(mfaInfo => {
+                        const user = microsoftUsersData.find(u => u.id === mfaInfo.userId);
+                        if (user) {
+                            user.mfaEnabled = mfaInfo.mfaEnabled;
+                            user.authMethodCount = mfaInfo.authMethodCount || 0;
+                            user.authMethods = mfaInfo.authMethods || [];
+                        }
+                    });
+                    console.log(`[Identity Access] ✓ Enriched ${mfaData.mfaStatus.length} users with MFA data`);
+                }
+            } catch (e) {
+                console.warn('[Identity Access] ⚠ Could not process MFA data:', e.message);
+            }
+        } else {
+            console.warn('[Identity Access] ⚠ MFA API unavailable - using defaults');
+            // Set default MFA status if API unavailable
+            microsoftUsersData.forEach(user => {
+                if (user.mfaEnabled === undefined) user.mfaEnabled = false;
+                if (user.authMethodCount === undefined) user.authMethodCount = 0;
+            });
+        }
+
+        // Process Sign-In Logs - OPTIONAL (Enriches user activity)
+        if (signInResult.status === 'fulfilled' && signInResult.value.ok) {
+            try {
+                const signInData = await signInResult.value.json();
+                if (signInData.success && signInData.signInLogs) {
+                    // Merge sign-in data into user objects
+                    const userSignInMap = {}; // userId -> latest sign-in
+                    signInData.signInLogs.forEach(log => {
+                        const userId = log.userId;
+                        if (!userSignInMap[userId] || new Date(log.createdDateTime) > new Date(userSignInMap[userId].createdDateTime)) {
+                            userSignInMap[userId] = log;
+                        }
+                    });
+                    
+                    // Update users with latest sign-in info
+                    microsoftUsersData.forEach(user => {
+                        if (userSignInMap[user.id]) {
+                            const signIn = userSignInMap[user.id];
+                            user.lastSignIn = {
+                                dateTime: signIn.createdDateTime,
+                                location: signIn.location || 'Unknown',
+                                device: signIn.deviceDetail?.displayName || 'Unknown Device',
+                                ipAddress: signIn.ipAddress || 'N/A'
+                            };
+                        } else {
+                            user.lastSignIn = {
+                                dateTime: null,
+                                location: 'No sign-in',
+                                device: 'Unknown',
+                                ipAddress: 'N/A'
+                            };
+                        }
+                    });
+                    console.log(`[Identity Access] ✓ Enriched sign-in data for ${Object.keys(userSignInMap).length} users`);
+                }
+            } catch (e) {
+                console.warn('[Identity Access] ⚠ Could not process sign-in logs:', e.message);
+            }
+        } else {
+            console.warn('[Identity Access] ⚠ Sign-In Logs API unavailable');
+            // Set default sign-in status
+            microsoftUsersData.forEach(user => {
+                if (!user.lastSignIn) {
+                    user.lastSignIn = {
+                        dateTime: null,
+                        location: 'Unknown',
+                        device: 'Unknown',
+                        ipAddress: 'N/A'
+                    };
+                }
+            });
+        }
+
+        // Calculate risk levels for users (local computation)
+        microsoftUsersData.forEach(user => {
+            let riskLevel = 'SAFE';
+            const isAdmin = !!userRolesMap[user.id];
+            const hasOldSignIn = user.lastSignIn && user.lastSignIn.dateTime 
+                ? ((Date.now() - new Date(user.lastSignIn.dateTime).getTime()) > 30 * 24 * 60 * 60 * 1000) 
+                : false;
+            const missingMFA = isAdmin && !user.mfaEnabled;
+            
+            if (missingMFA || hasOldSignIn) {
+                riskLevel = 'HIGH';
+            } else if (user.isExternal || (user.authMethodCount && user.authMethodCount === 1)) {
+                riskLevel = 'MEDIUM';
+            }
+            
+            user.riskLevel = riskLevel;
+        });
+        console.log('[Identity Access] ✓ Risk levels calculated for all users');
 
         // Update the  Identity Protection project card with real data
         const identityProject = mockProjects.find(p => p.id === 2);
