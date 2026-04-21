@@ -851,6 +851,19 @@
             font-size: 16px;
             font-weight: 200;
         }
+
+        /* Override background for ClientPortal only */
+        .background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 110%;
+            z-index: -1;
+            background: linear-gradient(rgba(0, 0, 0, 0.219), rgb(0, 0, 0)),
+                url('Images/Orangebackground.jpg') no-repeat center center;
+            background-size: cover;
+        }
     </style>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
