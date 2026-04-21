@@ -1,12 +1,12 @@
 /* Client Portal Styles */
 
 :root {
-  --primary: #ff6a00;
+  --primary: #ffffff;
   --secondary: #000000;
   --dark: #1c1c1c;
   --light: #ffffff;
   --gray: rgba(74, 74, 74, 0.63);
-  --accent-glow: #ff831e;
+  --accent-glow: #e6e6e6;
   --danger: #dc3545;
   --warning: #ffc107;
   --success: #28a745;
