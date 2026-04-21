@@ -155,11 +155,11 @@
     height: 210px;
     z-index: 1;
     background: conic-gradient(
-        #0267ff 0%,
+        #ff7802 0%,
         hsla(207, 100%, 50%, 0) 25%,
-        #0084ff00 50%,
+        #ff880000 50%,
         #0077ff00 75%,
-        #0077ff 100%
+        #ff7802 100%
     );
     animation: spin 3s linear infinite;
 }
