@@ -1575,6 +1575,7 @@
   color: #f6fbff;
   background: rgba(255, 132, 0, 0.1);
   transform: translateY(-1px);
+  animation: live-glow 1.5s ease-in-out infinite alternate;
 }
 
 .sunbird-menu-item.operations {
