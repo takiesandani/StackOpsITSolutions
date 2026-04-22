@@ -545,12 +545,7 @@
   -webkit-backdrop-filter: blur(18px) saturate(160%);
 
   border-bottom: 1px solid rgba(255, 102, 0, 0.18);
-
-  box-shadow:
-    0 10px 30px rgba(0, 0, 0, 0.35),
-    0 0 18px rgba(255, 102, 0, 0.25),
-    inset 0 1px 1px rgba(255, 255, 255, 0.08),
-    inset 0 -1px 1px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 0 25px rgba(252, 116, 38, 0.85);
 
   padding: 15px 40px;
   position: fixed;
@@ -1454,9 +1449,9 @@
   position: absolute;
   top: 0;
   left: calc(
-    -1 * (var(--sunbird-menu-width, 350px) + var(--sunbird-menu-left-gap, 30px))
+    -1 * (var(--sunbird-menu-width, 310px) + var(--sunbird-menu-left-gap, 25px))
   );
-  width: var(--sunbird-menu-width, 350px);
+  width: var(--sunbird-menu-width, 310px);
   height: auto;
   min-height: 0;
   display: flex;
