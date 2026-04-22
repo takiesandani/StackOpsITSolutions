@@ -5887,23 +5887,28 @@ async function renderSunbirdSecurityAlertsView(forceRefresh = false) {
 
         if (!isSunbirdBillingViewActive('security')) return;
         
-        // Build activity feed items from incidents
-        const activityFeedHtml = incidents.length
-            ? incidents.map(incident => {
-                const severityColor = incident.severity === 'critical' ? '#ff6b6b' : incident.severity === 'high' ? '#ff9f40' : '#ffc107';
+        // Build activity feed items from the activityFeed array sent by backend
+        // This includes incidents, alerts, and suspicious sign-ins
+        const activityFeed = cachedSunbirdSecurityData.activityFeed || [];
+        console.log('[Sunbird Security Alerts] 📋 Activity Feed Items:', activityFeed.length);
+        
+        const activityFeedHtml = activityFeed.length
+            ? activityFeed.map(item => {
+                const severityColor = item.severity === 'critical' ? '#ff6b6b' : item.severity === 'high' ? '#ff9f40' : '#ffc107';
+                const itemIcon = item.type === 'incident' ? '🔴' : item.type === 'alert' ? '⚠️' : item.type === 'signin' ? '🔑' : '•';
                 return `
                     <div class="sunbird-activity-item">
                         <span class="sunbird-activity-severity" style="background-color: ${severityColor}"></span>
                         <div class="sunbird-activity-content">
-                            <p class="sunbird-activity-title">${incident.displayName || 'Unknown Incident'}</p>
-                            <p class="sunbird-activity-meta">${incident.status || 'active'} • ${incident.assignedTo || 'Unassigned'}</p>
+                            <p class="sunbird-activity-title">${itemIcon} ${item.message || 'Activity detected'}</p>
+                            <p class="sunbird-activity-meta">${new Date(item.timestamp).toLocaleTimeString()} • ${item.type}</p>
                         </div>
                     </div>
                 `;
             }).join('')
             : '<div class="sunbird-activity-empty">No recent activity</div>';
         
-        console.log('[Sunbird Security Alerts] 📊 Data prepared - High Severity: %d, Active Incidents: %d, Total Incidents: %d', highSeverityAlerts, activeIncidents, incidents.length);
+        console.log('[Sunbird Security Alerts] 📊 Data prepared - High Severity: %d, Active Incidents: %d, Total Incidents: %d, Activity Items: %d', highSeverityAlerts, activeIncidents, incidents.length, activityFeed.length);
         
         billingCard.innerHTML = `
             <div class="sunbird-panel-view">
