@@ -258,7 +258,7 @@ function getSummaryCardStatusMeta(project) {
         return { status: 'loading', text: 'Live data', dotClass: 'partial' };
     }
 
-    return { status: 'active', text: 'Updated just now', dotClass: 'ok' };
+    return { status: 'active', text: '', dotClass: 'ok' };
 }
 
 function toMetricValue(value, fallback = 0) {
@@ -553,7 +553,7 @@ function populateApplicationsCard(apiData) {
         { label: "High Risk Apps", value: `: ${highRiskApps}`, icon: "fas fa-exclamation-circle" },
         { label: "High Access Apps", value: `: ${highAccessApps}`, icon: "fas fa-users" }
     ];
-    appProject.cardFooter = 'Access monitoring active';
+    appProject.cardFooter = highRiskApps > 0 ? `${highRiskApps} high risk apps` : 'No high risk apps detected';
     appProject.lastUpdate = new Date().toLocaleTimeString();
     
     // Re-render project cards
@@ -598,7 +598,7 @@ async function fetchDevicesCardData() {
             { label: "Not Encrypted", value: `: ${notEncrypted}`, icon: "fas fa-lock-open" },
             { label: "Stale (7+ days)", value: `: ${stale7days}`, icon: "fas fa-clock" }
         ];
-        project.cardFooter = 'Live device status';
+        project.cardFooter = nonCompliant > 0 ? `${nonCompliant} non-compliant devices` : 'All devices compliant';
         project.lastUpdate = new Date().toLocaleTimeString();
         displayCurrentProject();
     } catch (error) {
@@ -641,7 +641,7 @@ async function fetchEmailCardData() {
             { label: "Users Targeted", value: `: ${summary.affectedUsersCount || 0}`, icon: "fas fa-user-shield" },
             { label: "Open Incidents", value: `: ${summary.activeIncidents || 0}`, icon: "fas fa-bug" }
         ];
-        project.cardFooter = 'Monitoring threats';
+        project.cardFooter = summary.activeThreats > 0 ? `${summary.activeThreats} active threats detected` : 'No active threats';
         project.lastUpdate = new Date().toLocaleTimeString();
         displayCurrentProject();
     } catch (error) {
@@ -3617,7 +3617,7 @@ async function fetchIdentityAccessData() {
                             { label: "Security Score", value: `: ${sunbirdData.summary.securityScore}`, icon: "fas fa-shield-alt" }
                         ];
                         identityProject.status = 'active';
-                        identityProject.cardFooter = usersWithoutMfa > 0 ? `${usersWithoutMfa} users without MFA` : 'Updated just now';
+                        identityProject.cardFooter = usersWithoutMfa > 0 ? `${usersWithoutMfa} users without MFA` : 'All users secured';
                         identityProject.lastUpdate = new Date().toLocaleTimeString();
                         displayCurrentProject();
                     }
@@ -3833,7 +3833,7 @@ async function fetchIdentityAccessData() {
                 { label: "Security Score", value: `: ${Math.max(0, 100 - (externalUsers + usersWithoutMfa))}`, icon: "fas fa-shield-alt" }
             ];
             identityProject.status = 'active';
-            identityProject.cardFooter = usersWithoutMfa > 0 ? `${usersWithoutMfa} users without MFA` : 'Updated just now';
+            identityProject.cardFooter = usersWithoutMfa > 0 ? `${usersWithoutMfa} users without MFA` : 'All users secured';
             identityProject.lastUpdate = new Date().toLocaleTimeString();
             
             // Refresh the display to show updated data
