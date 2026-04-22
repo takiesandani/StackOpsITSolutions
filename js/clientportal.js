@@ -5874,6 +5874,23 @@ async function renderSunbirdSecurityAlertsView(forceRefresh = false) {
             : '<tr><td colspan="4" class="sunbird-empty-row">No incidents found</td></tr>';
 
         if (!isSunbirdBillingViewActive('security')) return;
+        
+        // Build activity feed items from incidents
+        const activityFeedHtml = incidents.length
+            ? incidents.map(incident => {
+                const severityColor = incident.severity === 'critical' ? '#ff6b6b' : incident.severity === 'high' ? '#ff9f40' : '#ffc107';
+                return `
+                    <div class="sunbird-activity-item">
+                        <span class="sunbird-activity-severity" style="background-color: ${severityColor}"></span>
+                        <div class="sunbird-activity-content">
+                            <p class="sunbird-activity-title">${incident.displayName || 'Unknown Incident'}</p>
+                            <p class="sunbird-activity-meta">${incident.status || 'active'} • ${incident.assignedTo || 'Unassigned'}</p>
+                        </div>
+                    </div>
+                `;
+            }).join('')
+            : '<div class="sunbird-activity-empty">No recent activity</div>';
+        
         billingCard.innerHTML = `
             <div class="sunbird-panel-view">
                 <div class="billing-card-header">
@@ -5902,6 +5919,9 @@ async function renderSunbirdSecurityAlertsView(forceRefresh = false) {
                         </thead>
                         <tbody>${rowsHtml}</tbody>
                     </table>
+                    <div class="sunbird-activity-feed">
+                        ${activityFeedHtml}
+                    </div>
                 </div>
                 ${renderSunbirdFullDashboardButton('security')}
             </div>
