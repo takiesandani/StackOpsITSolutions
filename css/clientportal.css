@@ -44,20 +44,19 @@
 }
 
 .liquid-glass-card {
-  background: rgba(255, 255, 255, 0.15);
-  border: 1px solid rgba(255, 255, 255, 0.45);
-  backdrop-filter: blur(30px) saturate(180%) contrast(110%);
-  -webkit-backdrop-filter: blur(30px) saturate(180%) contrast(110%);
-  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(25px) saturate(160%);
+  -webkit-backdrop-filter: blur(25px) saturate(160%);
+  border-radius: 12px;
   position: relative;
   overflow: hidden;
-  transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+  transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
   box-shadow: 
-    0 12px 40px rgba(255, 255, 255, 0.2),
-    0 4px 20px rgba(255, 255, 255, 0.1),
-    inset 0 1px 1px rgba(255, 255, 255, 0.4),
-    inset 0 -1px 1px rgba(255, 255, 255, 0.1),
-    0 0 0 1px rgba(255, 255, 255, 0.15);
+    0 8px 32px rgba(255, 255, 255, 0.15),
+    0 4px 16px rgba(255, 255, 255, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1);
 }
 
 .liquid-glass-card::before {
@@ -69,38 +68,30 @@
   bottom: 0;
   background: linear-gradient(
     135deg,
-    rgba(255, 255, 255, 0.3) 0%,
-    rgba(255, 255, 255, 0.08) 40%,
-    rgba(255, 255, 255, 0) 60%,
-    rgba(255, 255, 255, 0.05) 100%
+    rgba(255, 255, 255, 0.25) 0%,
+    rgba(255, 255, 255, 0.05) 50%,
+    rgba(255, 255, 255, 0) 100%
   );
-  opacity: 0.7;
+  opacity: 0.6;
   pointer-events: none;
   z-index: 1;
-  transition: opacity 0.5s ease;
+  transition: opacity 0.4s ease;
 }
 
 .liquid-glass-card:hover {
-  transform: translateY(-10px) scale(1.025);
-  background: rgba(255, 255, 255, 0.22);
-  border-color: rgba(255, 255, 255, 0.7);
+  transform: translateY(-8px) scale(1.02);
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.6);
   box-shadow: 
-    0 30px 70px rgba(255, 255, 255, 0.4),
-    0 0 0 1px rgba(255, 255, 255, 0.6) inset,
-    0 15px 50px rgba(255, 255, 255, 0.3),
-    0 0 30px rgba(255, 255, 255, 0.25);
-  animation: live-glow 2.5s ease-in-out infinite alternate;
+    0 25px 60px rgba(255, 255, 255, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.5) inset,
+    0 12px 40px rgba(255, 255, 255, 0.25),
+    0 0 20px rgba(255, 255, 255, 0.2);
+  animation: live-glow 2s ease-in-out infinite alternate;
 }
 
 .liquid-glass-card:hover::before {
   opacity: 1;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.4) 0%,
-    rgba(255, 255, 255, 0.12) 40%,
-    rgba(255, 255, 255, 0) 60%,
-    rgba(255, 255, 255, 0.1) 100%
-  );
 }
 
 /* LOGIN SECTION */
@@ -908,11 +899,65 @@
 
 
 .project-card {
+  composes: liquid-glass-card;
   padding: 12px;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   gap: 4px;
+
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(25px) saturate(160%);
+  -webkit-backdrop-filter: blur(25px) saturate(160%);
+  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+  box-shadow: 
+    0 8px 32px rgba(255, 255, 255, 0.15),
+    0 4px 16px rgba(255, 255, 255, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.project-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.25) 0%,
+    rgba(255, 255, 255, 0.05) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  opacity: 0.6;
+  pointer-events: none;
+  z-index: 1;
+  transition: opacity 0.4s ease;
+}
+
+.project-card:hover {
+  transform: translateY(-12px) scale(1.02);
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.6);
+  box-shadow: 
+    0 25px 60px rgba(255, 255, 255, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.5) inset,
+    0 12px 40px rgba(255, 255, 255, 0.25),
+    0 0 20px rgba(255, 255, 255, 0.2);
+  animation: live-glow 2s ease-in-out infinite alternate;
+}
+
+.project-card:hover::before {
+  opacity: 1;
+}
+
+.project-card:not(:hover) {
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.3); /* CHANGED FROM ORANGE TO WHITE */
 }
 
 .project-card.glow-selected {
@@ -2059,11 +2104,59 @@
 }
 
 .dashboard-card {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(25px) saturate(160%);
+  -webkit-backdrop-filter: blur(25px) saturate(160%);
+  border-radius: 12px;
   padding: 19.4px;
   cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+  position: relative;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  box-shadow: 
+    0 8px 32px rgba(255, 255, 255, 0.15),
+    0 4px 16px rgba(255, 255, 255, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.dashboard-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.25) 0%,
+    rgba(255, 255, 255, 0.05) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  opacity: 0.6;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.dashboard-card:hover {
+  transform: translateY(-12px) scale(1.01);
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.6);
+  box-shadow: 
+    0 25px 60px rgba(255, 255, 255, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.5) inset,
+    0 12px 40px rgba(255, 255, 255, 0.25),
+    0 0 20px rgba(255, 255, 255, 0.2);
+  animation: live-glow 2s ease-in-out infinite alternate;
+}
+
+.dashboard-card:hover::before {
+  opacity: 1;
 }
 
 .billing-card-header {
@@ -2924,7 +3017,11 @@
 }
 
 .monitor-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(0, 110, 255, 0.2);
+  border-radius: 12px;
   padding: 25px;
+  backdrop-filter: blur(10px);
 }
 
 .monitor-card h3 {
@@ -5963,7 +6060,17 @@
 
 /* Monitor Card Base */
 .monitor-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(0, 110, 255, 0.15);
+  border-radius: 8px;
   padding: 12px;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+}
+
+.monitor-card:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(0, 110, 255, 0.25);
 }
 
 .monitor-card-header {

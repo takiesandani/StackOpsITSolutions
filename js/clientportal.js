@@ -4784,7 +4784,7 @@ function hideProjectPreview() {
 
 function createProjectCard(project) {
     const card = document.createElement('div');
-    card.className = 'project-card liquid-glass-card' + (project.noDashboard ? ' no-interaction' : '');
+    card.className = 'project-card' + (project.noDashboard ? ' no-interaction' : '');
     card.setAttribute('data-project-id', project.id);
     
     const risksCount = project.risks.critical + project.risks.high + project.risks.medium;
