@@ -106,7 +106,7 @@ const mockProjects = [
     {
         id: 3,
         name: "Device Protection",
-        type: "Device Management & Security Compliance",
+        type: "Device Management & Compliance",
         status: "active",
         risks: { critical: 0, high: 0, medium: 0 },
         securityScore: 0,
@@ -1587,7 +1587,7 @@ function initializeIdentityCharts() {
         renderActiveStatusChart(activeCount, inactiveCount);
         
         // Role Distribution  
-        renderRoleDistributionChart();
+        renderSunbirdRoleDistributionChart();
         
         // Admin users list
         populateAdminUsersList();
@@ -2657,8 +2657,8 @@ function renderDeviceTrustChart() {
     });
 }
 
-// 🆕 Render Role Distribution Chart
-function renderRoleDistributionChart() {
+// 🆕 Render Sunbird Role Distribution Chart
+function renderSunbirdRoleDistributionChart() {
     const canvasElement = document.getElementById('roleDistributionChart');
     if (!canvasElement || !sunbirdDashboardData) return;
 
@@ -3956,7 +3956,7 @@ async function fetchDuoStats(retryCount = 0) {
             { label: "Active Usage", value: `: ${data.used_licenses}`, icon: "fas fa-user-check" },
             { label: "Remaining Licences", value: `: ${data.remaining_licenses}`, icon: "fas fa-user-plus" }
         ];
-        duoProject.cardFooter = `Tier: ${data.edition || 'Unknown'} | Last Sync: ${data.last_sync || 'N/A'}`;
+        duoProject.cardFooter = `Tier: ${data.edition || 'Unknown'}`;
         duoProject.lastUpdate = `Synced: ${data.last_sync || 'Unknown'}`;
 
         // Re-render the UI with updated data
@@ -4409,24 +4409,36 @@ function populateIdentityTable() {
     tableBody.innerHTML = '';
 
     // Update table headers based on dashboard type
-    if (isSunbirdDashboard && table) {
+    if (table) {
         const thead = table.querySelector('thead tr');
         if (thead) {
-            thead.innerHTML = `
-                <th>Name</th>
-                <th>Email</th>
-                <th>Job Title</th>
-                <th>Roles</th>
-                <th>Type</th>
-                <th>MFA</th>
-                <th>Auth Methods</th>
-                <th>Risk</th>
-                <th>Status</th>
-                <th>Last Sign-In</th>
-                <th>Location</th>
-                <th>Device</th>
-                <th>Phone</th>
-            `;
+            if (isSunbirdDashboard) {
+                thead.innerHTML = `
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Job Title</th>
+                    <th>Roles</th>
+                    <th>Type</th>
+                    <th>MFA</th>
+                    <th>Auth Methods</th>
+                    <th>Risk</th>
+                    <th>Status</th>
+                    <th>Last Sign-In</th>
+                    <th>Location</th>
+                    <th>Device</th>
+                    <th>Phone</th>
+                `;
+            } else {
+                thead.innerHTML = `
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Job Title</th>
+                    <th>Phone</th>
+                    <th>Roles</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                `;
+            }
         }
     }
 
@@ -4838,7 +4850,6 @@ function createProjectCard(project) {
         </div>
         <div class="project-info">
             ${metricsHTML}
-            ${isSummaryCard ? `<div class="project-info-sync"><span class="live-status-dot ${statusMeta.dotClass}"></span>${statusMeta.text}</div>` : ''}
         </div>
         <div class="project-risks">
             <span>${project.cardFooter || 'Risks: ' + risksCount}</span>
@@ -4862,8 +4873,7 @@ function buildProjectPreviewModel(project) {
         topMetrics: [
             { label: 'Critical Risks', value: project.risks.critical, icon: 'fas fa-exclamation-circle', tone: 'critical' },
             { label: 'Security Score', value: `${project.securityScore}%`, icon: 'fas fa-shield-alt', tone: 'success' },
-            { label: 'System Uptime', value: `${project.uptime}%`, icon: 'fas fa-server', tone: 'info' },
-            { label: 'Last Update', value: String(project.lastUpdate || 'Just now'), icon: 'fas fa-clock', tone: 'warning' }
+            { label: 'System Uptime', value: `${project.uptime}%`, icon: 'fas fa-server', tone: 'info' }
         ],
         riskBreakdown: [
             { label: 'High', value: project.risks.high, tone: 'critical' },
@@ -6429,8 +6439,10 @@ function filterMicrosoftUsers() {
     
     let filtered = microsoftUsersData.filter(user => {
         // Search filter
-        if (searchTerm && !user.displayName.toLowerCase().includes(searchTerm) && 
-            !user.email.toLowerCase().includes(searchTerm)) {
+        const displayName = (user.displayName || '').toLowerCase();
+        const email = (user.mail || user.userPrincipalName || user.email || '').toLowerCase();
+
+        if (searchTerm && !displayName.includes(searchTerm) && !email.includes(searchTerm)) {
             return false;
         }
         
