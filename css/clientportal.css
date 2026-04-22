@@ -1556,10 +1556,10 @@
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 15px;
+  gap: 13px;
   overflow: hidden;
   white-space: nowrap;
-  left: 20px;
+  left: 40px;
 }
 
 .sunbird-menu-item i {
