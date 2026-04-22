@@ -1454,7 +1454,7 @@
   position: absolute;
   top: 0;
   left: calc(
-    -1 * (var(--sunbird-menu-width, 350px) + var(--sunbird-menu-left-gap, 80px))
+    -1 * (var(--sunbird-menu-width, 350px) + var(--sunbird-menu-left-gap, 30px))
   );
   width: var(--sunbird-menu-width, 350px);
   height: auto;
@@ -1476,15 +1476,15 @@
 }
 
 .sunbird-menu-heading {
-  padding: 16px 14px 12px;
-  font-size: 1.1rem;
+  padding: 24px 20px 12px;
+  font-size: 1.4rem;
   font-weight: 400;
   color: #ffffff;
-  text-align: center;
-  background: linear-gradient(135deg, rgba(255, 149, 0, 0.15), rgba(255, 132, 0, 0.08));
-  border-bottom: 1px solid rgba(255, 145, 0, 0.2);
+  text-align: left;
+  background: transparent;
+  border-bottom: none;
   border-radius: 16px 16px 0 0;
-  margin: -10px -10px 12px -10px;
+  margin: 0 0 16px 0;
   letter-spacing: 0.5px;
   position: relative;
 }
@@ -1492,12 +1492,11 @@
 .sunbird-menu-heading::after {
   content: '';
   position: absolute;
-  bottom: -4px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 30px;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, #ff9100, transparent);
+  bottom: 0;
+  left: 20px;
+  width: calc(100% - 40px);
+  height: 1px;
+  background: rgba(255, 255, 255, 0.15);
   border-radius: 1px;
 }
 
@@ -2094,8 +2093,8 @@
 .dashboard-with-menu::before {
   content: "";
   position: absolute;
-  left: calc(-1 * var(--sunbird-menu-left-gap, 80px));
-  width: var(--sunbird-menu-left-gap, 80px);
+  left: calc(-1 * var(--sunbird-menu-left-gap, 30px));
+  width: var(--sunbird-menu-left-gap, 30px);
   height: 2px;
   top: var(--sunbird-connector-y, 50%);
   transform: translateY(-50%);
