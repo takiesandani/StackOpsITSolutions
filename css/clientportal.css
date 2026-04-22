@@ -1538,7 +1538,7 @@
 .sunbird-menu-item {
   flex: 0 0 auto;
   min-height: 34px;
-  max-width: 85%;
+  max-width: 87%;
   padding: 8px 10px 8px 14px;
   border: none;
   border-radius: 20px;
@@ -1560,7 +1560,7 @@
   gap: 13px;
   overflow: hidden;
   white-space: nowrap;
-  left: 25px;
+  left: 23px;
 }
 
 .sunbird-menu-item i {
