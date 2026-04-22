@@ -1447,9 +1447,9 @@
   position: absolute;
   top: 0;
   left: calc(
-    -1 * (var(--sunbird-menu-width, 280px) + var(--sunbird-menu-left-gap, 28px))
+    -1 * (var(--sunbird-menu-width, 220px) + var(--sunbird-menu-left-gap, 45px))
   );
-  width: var(--sunbird-menu-width, 180px);
+  width: var(--sunbird-menu-width, 220px);
   height: auto;
   min-height: 0;
   display: flex;
@@ -2087,8 +2087,8 @@
 .dashboard-with-menu::before {
   content: "";
   position: absolute;
-  left: calc(-1 * var(--sunbird-menu-left-gap, 28px));
-  width: var(--sunbird-menu-left-gap, 28px);
+  left: calc(-1 * var(--sunbird-menu-left-gap, 45px));
+  width: var(--sunbird-menu-left-gap, 45px);
   height: 2px;
   top: var(--sunbird-connector-y, 50%);
   transform: translateY(-50%);

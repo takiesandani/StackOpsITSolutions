@@ -6050,8 +6050,12 @@ function initializeSunbirdLeftMenu() {
     const leftMenu = document.createElement('div');
     leftMenu.className = 'sunbird-left-menu';
     leftMenu.innerHTML = `
+        <div class="sunbird-menu-heading">Control Center</div>
         <button class="sunbird-menu-item" data-menu="security" onclick="window.switchBillingMenu('security')">
             <i class="fas fa-shield-alt"></i><span>Security Alerts</span>
+        </button>
+        <button class="sunbird-menu-item" data-menu="operations" onclick="window.switchBillingMenu('operations')">
+            <i class="fas fa-tasks"></i><span>Operations</span>
         </button>
         <button class="sunbird-menu-item" data-menu="backup" onclick="window.switchBillingMenu('backup')">
             <i class="fas fa-hdd"></i><span>Backup & Recovery</span>
