@@ -13,7 +13,7 @@ const SUNBIRD_EMAILS = [
 ];
 
 // Sunbird-only card IDs that should be hidden from non-Sunbird clients
-const SUNBIRD_ONLY_CARD_IDS = [2, 3, 4, 5, 7, 8]; // Identity Protection, Devices, Security & Events, Email Security, Backup & Recovery, Applications
+const SUNBIRD_ONLY_CARD_IDS = [2, 3, 4, 5, 7, 8, 9, 10]; // Identity Protection, Devices, Security & Events, Email Security, Backup & Recovery, Applications, Credential Security, Network Security
 
 // Cards to hide from Sunbird clients
 const HIDDEN_FROM_SUNBIRD_IDS = []; // All Sunbird cards are visible to them
@@ -219,6 +219,38 @@ const mockProjects = [
         hasTabs: false,
         microsoftGraphEnabled: true,
         isApplicationsCard: true
+    },
+    {
+        id: 9,
+        name: "Credential Security", 
+        type: "Password & Credential Management",
+        status: "inactive",
+        risks: { critical: 1, high: 1, medium: 1 },
+        securityScore: 85,
+        uptime: 98.5,
+        lastUpdate: "2 days ago",
+        icon: "fas fa-key",
+        cardMetrics: [
+            { label: "Weak Passwords", value: ": 12", icon: "fas fa-exclamation-triangle" },
+            { label: "Reused Passwords", value: ": 8", icon: "fas fa-sync-alt" }
+        ],
+        cardFooter: "High-risk credentials detected"
+    },
+    {
+        id: 10,
+        name: "Network Security",
+        type: "Network Monitoring & Threat Detection", 
+        status: "inactive",
+        risks: { critical: 1, high: 2, medium: 1 },
+        securityScore: 78,
+        uptime: 97.2,
+        lastUpdate: "1 day ago",
+        icon: "fas fa-network-wired",
+        cardMetrics: [
+            { label: "Open Ports", value: ": 5", icon: "fas fa-firewall" },
+            { label: "Unusual Traffic", value: ": 23", icon: "fas fa-chart-line" }
+        ],
+        cardFooter: "Network vulnerabilities found"
     }
 ];
 
