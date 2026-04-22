@@ -1471,15 +1471,15 @@
 }
 
 .sunbird-menu-heading {
-  padding: 24px 20px 12px;
+  padding: 20px 16px 8px;
   font-size: 1.4rem;
-  font-weight: 400;
+  font-weight: 200;
   color: white;
   text-align: left;
   background: transparent;
   border-bottom: none;
   border-radius: 16px 16px 0 0;
-  margin: 0 0 16px 0;
+  margin: 0 0 10px 0;
   letter-spacing: 0.5px;
   position: relative;
 }
@@ -1538,7 +1538,6 @@
 .sunbird-menu-item {
   flex: 0 0 auto;
   min-height: 34px;
-  max-width: 50%;
   padding: 8px 10px 8px 14px;
   border: none;
   border-radius: 20px;
@@ -1557,9 +1556,10 @@
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 10px;
+  gap: 13px;
   overflow: hidden;
   white-space: nowrap;
+  left: 50px;
 }
 
 .sunbird-menu-item i {
