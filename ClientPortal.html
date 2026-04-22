@@ -1007,14 +1007,34 @@
                 <div class="dashboard-cards-section">
                     <div id="billing-card" class="dashboard-card billing-card">
                         <div class="sunbird-menu-heading">Control Center</div>
-                        <div class="sunbird-left-menu">
+
+<div class="sunbird-left-menu">
                             <button class="sunbird-menu-item operations-btn" data-menu="operations" title="Operations Dashboard">
                                 <i class="fas fa-cogs"></i>
                                 Operations
                             </button>
                         </div>
-                        
+                        <div class="sunbird-panel-view" id="sunbird-security-panel">
+                            <div class="sunbird-incidents-table-wrap" id="sunbird-incidents-container">
+                                <div class="sunbird-table-header">
+                                    <h4>Security Alerts</h4>
+                                </div>
+                                <div class="sunbird-table-empty" id="security-empty-state">
+                                    <i class="fas fa-bell-slash" style="font-size: 48px; color: #94a3b8; margin-bottom: 12px;"></i>
+                                    <p style="color: #94a3b8; font-size: 14px;">No active security alerts</p>
+                                </div>
+                            </div>
+                            <div class="sunbird-activity-feed-wrap">
+                                <div class="sunbird-activity-feed-header">
+                                    Real-Time Activity Feed
+                                </div>
+                                <div class="activity-feed-list" id="activity-feed-list">
+                                    <!-- Activity items populated by JS -->
+                                </div>
+                            </div>
+                        </div>
                     </div>
+
                     <div class="dashboard-card-vertical-container">
                         <div id="governance-card" class="dashboard-card governance-card">
                             <!-- Governance card will be populated by JS -->
