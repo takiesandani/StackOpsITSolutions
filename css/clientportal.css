@@ -44,21 +44,43 @@
 }
 
 .liquid-glass-card {
-    /* iOS 26 Liquid Glass Design */
-    background: linear-gradient(
-        135deg,
-        rgba(255, 255, 255, 0.089),
-        rgba(255, 255, 255, 0.05)
-    );
-    backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
-    -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    box-shadow: 
-        0 12px 40px rgba(0, 0, 0, 0.25),
-        inset 0 1px 2px rgba(255, 255, 255, 0.5),
-        inset 0 -1px 2px rgba(0, 0, 0, 0.15);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.12),
+    rgba(255, 255, 255, 0.04)
+  );
+
+  backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
+  -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
+
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 15px;
+
+  box-shadow: 
+    0 12px 40px rgba(0, 0, 0, 0.25),
+    inset 0 1px 2px rgba(255, 255, 255, 0.5),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.15);
+
+  transition: all 0.4s ease;
 }
 
+.liquid-glass-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.055) 0%,
+    rgb(0, 0, 0) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+
+  opacity: 0.6;
+  pointer-events: none;
+  z-index: 1;
+  transition: opacity 0.4s ease;
+}
 
 .liquid-glass-card:hover {
   transform: translateY(-8px) scale(1.02);
@@ -83,7 +105,7 @@
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.342);
   backdrop-filter: blur(5px);
   opacity: 0;
   visibility: hidden;
@@ -104,12 +126,71 @@
 }
 
 .login-box {
-  background: rgba(42, 42, 42, 0.95);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  position: relative;
+  overflow: hidden;
+
+  /* Liquid glass base */
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.12),
+    rgba(255, 255, 255, 0.04)
+  );
+
+  backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
+  -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
+
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 15px;
+
   padding: clamp(30px, 5vw, 50px) clamp(25px, 4vw, 40px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+
+  box-shadow: 
+    0 12px 40px rgba(0, 0, 0, 0.25),
+    inset 0 1px 2px rgba(255, 255, 255, 0.5),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.15);
+
+  transition: all 0.4s ease;
+}
+
+/* Light reflection layer */
+.login-box::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.055) 0%,
+    rgb(0, 0, 0) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+
+  opacity: 0.6;
+  pointer-events: none;
+  z-index: 1;
+  transition: opacity 0.4s ease;
+}
+
+/* Keep content above the glass effect */
+.login-box > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* Hover effect (optional but matches your cards) */
+.login-box:hover {
+  transform: translateY(-6px) scale(1.01);
+
+  border-color: rgba(255, 255, 255, 0.6);
+
+  box-shadow: 
+    0 25px 60px rgba(255, 255, 255, 0.25),
+    0 12px 40px rgba(0, 0, 0, 0.25),
+    0 0 20px rgba(255, 255, 255, 0.15);
+}
+
+.login-box:hover::before {
+  opacity: 1;
 }
 
 .login-header {
@@ -151,7 +232,7 @@
   display: block;
   font-weight: 200;
   margin-bottom: 8px;
-  color: var(--text-secondary);
+  color: white;
   font-size: 0.9rem;
 }
 
@@ -159,7 +240,7 @@
   width: 100%;
   padding: 12px 15px;
   background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 115, 0, 0.3);
+  border: 1px solid rgba(255, 115, 0, 0.767);
   border-radius: 8px;
   color: var(--light);
   font-size: 0.95rem;
@@ -201,7 +282,7 @@
   height: 50px;
   border-radius: 25px;
   overflow: hidden;
-  box-shadow: 0 4px 15px rgba(0, 110, 255, 0.199);
+  box-shadow: 0 4px 15px rgba(255, 123, 0, 0.199);
   transition: transform 0.2s ease;
   margin: 10px auto 0;
 }
@@ -220,9 +301,9 @@
   z-index: 1;
   background: conic-gradient(
     #ff7802 0%,
-    hsla(207, 100%, 50%, 0) 25%,
+    hsla(29, 100%, 50%, 0) 25%,
     #ff880000 50%,
-    #0077ff00 75%,
+    #ff730000 75%,
     #ff7802 100%
   );
   animation: spin 3s linear infinite;
