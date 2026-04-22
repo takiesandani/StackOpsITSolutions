@@ -675,8 +675,8 @@
   width: 24px;
   height: 24px;
   border-radius: 4px;
-  border: 1px solid rgba(255, 132, 0, 0.5);
-  background: rgba(255, 132, 0, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.1);
   color: var(--primary);
   cursor: pointer;
   font-size: 0.75rem;
@@ -686,41 +686,6 @@
   justify-content: center;
   position: relative;
   overflow: hidden;
-}
-
-.nav-btn::before {
-  content: "";
-  position: absolute;
-  inset: -2px;
-  border-radius: 6px;
-  background: conic-gradient(
-    from 0deg,
-    rgba(255, 119, 0, 0.3) 0deg,
-    rgba(255, 123, 0, 0.3) 40deg,
-    #ff6f00 50deg,
-    #ff831e 90deg,
-    #ff7300 100deg,
-    rgba(255, 145, 0, 0.3) 110deg,
-    rgba(255, 132, 0, 0.3) 360deg
-  );
-  animation: trainMove 6s linear infinite;
-  -webkit-mask-image: radial-gradient(
-    ellipse at 50% 50%,
-    transparent calc(100% - 2px),
-    black calc(100% - 2px),
-    black calc(100% - 1px),
-    transparent 100%
-  );
-  mask-image: radial-gradient(
-    ellipse at 50% 50%,
-    transparent calc(100% - 2px),
-    black calc(100% - 2px),
-    black calc(100% - 1px),
-    transparent 100%
-  );
-  pointer-events: none;
-  z-index: -1;
-  opacity: 1;
 }
 
 .nav-btn:hover:not(:disabled) {
@@ -794,7 +759,9 @@
   height: var(--side-peek-card-height, 130px);
   transform: scale(1);
   filter: saturate(0.72);
-  box-shadow: 0 0 10px rgba(255, 255, 255, 0.2); /* CHANGED FROM ORANGE TO WHITE */
+  box-shadow: 
+    0 4px 16px rgba(255, 255, 255, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
   transition: all 0.25s ease;
 }
 
@@ -880,23 +847,25 @@
 }
 
 .project-card {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 140, 0, 0.15); /* ADD THIS */
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   border-radius: 10px;
-  padding: 12px; /* REDUCED FROM 19.4px */
+  padding: 12px;
   cursor: pointer;
   transition: all 0.3s ease;
 
   display: flex;
   flex-direction: column;
-  gap: 4px; /* REDUCED FROM 7.14px */
+  gap: 4px;
 
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(25px);
   position: relative;
+  overflow: hidden;
 
-  overflow: hidden; /* ADD THIS */
-
-  box-shadow: 0 0 10px rgba(255, 255, 255, 0.3); /* CHANGED FROM ORANGE TO WHITE */
+  box-shadow: 
+    0 8px 32px rgba(255, 255, 255, 0.25),
+    0 4px 16px rgba(255, 255, 255, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
 .project-card::before {
@@ -908,8 +877,8 @@
   bottom: 0;
   background: linear-gradient(
     135deg,
-    rgba(0, 110, 255, 0.1) 0%,
-    rgba(30, 144, 255, 0.05) 100%
+    rgba(255, 255, 255, 0.2) 0%,
+    rgba(255, 255, 255, 0.05) 100%
   );
   opacity: 0;
   transition: opacity 0.4s ease;
@@ -918,7 +887,12 @@
 
 .project-card:hover {
   transform: translateY(-12px) scale(1.02);
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.6);
+  box-shadow: 
+    0 20px 60px rgba(255, 255, 255, 0.3),
+    0 0 0 1px rgba(255, 255, 255, 0.5) inset,
+    0 8px 32px rgba(255, 255, 255, 0.25);
 
   animation: live-glow 1.6s ease-in-out infinite alternate;
 }
@@ -986,11 +960,7 @@
 .project-icon {
   width: 50px;
   height: 50px;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.1) 0%, /* CHANGED FROM ORANGE */
-    rgba(255, 255, 255, 0.05) 100% /* CHANGED FROM ORANGE */
-  );
+  background: rgba(255, 255, 255, 0.15);
   border-radius: 10px;
   display: flex;
   align-items: center;
@@ -998,7 +968,9 @@
   font-size: 24.5px;
   color: var(--primary);
   flex-shrink: 0;
-  box-shadow: 0 8px 16px rgba(255, 255, 255, 0.15); /* CHANGED FROM ORANGE TO WHITE */
+  box-shadow: 
+    0 8px 20px rgba(255, 255, 255, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
   transition: all 0.4s ease;
 }
 
@@ -1309,44 +1281,13 @@
   grid-column: 1;
   grid-row: 1 / 3;
   position: relative;
-  box-shadow: 0 0 20px rgba(255, 255, 255, 0.25), inset 0 0 20px rgba(255, 255, 255, 0.1); /* CHANGED FROM ORANGE TO WHITE GLASSMORPHISM */
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.billing-card::before {
-  content: "";
-  position: absolute;
-  inset: -2px;
-  border-radius: 12px;
-  background: conic-gradient(
-    from 0deg,
-    rgba(255, 136, 0, 0.3) 0deg,
-    rgba(255, 140, 0, 0.3) 40deg,
-    #ff6600 50deg,
-    #ff6600 90deg,
-    #ff6600 100deg,
-    rgba(255, 136, 0, 0.3) 110deg,
-    rgba(255, 136, 0, 0.3) 360deg
-  );
-  animation: trainMove 6s linear infinite;
-  -webkit-mask-image: radial-gradient(
-    ellipse at 50% 50%,
-    transparent calc(100% - 4px),
-    black calc(100% - 4px),
-    black calc(100% - 1px),
-    transparent 100%
-  );
-  mask-image: radial-gradient(
-    ellipse at 50% 50%,
-    transparent calc(100% - 4px),
-    black calc(100% - 4px),
-    black calc(100% - 1px),
-    transparent 100%
-  );
-  pointer-events: none;
-  z-index: 10;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(25px);
+  box-shadow: 
+    0 8px 32px rgba(255, 255, 255, 0.25),
+    0 4px 16px rgba(255, 255, 255, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
 /* SUNBIRD LEFT MENU - For Sunbird Users Only */
@@ -2094,10 +2035,13 @@
 
 .governance-card {
   grid-row: 1;
-  box-shadow: 0 0 20px rgba(255, 255, 255, 0.25), inset 0 0 20px rgba(255, 255, 255, 0.1); /* CHANGED FROM ORANGE TO WHITE GLASSMORPHISM */
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(25px);
+  box-shadow: 
+    0 8px 32px rgba(255, 255, 255, 0.25),
+    0 4px 16px rgba(255, 255, 255, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
 .secondary-card {
@@ -2105,19 +2049,22 @@
 }
 
 .dashboard-card {
-  background: rgba(255, 255, 255, 0.05); /* INCREASED FROM 0.04 FOR GLASSMORPHISM */
-  border: 1px solid rgba(255, 255, 255, 0.2); /* CHANGED FROM ORANGE TO WHITE */
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   border-radius: 10px;
   padding: 19.4px;
   cursor: pointer;
   transition: all 0.3s ease;
-  backdrop-filter: blur(20px); /* INCREASED FROM 10px */
+  backdrop-filter: blur(25px);
   position: relative;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  box-shadow: 0 0 20px rgba(255, 255, 255, 0.25), inset 0 0 20px rgba(255, 255, 255, 0.1); /* CHANGED FROM ORANGE TO WHITE GLASSMORPHISM */
+  box-shadow: 
+    0 8px 32px rgba(255, 255, 255, 0.25),
+    0 4px 16px rgba(255, 255, 255, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
 .dashboard-card::before {
@@ -2139,11 +2086,12 @@
 
 .dashboard-card:hover {
   transform: translateY(-12px) scale(1.01);
-  background: rgba(255, 255, 255, 0.08); /* INCREASED FOR MORE GLASS EFFECT */
-  border-color: rgba(255, 255, 255, 0.4);
-  box-shadow:
-    0 25px 60px rgba(255, 255, 255, 0.2), /* CHANGED FROM ORANGE TO WHITE */
-    0 0 40px rgba(255, 255, 255, 0.15); /* CHANGED FROM BLUE TO WHITE */
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.6);
+  box-shadow: 
+    0 25px 60px rgba(255, 255, 255, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.5) inset,
+    0 12px 40px rgba(255, 255, 255, 0.3);
   animation: live-glow 1.6s ease-in-out infinite alternate;
 }
 
