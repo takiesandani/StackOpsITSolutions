@@ -5207,6 +5207,7 @@ app.get('/api/microsoft-devices', authenticateToken, async (req, res) => {
 // Fetch security alerts from Microsoft Graph
 async function fetchSecurityAlerts(token) {
     try {
+        console.log('[Security] 🔍 Fetching alerts from Microsoft Graph API...');
         const response = await fetch('https://graph.microsoft.com/v1.0/security/alerts?$top=50&$orderby=createdDateTime desc', {
             method: 'GET',
             headers: {
@@ -5216,14 +5217,16 @@ async function fetchSecurityAlerts(token) {
         });
 
         if (!response.ok) {
-            console.log('[Security] Alerts endpoint returned:', response.status);
+            console.warn('[Security] ⚠️ Alerts endpoint returned status:', response.status);
             return [];
         }
 
         const data = await response.json();
-        return data.value || [];
+        const alerts = data.value || [];
+        console.log('[Security] ✅ Successfully retrieved %d alerts from Microsoft Graph', alerts.length);
+        return alerts;
     } catch (error) {
-        console.error('[Security] Failed to fetch alerts:', error.message);
+        console.error('[Security] ❌ Failed to fetch alerts:', error.message);
         return [];
     }
 }
@@ -5231,6 +5234,7 @@ async function fetchSecurityAlerts(token) {
 // Fetch security incidents from Microsoft Graph
 async function fetchSecurityIncidents(token) {
     try {
+        console.log('[Security] 🔍 Fetching incidents from Microsoft Graph API...');
         const response = await fetch('https://graph.microsoft.com/v1.0/security/incidents?$top=50&$orderby=createdDateTime desc', {
             method: 'GET',
             headers: {
@@ -5240,14 +5244,16 @@ async function fetchSecurityIncidents(token) {
         });
 
         if (!response.ok) {
-            console.log('[Security] Incidents endpoint returned:', response.status);
+            console.warn('[Security] ⚠️ Incidents endpoint returned status:', response.status);
             return [];
         }
 
         const data = await response.json();
-        return data.value || [];
+        const incidents = data.value || [];
+        console.log('[Security] ✅ Successfully retrieved %d incidents from Microsoft Graph', incidents.length);
+        return incidents;
     } catch (error) {
-        console.error('[Security] Failed to fetch incidents:', error.message);
+        console.error('[Security] ❌ Failed to fetch incidents:', error.message);
         return [];
     }
 }
@@ -5323,9 +5329,10 @@ app.get('/api/security-events', authenticateToken, async (req, res) => {
         }
 
         const token = await getMicrosoftGraphToken();
+        console.log('[Security Events] 🔑 Microsoft Graph token obtained successfully');
 
         // Fetch all security data in parallel
-        console.log('[Security Events] Fetching security data...');
+        console.log('[Security Events] 🚀 Fetching security data from Microsoft Graph...');
         const [alerts, incidents, threatIndicators, signIns] = await Promise.all([
             fetchSecurityAlerts(token),
             fetchSecurityIncidents(token),
@@ -5333,9 +5340,17 @@ app.get('/api/security-events', authenticateToken, async (req, res) => {
             fetchSecuritySignIns(token)
         ]);
 
+        console.log('[Security Events] 📊 Raw data from Microsoft Graph API:', {
+            alertsCount: alerts.length,
+            incidentsCount: incidents.length,
+            threatIndicatorsCount: threatIndicators.length,
+            signInsCount: signIns.length
+        });
+
         // ===== DATA PROCESSING & CORRELATION =====
 
         // 1. Process alerts
+        console.log('[Security Events] 🔄 Processing alerts...');
         const processedAlerts = alerts.map(alert => ({
             id: alert.id,
             title: alert.title || 'Unknown Alert',
@@ -5349,6 +5364,7 @@ app.get('/api/security-events', authenticateToken, async (req, res) => {
         }));
 
         // 2. Process incidents
+        console.log('[Security Events] 🔄 Processing incidents...');
         const processedIncidents = incidents.map(incident => ({
             id: incident.id,
             displayName: incident.displayName || 'Unknown Incident',
@@ -5362,6 +5378,7 @@ app.get('/api/security-events', authenticateToken, async (req, res) => {
         }));
 
         // 3. Identify suspicious sign-ins
+        console.log('[Security Events] 🔄 Processing sign-in data...');
         const suspiciousSignIns = signIns.filter(signIn => {
             const riskLevel = signIn.riskLevelDuringSignIn;
             const status = signIn.status?.errorCode === 0 ? 'Success' : 'Failed';
@@ -5470,7 +5487,17 @@ app.get('/api/security-events', authenticateToken, async (req, res) => {
         // Sort by timestamp
         activityFeed.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
-        console.log(`[Security Events] Compiled: ${processedAlerts.length} alerts, ${processedIncidents.length} incidents, ${processedThreats.length} threats, ${suspiciousSignIns.length} suspicious sign-ins`);
+        console.log('[Security Events] ✅ Compilation complete:');
+        console.log('[Security Events]   - Processed Alerts:', processedAlerts.length);
+        console.log('[Security Events]   - Processed Incidents:', processedIncidents.length);
+        console.log('[Security Events]   - Threat Indicators:', processedThreats.length);
+        console.log('[Security Events]   - Active Incidents:', activeIncidents.length);
+        console.log('[Security Events]   - High Severity Alerts:', highSeverityAlerts.length);
+        console.log('[Security Events]   - Users Under Attack:', usersUnderAttack.length);
+        console.log('[Security Events]   - Activity Feed Items:', activityFeed.length);
+        console.log('[Security Events]   - Security Score:', securityScore);
+
+        console.log(`[Security Events] 📤 Sending response to frontend for user: ${userEmail}`);
 
         res.json({
             success: true,
@@ -5496,7 +5523,7 @@ app.get('/api/security-events', authenticateToken, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('[Security Events] Error:', error.message);
+        console.error('[Security Events] ❌ Error:', error.message);
         
         res.status(500).json({ 
             error: 'Failed to fetch security events data',

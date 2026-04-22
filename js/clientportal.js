@@ -5805,6 +5805,8 @@ async function fetchSunbirdSecurityEventsData() {
     const token = localStorage.getItem('authToken');
     if (!token) throw new Error('Authentication required');
 
+    console.log('[Frontend] 🚀 Fetching security events from /api/security-events...');
+    
     const response = await fetch('/api/security-events', {
         headers: {
             'Authorization': `Bearer ${token}`,
@@ -5812,11 +5814,21 @@ async function fetchSunbirdSecurityEventsData() {
         }
     });
 
+    console.log('[Frontend] 📡 Response status:', response.status);
+
     if (!response.ok) {
+        console.error('[Frontend] ❌ Failed to fetch security events:', response.status);
         throw new Error(`Failed to fetch security events (${response.status})`);
     }
 
     const data = await response.json();
+    console.log('[Frontend] ✅ Security data received:', {
+        success: data.success,
+        summary: data.summary,
+        incidentsCount: data.incidents?.length || 0,
+        alertsCount: data.alerts?.length || 0
+    });
+    
     if (!data.success) {
         throw new Error(data.message || 'Invalid security response');
     }
@@ -5891,6 +5903,8 @@ async function renderSunbirdSecurityAlertsView(forceRefresh = false) {
             }).join('')
             : '<div class="sunbird-activity-empty">No recent activity</div>';
         
+        console.log('[Sunbird Security Alerts] 📊 Data prepared - High Severity: %d, Active Incidents: %d, Total Incidents: %d', highSeverityAlerts, activeIncidents, incidents.length);
+        
         billingCard.innerHTML = `
             <div class="sunbird-panel-view">
                 <div class="billing-card-header">
@@ -5907,22 +5921,37 @@ async function renderSunbirdSecurityAlertsView(forceRefresh = false) {
                         <strong>${activeIncidents}</strong>
                     </div>
                 </div>
-                <div class="sunbird-incidents-table-wrap">
-                    <table class="sunbird-incidents-table">
-                        <thead>
-                            <tr>
-                                <th>Incident Name</th>
-                                <th>Severity</th>
-                                <th>Status</th>
-                                <th>Assigned To</th>
-                            </tr>
-                        </thead>
-                        <tbody>${rowsHtml}</tbody>
-                    </table>
+                
+                <!-- Security Incidents Table Section -->
+                <div class="sunbird-section-container">
+                    <h4 class="sunbird-section-heading">
+                        <i class="fas fa-exclamation-triangle"></i> Security Incidents
+                    </h4>
+                    <div class="sunbird-incidents-table-wrap">
+                        <table class="sunbird-incidents-table">
+                            <thead>
+                                <tr>
+                                    <th>Incident Name</th>
+                                    <th>Severity</th>
+                                    <th>Status</th>
+                                    <th>Assigned To</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rowsHtml}</tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- Real-Time Activity Feed Section -->
+                <div class="sunbird-section-container">
+                    <h4 class="sunbird-section-heading">
+                        <i class="fas fa-stream"></i> Real-Time Activity Feed
+                    </h4>
                     <div class="sunbird-activity-feed">
                         ${activityFeedHtml}
                     </div>
                 </div>
+                
                 ${renderSunbirdFullDashboardButton('security')}
             </div>
         `;

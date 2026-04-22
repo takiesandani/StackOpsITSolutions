@@ -1842,6 +1842,33 @@
   letter-spacing: 0.02em;
 }
 
+/* Separated Sections Container and Heading */
+.sunbird-section-container {
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sunbird-section-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 0;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #ff8800;
+  border-bottom: 1px solid rgba(255, 136, 0, 0.3);
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+
+.sunbird-section-heading i {
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+
 .sunbird-incidents-table-wrap {
   border: 1px solid rgba(255, 136, 0, 0.22);
   border-radius: 8px;
@@ -1850,8 +1877,7 @@
   background: rgba(28, 15, 2, 0.55);
   scrollbar-color: rgba(205, 161, 120, 0.45) transparent;
   scrollbar-width: thin;
-  max-height: 180px; /* Limit height to stay within card */
-  margin-bottom: 12px;
+  max-height: 200px; /* Limit height to stay within card */
 }
 
 .sunbird-activity-feed {
@@ -1861,7 +1887,7 @@
   background: rgba(28, 15, 2, 0.55);
   scrollbar-color: rgba(205, 161, 120, 0.45) transparent;
   scrollbar-width: thin;
-  max-height: 150px; /* Limit height to stay within card */
+  max-height: 220px; /* Increased height for activity feed */
   display: flex;
   flex-direction: column;
 }
@@ -5691,5 +5717,3 @@
   border-radius: 6px;
   border: 1px solid rgba(0, 110, 255, 0.2);
 }
-
-.stat-labe
