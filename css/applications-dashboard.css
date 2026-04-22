@@ -539,6 +539,41 @@
     color: #f87171;
 }
 
+.group-tag {
+    display: inline-block;
+    padding: 4px 8px;
+    margin: 2px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    background: rgba(34, 197, 94, 0.2);
+    color: #10b981;
+}
+
+.group-tag.no-groups {
+    background: rgba(107, 114, 128, 0.3);
+    color: #94a3b8;
+}
+
+.no-assignments {
+    color: #f87171 !important;
+    background: rgba(248, 113, 113, 0.1) !important;
+    border-left-color: rgba(248, 113, 113, 0.4) !important;
+}
+
+.app-groups {
+    font-size: 12px;
+    color: #10b981;
+    font-weight: 500;
+}
+
+.groups-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
     .applications-dashboard {
