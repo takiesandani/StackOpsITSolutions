@@ -4631,6 +4631,74 @@ app.get('/api/microsoft-applications', authenticateToken, async (req, res) => {
  * SUNBIRD CLIENT ONLY - Complete  Identity Protection dashboard data aggregation
  * Returns: Merged users, roles, sign-ins, auth methods with calculated metrics
  */
+app.get('/api/app-access/:spId', authenticateToken, async (req, res) => {
+  try {
+    const spId = req.params.spId;
+    const userEmail = req.user.email;
+
+    // Verify Sunbird tenant access only
+    const tenant = getTenantByEmail(userEmail);
+    if (!tenant || tenant.clientId !== 'sunbird') {
+      return res.status(403).json({ 
+        error: 'Access denied',
+        message: 'App access details only available for authorized Sunbird users'
+      });
+    }
+
+    console.log(`[App Access] Fetching access details for SP ${spId}`);
+
+    // Get Microsoft Graph token
+    const token = await getMicrosoftGraphToken();
+
+    // Fetch app role assignments
+    const assignments = await fetchAppRoleAssignments(token, spId);
+
+    // Process assignments to count users and extract groups
+    let userCount = 0;
+    const groupNames = new Set();
+    
+    assignments.forEach(assignment => {
+      if (assignment.principalType === 'User') {
+        userCount++;
+      } else if (assignment.principalType === 'Group' && assignment.principalDisplayName) {
+        groupNames.add(assignment.principalDisplayName);
+      }
+    });
+
+    const groups = Array.from(groupNames);
+
+    const responseData = {
+      success: true,
+      spId: spId,
+      users: userCount,
+      groups: groups,
+      hasDirect: userCount > 0 || groups.length > 0,
+      totalAssignments: assignments.length,
+      message: userCount === 0 && groups.length === 0 
+        ? 'No direct user or group assignments detected for this app'
+        : `App has ${userCount} direct users and ${groups.length} groups assigned`
+    };
+
+    console.log(`[App Access] SP ${spId}: ${userCount} users, ${groups.length} groups`);
+    res.json(responseData);
+
+  } catch (error) {
+    console.error(`[App Access] Error for SP ${req.params.spId}:`, error.message);
+    
+    if (error.message.includes('Missing Microsoft Graph credentials')) {
+      return res.status(503).json({ 
+        error: 'Microsoft Graph unavailable',
+        message: 'Service temporarily unavailable'
+      });
+    }
+
+    res.status(500).json({ 
+      error: 'Failed to fetch app access details',
+      message: error.message
+    });
+  }
+});
+
 app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) => {
     try {
         const userEmail = req.user.email;
