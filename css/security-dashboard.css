@@ -24,7 +24,6 @@
 }
 
 /* ==================== HEADER ==================== */
-
 .security-dashboard-title {
     display: flex;
     justify-content: space-between;
@@ -601,23 +600,7 @@
 
 /* ==================== SCROLLBAR ==================== */
 
-.activity-feed-container::-webkit-scrollbar {
-    width: 3px;
-}
-
-.activity-feed-container::-webkit-scrollbar-track {
-    background: transparent;
-    border-radius: 2px;
-}
-
-.activity-feed-container::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.3);
-    border-radius: 2px;
-}
-
-.activity-feed-container::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.5);
-}
+/* NO SCROLLBAR - Uses css/scrollbar.css instead */
 
 /* =====================================================
    EMAIL SECURITY DASHBOARD STYLES

@@ -28,6 +28,18 @@ function isSunbirdUser() {
     return SUNBIRD_EMAILS.includes(userEmail.toLowerCase());
 }
 
+// Update Sunbird logo visibility based on user type
+function updateSunbirdLogoVisibility() {
+    const logoImg = document.querySelector('.sunbird-logo-img');
+    if (logoImg) {
+        if (isSunbirdUser()) {
+            logoImg.style.display = 'block';
+        } else {
+            logoImg.style.display = 'none';
+        }
+    }
+}
+
 // Check if session is still valid
 function isSessionValid() {
     const isLoggedIn = sessionStorage.getItem('isLoggedIn');
@@ -3752,6 +3764,9 @@ function handleMfaVerification() {
                 userNameMobile.textContent = displayName;
             }
             
+            // Update Sunbird logo visibility
+            updateSunbirdLogoVisibility();
+            
             showNotification('Authentication successful! Redirecting...', true);
             
             // Handle cross-portal redirection (Admin vs Client)
@@ -3857,6 +3872,9 @@ function setupSessionManagement() {
         if (userNameMobile) {
             userNameMobile.textContent = displayName;
         }
+        
+        // Update Sunbird logo visibility
+        updateSunbirdLogoVisibility();
         
         // Load billing card if user is logged in
         bootstrapDashboardDataAfterLogin();

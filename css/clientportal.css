@@ -680,6 +680,7 @@
   height: 32px;
   width: auto;
   object-fit: contain;
+  display: none;
 }
 
 .user-name {
