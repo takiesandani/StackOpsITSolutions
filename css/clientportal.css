@@ -3263,8 +3263,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   min-width: 140px;
   height: 44px;
   border-radius: 22px;
-  overflow: hidden;
-  background: black;
+  overflow: visible;
   box-shadow: 0 4px 15px rgba(255, 255, 255, 0.15);
   margin-right: 16px;
 }
@@ -3299,9 +3298,10 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   padding: 0 20px;
   background: linear-gradient(
     135deg,
-    rgba(255, 255, 255, 0.15),
+    rgba(0, 0, 0, 0.15),
     rgba(255, 255, 255, 0.05)
   );
+
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   color: #ffffff !important;
