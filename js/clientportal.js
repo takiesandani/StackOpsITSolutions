@@ -3226,6 +3226,7 @@ function setupEventListeners() {
     const loginForm = document.getElementById('login-form');
     const logoutBtn = document.getElementById('btn-logout');
     const backBtn = document.getElementById('btn-back');
+    const backBtnsGeneric = document.querySelectorAll('[id="btn-back"]');
     const passwordToggle = document.getElementById('password-toggle');
     const navPrev = document.getElementById('nav-prev');
     const navNext = document.getElementById('nav-next');
@@ -3240,7 +3241,7 @@ function setupEventListeners() {
     const backToLoginLink = document.getElementById('back-to-login');
     const backBtnDevices = document.getElementById('btn-back-devices');
     const backBtnSecurity = document.getElementById('btn-back-security');
-    const backBtnEmailSecurity = document.getElementById('btn-back-email-security');
+    const backBtnEmailSecurity = document.getElementById('btn-back-email-security') || document.getElementById('btn-back-email');
     const backBtnBackupRecovery = document.getElementById('btn-back-backup-recovery');
 
     if (loginForm) {
@@ -3298,7 +3299,9 @@ function setupEventListeners() {
         logoutBtn.addEventListener('click', handleLogout);
     }
 
-    if (backBtn) {
+    if (backBtnsGeneric.length) {
+        backBtnsGeneric.forEach(btn => btn.addEventListener('click', goBackToProjects));
+    } else if (backBtn) {
         backBtn.addEventListener('click', goBackToProjects);
     }
 

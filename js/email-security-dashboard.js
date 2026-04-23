@@ -602,7 +602,9 @@ function populateEmailInsights(insights) {
  * Setup back button for email security dashboard
  */
 function setupEmailSecurityBackButton() {
-    const backBtn = document.getElementById('btn-back-email');
+    const backBtn = document.getElementById('btn-back-email') ||
+        document.getElementById('btn-back-email-security') ||
+        document.querySelector('#email-security-view [id="btn-back"]');
     if (backBtn) {
         backBtn.onclick = function() {
             resetEmailSecurityDashboard();

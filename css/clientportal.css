@@ -2421,14 +2421,17 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
 .dashboard-card-vertical-container {
   display: grid;
-  grid-template-rows: 1fr 11.2px 1fr;
+  grid-template-rows: minmax(0, 1fr) 11.2px minmax(0, 1fr);
   gap: 0;
   grid-column: 2;
   grid-row: 1 / 3;
+  min-height: 0;
 }
 
 .governance-card {
   grid-row: 1;
+  min-height: 0;
+  justify-content: flex-start;
 
   position: relative;
   overflow: hidden;
@@ -2481,6 +2484,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
 .secondary-card {
   grid-row: 3;
+  min-height: 0;
 }
 
 .dashboard-card {
@@ -2768,11 +2772,13 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 .sunbird-governance-content {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
 .sunbird-governance-table-wrap {
   width: 100%;
   height: 100%;
+  max-height: 100%;
   overflow: auto;
   padding-right: 2px;
   scrollbar-width: thin;
@@ -3945,39 +3951,88 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
 .btn-back {
   position: relative;
+  display: inline-flex;
+  margin-bottom: 16px;
+}
+
+.btn-back .glow-wrap {
+  position: relative;
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 24px;
+  overflow: hidden;
+  background: transparent;
+}
+
+.btn-back .glow-wrap .glowing-border-layer {
+  position: absolute;
+  top: -100%;
+  left: -100%;
+  width: 300%;
+  height: 300%;
+  background: conic-gradient(
+    from 0deg,
+    #0066ff,
+    transparent 25%,
+    transparent 75%,
+    #0066ff
+  );
+  animation: spin-back-btn 4s linear infinite;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Actual back buttons (all dashboard variants) */
+.btn-back button,
+.btn-back-dashboard,
+.btn-back-identity {
+  position: relative;
+  z-index: 1;
+  appearance: none;
+  -webkit-appearance: none;
   padding: 10px 16px;
-  background: rgba(0, 110, 255, 0.1);
-  color: #0066FF;
-  border: 1px solid rgba(0, 110, 255, 0.3);
-  border-radius: 8px;
+  min-height: 40px;
+  background: #09111d;
+  color: #d8ecff;
+  border: 1px solid rgba(0, 110, 255, 0.42);
+  border-radius: 22px;
   cursor: pointer;
-  font-weight: 200;
+  font-weight: 300;
   font-size: 14px;
   transition: all 0.3s ease;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.2px;
+  box-shadow: 0 0 20px rgba(0, 110, 255, 0.15);
 }
 
-.btn-back:hover {
-  background: rgba(0, 110, 255, 0.2);
-  border-color: rgba(0, 110, 255, 0.6);
+.btn-back button:hover,
+.btn-back-dashboard:hover,
+.btn-back-identity:hover {
+  background: rgba(0, 110, 255, 0.18);
+  border-color: rgba(120, 185, 255, 0.75);
   color: #ffffff;
   transform: translateX(-2px);
-  box-shadow: 0 0 15px rgba(0, 110, 255, 0.3);
+  box-shadow: 0 0 24px rgba(0, 110, 255, 0.3);
 }
 
-.btn-back:active {
+.btn-back button:active,
+.btn-back-dashboard:active,
+.btn-back-identity:active {
   transform: translateX(-1px) scale(0.98);
 }
 
-.btn-back i {
+.btn-back button i,
+.btn-back-dashboard i,
+.btn-back-identity i {
   font-size: 16px;
   transition: transform 0.3s ease;
 }
 
-.btn-back:hover i {
+.btn-back button:hover i,
+.btn-back-dashboard:hover i,
+.btn-back-identity:hover i {
   transform: translateX(-2px);
 }
 
@@ -4039,25 +4094,35 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
 /* Responsive back button */
 @media (max-width: 768px) {
-  .btn-back {
+  .btn-back button,
+  .btn-back-dashboard,
+  .btn-back-identity {
     padding: 8px 12px;
     font-size: 13px;
     gap: 6px;
+    min-height: 36px;
   }
 
-  .btn-back i {
+  .btn-back button i,
+  .btn-back-dashboard i,
+  .btn-back-identity i {
     font-size: 14px;
   }
 }
 
 @media (max-width: 480px) {
-  .btn-back {
+  .btn-back button,
+  .btn-back-dashboard,
+  .btn-back-identity {
     padding: 6px 10px;
     font-size: 12px;
     gap: 5px;
+    min-height: 34px;
   }
 
-  .btn-back i {
+  .btn-back button i,
+  .btn-back-dashboard i,
+  .btn-back-identity i {
     font-size: 12px;
   }
 }
