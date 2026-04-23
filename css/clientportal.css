@@ -3264,7 +3264,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   height: 44px;
   border-radius: 22px;
   overflow: hidden;
-  background: transparent;
+  background: black;
   box-shadow: 0 4px 15px rgba(255, 255, 255, 0.15);
   margin-right: 16px;
 }
