@@ -3704,6 +3704,53 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   }
 }
 
+/* Fix Applications header/back button alignment */
+#dashboard-view .applications-dashboard .dashboard-header {
+  display: block !important;
+  margin-bottom: 12px !important;
+}
+
+#dashboard-view .applications-dashboard .dashboard-header-left {
+  position: relative;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  width: 100%;
+}
+
+#dashboard-view .applications-dashboard .btn-back-dashboard {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: auto !important;
+  min-width: 92px;
+  max-width: max-content;
+  padding: 8px 14px !important;
+  font-size: 0.78rem;
+  line-height: 1;
+}
+
+#dashboard-view .applications-dashboard .dashboard-heading {
+  width: auto !important;
+  max-width: 100%;
+  margin: 0 auto !important;
+  font-size: 1.26rem !important;
+  text-align: center;
+}
+
+@media (max-width: 768px) {
+  #dashboard-view .applications-dashboard .dashboard-header-left {
+    padding-top: 40px;
+  }
+
+  #dashboard-view .applications-dashboard .btn-back-dashboard {
+    top: 0;
+    transform: none;
+  }
+}
+
 @media (max-width: 768px) {
   .header-top {
     flex-direction: column;
@@ -5994,5 +6041,297 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   .btn-back-email-security,
   .btn-back-backup-recovery {
     width: 100%;
+  }
+}
+
+/* ============================================ */
+/* DASHBOARD CONSISTENCY PASS (ALL DASHBOARDS) */
+/* ============================================ */
+#devices-view .container-fluid,
+#security-events-view .container-fluid,
+#email-security-view .container-fluid,
+#backup-recovery-view .container-fluid,
+#dashboard-view .applications-dashboard,
+#dashboard-view .identity-dashboard,
+#dashboard-view .sunbird-dashboard {
+  max-width: 90vw;
+  width: 90vw;
+  margin: 10px auto 0;
+}
+
+#devices-view .dashboard-title,
+#security-events-view .security-dashboard-title,
+#email-security-view .email-dashboard-title,
+#backup-recovery-view .backup-dashboard-title,
+#dashboard-view .dashboard-header,
+#dashboard-view .identity-dashboard-header,
+#dashboard-view .apps-dashboard-header {
+  margin-bottom: 14px !important;
+}
+
+#devices-view .dashboard-title h2,
+#security-events-view .security-dashboard-title h2,
+#email-security-view .email-dashboard-title h2,
+#backup-recovery-view .backup-dashboard-title h2,
+#dashboard-view .dashboard-heading,
+#dashboard-view .identity-dashboard-title,
+#dashboard-view .apps-dashboard-title {
+  font-size: 1.4rem !important;
+  text-align: center;
+  width: 100%;
+}
+
+#devices-view .dashboard-title,
+#security-events-view .security-dashboard-title,
+#email-security-view .email-dashboard-title,
+#backup-recovery-view .backup-dashboard-title {
+  display: grid !important;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+#devices-view .dashboard-title h2,
+#security-events-view .security-dashboard-title h2,
+#email-security-view .email-dashboard-title h2,
+#backup-recovery-view .backup-dashboard-title h2 {
+  grid-column: 2;
+}
+
+#devices-view .dashboard-title .project-status,
+#security-events-view .security-dashboard-title .project-status,
+#email-security-view .email-dashboard-title .project-status,
+#backup-recovery-view .backup-dashboard-title .project-status {
+  justify-self: end;
+}
+
+#devices-view .devices-summary-cards,
+#security-events-view .security-summary-cards,
+#email-security-view .email-summary-cards,
+#backup-recovery-view .backup-summary-cards,
+#dashboard-view .identity-stats-cards,
+#dashboard-view .apps-stats-cards {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(165px, 220px));
+  justify-content: center;
+  gap: 10px !important;
+  margin-bottom: 14px !important;
+}
+
+#devices-view .device-stat-card,
+#security-events-view .security-stat-card,
+#email-security-view .email-stat-card,
+#backup-recovery-view .backup-stat-card,
+#dashboard-view .identity-stat-card,
+#dashboard-view .apps-stat-card {
+  min-height: 88px;
+  padding: 12px !important;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#devices-view .device-stat-icon,
+#security-events-view .sec-stat-icon,
+#email-security-view .email-stat-icon,
+#backup-recovery-view .backup-stat-icon,
+#dashboard-view .stat-card-icon,
+#dashboard-view .apps-stat-card .stat-icon {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  min-height: 38px;
+  border-radius: 12px;
+}
+
+#devices-view .device-stat-content h3,
+#security-events-view .sec-stat-content h3,
+#email-security-view .email-stat-content h3,
+#backup-recovery-view .backup-stat-content h3,
+#dashboard-view .stat-card-value,
+#dashboard-view .apps-stat-card .stat-value {
+  font-size: 1.12rem !important;
+  margin: 0 0 2px 0;
+}
+
+#devices-view .device-stat-content p,
+#security-events-view .sec-stat-content p,
+#email-security-view .email-stat-content p,
+#backup-recovery-view .backup-stat-content p,
+#dashboard-view .stat-card-label,
+#dashboard-view .apps-stat-card .stat-label {
+  font-size: 0.74rem !important;
+  margin: 0;
+}
+
+#devices-view .device-stat-card.metric-good {
+  background: rgba(34, 197, 94, 0.18) !important;
+  border-color: rgba(34, 197, 94, 0.7) !important;
+}
+
+#devices-view .device-stat-card.metric-medium {
+  background: rgba(245, 158, 11, 0.2) !important;
+  border-color: rgba(245, 158, 11, 0.7) !important;
+}
+
+#devices-view .device-stat-card.metric-poor {
+  background: rgba(239, 68, 68, 0.2) !important;
+  border-color: rgba(239, 68, 68, 0.7) !important;
+}
+
+#devices-view .devices-charts-section,
+#security-events-view .security-charts-section,
+#email-security-view .email-charts-container,
+#backup-recovery-view .backup-charts-container,
+#dashboard-view .apps-chart-section,
+#dashboard-view .identity-charts-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(330px, 420px));
+  justify-content: center;
+  gap: 12px !important;
+  margin-bottom: 14px !important;
+}
+
+#devices-view .chart-card.full-width,
+#security-events-view .chart-card.full-width,
+#email-security-view .chart-card.full-width,
+#backup-recovery-view .chart-card.full-width {
+  grid-column: auto !important;
+}
+
+#devices-view .chart-card,
+#security-events-view .chart-card,
+#email-security-view .chart-card,
+#backup-recovery-view .chart-card,
+#dashboard-view .apps-chart-container {
+  min-height: 280px;
+  padding: 14px !important;
+}
+
+#devices-view .devices-risk-alerts-section,
+#devices-view .devices-analytics-section,
+#security-events-view .security-risks-section,
+#dashboard-view .identity-health-section {
+  gap: 12px !important;
+  margin-bottom: 14px !important;
+}
+
+#devices-view .alert-item-device,
+#security-events-view .activity-item,
+#email-security-view .feed-item {
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.1);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+#devices-view .alert-item-device {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+#devices-view .alert-item-device .alert-title {
+  color: #ffffff;
+  font-size: 0.86rem;
+  line-height: 1.3;
+}
+
+#devices-view .alert-item-device .alert-time {
+  color: #d5d5d5;
+  font-size: 0.74rem;
+}
+
+#devices-view .alert-severity-badge,
+#email-security-view .feed-severity,
+#email-security-view .severity-badge,
+#security-events-view .severity-badge {
+  border-radius: 999px !important;
+  padding: 4px 10px !important;
+  font-size: 0.68rem !important;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+#devices-view .alert-severity-badge.high,
+#email-security-view .severity-badge.high,
+#security-events-view .severity-badge.high {
+  background: rgba(239, 68, 68, 0.18) !important;
+  color: #ef4444 !important;
+}
+
+#devices-view .alert-severity-badge.medium,
+#email-security-view .severity-badge.medium,
+#security-events-view .severity-badge.medium {
+  background: rgba(245, 158, 11, 0.2) !important;
+  color: #f59e0b !important;
+}
+
+#devices-view .alert-severity-badge.low,
+#email-security-view .severity-badge.low,
+#security-events-view .severity-badge.low {
+  background: rgba(34, 197, 94, 0.18) !important;
+  color: #22c55e !important;
+}
+
+#devices-view .monitor-card,
+#security-events-view .monitor-card,
+#email-security-view .monitor-card,
+#backup-recovery-view .monitor-card,
+#security-events-view .incident-table-container,
+#email-security-view .email-table-container,
+#backup-recovery-view .backup-table-container,
+#dashboard-view .identity-users-table-container,
+#dashboard-view .apps-table-container {
+  margin-top: 0 !important;
+  margin-bottom: 12px !important;
+  padding: 14px !important;
+}
+
+#devices-view .insights-section,
+#security-events-view .security-risks-section,
+#email-security-view .email-risks-panel,
+#backup-recovery-view .backup-risks-panel,
+#dashboard-view .identity-insights-section {
+  margin-top: 0 !important;
+}
+
+#devices-view button,
+#security-events-view button,
+#email-security-view button,
+#backup-recovery-view button,
+#dashboard-view .identity-dashboard button,
+#dashboard-view .applications-dashboard button {
+  width: auto;
+  min-width: fit-content;
+  max-width: 100%;
+  white-space: nowrap;
+  border-radius: 22px !important;
+  padding-inline: 14px;
+}
+
+@media (max-width: 1024px) {
+  #devices-view .dashboard-title,
+  #security-events-view .security-dashboard-title,
+  #email-security-view .email-dashboard-title,
+  #backup-recovery-view .backup-dashboard-title {
+    grid-template-columns: 1fr;
+  }
+
+  #devices-view .dashboard-title h2,
+  #security-events-view .security-dashboard-title h2,
+  #email-security-view .email-dashboard-title h2,
+  #backup-recovery-view .backup-dashboard-title h2 {
+    grid-column: auto;
+    text-align: left;
+  }
+
+  #devices-view .dashboard-title .project-status,
+  #security-events-view .security-dashboard-title .project-status,
+  #email-security-view .email-dashboard-title .project-status,
+  #backup-recovery-view .backup-dashboard-title .project-status {
+    justify-self: start;
   }
 }

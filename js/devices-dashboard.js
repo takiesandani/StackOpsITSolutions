@@ -92,6 +92,23 @@ function updateDevicesSummaryCards(summary) {
     document.getElementById('devices-compliant-pct').textContent = summary.compliancePercentage + '%';
     document.getElementById('devices-encrypted-pct').textContent = summary.encryptionPercentage + '%';
     document.getElementById('devices-active-24h').textContent = summary.activityBreakdown?.active24h || 0;
+    updateDevicesMetricTone('devices-compliant-pct', summary.compliancePercentage);
+    updateDevicesMetricTone('devices-encrypted-pct', summary.encryptionPercentage);
+}
+
+function updateDevicesMetricTone(metricId, percentageValue) {
+    const metric = document.getElementById(metricId);
+    const card = metric?.closest('.device-stat-card');
+    if (!card) return;
+    card.classList.remove('metric-good', 'metric-medium', 'metric-poor');
+    const value = Number(percentageValue || 0);
+    if (value > 75) {
+        card.classList.add('metric-good');
+    } else if (value >= 25) {
+        card.classList.add('metric-medium');
+    } else {
+        card.classList.add('metric-poor');
+    }
 }
 
 // Initialize all device charts
