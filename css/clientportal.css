@@ -7,10 +7,10 @@
   --light: #ffffff;
   --gray: rgba(74, 74, 74, 0.63);
   --accent-glow: #e6e6e6;
-  --danger: #dc3545;
-  --warning: #ffc107;
-  --success: #28a745;
-  --info: #17a2b8;
+  --danger: #ff4d4d;
+  --warning: #ff9800;
+  --success: #00e676;
+  --info: #ffffff;
 
   /* Semantic text colors */
   --text-primary: #ffffff;
@@ -988,6 +988,10 @@
 .apps-stat-card,
 .email-stat-card,
 .security-stat-card {
+  position: relative;
+  overflow: hidden;
+
+  /* Liquid glass base */
   background: linear-gradient(
     135deg,
     rgba(255, 255, 255, 0.12),
@@ -998,15 +1002,13 @@
   -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
 
   border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 12px;
+  border-radius: 15px;
 
   box-shadow: 
-    0 6px 18px rgba(255, 255, 255, 0.32),
-    inset 0 0.5px 1px rgba(255, 255, 255, 0.452),
-    inset 0 -0.5px 1px rgba(0, 0, 0, 0.08);
+    0 12px 40px rgba(0, 0, 0, 0.25),
+    inset 0 1px 2px rgba(255, 255, 255, 0.5),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.15);
 
-  position: relative;
-  overflow: hidden;
   transition: all 0.4s ease;
 }
 
@@ -3262,7 +3264,8 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   height: 44px;
   border-radius: 22px;
   overflow: hidden;
-  box-shadow: 0 4px 15px rgba(255, 255, 255, 0.2);
+  background: transparent;
+  box-shadow: 0 4px 15px rgba(255, 255, 255, 0.15);
   margin-right: 16px;
 }
 
@@ -3293,16 +3296,22 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   left: 2px;
   width: calc(100% - 4px);
   height: calc(100% - 4px);
-  padding: 0;
-  background: #000000;
+  padding: 0 20px;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.15),
+    rgba(255, 255, 255, 0.05)
+  );
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   color: #ffffff !important;
-  border: none;
-  box-shadow: none;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.3);
   border-radius: 20px;
   font-size: 14px;
   font-weight: 200;
   cursor: pointer;
-  transition: color 0.3s;
+  transition: all 0.3s ease;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3313,7 +3322,9 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 .btn-back button:hover {
-  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.4);
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.2);
 }
 
 /* Apply to ALL back buttons */
