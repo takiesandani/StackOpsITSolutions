@@ -14,9 +14,10 @@ let currentEmailAlertFilter = null; // Track active user filter
 /**
  * Main entry point: Fetch email security data from API
  */
-async function fetchEmailSecurityData(project) {
+async function fetchEmailSecurityData(project, loadToken = window.dashboardLoadToken) {
     try {
         console.log('[Email Security] Fetching email security data...');
+        showEmailSecurityLoadingState();
         const authToken = localStorage.getItem('authToken');
         
         const response = await fetch('/api/email-security', {
@@ -32,6 +33,7 @@ async function fetchEmailSecurityData(project) {
         }
 
         emailSecurityData = await response.json();
+        if (window.activeDashboardKey !== 'email' || loadToken !== window.dashboardLoadToken) return;
         console.log('[Email Security] Data received:', emailSecurityData);
 
         if (emailSecurityData.success) {
@@ -43,6 +45,7 @@ async function fetchEmailSecurityData(project) {
             }
         }
     } catch (error) {
+        if (window.activeDashboardKey !== 'email' || loadToken !== window.dashboardLoadToken) return;
         console.error('[Email Security] Error fetching data:', error);
         document.getElementById('email-security-view').innerHTML = 
             `<div class="container-fluid"><div class="monitor-card" style="text-align: center; padding: 40px;">
@@ -50,6 +53,25 @@ async function fetchEmailSecurityData(project) {
                 <p style="color: #94a3b8; font-size: 12px; margin-top: 8px;">${error.message}</p>
             </div></div>`;
     }
+}
+
+function showEmailSecurityLoadingState() {
+    const risks = document.getElementById('email-risks-container');
+    const feed = document.getElementById('email-feed');
+    const table = document.getElementById('email-alerts-tbody');
+    const users = document.getElementById('email-affected-users');
+    const insights = document.getElementById('email-insights-container');
+    if (risks) risks.innerHTML = '<div style="text-align: center; padding: 24px; color: #5f6368;"><i class="fas fa-spinner fa-spin loading-spinner"></i> Loading risks...</div>';
+    if (feed) feed.innerHTML = '<div style="text-align: center; padding: 24px; color: #5f6368;"><i class="fas fa-spinner fa-spin loading-spinner"></i> Loading threats...</div>';
+    if (table) table.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px; color: #5f6368;"><i class="fas fa-spinner fa-spin loading-spinner"></i> Loading alerts...</td></tr>';
+    if (users) users.innerHTML = '<div style="text-align: center; padding: 24px; color: #5f6368;"><i class="fas fa-spinner fa-spin loading-spinner"></i> Loading user data...</div>';
+    if (insights) insights.innerHTML = '<div style="text-align: center; padding: 24px; color: #5f6368;"><i class="fas fa-spinner fa-spin loading-spinner"></i> Generating insights...</div>';
+}
+
+function clearEmailSecurityDashboardState() {
+    emailSecurityData = null;
+    currentEmailAlertFilter = null;
+    showEmailSecurityLoadingState();
 }
 
 /**
@@ -717,3 +739,6 @@ function handleInsightAction(action) {
         alertsTable.scrollIntoView({ behavior: 'smooth' });
     }
 }
+
+window.clearEmailSecurityDashboardState = clearEmailSecurityDashboardState;
+window.showEmailSecurityLoadingState = showEmailSecurityLoadingState;

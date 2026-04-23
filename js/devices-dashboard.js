@@ -7,7 +7,7 @@ let allDevicesData = [];
 let devicesWithoutPoliciesData = [];
 
 // Fetch Devices data from API
-async function fetchDevicesData(project) {
+async function fetchDevicesData(project, loadToken = window.dashboardLoadToken) {
     try {
         console.log('[Devices Dashboard] Fetching device data...');
         showDevicesLoadingState();
@@ -23,6 +23,7 @@ async function fetchDevicesData(project) {
         });
         
         const data = await response.json();
+        if (window.activeDashboardKey !== 'devices' || loadToken !== window.dashboardLoadToken) return;
         
         if (!response.ok || !data.success) {
             throw new Error(data.message || 'Failed to fetch devices');
@@ -45,6 +46,7 @@ async function fetchDevicesData(project) {
         initializeDevicesDashboard(data);
         
     } catch (error) {
+        if (window.activeDashboardKey !== 'devices' || loadToken !== window.dashboardLoadToken) return;
         console.error('[Devices Dashboard] Error fetching devices:', error.message);
         showNotification('Failed to load devices data: ' + error.message, false);
     }
@@ -797,6 +799,13 @@ function showDevicesLoadingState() {
     });
 }
 
+function clearDevicesDashboardState() {
+    allDevicesData = [];
+    devicesData = [];
+    devicesWithoutPoliciesData = [];
+    showDevicesLoadingState();
+}
+
 // Show modal with devices without policies
 function showDevicesWithoutPoliciesModal() {
     const modal = document.getElementById('devices-without-policies-modal');
@@ -881,3 +890,6 @@ document.addEventListener('DOMContentLoaded', () => {
         searchInput.addEventListener('input', filterDevices);
     }
 });
+
+window.clearDevicesDashboardState = clearDevicesDashboardState;
+window.showDevicesLoadingState = showDevicesLoadingState;

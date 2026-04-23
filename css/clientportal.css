@@ -1577,7 +1577,8 @@
     linear-gradient(
       to bottom,
       rgb(255, 162, 0),
-      rgbargba(255, 123, 0, 0.85) ba(0, 190, 255, 0)
+      rgba(255, 123, 0, 0.85),
+      rgba(0, 190, 255, 0)
     ),
     linear-gradient(180deg, rgba(255, 176, 80, 0.25), rgba(255, 176, 80, 0.25));
   background-repeat: no-repeat;
@@ -1921,7 +1922,7 @@
 .sunbird-mini-stat strong {
   font-size: 0.96rem;
   color: #fff5ea;
-  font-weight: 600;
+  font-weight: 200;
 }
 
 .sunbird-section-title {
@@ -1945,7 +1946,7 @@
   margin: 0;
   padding: 8px 0;
   font-size: 0.85rem;
-  font-weight: 500;
+  font-weight: 200;
   color: #ffffff;
   border-bottom: 1px solid rgba(255, 255, 255, 0.3);
   letter-spacing: 0.01em;
@@ -2148,7 +2149,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
 .sunbird-incidents-table th {
   color: #dab295;
-  font-weight: 600;
+  font-weight: 200;
 }
 
 .sunbird-empty-row {
@@ -2226,7 +2227,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   border-radius: 23px;
   padding: 6px 12px;
   font-size: 0.68rem;
-  font-weight: 500;
+  font-weight: 200;
   letter-spacing: 0.01em;
   cursor: pointer;
   transition: all 0.25s ease;
@@ -5461,7 +5462,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 .identity-users-table th,
 .apps-table th {
   color: #ffffff;
-  font-weight: 500;
+  font-weight: 200;
   letter-spacing: 0.02em;
 }
 
@@ -5511,7 +5512,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 .identity-card-title {
   color: #ffffff;
   font-size: 0.95rem;
-  font-weight: 500;
+  font-weight: 200;
   line-height: 1.2;
 }
 
@@ -5726,6 +5727,222 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   position: relative;
   width: 100%;
   min-height: 160px;
+}
+
+/* ============================================ */
+/* STRICT DASHBOARD DESIGN SYSTEM (SCOPED) */
+/* Devices, Security, Email, Backup, Applications */
+/* ============================================ */
+#devices-view .container-fluid,
+#security-events-view .container-fluid,
+#email-security-view .container-fluid,
+#backup-recovery-view .container-fluid,
+#dashboard-view .applications-dashboard {
+  width: 90vw;
+  max-width: 90vw;
+  margin: 14px auto 0;
+}
+
+#devices-view .dashboard-title,
+#security-events-view .security-dashboard-title,
+#email-security-view .email-dashboard-title,
+#backup-recovery-view .backup-dashboard-title,
+#dashboard-view .dashboard-header {
+  margin: 0 0 20px;
+  padding-top: 0;
+}
+
+#dashboard-view .applications-dashboard {
+  padding-top: 0;
+}
+
+#dashboard-view .dashboard-header-left,
+#devices-view .dashboard-title,
+#security-events-view .sec-title-section,
+#email-security-view .email-title-section,
+#backup-recovery-view .backup-title-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#dashboard-view .applications-dashboard h2,
+#devices-view .dashboard-title h2,
+#security-events-view .security-dashboard-title h2,
+#email-security-view .email-dashboard-title h2,
+#backup-recovery-view .backup-dashboard-title h2 {
+  color: #ffffff;
+  margin: 0;
+}
+
+.btn-back button,
+.btn-back-dashboard,
+.btn-back-identity,
+.btn-back-devices,
+.btn-back-security,
+.btn-back-email,
+.btn-back-email-security,
+.btn-back-backup-recovery {
+  border-radius: 22px !important;
+  min-height: 42px;
+  padding: 10px 16px !important;
+  border: 1px solid rgba(255, 255, 255, 0.6) !important;
+  background: rgba(255, 255, 255, 0.14) !important;
+  color: #ffffff !important;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.btn-back button:hover,
+.btn-back-dashboard:hover,
+.btn-back-identity:hover,
+.btn-back-devices:hover,
+.btn-back-security:hover,
+.btn-back-email:hover,
+.btn-back-email-security:hover,
+.btn-back-backup-recovery:hover {
+  background: rgba(255, 255, 255, 0.24) !important;
+  border-color: rgba(255, 255, 255, 0.85) !important;
+}
+
+#devices-view .device-stat-card,
+#security-events-view .security-stat-card,
+#email-security-view .email-stat-card,
+#backup-recovery-view .backup-stat-card,
+#dashboard-view .apps-stat-card,
+#devices-view .chart-card,
+#security-events-view .chart-card,
+#email-security-view .chart-card,
+#backup-recovery-view .chart-card,
+#dashboard-view .apps-chart-container,
+#devices-view .monitor-card,
+#security-events-view .monitor-card,
+#email-security-view .monitor-card,
+#backup-recovery-view .monitor-card,
+#security-events-view .incident-table-container,
+#email-security-view .email-table-container,
+#backup-recovery-view .backup-table-container,
+#dashboard-view .apps-table-container,
+#devices-view .insight-card,
+#email-security-view .insight-card,
+#backup-recovery-view .insight-card,
+#backup-recovery-view .actionable-insight-item,
+#dashboard-view .access-card,
+#dashboard-view .insight-item {
+  background: rgba(255, 255, 255, 0.16) !important;
+  border: 1px solid rgba(255, 255, 255, 0.55) !important;
+  border-radius: 18px !important;
+  box-shadow: 0 0 14px rgba(255, 255, 255, 0.22) !important;
+}
+
+#devices-view .devices-summary-cards,
+#security-events-view .security-summary-cards,
+#email-security-view .email-summary-cards,
+#backup-recovery-view .backup-summary-cards,
+#dashboard-view .apps-stats-cards,
+#devices-view .devices-charts-section,
+#security-events-view .security-charts-section,
+#email-security-view .email-charts-container,
+#backup-recovery-view .backup-charts-container,
+#dashboard-view .apps-chart-section,
+#devices-view .devices-risk-alerts-section,
+#devices-view .devices-analytics-section {
+  gap: 16px !important;
+  margin-bottom: 20px !important;
+}
+
+#devices-view table,
+#security-events-view table,
+#email-security-view table,
+#backup-recovery-view table,
+#dashboard-view .apps-table {
+  border-collapse: collapse;
+}
+
+#devices-view th, #devices-view td,
+#security-events-view th, #security-events-view td,
+#email-security-view th, #email-security-view td,
+#backup-recovery-view th, #backup-recovery-view td,
+#dashboard-view .apps-table th, #dashboard-view .apps-table td {
+  padding: 12px 14px !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.18) !important;
+}
+
+#devices-view .devices-table-container,
+#security-events-view .incident-table-container,
+#email-security-view .email-table-container,
+#backup-recovery-view .backup-table-container,
+#dashboard-view .apps-table-container,
+#devices-view #high-risk-devices-list,
+#devices-view #security-alerts-feed,
+#security-events-view #activity-feed,
+#email-security-view #email-feed,
+#backup-recovery-view .backup-modal-body {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.45) transparent;
+}
+
+#devices-view .devices-table-container::-webkit-scrollbar,
+#security-events-view .incident-table-container::-webkit-scrollbar,
+#email-security-view .email-table-container::-webkit-scrollbar,
+#backup-recovery-view .backup-table-container::-webkit-scrollbar,
+#dashboard-view .apps-table-container::-webkit-scrollbar,
+#devices-view #high-risk-devices-list::-webkit-scrollbar,
+#devices-view #security-alerts-feed::-webkit-scrollbar,
+#security-events-view #activity-feed::-webkit-scrollbar,
+#email-security-view #email-feed::-webkit-scrollbar,
+#backup-recovery-view .backup-modal-body::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+#devices-view .devices-table-container::-webkit-scrollbar-track,
+#security-events-view .incident-table-container::-webkit-scrollbar-track,
+#email-security-view .email-table-container::-webkit-scrollbar-track,
+#backup-recovery-view .backup-table-container::-webkit-scrollbar-track,
+#dashboard-view .apps-table-container::-webkit-scrollbar-track,
+#devices-view #high-risk-devices-list::-webkit-scrollbar-track,
+#devices-view #security-alerts-feed::-webkit-scrollbar-track,
+#security-events-view #activity-feed::-webkit-scrollbar-track,
+#email-security-view #email-feed::-webkit-scrollbar-track,
+#backup-recovery-view .backup-modal-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#devices-view .devices-table-container::-webkit-scrollbar-thumb,
+#security-events-view .incident-table-container::-webkit-scrollbar-thumb,
+#email-security-view .email-table-container::-webkit-scrollbar-thumb,
+#backup-recovery-view .backup-table-container::-webkit-scrollbar-thumb,
+#dashboard-view .apps-table-container::-webkit-scrollbar-thumb,
+#devices-view #high-risk-devices-list::-webkit-scrollbar-thumb,
+#devices-view #security-alerts-feed::-webkit-scrollbar-thumb,
+#security-events-view #activity-feed::-webkit-scrollbar-thumb,
+#email-security-view #email-feed::-webkit-scrollbar-thumb,
+#backup-recovery-view .backup-modal-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.45);
+  border-radius: 999px;
+}
+
+#devices-view .device-risk-badge.high,
+#security-events-view .severity-badge.high,
+#email-security-view .severity-badge.high,
+#email-security-view .risk-item.critical h4,
+#security-events-view .risk-card.critical .risk-card-title,
+#dashboard-view .risk-level-badge.high {
+  color: #ef4444 !important;
+}
+
+#devices-view .device-risk-badge.medium,
+#security-events-view .severity-badge.medium,
+#email-security-view .severity-badge.medium,
+#dashboard-view .risk-level-badge.medium {
+  color: #f59e0b !important;
+}
+
+#devices-view .device-risk-badge.low,
+#security-events-view .severity-badge.low,
+#email-security-view .severity-badge.low,
+#dashboard-view .risk-level-badge.low {
+  color: #22c55e !important;
 }
 
 @media (max-width: 1024px) {

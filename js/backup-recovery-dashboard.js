@@ -13,9 +13,10 @@ let backupChartInstances = {
 /**
  * Main entry point: Fetch backup recovery data from API
  */
-async function fetchBackupRecoveryData(project) {
+async function fetchBackupRecoveryData(project, loadToken = window.dashboardLoadToken) {
     try {
         console.log('[Backup Recovery] Fetching backup recovery data...');
+        showBackupRecoveryLoadingState();
         const authToken = localStorage.getItem('authToken');
         
         const response = await fetch('/api/backup-recovery', {
@@ -31,6 +32,7 @@ async function fetchBackupRecoveryData(project) {
         }
 
         backupRecoveryData = await response.json();
+        if (window.activeDashboardKey !== 'backup' || loadToken !== window.dashboardLoadToken) return;
         console.log('[Backup Recovery] Data received:', backupRecoveryData);
 
         if (backupRecoveryData.success) {
@@ -42,6 +44,7 @@ async function fetchBackupRecoveryData(project) {
             }
         }
     } catch (error) {
+        if (window.activeDashboardKey !== 'backup' || loadToken !== window.dashboardLoadToken) return;
         console.error('[Backup Recovery] Error fetching data:', error);
         document.getElementById('backup-recovery-view').innerHTML = 
             `<div class="container-fluid"><div class="monitor-card" style="text-align: center; padding: 40px;">
@@ -49,6 +52,22 @@ async function fetchBackupRecoveryData(project) {
                 <p style="color: #94a3b8; font-size: 12px; margin-top: 8px;">${error.message}</p>
             </div></div>`;
     }
+}
+
+function showBackupRecoveryLoadingState() {
+    const risks = document.getElementById('backup-risks-container');
+    const storage = document.getElementById('backup-storage-tbody');
+    const insights = document.getElementById('backup-insights-container');
+    const advanced = document.getElementById('backup-advanced-insights-container');
+    if (risks) risks.innerHTML = '<div style="text-align: center; padding: 24px; color: #5f6368;"><i class="fas fa-spinner fa-spin loading-spinner"></i> Loading risks...</div>';
+    if (storage) storage.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 20px; color: #5f6368;"><i class="fas fa-spinner fa-spin loading-spinner"></i> Loading storage data...</td></tr>';
+    if (insights) insights.innerHTML = '<div style="text-align: center; padding: 24px; color: #5f6368;"><i class="fas fa-spinner fa-spin loading-spinner"></i> Generating insights...</div>';
+    if (advanced) advanced.innerHTML = '<div style="text-align: center; padding: 24px; color: #5f6368;"><i class="fas fa-spinner fa-spin loading-spinner"></i> Generating insights...</div>';
+}
+
+function clearBackupRecoveryDashboardState() {
+    backupRecoveryData = null;
+    showBackupRecoveryLoadingState();
 }
 
 /**
@@ -805,3 +824,6 @@ function getTimeAgo(date) {
     }
     return 'just now';
 }
+
+window.clearBackupRecoveryDashboardState = clearBackupRecoveryDashboardState;
+window.showBackupRecoveryLoadingState = showBackupRecoveryLoadingState;

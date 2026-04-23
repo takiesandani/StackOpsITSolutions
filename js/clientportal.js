@@ -5,6 +5,20 @@ let charts = {};
 let currentProjectIndex = 0;
 let selectedProjectId = null;
 let previewLockedByClick = false;
+let activeDashboardKey = null;
+let dashboardLoadToken = 0;
+
+function beginDashboardTransition(dashboardKey) {
+    dashboardLoadToken += 1;
+    activeDashboardKey = dashboardKey;
+    window.activeDashboardKey = activeDashboardKey;
+    window.dashboardLoadToken = dashboardLoadToken;
+    return dashboardLoadToken;
+}
+
+function isDashboardLoadActive(dashboardKey, token) {
+    return activeDashboardKey === dashboardKey && dashboardLoadToken === token;
+}
 
 // Sunbird client emails - only these users can see  Identity Protection, Devices, Applications
 const SUNBIRD_EMAILS = [
@@ -955,8 +969,9 @@ function calculateHighRiskApplications(apps) {
 }
 
 // Open Applications full dashboard
-function openApplicationsDashboard() {
+function openApplicationsDashboard(loadToken = window.dashboardLoadToken) {
     console.log('[Applications Dashboard] Opening full dashboard...');
+    if (!isDashboardLoadActive('applications', loadToken)) return;
     
     const dashboardView = document.getElementById('dashboard-view');
     if (!dashboardView) return;
@@ -1020,7 +1035,7 @@ function openApplicationsDashboard() {
     // Initialize dashboard if data is ready
     if (applicationsData.length > 0) {
         console.log('[Applications Dashboard] Data already loaded, initializing immediately');
-        initializeApplicationsDashboard();
+        initializeApplicationsDashboard(loadToken);
     } else {
         // Fetch data first
         console.log('[Applications Dashboard] Waiting for data to load...');
@@ -1028,21 +1043,26 @@ function openApplicationsDashboard() {
         const maxWait = 5000;
         const checkInterval = setInterval(() => {
             waitTime += 100;
+            if (!isDashboardLoadActive('applications', loadToken)) {
+                clearInterval(checkInterval);
+                return;
+            }
             if (applicationsData.length > 0) {
                 console.log('[Applications Dashboard] Data loaded successfully');
                 clearInterval(checkInterval);
-                initializeApplicationsDashboard();
+                initializeApplicationsDashboard(loadToken);
             } else if (waitTime >= maxWait) {
                 console.warn('[Applications Dashboard] Data load timeout');
                 clearInterval(checkInterval);
-                initializeApplicationsDashboard();
+                initializeApplicationsDashboard(loadToken);
             }
         }, 100);
     }
 }
 
 // Initialize Applications dashboard
-async function initializeApplicationsDashboard() {
+async function initializeApplicationsDashboard(loadToken = window.dashboardLoadToken) {
+    if (!isDashboardLoadActive('applications', loadToken)) return;
     console.log('[Applications Dashboard] Initializing...');
     console.log(`[Applications Dashboard] Applications data: ${applicationsData.length}`);
     
@@ -1053,6 +1073,7 @@ async function initializeApplicationsDashboard() {
     
     // Populate dashboard content
     setTimeout(() => {
+        if (!isDashboardLoadActive('applications', loadToken)) return;
         console.log('[Applications Dashboard] Populating content...');
         populateApplicationsTable();
         initializeApplicationsCharts();
@@ -5285,9 +5306,30 @@ function buildApplicationsPreviewModel() {
 
 function viewProjectDashboard(project) {
     currentProject = project;
+    const loadToken = beginDashboardTransition(
+        project.isDevicesCard ? 'devices'
+        : project.isSecurityCard ? 'security'
+        : project.isEmailSecurityCard ? 'email'
+        : project.isBackupRecoveryCard ? 'backup'
+        : project.isApplicationsCard ? 'applications'
+        : project.isIdentityCard ? 'identity'
+        : 'generic'
+    );
     
     document.getElementById('projects-view').style.display = 'none';
     document.getElementById('dashboard-view').style.display = 'none';
+    const devicesView = document.getElementById('devices-view');
+    const securityEventsView = document.getElementById('security-events-view');
+    const emailSecurityView = document.getElementById('email-security-view');
+    const backupRecoveryView = document.getElementById('backup-recovery-view');
+    if (devicesView) devicesView.style.display = 'none';
+    if (securityEventsView) securityEventsView.style.display = 'none';
+    if (emailSecurityView) emailSecurityView.style.display = 'none';
+    if (backupRecoveryView) backupRecoveryView.style.display = 'none';
+    if (window.clearDevicesDashboardState) window.clearDevicesDashboardState();
+    if (window.clearSecurityDashboardState) window.clearSecurityDashboardState();
+    if (window.clearEmailSecurityDashboardState) window.clearEmailSecurityDashboardState();
+    if (window.clearBackupRecoveryDashboardState) window.clearBackupRecoveryDashboardState();
     
     // If this is the  Identity Protection card, fetch API data
     if (project.isIdentityCard) {
@@ -5297,12 +5339,14 @@ function viewProjectDashboard(project) {
     // If this is the Devices card, fetch device data
     else if (project.isDevicesCard) {
         document.getElementById('devices-view').style.display = 'block';
-        fetchDevicesData(project);
+        if (window.showDevicesLoadingState) window.showDevicesLoadingState();
+        fetchDevicesData(project, loadToken);
     }
     // If this is the Threat & Activity card, fetch security data
     else if (project.isSecurityCard) {
         document.getElementById('security-events-view').style.display = 'block';
-        fetchSecurityEventsData(project);
+        if (window.showSecurityDashboardLoadingState) window.showSecurityDashboardLoadingState();
+        fetchSecurityEventsData(project, loadToken);
     }
     // If this is the Email Security card, fetch email security data
     else if (project.isEmailSecurityCard) {
@@ -5311,7 +5355,8 @@ function viewProjectDashboard(project) {
             return;
         }
         document.getElementById('email-security-view').style.display = 'block';
-        fetchEmailSecurityData(project);
+        if (window.showEmailSecurityLoadingState) window.showEmailSecurityLoadingState();
+        fetchEmailSecurityData(project, loadToken);
     }
     // If this is the Backup and Recovery card, fetch backup recovery data
     else if (project.isBackupRecoveryCard) {
@@ -5320,12 +5365,13 @@ function viewProjectDashboard(project) {
             return;
         }
         document.getElementById('backup-recovery-view').style.display = 'block';
-        fetchBackupRecoveryData(project);
+        if (window.showBackupRecoveryLoadingState) window.showBackupRecoveryLoadingState();
+        fetchBackupRecoveryData(project, loadToken);
     }
     // If this is the Applications card, fetch applications data
     else if (project.isApplicationsCard) {
         document.getElementById('dashboard-view').style.display = 'block';
-        openApplicationsDashboard();
+        openApplicationsDashboard(loadToken);
     }
     else {
         document.getElementById('dashboard-view').style.display = 'block';
@@ -5397,6 +5443,7 @@ function goBackToProjects() {
 }
 
 function resetDashboard() {
+    beginDashboardTransition(null);
     document.getElementById('projects-view').style.display = 'block';
     document.getElementById('dashboard-view').style.display = 'none';
     const devicesView = document.getElementById('devices-view');
@@ -5408,6 +5455,10 @@ function resetDashboard() {
     if (securityEventsView) securityEventsView.style.display = 'none';
     if (emailSecurityView) emailSecurityView.style.display = 'none';
     if (backupRecoveryView) backupRecoveryView.style.display = 'none';
+    if (window.clearDevicesDashboardState) window.clearDevicesDashboardState();
+    if (window.clearSecurityDashboardState) window.clearSecurityDashboardState();
+    if (window.clearEmailSecurityDashboardState) window.clearEmailSecurityDashboardState();
+    if (window.clearBackupRecoveryDashboardState) window.clearBackupRecoveryDashboardState();
 
     currentProject = null;
     destroyCharts();

@@ -14,7 +14,7 @@
     - Set `--sunbird-menu-width: 210px;` (increased from 180px).
     - Set `--sunbird-menu-left-gap: 32px;` (increased from 28px) to ensure it doesn't "touch" the billing card visually.
 - **Menu Header**: Add a new class `.sunbird-menu-header` for the "Control Center" heading.
-    - Styles: Uppercase, small font size (0.65rem), bold (font-weight: 600), color: rgba(255, 255, 255, 0.5), margin-bottom: 12px, padding-left: 14px, letter-spacing: 0.1em.
+    - Styles: Uppercase, small font size (0.65rem), bold (font-weight: 200), color: rgba(255, 255, 255, 0.5), margin-bottom: 12px, padding-left: 14px, letter-spacing: 0.1em.
 - **Menu Adjustments**: 
     - Update `.sunbird-left-menu` to use these variables (already does with defaults, but explicit definition is better).
     - Ensure `.sunbird-left-menu` has `padding-top: 20px;` to accommodate the header.
