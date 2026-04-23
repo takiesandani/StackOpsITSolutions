@@ -1718,11 +1718,35 @@
 .sunbird-panel-view {
   height: 100%;
   min-height: 0;
-  overflow: auto;
-  padding-right: 4px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 6px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.sunbird-panel-view::-webkit-scrollbar {
+  width: 5px;
+}
+
+.sunbird-panel-view::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sunbird-panel-view::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+}
+
+.sunbird-panel-view::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.sunbird-panel-view::-webkit-scrollbar-button {
+  display: none;
 }
 
 .billing-powered-by-badge {
