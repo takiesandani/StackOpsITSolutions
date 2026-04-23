@@ -4775,25 +4775,25 @@ app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) 
         const token = await getMicrosoftGraphToken();
         const controls = [];
 
-        // Helper function for Graph API calls
-        const fetchGraph = async (endpoint) => {
-            const response = await fetch(`https://graph.microsoft.com/v1.0${endpoint}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (!response.ok) return { value: [] };
-            return await response.json();
-        };
-
         // ---------------------------------------------------------
-        // 🟦 IDENTITY CONTROLS
+        // 🟦 IDENTITY CONTROLS (Using exact logic from Identity Tab)
         // ---------------------------------------------------------
         
         // 1. MFA ON ALL ACCOUNTS
         try {
-            const mfaData = await fetchGraph('/reports/credentialUserRegistrationDetails');
-            const users = mfaData.value || [];
+            // Using the exact fetch methods from your identity dashboard
+            const users = await fetchMicrosoftUsers(token);
+            let mfaRegistered = 0;
             const totalUsers = users.length;
-            const mfaRegistered = users.filter(u => u.isMfaRegistered).length;
+
+            // Use the same concurrency logic to check auth methods safely without rate limiting
+            await mapWithConcurrency(users, 8, async (user) => {
+                const authMethods = await fetchUserAuthMethods(token, user.id);
+                if (hasRealMfaMethod(authMethods)) {
+                    mfaRegistered++;
+                }
+            });
+
             const coverage = totalUsers > 0 ? Math.round((mfaRegistered / totalUsers) * 100) : 0;
             
             let insight = coverage === 100 ? "🟢 MFA fully enforced" : 
@@ -4814,22 +4814,25 @@ app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) 
 
         // 3. ADMIN COUNT (Privilege Control)
         try {
-            const rolesData = await fetchGraph('/directoryRoles');
-            const roles = rolesData.value || [];
-            let adminCount = 0;
+            const roleAssignments = await fetchMicrosoftRoleAssignments(token);
             
-            const globalAdminRole = roles.find(r => r.displayName === 'Global Administrator');
-            if (globalAdminRole) {
-                const members = await fetchGraph(`/directoryRoles/${globalAdminRole.id}/members`);
-                adminCount = (members.value || []).length;
-            }
+            // Build unique admins list based on role assignments
+            const adminSet = new Set();
+            roleAssignments.forEach(assignment => {
+                const roleName = assignment.roleDefinition?.displayName || '';
+                if (roleName.toLowerCase().includes('admin') || roleName.toLowerCase().includes('global')) {
+                    adminSet.add(assignment.principalId);
+                }
+            });
+
+            const adminCount = adminSet.size;
 
             controls.push({
                 name: "Admin Count (Privilege Control)",
                 area: "Identity",
                 insight: adminCount > 5 ? "🔴 Too many privileged users" : "🟢 Admin count within limits",
                 evidenceData: {
-                    global_admins: adminCount,
+                    privileged_users: adminCount,
                     recommended_limit: "5"
                 }
             });
@@ -4837,15 +4840,19 @@ app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) 
 
         // 5. LEGACY AUTHENTICATION
         try {
-            const signIns = await fetchGraph("/auditLogs/signIns?$filter=clientAppUsed eq 'Browser' or clientAppUsed eq 'Exchange ActiveSync'&$top=100");
-            const legacySignIns = (signIns.value || []).filter(s => s.clientAppUsed !== 'Browser' && s.clientAppUsed !== 'Mobile Apps and Desktop clients');
+            const signIns = await fetchMicrosoftSignIns(token);
+            const legacySignIns = signIns.filter(s => 
+                s.clientAppUsed && 
+                s.clientAppUsed !== 'Browser' && 
+                s.clientAppUsed !== 'Mobile Apps and Desktop clients'
+            );
             
             controls.push({
                 name: "Legacy Authentication",
                 area: "Identity",
                 insight: legacySignIns.length > 0 ? "🔴 Legacy authentication risk" : "🟢 Modern auth enforced",
                 evidenceData: {
-                    events_analyzed: (signIns.value || []).length,
+                    events_analyzed: signIns.length,
                     legacy_auth_events: legacySignIns.length
                 }
             });
@@ -4857,8 +4864,7 @@ app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) 
         
         // 6 & 7. DEVICE COMPLIANCE & ENCRYPTION
         try {
-            const devicesData = await fetchGraph('/deviceManagement/managedDevices');
-            const devices = devicesData.value || [];
+            const devices = await fetchMicrosoftDevices(token);
             const totalDevices = devices.length;
             
             const compliant = devices.filter(d => d.complianceState === 'compliant').length;
@@ -4898,8 +4904,7 @@ app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) 
         
         // 9. APPROVED APPLICATIONS ONLY
         try {
-            const appsData = await fetchGraph('/servicePrincipals?$top=100');
-            const apps = appsData.value || [];
+            const apps = await fetchMicrosoftServicePrincipals(token);
             const externalApps = apps.filter(app => !app.publisherName || !app.publisherName.toLowerCase().includes('microsoft')).length;
 
             controls.push({
