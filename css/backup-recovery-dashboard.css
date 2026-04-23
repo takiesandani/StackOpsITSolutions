@@ -1,0 +1,47 @@
+/* Backup & Recovery Dashboard - Liquid Glass White Theme */
+@import url("./unified-dashboard.css");
+@import url("./clientportal.css");
+@import url("./scrollbar.css");
+
+/* =========================
+   Backup Dashboard Layout
+   ========================= */
+.backup-dashboard-container {
+  --primary-icon: #ffffff;
+}
+
+/* Stats Grid */
+.backup-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+/* Recovery Table */
+.recovery-table-container {
+  max-height: 400px;
+}
+
+.recovery-table-container.table-card {
+  /* inherits unified glass styles */
+}
+
+/* Compliance Section */
+.compliance-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+/* =========================
+   Responsive
+   ========================= */
+@media (max-width: 768px) {
+  .backup-stats-grid {
+    grid-template-columns: 1fr;
+  }
+  .compliance-section {
+    grid-template-columns: 1fr;
+  }
+}
+

@@ -1,0 +1,37 @@
+/* Threat & Activity Dashboard - Liquid Glass White Theme */
+@import url("./unified-dashboard.css");
+@import url("./clientportal.css");
+@import url("./scrollbar.css");
+
+/* =========================
+   Threat Dashboard Layout
+   ========================= */
+.threat-dashboard-container {
+  --primary-icon: #ffffff;
+}
+
+/* Activity Stats Grid */
+.activity-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+/* Threat Feed Container */
+.threat-feed-container {
+  max-height: 500px;
+}
+
+.threat-feed-container.table-card {
+  /* inherits unified glass styles */
+}
+
+/* =========================
+   Responsive
+   ========================= */
+@media (max-width: 768px) {
+  .activity-stats-grid {
+    grid-template-columns: 1fr;
+  }
+}
+

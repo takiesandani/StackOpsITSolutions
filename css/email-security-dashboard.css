@@ -1,0 +1,45 @@
+/* Email Security Dashboard - Liquid Glass White Theme */
+@import url("./unified-dashboard.css");
+@import url("./clientportal.css");
+@import url("./scrollbar.css");
+
+/* =========================
+   Email Security Layout
+   ========================= */
+.email-security-container {
+  --primary-icon: #ffffff;
+}
+
+/* Stats Grid */
+.email-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+/* Threat Table */
+.threat-table-container {
+  max-height: 450px;
+}
+
+.threat-table-container.table-card {
+  /* inherits unified glass styles */
+}
+
+/* Phishing Metrics */
+.phishing-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 15px;
+}
+
+/* =========================
+   Responsive
+   ========================= */
+@media (max-width: 768px) {
+  .email-stats-grid,
+  .phishing-metrics {
+    grid-template-columns: 1fr;
+  }
+}
+

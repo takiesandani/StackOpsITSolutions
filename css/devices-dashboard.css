@@ -1,0 +1,48 @@
+/* Devices & Security Compliance Dashboard - Liquid Glass White Theme */
+@import url("./unified-dashboard.css");
+@import url("./clientportal.css");
+@import url("./scrollbar.css");
+
+/* =========================
+   Devices Dashboard Layout
+   ========================= */
+.devices-dashboard-container {
+  --primary-icon: #ffffff;
+}
+
+/* Stats Grid */
+.device-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+  margin-bottom: 2rem;
+}
+
+/* Compliance Table */
+.compliance-table-container {
+  max-height: 500px;
+}
+
+.compliance-table-container.table-card {
+  /* inherits unified glass styles */
+}
+
+/* Security Health Layout */
+.security-health-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+/* =========================
+   Responsive
+   ========================= */
+@media (max-width: 768px) {
+  .device-stats-grid {
+    grid-template-columns: 1fr;
+  }
+  .security-health-section {
+    grid-template-columns: 1fr;
+  }
+}
+

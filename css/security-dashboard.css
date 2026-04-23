@@ -1,0 +1,37 @@
+/* Security Compliance Dashboard - Liquid Glass White Theme */
+@import url("./unified-dashboard.css");
+@import url("./clientportal.css");
+@import url("./scrollbar.css");
+
+/* =========================
+   Security Dashboard Layout
+   ========================= */
+.security-dashboard-container {
+  --primary-icon: #ffffff;
+}
+
+/* Threat Stats Grid */
+.threat-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+/* Incidents Table */
+.incidents-table-container {
+  max-height: 400px;
+}
+
+.incidents-table-container.table-card {
+  /* inherits unified glass styles */
+}
+
+/* =========================
+   Responsive
+   ========================= */
+@media (max-width: 768px) {
+  .threat-stats-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
