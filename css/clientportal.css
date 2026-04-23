@@ -4044,38 +4044,38 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   margin-bottom: 16px;
 }
 
-.btn-back-wrapper.glow-wrap {
-  padding: 2px;
-  border-radius: 10px;
-  overflow: hidden;
-  background: transparent;
+.btn-back {
+  position: relative;
+  padding: 10px 16px;
+  background: rgba(0, 110, 255, 0.1);
+  color: #0066FF;
+  border: 1px solid rgba(0, 110, 255, 0.3);
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 200;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  letter-spacing: 0.5px;
+
+  /* ✨ Glow directly on button */
+  box-shadow: 
+    0 0 10px rgba(0, 110, 255, 0.2),
+    0 0 20px rgba(0, 110, 255, 0.15);
 }
 
-.btn-back-wrapper.glow-wrap .glowing-border-layer {
-  position: absolute;
-  top: -100%;
-  left: -100%;
-  width: 300%;
-  height: 300%;
-  background: conic-gradient(
-    from 0deg,
-    #0066ff,
-    transparent 25%,
-    transparent 75%,
-    #0066ff
-  );
-  animation: spin-back-btn 4s linear infinite;
-  z-index: 0;
-  pointer-events: none;
-}
+.btn-back:hover {
+  background: rgba(0, 110, 255, 0.2);
+  border-color: rgba(0, 110, 255, 0.6);
+  color: #ffffff;
+  transform: translateX(-2px);
 
-@keyframes spin-back-btn {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+  /* stronger glow on hover */
+  box-shadow: 
+    0 0 15px rgba(0, 110, 255, 0.4),
+    0 0 30px rgba(0, 110, 255, 0.25);
 }
 
 .btn-back-wrapper.glow-wrap .btn-back {
