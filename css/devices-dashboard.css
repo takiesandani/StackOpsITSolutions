@@ -454,6 +454,99 @@
     color: #f87171;
 }
 
+/* ============================================ */
+/* Back Button Styles with Glow Effect */
+/* ============================================ */
+
+.btn-back {
+  position: relative;
+  padding: 10px 16px;
+  background: rgba(0, 110, 255, 0.1);
+  color: #0066FF;
+  border: 1px solid rgba(0, 110, 255, 0.3);
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 200;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  letter-spacing: 0.5px;
+}
+
+.btn-back:hover {
+  background: rgba(0, 110, 255, 0.2);
+  border-color: rgba(0, 110, 255, 0.6);
+  color: #ffffff;
+  transform: translateX(-2px);
+  box-shadow: 0 0 15px rgba(0, 110, 255, 0.3);
+}
+
+.btn-back:active {
+  transform: translateX(-1px) scale(0.98);
+}
+
+.btn-back i {
+  font-size: 16px;
+  transition: transform 0.3s ease;
+}
+
+.btn-back:hover i {
+  transform: translateX(-2px);
+}
+
+/* Glow wrapper for back button */
+.btn-back-wrapper {
+  position: relative;
+  display: inline-block;
+  width: auto;
+  margin-bottom: 16px;
+}
+
+.btn-back-wrapper.glow-wrap {
+  padding: 2px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: transparent;
+}
+
+.btn-back-wrapper.glow-wrap .glowing-border-layer {
+  position: absolute;
+  top: -100%;
+  left: -100%;
+  width: 300%;
+  height: 300%;
+  background: conic-gradient(
+    from 0deg,
+    #0066ff,
+    transparent 25%,
+    transparent 75%,
+    #0066ff
+  );
+  animation: spin-back-btn 4s linear infinite;
+  z-index: 0;
+  pointer-events: none;
+}
+
+@keyframes spin-back-btn {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.btn-back-wrapper.glow-wrap .btn-back {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  background: #1c1c1c;
+  border: none;
+  box-shadow: 0 0 20px rgba(0, 110, 255, 0.2);
+}
+
 .device-risk-badge {
     display: inline-block;
     padding: 4px 8px;

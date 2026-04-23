@@ -284,6 +284,16 @@ let identityFetchRequestId = 0;
 let latestDevicesCardData = null;
 let latestEmailCardData = null;
 
+function toBooleanMfa(value) {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value > 0;
+    if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        return normalized === 'true' || normalized === 'yes' || normalized === 'enabled' || normalized === '1';
+    }
+    return false;
+}
+
 function isSummaryProjectCard(project) {
     return !!(project && (project.isIdentityCard || project.isDevicesCard || project.isEmailSecurityCard || project.isApplicationsCard));
 }
@@ -1480,6 +1490,10 @@ function openIdentityDashboard() {
         };
     }
     
+    // Render an identity-specific loading view immediately to avoid showing generic dashboard content.
+    dashboardView.innerHTML = generateIdentityDashboardHTML();
+    showIdentityTableLoadingSkeleton();
+
     // Trigger fresh fetch whenever user opens Identity dashboard.
     fetchIdentityAccessData();
 
@@ -3760,7 +3774,7 @@ async function fetchIdentityAccessData() {
                         roles: user.roles || [],
                         
                         // MFA fields (from Sunbird)
-                        mfaEnabled: user.mfaEnabled || false,
+                        mfaEnabled: toBooleanMfa(user.mfaEnabled),
                         authMethodCount: user.authMethods?.length || user.authMethodCount || 0,
                         authMethods: user.authMethods || [],
                         
@@ -3935,7 +3949,7 @@ async function fetchIdentityAccessData() {
                     mfaData.mfaStatus.forEach(mfaInfo => {
                         const user = microsoftUsersData.find(u => u.id === mfaInfo.userId);
                         if (user) {
-                            user.mfaEnabled = mfaInfo.mfaEnabled;
+                            user.mfaEnabled = toBooleanMfa(mfaInfo.mfaEnabled);
                             user.authMethodCount = mfaInfo.authMethodCount || 0;
                             user.authMethods = mfaInfo.authMethods || [];
                         }
@@ -3950,6 +3964,7 @@ async function fetchIdentityAccessData() {
             // Set default MFA status if API unavailable
             microsoftUsersData.forEach(user => {
                 if (user.mfaEnabled === undefined) user.mfaEnabled = false;
+                user.mfaEnabled = toBooleanMfa(user.mfaEnabled);
                 if (user.authMethodCount === undefined) user.authMethodCount = 0;
             });
         }
@@ -6391,24 +6406,74 @@ function initializeGovernanceCard() {
     const governanceCard = document.getElementById('governance-card');
     if (!governanceCard) return;
     
-    const isSunbird = isSunbirdUser();
-    
+    const client = isSunbirdUser() ? 'sunbird' : 'default';
+
+    if (client === 'sunbird') {
+        const governanceFrameworkRows = [
+            { area: 'Access review', activity: 'Review users', source: 'Framework', frequency: 'Quarterly', lastReviewed: '2025-10-05', evidence: 'Quarterly user entitlement review exported and signed off.' },
+            { area: 'Admin review', activity: 'Review roles', source: 'Framework', frequency: 'Quarterly', lastReviewed: '2025-11-10', evidence: 'Privileged role assignment list reviewed against approvals.' },
+            { area: 'Security review', activity: 'Full stack review', source: 'Framework', frequency: 'Annual', lastReviewed: '2025-01-14', evidence: 'Security baseline checklist completed by platform team.' },
+            { area: 'Threat review', activity: 'Threat landscape', source: 'Framework', frequency: 'Annual', lastReviewed: '2024-12-08', evidence: 'Threat model workshop notes and action log captured.' },
+            { area: 'AI review', activity: 'AI policy', source: 'Framework', frequency: 'Ongoing', lastReviewed: null, evidence: 'AI policy updates pending legal and risk approval.' },
+            { area: 'Software review', activity: 'App review', source: 'Framework', frequency: 'Annual', lastReviewed: '2025-03-22', evidence: 'Third-party software inventory and risk review completed.' },
+            { area: 'Incident review', activity: 'Post-incident', source: 'Framework', frequency: 'Triggered', lastReviewed: '2026-02-15', evidence: 'Post-incident RCA shared with governance stakeholders.' },
+            { area: 'MFA audit', activity: 'Identity check', source: 'Checklist', frequency: 'Quarterly', lastReviewed: '2025-08-30', evidence: 'MFA coverage report generated from identity dashboard.' },
+            { area: 'Device audit', activity: 'Device posture', source: 'Checklist', frequency: 'Monthly', lastReviewed: '2026-03-25', evidence: 'Managed device compliance report reviewed and archived.' },
+            { area: 'Log review', activity: 'Sign-in logs', source: 'Checklist', frequency: 'Monthly', lastReviewed: '2026-03-05', evidence: 'Sign-in anomaly summary and analyst notes attached.' },
+            { area: 'Backup review', activity: 'Backup check', source: 'Checklist', frequency: 'Monthly', lastReviewed: '2026-02-03', evidence: 'Backup success rates verified and exceptions documented.' },
+            { area: 'Restore testing', activity: 'Recovery test', source: 'Checklist', frequency: 'Quarterly', lastReviewed: '2025-09-28', evidence: 'Recovery simulation runbook execution record available.' },
+            { area: 'Policy review', activity: 'CA policies', source: 'Checklist', frequency: 'Quarterly', lastReviewed: '2025-10-20', evidence: 'Conditional Access policy matrix reviewed and approved.' },
+            { area: 'Data review', activity: 'SharePoint usage', source: 'Framework', frequency: 'Quarterly', lastReviewed: '2026-01-06', evidence: 'SharePoint activity and exposure controls assessed.' },
+            { area: 'Awareness review', activity: 'Training', source: 'Framework', frequency: 'Annual', lastReviewed: '2025-04-17', evidence: 'Security awareness completion report captured.' }
+        ];
+
+        governanceCard.innerHTML = `
+            <div class="governance-card-header">
+                <i class="fas fa-shield-alt"></i>
+                <h3>Governance</h3>
+            </div>
+            <div class="governance-content sunbird-governance-content">
+                <div class="sunbird-governance-table-wrap">
+                    <table class="sunbird-incidents-table sunbird-governance-table">
+                        <thead>
+                            <tr>
+                                <th>Governance Area</th>
+                                <th>Activity</th>
+                                <th>Source</th>
+                                <th>Frequency</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${governanceFrameworkRows.map((row, index) => `
+                                <tr>
+                                    <td>${row.area}</td>
+                                    <td>
+                                        <div class="sunbird-governance-activity-cell">${row.activity}</div>
+                                        <button class="sunbird-risk-view-btn sunbird-governance-evidence-btn" onclick="window.openSunbirdGovernanceEvidence(${index})">
+                                            View Evidence
+                                        </button>
+                                    </td>
+                                    <td>${row.source}</td>
+                                    <td>${row.frequency}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+
+        window.sunbirdGovernanceRows = governanceFrameworkRows;
+        ensureSunbirdGovernanceEvidenceModal();
+        return;
+    }
+
     let governanceData = [
         'Change Management',
         'End-user awareness',
         'Configurations',
         'Site documentation'
     ];
-    
-    // For Sunbird, we split Governance and Compliance
-    if (isSunbird) {
-        governanceData = [
-            'Change Management',
-            'Site documentation',
-            'Project Roadmaps',
-            'Asset Management'
-        ];
-    }
     
     const governanceHtml = governanceData.map(item => `
         <div class="governance-item">
@@ -6420,13 +6485,105 @@ function initializeGovernanceCard() {
     governanceCard.innerHTML = `
         <div class="governance-card-header">
             <i class="fas fa-shield-alt"></i>
-            <h3>${isSunbird ? 'Governance' : 'Governance & Compliance'}</h3>
+            <h3>Governance & Compliance</h3>
         </div>
         <div class="governance-content">
             ${governanceHtml}
         </div>
     `;
 }
+
+function deriveGovernanceStatus(row) {
+    const mapDays = {
+        Monthly: 35,
+        Quarterly: 100,
+        Annual: 395
+    };
+    if (!row?.lastReviewed) {
+        return row?.frequency === 'Ongoing' ? 'Pending' : 'Overdue';
+    }
+
+    const reviewedAt = new Date(row.lastReviewed);
+    if (Number.isNaN(reviewedAt.getTime())) return 'Pending';
+    if (row.frequency === 'Triggered') return 'Completed';
+    if (row.frequency === 'Ongoing') return 'Completed';
+
+    const maxAgeDays = mapDays[row.frequency] || 90;
+    const ageDays = (Date.now() - reviewedAt.getTime()) / (1000 * 60 * 60 * 24);
+    return ageDays > maxAgeDays ? 'Overdue' : 'Completed';
+}
+
+function ensureSunbirdGovernanceEvidenceModal() {
+    if (document.getElementById('sunbird-governance-evidence-modal')) return;
+
+    const modal = document.createElement('div');
+    modal.id = 'sunbird-governance-evidence-modal';
+    modal.className = 'sunbird-governance-evidence-modal';
+    modal.innerHTML = `
+        <div class="sunbird-governance-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="sunbird-governance-modal-title">
+            <button class="sunbird-governance-modal-close" type="button" aria-label="Close">
+                <i class="fas fa-times"></i>
+            </button>
+            <h4 id="sunbird-governance-modal-title">Governance Evidence</h4>
+            <div class="sunbird-governance-modal-meta" id="sunbird-governance-modal-meta"></div>
+            <div class="sunbird-governance-modal-status-wrap">
+                <span class="sunbird-governance-modal-status-label">Status</span>
+                <span class="sunbird-governance-modal-status" id="sunbird-governance-modal-status">Pending</span>
+            </div>
+            <div class="sunbird-governance-modal-evidence-title">Supporting Evidence</div>
+            <div class="sunbird-governance-modal-evidence-text" id="sunbird-governance-modal-evidence"></div>
+        </div>
+    `;
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) {
+            modal.classList.remove('open');
+        }
+    });
+
+    const closeBtn = modal.querySelector('.sunbird-governance-modal-close');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => modal.classList.remove('open'));
+    }
+
+    document.body.appendChild(modal);
+}
+
+window.openSunbirdGovernanceEvidence = function(index) {
+    const rows = Array.isArray(window.sunbirdGovernanceRows) ? window.sunbirdGovernanceRows : [];
+    const row = rows[index];
+    const modal = document.getElementById('sunbird-governance-evidence-modal');
+    if (!row || !modal) return;
+
+    const status = deriveGovernanceStatus(row);
+    const reviewedLabel = row.lastReviewed
+        ? `Last reviewed: ${new Date(row.lastReviewed).toLocaleDateString()}`
+        : 'Last reviewed: Pending review';
+
+    const meta = modal.querySelector('#sunbird-governance-modal-meta');
+    const statusEl = modal.querySelector('#sunbird-governance-modal-status');
+    const evidenceEl = modal.querySelector('#sunbird-governance-modal-evidence');
+    const titleEl = modal.querySelector('#sunbird-governance-modal-title');
+
+    if (titleEl) titleEl.textContent = row.area;
+    if (meta) {
+        meta.innerHTML = `
+            <div><strong>Activity:</strong> ${row.activity}</div>
+            <div><strong>Frequency:</strong> ${row.frequency}</div>
+            <div>${reviewedLabel}</div>
+            <div>Related data source connected</div>
+        `;
+    }
+    if (statusEl) {
+        statusEl.textContent = status;
+        statusEl.className = `sunbird-governance-modal-status ${status.toLowerCase()}`;
+    }
+    if (evidenceEl) {
+        evidenceEl.textContent = row.evidence || (status === 'Completed' ? 'Completed' : 'Pending review');
+    }
+
+    modal.classList.add('open');
+};
 
 function initializeSupportCard() {
     const supportCard = document.getElementById('support-card');

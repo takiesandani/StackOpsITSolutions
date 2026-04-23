@@ -42,6 +42,54 @@ function getTenantByEmail(email) {
 // ===============================
 // Token cache (in production, use Redis or database)
 const microsoftTokenCache = new Map();
+const authMethodsCache = new Map();
+const AUTH_METHODS_CACHE_TTL_MS = 5 * 60 * 1000;
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function getCachedAuthMethods(userId) {
+  const cached = authMethodsCache.get(userId);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    authMethodsCache.delete(userId);
+    return null;
+  }
+  return cached.methods;
+}
+
+function setCachedAuthMethods(userId, methods) {
+  authMethodsCache.set(userId, {
+    methods: Array.isArray(methods) ? methods : [],
+    expiresAt: Date.now() + AUTH_METHODS_CACHE_TTL_MS
+  });
+}
+
+function hasRealMfaMethod(authMethods) {
+  if (!Array.isArray(authMethods) || authMethods.length === 0) return false;
+  return authMethods.some(method => {
+    const type = String(method?.['@odata.type'] || '').toLowerCase();
+    // Password alone is not MFA; anything else counts as extra factor.
+    return type && !type.includes('passwordauthenticationmethod');
+  });
+}
+
+async function mapWithConcurrency(items, limit, worker) {
+  const safeLimit = Math.max(1, Number(limit) || 1);
+  const output = new Array(items.length);
+  let cursor = 0;
+
+  async function runner() {
+    while (cursor < items.length) {
+      const index = cursor++;
+      output[index] = await worker(items[index], index);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(safeLimit, items.length) }, () => runner()));
+  return output;
+}
 
 async function getMicrosoftGraphToken() {
   try {
@@ -176,7 +224,7 @@ async function fetchMicrosoftSignIns(token) {
 }
 
 // Fetch authentication methods for a specific user
-async function fetchUserAuthMethods(token, userId) {
+async function fetchUserAuthMethods(token, userId, retries = 2) {
   try {
     const response = await fetch(
       `https://graph.microsoft.com/v1.0/users/${userId}/authentication/methods`,
@@ -190,13 +238,25 @@ async function fetchUserAuthMethods(token, userId) {
     );
 
     if (!response.ok) {
+      // Retry on transient/rate-limit errors to reduce MFA flapping.
+      if ((response.status === 429 || response.status >= 500) && retries > 0) {
+        await sleep((3 - retries) * 250);
+        return fetchUserAuthMethods(token, userId, retries - 1);
+      }
+
+      const cached = getCachedAuthMethods(userId);
+      if (cached) return cached;
       return []; // Return empty array if auth methods not available
     }
 
     const data = await response.json();
-    return data.value || [];
+    const methods = data.value || [];
+    setCachedAuthMethods(userId, methods);
+    return methods;
   } catch (error) {
     console.error(`[Microsoft Graph] Failed to fetch auth methods for ${userId}:`, error.message);
+    const cached = getCachedAuthMethods(userId);
+    if (cached) return cached;
     return [];
   }
 }
@@ -4758,8 +4818,9 @@ app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) =
             }
         });
 
-        // Enrich user data with roles, sign-ins, and calculate risks
-        const enrichedUsers = await Promise.all(users.map(async (user) => {
+        // Enrich user data with roles, sign-ins, and calculate risks.
+        // Use controlled concurrency to avoid Graph throttling on auth-method calls.
+        const enrichedUsers = await mapWithConcurrency(users, 8, async (user) => {
             const userRoles = userRoleMap[user.id] || [];
             const hasAdminRole = userRoles.some(r => 
                 r.name.toLowerCase().includes('admin') || 
@@ -4768,7 +4829,7 @@ app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) =
 
             // Fetch auth methods for MFA status
             const authMethods = await fetchUserAuthMethods(token, user.id);
-            const hasMFA = authMethods.length > 1;
+            const hasMFA = hasRealMfaMethod(authMethods);
 
             // Get latest sign-in
             const lastSignIn = latestSignInMap[user.userPrincipalName];
@@ -4814,7 +4875,7 @@ app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) =
                     newLocationLogin: isNewLocation
                 }
             };
-        }));
+        });
 
         // Calculate dashboard metrics
         const totalUsers = enrichedUsers.length;
