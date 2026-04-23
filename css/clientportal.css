@@ -974,6 +974,87 @@
     transition: all 0.4s ease;
 }
 
+/* Apply to ALL dashboard cards & views */
+.dashboard-card,
+.backup-stat-card,
+.chart-card,
+.monitor-card,
+.insight-card,
+.identity-chart-card,
+.identity-health-card,
+.risk-item,
+.actionable-insight-item,
+.apps-stat-card,
+.email-stat-card,
+.security-stat-card {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.12),
+    rgba(255, 255, 255, 0.04)
+  );
+
+  backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
+  -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
+
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 12px;
+
+  box-shadow: 
+    0 6px 18px rgba(255, 255, 255, 0.32),
+    inset 0 0.5px 1px rgba(255, 255, 255, 0.452),
+    inset 0 -0.5px 1px rgba(0, 0, 0, 0.08);
+
+  position: relative;
+  overflow: hidden;
+  transition: all 0.4s ease;
+}
+
+.dashboard-card::before,
+.chart-card::before,
+.monitor-card::before,
+.backup-stat-card::before,
+.insight-card::before,
+.identity-chart-card::before,
+.identity-health-card::before,
+.risk-item::before,
+.actionable-insight-item::before,
+.apps-stat-card::before,
+.email-stat-card::before,
+.security-stat-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.055) 0%,
+    rgb(0, 0, 0) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+
+  opacity: 0.6;
+  pointer-events: none;
+  z-index: 1;
+  transition: opacity 0.4s ease;
+}
+
+/* Content above glass */
+.dashboard-card > *,
+.chart-card > *,
+.monitor-card > *,
+.backup-stat-card > *,
+.insight-card > *,
+.identity-chart-card > *,
+.identity-health-card > *,
+.risk-item > *,
+.actionable-insight-item > *,
+.apps-stat-card > *,
+.email-stat-card > *,
+.security-stat-card > * {
+  position: relative;
+  z-index: 2;
+}
+
 /* EXACT same reflection layer */
 .project-card::before {
   content: "";
@@ -3135,17 +3216,89 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   flex-wrap: wrap;
 }
 
+/* UNIFIED GLOW-WRAP BACK BUTTON - ALL DASHBOARDS */
 .btn-back {
-  padding: 8px 16px;
-  background: rgba(0, 110, 255, 0.2);
-  color: var(--primary);
-  border: 1px solid var(--primary);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.3s ease;
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 200;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border-radius: 25px;
+}
+
+.btn-back .glow-wrap {
+  position: relative;
+  width: auto;
+  min-width: 140px;
+  height: 44px;
+  border-radius: 22px;
+  overflow: hidden;
+  box-shadow: 0 4px 15px rgba(255, 255, 255, 0.2);
+  margin-right: 16px;
+}
+
+.btn-back .glow-wrap:hover {
+  transform: scale(1.05);
+}
+
+.btn-back .glowing-border-layer {
+  position: absolute;
+  top: -50px;
+  left: -50px;
+  width: 200px;
+  height: 150px;
+  z-index: 1;
+  background: conic-gradient(
+    #ffffff 0%,
+    hsla(0, 0%, 100%, 0) 25%,
+    transparent 50%,
+    #ffffff00 75%,
+    #ffffff 100%
+  );
+  animation: spin 3s linear infinite;
+}
+
+.btn-back button {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
+  padding: 0;
+  background: #000000;
+  color: #ffffff !important;
+  border: none;
+  box-shadow: none;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 200;
+  cursor: pointer;
+  transition: color 0.3s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  letter-spacing: 0.5px;
+  z-index: 2;
+  pointer-events: auto;
+}
+
+.btn-back button:hover {
+  color: #ffffff !important;
+}
+
+/* Apply to ALL back buttons */
+.btn-back-dashboard,
+.btn-back-identity,
+#btn-back-devices,
+#btn-back-security,
+#btn-back-email-security,
+#btn-back-backup-recovery {
+  position: relative;
 }
 
 .btn-back:hover {
