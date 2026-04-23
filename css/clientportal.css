@@ -4920,7 +4920,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   align-items: center;
   margin-bottom: 10px;
   padding-bottom: 15px;
-  border-bottom: 2px solid rgba(0, 110, 255, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .identity-header-left {
@@ -4934,8 +4934,8 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
-  background: rgba(0, 110, 255, 0.1);
-  border: 1px solid rgba(0, 110, 255, 0.2);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 6px;
   margin-left: auto;
 }
@@ -4953,34 +4953,21 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 .btn-back-identity {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  background: rgba(0, 110, 255, 0.15);
-  border: 1px solid rgba(0, 110, 255, 0.3);
-  border-radius: 6px;
-  color: rgba(0, 110, 255, 0.9);
-  cursor: pointer;
-  font-weight: 200;
-  font-size: 0.9rem;
-  transition: all 0.3s ease;
+  display: none;
 }
 
 .btn-back-identity:hover {
-  background: rgba(0, 110, 255, 0.25);
-  border-color: rgba(0, 110, 255, 0.5);
-  color: rgba(0, 110, 255, 1);
+  display: none;
 }
 
 .btn-back-identity i {
-  font-size: 0.85rem;
+  display: none;
 }
 
 .identity-dashboard-title {
   font-size: 1.4rem;
   font-weight: 200;
-  color: #e0e0e0;
+  color: #ffffff;
   margin: 0;
   letter-spacing: 0.5px;
 }
@@ -4993,50 +4980,122 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   margin: 0 auto 10px;
 }
 
-.identity-stat-card {
+.identity-stat-card,
+.sunbird-summary-card,
+.sunbird-analytics-card {
+  position: relative;
+  overflow: hidden;
+
+  /* Liquid glass base */
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.12),
+    rgba(255, 255, 255, 0.04)
+  );
+
+  backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
+  -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
+
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 15px;
+
+  padding: 15px;
+
+  box-shadow: 
+    0 12px 40px rgba(0, 0, 0, 0.25),
+    inset 0 1px 2px rgba(255, 255, 255, 0.5),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.15);
+
+  transition: all 0.4s ease;
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 11px 10px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  transition: all 0.3s ease;
+  gap: 12px;
 }
 
-.identity-stat-card:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.12);
+.identity-stat-card::before,
+.sunbird-summary-card::before,
+.sunbird-analytics-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.055) 0%,
+    rgb(0, 0, 0) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+
+  opacity: 0.6;
+  pointer-events: none;
+  z-index: 1;
+  transition: opacity 0.4s ease;
 }
 
-.stat-card-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
+.identity-stat-card > *,
+.sunbird-summary-card > *,
+.sunbird-analytics-card > * {
+  position: relative;
+  z-index: 2;
+}
+
+.identity-stat-card:hover,
+.sunbird-summary-card:hover,
+.sunbird-analytics-card:hover {
+  transform: translateY(-5px);
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.6);
+  box-shadow: 
+    0 25px 60px rgba(255, 255, 255, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+}
+
+.identity-stat-card:hover::before,
+.sunbird-summary-card:hover::before,
+.sunbird-analytics-card:hover::before {
+  opacity: 1;
+}
+
+.sunbird-summary-card.risk-filter-active {
+  border-color: #ffffff;
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 255, 255, 0.5),
+    0 0 20px rgba(255, 255, 255, 0.3);
+}
+
+.stat-card-icon,
+.summary-card-icon {
+  width: 45px;
+  height: 45px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.9rem;
+  font-size: 1.3rem;
   flex-shrink: 0;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
 }
 
-.stat-card-content {
-  display: flex;
-  flex-direction: column;
+.stat-card-content,
+.summary-card-content {
+  flex: 1;
 }
 
-.stat-card-label {
-  font-size: 0.65rem;
+.stat-card-label,
+.summary-card-label {
+  font-size: 0.75rem;
   color: rgba(255, 255, 255, 0.6);
+  font-weight: 200;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  font-weight: 200;
+  margin-bottom: 2px;
 }
 
-.stat-card-value {
-  font-size: 1.1rem;
-  font-weight: 200;
-  color: #e0e0e0;
+.stat-card-value,
+.summary-card-value {
+  font-size: 1.5rem;
+  font-weight: 300;
+  color: #ffffff;
 }
 
 .identity-controls-section {
@@ -5070,9 +5129,9 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
 .identity-search-bar:focus {
   outline: none;
-  border-color: rgba(0, 110, 255, 0.6);
+  border-color: rgba(255, 255, 255, 0.6);
   background: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 4px 20px rgba(0, 110, 255, 0.3);
+  box-shadow: 0 4px 20px rgba(255, 255, 255, 0.15);
 }
 
 .identity-search-bar::placeholder {
@@ -5100,7 +5159,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   width: 14px;
   height: 14px;
   cursor: pointer;
-  accent-color: #006eff;
+  accent-color: #ffffff;
 }
 
 .filter-checkbox:hover {
@@ -5145,8 +5204,8 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 .identity-users-table thead {
-  background: rgba(0, 110, 255, 0.15);
-  border-bottom: 2px solid rgba(0, 110, 255, 0.3);
+  background: rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
   position: sticky;
   top: 0;
   z-index: 10;
@@ -5155,7 +5214,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 .identity-users-table th {
   padding: 12px 11px;
   text-align: left;
-  color: rgba(0, 110, 255, 0.9);
+  color: #ffffff;
   font-weight: 200;
   font-size: 0.84rem;
   text-transform: uppercase;
@@ -5492,7 +5551,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
 .sunbird-analytics-card:hover {
   background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(0, 110, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.3);
 }
 
 .sunbird-analytics-card-wide {
@@ -5513,18 +5572,68 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 .sunbird-insights-card {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
+  position: relative;
+  overflow: hidden;
+
+  /* Liquid glass base */
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.12),
+    rgba(255, 255, 255, 0.04)
+  );
+
+  backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
+  -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
+
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 15px;
+
   padding: 12px;
-  transition: all 0.3s ease;
+
+  box-shadow: 
+    0 12px 40px rgba(0, 0, 0, 0.25),
+    inset 0 1px 2px rgba(255, 255, 255, 0.5),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.15);
+
+  transition: all 0.4s ease;
   display: flex;
   flex-direction: column;
 }
 
+.sunbird-insights-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.055) 0%,
+    rgb(0, 0, 0) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+
+  opacity: 0.6;
+  pointer-events: none;
+  z-index: 1;
+  transition: opacity 0.4s ease;
+}
+
+.sunbird-insights-card > * {
+  position: relative;
+  z-index: 2;
+}
+
 .sunbird-insights-card:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(0, 110, 255, 0.3);
+  transform: translateY(-5px);
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.6);
+  box-shadow: 
+    0 25px 60px rgba(255, 255, 255, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+}
+
+.sunbird-insights-card:hover::before {
+  opacity: 1;
 }
 
 /* Insights Content */
@@ -5645,11 +5754,13 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 .chart-card-title {
-  font-size: 0.75rem;
+  font-size: 0.85rem;
   font-weight: 200;
-  color: #d1d5db;
-  margin: 0 0 8px 0;
+  color: #ffffff;
+  margin: 0 0 10px 0;
   text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .chart-wrapper {

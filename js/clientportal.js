@@ -4429,17 +4429,22 @@ function generateIdentityDashboardHTML() {
             <!-- Dashboard Header with Back Button and Title -->
             <div class="identity-dashboard-header">
                 <div class="identity-header-left">
-                    <button id="btn-back-identity" class="btn-back-identity">
-                        <i class="fas fa-arrow-left"></i> Back
-                    </button>
-                    <h2 class="identity-dashboard-title"> Identity Protection</h2>
+                    <div class="btn-back">
+                        <div class="glow-wrap">
+                            <div class="glowing-border-layer"></div>
+                            <button id="btn-back-identity" class="btn-back-identity">
+                                <i class="fas fa-arrow-left"></i> Back
+                            </button>
+                        </div>
+                    </div>
+                    <h2 class="identity-dashboard-title"> Identity Protection - Dashboard</h2>
                 </div>
             </div>
 
             <!-- Overview Stats (Key Metrics) -->
             <div class="identity-stats-cards">
                 <div class="identity-stat-card">
-                    <div class="stat-card-icon" style="background: rgba(0, 110, 255, 0.2); color: rgba(0, 110, 255, 0.9);">
+                    <div class="stat-card-icon" style="background: rgba(255, 255, 255, 0.2); color: #ffffff;">
                         <i class="fas fa-users"></i>
                     </div>
                     <div class="stat-card-content">
@@ -4449,7 +4454,7 @@ function generateIdentityDashboardHTML() {
                 </div>
 
                 <div class="identity-stat-card">
-                    <div class="stat-card-icon" style="background: rgba(34, 197, 94, 0.2); color: rgba(34, 197, 94, 0.9);">
+                    <div class="stat-card-icon" style="background: rgba(0, 230, 118, 0.2); color: #00e676;">
                         <i class="fas fa-user-tie"></i>
                     </div>
                     <div class="stat-card-content">
@@ -4459,7 +4464,7 @@ function generateIdentityDashboardHTML() {
                 </div>
 
                 <div class="identity-stat-card">
-                    <div class="stat-card-icon" style="background: rgba(249, 115, 22, 0.2); color: rgba(249, 115, 22, 0.9);">
+                    <div class="stat-card-icon" style="background: rgba(255, 152, 0, 0.2); color: #ff9800;">
                         <i class="fas fa-user-secret"></i>
                     </div>
                     <div class="stat-card-content">
@@ -4469,7 +4474,7 @@ function generateIdentityDashboardHTML() {
                 </div>
 
                 <div class="identity-stat-card">
-                    <div class="stat-card-icon" style="background: rgba(132, 204, 22, 0.2); color: rgba(132, 204, 22, 0.9);">
+                    <div class="stat-card-icon" style="background: rgba(0, 230, 118, 0.2); color: #00e676;">
                         <i class="fas fa-check-circle"></i>
                     </div>
                     <div class="stat-card-content">
@@ -4536,7 +4541,7 @@ function generateIdentityDashboardHTML() {
                 <!-- Row 0: Summary Cards (Security, Risk, Activity) -->
                 <div class="sunbird-summary-cards-row" id="sunbird-summary-cards" style="display: none;">
                     <div class="sunbird-summary-card" data-risk-filter="active-users-24h">
-                        <div class="summary-card-icon" style="background: rgba(0, 110, 255, 0.2); color: rgba(0, 110, 255, 0.9);">
+                        <div class="summary-card-icon" style="background: rgba(255, 255, 255, 0.2); color: #ffffff;">
                             <i class="fas fa-shield-alt"></i>
                         </div>
                         <div class="summary-card-content">
@@ -4547,7 +4552,7 @@ function generateIdentityDashboardHTML() {
                     </div>
 
                     <div class="sunbird-summary-card" data-risk-filter="high-risk-users">
-                        <div class="summary-card-icon" style="background: rgba(34, 197, 94, 0.2); color: rgba(34, 197, 94, 0.9);">
+                        <div class="summary-card-icon" style="background: rgba(0, 230, 118, 0.2); color: #00e676;">
                             <i class="fas fa-user-check"></i>
                         </div>
                         <div class="summary-card-content">
@@ -4557,7 +4562,7 @@ function generateIdentityDashboardHTML() {
                     </div>
 
                     <div class="sunbird-summary-card" data-risk-filter="privileged-without-mfa">
-                        <div class="summary-card-icon" style="background: rgba(220, 53, 69, 0.2); color: rgba(220, 53, 69, 0.9);">
+                        <div class="summary-card-icon" style="background: rgba(255, 77, 77, 0.2); color: #ff4d4d;">
                             <i class="fas fa-exclamation-circle"></i>
                         </div>
                         <div class="summary-card-content">
@@ -4567,7 +4572,7 @@ function generateIdentityDashboardHTML() {
                     </div>
 
                     <div class="sunbird-summary-card">
-                        <div class="summary-card-icon" style="background: rgba(108, 92, 231, 0.2); color: rgba(108, 92, 231, 0.9);">
+                        <div class="summary-card-icon" style="background: rgba(255, 152, 0, 0.2); color: #ff9800;">
                             <i class="fas fa-user-clock"></i>
                         </div>
                         <div class="summary-card-content">
@@ -4577,7 +4582,7 @@ function generateIdentityDashboardHTML() {
                     </div>
 
                     <div class="sunbird-summary-card">
-                        <div class="summary-card-icon" style="background: rgba(220, 53, 69, 0.2); color: rgba(220, 53, 69, 0.9);">
+                        <div class="summary-card-icon" style="background: rgba(255, 77, 77, 0.2); color: #ff4d4d;">
                             <i class="fas fa-lock"></i>
                         </div>
                         <div class="summary-card-content">
@@ -4587,7 +4592,7 @@ function generateIdentityDashboardHTML() {
                     </div>
 
                     <div class="sunbird-summary-card">
-                        <div class="summary-card-icon" style="background: rgba(249, 115, 22, 0.2); color: rgba(249, 115, 22, 0.9);">
+                        <div class="summary-card-icon" style="background: rgba(255, 152, 0, 0.2); color: #ff9800;">
                             <i class="fas fa-fire"></i>
                         </div>
                         <div class="summary-card-content">
