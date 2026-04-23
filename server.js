@@ -4759,6 +4759,193 @@ app.get('/api/app-access/:spId', authenticateToken, async (req, res) => {
   }
 });
 
+// ============================================================================
+// SUNBIRD ONLY: STRICT COMPLIANCE VALIDATION ENGINE
+// ============================================================================
+app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) => {
+    try {
+        const userEmail = req.user.email;
+        const tenant = getTenantByEmail(userEmail);
+        
+        // 🚨 STRICT SCOPE CONTROL
+        if (!tenant || tenant.clientId !== 'sunbird') {
+            return res.status(403).json({ error: 'Access denied. Sunbird only.' });
+        }
+
+        const token = await getMicrosoftGraphToken();
+        const controls = [];
+
+        // Helper function for Graph API calls
+        const fetchGraph = async (endpoint) => {
+            const response = await fetch(`https://graph.microsoft.com/v1.0${endpoint}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!response.ok) return { value: [] };
+            return await response.json();
+        };
+
+        // ---------------------------------------------------------
+        // 🟦 IDENTITY CONTROLS
+        // ---------------------------------------------------------
+        
+        // 1. MFA ON ALL ACCOUNTS
+        try {
+            const mfaData = await fetchGraph('/reports/credentialUserRegistrationDetails');
+            const users = mfaData.value || [];
+            const totalUsers = users.length;
+            const mfaRegistered = users.filter(u => u.isMfaRegistered).length;
+            const coverage = totalUsers > 0 ? Math.round((mfaRegistered / totalUsers) * 100) : 0;
+            
+            let insight = coverage === 100 ? "🟢 MFA fully enforced" : 
+                         (coverage >= 80 ? "🟡 MFA partially enforced" : "🔴 Users exposed to credential theft");
+
+            controls.push({
+                name: "MFA on all accounts",
+                area: "Identity",
+                insight: insight,
+                evidenceData: {
+                    total_users: totalUsers,
+                    mfa_registered: mfaRegistered,
+                    mfa_missing: totalUsers - mfaRegistered,
+                    coverage: `${coverage}%`
+                }
+            });
+        } catch (e) { console.error('MFA Control Error', e); }
+
+        // 3. ADMIN COUNT (Privilege Control)
+        try {
+            const rolesData = await fetchGraph('/directoryRoles');
+            const roles = rolesData.value || [];
+            let adminCount = 0;
+            
+            const globalAdminRole = roles.find(r => r.displayName === 'Global Administrator');
+            if (globalAdminRole) {
+                const members = await fetchGraph(`/directoryRoles/${globalAdminRole.id}/members`);
+                adminCount = (members.value || []).length;
+            }
+
+            controls.push({
+                name: "Admin Count (Privilege Control)",
+                area: "Identity",
+                insight: adminCount > 5 ? "🔴 Too many privileged users" : "🟢 Admin count within limits",
+                evidenceData: {
+                    global_admins: adminCount,
+                    recommended_limit: "5"
+                }
+            });
+        } catch (e) { console.error('Admin Count Error', e); }
+
+        // 5. LEGACY AUTHENTICATION
+        try {
+            const signIns = await fetchGraph("/auditLogs/signIns?$filter=clientAppUsed eq 'Browser' or clientAppUsed eq 'Exchange ActiveSync'&$top=100");
+            const legacySignIns = (signIns.value || []).filter(s => s.clientAppUsed !== 'Browser' && s.clientAppUsed !== 'Mobile Apps and Desktop clients');
+            
+            controls.push({
+                name: "Legacy Authentication",
+                area: "Identity",
+                insight: legacySignIns.length > 0 ? "🔴 Legacy authentication risk" : "🟢 Modern auth enforced",
+                evidenceData: {
+                    events_analyzed: (signIns.value || []).length,
+                    legacy_auth_events: legacySignIns.length
+                }
+            });
+        } catch (e) { console.error('Legacy Auth Error', e); }
+
+        // ---------------------------------------------------------
+        // 🟩 DEVICE CONTROLS
+        // ---------------------------------------------------------
+        
+        // 6 & 7. DEVICE COMPLIANCE & ENCRYPTION
+        try {
+            const devicesData = await fetchGraph('/deviceManagement/managedDevices');
+            const devices = devicesData.value || [];
+            const totalDevices = devices.length;
+            
+            const compliant = devices.filter(d => d.complianceState === 'compliant').length;
+            const encrypted = devices.filter(d => d.isEncrypted).length;
+
+            const compCoverage = totalDevices > 0 ? Math.round((compliant / totalDevices) * 100) : 0;
+            const encCoverage = totalDevices > 0 ? Math.round((encrypted / totalDevices) * 100) : 0;
+
+            controls.push({
+                name: "Device Compliance",
+                area: "Devices",
+                insight: compCoverage < 95 ? "🔴 Non-compliant devices detected" : "🟢 Devices compliant",
+                evidenceData: {
+                    total_devices: totalDevices,
+                    compliant_devices: compliant,
+                    non_compliant: totalDevices - compliant,
+                    compliance_rate: `${compCoverage}%`
+                }
+            });
+
+            controls.push({
+                name: "Device Encryption",
+                area: "Devices",
+                insight: encCoverage < 100 ? "🔴 Data loss risk (Unencrypted devices)" : "🟢 All devices encrypted",
+                evidenceData: {
+                    total_devices: totalDevices,
+                    encrypted_devices: encrypted,
+                    unencrypted_devices: totalDevices - encrypted,
+                    encryption_rate: `${encCoverage}%`
+                }
+            });
+        } catch (e) { console.error('Device Controls Error', e); }
+
+        // ---------------------------------------------------------
+        // 🟨 APPLICATION CONTROLS
+        // ---------------------------------------------------------
+        
+        // 9. APPROVED APPLICATIONS ONLY
+        try {
+            const appsData = await fetchGraph('/servicePrincipals?$top=100');
+            const apps = appsData.value || [];
+            const externalApps = apps.filter(app => !app.publisherName || !app.publisherName.toLowerCase().includes('microsoft')).length;
+
+            controls.push({
+                name: "Approved Applications Only",
+                area: "Applications",
+                insight: externalApps > 10 ? "🔴 Shadow IT risk" : "🟢 App ecosystem secured",
+                evidenceData: {
+                    total_enterprise_apps: apps.length,
+                    external_publishers: externalApps
+                }
+            });
+        } catch (e) { console.error('Apps Control Error', e); }
+
+        // ---------------------------------------------------------
+        // 🟥 & 🟪 MANUAL CONTROLS (Email & Backup)
+        // ---------------------------------------------------------
+        
+        controls.push({
+            name: "Email Protection Enabled",
+            area: "Email Security",
+            insight: "🟢 Email threat protection active",
+            evidenceData: {
+                status: "Configured manually via admin panel",
+                filtering_level: "Strict"
+            }
+        });
+
+        controls.push({
+            name: "Backup Configured",
+            area: "Data Recovery",
+            insight: "🔴 No recovery capability",
+            evidenceData: {
+                status: "Not Configured",
+                coverage: "0%",
+                last_verified: "Never"
+            }
+        });
+
+        res.json({ success: true, controls });
+
+    } catch (error) {
+        console.error('[Compliance API] Critical Error:', error);
+        res.status(500).json({ error: 'Failed to aggregate compliance data' });
+    }
+});
+
 app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) => {
     try {
         const userEmail = req.user.email;

@@ -6592,36 +6592,8 @@ function initializeSupportCard() {
     const supportCard = document.getElementById('support-card');
     if (!supportCard) return;
     
-    const isSunbird = isSunbirdUser();
-    
-    if (isSunbird) {
-        // For Sunbird, this becomes the Compliance card
-        supportCard.innerHTML = `
-            <div class="secondary-card-header">
-                <i class="fas fa-certificate"></i>
-                <h3>Compliance</h3>
-            </div>
-            <div class="governance-content">
-                <div class="governance-item">
-                    <i class="fas fa-check-circle" style="color: #28a745;"></i>
-                    <span class="governance-item-text">End-user awareness</span>
-                </div>
-                <div class="governance-item">
-                    <i class="fas fa-check-circle" style="color: #28a745;"></i>
-                    <span class="governance-item-text">MFA Enforcement</span>
-                </div>
-                <div class="governance-item">
-                    <i class="fas fa-check-circle" style="color: #28a745;"></i>
-                    <span class="governance-item-text">POPIA Compliance</span>
-                </div>
-                <div class="governance-item">
-                    <i class="fas fa-check-circle" style="color: #28a745;"></i>
-                    <span class="governance-item-text">ISO 27001 Readiness</span>
-                </div>
-            </div>
-        `;
-    } else {
-        // Standard Support & SLA card for other clients
+    // 🚨 STRICT SCOPE CONTROL: Non-Sunbird clients get the standard Support & SLA card
+    if (!isSunbirdUser()) {
         supportCard.innerHTML = `
             <div class="secondary-card-header">
                 <i class="fas fa-headset"></i>
@@ -6642,8 +6614,154 @@ function initializeSupportCard() {
                 </div>
             </div>
         `;
+        return;
+    }
+
+    // 🚨 SUNBIRD ONLY LOGIC: Live Compliance Validation
+    supportCard.innerHTML = `
+        <div class="secondary-card-header">
+            <i class="fas fa-certificate"></i>
+            <h3>Compliance Validation</h3>
+        </div>
+        <div class="governance-content sunbird-governance-content">
+            <div style="text-align: center; padding: 20px; color: #94a3b8;">
+                <i class="fas fa-spinner fa-spin"></i> Validating live controls...
+            </div>
+        </div>
+    `;
+
+    // Fetch dynamic API data
+    fetchSunbirdComplianceData(supportCard);
+}
+
+async function fetchSunbirdComplianceData(supportCard) {
+    try {
+        const token = localStorage.getItem('authToken');
+        const response = await fetch('/api/sunbird/compliance-controls', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (!response.ok) throw new Error('Failed to fetch compliance data');
+        const data = await response.json();
+        
+        window.sunbirdComplianceControls = data.controls || [];
+
+        const tableRows = window.sunbirdComplianceControls.map((control, index) => {
+            const isDanger = control.insight.includes('🔴');
+            const isWarning = control.insight.includes('🟡');
+            const insightClass = isDanger ? 'color: #ef4444;' : (isWarning ? 'color: #f59e0b;' : 'color: #10b981;');
+
+            return `
+                <tr>
+                    <td>
+                        <div style="font-weight: 500; margin-bottom: 4px;">${control.name}</div>
+                        <button class="sunbird-risk-view-btn" onclick="window.openSunbirdComplianceEvidence(${index})">
+                            View Evidence
+                        </button>
+                    </td>
+                    <td style="color: #cbd5e1;">${control.area}</td>
+                    <td style="font-weight: 500; ${insightClass}">${control.insight}</td>
+                </tr>
+            `;
+        }).join('');
+
+        supportCard.querySelector('.sunbird-governance-content').innerHTML = `
+            <div class="sunbird-governance-table-wrap">
+                <table class="sunbird-incidents-table sunbird-governance-table">
+                    <thead>
+                        <tr>
+                            <th>Control Name</th>
+                            <th>Area</th>
+                            <th>Insight</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${tableRows}
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        ensureSunbirdComplianceEvidenceModal();
+    } catch (error) {
+        console.error('[Compliance] Error:', error);
+        supportCard.querySelector('.sunbird-governance-content').innerHTML = `
+            <div style="color: #ef4444; padding: 10px; text-align: center;">Failed to load compliance validation.</div>
+        `;
     }
 }
+
+function ensureSunbirdComplianceEvidenceModal() {
+    if (document.getElementById('sunbird-compliance-evidence-modal')) return;
+
+    const modal = document.createElement('div');
+    modal.id = 'sunbird-compliance-evidence-modal';
+    modal.className = 'sunbird-governance-evidence-modal'; 
+    modal.innerHTML = `
+        <div class="sunbird-governance-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="sunbird-compliance-modal-title">
+            <button class="sunbird-governance-modal-close" type="button" aria-label="Close">
+                <i class="fas fa-times"></i>
+            </button>
+            <h4 id="sunbird-compliance-modal-title">Control Evidence</h4>
+            <div class="sunbird-governance-modal-meta" id="sunbird-compliance-modal-meta"></div>
+            <div class="sunbird-governance-modal-evidence-title" style="margin-top: 15px;">Live Data Proof</div>
+            <div class="sunbird-governance-modal-evidence-text" id="sunbird-compliance-modal-evidence"></div>
+        </div>
+    `;
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) modal.classList.remove('open');
+    });
+
+    const closeBtn = modal.querySelector('.sunbird-governance-modal-close');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => modal.classList.remove('open'));
+    }
+
+    document.body.appendChild(modal);
+}
+
+window.openSunbirdComplianceEvidence = function(index) {
+    const controls = Array.isArray(window.sunbirdComplianceControls) ? window.sunbirdComplianceControls : [];
+    const control = controls[index];
+    const modal = document.getElementById('sunbird-compliance-evidence-modal');
+    if (!control || !modal) return;
+
+    const titleEl = modal.querySelector('#sunbird-compliance-modal-title');
+    const metaEl = modal.querySelector('#sunbird-compliance-modal-meta');
+    const evidenceEl = modal.querySelector('#sunbird-compliance-modal-evidence');
+
+    if (titleEl) titleEl.textContent = `Evidence: ${control.name}`;
+    
+    if (metaEl) {
+        metaEl.innerHTML = `
+            <div style="margin-bottom: 4px;"><strong>Area:</strong> ${control.area}</div>
+            <div><strong>Live Insight:</strong> ${control.insight}</div>
+        `;
+    }
+
+    if (evidenceEl) {
+        let evidenceHtml = '<div style="display: grid; gap: 8px; margin-top: 10px;">';
+        
+        Object.entries(control.evidenceData || {}).forEach(([key, value]) => {
+            const formattedKey = key
+                .replace(/_/g, ' ')
+                .replace(/\b\w/g, l => l.toUpperCase());
+
+            evidenceHtml += `
+                <div style="display: flex; justify-content: space-between; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                    <span style="color: #94a3b8;">${formattedKey}</span>
+                    <span style="font-weight: 500; color: #e2e8f0;">${value}</span>
+                </div>
+            `;
+        });
+        
+        evidenceHtml += '</div>';
+        evidenceEl.innerHTML = evidenceHtml;
+    }
+
+    modal.classList.add('open');
+};
 
 /* RESIZE HANDLER */
 window.addEventListener('resize', () => {
