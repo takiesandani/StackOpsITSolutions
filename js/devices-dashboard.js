@@ -7,7 +7,7 @@ let allDevicesData = [];
 let devicesWithoutPoliciesData = [];
 
 // Fetch Devices data from API
-async function fetchDevicesData(project, loadToken = window.dashboardLoadToken) {
+async function fetchDevicesData(project) {
     try {
         console.log('[Devices Dashboard] Fetching device data...');
         showDevicesLoadingState();
@@ -23,7 +23,6 @@ async function fetchDevicesData(project, loadToken = window.dashboardLoadToken) 
         });
         
         const data = await response.json();
-        if (window.activeDashboardKey !== 'devices' || loadToken !== window.dashboardLoadToken) return;
         
         if (!response.ok || !data.success) {
             throw new Error(data.message || 'Failed to fetch devices');
@@ -46,7 +45,6 @@ async function fetchDevicesData(project, loadToken = window.dashboardLoadToken) 
         initializeDevicesDashboard(data);
         
     } catch (error) {
-        if (window.activeDashboardKey !== 'devices' || loadToken !== window.dashboardLoadToken) return;
         console.error('[Devices Dashboard] Error fetching devices:', error.message);
         showNotification('Failed to load devices data: ' + error.message, false);
     }
@@ -92,23 +90,6 @@ function updateDevicesSummaryCards(summary) {
     document.getElementById('devices-compliant-pct').textContent = summary.compliancePercentage + '%';
     document.getElementById('devices-encrypted-pct').textContent = summary.encryptionPercentage + '%';
     document.getElementById('devices-active-24h').textContent = summary.activityBreakdown?.active24h || 0;
-    updateDevicesMetricTone('devices-compliant-pct', summary.compliancePercentage);
-    updateDevicesMetricTone('devices-encrypted-pct', summary.encryptionPercentage);
-}
-
-function updateDevicesMetricTone(metricId, percentageValue) {
-    const metric = document.getElementById(metricId);
-    const card = metric?.closest('.device-stat-card');
-    if (!card) return;
-    card.classList.remove('metric-good', 'metric-medium', 'metric-poor');
-    const value = Number(percentageValue || 0);
-    if (value > 75) {
-        card.classList.add('metric-good');
-    } else if (value >= 25) {
-        card.classList.add('metric-medium');
-    } else {
-        card.classList.add('metric-poor');
-    }
 }
 
 // Initialize all device charts
@@ -816,13 +797,6 @@ function showDevicesLoadingState() {
     });
 }
 
-function clearDevicesDashboardState() {
-    allDevicesData = [];
-    devicesData = [];
-    devicesWithoutPoliciesData = [];
-    showDevicesLoadingState();
-}
-
 // Show modal with devices without policies
 function showDevicesWithoutPoliciesModal() {
     const modal = document.getElementById('devices-without-policies-modal');
@@ -907,6 +881,3 @@ document.addEventListener('DOMContentLoaded', () => {
         searchInput.addEventListener('input', filterDevices);
     }
 });
-
-window.clearDevicesDashboardState = clearDevicesDashboardState;
-window.showDevicesLoadingState = showDevicesLoadingState;

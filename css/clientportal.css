@@ -977,11 +977,17 @@
 
 /* Apply to ALL dashboard cards & views */
 .dashboard-card,
+.backup-stat-card,
 .chart-card,
 .monitor-card,
 .insight-card,
-.actionable-insight-item {
-  position: relative;
+.identity-chart-card,
+.identity-health-card,
+.risk-item,
+.actionable-insight-item,
+.apps-stat-card,
+.email-stat-card,
+.security-stat-card {
   position: relative;
   overflow: hidden;
 
@@ -1009,8 +1015,15 @@
 .dashboard-card::before,
 .chart-card::before,
 .monitor-card::before,
+.backup-stat-card::before,
 .insight-card::before,
-.actionable-insight-item::before {
+.identity-chart-card::before,
+.identity-health-card::before,
+.risk-item::before,
+.actionable-insight-item::before,
+.apps-stat-card::before,
+.email-stat-card::before,
+.security-stat-card::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -1032,8 +1045,15 @@
 .dashboard-card > *,
 .chart-card > *,
 .monitor-card > *,
+.backup-stat-card > *,
 .insight-card > *,
-.actionable-insight-item > * {
+.identity-chart-card > *,
+.identity-health-card > *,
+.risk-item > *,
+.actionable-insight-item > *,
+.apps-stat-card > *,
+.email-stat-card > *,
+.security-stat-card > * {
   position: relative;
   z-index: 2;
 }
@@ -1577,8 +1597,7 @@
     linear-gradient(
       to bottom,
       rgb(255, 162, 0),
-      rgba(255, 123, 0, 0.85),
-      rgba(0, 190, 255, 0)
+      rgbargba(255, 123, 0, 0.85) ba(0, 190, 255, 0)
     ),
     linear-gradient(180deg, rgba(255, 176, 80, 0.25), rgba(255, 176, 80, 0.25));
   background-repeat: no-repeat;
@@ -1922,7 +1941,7 @@
 .sunbird-mini-stat strong {
   font-size: 0.96rem;
   color: #fff5ea;
-  font-weight: 200;
+  font-weight: 600;
 }
 
 .sunbird-section-title {
@@ -1946,7 +1965,7 @@
   margin: 0;
   padding: 8px 0;
   font-size: 0.85rem;
-  font-weight: 200;
+  font-weight: 500;
   color: #ffffff;
   border-bottom: 1px solid rgba(255, 255, 255, 0.3);
   letter-spacing: 0.01em;
@@ -2149,7 +2168,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
 .sunbird-incidents-table th {
   color: #dab295;
-  font-weight: 200;
+  font-weight: 600;
 }
 
 .sunbird-empty-row {
@@ -2227,7 +2246,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   border-radius: 23px;
   padding: 6px 12px;
   font-size: 0.68rem;
-  font-weight: 200;
+  font-weight: 500;
   letter-spacing: 0.01em;
   cursor: pointer;
   transition: all 0.25s ease;
@@ -3224,6 +3243,105 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   flex-wrap: wrap;
 }
 
+/* UNIFIED GLOW-WRAP BACK BUTTON - ALL DASHBOARDS */
+.btn-back {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 200;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border-radius: 25px;
+}
+
+.btn-back .glow-wrap {
+  position: relative;
+  width: auto;
+  min-width: 140px;
+  height: 44px;
+  border-radius: 22px;
+  overflow: visible;
+  box-shadow: 0 4px 15px rgba(255, 255, 255, 0.15);
+  margin-right: 16px;
+}
+
+.btn-back .glow-wrap:hover {
+  transform: scale(1.05);
+}
+
+.btn-back .glowing-border-layer {
+  position: absolute;
+  top: -50px;
+  left: -50px;
+  width: 200px;
+  height: 150px;
+  z-index: 1;
+  background: conic-gradient(
+    #ffffff 0%,
+    hsla(0, 0%, 100%, 0) 25%,
+    transparent 50%,
+    #ffffff00 75%,
+    #ffffff 100%
+  );
+  animation: spin 3s linear infinite;
+}
+
+.btn-back button {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
+  padding: 0 20px;
+  background: linear-gradient(
+    135deg,
+    rgba(0, 0, 0, 0.15),
+    rgba(255, 255, 255, 0.05)
+  );
+
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.3);
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 200;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  letter-spacing: 0.5px;
+  z-index: 2;
+  pointer-events: auto;
+}
+
+.btn-back button:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.4);
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.2);
+}
+
+/* Apply to ALL back buttons */
+.btn-back-dashboard,
+.btn-back-identity,
+#btn-back-devices,
+#btn-back-security,
+#btn-back-email-security,
+#btn-back-backup-recovery {
+  position: relative;
+}
+
+.btn-back:hover {
+  background: var(--primary);
+  color: white;
+}
+
 .dashboard-title h2 {
   color: var(--light);
   font-size: 2rem;
@@ -3602,6 +3720,48 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   font-size: 0.8rem;
 }
 
+/* BACKUP STATUS */
+.backup-status {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.backup-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.backup-info p {
+  color: var(--light);
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.backup-info small {
+  color: #bdbdbd;
+  font-size: 0.8rem;
+}
+
+.backup-status-badge {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 200;
+  white-space: nowrap;
+}
+
+.backup-status-badge.success {
+  background: rgba(40, 167, 69, 0.2);
+  color: var(--success);
+}
+
 /* DASHBOARD FOOTER */
 .dashboard-footer {
   background: rgba(28, 28, 28, 0.95);
@@ -3701,53 +3861,6 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
   .projects-header h2 {
     font-size: 2.5rem;
-  }
-}
-
-/* Fix Applications header/back button alignment */
-#dashboard-view .applications-dashboard .dashboard-header {
-  display: block !important;
-  margin-bottom: 12px !important;
-}
-
-#dashboard-view .applications-dashboard .dashboard-header-left {
-  position: relative;
-  display: flex !important;
-  align-items: center;
-  justify-content: center;
-  min-height: 44px;
-  width: 100%;
-}
-
-#dashboard-view .applications-dashboard .btn-back-dashboard {
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: auto !important;
-  min-width: 92px;
-  max-width: max-content;
-  padding: 8px 14px !important;
-  font-size: 0.78rem;
-  line-height: 1;
-}
-
-#dashboard-view .applications-dashboard .dashboard-heading {
-  width: auto !important;
-  max-width: 100%;
-  margin: 0 auto !important;
-  font-size: 1.26rem !important;
-  text-align: center;
-}
-
-@media (max-width: 768px) {
-  #dashboard-view .applications-dashboard .dashboard-header-left {
-    padding-top: 40px;
-  }
-
-  #dashboard-view .applications-dashboard .btn-back-dashboard {
-    top: 0;
-    transform: none;
   }
 }
 
@@ -4663,6 +4776,24 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
     font-size: 0.7rem;
   }
 
+  .backup-item {
+    padding: 12px;
+    gap: 8px;
+  }
+
+  .backup-info p {
+    font-size: 0.85rem;
+  }
+
+  .backup-info small {
+    font-size: 0.7rem;
+  }
+
+  .backup-status-badge {
+    padding: 4px 8px;
+    font-size: 0.7rem;
+  }
+
   /* Login Section - Mobile */
   .login-container {
     padding: 15px;
@@ -4768,6 +4899,654 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   .billing-card-header h3 {
     font-size: 0.9rem;
   }
+}
+
+/* ============================================
+    Identity Protection DASHBOARD STYLES
+   ============================================ */
+
+.identity-dashboard {
+  width: 90%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px;
+}
+
+.identity-dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.identity-header-left {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.powered-by-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  margin-left: auto;
+}
+
+.powered-by-logo {
+  height: 20px;
+  width: auto;
+  object-fit: contain;
+}
+
+.powered-by-badge span {
+  font-size: 0.85rem;
+  font-weight: 200;
+  color: #94a3b8;
+}
+
+.btn-back-identity {
+  display: none;
+}
+
+.btn-back-identity:hover {
+  display: none;
+}
+
+.btn-back-identity i {
+  display: none;
+}
+
+.identity-dashboard-title {
+  font-size: 1.4rem;
+  font-weight: 200;
+  color: #ffffff;
+  margin: 0;
+  letter-spacing: 0.5px;
+}
+
+.identity-stats-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  width: 100%;
+  margin: 0 auto 10px;
+}
+
+.identity-stat-card,
+.sunbird-summary-card,
+.sunbird-analytics-card {
+  position: relative;
+  overflow: hidden;
+
+  /* Liquid glass base */
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.12),
+    rgba(255, 255, 255, 0.04)
+  );
+
+  backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
+  -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
+
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 15px;
+
+  padding: 15px;
+
+  box-shadow: 
+    0 12px 40px rgba(0, 0, 0, 0.25),
+    inset 0 1px 2px rgba(255, 255, 255, 0.5),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.15);
+
+  transition: all 0.4s ease;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.identity-stat-card::before,
+.sunbird-summary-card::before,
+.sunbird-analytics-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.055) 0%,
+    rgb(0, 0, 0) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+
+  opacity: 0.6;
+  pointer-events: none;
+  z-index: 1;
+  transition: opacity 0.4s ease;
+}
+
+.identity-stat-card > *,
+.sunbird-summary-card > *,
+.sunbird-analytics-card > * {
+  position: relative;
+  z-index: 2;
+}
+
+.identity-stat-card:hover,
+.sunbird-summary-card:hover,
+.sunbird-analytics-card:hover {
+  transform: translateY(-5px);
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.6);
+  box-shadow: 
+    0 25px 60px rgba(255, 255, 255, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+}
+
+.identity-stat-card:hover::before,
+.sunbird-summary-card:hover::before,
+.sunbird-analytics-card:hover::before {
+  opacity: 1;
+}
+
+.sunbird-summary-card.risk-filter-active {
+  border-color: #ffffff;
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 255, 255, 0.5),
+    0 0 20px rgba(255, 255, 255, 0.3);
+}
+
+.stat-card-icon,
+.summary-card-icon {
+  width: 45px;
+  height: 45px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  flex-shrink: 0;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+}
+
+.stat-card-content,
+.summary-card-content {
+  flex: 1;
+}
+
+.stat-card-label,
+.summary-card-label {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+  font-weight: 200;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+
+.stat-card-value,
+.summary-card-value {
+  font-size: 1.5rem;
+  font-weight: 300;
+  color: #ffffff;
+}
+
+.identity-controls-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.identity-search-section {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+
+.identity-search-bar {
+  width: 100%;
+  padding: 10px 13px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #e0e0e0;
+  font-size: 0.8rem;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.identity-search-bar:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 20px rgba(255, 255, 255, 0.15);
+}
+
+.identity-search-bar::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.identity-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.filter-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: #d1d5db;
+  user-select: none;
+}
+
+.filter-checkbox input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  accent-color: #ffffff;
+}
+
+.filter-checkbox:hover {
+  color: #e0e0e0;
+}
+
+.btn-clear-filters {
+  padding: 7px 12px;
+  background: rgba(220, 53, 69, 0.15);
+  border: 1px solid rgba(220, 53, 69, 0.3);
+  border-radius: 6px;
+  color: rgba(220, 53, 69, 0.9);
+  cursor: pointer;
+  font-weight: 200;
+  font-size: 0.7rem;
+  transition: all 0.3s ease;
+  margin-left: auto;
+}
+
+.btn-clear-filters:hover {
+  background: rgba(220, 53, 69, 0.25);
+  border-color: rgba(220, 53, 69, 0.5);
+  color: rgba(220, 53, 69, 1);
+}
+
+.identity-users-table-container {
+  width: 100%;
+  margin: 0 auto;
+  overflow-x: auto;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.identity-users-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: rgba(0, 0, 0, 0.3);
+  font-size: 0.88rem;
+  min-width: 1400px;
+}
+
+.identity-users-table thead {
+  background: rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.identity-users-table th {
+  padding: 12px 11px;
+  text-align: left;
+  color: #ffffff;
+  font-weight: 200;
+  font-size: 0.84rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.identity-users-table td {
+  padding: 10px 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Set column widths for optimal initial view and horizontal scrolling */
+.identity-users-table th:nth-child(1),
+.identity-users-table td:nth-child(1) {
+  min-width: 180px;
+  width: 180px;
+}
+
+.identity-users-table th:nth-child(2),
+.identity-users-table td:nth-child(2) {
+  min-width: 220px;
+  width: 220px;
+}
+
+.identity-users-table th:nth-child(3),
+.identity-users-table td:nth-child(3) {
+  min-width: 160px;
+  width: 160px;
+}
+
+.identity-users-table th:nth-child(4),
+.identity-users-table td:nth-child(4) {
+  min-width: 180px;
+  width: 180px;
+}
+
+.identity-users-table th:nth-child(5),
+.identity-users-table td:nth-child(5) {
+  min-width: 120px;
+  width: 120px;
+}
+
+.identity-users-table th:nth-child(6),
+.identity-users-table td:nth-child(6) {
+  min-width: 120px;
+  width: 120px;
+}
+
+.identity-users-table th:nth-child(7),
+.identity-users-table td:nth-child(7) {
+  min-width: 140px;
+  width: 140px;
+}
+
+.identity-users-table th:nth-child(8),
+.identity-users-table td:nth-child(8) {
+  min-width: 120px;
+  width: 120px;
+}
+
+.identity-users-table th:nth-child(9),
+.identity-users-table td:nth-child(9) {
+  min-width: 110px;
+  width: 110px;
+}
+
+/* Scrollable columns */
+.identity-users-table th:nth-child(10),
+.identity-users-table td:nth-child(10) {
+  min-width: 140px;
+  width: 140px;
+}
+
+.identity-users-table th:nth-child(11),
+.identity-users-table td:nth-child(11) {
+  min-width: 180px;
+  width: 180px;
+}
+
+.identity-users-table th:nth-child(12),
+.identity-users-table td:nth-child(12) {
+  min-width: 160px;
+  width: 160px;
+}
+
+.identity-users-table th:nth-child(13),
+.identity-users-table td:nth-child(13) {
+  min-width: 150px;
+  width: 150px;
+}
+
+.identity-users-table tbody tr {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  transition: background-color 0.2s ease;
+}
+
+.identity-users-table tbody tr:hover {
+  background: rgba(0, 110, 255, 0.08);
+}
+
+.identity-users-table td {
+  padding: 11px 11px;
+  color: #d1d5db;
+  font-size: 0.84rem;
+  vertical-align: middle;
+  word-break: break-word;
+}
+
+.user-type-badge {
+  display: inline-block;
+  padding: 5px 10px;
+  border-radius: 20px;
+  font-size: 0.65rem;
+  font-weight: 200;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.user-type-badge.internal {
+  background: rgba(34, 197, 94, 0.2);
+  color: #86efac;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.user-type-badge.external {
+  background: rgba(249, 115, 22, 0.2);
+  color: #ffb366;
+  border: 1px solid rgba(249, 115, 22, 0.3);
+}
+
+.user-status-badge {
+  display: inline-block;
+  padding: 5px 10px;
+  border-radius: 20px;
+  font-size: 0.65rem;
+  font-weight: 200;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.user-status-badge.active {
+  background: rgba(34, 197, 94, 0.2);
+  color: #86efac;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+/* Sunbird Dashboard - Risk Badges */
+.risk-badge-high {
+  display: inline-block;
+  padding: 5px 10px;
+  border-radius: 20px;
+  font-size: 0.65rem;
+  font-weight: 200;
+  background: rgba(220, 53, 69, 0.2);
+  color: #f87171;
+  border: 1px solid rgba(220, 53, 69, 0.3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.risk-badge-medium {
+  display: inline-block;
+  padding: 5px 10px;
+  border-radius: 20px;
+  font-size: 0.65rem;
+  font-weight: 200;
+  background: rgba(249, 115, 22, 0.2);
+  color: #ffb366;
+  border: 1px solid rgba(249, 115, 22, 0.3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.risk-badge-safe {
+  display: inline-block;
+  padding: 5px 10px;
+  border-radius: 20px;
+  font-size: 0.65rem;
+  font-weight: 200;
+  background: rgba(34, 197, 94, 0.2);
+  color: #86efac;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* SKELETON LOADER - Identity Table Loading State */
+.skeleton-row {
+  animation: skeleton-fade 1.5s ease-in-out infinite;
+}
+
+.skeleton-block {
+  height: 20px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.05) 25%,
+    rgba(255, 255, 255, 0.1) 50%,
+    rgba(255, 255, 255, 0.05) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s infinite;
+  border-radius: 4px;
+  margin: 4px 0;
+}
+
+@keyframes skeleton-loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes skeleton-fade {
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ============================================================== */
+/* SUNBIRD ANALYTICS COMPONENTS STYLES                            */
+/* ============================================================== */
+
+/* Summary Cards Row (4 metrics) */
+.sunbird-summary-cards-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.sunbird-summary-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: all 0.3s ease;
+}
+
+.sunbird-summary-card:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(0, 110, 255, 0.3);
+}
+
+.sunbird-summary-card[data-risk-filter] {
+  cursor: pointer;
+}
+
+.sunbird-summary-card.risk-filter-active {
+  border-color: rgba(0, 180, 255, 0.55);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 180, 255, 0.28),
+    0 0 12px rgba(0, 150, 255, 0.16);
+}
+
+.summary-card-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.summary-card-content {
+  flex: 1;
+}
+
+.summary-card-label {
+  font-size: 0.7rem;
+  color: #999;
+  font-weight: 200;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-bottom: 4px;
+}
+
+.summary-card-value {
+  font-size: 1.4rem;
+  font-weight: 200;
+  color: #e0e0e0;
+}
+
+.summary-card-subtext {
+  font-size: 0.65rem;
+  color: #666;
+  font-weight: 200;
+}
+
+/* Analytics Row 1: Radar + Pie Chart */
+.sunbird-analytics-row-1 {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+/* New Analytics Row 2: 3-column layout */
+.sunbird-analytics-row-2 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+/* New Analytics Row 3: Mixed layout */
+.sunbird-analytics-row-3 {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.sunbird-analytics-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 12px;
+  transition: all 0.3s ease;
 }
 
 .sunbird-analytics-card:hover {
@@ -5228,1110 +6007,4 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   background: rgba(0, 110, 255, 0.1);
   border-radius: 6px;
   border: 1px solid rgba(0, 110, 255, 0.2);
-}
-
-/* ============================================
-   CLIENT PORTAL DASHBOARD FIXES
-   Restores styles for generated markup in clientportal.js
-   ============================================ */
-
-.identity-dashboard,
-.apps-dashboard,
-.sunbird-dashboard {
-  width: 100%;
-  color: var(--light);
-}
-
-.identity-dashboard-header,
-.apps-dashboard-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-}
-
-.identity-header-left,
-.apps-header-left,
-.dashboard-header-left {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
-}
-
-.identity-dashboard-title,
-.apps-dashboard-title {
-  margin: 0;
-  font-size: 1.35rem;
-  font-weight: 200;
-  color: var(--light);
-  line-height: 1.2;
-}
-
-.btn-back,
-.btn-back-dashboard,
-.btn-back-identity,
-.btn-back-devices,
-.btn-back-security,
-.btn-back-email,
-.btn-back-email-security,
-.btn-back-backup-recovery {
-  border: none;
-  background: transparent;
-  color: var(--light);
-  padding: 0;
-  cursor: pointer;
-  font: inherit;
-}
-
-.btn-back {
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.btn-back-dashboard,
-.btn-back-identity,
-.btn-back-devices,
-.btn-back-security,
-.btn-back-email,
-.btn-back-email-security,
-.btn-back-backup-recovery {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-  height: 100%;
-  min-height: 42px;
-  border-radius: 23px;
-  color: #ffffff;
-  background: #000000;
-  font-size: 0.9rem;
-  font-weight: 200;
-  letter-spacing: 1px;
-  transition: none;
-}
-
-.btn-back-dashboard i,
-.btn-back-identity i,
-.btn-back-devices i,
-.btn-back-security i,
-.btn-back-email i,
-.btn-back-email-security i,
-.btn-back-backup-recovery i {
-  color: #ffffff;
-}
-
-.identity-stats-cards,
-.apps-stats-cards {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  margin: 16px 0;
-}
-
-.identity-stat-card,
-.apps-stat-card,
-.sunbird-summary-card,
-.sunbird-analytics-card {
-  position: relative;
-  overflow: hidden;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.12),
-    rgba(255, 255, 255, 0.04)
-  );
-  backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
-  -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 14px;
-  box-shadow:
-    0 12px 40px rgba(0, 0, 0, 0.25),
-    inset 0 1px 2px rgba(255, 255, 255, 0.5),
-    inset 0 -1px 2px rgba(0, 0, 0, 0.15);
-  transition: all 0.35s ease;
-}
-
-.identity-stat-card:hover,
-.apps-stat-card:hover,
-.sunbird-summary-card:hover,
-.sunbird-analytics-card:hover,
-.identity-card:hover {
-  transform: translateY(-4px);
-  background: rgba(255, 255, 255, 0.18);
-  border-color: rgba(255, 255, 255, 0.6);
-}
-
-.identity-stat-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px;
-}
-
-.stat-card-icon,
-.summary-card-icon {
-  width: 46px;
-  height: 46px;
-  min-width: 46px;
-  min-height: 46px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
-  flex-shrink: 0;
-}
-
-.stat-card-content,
-.summary-card-content {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.stat-card-label,
-.summary-card-label {
-  color: #cfcfcf;
-  font-size: 0.8rem;
-  font-weight: 200;
-  line-height: 1.2;
-}
-
-.stat-card-value,
-.summary-card-value {
-  color: var(--light);
-  font-size: 1.35rem;
-  font-weight: 200;
-  line-height: 1;
-}
-
-.summary-card-subtext {
-  color: #bdbdbd;
-  font-size: 0.7rem;
-  line-height: 1;
-}
-
-.identity-controls-section {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  margin: 16px 0;
-  flex-wrap: wrap;
-}
-
-.identity-search-bar {
-  flex: 1 1 280px;
-  min-width: 240px;
-  padding: 12px 14px;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--light);
-  outline: none;
-  backdrop-filter: blur(10px);
-}
-
-.identity-search-bar::placeholder {
-  color: rgba(255, 255, 255, 0.55);
-}
-
-.identity-search-bar:focus {
-  border-color: rgba(255, 255, 255, 0.55);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08);
-}
-
-.identity-filters {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.filter-checkbox {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: #e5e5e5;
-  font-size: 0.85rem;
-  user-select: none;
-}
-
-.filter-checkbox input {
-  accent-color: #ffffff;
-  width: 16px;
-  height: 16px;
-}
-
-.identity-users-table-container,
-.apps-table-container {
-  margin-top: 14px;
-  overflow: hidden;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(255, 255, 255, 0.03);
-}
-
-.identity-users-table-container {
-  overflow-x: auto;
-}
-
-.identity-users-table,
-.apps-table {
-  width: 100%;
-  border-collapse: collapse;
-  min-width: 720px;
-}
-
-.identity-users-table thead,
-.apps-table thead {
-  background: rgba(0, 0, 0, 0.22);
-}
-
-.identity-users-table th,
-.identity-users-table td,
-.apps-table th,
-.apps-table td {
-  padding: 12px 14px;
-  text-align: left;
-  font-size: 0.82rem;
-  color: #dfe8f5;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  vertical-align: top;
-}
-
-.identity-users-table th,
-.apps-table th {
-  color: #ffffff;
-  font-weight: 200;
-  letter-spacing: 0.02em;
-}
-
-.identity-users-table tbody tr:hover,
-.apps-table tbody tr:hover {
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.identity-insights-section {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  margin-top: 16px;
-}
-
-.identity-card {
-  position: relative;
-  overflow: hidden;
-  padding: 14px;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.11),
-    rgba(255, 255, 255, 0.035)
-  );
-  box-shadow:
-    0 12px 40px rgba(0, 0, 0, 0.2),
-    inset 0 1px 2px rgba(255, 255, 255, 0.45);
-  transition: all 0.35s ease;
-}
-
-.identity-card-header,
-.apps-chart-container h3,
-.apps-table-container h3,
-.apps-access-section h3,
-.apps-insights-section h3 {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0 0 12px 0;
-  color: #ffffff;
-  font-size: 1rem;
-  font-weight: 200;
-}
-
-.identity-card-title {
-  color: #ffffff;
-  font-size: 0.95rem;
-  font-weight: 200;
-  line-height: 1.2;
-}
-
-.identity-card-type,
-.identity-card-description {
-  color: #c7c7c7;
-  font-size: 0.82rem;
-  line-height: 1.45;
-  margin: 0;
-}
-
-.identity-card-status {
-  margin: 12px 0;
-}
-
-.identity-card-stats {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.identity-stat {
-  padding: 10px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.04);
-  text-align: center;
-}
-
-.identity-stat-value {
-  display: block;
-  color: #ffffff;
-  font-size: 1.15rem;
-  font-weight: 200;
-  line-height: 1.1;
-}
-
-.identity-stat-label {
-  display: block;
-  margin-top: 4px;
-  color: #bfbfbf;
-  font-size: 0.72rem;
-}
-
-.identity-card-button {
-  width: 100%;
-  margin-top: 14px;
-  padding: 10px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 10px;
-  background: rgba(0, 0, 0, 0.45);
-  color: #ffffff;
-  cursor: pointer;
-  transition: all 0.25s ease;
-}
-
-.identity-card-button:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.45);
-}
-
-.sunbird-summary-cards-row,
-.sunbird-analytics-row-1,
-.sunbird-analytics-row-2,
-.sunbird-analytics-row-3,
-.sunbird-insights-row {
-  display: grid;
-  gap: 12px;
-  width: 100%;
-}
-
-.sunbird-summary-cards-row {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-bottom: 14px;
-}
-
-.sunbird-summary-card {
-  padding: 12px;
-}
-
-.sunbird-summary-card.risk-filter-active {
-  border-color: rgba(255, 255, 255, 0.8);
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.35) inset,
-    0 0 18px rgba(255, 255, 255, 0.12);
-}
-
-.sunbird-summary-card .summary-card-icon {
-  margin-bottom: 10px;
-}
-
-.sunbird-analytics-row-1 {
-  grid-template-columns: 2fr 1fr;
-}
-
-.sunbird-analytics-row-2,
-.sunbird-analytics-row-3 {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.sunbird-analytics-card {
-  padding: 12px;
-}
-
-.sunbird-analytics-card-wide {
-  grid-column: span 1;
-}
-
-.apps-stats-cards {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.apps-stat-card {
-  padding: 14px;
-}
-
-.apps-stat-card .stat-icon {
-  width: 48px;
-  height: 48px;
-  min-width: 48px;
-  min-height: 48px;
-}
-
-.apps-chart-section {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 14px;
-}
-
-.apps-chart-container,
-.apps-access-section,
-.apps-insights-section {
-  position: relative;
-  overflow: hidden;
-  padding: 14px;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(255, 255, 255, 0.03);
-}
-
-.apps-chart-container .chart-wrapper {
-  height: 240px;
-}
-
-.apps-access-section,
-.apps-insights-section {
-  margin-top: 14px;
-}
-
-.apps-access-section h3,
-.apps-insights-section h3 {
-  margin-bottom: 10px;
-}
-
-#apps-access-content,
-#apps-insights-content {
-  color: #d7d7d7;
-}
-
-.apps-table-container {
-  margin-top: 14px;
-  padding: 14px;
-}
-
-.apps-table-container h3 {
-  margin-bottom: 10px;
-}
-
-.apps-table {
-  min-width: 860px;
-}
-
-.security-insights-container,
-.risk-indicator-container {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.risk-indicator {
-  align-items: stretch;
-  flex-wrap: wrap;
-}
-
-.risk-indicator-container .risk-item {
-  padding: 10px 12px;
-}
-
-.identity-health-section {
-  align-items: stretch;
-}
-
-.identity-health-card,
-.identity-risk-card,
-.identity-admin-card,
-.identity-insights-card {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  padding: 12px;
-}
-
-.identity-health-card:hover,
-.identity-risk-card:hover,
-.identity-admin-card:hover,
-.identity-insights-card:hover {
-  border-color: rgba(255, 255, 255, 0.24);
-}
-
-.chart-wrapper {
-  position: relative;
-  width: 100%;
-  min-height: 160px;
-}
-
-/* ============================================ */
-/* STRICT DASHBOARD DESIGN SYSTEM (SCOPED) */
-/* Devices, Security, Email, Backup, Applications */
-/* ============================================ */
-#devices-view .container-fluid,
-#security-events-view .container-fluid,
-#email-security-view .container-fluid,
-#backup-recovery-view .container-fluid,
-#dashboard-view .applications-dashboard {
-  width: 90vw;
-  max-width: 90vw;
-  margin: 14px auto 0;
-}
-
-#devices-view .dashboard-title,
-#security-events-view .security-dashboard-title,
-#email-security-view .email-dashboard-title,
-#backup-recovery-view .backup-dashboard-title,
-#dashboard-view .dashboard-header {
-  margin: 0 0 20px;
-  padding-top: 0;
-}
-
-#dashboard-view .applications-dashboard {
-  padding-top: 0;
-}
-
-#dashboard-view .dashboard-header-left,
-#devices-view .dashboard-title,
-#security-events-view .sec-title-section,
-#email-security-view .email-title-section,
-#backup-recovery-view .backup-title-section {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-#dashboard-view .applications-dashboard h2,
-#devices-view .dashboard-title h2,
-#security-events-view .security-dashboard-title h2,
-#email-security-view .email-dashboard-title h2,
-#backup-recovery-view .backup-dashboard-title h2 {
-  color: #ffffff;
-  margin: 0;
-}
-
-.btn-back button,
-.btn-back-dashboard,
-.btn-back-identity,
-.btn-back-devices,
-.btn-back-security,
-.btn-back-email,
-.btn-back-email-security,
-.btn-back-backup-recovery {
-  border-radius: 22px !important;
-  min-height: 42px;
-  padding: 10px 16px !important;
-  border: 1px solid rgba(255, 255, 255, 0.6) !important;
-  background: rgba(255, 255, 255, 0.14) !important;
-  color: #ffffff !important;
-  transition: background-color 0.2s ease, border-color 0.2s ease;
-}
-
-.btn-back button:hover,
-.btn-back-dashboard:hover,
-.btn-back-identity:hover,
-.btn-back-devices:hover,
-.btn-back-security:hover,
-.btn-back-email:hover,
-.btn-back-email-security:hover,
-.btn-back-backup-recovery:hover {
-  background: rgba(255, 255, 255, 0.24) !important;
-  border-color: rgba(255, 255, 255, 0.85) !important;
-}
-
-#devices-view .device-stat-card,
-#security-events-view .security-stat-card,
-#email-security-view .email-stat-card,
-#backup-recovery-view .backup-stat-card,
-#dashboard-view .apps-stat-card,
-#devices-view .chart-card,
-#security-events-view .chart-card,
-#email-security-view .chart-card,
-#backup-recovery-view .chart-card,
-#dashboard-view .apps-chart-container,
-#devices-view .monitor-card,
-#security-events-view .monitor-card,
-#email-security-view .monitor-card,
-#backup-recovery-view .monitor-card,
-#security-events-view .incident-table-container,
-#email-security-view .email-table-container,
-#backup-recovery-view .backup-table-container,
-#dashboard-view .apps-table-container,
-#devices-view .insight-card,
-#email-security-view .insight-card,
-#backup-recovery-view .insight-card,
-#backup-recovery-view .actionable-insight-item,
-#dashboard-view .access-card,
-#dashboard-view .insight-item {
-  background: rgba(255, 255, 255, 0.16) !important;
-  border: 1px solid rgba(255, 255, 255, 0.55) !important;
-  border-radius: 18px !important;
-  box-shadow: 0 0 14px rgba(255, 255, 255, 0.22) !important;
-}
-
-#devices-view .devices-summary-cards,
-#security-events-view .security-summary-cards,
-#email-security-view .email-summary-cards,
-#backup-recovery-view .backup-summary-cards,
-#dashboard-view .apps-stats-cards,
-#devices-view .devices-charts-section,
-#security-events-view .security-charts-section,
-#email-security-view .email-charts-container,
-#backup-recovery-view .backup-charts-container,
-#dashboard-view .apps-chart-section,
-#devices-view .devices-risk-alerts-section,
-#devices-view .devices-analytics-section {
-  gap: 16px !important;
-  margin-bottom: 20px !important;
-}
-
-#devices-view table,
-#security-events-view table,
-#email-security-view table,
-#backup-recovery-view table,
-#dashboard-view .apps-table {
-  border-collapse: collapse;
-}
-
-#devices-view th, #devices-view td,
-#security-events-view th, #security-events-view td,
-#email-security-view th, #email-security-view td,
-#backup-recovery-view th, #backup-recovery-view td,
-#dashboard-view .apps-table th, #dashboard-view .apps-table td {
-  padding: 12px 14px !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.18) !important;
-}
-
-#devices-view .devices-table-container,
-#security-events-view .incident-table-container,
-#email-security-view .email-table-container,
-#backup-recovery-view .backup-table-container,
-#dashboard-view .apps-table-container,
-#devices-view #high-risk-devices-list,
-#devices-view #security-alerts-feed,
-#security-events-view #activity-feed,
-#email-security-view #email-feed,
-#backup-recovery-view .backup-modal-body {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.45) transparent;
-}
-
-#devices-view .devices-table-container::-webkit-scrollbar,
-#security-events-view .incident-table-container::-webkit-scrollbar,
-#email-security-view .email-table-container::-webkit-scrollbar,
-#backup-recovery-view .backup-table-container::-webkit-scrollbar,
-#dashboard-view .apps-table-container::-webkit-scrollbar,
-#devices-view #high-risk-devices-list::-webkit-scrollbar,
-#devices-view #security-alerts-feed::-webkit-scrollbar,
-#security-events-view #activity-feed::-webkit-scrollbar,
-#email-security-view #email-feed::-webkit-scrollbar,
-#backup-recovery-view .backup-modal-body::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-#devices-view .devices-table-container::-webkit-scrollbar-track,
-#security-events-view .incident-table-container::-webkit-scrollbar-track,
-#email-security-view .email-table-container::-webkit-scrollbar-track,
-#backup-recovery-view .backup-table-container::-webkit-scrollbar-track,
-#dashboard-view .apps-table-container::-webkit-scrollbar-track,
-#devices-view #high-risk-devices-list::-webkit-scrollbar-track,
-#devices-view #security-alerts-feed::-webkit-scrollbar-track,
-#security-events-view #activity-feed::-webkit-scrollbar-track,
-#email-security-view #email-feed::-webkit-scrollbar-track,
-#backup-recovery-view .backup-modal-body::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-#devices-view .devices-table-container::-webkit-scrollbar-thumb,
-#security-events-view .incident-table-container::-webkit-scrollbar-thumb,
-#email-security-view .email-table-container::-webkit-scrollbar-thumb,
-#backup-recovery-view .backup-table-container::-webkit-scrollbar-thumb,
-#dashboard-view .apps-table-container::-webkit-scrollbar-thumb,
-#devices-view #high-risk-devices-list::-webkit-scrollbar-thumb,
-#devices-view #security-alerts-feed::-webkit-scrollbar-thumb,
-#security-events-view #activity-feed::-webkit-scrollbar-thumb,
-#email-security-view #email-feed::-webkit-scrollbar-thumb,
-#backup-recovery-view .backup-modal-body::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.45);
-  border-radius: 999px;
-}
-
-#devices-view .device-risk-badge.high,
-#security-events-view .severity-badge.high,
-#email-security-view .severity-badge.high,
-#email-security-view .risk-item.critical h4,
-#security-events-view .risk-card.critical .risk-card-title,
-#dashboard-view .risk-level-badge.high {
-  color: #ef4444 !important;
-}
-
-#devices-view .device-risk-badge.medium,
-#security-events-view .severity-badge.medium,
-#email-security-view .severity-badge.medium,
-#dashboard-view .risk-level-badge.medium {
-  color: #f59e0b !important;
-}
-
-#devices-view .device-risk-badge.low,
-#security-events-view .severity-badge.low,
-#email-security-view .severity-badge.low,
-#dashboard-view .risk-level-badge.low {
-  color: #22c55e !important;
-}
-
-@media (max-width: 1024px) {
-  .identity-stats-cards,
-  .apps-stats-cards {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .sunbird-summary-cards-row,
-  .sunbird-analytics-row-2,
-  .sunbird-analytics-row-3,
-  .apps-chart-section {
-    grid-template-columns: 1fr;
-  }
-
-  .sunbird-analytics-row-1 {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 768px) {
-  .identity-dashboard-header,
-  .apps-dashboard-header,
-  .identity-controls-section {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .identity-stats-cards,
-  .apps-stats-cards,
-  .identity-card-stats {
-    grid-template-columns: 1fr;
-  }
-
-  .identity-users-table,
-  .apps-table {
-    min-width: 640px;
-  }
-
-  .btn-back {
-    width: 100%;
-  }
-
-  .btn-back-dashboard,
-  .btn-back-identity,
-  .btn-back-devices,
-  .btn-back-security,
-  .btn-back-email,
-  .btn-back-email-security,
-  .btn-back-backup-recovery {
-    width: 100%;
-  }
-}
-
-/* ============================================ */
-/* DASHBOARD CONSISTENCY PASS (ALL DASHBOARDS) */
-/* ============================================ */
-#devices-view .container-fluid,
-#security-events-view .container-fluid,
-#email-security-view .container-fluid,
-#backup-recovery-view .container-fluid,
-#dashboard-view .applications-dashboard,
-#dashboard-view .identity-dashboard,
-#dashboard-view .sunbird-dashboard {
-  max-width: 90vw;
-  width: 90vw;
-  margin: 10px auto 0;
-}
-
-#devices-view .dashboard-title,
-#security-events-view .security-dashboard-title,
-#email-security-view .email-dashboard-title,
-#backup-recovery-view .backup-dashboard-title,
-#dashboard-view .dashboard-header,
-#dashboard-view .identity-dashboard-header,
-#dashboard-view .apps-dashboard-header {
-  margin-bottom: 14px !important;
-}
-
-#devices-view .dashboard-title h2,
-#security-events-view .security-dashboard-title h2,
-#email-security-view .email-dashboard-title h2,
-#backup-recovery-view .backup-dashboard-title h2,
-#dashboard-view .dashboard-heading,
-#dashboard-view .identity-dashboard-title,
-#dashboard-view .apps-dashboard-title {
-  font-size: 1.4rem !important;
-  text-align: center;
-  width: 100%;
-}
-
-#devices-view .dashboard-title,
-#security-events-view .security-dashboard-title,
-#email-security-view .email-dashboard-title,
-#backup-recovery-view .backup-dashboard-title {
-  display: grid !important;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 10px;
-}
-
-#devices-view .dashboard-title h2,
-#security-events-view .security-dashboard-title h2,
-#email-security-view .email-dashboard-title h2,
-#backup-recovery-view .backup-dashboard-title h2 {
-  grid-column: 2;
-}
-
-#devices-view .dashboard-title .project-status,
-#security-events-view .security-dashboard-title .project-status,
-#email-security-view .email-dashboard-title .project-status,
-#backup-recovery-view .backup-dashboard-title .project-status {
-  justify-self: end;
-}
-
-#devices-view .devices-summary-cards,
-#security-events-view .security-summary-cards,
-#email-security-view .email-summary-cards,
-#backup-recovery-view .backup-summary-cards,
-#dashboard-view .identity-stats-cards,
-#dashboard-view .apps-stats-cards {
-  display: grid !important;
-  grid-template-columns: repeat(auto-fit, minmax(165px, 220px));
-  justify-content: center;
-  gap: 10px !important;
-  margin-bottom: 14px !important;
-}
-
-#devices-view .device-stat-card,
-#security-events-view .security-stat-card,
-#email-security-view .email-stat-card,
-#backup-recovery-view .backup-stat-card,
-#dashboard-view .identity-stat-card,
-#dashboard-view .apps-stat-card {
-  min-height: 88px;
-  padding: 12px !important;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-#devices-view .device-stat-icon,
-#security-events-view .sec-stat-icon,
-#email-security-view .email-stat-icon,
-#backup-recovery-view .backup-stat-icon,
-#dashboard-view .stat-card-icon,
-#dashboard-view .apps-stat-card .stat-icon {
-  width: 38px;
-  height: 38px;
-  min-width: 38px;
-  min-height: 38px;
-  border-radius: 12px;
-}
-
-#devices-view .device-stat-content h3,
-#security-events-view .sec-stat-content h3,
-#email-security-view .email-stat-content h3,
-#backup-recovery-view .backup-stat-content h3,
-#dashboard-view .stat-card-value,
-#dashboard-view .apps-stat-card .stat-value {
-  font-size: 1.12rem !important;
-  margin: 0 0 2px 0;
-}
-
-#devices-view .device-stat-content p,
-#security-events-view .sec-stat-content p,
-#email-security-view .email-stat-content p,
-#backup-recovery-view .backup-stat-content p,
-#dashboard-view .stat-card-label,
-#dashboard-view .apps-stat-card .stat-label {
-  font-size: 0.74rem !important;
-  margin: 0;
-}
-
-#devices-view .device-stat-card.metric-good {
-  background: rgba(34, 197, 94, 0.18) !important;
-  border-color: rgba(34, 197, 94, 0.7) !important;
-}
-
-#devices-view .device-stat-card.metric-medium {
-  background: rgba(245, 158, 11, 0.2) !important;
-  border-color: rgba(245, 158, 11, 0.7) !important;
-}
-
-#devices-view .device-stat-card.metric-poor {
-  background: rgba(239, 68, 68, 0.2) !important;
-  border-color: rgba(239, 68, 68, 0.7) !important;
-}
-
-#devices-view .devices-charts-section,
-#security-events-view .security-charts-section,
-#email-security-view .email-charts-container,
-#backup-recovery-view .backup-charts-container,
-#dashboard-view .apps-chart-section,
-#dashboard-view .identity-charts-grid {
-  display: grid !important;
-  grid-template-columns: repeat(auto-fit, minmax(330px, 420px));
-  justify-content: center;
-  gap: 12px !important;
-  margin-bottom: 14px !important;
-}
-
-#devices-view .chart-card.full-width,
-#security-events-view .chart-card.full-width,
-#email-security-view .chart-card.full-width,
-#backup-recovery-view .chart-card.full-width {
-  grid-column: auto !important;
-}
-
-#devices-view .chart-card,
-#security-events-view .chart-card,
-#email-security-view .chart-card,
-#backup-recovery-view .chart-card,
-#dashboard-view .apps-chart-container {
-  min-height: 280px;
-  padding: 14px !important;
-}
-
-#devices-view .devices-risk-alerts-section,
-#devices-view .devices-analytics-section,
-#security-events-view .security-risks-section,
-#dashboard-view .identity-health-section {
-  gap: 12px !important;
-  margin-bottom: 14px !important;
-}
-
-#devices-view .alert-item-device,
-#security-events-view .activity-item,
-#email-security-view .feed-item {
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  background: rgba(255, 255, 255, 0.1);
-  padding: 10px 12px;
-  margin-bottom: 8px;
-}
-
-#devices-view .alert-item-device {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 8px;
-  align-items: center;
-}
-
-#devices-view .alert-item-device .alert-title {
-  color: #ffffff;
-  font-size: 0.86rem;
-  line-height: 1.3;
-}
-
-#devices-view .alert-item-device .alert-time {
-  color: #d5d5d5;
-  font-size: 0.74rem;
-}
-
-#devices-view .alert-severity-badge,
-#email-security-view .feed-severity,
-#email-security-view .severity-badge,
-#security-events-view .severity-badge {
-  border-radius: 999px !important;
-  padding: 4px 10px !important;
-  font-size: 0.68rem !important;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
-
-#devices-view .alert-severity-badge.high,
-#email-security-view .severity-badge.high,
-#security-events-view .severity-badge.high {
-  background: rgba(239, 68, 68, 0.18) !important;
-  color: #ef4444 !important;
-}
-
-#devices-view .alert-severity-badge.medium,
-#email-security-view .severity-badge.medium,
-#security-events-view .severity-badge.medium {
-  background: rgba(245, 158, 11, 0.2) !important;
-  color: #f59e0b !important;
-}
-
-#devices-view .alert-severity-badge.low,
-#email-security-view .severity-badge.low,
-#security-events-view .severity-badge.low {
-  background: rgba(34, 197, 94, 0.18) !important;
-  color: #22c55e !important;
-}
-
-#devices-view .monitor-card,
-#security-events-view .monitor-card,
-#email-security-view .monitor-card,
-#backup-recovery-view .monitor-card,
-#security-events-view .incident-table-container,
-#email-security-view .email-table-container,
-#backup-recovery-view .backup-table-container,
-#dashboard-view .identity-users-table-container,
-#dashboard-view .apps-table-container {
-  margin-top: 0 !important;
-  margin-bottom: 12px !important;
-  padding: 14px !important;
-}
-
-#devices-view .insights-section,
-#security-events-view .security-risks-section,
-#email-security-view .email-risks-panel,
-#backup-recovery-view .backup-risks-panel,
-#dashboard-view .identity-insights-section {
-  margin-top: 0 !important;
-}
-
-#devices-view button,
-#security-events-view button,
-#email-security-view button,
-#backup-recovery-view button,
-#dashboard-view .identity-dashboard button,
-#dashboard-view .applications-dashboard button {
-  width: auto;
-  min-width: fit-content;
-  max-width: 100%;
-  white-space: nowrap;
-  border-radius: 22px !important;
-  padding-inline: 14px;
-}
-
-@media (max-width: 1024px) {
-  #devices-view .dashboard-title,
-  #security-events-view .security-dashboard-title,
-  #email-security-view .email-dashboard-title,
-  #backup-recovery-view .backup-dashboard-title {
-    grid-template-columns: 1fr;
-  }
-
-  #devices-view .dashboard-title h2,
-  #security-events-view .security-dashboard-title h2,
-  #email-security-view .email-dashboard-title h2,
-  #backup-recovery-view .backup-dashboard-title h2 {
-    grid-column: auto;
-    text-align: left;
-  }
-
-  #devices-view .dashboard-title .project-status,
-  #security-events-view .security-dashboard-title .project-status,
-  #email-security-view .email-dashboard-title .project-status,
-  #backup-recovery-view .backup-dashboard-title .project-status {
-    justify-self: start;
-  }
 }

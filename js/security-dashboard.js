@@ -15,10 +15,9 @@ let chartInstances = {
 /**
  * Main entry point: Fetch security events data from API
  */
-async function fetchSecurityEventsData(project, loadToken = window.dashboardLoadToken) {
+async function fetchSecurityEventsData(project) {
     try {
         console.log('[Security] Fetching security events data...');
-        showSecurityDashboardLoadingState();
         const authToken = localStorage.getItem('authToken');
         
         const response = await fetch('/api/security-events', {
@@ -34,7 +33,6 @@ async function fetchSecurityEventsData(project, loadToken = window.dashboardLoad
         }
 
         securityData = await response.json();
-        if (window.activeDashboardKey !== 'security' || loadToken !== window.dashboardLoadToken) return;
         console.log('[Security] Data received:', securityData);
 
         if (securityData.success) {
@@ -42,7 +40,6 @@ async function fetchSecurityEventsData(project, loadToken = window.dashboardLoad
             updateProjectCardMetrics(project, securityData);
         }
     } catch (error) {
-        if (window.activeDashboardKey !== 'security' || loadToken !== window.dashboardLoadToken) return;
         console.error('[Security] Error fetching data:', error);
         document.getElementById('security-events-view').innerHTML = 
             `<div class="container-fluid"><div class="monitor-card" style="text-align: center; padding: 40px;">
@@ -50,27 +47,6 @@ async function fetchSecurityEventsData(project, loadToken = window.dashboardLoad
                 <p style="color: #94a3b8; font-size: 12px; margin-top: 8px;">${error.message}</p>
             </div></div>`;
     }
-}
-
-function showSecurityDashboardLoadingState() {
-    const riskContainer = document.getElementById('security-risks-container');
-    const feed = document.getElementById('activity-feed');
-    const incidents = document.getElementById('incidents-tbody');
-    if (riskContainer) {
-        riskContainer.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 24px; color: #5f6368;"><i class="fas fa-spinner fa-spin loading-spinner"></i> Loading threats...</div>';
-    }
-    if (feed) {
-        feed.innerHTML = '<div style="text-align: center; padding: 24px; color: #5f6368;"><i class="fas fa-spinner fa-spin loading-spinner"></i> Loading activity...</div>';
-    }
-    if (incidents) {
-        incidents.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px; color: #5f6368;"><i class="fas fa-spinner fa-spin loading-spinner"></i> Loading incidents...</td></tr>';
-    }
-}
-
-function clearSecurityDashboardState() {
-    securityData = null;
-    currentSecurityFilters = {};
-    showSecurityDashboardLoadingState();
 }
 
 /**
@@ -542,6 +518,3 @@ function formatRelativeTime(dateString) {
     
     return date.toLocaleDateString();
 }
-
-window.clearSecurityDashboardState = clearSecurityDashboardState;
-window.showSecurityDashboardLoadingState = showSecurityDashboardLoadingState;
