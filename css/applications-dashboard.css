@@ -27,30 +27,7 @@
     gap: 15px;
 }
 
-.btn-back-dashboard {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 16px;
-    background: rgba(0, 110, 255, 0.15);
-    border: 1px solid rgba(0, 110, 255, 0.3);
-    border-radius: 6px;
-    color: rgba(0, 110, 255, 0.9);
-    cursor: pointer;
-    font-weight: 200;
-    font-size: 0.9rem;
-    transition: all 0.3s ease;
-}
 
-.btn-back-dashboard:hover {
-    background: rgba(0, 110, 255, 0.25);
-    border-color: rgba(0, 110, 255, 0.5);
-    color: rgba(0, 110, 255, 1);
-}
-
-.btn-back-dashboard i {
-    font-size: 0.85rem;
-}
 
 .dashboard-heading {
     font-size: 1.4rem;
@@ -593,10 +570,6 @@
         width: 100%;
     }
     
-    .btn-back-dashboard {
-        font-size: 0.85rem;
-        padding: 8px 12px;
-    }
     
     .dashboard-heading {
         font-size: 1.2rem;
