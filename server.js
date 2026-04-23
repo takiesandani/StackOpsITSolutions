@@ -4969,6 +4969,178 @@ app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) 
     }
 });
 
+// ============================================================================
+// SUNBIRD ONLY: OPERATIONS REMEDIATION ENGINE
+// ============================================================================
+app.get('/api/sunbird/operations', authenticateToken, async (req, res) => {
+    try {
+        const userEmail = req.user.email;
+        const tenant = getTenantByEmail(userEmail);
+        
+        // 🚨 STRICT SCOPE CONTROL
+        if (!tenant || tenant.clientId !== 'sunbird') {
+            return res.status(403).json({ error: 'Access denied. Sunbird only.' });
+        }
+
+        const token = await getMicrosoftGraphToken();
+        const tasks = [];
+
+        // Helper function for Graph API calls
+        const fetchGraph = async (endpoint) => {
+            const version = endpoint.startsWith('/beta') ? '' : '/v1.0';
+            const response = await fetch(`https://graph.microsoft.com${version}${endpoint}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!response.ok) return { value: [] };
+            return await response.json();
+        };
+
+        const addTask = (task, area, priority, insight, why, affected, remediation) => {
+            tasks.push({ task, area, priority, insight, why, affected, remediation });
+        };
+
+        // ---------------------------------------------------------
+        // 1. IDENTITY TASKS
+        // ---------------------------------------------------------
+        try {
+            const users = await fetchMicrosoftUsers(token);
+            let mfaMissingCount = 0;
+            let weakAdminCount = 0;
+            let mixedAdminCount = 0;
+
+            // Check roles for admin tasks
+            const roleAssignments = await fetchMicrosoftRoleAssignments(token);
+            const adminIds = new Set();
+            roleAssignments.forEach(assignment => {
+                const roleName = assignment.roleDefinition?.displayName || '';
+                if (roleName.toLowerCase().includes('admin') || roleName.toLowerCase().includes('global')) {
+                    adminIds.add(assignment.principalId);
+                }
+            });
+
+            await mapWithConcurrency(users, 8, async (user) => {
+                const authMethods = await fetchUserAuthMethods(token, user.id);
+                const hasMfa = hasRealMfaMethod(authMethods);
+                const isAdmin = adminIds.has(user.id);
+
+                if (!hasMfa) mfaMissingCount++;
+
+                if (isAdmin) {
+                    // Task 2: Enforce admin MFA (Checking for weak/no MFA)
+                    if (!hasMfa || authMethods.length < 2) weakAdminCount++;
+
+                    // Task 3: Separate admin accounts (Heuristic: Standard email format used as admin)
+                    const upn = (user.userPrincipalName || '').toLowerCase();
+                    if (!upn.includes('admin') && !upn.includes('adm-')) mixedAdminCount++;
+                }
+            });
+
+            // Task 1: Complete MFA rollout
+            if (mfaMissingCount > 0) {
+                addTask("Complete MFA rollout", "Identity", "High", "🔴 Users vulnerable",
+                    "Users without MFA are highly susceptible to credential stuffing and phishing attacks.",
+                    `${mfaMissingCount} users without MFA registered.`,
+                    "1. Open Azure AD Conditional Access.\n2. Enforce MFA policy for all users.\n3. Run registration campaign."
+                );
+            }
+
+            // Task 2: Enforce admin MFA
+            if (weakAdminCount > 0) {
+                addTask("Enforce strong admin MFA", "Identity", "High", "🔴 Admin risk",
+                    "Administrators are using weak authentication methods, risking complete tenant compromise.",
+                    `${weakAdminCount} admin accounts lack phishing-resistant MFA.`,
+                    "1. Require FIDO2 or Microsoft Authenticator for admin roles.\n2. Disable SMS/Voice for privileged accounts."
+                );
+            }
+
+            // Task 3: Separate admin accounts
+            if (mixedAdminCount > 0) {
+                addTask("Separate admin accounts", "Identity", "High", "🔴 Privilege misuse",
+                    "Admin accounts are being used for day-to-day productivity (email, browsing), increasing the attack surface.",
+                    `${mixedAdminCount} admin accounts detected as primary user accounts.`,
+                    "1. Create dedicated 'admin-username@' accounts.\n2. Strip admin privileges from standard daily accounts."
+                );
+            }
+
+            // Task 4: Block legacy authentication
+            const signIns = await fetchMicrosoftSignIns(token);
+            const legacySignIns = signIns.filter(s => s.clientAppUsed && s.clientAppUsed !== 'Browser' && s.clientAppUsed !== 'Mobile Apps and Desktop clients');
+            if (legacySignIns.length > 0) {
+                addTask("Block legacy authentication", "Identity", "High", "🔴 Legacy auth risk",
+                    "Legacy protocols (POP, IMAP) bypass MFA and are actively being exploited.",
+                    `${legacySignIns.length} legacy sign-in attempts detected.`,
+                    "1. Create Conditional Access policy to block legacy authentication.\n2. Disable legacy protocols in Exchange Admin Center."
+                );
+            }
+        } catch (e) { console.error('Operations: Identity Error', e); }
+
+        // ---------------------------------------------------------
+        // 2. DEVICE & ENDPOINT TASKS
+        // ---------------------------------------------------------
+        try {
+            const devices = await fetchMicrosoftDevices(token);
+            const nonCompliant = devices.filter(d => d.complianceState !== 'compliant').length;
+            const unencrypted = devices.filter(d => !d.isEncrypted).length;
+
+            // Task 7: Enforce device compliance
+            if (nonCompliant > 0) {
+                addTask("Enforce device compliance", "Devices", "High", "🔴 Unmanaged devices",
+                    "Devices are accessing corporate data without meeting baseline security requirements.",
+                    `${nonCompliant} devices are currently non-compliant.`,
+                    "1. Review Intune compliance policies.\n2. Setup Conditional Access to require compliant devices."
+                );
+            }
+
+            // Task 8: Enable BitLocker
+            if (unencrypted > 0) {
+                addTask("Enable BitLocker encryption", "Devices", "High", "🔴 Data loss risk",
+                    "Unencrypted devices expose local data if the physical device is lost or stolen.",
+                    `${unencrypted} devices are not encrypted.`,
+                    "1. Deploy BitLocker configuration profile via Intune.\n2. Force silent encryption for Windows endpoints."
+                );
+            }
+
+            // Task 9: Deploy endpoint protection
+            const alerts = await fetchSecurityAlerts(token);
+            if (alerts.length > 0) {
+                addTask("Deploy endpoint protection", "Devices", "High", "🔴 Malware risk",
+                    "Active threats detected on endpoints indicating potential protection gaps.",
+                    `${alerts.length} active endpoint security alerts.`,
+                    "1. Review Microsoft Defender for Endpoint coverage.\n2. Isolate affected devices immediately."
+                );
+            }
+        } catch (e) { console.error('Operations: Device Error', e); }
+
+        // ---------------------------------------------------------
+        // 3. MANUAL / CONFIGURATION TASKS
+        // Evaluated as TRUE (Needs Action) until configured in Phase 2
+        // ---------------------------------------------------------
+        addTask("Conduct access review", "Identity", "Medium", "🟡 Access drift", "Quarterly access reviews are overdue. Users may retain permissions they no longer need.", "All users and guest accounts.", "1. Export user entitlement list.\n2. Have managers approve current access.\n3. Revoke unneeded roles.");
+        addTask("Implement Conditional Access", "Identity", "High", "🔴 No identity protection", "Basic security defaults are insufficient. Explicit CA policies are required.", "Entire tenant.", "1. Enforce MFA for all users.\n2. Block legacy auth.\n3. Require compliant devices.");
+        addTask("Enforce BYOD model", "Devices", "High", "🔴 Boundary risk", "Personal devices lack containerization, allowing corporate data to mix with personal apps.", "Mobile devices (iOS/Android).", "1. Deploy App Protection Policies (MAM) in Intune.\n2. Require managed apps for corporate email.");
+        addTask("Deploy 1Password", "Credentials", "High", "🔴 Credential exposure", "Users are likely re-using passwords or storing them insecurely.", "All staff.", "1. Provision 1Password enterprise accounts.\n2. Enforce company-wide password manager adoption.");
+        addTask("Configure 1Password SSO", "Credentials", "High", "🔴 Access unmanaged", "1Password is not integrated with Azure AD, resulting in disconnected identity lifecycle.", "1Password tenant.", "1. Setup Azure AD Enterprise Application for 1Password.\n2. Configure SAML/OIDC SSO.");
+        addTask("Implement Zero Trust", "Network", "High", "🔴 Network exposure", "Internal network assumes trust, making lateral movement easy for attackers.", "Corporate network.", "1. Segment network zones.\n2. Implement micro-segmentation.\n3. Require identity validation for internal resources.");
+        addTask("Enable DNS filtering", "Network", "High", "🔴 Malicious traffic risk", "Endpoints can resolve and connect to known malicious domains without restriction.", "All endpoints.", "1. Deploy DNS filtering agent (e.g., Cisco Umbrella, Defender).\n2. Block malware/phishing categories.");
+        addTask("Restrict AI tools", "AI", "Medium", "🟡 AI leakage risk", "Employees may be pasting sensitive corporate data into unapproved public AI models.", "Web browsers & endpoints.", "1. Publish acceptable AI usage policy.\n2. Block unsanctioned AI tools via web filtering.");
+        addTask("Enable backup", "Backup", "High", "🔴 No recovery", "Microsoft 365 data is not actively backed up to an immutable third-party vault.", "Exchange, SharePoint, OneDrive.", "1. Connect third-party backup provider.\n2. Configure daily retention policies.");
+        addTask("Test restore", "Backup", "High", "🔴 Recovery unproven", "Backups are useless if they cannot be reliably restored during an incident.", "Backup infrastructure.", "1. Perform a file-level restore test.\n2. Perform a mailbox restore test.\n3. Document RTO metrics.");
+        addTask("Maintain software register", "Applications", "Medium", "🟡 Unknown tools risk", "No central repository exists for approved software, risking supply chain attacks.", "IT Procurement.", "1. Audit current installed software.\n2. Create an approved software catalog.");
+
+        // ---------------------------------------------------------
+        // SORTING: Priority -> Severity
+        // ---------------------------------------------------------
+        const priorityWeight = { 'High': 3, 'Medium': 2, 'Low': 1 };
+        tasks.sort((a, b) => priorityWeight[b.priority] - priorityWeight[a.priority]);
+
+        res.json({ success: true, tasks });
+
+    } catch (error) {
+        console.error('[Operations API] Critical Error:', error);
+        res.status(500).json({ error: 'Failed to generate operations queue' });
+    }
+});
+
 app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) => {
     try {
         const userEmail = req.user.email;

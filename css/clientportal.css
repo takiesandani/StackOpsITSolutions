@@ -6261,3 +6261,77 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   border-radius: 6px;
   border: 1px solid rgba(0, 110, 255, 0.2);
 }
+
+/* =========================================================
+   OPERATIONS PANEL STYLES (SUNBIRD ONLY)
+   ========================================================= */
+.op-priority-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.65rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.op-priority-high {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.op-priority-medium {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.op-priority-low {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.btn-fix-this {
+  background: rgba(0, 110, 255, 0.1);
+  color: #60a5fa;
+  border: 1px solid rgba(0, 110, 255, 0.3);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.btn-fix-this:hover {
+  background: rgba(0, 110, 255, 0.25);
+  border-color: #3b82f6;
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(0, 110, 255, 0.3);
+}
+
+/* Operations Skeleton Loader */
+.op-skeleton-row td {
+  padding: 12px 10px;
+}
+
+.op-skeleton-block {
+  height: 16px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.05) 25%, rgba(255, 255, 255, 0.1) 50%, rgba(255, 255, 255, 0.05) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s infinite;
+}
+
+.op-insight-text {
+  font-weight: 500;
+  font-size: 0.75rem;
+}
+.op-insight-danger { color: #f87171; }
+.op-insight-warning { color: #fbbf24; }
+.op-insight-success { color: #34d399; }

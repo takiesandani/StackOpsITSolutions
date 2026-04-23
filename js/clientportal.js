@@ -6008,6 +6008,11 @@ window.switchBillingMenu = async function(menuItem) {
         return;
     }
 
+    if (menuItem === 'operations') {
+        await renderSunbirdOperationsView();
+        return;
+    }
+
     if (menuItem === 'security') {
         await renderSunbirdSecurityAlertsView(true);
         return;
@@ -7020,3 +7025,161 @@ document.addEventListener('DOMContentLoaded', () => {
         searchInput.addEventListener('input', filterMicrosoftUsers);
     }
 });
+
+// ============================================================================
+// SUNBIRD ONLY: OPERATIONS REMEDIATION ENGINE
+// ============================================================================
+async function renderSunbirdOperationsView() {
+    const billingCard = document.getElementById('billing-card');
+    if (!billingCard) return;
+
+    // 1. Skeleton Loader (No text fetching)
+    const skeletonRows = Array(6).fill(`
+        <tr class="op-skeleton-row">
+            <td><div class="op-skeleton-block" style="width: 80%;"></div></td>
+            <td><div class="op-skeleton-block" style="width: 50%;"></div></td>
+            <td><div class="op-skeleton-block" style="width: 60px; border-radius: 20px;"></div></td>
+            <td><div class="op-skeleton-block" style="width: 70%;"></div></td>
+            <td><div class="op-skeleton-block" style="width: 80px;"></div></td>
+        </tr>
+    `).join('');
+
+    billingCard.innerHTML = `
+        <div class="sunbird-panel-view">
+            <div class="billing-card-header">
+                <i class="fas fa-tasks"></i>
+                <h3>Operations Action Queue</h3>
+            </div>
+            <div class="sunbird-section-title" style="margin-bottom: 10px;">Live Remediation Required</div>
+            
+            <div class="sunbird-incidents-table-wrap" style="max-height: 400px;">
+                <table class="sunbird-incidents-table">
+                    <thead>
+                        <tr>
+                            <th>Task</th>
+                            <th>Area</th>
+                            <th>Priority</th>
+                            <th>Insight</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="operations-tbody">
+                        ${skeletonRows}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+
+    ensureSunbirdOperationsModal();
+    ensureSunbirdBillingCardDimensions();
+    syncSunbirdLeftMenuHeight();
+
+    // 2. Fetch Live Tasks
+    try {
+        const token = localStorage.getItem('authToken');
+        const response = await fetch('/api/sunbird/operations', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (!response.ok) throw new Error('Failed to fetch operations');
+        const data = await response.json();
+        
+        window.sunbirdOperationsTasks = data.tasks || [];
+
+        const tbody = document.getElementById('operations-tbody');
+        
+        if (window.sunbirdOperationsTasks.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" class="sunbird-empty-row">No active tasks required. System is healthy.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = window.sunbirdOperationsTasks.map((task, index) => {
+            const isHigh = task.priority === 'High';
+            const isMed = task.priority === 'Medium';
+            const badgeClass = isHigh ? 'op-priority-high' : (isMed ? 'op-priority-medium' : 'op-priority-low');
+            const dotColor = isHigh ? '#f87171' : (isMed ? '#fbbf24' : '#34d399');
+            
+            const insightClass = isHigh ? 'op-insight-danger' : (isMed ? 'op-insight-warning' : 'op-insight-success');
+
+            return `
+                <tr>
+                    <td style="font-weight: 500; color: #e2e8f0;">${task.task}</td>
+                    <td style="color: #94a3b8;">${task.area}</td>
+                    <td>
+                        <span class="op-priority-badge ${badgeClass}">
+                            <span style="width: 6px; height: 6px; border-radius: 50%; background: ${dotColor};"></span>
+                            ${task.priority}
+                        </span>
+                    </td>
+                    <td class="op-insight-text ${insightClass}">${task.insight}</td>
+                    <td>
+                        <button class="btn-fix-this" onclick="window.openSunbirdOperationsModal(${index})">
+                            Fix this
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+    } catch (error) {
+        console.error('[Operations] Error:', error);
+        document.getElementById('operations-tbody').innerHTML = `
+            <tr><td colspan="5" class="sunbird-empty-row" style="color: #f87171;">Failed to load operations queue.</td></tr>
+        `;
+    }
+}
+
+function ensureSunbirdOperationsModal() {
+    if (document.getElementById('sunbird-operations-modal')) return;
+
+    const modal = document.createElement('div');
+    modal.id = 'sunbird-operations-modal';
+    modal.className = 'sunbird-governance-evidence-modal'; 
+    modal.innerHTML = `
+        <div class="sunbird-governance-modal-dialog" role="dialog" aria-modal="true" style="max-width: 550px;">
+            <button class="sunbird-governance-modal-close" type="button" aria-label="Close" onclick="document.getElementById('sunbird-operations-modal').classList.remove('open')">
+                <i class="fas fa-times"></i>
+            </button>
+            <h4 id="op-modal-title" style="color: #e2e8f0; font-size: 1.1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; margin-bottom: 15px;">Task Details</h4>
+            
+            <div style="display: flex; flex-direction: column; gap: 15px;">
+                <!-- Why it exists -->
+                <div style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px; border-left: 3px solid #fbbf24;">
+                    <div style="font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px;">Why this task exists</div>
+                    <div id="op-modal-why" style="font-size: 0.9rem; color: #cbd5e1; line-height: 1.5;"></div>
+                </div>
+
+                <!-- Affected Entities -->
+                <div style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px; border-left: 3px solid #f87171;">
+                    <div style="font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px;">Affected Entities</div>
+                    <div id="op-modal-affected" style="font-size: 0.9rem; color: #cbd5e1; font-weight: 500;"></div>
+                </div>
+
+                <!-- Remediation -->
+                <div style="background: rgba(0, 110, 255, 0.05); padding: 12px; border-radius: 8px; border-left: 3px solid #3b82f6;">
+                    <div style="font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 8px;">Suggested Remediation Steps</div>
+                    <div id="op-modal-remediation" style="font-size: 0.9rem; color: #e2e8f0; line-height: 1.6; white-space: pre-wrap;"></div>
+                </div>
+            </div>
+            
+            <div style="margin-top: 20px; display: flex; justify-content: flex-end;">
+                <button class="btn-fix-this" style="background: #3b82f6; color: white;" onclick="document.getElementById('sunbird-operations-modal').classList.remove('open')">Acknowledge</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+}
+
+window.openSunbirdOperationsModal = function(index) {
+    const task = window.sunbirdOperationsTasks[index];
+    if (!task) return;
+
+    document.getElementById('op-modal-title').innerHTML = `<i class="fas fa-wrench" style="color: #3b82f6; margin-right: 8px;"></i> ${task.task}`;
+    document.getElementById('op-modal-why').textContent = task.why;
+    document.getElementById('op-modal-affected').textContent = task.affected;
+    document.getElementById('op-modal-remediation').textContent = task.remediation;
+
+    document.getElementById('sunbird-operations-modal').classList.add('open');
+};
