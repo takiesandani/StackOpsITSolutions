@@ -19,7 +19,7 @@ const SUNBIRD_ONLY_CARD_IDS = [2, 3, 4, 5, 7, 8, 9, 10]; // Identity Protection,
 const HIDDEN_FROM_SUNBIRD_IDS = []; // All Sunbird cards are visible to them
 
 // Cards to hide from the main project cards UI (keep functionality in code)
-const HIDDEN_PROJECT_CARD_IDS = [4, 7, 8, 6]; // Security & Events, Backup and Recovery, Applications
+const HIDDEN_PROJECT_CARD_IDS = [4, 7, 8]; // Security & Events, Backup and Recovery, Applications
 
 // Check if current user is a Sunbird client
 function isSunbirdUser() {

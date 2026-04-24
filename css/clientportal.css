@@ -6336,10 +6336,3 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 .op-insight-warning { color: #fbbf24; }
 .op-insight-success { color: #34d399; }
 
-/* =====================================
-   STATIC 5-PILLAR DASHBOARD LAYOUT
-===================================== */
-.projects-nav {
-    display: none !important;
-}
-
