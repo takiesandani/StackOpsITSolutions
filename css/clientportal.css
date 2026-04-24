@@ -709,7 +709,7 @@
 
 /* PROJECTS VIEW */
 .projects-view {
-  padding: 11.2px 16.3px;
+  padding: 5px 16.3px;
   background: linear-gradient(
     135deg,
     rgba(0, 0, 0, 0.3) 0%,
@@ -719,7 +719,7 @@
 
 .projects-header {
   text-align: center;
-  margin-bottom: 9.2px;
+  margin-bottom: 5px;
 }
 
 .projects-header h2 {
@@ -737,76 +737,33 @@
   margin: 0 auto;
 }
 
-.projects-nav {
-  display: flex;
-  justify-content: flex-start;
-  align-items: center;
-  margin-bottom: 9.2px;
-  padding: 6px 0;
-  background: transparent;
-  border-radius: 0;
-  border: none;
-  gap: 22.4px;
-  margin-left: 45%;
-}
 
-.nav-counter {
-  color: #bdbdbd;
-  font-size: 0.918rem;
-  font-weight: 200;
-  opacity: 0.9;
-}
-
-.nav-counter span {
-  color: var(--primary);
-  font-weight: 200;
-}
-
-.nav-buttons {
-  display: flex;
-
-  gap: 6px;
-}
-
-.nav-btn {
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--primary);
-  cursor: pointer;
-  font-size: 0.75rem;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  overflow: hidden;
-}
-
-.nav-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.2);
-  border-color: var(--primary);
-  transform: scale(1.1);
-  box-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
-}
-
-.nav-btn:disabled {
-  opacity: 0;
-  cursor: not-allowed;
-}
 
 .projects-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 11.2px;
   max-width: 100%;
   margin: 0 auto;
-
   perspective: 1000px;
   position: relative;
   z-index: 2;
+  align-items: center;
+}
+
+.projects-grid .project-card:nth-child(1),
+.projects-grid .project-card:nth-child(5) {
+  opacity: 0.34;
+  filter: saturate(0.72) blur(1px);
+  transform: scale(0.9);
+  pointer-events: none;
+}
+
+.projects-grid .project-card:nth-child(2),
+.projects-grid .project-card:nth-child(3),
+.projects-grid .project-card:nth-child(4) {
+  transform: scale(1.05);
+  z-index: 3;
 }
 
 .projects-carousel-shell {
@@ -1434,7 +1391,7 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 11.2px;
-  margin-top: 22.4px;
+  margin-top: 10px;
   perspective: 1000px;
 }
 
