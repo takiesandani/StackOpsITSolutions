@@ -13,13 +13,13 @@ const SUNBIRD_EMAILS = [
 ];
 
 // Sunbird-only card IDs that should be hidden from non-Sunbird clients
-const SUNBIRD_ONLY_CARD_IDS = [2, 3, 5, 9, 10]; // Identity Protection, Devices, Email Security, Credential Security, Network Security
+const SUNBIRD_ONLY_CARD_IDS = [2, 3, 4, 5, 7, 8, 9, 10]; // Identity Protection, Devices, Security & Events, Email Security, Backup & Recovery, Applications, Credential Security, Network Security
 
 // Cards to hide from Sunbird clients
 const HIDDEN_FROM_SUNBIRD_IDS = []; // All Sunbird cards are visible to them
 
 // Cards to hide from the main project cards UI (keep functionality in code)
-const HIDDEN_PROJECT_CARD_IDS = [1, 4, 6, 7, 8]; // Cisco Duo, Security & Events, Cloud data, Backup and Recovery, Applications
+const HIDDEN_PROJECT_CARD_IDS = [4, 7, 8, 6]; // Security & Events, Backup and Recovery, Applications
 
 // Check if current user is a Sunbird client
 function isSunbirdUser() {
@@ -51,26 +51,48 @@ function isSessionValid() {
 
 // Get filtered projects based on user access level
 function getFilteredProjects() {
-    const projects = isSunbirdUser() ? mockProjects : mockProjects.filter(p => !SUNBIRD_ONLY_CARD_IDS.includes(p.id));
-    return projects.filter(project => !HIDDEN_PROJECT_CARD_IDS.includes(project.id));
+    if (!isSessionValid()) {
+        // Expired session - return only non-Sunbird cards
+        return mockProjects.filter(project =>
+            !SUNBIRD_ONLY_CARD_IDS.includes(project.id) &&
+            !HIDDEN_PROJECT_CARD_IDS.includes(project.id)
+        );
+    }
+    
+    if (isSunbirdUser()) {
+        // Sunbird user - show all cards except those hidden from them
+        return mockProjects.filter(project =>
+            !HIDDEN_FROM_SUNBIRD_IDS.includes(project.id) &&
+            !HIDDEN_PROJECT_CARD_IDS.includes(project.id)
+        );
+    }
+    
+    // Other clients - hide Sunbird-only cards
+    return mockProjects.filter(project =>
+        !SUNBIRD_ONLY_CARD_IDS.includes(project.id) &&
+        !HIDDEN_PROJECT_CARD_IDS.includes(project.id)
+    );
 }
 
 const mockProjects = [
     {
-        id: 10,
-        name: "Network Security",
-        type: "Network Monitoring & Threat Detection", 
-        status: "inactive",
-        risks: { critical: 1, high: 2, medium: 1 },
-        securityScore: 78,
-        uptime: 97.2,
-        lastUpdate: "1 day ago",
-        icon: "fas fa-network-wired",
+        id: 1,
+        name: "Cisco Duo Licenses",
+        type: "Enterprise  Identity Protection Management",
+        status: "Syncing...", // Changed from Active
+        risks: { critical: 0, high: 0, medium: 0 },
+        securityScore: 100,
+        uptime: 100,
+        lastUpdate: "Checking database...",
+        icon: "fas fa-shield-check",
+        image: "Images/cisco-duo.png",
         cardMetrics: [
-            { label: "Open Ports", value: ": 5", icon: "fas fa-firewall" },
-            { label: "Unusual Traffic", value: ": 23", icon: "fas fa-chart-line" }
+            { label: "Total Licences", value: ": ...", icon: "fas fa-id-card" },
+            { label: "Active Usage", value: ": ...", icon: "fas fa-user-check" },
+            { label: "Remaining Licences", value: ": ...", icon: "fas fa-user-plus" }
         ],
-        cardFooter: "Network vulnerabilities found"
+        cardFooter: "Verifying...",
+        noDashboard: true
     },
     {
         id: 2,
@@ -134,41 +156,6 @@ const mockProjects = [
         hasTabs: false,
         microsoftGraphEnabled: true,
         isEmailSecurityCard: true
-    },
-    {
-        id: 9,
-        name: "Credential Security", 
-        type: "Password & Credential Management",
-        status: "inactive",
-        risks: { critical: 1, high: 1, medium: 1 },
-        securityScore: 85,
-        uptime: 98.5,
-        lastUpdate: "2 days ago",
-        icon: "fas fa-key",
-        cardMetrics: [
-            { label: "Weak Passwords", value: ": 12", icon: "fas fa-exclamation-triangle" },
-            { label: "Reused Passwords", value: ": 8", icon: "fas fa-sync-alt" }
-        ],
-        cardFooter: "High-risk credentials detected"
-    },
-    {
-        id: 1,
-        name: "Cisco Duo Licenses",
-        type: "Enterprise  Identity Protection Management",
-        status: "Syncing...", // Changed from Active
-        risks: { critical: 0, high: 0, medium: 0 },
-        securityScore: 100,
-        uptime: 100,
-        lastUpdate: "Checking database...",
-        icon: "fas fa-shield-check",
-        image: "Images/cisco-duo.png",
-        cardMetrics: [
-            { label: "Total Licences", value: ": ...", icon: "fas fa-id-card" },
-            { label: "Active Usage", value: ": ...", icon: "fas fa-user-check" },
-            { label: "Remaining Licences", value: ": ...", icon: "fas fa-user-plus" }
-        ],
-        cardFooter: "Verifying...",
-        noDashboard: true
     },
     {
         id: 4,
@@ -244,6 +231,38 @@ const mockProjects = [
         hasTabs: false,
         microsoftGraphEnabled: true,
         isApplicationsCard: true
+    },
+    {
+        id: 9,
+        name: "Credential Security", 
+        type: "Password & Credential Management",
+        status: "inactive",
+        risks: { critical: 1, high: 1, medium: 1 },
+        securityScore: 85,
+        uptime: 98.5,
+        lastUpdate: "2 days ago",
+        icon: "fas fa-key",
+        cardMetrics: [
+            { label: "Weak Passwords", value: ": 12", icon: "fas fa-exclamation-triangle" },
+            { label: "Reused Passwords", value: ": 8", icon: "fas fa-sync-alt" }
+        ],
+        cardFooter: "High-risk credentials detected"
+    },
+    {
+        id: 10,
+        name: "Network Security",
+        type: "Network Monitoring & Threat Detection", 
+        status: "inactive",
+        risks: { critical: 1, high: 2, medium: 1 },
+        securityScore: 78,
+        uptime: 97.2,
+        lastUpdate: "1 day ago",
+        icon: "fas fa-network-wired",
+        cardMetrics: [
+            { label: "Open Ports", value: ": 5", icon: "fas fa-firewall" },
+            { label: "Unusual Traffic", value: ": 23", icon: "fas fa-chart-line" }
+        ],
+        cardFooter: "Network vulnerabilities found"
     }
 ];
 
@@ -4798,8 +4817,8 @@ function displayCurrentProject() {
     const projectsGrid = document.getElementById('projects-grid');
     projectsGrid.innerHTML = '';
     
-    // Display all projects (static)
-    const visibleProjects = carouselProjects;
+    // Display 3 projects at a time
+    const visibleProjects = carouselProjects.slice(currentProjectIndex, currentProjectIndex + 3);
     
     visibleProjects.forEach((project, index) => {
         const projectCard = createProjectCard(project);
@@ -4840,6 +4859,12 @@ function displayCurrentProject() {
         
         projectsGrid.appendChild(projectCard);
     });
+
+    renderSidePeekCards();
+    
+    document.getElementById('project-current').textContent = currentProjectIndex + 1;
+    
+    updateNavigationButtons();
 }
 
 function renderSidePeekCards() {
