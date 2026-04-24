@@ -4811,119 +4811,60 @@ function initializeProjectsList() {
 }
 
 function displayCurrentProject() {
-    // 1. Strict 5-Card Order: Network, Identity, Device, Email, Credentials
-    const staticOrderIds = [10, 2, 3, 5, 9]; 
-    const cardsData = staticOrderIds.map(id => mockProjects.find(p => p.id === id)).filter(Boolean);
-
+    const carouselProjects = getFilteredProjects();
+    if (carouselProjects.length === 0) return;
+    
     const projectsGrid = document.getElementById('projects-grid');
     projectsGrid.innerHTML = '';
-
-    const carouselShell = document.querySelector('.projects-carousel-shell');
     
-    // Clean up old static cards if they exist to prevent duplicates on re-render
-    document.querySelectorAll('.static-side-card').forEach(el => el.remove());
-
-    // 2. Remove the #/# Projects Navigation UI completely
-    const nav = document.querySelector('.projects-nav');
-    if(nav) nav.style.display = 'none';
+    // Display 3 projects at a time
+    const visibleProjects = carouselProjects.slice(currentProjectIndex, currentProjectIndex + 3);
     
-    // Hide old side peek buttons
-    const prevBtn = document.getElementById('side-peek-prev');
-    const nextBtn = document.getElementById('side-peek-next');
-    if(prevBtn) prevBtn.style.display = 'none';
-    if(nextBtn) nextBtn.style.display = 'none';
-
-    // 3. Render the 5 Cards
-    cardsData.forEach((project, index) => {
-        const isLeft = index === 0;   // Network Security
-        const isRight = index === 4;  // Credential Security
-        const isMiddle = index > 0 && index < 4;
-
-        const card = createProjectCard(project);
-
-        if (isMiddle) {
-            // Standard Middle Cards
-            card.addEventListener('mouseenter', () => {
-                if (!previewLockedByClick) showProjectPreview(project);
+    visibleProjects.forEach((project, index) => {
+        const projectCard = createProjectCard(project);
+        
+        if (!project.noDashboard) {
+            projectCard.addEventListener('mouseenter', () => {
+                if (!previewLockedByClick) {
+                    showProjectPreview(project);
+                }
             });
-            card.addEventListener('mouseleave', () => {
-                if (!previewLockedByClick) hideProjectPreview();
+            
+            projectCard.addEventListener('mouseleave', () => {
+                if (!previewLockedByClick) {
+                    hideProjectPreview();
+                }
             });
-            card.addEventListener('click', () => {
+            
+            projectCard.addEventListener('click', () => {
                 const isSelected = selectedProjectId === project.id && previewLockedByClick;
-                document.querySelectorAll('.project-card:not(.static-side-card)').forEach(c => c.classList.remove('glow-selected'));
+                
+                const allCards = document.querySelectorAll('.project-card');
+                allCards.forEach(card => card.classList.remove('glow-selected'));
+                
                 if (isSelected) {
+                    // If already selected, close it
                     previewLockedByClick = false;
                     selectedProjectId = null;
                     hideProjectPreview();
                 } else {
+                    // Otherwise, open it
                     previewLockedByClick = true;
                     selectedProjectId = project.id;
-                    card.classList.add('glow-selected');
+                    projectCard.classList.add('glow-selected');
                     showProjectPreview(project);
                 }
             });
-            projectsGrid.appendChild(card);
-        } else {
-            // Side Panel Cards (Network & Credentials)
-            card.classList.add('static-side-card');
-            card.classList.add(isLeft ? 'left-side' : 'right-side');
-            
-            // Inject the generic side data
-            const extraContent = document.createElement('div');
-            extraContent.className = 'side-card-extra';
-            extraContent.innerHTML = getGenericSideContent(project.id);
-            card.appendChild(extraContent);
-
-            // Expansion Logic
-            card.addEventListener('click', function() {
-                const isExpanded = this.classList.contains('expanded');
-                // Close others
-                document.querySelectorAll('.static-side-card').forEach(c => {
-                    c.classList.remove('expanded', 'glow-selected');
-                });
-                // Toggle clicked
-                if (!isExpanded) {
-                    this.classList.add('expanded', 'glow-selected');
-                }
-            });
-
-            carouselShell.appendChild(card);
         }
+        
+        projectsGrid.appendChild(projectCard);
     });
-}
 
-// Generates the data for the extended side panels
-function getGenericSideContent(id) {
-    if (id === 10) { // Network Security
-        return `
-            <div class="generic-side-stats">
-                <h4 style="color:#e2e8f0; font-size: 0.9rem; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">Network Telemetry</h4>
-                <div class="side-stat-row"><span>Active Connections</span><strong>1,204</strong></div>
-                <div class="side-stat-row"><span>Blocked Threats</span><strong style="color:#10b981;">89</strong></div>
-                <div class="side-stat-row"><span>Bandwidth Usage</span><strong>45%</strong></div>
-                <div class="side-stat-row"><span>VPN Tunnels</span><strong>Active</strong></div>
-                
-                <h4 style="color:#e2e8f0; font-size: 0.9rem; margin: 15px 0 12px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">Firewall Status</h4>
-                <div class="side-stat-row"><span>Rules Enforced</span><strong>142</strong></div>
-                <div class="side-stat-row"><span>Last Scan</span><strong>2 mins ago</strong></div>
-            </div>
-        `;
-    } else { // Credential Security
-        return `
-            <div class="generic-side-stats">
-                <h4 style="color:#e2e8f0; font-size: 0.9rem; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">Credential Audits</h4>
-                <div class="side-stat-row"><span>Stale Accounts</span><strong style="color:#f59e0b;">3</strong></div>
-                <div class="side-stat-row"><span>Password Resets</span><strong>12</strong></div>
-                <div class="side-stat-row"><span>Dark Web Leaks</span><strong style="color:#10b981;">0</strong></div>
-                <div class="side-stat-row"><span>SSO Coverage</span><strong>94%</strong></div>
-                
-                <h4 style="color:#e2e8f0; font-size: 0.9rem; margin: 15px 0 12px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">Policy Enforcement</h4>
-                <div class="side-stat-row"><span>Rotation Policy</span><strong>90 Days</strong></div>
-                <div class="side-stat-row"><span>Complexity</span><strong>Strict</strong></div>
-            </div>
-        `;
-    }
+    renderSidePeekCards();
+    
+    document.getElementById('project-current').textContent = currentProjectIndex + 1;
+    
+    updateNavigationButtons();
 }
 
 function renderSidePeekCards() {
