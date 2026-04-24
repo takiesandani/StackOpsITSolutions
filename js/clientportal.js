@@ -5920,8 +5920,8 @@ async function initializeBillingCard() {
                     <i class="fas fa-exclamation-circle"></i>
                 </div>
                 <div class="warning-text">
-                    <p><strong>Late Payment Notice:</strong></p>
-                    <p>Failure to pay by the due date may result in service interruption and increased security exposure.</p>
+                    <p><strong>Friendly Reminder:</strong></p>
+                    <p>A quick reminder to complete your payment by the due date.</p>
                 </div>
             </div>
         `;

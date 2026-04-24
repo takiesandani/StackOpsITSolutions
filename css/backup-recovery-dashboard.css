@@ -752,40 +752,8 @@ canvas {
 
 .btn-back {
   position: relative;
-  padding: 10px 16px;
-  background: rgba(0, 110, 255, 0.1);
-  color: #0066FF;
-  border: 1px solid rgba(0, 110, 255, 0.3);
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 200;
-  font-size: 14px;
-  transition: all 0.3s ease;
   display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  letter-spacing: 0.5px;
-}
-
-.btn-back:hover {
-  background: rgba(0, 110, 255, 0.2);
-  border-color: rgba(0, 110, 255, 0.6);
-  color: #ffffff;
-  transform: translateX(-2px);
-  box-shadow: 0 0 15px rgba(0, 110, 255, 0.3);
-}
-
-.btn-back:active {
-  transform: translateX(-1px) scale(0.98);
-}
-
-.btn-back i {
-  font-size: 16px;
-  transition: transform 0.3s ease;
-}
-
-.btn-back:hover i {
-  transform: translateX(-2px);
+  margin-bottom: 16px;
 }
 
 /* Glow wrapper for back button */
@@ -830,15 +798,6 @@ canvas {
   }
 }
 
-.btn-back-wrapper.glow-wrap .btn-back {
-  position: relative;
-  z-index: 1;
-  margin: 0;
-  background: #1c1c1c;
-  border: none;
-  box-shadow: 0 0 20px rgba(0, 110, 255, 0.2);
-}
-
 /* Small Mobile (max-width: 480px) */
 @media (max-width: 480px) {
     .backup-recovery-view .container-fluid {
@@ -848,12 +807,6 @@ canvas {
     .backup-dashboard-title {
         padding: 12px 0;
         margin-bottom: 20px;
-    }
-
-    .btn-back {
-        padding: 6px 10px;
-        font-size: 12px;
-        margin-right: 0;
     }
 
     .backup-title-section h2 {
