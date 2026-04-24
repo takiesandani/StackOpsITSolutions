@@ -19,7 +19,7 @@ const SUNBIRD_ONLY_CARD_IDS = [2, 3, 4, 5, 7, 8, 9, 10]; // Identity Protection,
 const HIDDEN_FROM_SUNBIRD_IDS = []; // All Sunbird cards are visible to them
 
 // Cards to hide from the main project cards UI (keep functionality in code)
-const HIDDEN_PROJECT_CARD_IDS = [4, 7]; // Security & Events, Backup and Recovery
+const HIDDEN_PROJECT_CARD_IDS = [4, 7, 8, 6]; // Security & Events, Backup and Recovery, Applications
 
 // Check if current user is a Sunbird client
 function isSunbirdUser() {
@@ -766,57 +766,64 @@ function openMicrosoftApp(spId) {
     window.open(url, '_blank');
 }
 
-// Populate Applications table
+// Populate Applications table exactly as requested: App | Users | Type | Risk
 function populateApplicationsTable() {
     const tableBody = document.getElementById('apps-table-body');
     if (!tableBody) return;
     
     tableBody.innerHTML = '';
     
-    applicationsData.forEach((app, index) => {
+    // Sort apps: High risk first, then by user count
+    const sortedApps = [...applicationsData].sort((a, b) => {
+         const riskA = calculateAppRisk(a).level;
+         const riskB = calculateAppRisk(b).level;
+         if (riskA === 'high' && riskB !== 'high') return -1;
+         if (riskB === 'high' && riskA !== 'high') return 1;
+         return b.userCount - a.userCount;
+    });
+
+    sortedApps.forEach((app) => {
         const risk = calculateAppRisk(app);
-        const riskBadgeClass = `risk-badge-${risk.level}`;
-        const riskIcon = risk.level === 'high' ? '🔴' : risk.level === 'medium' ? '⚠️' : '✅';
-        const permissionCount = (app.scopeCount || 0) + (app.roleCount || 0);
-        const userCount = app.userCount || 0;
-        const spId = app.id;
+        
+        // Emoji Logic
+        let riskIcon = '✅';
+        if (risk.level === 'high') riskIcon = '🔴';
+        else if (risk.level === 'medium') riskIcon = '⚠️';
         
         const row = document.createElement('tr');
         row.className = 'app-row';
-        row.dataset.spId = spId;
         row.innerHTML = `
-            <td class="app-name" data-sp-id="${spId}">${app.name}</td>
-            <td class="app-type">${app.isExternal ? 'External' : 'Internal'}</td>
-            <td class="app-users"><strong>${userCount}</strong></td>
-            <td class="app-permissions">${permissionCount}</td>
-            <td class="app-risk"><span class="${riskBadgeClass}">${riskIcon} ${risk.level.charAt(0).toUpperCase() + risk.level.slice(1)}</span></td>
+            <td class="app-name">
+                <strong>${app.name}</strong><br>
+                <small style="color: #64748b;">${app.assignedGroups && app.assignedGroups.length ? 'Groups: ' + app.assignedGroups.join(', ') : 'No assigned groups'}</small>
+            </td>
+            <td class="app-users"><strong>${app.userCount || 0}</strong></td>
+            <td class="app-type"><span class="user-type-badge ${app.isExternal ? 'external' : 'internal'}">${app.type}</span></td>
+            <td class="app-risk">
+                <span title="Risk Info">${riskIcon} <small style="color: #94a3b8; margin-left: 5px;">${risk.reasons[0]}</small></span>
+            </td>
         `;
-        
-        // Add click handler for row
-        row.addEventListener('click', function(e) {
-            if (e.target.closest('.app-risk')) return; // Don't trigger on risk badge
-            showAppAccessDetail(spId, app.name);
-        });
         
         tableBody.appendChild(row);
     });
     
-    // Update stats
+    // Calculate and update the 4 Top Cards
     const totalApps = applicationsData.length;
     const externalApps = applicationsData.filter(a => a.isExternal).length;
     const highRiskApps = applicationsData.filter(a => calculateAppRisk(a).level === 'high').length;
-    const totalUsers = applicationsData.reduce((sum, a) => sum + (a.userCount || 0), 0);
-    const avgUsers = totalApps > 0 ? Math.round(totalUsers / totalApps) : 0;
+    
+    // Fix the "0 Avg Users" bug by only averaging apps that ACTUALLY have users
+    const appsWithUsers = applicationsData.filter(a => a.userCount > 0);
+    const totalUsers = appsWithUsers.reduce((sum, a) => sum + a.userCount, 0);
+    const avgUsers = appsWithUsers.length > 0 ? Math.round(totalUsers / appsWithUsers.length) : 0;
     
     document.getElementById('totalAppsValue').textContent = totalApps;
     document.getElementById('externalAppsValue').textContent = externalApps;
     document.getElementById('highRiskAppsValue').textContent = highRiskApps;
     document.getElementById('avgUsersValue').textContent = avgUsers;
     
-    // Update access overview
+    // Update bottom insights dynamically
     updateApplicationsAccessOverview(totalUsers, externalApps);
-    
-    // Update insights
     updateApplicationsInsights(totalApps, externalApps, highRiskApps);
 }
 
@@ -912,50 +919,35 @@ async function fetchEmailCardData() {
     }
 }
 
-// Calculate risk level for an application
+// Calculate simple risk logic exactly as requested
 function calculateAppRisk(app) {
-    let riskLevel = 'safe'; // safe, medium, high
+    let riskLevel = 'safe'; 
     let riskReasons = [];
     
-    // Check if external
-    const isExternal = app.isExternal;
-    if (isExternal) {
+    const totalPermissions = (app.scopeCount || 0) + (app.roleCount || 0);
+    const userCount = app.userCount || 0;
+    
+    // High Risk Rules
+    if (userCount > 50) {
+        riskLevel = 'high';
+        riskReasons.push('App has high user access');
+    }
+    if (totalPermissions > 10) {
+        riskLevel = 'high';
+        riskReasons.push('Excessive permissions detected');
+    }
+    if (app.isExternal || app.type === 'External') {
         riskLevel = 'high';
         riskReasons.push('External app connected');
     }
     
-    // Check for high permissions (scopes or roles)
-    const totalPermissions = (app.scopeCount || 0) + (app.roleCount || 0);
-    if (totalPermissions > 10) {
-        if (riskLevel === 'safe') riskLevel = 'medium';
-        if (riskLevel !== 'high') riskLevel = 'medium';
-        riskReasons.push('Excessive permissions detected');
-    }
-    
-    // Check for high user count
-    const userCount = app.userCount || 0;
-    if (userCount > 50) {
-        if (riskLevel !== 'high') riskLevel = 'high';
-        riskReasons.push('App has high user access');
-    } else if (userCount > 20 && riskLevel === 'safe') {
-        riskLevel = 'medium';
-        riskReasons.push('App has high user access');
-    }
-    
-    // If internal and low permissions and low users, it's safe
-    if (!isExternal && totalPermissions <= 5 && userCount <= 20) {
+    // Fallback if no rules hit
+    if (riskReasons.length === 0) {
         riskLevel = 'safe';
-    } else if (!isExternal && totalPermissions > 5 && !riskReasons.includes('Excessive permissions detected')) {
-        riskLevel = 'medium';
-        if (!riskReasons.includes('Moderate permissions')) {
-            riskReasons.push('Moderate permissions');
-        }
+        riskReasons.push('Safe / Internal');
     }
     
-    return {
-        level: riskLevel,
-        reasons: riskReasons
-    };
+    return { level: riskLevel, reasons: riskReasons };
 }
 
 // Calculate number of high-risk applications
@@ -5745,7 +5737,11 @@ function renderPoweredByBadge(provider) {
 }
 
 function renderSunbirdFullDashboardButton(target) {
-    const icon = target === 'security' ? 'fa-shield-alt' : 'fa-hdd';
+    let icon = 'fa-chart-line';
+    if (target === 'security') icon = 'fa-shield-alt';
+    if (target === 'backup') icon = 'fa-hdd';
+    if (target === 'applications') icon = 'fa-cubes'; // Icon for apps
+    
     return `
         <div class="sunbird-dashboard-btn-wrap">
             <button class="sunbird-dashboard-btn" onclick="window.openSunbirdFullDashboard('${target}')">
@@ -5768,9 +5764,16 @@ function renderSunbirdPlaceholderView(title, icon, subtitle = 'Coming soon') {
 }
 
 window.openSunbirdFullDashboard = function(target) {
-    const project = target === 'security'
-        ? mockProjects.find(p => p.isSecurityCard)
-        : mockProjects.find(p => p.isBackupRecoveryCard);
+    let project = null;
+    
+    if (target === 'security') {
+        project = mockProjects.find(p => p.isSecurityCard);
+    } else if (target === 'backup') {
+        project = mockProjects.find(p => p.isBackupRecoveryCard);
+    } else if (target === 'applications') {
+        // Look for the Applications project card to launch its dashboard
+        project = mockProjects.find(p => p.isApplicationsCard);
+    }
 
     if (!project) {
         console.warn(`[Sunbird] Full dashboard target not found: ${target}`);
@@ -5988,7 +5991,6 @@ window.switchBillingMenu = async function(menuItem) {
     const placeholderViews = {
         reports: { title: 'Reports', icon: 'fa-chart-line' },
         architecture: { title: 'Architecture', icon: 'fa-sitemap' },
-        settings: { title: 'Settings', icon: 'fa-gear' },
         sla: { title: 'SLA', icon: 'fa-handshake' }
     };
 
@@ -6025,6 +6027,12 @@ window.switchBillingMenu = async function(menuItem) {
 
     if (menuItem === 'risks') {
         await renderSunbirdRisksView(true);
+    }
+
+    // NEW: Route for Applications
+    if (menuItem === 'applications') {
+        await renderSunbirdApplicationsView(true);
+        return;
     }
 };
 
@@ -6283,6 +6291,92 @@ async function renderSunbirdBackupRecoveryView(forceRefresh = false) {
     }
 }
 
+async function renderSunbirdApplicationsView(forceRefresh = false) {
+    const billingCard = document.getElementById('billing-card');
+    if (!billingCard) return;
+
+    try {
+        if (!isSunbirdBillingViewActive('applications')) return;
+        billingCard.innerHTML = renderSunbirdPremiumLoader('Loading applications');
+
+        // Fetch app data if it doesn't exist yet or if forced
+        if (forceRefresh || applicationsData.length === 0) {
+            await fetchApplicationsData();
+        }
+
+        const apps = applicationsData || [];
+        const totalApps = apps.length;
+        const externalApps = apps.filter(a => a.isExternal).length;
+        
+        // Use your simple risk logic helper!
+        const highRiskApps = apps.filter(a => calculateAppRisk(a).level === 'high').length;
+
+        // Sort by users (descending) and get top 5
+        const topApps = [...apps]
+            .sort((a, b) => (b.userCount || 0) - (a.userCount || 0))
+            .slice(0, 5);
+
+        const topAppsHtml = topApps.length > 0 
+            ? topApps.map(app => `
+                <div class="sunbird-storage-row">
+                    <span>${app.name || 'Unknown App'} <small style="color: #64748b; margin-left: 6px;">(${app.type})</small></span>
+                    <strong>${app.userCount || 0} Users</strong>
+                </div>
+            `).join('')
+            : '<div class="sunbird-empty-row" style="padding: 20px;">No application user data found</div>';
+
+        if (!isSunbirdBillingViewActive('applications')) return;
+        
+        // We use grid-template-columns: repeat(3, 1fr) to fit the 3 stats evenly
+        billingCard.innerHTML = `
+            <div class="sunbird-panel-view">
+                <div class="billing-card-header">
+                    <i class="fas fa-cubes"></i>
+                    <h3>Applications & Access</h3>
+                </div>
+
+                <div class="sunbird-mini-stats" style="grid-template-columns: repeat(3, 1fr);">
+                    <div class="sunbird-mini-stat">
+                        <span>Total Apps</span>
+                        <strong>${totalApps}</strong>
+                    </div>
+                    <div class="sunbird-mini-stat">
+                        <span>External Apps</span>
+                        <strong>${externalApps}</strong>
+                    </div>
+                    <div class="sunbird-mini-stat" style="${highRiskApps > 0 ? 'background: rgba(239, 68, 68, 0.08); border-color: rgba(239, 68, 68, 0.3);' : ''}">
+                        <span style="${highRiskApps > 0 ? 'color: #fca5a5;' : ''}">High Risk Apps</span>
+                        <strong style="${highRiskApps > 0 ? 'color: #f87171;' : ''}">${highRiskApps}</strong>
+                    </div>
+                </div>
+
+                <div class="sunbird-section-title" style="margin-top: 10px;">Top 5 Apps by Users</div>
+                <div class="sunbird-storage-list">
+                    ${topAppsHtml}
+                </div>
+                
+                ${renderSunbirdFullDashboardButton('applications')}
+            </div>
+        `;
+    } catch (error) {
+        console.error('[Sunbird Applications View] Error:', error);
+        if (!isSunbirdBillingViewActive('applications')) return;
+        billingCard.innerHTML = `
+            <div class="sunbird-panel-view">
+                <div class="billing-card-header">
+                    <i class="fas fa-cubes"></i>
+                    <h3>Applications & Access</h3>
+                </div>
+                <p class="sunbird-panel-error">Unable to load applications data right now.</p>
+                ${renderSunbirdFullDashboardButton('applications')}
+            </div>
+        `;
+    } finally {
+        ensureSunbirdBillingCardDimensions();
+        syncSunbirdLeftMenuHeight();
+    }
+}
+
 function renderSunbirdPremiumLoader(message) {
     return `
         <div class="sunbird-panel-view sunbird-panel-loader-wrap">
@@ -6380,8 +6474,8 @@ function initializeSunbirdLeftMenu() {
         <button class="sunbird-menu-item" data-menu="sla" onclick="window.switchBillingMenu('sla')">
             <i class="fas fa-handshake"></i><span>SLA</span>
         </button>
-        <button class="sunbird-menu-item" data-menu="settings" onclick="window.switchBillingMenu('settings')">
-            <i class="fas fa-gear"></i><span>Settings</span>
+        <button class="sunbird-menu-item" data-menu="applications" onclick="window.switchBillingMenu('applications')">
+            <i class="fas fa-cubes"></i><span>Applications</span>
         </button>
     `;
     
