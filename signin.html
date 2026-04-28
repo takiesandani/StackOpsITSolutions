@@ -545,6 +545,9 @@
                         if (data.accessToken) {
                             localStorage.setItem('authToken', data.accessToken);
                         }
+                        if (data.user) {
+                            localStorage.setItem('user', JSON.stringify(data.user));
+                        }
                         
                         // Set session storage for Client Portal synchronization
                         sessionStorage.setItem('isLoggedIn', 'true');

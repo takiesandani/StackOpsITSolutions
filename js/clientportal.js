@@ -6,12 +6,6 @@ let currentProjectIndex = 0;
 let selectedProjectId = null;
 let previewLockedByClick = false;
 
-// Sunbird client emails - only these users can see  Identity Protection, Devices, Applications
-const SUNBIRD_EMAILS = [
-    'sandanindivhuwo17@gmail.com',
-    'ndamulelo@stackopsit.co.za'
-];
-
 // Sunbird-only card IDs that should be hidden from non-Sunbird clients
 const SUNBIRD_ONLY_CARD_IDS = [2, 3, 4, 5, 7, 8, 9, 10]; // Identity Protection, Devices, Security & Events, Email Security, Backup & Recovery, Applications, Credential Security, Network Security
 
@@ -23,9 +17,14 @@ const HIDDEN_PROJECT_CARD_IDS = [4, 7, 8, 6]; // Security & Events, Backup and R
 
 // Check if current user is a Sunbird client
 function isSunbirdUser() {
-    const userEmail = sessionStorage.getItem('userEmail');
-    if (!userEmail) return false;
-    return SUNBIRD_EMAILS.includes(userEmail.toLowerCase());
+    try {
+        const rawUser = localStorage.getItem('user');
+        if (!rawUser) return false;
+        const user = JSON.parse(rawUser);
+        return String(user?.access || '').toLowerCase() === 'sunbird';
+    } catch (error) {
+        return false;
+    }
 }
 
 // Update Sunbird logo visibility based on user type
@@ -383,7 +382,7 @@ async function bootstrapDashboardDataAfterLogin() {
     // Fire all key dashboard data fetches in parallel.
     await Promise.allSettled([
         fetchDuoStats(),
-        fetchIdentityAccessData(),
+        fetchIdentityData(mockProjects.find(p => p.id === 2)),
         fetchApplicationsData(),
         fetchDevicesCardData(),
         fetchEmailCardData(),
@@ -439,7 +438,7 @@ async function fetchMicrosoftUsersForCard() {
         
         console.log('[Microsoft Users] Fetching users data...');
         
-        const response = await fetch('/api/microsoft-users', {
+        const response = await fetch('/api/db/identity-details', {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${authToken}`,
@@ -557,7 +556,7 @@ async function fetchApplicationsData() {
         
         console.log('[Applications] Fetching applications data...');
         
-        const response = await fetch('/api/microsoft-applications', {
+        const response = await fetch('/api/db/application-metrics', {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${authToken}`,
@@ -573,11 +572,15 @@ async function fetchApplicationsData() {
             return;
         }
         
-        applicationsData = data.applications || [];
-        console.log(`[Applications] Loaded ${applicationsData.length} applications`);
-        
-        // Populate Applications card preview
-        populateApplicationsCard(data);
+        const metrics = data.metrics || {};
+        applicationsData = applicationsData || [];
+        console.log('[Applications] Loaded DB application metrics');
+        populateApplicationsCard({
+            totalApplications: metrics.TotalApps || metrics.totalApps || 0,
+            externalApplications: metrics.ExternalApps || metrics.externalApps || 0,
+            highRiskApps: metrics.HighRiskApps || metrics.highRiskApps || 0,
+            highAccessApps: metrics.HighAccessApps || metrics.highAccessApps || 0
+        });
         
     } catch (error) {
         console.error('[Applications] Exception:', error);
@@ -597,8 +600,8 @@ function populateApplicationsCard(apiData) {
     // Update project card metrics
     const totalApps = apiData.totalApplications || 0;
     const externalApps = apiData.externalApplications || 0;
-    const highRiskApps = calculateHighRiskApplications(applicationsData);
-    const highAccessApps = applicationsData.filter(app => (app.userCount || 0) >= 20).length;
+    const highRiskApps = apiData.highRiskApps ?? calculateHighRiskApplications(applicationsData);
+    const highAccessApps = apiData.highAccessApps ?? applicationsData.filter(app => (app.userCount || 0) >= 20).length;
 
     appProject.status = 'active';
     appProject.cardMetrics = [
@@ -838,7 +841,7 @@ async function fetchDevicesCardData() {
         project.status = 'loading';
         displayCurrentProject();
 
-        const response = await fetch('/api/microsoft-devices', {
+        const response = await fetch('/api/db/device-metrics', {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -851,12 +854,11 @@ async function fetchDevicesCardData() {
         }
 
         latestDevicesCardData = data;
-        const total = data.summary?.totalDevices || 0;
-        const compliant = data.summary?.compliantDevices || 0;
-        const encrypted = data.summary?.encryptedDevices || 0;
-        const stale7days = data.activityBreakdown?.stale7days || 0;
-        const nonCompliant = Math.max(0, total - compliant);
-        const notEncrypted = Math.max(0, total - encrypted);
+        const metrics = data.metrics || {};
+        const total = metrics.TotalDevices || metrics.totalDevices || 0;
+        const nonCompliant = metrics.NonCompliant || metrics.nonCompliant || 0;
+        const notEncrypted = metrics.NotEncrypted || metrics.notEncrypted || 0;
+        const stale7days = metrics.StaleDevices || metrics.staleDevices || 0;
 
         project.status = 'active';
         project.cardMetrics = [
@@ -887,7 +889,7 @@ async function fetchEmailCardData() {
         project.status = 'loading';
         displayCurrentProject();
 
-        const response = await fetch('/api/email-security', {
+        const response = await fetch('/api/db/email-metrics', {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -900,15 +902,16 @@ async function fetchEmailCardData() {
         }
 
         latestEmailCardData = data;
-        const summary = data.summary || {};
+        const metrics = data.metrics || {};
         project.status = 'active';
         project.cardMetrics = [
-            { label: "Active Threats", value: `: ${summary.activeThreats || 0}`, icon: "fas fa-exclamation-triangle" },
-            { label: "High Severity", value: `: ${summary.highSeverityAlerts || 0}`, icon: "fas fa-circle-exclamation" },
-            { label: "Users Targeted", value: `: ${summary.affectedUsersCount || 0}`, icon: "fas fa-user-shield" },
-            { label: "Open Incidents", value: `: ${summary.activeIncidents || 0}`, icon: "fas fa-bug" }
+            { label: "Active Threats", value: `: ${metrics.ActiveThreats || metrics.activeThreats || 0}`, icon: "fas fa-exclamation-triangle" },
+            { label: "High Severity", value: `: ${metrics.HighSeverity || metrics.highSeverity || 0}`, icon: "fas fa-circle-exclamation" },
+            { label: "Users Targeted", value: `: ${metrics.UsersTargeted || metrics.usersTargeted || 0}`, icon: "fas fa-user-shield" },
+            { label: "Open Incidents", value: `: ${metrics.OpenIncidents || metrics.openIncidents || 0}`, icon: "fas fa-bug" }
         ];
-        project.cardFooter = summary.activeThreats > 0 ? `${summary.activeThreats} active threats detected` : 'No active threats';
+        const activeThreats = metrics.ActiveThreats || metrics.activeThreats || 0;
+        project.cardFooter = activeThreats > 0 ? `${activeThreats} active threats detected` : 'No active threats';
         project.lastUpdate = new Date().toLocaleTimeString();
         displayCurrentProject();
     } catch (error) {
@@ -3544,6 +3547,9 @@ function handleMfaVerification() {
             if (data.accessToken) {
                 localStorage.setItem('authToken', data.accessToken);
             }
+            if (data.user) {
+                localStorage.setItem('user', JSON.stringify(data.user));
+            }
             
             // Store user session
             sessionStorage.setItem('userEmail', currentEmail);
@@ -3629,6 +3635,7 @@ function handleLogout() {
 
     // Clear JWT auth token issued by the backend
     localStorage.removeItem('authToken');
+    localStorage.removeItem('user');
 
     // Reset UI (for safety if we stay on the page)
     const dashboardSection = document.getElementById('dashboard-section');
@@ -3862,14 +3869,14 @@ async function fetchIdentityAccessData() {
             console.log('[Identity Access] Sunbird endpoint not available, falling back to standard API');
         }
 
-        // Fallback: Load standard Microsoft data in PARALLEL
-        console.log('[Identity Access] Fetching standard Microsoft users, roles, and enriched data in parallel...');
+        // Fallback: Load DB-first identity details and enrichers in PARALLEL
+        console.log('[Identity Access] Fetching cached identity users, roles, and enriched data in parallel...');
         
         const startTime = performance.now();
         
         // Fetch all endpoints in parallel using Promise.allSettled for resilience
         const [usersResult, rolesResult, mfaResult, signInResult] = await Promise.allSettled([
-            fetch('/api/microsoft-users', {
+            fetch('/api/db/identity-details', {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -5355,7 +5362,7 @@ function viewProjectDashboard(project) {
 async function fetchIdentityData(project) {
     try {
         // Sunbird requires enriched identity payload (roles, MFA, risk, sign-in metadata).
-        // The plain /api/microsoft-users response can overwrite this and blank table columns.
+        // The DB identity-details response can be safely merged with enrichment payloads.
         if (isSunbirdUser()) {
             console.log('[Identity] Sunbird user detected, using enriched identity loader');
             await fetchIdentityAccessData();
@@ -5364,10 +5371,10 @@ async function fetchIdentityData(project) {
             return;
         }
 
-        console.log('[Identity] Fetching Microsoft users...');
+        console.log('[Identity] Fetching cached identity metrics...');
         const authToken = localStorage.getItem('authToken');
         
-        const response = await fetch('/api/microsoft-users', {
+        const response = await fetch('/api/db/identity-metrics', {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${authToken}`,
@@ -5381,19 +5388,23 @@ async function fetchIdentityData(project) {
             throw new Error(data.message || 'Failed to fetch users');
         }
         
-        microsoftUsersData = data.users || [];
-        
-        // Update project with API data
-        const externalUsers = microsoftUsersData.filter(u => u.isExternal).length;
+        const metrics = data.metrics || {};
+        const totalUsers = metrics.TotalUsers || metrics.totalUsers || 0;
+        const activeUsers = metrics.ActiveUsers || metrics.activeUsers || 0;
+        const adminRoles = metrics.AdminRoles || metrics.adminRoles || 0;
+        const securityScore = metrics.SecurityScore || metrics.securityScore || 0;
+
+        microsoftUsersData = microsoftUsersData || [];
         project.cardMetrics = [
-            { label: "Total Users", value: `: ${microsoftUsersData.length}`, icon: "fas fa-users" },
-            { label: "External", value: `: ${externalUsers}`, icon: "fas fa-user-secret" }
+            { label: "Total Users", value: `: ${totalUsers}`, icon: "fas fa-users" },
+            { label: "Active (24h)", value: `: ${activeUsers}`, icon: "fas fa-user-check" },
+            { label: "Admin Roles", value: `: ${adminRoles}`, icon: "fas fa-crown" },
+            { label: "Security Score", value: `: ${securityScore}`, icon: "fas fa-shield-alt" }
         ];
         project.lastUpdate = new Date().toLocaleTimeString();
-        project.cardFooter = `Total: ${microsoftUsersData.length} users | External: ${externalUsers}`;
+        project.cardFooter = `Users: ${totalUsers} | Active: ${activeUsers}`;
         
         updateDashboardData(project);
-        initializeIdentityDashboard();
         
     } catch (error) {
         console.error('[Identity] Error:', error);
@@ -6980,9 +6991,9 @@ async function fetchMicrosoftUsersData() {
             return;
         }
         
-        console.log('[Microsoft Graph] Fetching users...');
+        console.log('[Identity Details] Fetching users...');
         
-        const response = await fetch('/api/microsoft-users', {
+        const response = await fetch('/api/db/identity-details', {
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'

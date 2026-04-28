@@ -16,25 +16,18 @@ const SVGtoPDF = require('svg-to-pdfkit');
 // invoice payment endpoints 
 require("dotenv").config();
 
-// ===============================
-// MULTI-TENANT CLIENT CONFIGURATION
-// ===============================
-const tenantClients = {
-  sunbird: {
-    clientId: "sunbird",
-    emails: ["sandanindivhuwo17@gmail.com", "ndamulelo@stackopsit.co.za"],
-    provider: "microsoft",
-    tenantType: "microsoft-graph",
-    name: "Sunbird"
-  }
-  // Future clients can be added here
-};
+const ACCESS_TOKEN_SECRET = '7a076e42670cfe26193655fe5f48b776defe078754ca16fb9ae0a054b354d335';
+const accessContextCache = new Map();
 
-// Helper function to get client by user email
 function getTenantByEmail(email) {
-  return Object.values(tenantClients).find(client => 
-    client.emails.includes(email.toLowerCase())
-  );
+  const key = String(email || '').toLowerCase();
+  const cached = accessContextCache.get(key);
+  if (!cached) return null;
+  return {
+    clientId: cached.accessType || 'standard',
+    tenantId: cached.tenantId || null,
+    companyId: cached.companyId || null
+  };
 }
 
 // ===============================
@@ -1026,6 +1019,39 @@ async function getUserByEmail(email) {
     }
 }
 
+async function getUserAccessContextByEmail(email) {
+    if (!pool) {
+        throw new Error('MySQL pool is not available.');
+    }
+
+    const [rows] = await pool.query(
+        `SELECT 
+            u.ID AS userId,
+            u.Email AS email,
+            u.CompanyID AS companyId,
+            COALESCE(ta.AccessType, 'standard') AS accessType,
+            mt.ID AS microsoftTenantPk,
+            mt.TenantName AS tenantName,
+            mt.TenantID AS tenantId,
+            mt.ClientID AS clientId,
+            mt.ClientSecret AS clientSecret
+         FROM Users u
+         LEFT JOIN TenantAccessControl ta ON ta.UserID = u.ID
+         LEFT JOIN CompanyMicrosoftMapping cm ON cm.CompanyID = u.CompanyID AND cm.IsActive = 1
+         LEFT JOIN MicrosoftTenants mt ON mt.ID = cm.MicrosoftTenantID
+         WHERE LOWER(u.Email) = LOWER(?)
+         LIMIT 1`,
+        [email]
+    );
+
+    return rows[0] || null;
+}
+
+async function getAccessContextByUser(reqUser) {
+    if (!reqUser || !reqUser.email) return null;
+    return getUserAccessContextByEmail(reqUser.email);
+}
+
 async function checkMfaCode(user_id, code) {
     try {
         if (!pool) {
@@ -1171,6 +1197,106 @@ async function ensureDatabaseSchema() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
+
+        // Core hybrid-architecture tables
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS MicrosoftTenants (
+                ID INT AUTO_INCREMENT PRIMARY KEY,
+                TenantName VARCHAR(255),
+                TenantID VARCHAR(255),
+                ClientID VARCHAR(255),
+                ClientSecret TEXT,
+                CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS CompanyMicrosoftMapping (
+                ID INT AUTO_INCREMENT PRIMARY KEY,
+                CompanyID INT,
+                MicrosoftTenantID INT,
+                IsActive TINYINT DEFAULT 1,
+                FOREIGN KEY (CompanyID) REFERENCES Companies(ID),
+                FOREIGN KEY (MicrosoftTenantID) REFERENCES MicrosoftTenants(ID)
+            )
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS TenantAccessControl (
+                ID INT AUTO_INCREMENT PRIMARY KEY,
+                UserID INT,
+                AccessType VARCHAR(50),
+                FOREIGN KEY (UserID) REFERENCES Users(ID)
+            )
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS IdentityMetricsCache (
+                ID INT AUTO_INCREMENT PRIMARY KEY,
+                CompanyID INT,
+                TotalUsers INT,
+                ActiveUsers INT,
+                AdminRoles INT,
+                SecurityScore INT,
+                LastUpdated DATETIME,
+                FOREIGN KEY (CompanyID) REFERENCES Companies(ID)
+            )
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS IdentityUserDetailsCache (
+                ID INT AUTO_INCREMENT PRIMARY KEY,
+                CompanyID INT,
+                UsersPayload LONGTEXT,
+                LastUpdated DATETIME,
+                UNIQUE KEY uq_identity_user_details_company (CompanyID),
+                FOREIGN KEY (CompanyID) REFERENCES Companies(ID)
+            )
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS DeviceMetricsCache (
+                ID INT AUTO_INCREMENT PRIMARY KEY,
+                CompanyID INT,
+                TotalDevices INT,
+                NonCompliant INT,
+                NotEncrypted INT,
+                StaleDevices INT,
+                LastUpdated DATETIME,
+                FOREIGN KEY (CompanyID) REFERENCES Companies(ID)
+            )
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS EmailMetricsCache (
+                ID INT AUTO_INCREMENT PRIMARY KEY,
+                CompanyID INT,
+                ActiveThreats INT,
+                HighSeverity INT,
+                UsersTargeted INT,
+                OpenIncidents INT,
+                LastUpdated DATETIME,
+                FOREIGN KEY (CompanyID) REFERENCES Companies(ID)
+            )
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS ApplicationMetricsCache (
+                ID INT AUTO_INCREMENT PRIMARY KEY,
+                CompanyID INT,
+                TotalApps INT,
+                ExternalApps INT,
+                HighRiskApps INT,
+                HighAccessApps INT,
+                LastUpdated DATETIME,
+                FOREIGN KEY (CompanyID) REFERENCES Companies(ID)
+            )
+        `);
+
+        // User constraints/indexes for faster login and tenant lookups
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_company ON Users(CompanyID)`);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_email ON Users(Email)`);
+        await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_users_email ON Users(Email)`);
     } catch (err) {
         console.error('ensureDatabaseSchema error:', err);
     }
@@ -1798,9 +1924,6 @@ const authenticateToken = (req, res, next) => {
         return res.redirect('/signin.html');
     }
 
-    // Hardcoded ACCESS_TOKEN_SECRET
-    const ACCESS_TOKEN_SECRET = '7a076e42670cfe26193655fe5f48b776defe078754ca16fb9ae0a054b354d335';
-
     jwt.verify(token, ACCESS_TOKEN_SECRET, (err, user) => {
         if (err) {
             if (req.originalUrl.startsWith('/api')) {
@@ -1809,6 +1932,11 @@ const authenticateToken = (req, res, next) => {
             return res.redirect('/signin.html');
         }
         req.user = user;
+        accessContextCache.set(String(user.email || '').toLowerCase(), {
+            accessType: user.access || 'standard',
+            tenantId: user.tenantId || null,
+            companyId: user.companyId || null
+        });
         next();
     });
 };
@@ -2038,10 +2166,21 @@ app.post('/api/auth/verify-mfa', async (req, res) => {
         // MySQL Delete MFA
         await pool.query('DELETE FROM mfa_codes WHERE user_id = ?', [user.id]);
 
-        // Hardcoded ACCESS_TOKEN_SECRET
-        const ACCESS_TOKEN_SECRET = '7a076e42670cfe26193655fe5f48b776defe078754ca16fb9ae0a054b354d335';
-
-        const accessToken = jwt.sign({ id: user.id, email: user.email, role: user.role }, ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
+        const accessContext = await getUserAccessContextByEmail(user.email);
+        const jwtPayload = {
+            id: user.id,
+            email: user.email,
+            role: user.role,
+            companyId: accessContext?.companyId || user.companyId || null,
+            access: accessContext?.accessType || 'standard',
+            tenantId: accessContext?.tenantId || null
+        };
+        const accessToken = jwt.sign(jwtPayload, ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
+        accessContextCache.set(String(user.email || '').toLowerCase(), {
+            accessType: jwtPayload.access,
+            tenantId: jwtPayload.tenantId,
+            companyId: jwtPayload.companyId
+        });
 
         // Use role from Users table instead of hard-coded email list
         const isAdmin = (user.role && user.role.toLowerCase() === 'admin');
@@ -2052,8 +2191,14 @@ app.post('/api/auth/verify-mfa', async (req, res) => {
             accessToken: accessToken,
             redirect: isAdmin ? '/Admin.html' : '/ClientPortal.html',
             user: {
+                id: user.id,
+                email: user.email,
                 firstName: user.firstName || '',
-                lastName: user.lastName || ''
+                lastName: user.lastName || '',
+                role: user.role || 'client',
+                companyId: jwtPayload.companyId,
+                access: jwtPayload.access,
+                tenantId: jwtPayload.tenantId
             }
         });
         
@@ -4424,6 +4569,260 @@ setInterval(syncDuoData, 60 * 60 * 1000);
 // ====================================================================================================//
 //                             MICROSOFT GRAPH -  Identity Protection                                  //
 // ====================================================================================================//
+
+async function fetchIdentityMetricsFromApi() {
+    const token = await getMicrosoftGraphToken();
+    const [users, roleAssignments, signIns] = await Promise.all([
+        fetchMicrosoftUsers(token),
+        fetchMicrosoftRoleAssignments(token),
+        fetchMicrosoftSignIns(token)
+    ]);
+
+    const totalUsers = users.length;
+    const activeUserIds = new Set(signIns.map(s => s.userId).filter(Boolean));
+    const activeUsers = activeUserIds.size;
+    const adminRoles = roleAssignments.length;
+    const score = Math.max(0, Math.min(100, Math.round(100 - (adminRoles * 0.4) - ((totalUsers - activeUsers) * 0.2))));
+    return { totalUsers, activeUsers, adminRoles, securityScore: score };
+}
+
+function normalizeMicrosoftUsers(users) {
+    return (users || []).map(user => ({
+        id: user.id,
+        displayName: user.displayName || 'Unknown User',
+        mail: user.mail || user.userPrincipalName || 'N/A',
+        jobTitle: user.jobTitle || 'No Title',
+        mobilePhone: user.mobilePhone || 'N/A',
+        userPrincipalName: user.userPrincipalName,
+        isExternal: user.userPrincipalName && user.userPrincipalName.includes('#EXT#'),
+        status: 'active',
+        lastSync: new Date().toISOString()
+    }));
+}
+
+async function fetchIdentityDetailsFromApi() {
+    const token = await getMicrosoftGraphToken();
+    const users = await fetchMicrosoftUsers(token);
+    const processedUsers = normalizeMicrosoftUsers(users);
+    return {
+        totalUsers: processedUsers.length,
+        users: processedUsers
+    };
+}
+
+async function fetchDeviceMetricsFromApi() {
+    const token = await getMicrosoftGraphToken();
+    const devices = await fetchMicrosoftDevices(token);
+    const totalDevices = devices.length;
+    const nonCompliant = devices.filter(d => (d.complianceState || '').toLowerCase() === 'noncompliant').length;
+    const notEncrypted = devices.filter(d => !d.isEncrypted).length;
+    const staleDevices = devices.filter(d => {
+        if (!d.lastSyncDateTime) return true;
+        const daysSinceSync = (Date.now() - new Date(d.lastSyncDateTime).getTime()) / (1000 * 60 * 60 * 24);
+        return daysSinceSync > 7;
+    }).length;
+    return { totalDevices, nonCompliant, notEncrypted, staleDevices };
+}
+
+async function fetchApplicationMetricsFromApi() {
+    const token = await getMicrosoftGraphToken();
+    const servicePrincipals = await fetchMicrosoftServicePrincipals(token);
+    const totalApps = servicePrincipals.length;
+    const externalApps = servicePrincipals.filter(sp => !(sp.publisherName || '').toLowerCase().includes('microsoft')).length;
+    const highRiskApps = servicePrincipals.filter(sp => (sp.oauth2PermissionScopes || []).length + (sp.appRoles || []).length > 10).length;
+    const highAccessApps = servicePrincipals.filter(sp => (sp.appRoles || []).length > 5).length;
+    return { totalApps, externalApps, highRiskApps, highAccessApps };
+}
+
+async function fetchEmailMetricsFromApi() {
+    const token = await getMicrosoftGraphToken();
+    const [alerts, incidents] = await Promise.all([fetchSecurityAlerts(token), fetchSecurityIncidents(token)]);
+    const emailKeywords = ['phishing', 'malware', 'spam', 'email', 'attachment', 'suspicious mail', 'ransomware'];
+    const emailAlerts = alerts.filter(alert => {
+        const text = `${alert.category || ''} ${alert.title || ''} ${alert.description || ''}`.toLowerCase();
+        return emailKeywords.some(k => text.includes(k));
+    });
+    const highSeverity = emailAlerts.filter(a => ['high', 'critical'].includes(String(a.severity || '').toLowerCase())).length;
+    const activeThreats = emailAlerts.filter(a => ['newalert', 'inprogress'].includes(String(a.status || '').toLowerCase())).length;
+    const openIncidents = incidents.filter(i => ['active', 'inprogress'].includes(String(i.status || '').toLowerCase())).length;
+    const users = new Set();
+    emailAlerts.forEach(alert => (alert.userStates || []).forEach(user => users.add(user.accountName || 'Unknown')));
+    return { activeThreats, highSeverity, usersTargeted: users.size, openIncidents };
+}
+
+async function upsertDashboardMetricCaches() {
+    if (!pool) return;
+    const [rows] = await pool.query(
+        `SELECT CompanyID, MicrosoftTenantID
+         FROM CompanyMicrosoftMapping
+         WHERE IsActive = 1`
+    );
+    for (const row of rows) {
+        const companyId = row.CompanyID;
+        try {
+            const [identity, identityDetails, devices, apps, email] = await Promise.all([
+                fetchIdentityMetricsFromApi(),
+                fetchIdentityDetailsFromApi(),
+                fetchDeviceMetricsFromApi(),
+                fetchApplicationMetricsFromApi(),
+                fetchEmailMetricsFromApi()
+            ]);
+
+            await pool.query(
+                `REPLACE INTO IdentityMetricsCache (CompanyID, TotalUsers, ActiveUsers, AdminRoles, SecurityScore, LastUpdated)
+                 VALUES (?, ?, ?, ?, ?, NOW())`,
+                [companyId, identity.totalUsers, identity.activeUsers, identity.adminRoles, identity.securityScore]
+            );
+            await pool.query(
+                `REPLACE INTO IdentityUserDetailsCache (CompanyID, UsersPayload, LastUpdated)
+                 VALUES (?, ?, NOW())`,
+                [companyId, JSON.stringify(identityDetails.users || [])]
+            );
+            await pool.query(
+                `REPLACE INTO DeviceMetricsCache (CompanyID, TotalDevices, NonCompliant, NotEncrypted, StaleDevices, LastUpdated)
+                 VALUES (?, ?, ?, ?, ?, NOW())`,
+                [companyId, devices.totalDevices, devices.nonCompliant, devices.notEncrypted, devices.staleDevices]
+            );
+            await pool.query(
+                `REPLACE INTO ApplicationMetricsCache (CompanyID, TotalApps, ExternalApps, HighRiskApps, HighAccessApps, LastUpdated)
+                 VALUES (?, ?, ?, ?, ?, NOW())`,
+                [companyId, apps.totalApps, apps.externalApps, apps.highRiskApps, apps.highAccessApps]
+            );
+            await pool.query(
+                `REPLACE INTO EmailMetricsCache (CompanyID, ActiveThreats, HighSeverity, UsersTargeted, OpenIncidents, LastUpdated)
+                 VALUES (?, ?, ?, ?, ?, NOW())`,
+                [companyId, email.activeThreats, email.highSeverity, email.usersTargeted, email.openIncidents]
+            );
+        } catch (error) {
+            console.error(`[Cache Worker] Failed to refresh company ${companyId}:`, error.message);
+        }
+    }
+}
+
+setInterval(() => {
+    upsertDashboardMetricCaches().catch(error => {
+        console.error('[Cache Worker] Refresh loop failed:', error.message);
+    });
+}, 5 * 60 * 1000);
+
+app.get('/api/db/identity-metrics', authenticateToken, async (req, res) => {
+    try {
+        const context = await getAccessContextByUser(req.user);
+        if (!context?.companyId) return res.status(403).json({ success: false, message: 'Access mapping not configured' });
+        const [rows] = await pool.query('SELECT * FROM IdentityMetricsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [context.companyId]);
+        if (rows.length > 0) return res.json({ success: true, source: 'db', metrics: rows[0] });
+
+        const api = await fetchIdentityMetricsFromApi();
+        await pool.query(
+            `REPLACE INTO IdentityMetricsCache (CompanyID, TotalUsers, ActiveUsers, AdminRoles, SecurityScore, LastUpdated)
+             VALUES (?, ?, ?, ?, ?, NOW())`,
+            [context.companyId, api.totalUsers, api.activeUsers, api.adminRoles, api.securityScore]
+        );
+        return res.json({ success: true, source: 'api-fallback', metrics: api });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.get('/api/db/identity-details', authenticateToken, async (req, res) => {
+    try {
+        const context = await getAccessContextByUser(req.user);
+        if (!context?.companyId) return res.status(403).json({ success: false, message: 'Access mapping not configured' });
+
+        const [rows] = await pool.query(
+            'SELECT UsersPayload, LastUpdated FROM IdentityUserDetailsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1',
+            [context.companyId]
+        );
+
+        if (rows.length > 0 && rows[0].UsersPayload) {
+            let users = [];
+            try {
+                users = JSON.parse(rows[0].UsersPayload) || [];
+            } catch (error) {
+                users = [];
+            }
+            if (Array.isArray(users) && users.length > 0) {
+                return res.json({
+                    success: true,
+                    source: 'db',
+                    totalUsers: users.length,
+                    users,
+                    fetchedAt: rows[0].LastUpdated
+                });
+            }
+        }
+
+        const api = await fetchIdentityDetailsFromApi();
+        await pool.query(
+            `REPLACE INTO IdentityUserDetailsCache (CompanyID, UsersPayload, LastUpdated)
+             VALUES (?, ?, NOW())`,
+            [context.companyId, JSON.stringify(api.users || [])]
+        );
+        return res.json({
+            success: true,
+            source: 'api-fallback',
+            totalUsers: api.totalUsers,
+            users: api.users,
+            fetchedAt: new Date().toISOString()
+        });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.get('/api/db/device-metrics', authenticateToken, async (req, res) => {
+    try {
+        const context = await getAccessContextByUser(req.user);
+        if (!context?.companyId) return res.status(403).json({ success: false, message: 'Access mapping not configured' });
+        const [rows] = await pool.query('SELECT * FROM DeviceMetricsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [context.companyId]);
+        if (rows.length > 0) return res.json({ success: true, source: 'db', metrics: rows[0] });
+        const api = await fetchDeviceMetricsFromApi();
+        await pool.query(
+            `REPLACE INTO DeviceMetricsCache (CompanyID, TotalDevices, NonCompliant, NotEncrypted, StaleDevices, LastUpdated)
+             VALUES (?, ?, ?, ?, ?, NOW())`,
+            [context.companyId, api.totalDevices, api.nonCompliant, api.notEncrypted, api.staleDevices]
+        );
+        return res.json({ success: true, source: 'api-fallback', metrics: api });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.get('/api/db/email-metrics', authenticateToken, async (req, res) => {
+    try {
+        const context = await getAccessContextByUser(req.user);
+        if (!context?.companyId) return res.status(403).json({ success: false, message: 'Access mapping not configured' });
+        const [rows] = await pool.query('SELECT * FROM EmailMetricsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [context.companyId]);
+        if (rows.length > 0) return res.json({ success: true, source: 'db', metrics: rows[0] });
+        const api = await fetchEmailMetricsFromApi();
+        await pool.query(
+            `REPLACE INTO EmailMetricsCache (CompanyID, ActiveThreats, HighSeverity, UsersTargeted, OpenIncidents, LastUpdated)
+             VALUES (?, ?, ?, ?, ?, NOW())`,
+            [context.companyId, api.activeThreats, api.highSeverity, api.usersTargeted, api.openIncidents]
+        );
+        return res.json({ success: true, source: 'api-fallback', metrics: api });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.get('/api/db/application-metrics', authenticateToken, async (req, res) => {
+    try {
+        const context = await getAccessContextByUser(req.user);
+        if (!context?.companyId) return res.status(403).json({ success: false, message: 'Access mapping not configured' });
+        const [rows] = await pool.query('SELECT * FROM ApplicationMetricsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [context.companyId]);
+        if (rows.length > 0) return res.json({ success: true, source: 'db', metrics: rows[0] });
+        const api = await fetchApplicationMetricsFromApi();
+        await pool.query(
+            `REPLACE INTO ApplicationMetricsCache (CompanyID, TotalApps, ExternalApps, HighRiskApps, HighAccessApps, LastUpdated)
+             VALUES (?, ?, ?, ?, ?, NOW())`,
+            [context.companyId, api.totalApps, api.externalApps, api.highRiskApps, api.highAccessApps]
+        );
+        return res.json({ success: true, source: 'api-fallback', metrics: api });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
 
 /**
  * Route: GET /api/microsoft-users
