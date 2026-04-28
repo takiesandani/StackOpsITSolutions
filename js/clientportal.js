@@ -44,6 +44,7 @@ function isSessionValid() {
     const isLoggedIn = sessionStorage.getItem('isLoggedIn');
     const userEmail = sessionStorage.getItem('userEmail');
     const token = localStorage.getItem('authToken');
+    const localUser = localStorage.getItem('user');
     
     return isLoggedIn === 'true' && userEmail && token;
 }
@@ -276,6 +277,9 @@ let sunbirdBillingMenuSelection = 'security';
 let cachedSunbirdBillingHtml = '';
 let cachedSunbirdSecurityData = null;
 let cachedSunbirdBackupData = null;
+const BILLING_CACHE_KEY = 'billingInvoiceCache_v1';
+const BILLING_CACHE_TTL_MS = 5 * 60 * 1000;
+let billingAuthRetryCount = 0;
 let sunbirdBillingCardLockedHeight = null;
 let identityRiskFocus = 'all';
 let pendingIdentityRiskFocus = 'all';
@@ -3869,20 +3873,52 @@ async function fetchIdentityAccessData() {
             console.log('[Identity Access] Sunbird endpoint not available, falling back to standard API');
         }
 
-        // Fallback: Load DB-first identity details and enrichers in PARALLEL
-        console.log('[Identity Access] Fetching cached identity users, roles, and enriched data in parallel...');
-        
+        // Fallback: load users first for fast paint, enrich in background.
+        console.log('[Identity Access] Fast-loading cached identity users first...');
+        const usersStart = performance.now();
+        const usersResponse = await fetch('/api/db/identity-details', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        if (isStaleRequest()) return;
+        if (!usersResponse.ok) {
+            const errData = await usersResponse.json().catch(() => ({}));
+            throw new Error(errData.message || `Users API failed: ${usersResponse.status}`);
+        }
+        const usersData = await usersResponse.json();
+        if (isStaleRequest()) return;
+        if (!usersData.success || !Array.isArray(usersData.users)) {
+            throw new Error(usersData.message || 'Invalid users response format');
+        }
+        microsoftUsersData = usersData.users || [];
+        console.log(`[Identity Access] ✓ Loaded ${microsoftUsersData.length} users (${(performance.now() - usersStart).toFixed(0)}ms)`);
+
+        // Fast card update before enrichers complete.
+        const identityProjectQuick = mockProjects.find(p => p.id === 2);
+        if (identityProjectQuick) {
+            identityProjectQuick.cardMetrics = [
+                { label: "Total Users", value: `: ${microsoftUsersData.length}`, icon: "fas fa-users" },
+                { label: "Active (24h)", value: ": ...", icon: "fas fa-user-check" },
+                { label: "Admin Roles", value: ": ...", icon: "fas fa-crown" },
+                { label: "Security Score", value: ": ...", icon: "fas fa-shield-alt" }
+            ];
+            identityProjectQuick.status = 'active';
+            identityProjectQuick.cardFooter = `Users loaded: ${microsoftUsersData.length} | Enriching...`;
+            identityProjectQuick.lastUpdate = new Date().toLocaleTimeString();
+            displayCurrentProject();
+            const isIdentityOpenQuick = document.getElementById('dashboard-view')?.style.display !== 'none' &&
+                String(document.getElementById('project-name')?.textContent || '').toLowerCase().includes('identity protection');
+            if (isIdentityOpenQuick) {
+                setTimeout(() => initializeIdentityDashboard(), 30);
+            }
+        }
+
+        // Background enrichers
         const startTime = performance.now();
-        
-        // Fetch all endpoints in parallel using Promise.allSettled for resilience
-        const [usersResult, rolesResult, mfaResult, signInResult] = await Promise.allSettled([
-            fetch('/api/db/identity-details', {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
-            }),
+        const [rolesResult, mfaResult, signInResult] = await Promise.allSettled([
             fetch('/api/microsoft-roles', {
                 method: 'GET',
                 headers: {
@@ -3906,23 +3942,8 @@ async function fetchIdentityAccessData() {
             })
         ]);
         if (isStaleRequest()) return;
-
         const loadTime = performance.now() - startTime;
-        console.log(`[Identity Access] Parallel API calls completed in ${loadTime.toFixed(0)}ms`);
-
-        // Process Users - REQUIRED
-        if (usersResult.status === 'fulfilled' && usersResult.value.ok) {
-            const usersData = await usersResult.value.json();
-            if (isStaleRequest()) return;
-            if (usersData.success && usersData.users) {
-                microsoftUsersData = usersData.users || [];
-                console.log(`[Identity Access] ✓ Loaded ${microsoftUsersData.length} users (${loadTime.toFixed(0)}ms)`);
-            } else {
-                throw new Error(usersData.message || 'Invalid users response format');
-            }
-        } else {
-            throw new Error(`Users API failed: ${usersResult.reason?.message || 'Unknown error'}`);
-        }
+        console.log(`[Identity Access] Enrichment API calls completed in ${loadTime.toFixed(0)}ms`);
 
         // Process Roles - OPTIONAL
         if (rolesResult.status === 'fulfilled' && rolesResult.value.ok) {
@@ -5365,9 +5386,12 @@ async function fetchIdentityData(project) {
         // The DB identity-details response can be safely merged with enrichment payloads.
         if (isSunbirdUser()) {
             console.log('[Identity] Sunbird user detected, using enriched identity loader');
-            await fetchIdentityAccessData();
+            // Render instantly using any already-loaded snapshot, then hydrate in background.
             updateDashboardData(project);
             initializeIdentityDashboard();
+            fetchIdentityAccessData().catch((error) => {
+                console.error('[Identity] Background hydrate failed:', error);
+            });
             return;
         }
 
@@ -5815,7 +5839,7 @@ async function initializeBillingCard() {
     const token = localStorage.getItem('authToken');
     
     if (!token) {
-        const isSessionLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
+        const isSessionLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true' || !!localUser;
         if (isSessionLoggedIn) {
             if (isSunbirdUser() && !isSunbirdBillingViewActive('billing') && billingCard.dataset?.sunbirdView) return;
             billingCard.innerHTML = '<p style="color: #bdbdbd; text-align: left; padding: 20px;">Loading billing information...</p>';
@@ -5826,11 +5850,31 @@ async function initializeBillingCard() {
             }, 450);
             return;
         }
+        if (billingAuthRetryCount < 6) {
+            billingAuthRetryCount += 1;
+            billingCard.innerHTML = '<p style="color: #bdbdbd; text-align: left; padding: 20px;">Preparing your billing view...</p>';
+            setTimeout(() => initializeBillingCard(), 350);
+            return;
+        }
         if (isSunbirdUser() && !isSunbirdBillingViewActive('billing') && billingCard.dataset?.sunbirdView) return;
         billingCard.innerHTML = '<p style="color: #bdbdbd; text-align: center; padding: 20px;">Please log in to view billing information.</p>';
         cachedSunbirdBillingHtml = billingCard.innerHTML;
         return;
     }
+
+    billingAuthRetryCount = 0;
+
+    // Stale-while-revalidate render for instant paint.
+    try {
+        const rawCache = localStorage.getItem(BILLING_CACHE_KEY);
+        if (rawCache) {
+            const parsed = JSON.parse(rawCache);
+            if (parsed?.html && parsed?.cachedAt && (Date.now() - parsed.cachedAt) < BILLING_CACHE_TTL_MS) {
+                billingCard.innerHTML = parsed.html;
+                cachedSunbirdBillingHtml = parsed.html;
+            }
+        }
+    } catch (_) {}
     
     try {
         const response = await fetch('/api/client/latest-invoice', {
@@ -5845,6 +5889,10 @@ async function initializeBillingCard() {
             if (isSunbirdUser() && !isSunbirdBillingViewActive('billing')) return;
             billingCard.innerHTML = '<p style="color: #bdbdbd; text-align: center; padding: 20px;">Session expired. Please log in again.</p>';
             cachedSunbirdBillingHtml = billingCard.innerHTML;
+            localStorage.setItem(BILLING_CACHE_KEY, JSON.stringify({
+                html: billingCard.innerHTML,
+                cachedAt: Date.now()
+            }));
             return;
         }
         
@@ -5937,17 +5985,23 @@ async function initializeBillingCard() {
             </div>
         `;
         cachedSunbirdBillingHtml = billingCard.innerHTML;
+        localStorage.setItem(BILLING_CACHE_KEY, JSON.stringify({
+            html: billingCard.innerHTML,
+            cachedAt: Date.now()
+        }));
     } catch (error) {
         console.error('Error loading billing card:', error);
         if (isSunbirdUser() && !isSunbirdBillingViewActive('billing')) return;
-        billingCard.innerHTML = `
-            <div class="billing-card-header">
-                <i class="fas fa-credit-card"></i>
-                <h3>Billing Statement</h3>
-            </div>
-            <p style="color: #bdbdbd; text-align: center; padding: 20px;">Error loading billing information</p>
-        `;
-        cachedSunbirdBillingHtml = billingCard.innerHTML;
+        if (!billingCard.innerHTML || billingCard.innerHTML.trim().length === 0) {
+            billingCard.innerHTML = `
+                <div class="billing-card-header">
+                    <i class="fas fa-credit-card"></i>
+                    <h3>Billing Statement</h3>
+                </div>
+                <p style="color: #bdbdbd; text-align: center; padding: 20px;">Error loading billing information</p>
+            `;
+            cachedSunbirdBillingHtml = billingCard.innerHTML;
+        }
     } finally {
         ensureSunbirdBillingCardDimensions();
         // If this renderer completed after the user navigated away, don't force-switch tabs.
@@ -6027,22 +6081,22 @@ window.switchBillingMenu = async function(menuItem) {
     }
 
     if (menuItem === 'security') {
-        await renderSunbirdSecurityAlertsView(true);
+        await renderSunbirdSecurityAlertsView(false);
         return;
     }
 
     if (menuItem === 'backup') {
-        await renderSunbirdBackupRecoveryView(true);
+        await renderSunbirdBackupRecoveryView(false);
         return;
     }
 
     if (menuItem === 'risks') {
-        await renderSunbirdRisksView(true);
+        await renderSunbirdRisksView(false);
     }
 
     // NEW: Route for Applications
     if (menuItem === 'applications') {
-        await renderSunbirdApplicationsView(true);
+        await renderSunbirdApplicationsView(false);
         return;
     }
 };
