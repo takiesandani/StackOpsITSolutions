@@ -557,11 +557,11 @@ async function generatePayFastLink(paymentData) {
 // (Hardcoded SMTP config - as requested)
 const transporter = nodemailer.createTransport({
     host: 'smtpout.secureserver.net',
-    port: 465,
+    port: 587,
     secure: true,
     auth: {
         user: 'info@stackopsit.co.za',
-        pass: 'Cxzdsaewq123$'
+        pass: 'C%653958224504od'
     },
     pool: true,
     maxConnections: 2,
@@ -1276,6 +1276,17 @@ async function ensureDatabaseSchema() {
                 UsersTargeted INT,
                 OpenIncidents INT,
                 LastUpdated DATETIME,
+                FOREIGN KEY (CompanyID) REFERENCES Companies(ID)
+            )
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS BackupRecoveryPayloadCache (
+                ID INT AUTO_INCREMENT PRIMARY KEY,
+                CompanyID INT,
+                Payload LONGTEXT,
+                LastUpdated DATETIME,
+                UNIQUE KEY uq_backup_recovery_company (CompanyID),
                 FOREIGN KEY (CompanyID) REFERENCES Companies(ID)
             )
         `);
@@ -4650,6 +4661,146 @@ async function fetchEmailMetricsFromApi() {
     return { activeThreats, highSeverity, usersTargeted: users.size, openIncidents };
 }
 
+async function fetchBackupRecoveryPayloadFromApi() {
+    const token = await getMicrosoftGraphToken();
+
+    // Fetch OneDrive usage (returns CSV)
+    const oneDriveUrl = 'https://graph.microsoft.com/v1.0/reports/getOneDriveUsageAccountDetail(period=\'D7\')';
+    const oneDriveResponse = await fetch(oneDriveUrl, { headers: { 'Authorization': `Bearer ${token}` } });
+    const oneDriveCSV = await oneDriveResponse.text();
+    const oneDriveData = parseGraphReportCSV(oneDriveCSV, 'OneDrive');
+
+    // Fetch SharePoint usage (returns CSV)
+    const sharePointUrl = 'https://graph.microsoft.com/v1.0/reports/getSharePointSiteUsageDetail(period=\'D7\')';
+    const sharePointResponse = await fetch(sharePointUrl, { headers: { 'Authorization': `Bearer ${token}` } });
+    const sharePointCSV = await sharePointResponse.text();
+    const sharePointData = parseGraphReportCSV(sharePointCSV, 'SharePoint');
+
+    // Fetch Exchange (Mailbox) usage (returns CSV)
+    const exchangeUrl = 'https://graph.microsoft.com/v1.0/reports/getMailboxUsageDetail(period=\'D7\')';
+    const exchangeResponse = await fetch(exchangeUrl, { headers: { 'Authorization': `Bearer ${token}` } });
+    const exchangeCSV = await exchangeResponse.text();
+    const exchangeData = parseGraphReportCSV(exchangeCSV, 'Exchange');
+
+    // Process OneDrive storage (in bytes)
+    let oneDriveStorageBytes = 0;
+    const oneDriveUsers = [];
+    oneDriveData.forEach(item => {
+        const storageBytes = parseInt(item['Storage Used (Byte)'] || 0);
+        oneDriveStorageBytes += storageBytes;
+        if (item['Owner Principal Name'] && storageBytes > 0) {
+            oneDriveUsers.push({
+                user: item['Owner Principal Name'],
+                displayName: item['Owner Display Name'] || item['Owner Principal Name'],
+                storage: storageBytes,
+                lastActivity: item['Last Activity Date'],
+                files: parseInt(item['File Count'] || 0)
+            });
+        }
+    });
+
+    // Process SharePoint storage (in bytes)
+    let sharePointStorageBytes = 0;
+    const sharePointSites = [];
+    sharePointData.forEach(item => {
+        const storageBytes = parseInt(item['Storage Used (Byte)'] || 0);
+        sharePointStorageBytes += storageBytes;
+        if (item['Site URL'] && storageBytes > 0) {
+            sharePointSites.push({
+                url: item['Site URL'],
+                owner: item['Owner Display Name'] || item['Owner Principal Name'],
+                storage: storageBytes,
+                lastActivity: item['Last Activity Date'],
+                files: parseInt(item['File Count'] || 0)
+            });
+        }
+    });
+
+    // Process Exchange storage (in bytes)
+    let exchangeStorageBytes = 0;
+    const exchangeUsers = [];
+    exchangeData.forEach(item => {
+        const storageBytes = parseInt(item['Storage Used (Byte)'] || 0);
+        exchangeStorageBytes += storageBytes;
+        if (item['User Principal Name'] && storageBytes > 0) {
+            exchangeUsers.push({
+                user: item['User Principal Name'],
+                displayName: item['Display Name'] || item['User Principal Name'],
+                storage: storageBytes,
+                lastActivity: item['Last Activity Date'],
+                items: parseInt(item['Item Count'] || 0)
+            });
+        }
+    });
+
+    const totalStorageBytes = oneDriveStorageBytes + sharePointStorageBytes + exchangeStorageBytes;
+    const totalStorageGB = parseFloat((totalStorageBytes / (1024 ** 3)).toFixed(1));
+    const oneDriveStorageGB = parseFloat((oneDriveStorageBytes / (1024 ** 3)).toFixed(1));
+    const sharePointStorageGB = parseFloat((sharePointStorageBytes / (1024 ** 3)).toFixed(1));
+    const exchangeStorageGB = parseFloat((exchangeStorageBytes / (1024 ** 3)).toFixed(1));
+
+    const activeUserEmails = new Set([
+        ...oneDriveUsers.map(u => u.user),
+        ...exchangeUsers.map(u => u.user)
+    ]);
+    const activeUsersCount = activeUserEmails.size;
+
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const allUsers = [...oneDriveUsers, ...exchangeUsers];
+    const inactiveUsers = allUsers.filter(u => {
+        if (!u.lastActivity) return true;
+        const lastActivity = new Date(u.lastActivity);
+        return lastActivity < thirtyDaysAgo;
+    });
+    const inactiveUsersCount = new Set(inactiveUsers.map(u => u.user)).size;
+    const inactiveUserStorageBytes = inactiveUsers.reduce((sum, u) => sum + u.storage, 0);
+    const inactiveUserStorageGB = parseFloat((inactiveUserStorageBytes / (1024 ** 3)).toFixed(1));
+
+    const backupConfigured = false;
+
+    const summary = {
+        totalStorageGB,
+        oneDriveStorageGB,
+        sharePointStorageGB,
+        exchangeStorageGB,
+        activeUsersCount,
+        inactiveUsersCount,
+        servicesCovered: 3,
+        backupConfigured
+    };
+
+    const storage = {
+        byService: {
+            onedrive: oneDriveStorageGB,
+            sharepoint: sharePointStorageGB,
+            exchange: exchangeStorageGB
+        },
+        inactiveUserStorageGB,
+        sites: sharePointSites.sort((a, b) => b.storage - a.storage).slice(0, 10),
+        users: allUsers.sort((a, b) => b.storage - a.storage).slice(0, 20)
+    };
+
+    const insights = [];
+    if (totalStorageGB > 1000) {
+        insights.push({ type: 'warning', message: 'Large data volume detected', detail: `${totalStorageGB}GB across Microsoft 365 services` });
+    }
+    if (inactiveUsersCount > 0) {
+        insights.push({ type: 'info', message: `${inactiveUsersCount} inactive users holding data`, detail: `${inactiveUserStorageGB}GB in inactive user accounts` });
+    }
+    if (!backupConfigured) {
+        insights.push({ type: 'critical', message: 'No external backup configured', detail: 'Only Microsoft-native retention policies are protecting your data' });
+    }
+
+    return {
+        success: true,
+        fetchedAt: new Date().toISOString(),
+        summary,
+        storage,
+        insights
+    };
+}
+
 async function upsertDashboardMetricCaches() {
     if (!pool) return;
     const [rows] = await pool.query(
@@ -4660,12 +4811,13 @@ async function upsertDashboardMetricCaches() {
     for (const row of rows) {
         const companyId = row.CompanyID;
         try {
-            const [identity, identityDetails, devices, apps, email] = await Promise.all([
+            const [identity, identityDetails, devices, apps, email, backup] = await Promise.all([
                 fetchIdentityMetricsFromApi(),
                 fetchIdentityDetailsFromApi(),
                 fetchDeviceMetricsFromApi(),
                 fetchApplicationMetricsFromApi(),
-                fetchEmailMetricsFromApi()
+                fetchEmailMetricsFromApi(),
+                fetchBackupRecoveryPayloadFromApi()
             ]);
 
             await pool.query(
@@ -4692,6 +4844,12 @@ async function upsertDashboardMetricCaches() {
                 `REPLACE INTO EmailMetricsCache (CompanyID, ActiveThreats, HighSeverity, UsersTargeted, OpenIncidents, LastUpdated)
                  VALUES (?, ?, ?, ?, ?, NOW())`,
                 [companyId, email.activeThreats, email.highSeverity, email.usersTargeted, email.openIncidents]
+            );
+
+            await pool.query(
+                `REPLACE INTO BackupRecoveryPayloadCache (CompanyID, Payload, LastUpdated)
+                 VALUES (?, ?, NOW())`,
+                [companyId, JSON.stringify(backup)]
             );
         } catch (error) {
             console.error(`[Cache Worker] Failed to refresh company ${companyId}:`, error.message);
@@ -4819,6 +4977,41 @@ app.get('/api/db/application-metrics', authenticateToken, async (req, res) => {
             [context.companyId, api.totalApps, api.externalApps, api.highRiskApps, api.highAccessApps]
         );
         return res.json({ success: true, source: 'api-fallback', metrics: api });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.get('/api/db/backup-recovery', authenticateToken, async (req, res) => {
+    try {
+        const context = await getAccessContextByUser(req.user);
+        if (!context?.companyId) return res.status(403).json({ success: false, message: 'Access mapping not configured' });
+
+        const [rows] = await pool.query(
+            'SELECT Payload, LastUpdated FROM BackupRecoveryPayloadCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1',
+            [context.companyId]
+        );
+
+        if (rows.length > 0 && rows[0].Payload) {
+            try {
+                const payload = JSON.parse(rows[0].Payload);
+                if (payload && payload.success) {
+                    return res.json({
+                        ...payload,
+                        source: 'db',
+                        fetchedAt: rows[0].LastUpdated
+                    });
+                }
+            } catch (_) {}
+        }
+
+        const api = await fetchBackupRecoveryPayloadFromApi();
+        await pool.query(
+            `REPLACE INTO BackupRecoveryPayloadCache (CompanyID, Payload, LastUpdated)
+             VALUES (?, ?, NOW())`,
+            [context.companyId, JSON.stringify(api)]
+        );
+        return res.json({ ...api, source: 'api-fallback' });
     } catch (error) {
         return res.status(500).json({ success: false, message: error.message });
     }
@@ -6700,220 +6893,8 @@ function parseGraphReportCSV(csvText, reportType = 'unknown') {
  */
 app.get('/api/backup-recovery', authenticateToken, async (req, res) => {
     try {
-        const userEmail = req.user.email;
-        console.log(`[Backup Recovery] Fetching dashboard data for: ${userEmail}`);
-
-        const token = await getMicrosoftGraphToken();
-
-        // Fetch storage data using Microsoft Graph Reports API
-        console.log('[Backup Recovery] Fetching storage reports...');
-        
-        // Fetch OneDrive usage (returns CSV)
-        const oneDriveUrl = 'https://graph.microsoft.com/v1.0/reports/getOneDriveUsageAccountDetail(period=\'D7\')';
-        const oneDriveResponse = await fetch(oneDriveUrl, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        console.log(`[Backup Recovery] OneDrive response status: ${oneDriveResponse.status}`);
-        console.log(`[Backup Recovery] OneDrive response headers:`, {
-            contentType: oneDriveResponse.headers.get('content-type'),
-            contentLength: oneDriveResponse.headers.get('content-length')
-        });
-        
-        const oneDriveCSV = await oneDriveResponse.text();
-        console.log(`[Backup Recovery] OneDrive CSV length: ${oneDriveCSV.length}`);
-        console.log(`[Backup Recovery] OneDrive CSV preview (first 300 chars):`, oneDriveCSV.substring(0, 300));
-        
-        const oneDriveData = parseGraphReportCSV(oneDriveCSV, 'OneDrive');
-
-        // Fetch SharePoint usage (returns CSV)
-        const sharePointUrl = 'https://graph.microsoft.com/v1.0/reports/getSharePointSiteUsageDetail(period=\'D7\')';
-        const sharePointResponse = await fetch(sharePointUrl, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        console.log(`[Backup Recovery] SharePoint response status: ${sharePointResponse.status}`);
-        console.log(`[Backup Recovery] SharePoint response headers:`, {
-            contentType: sharePointResponse.headers.get('content-type'),
-            contentLength: sharePointResponse.headers.get('content-length')
-        });
-        
-        const sharePointCSV = await sharePointResponse.text();
-        console.log(`[Backup Recovery] SharePoint CSV length: ${sharePointCSV.length}`);
-        console.log(`[Backup Recovery] SharePoint CSV preview (first 300 chars):`, sharePointCSV.substring(0, 300));
-        
-        const sharePointData = parseGraphReportCSV(sharePointCSV, 'SharePoint');
-
-        // Fetch Exchange (Mailbox) usage (returns CSV)
-        const exchangeUrl = 'https://graph.microsoft.com/v1.0/reports/getMailboxUsageDetail(period=\'D7\')';
-        const exchangeResponse = await fetch(exchangeUrl, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        console.log(`[Backup Recovery] Exchange response status: ${exchangeResponse.status}`);
-        console.log(`[Backup Recovery] Exchange response headers:`, {
-            contentType: exchangeResponse.headers.get('content-type'),
-            contentLength: exchangeResponse.headers.get('content-length')
-        });
-        
-        const exchangeCSV = await exchangeResponse.text();
-        console.log(`[Backup Recovery] Exchange CSV length: ${exchangeCSV.length}`);
-        console.log(`[Backup Recovery] Exchange CSV preview (first 300 chars):`, exchangeCSV.substring(0, 300));
-        
-        const exchangeData = parseGraphReportCSV(exchangeCSV, 'Exchange');
-
-        // ===== DATA PROCESSING =====
-
-        // Process OneDrive storage (in bytes)
-        let oneDriveStorageBytes = 0;
-        const oneDriveUsers = [];
-        
-        oneDriveData.forEach(item => {
-            const storageBytes = parseInt(item['Storage Used (Byte)'] || 0);
-            oneDriveStorageBytes += storageBytes;
-            
-            if (item['Owner Principal Name'] && storageBytes > 0) {
-                oneDriveUsers.push({
-                    user: item['Owner Principal Name'],
-                    displayName: item['Owner Display Name'] || item['Owner Principal Name'],
-                    storage: storageBytes,
-                    lastActivity: item['Last Activity Date'],
-                    files: parseInt(item['File Count'] || 0)
-                });
-            }
-        });
-
-        // Process SharePoint storage (in bytes)
-        let sharePointStorageBytes = 0;
-        const sharePointSites = [];
-        
-        sharePointData.forEach(item => {
-            const storageBytes = parseInt(item['Storage Used (Byte)'] || 0);
-            sharePointStorageBytes += storageBytes;
-            
-            if (item['Site URL'] && storageBytes > 0) {
-                sharePointSites.push({
-                    url: item['Site URL'],
-                    owner: item['Owner Display Name'] || item['Owner Principal Name'],
-                    storage: storageBytes,
-                    lastActivity: item['Last Activity Date'],
-                    files: parseInt(item['File Count'] || 0)
-                });
-            }
-        });
-
-        // Process Exchange storage (in bytes)
-        let exchangeStorageBytes = 0;
-        const exchangeUsers = [];
-        
-        exchangeData.forEach(item => {
-            const storageBytes = parseInt(item['Storage Used (Byte)'] || 0);
-            exchangeStorageBytes += storageBytes;
-            
-            if (item['User Principal Name'] && storageBytes > 0) {
-                exchangeUsers.push({
-                    user: item['User Principal Name'],
-                    displayName: item['Display Name'] || item['User Principal Name'],
-                    storage: storageBytes,
-                    lastActivity: item['Last Activity Date'],
-                    items: parseInt(item['Item Count'] || 0)
-                });
-            }
-        });
-
-        // ===== CALCULATE METRICS =====
-        const totalStorageBytes = oneDriveStorageBytes + sharePointStorageBytes + exchangeStorageBytes;
-        const totalStorageGB = parseFloat((totalStorageBytes / (1024 ** 3)).toFixed(1));
-        const oneDriveStorageGB = parseFloat((oneDriveStorageBytes / (1024 ** 3)).toFixed(1));
-        const sharePointStorageGB = parseFloat((sharePointStorageBytes / (1024 ** 3)).toFixed(1));
-        const exchangeStorageGB = parseFloat((exchangeStorageBytes / (1024 ** 3)).toFixed(1));
-
-        // Count unique users
-        const activeUserEmails = new Set([
-            ...oneDriveUsers.map(u => u.user),
-            ...exchangeUsers.map(u => u.user)
-        ]);
-        const activeUsersCount = activeUserEmails.size;
-
-        console.log(`[Backup Recovery] OneDrive: ${oneDriveStorageBytes} bytes, ${oneDriveUsers.length} users`);
-        console.log(`[Backup Recovery] SharePoint: ${sharePointStorageBytes} bytes, ${sharePointSites.length} sites`);
-        console.log(`[Backup Recovery] Exchange: ${exchangeStorageBytes} bytes, ${exchangeUsers.length} users`);
-        console.log(`[Backup Recovery] Total: ${oneDriveStorageBytes + sharePointStorageBytes + exchangeStorageBytes} bytes, ${activeUsersCount} active users`);
-
-        // Determine inactive users based on last activity date (if older than 30 days)
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        
-        const allUsers = [...oneDriveUsers, ...exchangeUsers];
-        const inactiveUsers = allUsers.filter(u => {
-            if (!u.lastActivity) return true;
-            const lastActivity = new Date(u.lastActivity);
-            return lastActivity < thirtyDaysAgo;
-        });
-        
-        const inactiveUsersCount = new Set(inactiveUsers.map(u => u.user)).size;
-        const inactiveUserStorageBytes = inactiveUsers.reduce((sum, u) => sum + u.storage, 0);
-        const inactiveUserStorageGB = parseFloat((inactiveUserStorageBytes / (1024 ** 3)).toFixed(1));
-
-        // Backup configuration status (manual logic - no API)
-        const backupConfigured = false; // Default: no external backup configured
-
-        // ===== BUILD RESPONSE =====
-        const summary = {
-            totalStorageGB,
-            oneDriveStorageGB,
-            sharePointStorageGB,
-            exchangeStorageGB,
-            activeUsersCount,
-            inactiveUsersCount,
-            servicesCovered: 3, // OneDrive, SharePoint, Exchange
-            backupConfigured
-        };
-
-        const storage = {
-            byService: {
-                onedrive: oneDriveStorageGB,
-                sharepoint: sharePointStorageGB,
-                exchange: exchangeStorageGB
-            },
-            inactiveUserStorageGB,
-            sites: sharePointSites.sort((a, b) => b.storage - a.storage).slice(0, 10),
-            users: allUsers.sort((a, b) => b.storage - a.storage).slice(0, 20)
-        };
-
-        // ===== INSIGHTS =====
-        const insights = [];
-        
-        if (totalStorageGB > 1000) {
-            insights.push({
-                type: 'warning',
-                message: 'Large data volume detected',
-                detail: `${totalStorageGB}GB across Microsoft 365 services`
-            });
-        }
-
-        if (inactiveUsersCount > 0) {
-            insights.push({
-                type: 'info',
-                message: `${inactiveUsersCount} inactive users holding data`,
-                detail: `${inactiveUserStorageGB}GB in inactive user accounts`
-            });
-        }
-
-        if (!backupConfigured) {
-            insights.push({
-                type: 'critical',
-                message: 'No external backup configured',
-                detail: 'Only Microsoft-native retention policies are protecting your data'
-            });
-        }
-
-        console.log(`[Backup Recovery] Compiled: ${totalStorageGB}GB total storage, ${activeUsersCount} active users`);
-
-        res.json({
-            success: true,
-            fetchedAt: new Date().toISOString(),
-            summary,
-            storage,
-            insights
-        });
+        const payload = await fetchBackupRecoveryPayloadFromApi();
+        res.json(payload);
 
     } catch (error) {
         console.error('[Backup Recovery] Error:', error.message);

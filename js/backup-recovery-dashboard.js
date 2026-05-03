@@ -18,7 +18,7 @@ async function fetchBackupRecoveryData(project) {
         console.log('[Backup Recovery] Fetching backup recovery data...');
         const authToken = localStorage.getItem('authToken');
         
-        const response = await fetch('/api/backup-recovery', {
+        const response = await fetch('/api/db/backup-recovery', {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${authToken}`,

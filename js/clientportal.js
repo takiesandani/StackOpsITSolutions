@@ -6153,7 +6153,7 @@ async function fetchSunbirdBackupRecoveryData() {
     const token = localStorage.getItem('authToken');
     if (!token) throw new Error('Authentication required');
 
-    const response = await fetch('/api/backup-recovery', {
+    const response = await fetch('/api/db/backup-recovery', {
         headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
