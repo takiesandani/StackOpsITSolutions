@@ -557,9 +557,8 @@ async function generatePayFastLink(paymentData) {
 // (Hardcoded SMTP config - as requested)
 const transporter = nodemailer.createTransport({
     host: 'smtpout.secureserver.net',
-    port: 587,
-    secure: false,
-    requireTLS: true,
+    port: 465,
+    secure: true,
     auth: {
         user: 'info@stackopsit.co.za',
         pass: 'Q%653958224504od'
@@ -573,7 +572,7 @@ const transporter = nodemailer.createTransport({
     socketTimeout: 8000,
     tls: {
         minVersion: 'TLSv1.2',
-        rejectUnauthorized: false
+        rejectUnauthorized: true
     }
 });
 
@@ -940,10 +939,9 @@ const sendEmail = async (to, subject, body, isHtml = false, attachments = []) =>
     try {
         await attemptSend(1);
     } catch (error) {
-        const retryable = ['ETIMEDOUT', 'ECONNECTION', 'EAI_AGAIN', 'ESOCKET', 'ENOTFOUND'].includes(error?.code);
+        const retryable = ['ETIMEDOUT', 'ECONNECTION', 'EAI_AGAIN'].includes(error?.code);
         if (retryable) {
-            console.log(`Email send failed with ${error?.code}, retrying in 1s...`);
-            await new Promise(r => setTimeout(r, 1000));
+            await new Promise(r => setTimeout(r, 400));
             await attemptSend(2);
             return;
         }
@@ -981,10 +979,9 @@ const sendBillingEmail = async (to, subject, body, isHtml = false, attachments =
     try {
         await attemptSend(1);
     } catch (error) {
-        const retryable = ['ETIMEDOUT', 'ECONNECTION', 'EAI_AGAIN', 'ESOCKET', 'ENOTFOUND'].includes(error?.code);
+        const retryable = ['ETIMEDOUT', 'ECONNECTION', 'EAI_AGAIN'].includes(error?.code);
         if (retryable) {
-            console.log(`Email send failed with ${error?.code}, retrying in 1s...`);
-            await new Promise(r => setTimeout(r, 1000));
+            await new Promise(r => setTimeout(r, 400));
             await attemptSend(2);
             return;
         }
