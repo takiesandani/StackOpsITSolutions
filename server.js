@@ -556,25 +556,20 @@ async function generatePayFastLink(paymentData) {
 // connecting to nodemailer to send emails from contact form
 // (Microsoft Office 365 SMTP config)
 const transporter = nodemailer.createTransport({
-    host: 'smtp.office365.com',
-    port: 587,
-    secure: false,
-    requireTLS: true,
-    auth: {
-        user: 'info@stackopsit.co.za',
-        pass: 'Q%653958224504od'
-    },
-    pool: true,
-    maxConnections: 2,
-    maxMessages: 100,
-    // Avoid long hangs on SMTP connect in cloud environments
-    connectionTimeout: 8000,
-    greetingTimeout: 7000,
-    socketTimeout: 8000,
-    tls: {
-        minVersion: 'TLSv1.2',
-        rejectUnauthorized: true
-    }
+  host: 'smtp.office365.com',
+  port: 587,
+  secure: false,
+  requireTLS: true,
+  auth: {
+    user: 'info@stackopsit.co.za',
+    pass: 'Q%653958224504od'
+  },
+  connectionTimeout: 5000,
+  greetingTimeout: 5000,
+  socketTimeout: 5000,
+  tls: {
+    minVersion: 'TLSv1.2'
+  }
 });
 
 // function to generate invoice PDF - REDESIGNED to match professional layout
