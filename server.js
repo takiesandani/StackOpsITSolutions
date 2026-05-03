@@ -554,11 +554,12 @@ async function generatePayFastLink(paymentData) {
 }
 
 // connecting to nodemailer to send emails from contact form
-// (Hardcoded SMTP config - as requested)
+// (Microsoft Office 365 SMTP config)
 const transporter = nodemailer.createTransport({
-    host: 'smtpout.secureserver.net',
-    port: 465,
-    secure: true,
+    host: 'smtp.office365.com',
+    port: 587,
+    secure: false,
+    requireTLS: true,
     auth: {
         user: 'info@stackopsit.co.za',
         pass: 'Q%653958224504od'
