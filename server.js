@@ -676,6 +676,10 @@ const sendEmail = async (to, subject, body, isHtml = false, attachments = []) =>
     await sendGraphEmail(to, subject, body, isHtml, 'info@stackopsit.co.za');
   } catch (error) {
     console.error('[sendEmail] Error:', error.message);
+    // Check if it's a credential error
+    if (error.message && error.message.includes('Missing Azure credentials')) {
+      console.error('[sendEmail] ⚠️ Azure credentials not configured. Please set AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET in Google Secret Manager');
+    }
     throw error;
   }
 };
@@ -691,6 +695,10 @@ const sendBillingEmail = async (to, subject, body, isHtml = false, attachments =
     await sendGraphEmail(to, subject, body, isHtml, 'billing@stackopsit.co.za');
   } catch (error) {
     console.error('[sendBillingEmail] Error:', error.message);
+    // Check if it's a credential error
+    if (error.message && error.message.includes('Missing Azure credentials')) {
+      console.error('[sendBillingEmail] ⚠️ Azure credentials not configured. Please set AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET in Google Secret Manager');
+    }
     throw error;
   }
 };
