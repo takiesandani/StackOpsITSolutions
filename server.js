@@ -910,71 +910,39 @@ async function generateInvoicePDF(invoiceData, items, companyData, clientData) {
     });
 }
 
-// function to send email using Microsoft Graph API (OAuth2)
+// function to send email to admin email 
 const sendEmail = async (to, subject, body, isHtml = false, attachments = []) => {
+    const mailOptions = {
+        from: 'info@stackopsit.co.za', // Hardcoded EMAIL_USER
+        to: to,
+        subject: subject,
+        attachments: attachments
+    };
+    
+    if (isHtml) {
+        mailOptions.html = body;
+    } else {
+        mailOptions.text = body;
+    }
+    
     const attemptSend = async (attempt) => {
         try {
-            const token = await getMicrosoftGraphToken();
             console.log(`Attempting to send email to ${to}... (attempt ${attempt})`);
-            
-            // Build the message for Graph API
-            const message = {
-                subject: subject,
-                body: {
-                    contentType: isHtml ? "HTML" : "text",
-                    content: body
-                },
-                toRecipients: [
-                    {
-                        emailAddress: {
-                            address: to
-                        }
-                    }
-                ]
-            };
-            
-            // Add attachments if provided
-            if (attachments && attachments.length > 0) {
-                message.attachments = attachments.map(att => ({
-                    "@odata.type": "#microsoft.graph.fileAttachment",
-                    name: att.filename,
-                    contentBytes: att.content.toString('base64')
-                }));
-            }
-            
-            // Send via Graph API
-            const response = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    message: message,
-                    saveToSentItems: true
-                })
-            });
-            
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(`Graph API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
-            }
-            
+            await transporter.sendMail(mailOptions);
             console.log(`Email successfully sent to ${to}`);
         } catch (error) {
-            const code = error?.code || 'UNKNOWN';
+            const code = error?.code || error?.command || 'UNKNOWN';
             console.error(`Failed to send email to ${to} (attempt ${attempt}):`, code, error?.message || error);
             throw error;
         }
     };
-    
+
     try {
         await attemptSend(1);
     } catch (error) {
-        const retryable = ['ETIMEDOUT', 'ECONNECTION', 'EAI_AGAIN', 'ESOCKET', 'ENOTFOUND'].includes(error?.code);
+        const retryable = ['ETIMEDOUT', 'ECONNECTION', 'EAI_AGAIN'].includes(error?.code);
         if (retryable) {
-            console.log(`Email send failed, retrying in 1s...`);
-            await new Promise(r => setTimeout(r, 1000));
+            await new Promise(r => setTimeout(r, 400));
             await attemptSend(2);
             return;
         }
@@ -982,71 +950,39 @@ const sendEmail = async (to, subject, body, isHtml = false, attachments = []) =>
     }
 };
 
-// function to send email from the billing email using Microsoft Graph API (OAuth2)
+// function to send email from the billing email 
 const sendBillingEmail = async (to, subject, body, isHtml = false, attachments = []) => {
+    const mailOptions = {
+        from: 'billing@stackopsit.co.za', // Hardcoded EMAIL_USER
+        to: to,
+        subject: subject,
+        attachments: attachments
+    };
+    
+    if (isHtml) {
+        mailOptions.html = body;
+    } else {
+        mailOptions.text = body;
+    }
+    
     const attemptSend = async (attempt) => {
         try {
-            const token = await getMicrosoftGraphToken();
             console.log(`Attempting to send email to ${to}... (attempt ${attempt})`);
-            
-            // Build the message for Graph API
-            const message = {
-                subject: subject,
-                body: {
-                    contentType: isHtml ? "HTML" : "text",
-                    content: body
-                },
-                toRecipients: [
-                    {
-                        emailAddress: {
-                            address: to
-                        }
-                    }
-                ]
-            };
-            
-            // Add attachments if provided
-            if (attachments && attachments.length > 0) {
-                message.attachments = attachments.map(att => ({
-                    "@odata.type": "#microsoft.graph.fileAttachment",
-                    name: att.filename,
-                    contentBytes: att.content.toString('base64')
-                }));
-            }
-            
-            // Send via Graph API
-            const response = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    message: message,
-                    saveToSentItems: true
-                })
-            });
-            
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(`Graph API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
-            }
-            
+            await transporter.sendMail(mailOptions);
             console.log(`Email successfully sent to ${to}`);
         } catch (error) {
-            const code = error?.code || 'UNKNOWN';
+            const code = error?.code || error?.command || 'UNKNOWN';
             console.error(`Failed to send email to ${to} (attempt ${attempt}):`, code, error?.message || error);
             throw error;
         }
     };
-    
+
     try {
         await attemptSend(1);
     } catch (error) {
-        const retryable = ['ETIMEDOUT', 'ECONNECTION', 'EAI_AGAIN', 'ESOCKET', 'ENOTFOUND'].includes(error?.code);
+        const retryable = ['ETIMEDOUT', 'ECONNECTION', 'EAI_AGAIN'].includes(error?.code);
         if (retryable) {
-            console.log(`Email send failed, retrying in 1s...`);
-            await new Promise(r => setTimeout(r, 1000));
+            await new Promise(r => setTimeout(r, 400));
             await attemptSend(2);
             return;
         }
