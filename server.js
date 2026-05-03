@@ -1,7 +1,7 @@
 const bcrypt = require('bcryptjs');
 const express = require('express');
 const mysql = require('mysql2/promise');
-const nodemailer = require('nodemailer');
+const axios = require('axios');
 const cors = require('cors');
 const path = require('path');
 const jwt = require('jsonwebtoken');
@@ -12,6 +12,7 @@ const OpenAI = require('openai');
 const {SecretManagerServiceClient} = require('@google-cloud/secret-manager');
 const { Webhook } = require('svix');
 const SVGtoPDF = require('svg-to-pdfkit');
+const { ClientSecretCredential } = require('@azure/identity');
 
 // invoice payment endpoints 
 require("dotenv").config();
@@ -553,24 +554,148 @@ async function generatePayFastLink(paymentData) {
     }
 }
 
-// connecting to nodemailer to send emails from contact form
-// (Microsoft Office 365 SMTP config)
-const transporter = nodemailer.createTransport({
-  host: 'smtp.office365.com',
-  port: 587,
-  secure: false,
-  requireTLS: true,
-  auth: {
-    user: 'info@stackopsit.co.za',
-    pass: 'Q%653958224504od'
-  },
-  connectionTimeout: 5000,
-  greetingTimeout: 5000,
-  socketTimeout: 5000,
-  tls: {
-    minVersion: 'TLSv1.2'
+// ===============================
+// Azure AD + Microsoft Graph API for Email
+// ===============================
+// Credentials are fetched from Google Secret Manager
+let azureCredential = null;
+let graphTokenCache = {
+  token: null,
+  expiresAt: 0
+};
+
+async function initializeAzureCredential() {
+  if (azureCredential) return;
+  
+  const tenantId = await getSecret('AZURE_TENANT_ID');
+  const clientId = await getSecret('AZURE_CLIENT_ID');
+  const clientSecret = await getSecret('AZURE_CLIENT_SECRET');
+  
+  if (!tenantId || !clientId || !clientSecret) {
+    throw new Error('Missing Azure credentials: AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET');
   }
-});
+  
+  azureCredential = new ClientSecretCredential(tenantId, clientId, clientSecret);
+}
+
+async function getGraphAccessToken() {
+  // Return cached token if still valid (expires in 1 hour, refresh at 50 min)
+  if (graphTokenCache.token && graphTokenCache.expiresAt > Date.now()) {
+    return graphTokenCache.token;
+  }
+  
+  try {
+    await initializeAzureCredential();
+    const tokenResponse = await azureCredential.getToken('https://graph.microsoft.com/.default');
+    graphTokenCache.token = tokenResponse.token;
+    graphTokenCache.expiresAt = Date.now() + (50 * 60 * 1000); // Cache for 50 minutes
+    return tokenResponse.token;
+  } catch (error) {
+    console.error('[Graph API] Failed to get access token:', error.message);
+    throw new Error('Failed to authenticate with Microsoft Graph: ' + error.message);
+  }
+}
+
+// Helper function to send email via Microsoft Graph API
+async function sendGraphEmail(to, subject, body, isHtml = true, fromAddress = 'info@stackopsit.co.za') {
+  const maxRetries = 2;
+  let lastError = null;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[Graph Email] Attempting to send email to ${to}... (attempt ${attempt})`);
+      
+      const token = await getGraphAccessToken();
+      
+      const emailPayload = {
+        message: {
+          subject: subject,
+          body: {
+            contentType: isHtml ? 'HTML' : 'Text',
+            content: body
+          },
+          toRecipients: [
+            {
+              emailAddress: {
+                address: to
+              }
+            }
+          ]
+        }
+      };
+      
+      await axios.post(
+        `https://graph.microsoft.com/v1.0/users/${fromAddress}/sendMail`,
+        emailPayload,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 10000
+        }
+      );
+      
+      console.log(`[Graph Email] Email successfully sent to ${to}`);
+      return; // Success
+    } catch (error) {
+      lastError = error;
+      const errorCode = error?.response?.status || error?.code || 'UNKNOWN';
+      const errorMsg = error?.response?.data?.error?.message || error?.message || error;
+      
+      console.error(`[Graph Email] Failed to send email to ${to} (attempt ${attempt}):`, errorCode, errorMsg);
+      
+      // Retry logic for transient errors
+      const retryableStatuses = [408, 429, 500, 502, 503, 504];
+      const retryableCodes = ['ETIMEDOUT', 'ECONNECTION', 'ENOTFOUND', 'ESOCKET'];
+      
+      const shouldRetry = retryableStatuses.includes(errorCode) || 
+                         retryableCodes.includes(error?.code);
+      
+      if (attempt < maxRetries && shouldRetry) {
+        const delayMs = 1000 + (attempt * 500); // 1.5s, then 2s
+        console.log(`[Graph Email] Retrying in ${delayMs}ms...`);
+        await new Promise(r => setTimeout(r, delayMs));
+      } else if (attempt === maxRetries) {
+        throw lastError;
+      }
+    }
+  }
+  
+  throw lastError;
+}
+
+// function to send email from info@stackopsit.co.za
+const sendEmail = async (to, subject, body, isHtml = false, attachments = []) => {
+  try {
+    // Note: Graph API doesn't handle attachments the same way - for now, send without
+    if (attachments.length > 0) {
+      console.warn('[Graph Email] Attachments are not yet supported via Graph API');
+    }
+    
+    await sendGraphEmail(to, subject, body, isHtml, 'info@stackopsit.co.za');
+  } catch (error) {
+    console.error('[sendEmail] Error:', error.message);
+    throw error;
+  }
+};
+
+// function to send email from billing@stackopsit.co.za
+const sendBillingEmail = async (to, subject, body, isHtml = false, attachments = []) => {
+  try {
+    // Note: Graph API doesn't handle attachments the same way - for now, send without
+    if (attachments.length > 0) {
+      console.warn('[Graph Email] Attachments are not yet supported via Graph API');
+    }
+    
+    await sendGraphEmail(to, subject, body, isHtml, 'billing@stackopsit.co.za');
+  } catch (error) {
+    console.error('[sendBillingEmail] Error:', error.message);
+    throw error;
+  }
+};
+
+// connecting to nodemailer to send emails from contact form
 
 // function to generate invoice PDF - REDESIGNED to match professional layout
 async function generateInvoicePDF(invoiceData, items, companyData, clientData) {
@@ -904,86 +1029,6 @@ async function generateInvoicePDF(invoiceData, items, companyData, clientData) {
         }
     });
 }
-
-// function to send email to admin email 
-const sendEmail = async (to, subject, body, isHtml = false, attachments = []) => {
-    const mailOptions = {
-        from: 'info@stackopsit.co.za', // Hardcoded EMAIL_USER
-        to: to,
-        subject: subject,
-        attachments: attachments
-    };
-    
-    if (isHtml) {
-        mailOptions.html = body;
-    } else {
-        mailOptions.text = body;
-    }
-    
-    const attemptSend = async (attempt) => {
-        try {
-            console.log(`Attempting to send email to ${to}... (attempt ${attempt})`);
-            await transporter.sendMail(mailOptions);
-            console.log(`Email successfully sent to ${to}`);
-        } catch (error) {
-            const code = error?.code || error?.command || 'UNKNOWN';
-            console.error(`Failed to send email to ${to} (attempt ${attempt}):`, code, error?.message || error);
-            throw error;
-        }
-    };
-
-    try {
-        await attemptSend(1);
-    } catch (error) {
-        const retryable = ['ETIMEDOUT', 'ECONNECTION', 'EAI_AGAIN'].includes(error?.code);
-        if (retryable) {
-            await new Promise(r => setTimeout(r, 400));
-            await attemptSend(2);
-            return;
-        }
-        throw error; // Rethrow so the caller knows it failed
-    }
-};
-
-// function to send email from the billing email 
-const sendBillingEmail = async (to, subject, body, isHtml = false, attachments = []) => {
-    const mailOptions = {
-        from: 'billing@stackopsit.co.za', // Hardcoded EMAIL_USER
-        to: to,
-        subject: subject,
-        attachments: attachments
-    };
-    
-    if (isHtml) {
-        mailOptions.html = body;
-    } else {
-        mailOptions.text = body;
-    }
-    
-    const attemptSend = async (attempt) => {
-        try {
-            console.log(`Attempting to send email to ${to}... (attempt ${attempt})`);
-            await transporter.sendMail(mailOptions);
-            console.log(`Email successfully sent to ${to}`);
-        } catch (error) {
-            const code = error?.code || error?.command || 'UNKNOWN';
-            console.error(`Failed to send email to ${to} (attempt ${attempt}):`, code, error?.message || error);
-            throw error;
-        }
-    };
-
-    try {
-        await attemptSend(1);
-    } catch (error) {
-        const retryable = ['ETIMEDOUT', 'ECONNECTION', 'EAI_AGAIN'].includes(error?.code);
-        if (retryable) {
-            await new Promise(r => setTimeout(r, 400));
-            await attemptSend(2);
-            return;
-        }
-        throw error;
-    }
-};
 
 async function getUserByEmail(email) {
     try {
