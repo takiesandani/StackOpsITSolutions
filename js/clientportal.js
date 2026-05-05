@@ -4934,6 +4934,7 @@ function displayCurrentProject() {
     });
 
     renderSidePeekCards();
+    syncSidePeekCardSizing();
     
     document.getElementById('project-current').textContent = currentProjectIndex + 1;
     
