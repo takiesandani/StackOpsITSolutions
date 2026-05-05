@@ -4935,11 +4935,6 @@ function displayCurrentProject() {
 
     renderSidePeekCards();
     
-    // Ensure sizing happens after DOM update
-    requestAnimationFrame(() => {
-        syncSidePeekCardSizing();
-    });
-    
     document.getElementById('project-current').textContent = currentProjectIndex + 1;
     
     updateNavigationButtons();
@@ -4975,7 +4970,10 @@ function renderSidePeekCards() {
     sidePeekPrev.classList.toggle('is-empty', !prevProject);
     sidePeekNext.classList.toggle('is-empty', !nextProject);
 
-    syncSidePeekCardSizing();
+    // Sync sizing on next frame and with a small delay to ensure DOM is ready
+    setTimeout(() => {
+        syncSidePeekCardSizing();
+    }, 10);
 }
 
 function syncSidePeekCardSizing() {
