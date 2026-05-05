@@ -15,6 +15,9 @@ const HIDDEN_FROM_SUNBIRD_IDS = []; // All Sunbird cards are visible to them
 // Cards to hide from the main project cards UI (keep functionality in code)
 const HIDDEN_PROJECT_CARD_IDS = [4, 7, 8, 6]; // Security & Events, Backup and Recovery, Applications
 
+// SEDFA/Duo user-specific card IDs (Cisco Duo Licenses, Cloud data services, Infrastructure Monitoring)
+const SEDFA_CARD_IDS = [1, 6, 11];
+
 // Check if current user is a Sunbird client
 function isSunbirdUser() {
     try {
@@ -75,10 +78,9 @@ function getFilteredProjects() {
     }
     
     if (isSedfaUser()) {
-        // Sedfa users see Cisco Duo Licenses + all other public projects (except hidden ones)
+        // Sedfa users see Cisco Duo Licenses, Cloud data services, and Infrastructure Monitoring
         return mockProjects.filter(project =>
-            !SUNBIRD_ONLY_CARD_IDS.includes(project.id) &&
-            !HIDDEN_PROJECT_CARD_IDS.includes(project.id)
+            SEDFA_CARD_IDS.includes(project.id)
         );
     }
     
