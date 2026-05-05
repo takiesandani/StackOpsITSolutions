@@ -322,6 +322,7 @@ let pendingIdentityRiskFocus = 'all';
 let identityFetchRequestId = 0;
 let latestDevicesCardData = null;
 let latestEmailCardData = null;
+let isNetworkSecurityLocked = false;
 
 function toBooleanMfa(value) {
     if (typeof value === 'boolean') return value;
@@ -4951,6 +4952,39 @@ function renderSidePeekCards() {
         const nextCard = createProjectCard(nextProject);
         nextCard.classList.add('no-interaction');
         sidePeekNextCard.appendChild(nextCard);
+        
+        // Network Security Card vertical expansion logic (ID 10)
+        if (nextProject.id === 10) {
+            sidePeekNext.classList.remove('no-interaction');
+            
+            const handleExpand = () => {
+                sidePeekNextCard.classList.add('expanded');
+            };
+            
+            const handleCollapse = () => {
+                if (!isNetworkSecurityLocked) {
+                    sidePeekNextCard.classList.remove('expanded');
+                }
+            };
+            
+            sidePeekNext.onmouseenter = handleExpand;
+            sidePeekNext.onmouseleave = handleCollapse;
+            
+            sidePeekNext.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                isNetworkSecurityLocked = !isNetworkSecurityLocked;
+                if (isNetworkSecurityLocked) {
+                    handleExpand();
+                } else {
+                    handleCollapse();
+                }
+            };
+        } else {
+            sidePeekNext.onmouseenter = null;
+            sidePeekNext.onmouseleave = null;
+            sidePeekNext.onclick = null;
+        }
     }
 
     sidePeekPrev.classList.toggle('is-empty', !prevProject);

@@ -860,11 +860,31 @@
   opacity: 0.34;
   height: var(--side-peek-card-height, 130px);
   transform: scale(1);
-  filter: saturate(0.72);
+  filter: saturate(0.72) blur(4px);
   box-shadow: 
     0 4px 16px rgba(255, 255, 255, 0.2),
     inset 0 1px 0 rgba(255, 255, 255, 0.2);
-  transition: all 0.25s ease;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 5;
+}
+
+.side-peek-card.expanded {
+  height: 580px !important;
+  opacity: 1;
+  filter: saturate(1) blur(0);
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 
+    0 25px 60px rgba(0, 0, 0, 0.4),
+    0 0 20px rgba(255, 255, 255, 0.2);
+  z-index: 100;
+}
+
+.side-peek-card.expanded .project-card {
+  opacity: 1;
+  filter: none;
+  background: transparent;
 }
 
 .side-peek-card .project-card {
