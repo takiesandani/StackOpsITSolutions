@@ -4947,7 +4947,10 @@ function renderSidePeekCards() {
     const sidePeekPrevCard = document.getElementById('side-peek-prev-card');
     const sidePeekNextCard = document.getElementById('side-peek-next-card');
 
-    if (!sidePeekPrevCard || !sidePeekNextCard || !sidePeekPrev || !sidePeekNext) return;
+    if (!sidePeekPrevCard || !sidePeekNextCard || !sidePeekPrev || !sidePeekNext) {
+        console.error('[Side Peek] Missing DOM elements');
+        return;
+    }
 
     sidePeekPrevCard.innerHTML = '';
     sidePeekNextCard.innerHTML = '';
@@ -4955,25 +4958,61 @@ function renderSidePeekCards() {
     const prevProject = carouselProjects[currentProjectIndex - 1];
     const nextProject = carouselProjects[currentProjectIndex + 3];
 
+    console.log(`[Side Peek] Current index: ${currentProjectIndex}, Prev: ${prevProject?.id}, Next: ${nextProject?.id}`);
+
     if (prevProject) {
         const prevCard = createProjectCard(prevProject);
         prevCard.classList.add('no-interaction');
         sidePeekPrevCard.appendChild(prevCard);
+        sidePeekPrev.classList.remove('is-empty');
+    } else {
+        sidePeekPrev.classList.add('is-empty');
     }
 
     if (nextProject) {
         const nextCard = createProjectCard(nextProject);
         nextCard.classList.add('no-interaction');
         sidePeekNextCard.appendChild(nextCard);
+        sidePeekNext.classList.remove('is-empty');
+    } else {
+        sidePeekNext.classList.add('is-empty');
     }
 
-    sidePeekPrev.classList.toggle('is-empty', !prevProject);
-    sidePeekNext.classList.toggle('is-empty', !nextProject);
+    // Sync sizing with multiple retries
+    const syncWithRetries = (attempt = 0) => {
+        if (attempt > 3) {
+            console.error('[Side Peek] Failed to sync sizing after 3 attempts');
+            return;
+        }
+        
+        setTimeout(() => {
+            const shell = document.querySelector('.projects-carousel-shell');
+            const mainCard = document.querySelector('#projects-grid .project-card');
+            
+            if (!shell || !mainCard) {
+                console.log(`[Side Peek] Retry ${attempt + 1}: mainCard or shell not found, retrying...`);
+                syncWithRetries(attempt + 1);
+                return;
+            }
 
-    // Sync sizing on next frame and with a small delay to ensure DOM is ready
-    setTimeout(() => {
-        syncSidePeekCardSizing();
-    }, 10);
+            const mainCardWidth = mainCard.getBoundingClientRect().width;
+            const mainCardHeight = mainCard.getBoundingClientRect().height;
+            
+            console.log(`[Side Peek] Card dimensions: ${mainCardWidth}x${mainCardHeight}`);
+            
+            if (mainCardHeight <= 0 || mainCardWidth <= 0) {
+                console.log(`[Side Peek] Invalid dimensions, retrying...`);
+                syncWithRetries(attempt + 1);
+                return;
+            }
+
+            shell.style.setProperty('--side-peek-card-width', `${Math.round(mainCardWidth)}px`);
+            shell.style.setProperty('--side-peek-card-height', `${Math.round(mainCardHeight)}px`);
+            console.log(`[Side Peek] Applied sizing: ${Math.round(mainCardWidth)}px x ${Math.round(mainCardHeight)}px`);
+        }, 10 + (attempt * 50));
+    };
+    
+    syncWithRetries();
 }
 
 function syncSidePeekCardSizing() {
