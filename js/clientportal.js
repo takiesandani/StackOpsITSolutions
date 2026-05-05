@@ -3358,14 +3358,6 @@ function setupEventListeners() {
         navNext.addEventListener('click', goToNextProject);
     }
 
-    if (sidePeekPrev) {
-        sidePeekPrev.addEventListener('click', goToPreviousProject);
-    }
-
-    if (sidePeekNext) {
-        sidePeekNext.addEventListener('click', goToNextProject);
-    }
-
     // Mobile menu toggle
     if (mobileMenuToggle) {
         mobileMenuToggle.addEventListener('click', toggleMobileMenu);

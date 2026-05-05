@@ -831,6 +831,11 @@
     transform 0.25s ease;
 }
 
+.side-peek-nav:hover .side-peek-card {
+  opacity: 0.42;
+  filter: saturate(0.82);
+}
+
 .side-peek-nav:disabled,
 .side-peek-nav.is-empty {
   opacity: 0 !important;
@@ -860,11 +865,6 @@
     0 4px 16px rgba(255, 255, 255, 0.2),
     inset 0 1px 0 rgba(255, 255, 255, 0.2);
   transition: all 0.25s ease;
-}
-
-.side-peek-nav:hover .side-peek-card {
-  opacity: 0.42;
-  filter: saturate(0.82);
 }
 
 .side-peek-card .project-card {
