@@ -869,7 +869,7 @@
 }
 
 .side-peek-card.expanded {
-  height: 770px !important;
+  height: 755px !important;
   opacity: 1;
   filter: saturate(1) blur(0);
   background: rgba(255, 255, 255, 0.08);
