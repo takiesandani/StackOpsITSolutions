@@ -1078,13 +1078,17 @@ async function getUserAccessContextByEmail(email) {
             u.ID AS userId,
             u.Email AS email,
             u.CompanyID AS companyId,
-            COALESCE(ta.AccessType, 'standard') AS accessType,
+            CASE 
+                WHEN uda.user_id IS NOT NULL THEN 'duo'
+                ELSE COALESCE(ta.AccessType, 'standard')
+            END AS accessType,
             mt.ID AS microsoftTenantPk,
             mt.TenantName AS tenantName,
             mt.TenantID AS tenantId,
             mt.ClientID AS clientId,
             mt.ClientSecret AS clientSecret
          FROM Users u
+         LEFT JOIN user_duo_accounts uda ON uda.user_id = u.ID
          LEFT JOIN TenantAccessControl ta ON ta.UserID = u.ID
          LEFT JOIN CompanyMicrosoftMapping cm ON cm.CompanyID = u.CompanyID AND cm.IsActive = 1
          LEFT JOIN MicrosoftTenants mt ON mt.ID = cm.MicrosoftTenantID

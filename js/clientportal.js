@@ -27,12 +27,16 @@ function isSunbirdUser() {
     }
 }
 
-// Check if current user is sedfa client
+// Check if current user is sedfa client (has Cisco Duo access)
+// Access type is set by backend from user_duo_accounts table
 function isSedfaUser() {
     try {
-        const userEmail = sessionStorage.getItem('userEmail');
-        if (!userEmail) return false;
-        return userEmail.toLowerCase().includes('sedfa');
+        const rawUser = localStorage.getItem('user');
+        if (!rawUser) return false;
+        const user = JSON.parse(rawUser);
+        // Check if user has duo access (set by backend via user_duo_accounts table)
+        const access = String(user?.access || '').toLowerCase();
+        return access === 'duo' || access === 'sedfa';
     } catch (error) {
         return false;
     }
