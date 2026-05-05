@@ -323,6 +323,7 @@ let identityFetchRequestId = 0;
 let latestDevicesCardData = null;
 let latestEmailCardData = null;
 let isNetworkSecurityLocked = false;
+let isCredentialSecurityLocked = false;
 
 function toBooleanMfa(value) {
     if (typeof value === 'boolean') return value;
@@ -4946,6 +4947,39 @@ function renderSidePeekCards() {
         const prevCard = createProjectCard(prevProject);
         prevCard.classList.add('no-interaction');
         sidePeekPrevCard.appendChild(prevCard);
+
+        // Credential Security Card (ID 9) logic
+        if (prevProject.id === 9) {
+            sidePeekPrev.classList.remove('no-interaction');
+            
+            const handleExpand = () => {
+                sidePeekPrevCard.classList.add('expanded-left');
+            };
+            
+            const handleCollapse = () => {
+                if (!isCredentialSecurityLocked) {
+                    sidePeekPrevCard.classList.remove('expanded-left');
+                }
+            };
+            
+            sidePeekPrev.onmouseenter = handleExpand;
+            sidePeekPrev.onmouseleave = handleCollapse;
+            
+            sidePeekPrev.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                isCredentialSecurityLocked = !isCredentialSecurityLocked;
+                if (isCredentialSecurityLocked) {
+                    handleExpand();
+                } else {
+                    handleCollapse();
+                }
+            };
+        } else {
+            sidePeekPrev.onmouseenter = null;
+            sidePeekPrev.onmouseleave = null;
+            sidePeekPrev.onclick = null;
+        }
     }
 
     if (nextProject) {
