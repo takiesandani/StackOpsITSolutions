@@ -869,7 +869,7 @@
 }
 
 .side-peek-card.expanded {
-  height: 820px !important;
+  height: 790px !important;
   opacity: 1;
   filter: saturate(1) blur(0);
   background: rgba(255, 255, 255, 0.08);
@@ -890,35 +890,35 @@
 }
 
 .side-peek-card.expanded .project-icon {
-  width: 44px !important;
-  height: 44px !important;
-  min-width: 44px !important;
-  min-height: 44px !important;
+  width: 34px !important;
+  height: 34px !important;
+  min-width: 34px !important;
+  min-height: 34px !important;
 }
 
 .side-peek-card.expanded .project-icon i {
-  font-size: 1.4rem !important;
+  font-size: 1.2rem !important;
 }
 
 .side-peek-card.expanded .project-title h3 {
-  font-size: 1.15rem !important;
+  font-size: 0.95rem !important;
 }
 
 .side-peek-card.expanded .project-type {
-  font-size: 0.85rem !important;
+  font-size: 0.75rem !important;
 }
 
 .side-peek-card.expanded .project-info-item {
-  font-size: 0.95rem !important;
+  font-size: 0.75rem !important;
   gap: 8px !important;
 }
 
 .side-peek-card.expanded .project-info-item i {
-  font-size: 1.1rem !important;
+  font-size: 1.0rem !important;
 }
 
 .side-peek-card.expanded .project-status-badge {
-  font-size: 0.8rem !important;
+  font-size: 0.6rem !important;
   padding: 4px 10px !important;
 }
 
