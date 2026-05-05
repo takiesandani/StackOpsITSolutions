@@ -63,22 +63,26 @@ function isSessionValid() {
 // Get filtered projects based on user access level
 function getFilteredProjects() {
     if (isSunbirdUser()) {
-        // Sunbird users see ONLY Sunbird-specific projects
+        // Sunbird users see ONLY Sunbird-specific projects (excluding hidden ones)
         return mockProjects.filter(project =>
-            SUNBIRD_ONLY_CARD_IDS.includes(project.id)
+            SUNBIRD_ONLY_CARD_IDS.includes(project.id) &&
+            !HIDDEN_PROJECT_CARD_IDS.includes(project.id)
         );
     }
     
     if (isSedfaUser()) {
-        // Sedfa users see Cisco Duo Licenses + all other public projects (everything except Sunbird-only)
+        // Sedfa users see Cisco Duo Licenses + all other public projects (except hidden ones)
         return mockProjects.filter(project =>
-            !SUNBIRD_ONLY_CARD_IDS.includes(project.id)
+            !SUNBIRD_ONLY_CARD_IDS.includes(project.id) &&
+            !HIDDEN_PROJECT_CARD_IDS.includes(project.id)
         );
     }
     
-    // All other clients see all projects EXCEPT Sunbird-only and Cisco Duo Licenses
+    // All other clients see all projects EXCEPT Sunbird-only, Cisco Duo, and hidden projects
     return mockProjects.filter(project =>
-        !SUNBIRD_ONLY_CARD_IDS.includes(project.id) && project.id !== 1
+        !SUNBIRD_ONLY_CARD_IDS.includes(project.id) && 
+        project.id !== 1 &&
+        !HIDDEN_PROJECT_CARD_IDS.includes(project.id)
     );
 }
 
