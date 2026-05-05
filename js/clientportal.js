@@ -27,6 +27,17 @@ function isSunbirdUser() {
     }
 }
 
+// Check if current user is sedfa client
+function isSedfaUser() {
+    try {
+        const userEmail = sessionStorage.getItem('userEmail');
+        if (!userEmail) return false;
+        return userEmail.toLowerCase().includes('sedfa');
+    } catch (error) {
+        return false;
+    }
+}
+
 // Update Sunbird logo visibility based on user type
 function updateSunbirdLogoVisibility() {
     const logoImg = document.querySelector('.sunbird-logo-img');
@@ -52,13 +63,22 @@ function isSessionValid() {
 // Get filtered projects based on user access level
 function getFilteredProjects() {
     if (isSunbirdUser()) {
-        // Sunbird users do NOT see mock projects - they use the Control Center menu instead
-        return [];
+        // Sunbird users see ONLY Sunbird-specific projects
+        return mockProjects.filter(project =>
+            SUNBIRD_ONLY_CARD_IDS.includes(project.id)
+        );
     }
     
-    // All other clients see mock projects (except Sunbird-only cards)
+    if (isSedfaUser()) {
+        // Sedfa users see Cisco Duo Licenses + all other public projects (everything except Sunbird-only)
+        return mockProjects.filter(project =>
+            !SUNBIRD_ONLY_CARD_IDS.includes(project.id)
+        );
+    }
+    
+    // All other clients see all projects EXCEPT Sunbird-only and Cisco Duo Licenses
     return mockProjects.filter(project =>
-        !SUNBIRD_ONLY_CARD_IDS.includes(project.id)
+        !SUNBIRD_ONLY_CARD_IDS.includes(project.id) && project.id !== 1
     );
 }
 
@@ -251,6 +271,24 @@ const mockProjects = [
             { label: "Unusual Traffic", value: ": 23", icon: "fas fa-chart-line" }
         ],
         cardFooter: "Network vulnerabilities found"
+    },
+    {
+        id: 11,
+        name: "Infrastructure Monitoring",
+        type: "Server Health & Performance Monitoring",
+        status: "active",
+        risks: { critical: 0, high: 1, medium: 2 },
+        securityScore: 92,
+        uptime: 99.5,
+        lastUpdate: "5 minutes ago",
+        icon: "fas fa-server",
+        cardMetrics: [
+            { label: "Servers Online", value: ": 24", icon: "fas fa-server" },
+            { label: "CPU Avg Load", value: ": 45%", icon: "fas fa-microchip" },
+            { label: "Memory Usage", value: ": 72%", icon: "fas fa-memory" },
+            { label: "Disk Space", value: ": 68%", icon: "fas fa-hdd" }
+        ],
+        cardFooter: "Infrastructure healthy - monitoring active"
     }
 ];
 
