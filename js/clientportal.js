@@ -18,9 +18,6 @@ const HIDDEN_PROJECT_CARD_IDS = [4, 7, 8, 6]; // Security & Events, Backup and R
 // SEDFA/Duo user-specific card IDs (Cisco Duo Licenses, Cloud data services, Infrastructure Monitoring)
 const SEDFA_CARD_IDS = [1, 6, 11];
 
-// Sunbird-specific card order (for carousel layout): Credential Security (left), Identity, Device, Email (center 3), Network Security (right)
-const SUNBIRD_CARD_ORDER = [9, 2, 3, 5, 10];
-
 // Check if current user is a Sunbird client
 function isSunbirdUser() {
     try {
@@ -73,8 +70,11 @@ function isSessionValid() {
 // Get filtered projects based on user access level
 function getFilteredProjects() {
     if (isSunbirdUser()) {
-        // Sunbird users see specific cards in carousel order: Credential (left), Identity-Device-Email (center), Network (right)
-        return SUNBIRD_CARD_ORDER.map(id => mockProjects.find(p => p.id === id)).filter(Boolean);
+        // Sunbird users see ONLY Sunbird-specific projects (excluding hidden ones)
+        return mockProjects.filter(project =>
+            SUNBIRD_ONLY_CARD_IDS.includes(project.id) &&
+            !HIDDEN_PROJECT_CARD_IDS.includes(project.id)
+        );
     }
     
     if (isSedfaUser()) {
@@ -4858,20 +4858,11 @@ function initializeProjectsList() {
     
     const carouselProjects = getFilteredProjects();
     document.getElementById('project-total').textContent = carouselProjects.length;
-    
-    // For Sunbird users, start at index 1 (Identity Protection centered) and disable navigation
-    if (isSunbirdUser()) {
-        currentProjectIndex = 1;
-    } else {
-        currentProjectIndex = 0;
-    }
-    
+    currentProjectIndex = 0;
     selectedProjectId = null;
     previewLockedByClick = false;
     
     displayCurrentProject();
-    updateNavigationButtons(); // Update button states after setting index
-    
     const token = localStorage.getItem('authToken');
     const isLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
     if (token && isLoggedIn) {
@@ -4947,10 +4938,7 @@ function renderSidePeekCards() {
     const sidePeekPrevCard = document.getElementById('side-peek-prev-card');
     const sidePeekNextCard = document.getElementById('side-peek-next-card');
 
-    if (!sidePeekPrevCard || !sidePeekNextCard || !sidePeekPrev || !sidePeekNext) {
-        console.error('[Side Peek] Missing DOM elements');
-        return;
-    }
+    if (!sidePeekPrevCard || !sidePeekNextCard || !sidePeekPrev || !sidePeekNext) return;
 
     sidePeekPrevCard.innerHTML = '';
     sidePeekNextCard.innerHTML = '';
@@ -4958,61 +4946,22 @@ function renderSidePeekCards() {
     const prevProject = carouselProjects[currentProjectIndex - 1];
     const nextProject = carouselProjects[currentProjectIndex + 3];
 
-    console.log(`[Side Peek] Current index: ${currentProjectIndex}, Prev: ${prevProject?.id}, Next: ${nextProject?.id}`);
-
     if (prevProject) {
         const prevCard = createProjectCard(prevProject);
         prevCard.classList.add('no-interaction');
         sidePeekPrevCard.appendChild(prevCard);
-        sidePeekPrev.classList.remove('is-empty');
-    } else {
-        sidePeekPrev.classList.add('is-empty');
     }
 
     if (nextProject) {
         const nextCard = createProjectCard(nextProject);
         nextCard.classList.add('no-interaction');
         sidePeekNextCard.appendChild(nextCard);
-        sidePeekNext.classList.remove('is-empty');
-    } else {
-        sidePeekNext.classList.add('is-empty');
     }
 
-    // Sync sizing with multiple retries
-    const syncWithRetries = (attempt = 0) => {
-        if (attempt > 3) {
-            console.error('[Side Peek] Failed to sync sizing after 3 attempts');
-            return;
-        }
-        
-        setTimeout(() => {
-            const shell = document.querySelector('.projects-carousel-shell');
-            const mainCard = document.querySelector('#projects-grid .project-card');
-            
-            if (!shell || !mainCard) {
-                console.log(`[Side Peek] Retry ${attempt + 1}: mainCard or shell not found, retrying...`);
-                syncWithRetries(attempt + 1);
-                return;
-            }
+    sidePeekPrev.classList.toggle('is-empty', !prevProject);
+    sidePeekNext.classList.toggle('is-empty', !nextProject);
 
-            const mainCardWidth = mainCard.getBoundingClientRect().width;
-            const mainCardHeight = mainCard.getBoundingClientRect().height;
-            
-            console.log(`[Side Peek] Card dimensions: ${mainCardWidth}x${mainCardHeight}`);
-            
-            if (mainCardHeight <= 0 || mainCardWidth <= 0) {
-                console.log(`[Side Peek] Invalid dimensions, retrying...`);
-                syncWithRetries(attempt + 1);
-                return;
-            }
-
-            shell.style.setProperty('--side-peek-card-width', `${Math.round(mainCardWidth)}px`);
-            shell.style.setProperty('--side-peek-card-height', `${Math.round(mainCardHeight)}px`);
-            console.log(`[Side Peek] Applied sizing: ${Math.round(mainCardWidth)}px x ${Math.round(mainCardHeight)}px`);
-        }, 10 + (attempt * 50));
-    };
-    
-    syncWithRetries();
+    syncSidePeekCardSizing();
 }
 
 function syncSidePeekCardSizing() {
@@ -5030,9 +4979,6 @@ function syncSidePeekCardSizing() {
 }
 
 function goToPreviousProject() {
-    // Sunbird users cannot navigate (locked view)
-    if (isSunbirdUser()) return;
-    
     if (currentProjectIndex > 0) {
         currentProjectIndex--;
         previewLockedByClick = false;
@@ -5042,9 +4988,6 @@ function goToPreviousProject() {
 }
 
 function goToNextProject() {
-    // Sunbird users cannot navigate (locked view)
-    if (isSunbirdUser()) return;
-    
     const carouselProjects = getFilteredProjects();
     const maxStartIndex = Math.max(0, carouselProjects.length - 3);
     if (currentProjectIndex < maxStartIndex) {
@@ -5061,15 +5004,6 @@ function updateNavigationButtons() {
     const navNext = document.getElementById('nav-next');
     const sidePeekPrev = document.getElementById('side-peek-prev');
     const sidePeekNext = document.getElementById('side-peek-next');
-
-    // For Sunbird users, always disable navigation buttons (locked view)
-    if (isSunbirdUser()) {
-        if (navPrev) navPrev.disabled = true;
-        if (navNext) navNext.disabled = true;
-        if (sidePeekPrev) sidePeekPrev.disabled = true;
-        if (sidePeekNext) sidePeekNext.disabled = true;
-        return;
-    }
 
     const maxStartIndex = Math.max(0, carouselProjects.length - 3);
     const disablePrev = currentProjectIndex === 0;
