@@ -18,6 +18,9 @@ const HIDDEN_PROJECT_CARD_IDS = [4, 7, 8, 6]; // Security & Events, Backup and R
 // SEDFA/Duo user-specific card IDs (Cisco Duo Licenses, Cloud data services, Infrastructure Monitoring)
 const SEDFA_CARD_IDS = [1, 6, 11];
 
+// Sunbird-specific card order (for carousel layout): Credential Security (left), Identity, Device, Email (center 3), Network Security (right)
+const SUNBIRD_CARD_ORDER = [9, 2, 3, 5, 10];
+
 // Check if current user is a Sunbird client
 function isSunbirdUser() {
     try {
@@ -70,11 +73,8 @@ function isSessionValid() {
 // Get filtered projects based on user access level
 function getFilteredProjects() {
     if (isSunbirdUser()) {
-        // Sunbird users see ONLY Sunbird-specific projects (excluding hidden ones)
-        return mockProjects.filter(project =>
-            SUNBIRD_ONLY_CARD_IDS.includes(project.id) &&
-            !HIDDEN_PROJECT_CARD_IDS.includes(project.id)
-        );
+        // Sunbird users see specific cards in carousel order: Credential (left), Identity-Device-Email (center), Network (right)
+        return SUNBIRD_CARD_ORDER.map(id => mockProjects.find(p => p.id === id)).filter(Boolean);
     }
     
     if (isSedfaUser()) {
@@ -4858,11 +4858,20 @@ function initializeProjectsList() {
     
     const carouselProjects = getFilteredProjects();
     document.getElementById('project-total').textContent = carouselProjects.length;
-    currentProjectIndex = 0;
+    
+    // For Sunbird users, start at index 1 (Identity Protection centered) and disable navigation
+    if (isSunbirdUser()) {
+        currentProjectIndex = 1;
+    } else {
+        currentProjectIndex = 0;
+    }
+    
     selectedProjectId = null;
     previewLockedByClick = false;
     
     displayCurrentProject();
+    updateNavigationButtons(); // Update button states after setting index
+    
     const token = localStorage.getItem('authToken');
     const isLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
     if (token && isLoggedIn) {
@@ -4979,6 +4988,9 @@ function syncSidePeekCardSizing() {
 }
 
 function goToPreviousProject() {
+    // Sunbird users cannot navigate (locked view)
+    if (isSunbirdUser()) return;
+    
     if (currentProjectIndex > 0) {
         currentProjectIndex--;
         previewLockedByClick = false;
@@ -4988,6 +5000,9 @@ function goToPreviousProject() {
 }
 
 function goToNextProject() {
+    // Sunbird users cannot navigate (locked view)
+    if (isSunbirdUser()) return;
+    
     const carouselProjects = getFilteredProjects();
     const maxStartIndex = Math.max(0, carouselProjects.length - 3);
     if (currentProjectIndex < maxStartIndex) {
@@ -5004,6 +5019,15 @@ function updateNavigationButtons() {
     const navNext = document.getElementById('nav-next');
     const sidePeekPrev = document.getElementById('side-peek-prev');
     const sidePeekNext = document.getElementById('side-peek-next');
+
+    // For Sunbird users, always disable navigation buttons (locked view)
+    if (isSunbirdUser()) {
+        if (navPrev) navPrev.disabled = true;
+        if (navNext) navNext.disabled = true;
+        if (sidePeekPrev) sidePeekPrev.disabled = true;
+        if (sidePeekNext) sidePeekNext.disabled = true;
+        return;
+    }
 
     const maxStartIndex = Math.max(0, carouselProjects.length - 3);
     const disablePrev = currentProjectIndex === 0;
