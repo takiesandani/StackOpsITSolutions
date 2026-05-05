@@ -4934,7 +4934,11 @@ function displayCurrentProject() {
     });
 
     renderSidePeekCards();
-    syncSidePeekCardSizing();
+    
+    // Ensure sizing happens after DOM update
+    requestAnimationFrame(() => {
+        syncSidePeekCardSizing();
+    });
     
     document.getElementById('project-current').textContent = currentProjectIndex + 1;
     
