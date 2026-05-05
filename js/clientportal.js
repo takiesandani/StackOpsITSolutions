@@ -94,6 +94,22 @@ function getFilteredProjects() {
 
 const mockProjects = [
     {
+        id: 9,
+        name: "Credential Security", 
+        type: "Password & Credential Management",
+        status: "inactive",
+        risks: { critical: 1, high: 1, medium: 1 },
+        securityScore: 85,
+        uptime: 98.5,
+        lastUpdate: "2 days ago",
+        icon: "fas fa-key",
+        cardMetrics: [
+            { label: "Weak Passwords", value: ": 12", icon: "fas fa-exclamation-triangle" },
+            { label: "Reused Passwords", value: ": 8", icon: "fas fa-sync-alt" }
+        ],
+        cardFooter: "High-risk credentials detected"
+    },
+    {
         id: 1,
         name: "Cisco Duo Licenses",
         type: "Enterprise  Identity Protection Management",
@@ -251,38 +267,6 @@ const mockProjects = [
         isApplicationsCard: true
     },
     {
-        id: 9,
-        name: "Credential Security", 
-        type: "Password & Credential Management",
-        status: "inactive",
-        risks: { critical: 1, high: 1, medium: 1 },
-        securityScore: 85,
-        uptime: 98.5,
-        lastUpdate: "2 days ago",
-        icon: "fas fa-key",
-        cardMetrics: [
-            { label: "Weak Passwords", value: ": 12", icon: "fas fa-exclamation-triangle" },
-            { label: "Reused Passwords", value: ": 8", icon: "fas fa-sync-alt" }
-        ],
-        cardFooter: "High-risk credentials detected"
-    },
-    {
-        id: 10,
-        name: "Network Security",
-        type: "Network Monitoring & Threat Detection", 
-        status: "inactive",
-        risks: { critical: 1, high: 2, medium: 1 },
-        securityScore: 78,
-        uptime: 97.2,
-        lastUpdate: "1 day ago",
-        icon: "fas fa-network-wired",
-        cardMetrics: [
-            { label: "Open Ports", value: ": 5", icon: "fas fa-firewall" },
-            { label: "Unusual Traffic", value: ": 23", icon: "fas fa-chart-line" }
-        ],
-        cardFooter: "Network vulnerabilities found"
-    },
-    {
         id: 11,
         name: "Infrastructure Monitoring",
         type: "Server Health & Performance Monitoring",
@@ -299,6 +283,22 @@ const mockProjects = [
             { label: "Disk Space", value: ": 68%", icon: "fas fa-hdd" }
         ],
         cardFooter: "Infrastructure healthy - monitoring active"
+    },
+    {
+        id: 10,
+        name: "Network Security",
+        type: "Network Monitoring & Threat Detection", 
+        status: "inactive",
+        risks: { critical: 1, high: 2, medium: 1 },
+        securityScore: 78,
+        uptime: 97.2,
+        lastUpdate: "1 day ago",
+        icon: "fas fa-network-wired",
+        cardMetrics: [
+            { label: "Open Ports", value: ": 5", icon: "fas fa-firewall" },
+            { label: "Unusual Traffic", value: ": 23", icon: "fas fa-chart-line" }
+        ],
+        cardFooter: "Network vulnerabilities found"
     }
 ];
 
@@ -4854,11 +4854,14 @@ function populateIdentityTable() {
 
 function initializeProjectsList() {
     const projectsGrid = document.getElementById('projects-grid');
+    if (!projectsGrid) return;
     projectsGrid.innerHTML = '';
     
     const carouselProjects = getFilteredProjects();
     document.getElementById('project-total').textContent = carouselProjects.length;
-    currentProjectIndex = 0;
+    
+    // Default start index to 1 for Sunbird clients so index 0 (Credential Security) is on the left blur.
+    currentProjectIndex = isSunbirdUser() ? 1 : 0;
     selectedProjectId = null;
     previewLockedByClick = false;
     
@@ -4867,8 +4870,8 @@ function initializeProjectsList() {
     const isLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
     if (token && isLoggedIn) {
         fetchDuoStats();
-        fetchIdentityAccessData(); // Fetch Microsoft Graph users for the card preview
-        fetchApplicationsData(); // Fetch Applications data for the card preview
+        fetchIdentityAccessData(); 
+        fetchApplicationsData(); 
         fetchDevicesCardData();
         fetchEmailCardData();
     }
