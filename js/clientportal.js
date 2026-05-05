@@ -51,26 +51,14 @@ function isSessionValid() {
 
 // Get filtered projects based on user access level
 function getFilteredProjects() {
-    if (!isSessionValid()) {
-        // Expired session - return only non-Sunbird cards
-        return mockProjects.filter(project =>
-            !SUNBIRD_ONLY_CARD_IDS.includes(project.id) &&
-            !HIDDEN_PROJECT_CARD_IDS.includes(project.id)
-        );
-    }
-    
     if (isSunbirdUser()) {
-        // Sunbird user - show all cards except those hidden from them
-        return mockProjects.filter(project =>
-            !HIDDEN_FROM_SUNBIRD_IDS.includes(project.id) &&
-            !HIDDEN_PROJECT_CARD_IDS.includes(project.id)
-        );
+        // Sunbird users do NOT see mock projects - they use the Control Center menu instead
+        return [];
     }
     
-    // Other clients - hide Sunbird-only cards
+    // All other clients see mock projects (except Sunbird-only cards)
     return mockProjects.filter(project =>
-        !SUNBIRD_ONLY_CARD_IDS.includes(project.id) &&
-        !HIDDEN_PROJECT_CARD_IDS.includes(project.id)
+        !SUNBIRD_ONLY_CARD_IDS.includes(project.id)
     );
 }
 
