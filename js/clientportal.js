@@ -13,7 +13,7 @@ const SUNBIRD_ONLY_CARD_IDS = [2, 3, 4, 5, 7, 8, 9, 10]; // Identity Protection,
 const HIDDEN_FROM_SUNBIRD_IDS = []; // All Sunbird cards are visible to them
 
 // Cards to hide from the main project cards UI (keep functionality in code)
-const HIDDEN_PROJECT_CARD_IDS = [4, 7, 8, 6]; // Security & Events, Backup and Recovery, Applications
+const HIDDEN_PROJECT_CARD_IDS = [4, 7, 8]; // Security & Events, Backup and Recovery, Applications
 
 // SEDFA/Duo user-specific card IDs (Cisco Duo Licenses, Cloud data services, Infrastructure Monitoring)
 const SEDFA_CARD_IDS = [1, 6, 11];
@@ -299,6 +299,42 @@ const mockProjects = [
             { label: "Unusual Traffic", value: ": 23", icon: "fas fa-chart-line" }
         ],
         cardFooter: "Network vulnerabilities found"
+    },
+    {
+        id: 12,
+        name: "Compliance & Auditing",
+        type: "Regulatory Compliance & Audit Logs",
+        status: "active",
+        risks: { critical: 0, high: 0, medium: 1 },
+        securityScore: 94,
+        uptime: 99.9,
+        lastUpdate: "2 hours ago",
+        icon: "fas fa-check-double",
+        cardMetrics: [
+            { label: "Compliance Score", value: ": 94%", icon: "fas fa-certificate" },
+            { label: "Audit Events", value: ": 3,421", icon: "fas fa-clipboard-list" },
+            { label: "Policy Violations", value: ": 2", icon: "fas fa-exclamation-circle" },
+            { label: "Last Audit", value: ": Jan 2025", icon: "fas fa-calendar-check" }
+        ],
+        cardFooter: "Compliance status: 94% - All critical policies met"
+    },
+    {
+        id: 13,
+        name: "User Activity & Analytics",
+        type: "User Behavior Analytics & Activity Monitoring",
+        status: "active",
+        risks: { critical: 0, high: 1, medium: 0 },
+        securityScore: 88,
+        uptime: 99.8,
+        lastUpdate: "15 minutes ago",
+        icon: "fas fa-user-circle",
+        cardMetrics: [
+            { label: "Active Users", value: ": 156", icon: "fas fa-users" },
+            { label: "Anomalous Sessions", value: ": 3", icon: "fas fa-flag" },
+            { label: "Failed Logins", value: ": 12", icon: "fas fa-times-circle" },
+            { label: "Privilege Changes", value: ": 5", icon: "fas fa-crown" }
+        ],
+        cardFooter: "User activity monitored - 3 anomalies detected"
     }
 ];
 
