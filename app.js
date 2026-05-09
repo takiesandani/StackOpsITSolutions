@@ -4,6 +4,56 @@ const config = {
     ckey: 'NHhvOEcyWk50N2Vna3VFTE00bFp3MjFKR0ZEOUhkZlg4RTk1MlJlaA=='
 };
 
+// Fallback countries list in case API fails
+const fallbackCountries = [
+    { iso2: 'US', name: 'United States' },
+    { iso2: 'CA', name: 'Canada' },
+    { iso2: 'GB', name: 'United Kingdom' },
+    { iso2: 'AU', name: 'Australia' },
+    { iso2: 'IN', name: 'India' },
+    { iso2: 'ZA', name: 'South Africa' },
+    { iso2: 'NG', name: 'Nigeria' },
+    { iso2: 'DE', name: 'Germany' },
+    { iso2: 'FR', name: 'France' },
+    { iso2: 'JP', name: 'Japan' },
+    { iso2: 'BR', name: 'Brazil' },
+    { iso2: 'MX', name: 'Mexico' },
+    { iso2: 'SG', name: 'Singapore' },
+    { iso2: 'NZ', name: 'New Zealand' },
+    { iso2: 'NL', name: 'Netherlands' }
+];
+
+// Retry configuration
+const retryConfig = {
+    maxRetries: 3,
+    initialDelay: 1000,
+    maxDelay: 5000
+};
+
+// Fetch with retry logic
+const fetchWithRetry = async (url, options, retries = 0) => {
+    try {
+        const response = await fetch(url, options);
+        if (!response.ok) {
+            if (response.status === 429 && retries < retryConfig.maxRetries) {
+                // Exponential backoff for 429 errors
+                const delay = Math.min(retryConfig.initialDelay * Math.pow(2, retries), retryConfig.maxDelay);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                return fetchWithRetry(url, options, retries + 1);
+            }
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response;
+    } catch (error) {
+        if (retries < retryConfig.maxRetries) {
+            const delay = Math.min(retryConfig.initialDelay * Math.pow(2, retries), retryConfig.maxDelay);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            return fetchWithRetry(url, options, retries + 1);
+        }
+        throw error;
+    }
+};
+
 // Cache management for API data
 const cache = {
     setCountries: (data) => sessionStorage.setItem('countries_cache', JSON.stringify(data)),
@@ -22,8 +72,6 @@ const cache = {
         return cached ? JSON.parse(cached) : null;
     }
 };
-
-// Select the dropdown elements
 const countrySelect = document.querySelector('.country');
 const stateSelect = document.querySelector('.state');
 const citySelect = document.querySelector('.city');
@@ -64,7 +112,7 @@ const generatePassword = () => {
 };
 
 // Dropdown population functions (your original working code)
-const loadCountries = () => {
+const loadCountries = async () => {
     countrySelect.disabled = false;
     stateSelect.disabled = true;
     citySelect.disabled = true;
@@ -81,21 +129,20 @@ const loadCountries = () => {
 
     countrySelect.innerHTML = '<option value="">Loading countries...</option>';
 
-    fetch(config.cUrl, { headers: { "X-CSCAPI-KEY": config.ckey } })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            cache.setCountries(data);
-            populateCountries(data);
-        })
-        .catch(error => {
-            console.error('Error loading countries:', error);
-            countrySelect.innerHTML = '<option value="">Error loading countries - Please refresh</option>';
+    try {
+        const response = await fetchWithRetry(config.cUrl, { 
+            headers: { "X-CSCAPI-KEY": config.ckey } 
         });
+        const data = await response.json();
+        cache.setCountries(data);
+        populateCountries(data);
+    } catch (error) {
+        console.error('Error loading countries from API, using fallback:', error);
+        // Use fallback countries
+        cache.setCountries(fallbackCountries);
+        populateCountries(fallbackCountries);
+        showNotification('Using limited country list. Full list will load when available.', false);
+    }
 };
 
 const populateCountries = (data) => {
@@ -112,7 +159,7 @@ const populateCountries = (data) => {
     }
 };
 
-const loadStates = () => {
+const loadStates = async () => {
     const selectedCountryCode = countrySelect.value;
     stateSelect.innerHTML = '<option value="">Select State</option>';
     citySelect.innerHTML = '<option value="">Select City</option>';
@@ -139,21 +186,17 @@ const loadStates = () => {
 
     stateSelect.innerHTML = '<option value="">Loading states...</option>';
 
-    fetch(`${config.cUrl}/${selectedCountryCode}/states`, { headers: { "X-CSCAPI-KEY": config.ckey } })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            cache.setStates(selectedCountryCode, data);
-            populateStates(data);
-        })
-        .catch(error => {
-            console.error('Error loading states:', error);
-            stateSelect.innerHTML = '<option value="">Error loading states</option>';
+    try {
+        const response = await fetchWithRetry(`${config.cUrl}/${selectedCountryCode}/states`, { 
+            headers: { "X-CSCAPI-KEY": config.ckey } 
         });
+        const data = await response.json();
+        cache.setStates(selectedCountryCode, data);
+        populateStates(data);
+    } catch (error) {
+        console.error('Error loading states:', error);
+        stateSelect.innerHTML = '<option value="">Error loading states - Please try again</option>';
+    }
 };
 
 const populateStates = (data) => {
@@ -170,7 +213,7 @@ const populateStates = (data) => {
     }
 };
 
-const loadCities = () => {
+const loadCities = async () => {
     const selectedCountryCode = countrySelect.value;
     const selectedStateCode = stateSelect.value;
     citySelect.innerHTML = '<option value="">Select City</option>';
@@ -193,21 +236,17 @@ const loadCities = () => {
 
     citySelect.innerHTML = '<option value="">Loading cities...</option>';
 
-    fetch(`${config.cUrl}/${selectedCountryCode}/states/${selectedStateCode}/cities`, { headers: { "X-CSCAPI-KEY": config.ckey } })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            cache.setCities(selectedCountryCode, selectedStateCode, data);
-            populateCities(data);
-        })
-        .catch(error => {
-            console.error('Error loading cities:', error);
-            citySelect.innerHTML = '<option value="">Error loading cities</option>';
+    try {
+        const response = await fetchWithRetry(`${config.cUrl}/${selectedCountryCode}/states/${selectedStateCode}/cities`, { 
+            headers: { "X-CSCAPI-KEY": config.ckey } 
         });
+        const data = await response.json();
+        cache.setCities(selectedCountryCode, selectedStateCode, data);
+        populateCities(data);
+    } catch (error) {
+        console.error('Error loading cities:', error);
+        citySelect.innerHTML = '<option value="">Error loading cities - Please try again</option>';
+    }
 };
 
 const populateCities = (data) => {
