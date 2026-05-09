@@ -4,6 +4,25 @@ const config = {
     ckey: 'NHhvOEcyWk50N2Vna3VFTE00bFp3MjFKR0ZEOUhkZlg4RTk1MlJlaA=='
 };
 
+// Cache management for API data
+const cache = {
+    setCountries: (data) => sessionStorage.setItem('countries_cache', JSON.stringify(data)),
+    getCountries: () => {
+        const cached = sessionStorage.getItem('countries_cache');
+        return cached ? JSON.parse(cached) : null;
+    },
+    setStates: (countryCode, data) => sessionStorage.setItem(`states_${countryCode}`, JSON.stringify(data)),
+    getStates: (countryCode) => {
+        const cached = sessionStorage.getItem(`states_${countryCode}`);
+        return cached ? JSON.parse(cached) : null;
+    },
+    setCities: (countryCode, stateCode, data) => sessionStorage.setItem(`cities_${countryCode}_${stateCode}`, JSON.stringify(data)),
+    getCities: (countryCode, stateCode) => {
+        const cached = sessionStorage.getItem(`cities_${countryCode}_${stateCode}`);
+        return cached ? JSON.parse(cached) : null;
+    }
+};
+
 // Select the dropdown elements
 const countrySelect = document.querySelector('.country');
 const stateSelect = document.querySelector('.state');
@@ -51,7 +70,16 @@ const loadCountries = () => {
     citySelect.disabled = true;
     stateSelect.style.pointerEvents = 'none';
     citySelect.style.pointerEvents = 'none';
-    countrySelect.innerHTML = '<option selected>Select Country</option>';
+    countrySelect.innerHTML = '<option value="">Select Country</option>';
+
+    // Check cache first
+    const cachedCountries = cache.getCountries();
+    if (cachedCountries) {
+        populateCountries(cachedCountries);
+        return;
+    }
+
+    countrySelect.innerHTML = '<option value="">Loading countries...</option>';
 
     fetch(config.cUrl, { headers: { "X-CSCAPI-KEY": config.ckey } })
         .then(response => {
@@ -61,22 +89,27 @@ const loadCountries = () => {
             return response.json();
         })
         .then(data => {
-            countrySelect.innerHTML = '<option value="">Select Country</option>';
-            if (data && Array.isArray(data)) {
-                data.forEach(country => {
-                    const option = document.createElement('option');
-                    option.value = country.iso2;
-                    option.textContent = country.name;
-                    countrySelect.appendChild(option);
-                });
-            } else {
-                console.error('Invalid data format from API:', data);
-            }
+            cache.setCountries(data);
+            populateCountries(data);
         })
         .catch(error => {
             console.error('Error loading countries:', error);
             countrySelect.innerHTML = '<option value="">Error loading countries - Please refresh</option>';
         });
+};
+
+const populateCountries = (data) => {
+    countrySelect.innerHTML = '<option value="">Select Country</option>';
+    if (data && Array.isArray(data)) {
+        data.forEach(country => {
+            const option = document.createElement('option');
+            option.value = country.iso2;
+            option.textContent = country.name;
+            countrySelect.appendChild(option);
+        });
+    } else {
+        console.error('Invalid data format from API:', data);
+    }
 };
 
 const loadStates = () => {
@@ -96,8 +129,15 @@ const loadStates = () => {
     citySelect.disabled = true;
     stateSelect.style.pointerEvents = 'auto';
     citySelect.style.pointerEvents = 'none';
-    stateSelect.innerHTML = '<option selected>Select State</option>';
-    citySelect.innerHTML = '<option selected>Select City</option>';
+
+    // Check cache first
+    const cachedStates = cache.getStates(selectedCountryCode);
+    if (cachedStates) {
+        populateStates(cachedStates);
+        return;
+    }
+
+    stateSelect.innerHTML = '<option value="">Loading states...</option>';
 
     fetch(`${config.cUrl}/${selectedCountryCode}/states`, { headers: { "X-CSCAPI-KEY": config.ckey } })
         .then(response => {
@@ -107,22 +147,27 @@ const loadStates = () => {
             return response.json();
         })
         .then(data => {
-            stateSelect.innerHTML = '<option value="">Select State</option>';
-            if (data && Array.isArray(data)) {
-                data.forEach(state => {
-                    const option = document.createElement('option');
-                    option.value = state.iso2;
-                    option.textContent = state.name;
-                    stateSelect.appendChild(option);
-                });
-            } else {
-                console.error('Invalid states data:', data);
-            }
+            cache.setStates(selectedCountryCode, data);
+            populateStates(data);
         })
         .catch(error => {
             console.error('Error loading states:', error);
             stateSelect.innerHTML = '<option value="">Error loading states</option>';
         });
+};
+
+const populateStates = (data) => {
+    stateSelect.innerHTML = '<option value="">Select State</option>';
+    if (data && Array.isArray(data)) {
+        data.forEach(state => {
+            const option = document.createElement('option');
+            option.value = state.iso2;
+            option.textContent = state.name;
+            stateSelect.appendChild(option);
+        });
+    } else {
+        console.error('Invalid states data:', data);
+    }
 };
 
 const loadCities = () => {
@@ -138,7 +183,15 @@ const loadCities = () => {
 
     citySelect.disabled = false;
     citySelect.style.pointerEvents = 'auto';
-    citySelect.innerHTML = '<option selected>Select City</option>';
+
+    // Check cache first
+    const cachedCities = cache.getCities(selectedCountryCode, selectedStateCode);
+    if (cachedCities) {
+        populateCities(cachedCities);
+        return;
+    }
+
+    citySelect.innerHTML = '<option value="">Loading cities...</option>';
 
     fetch(`${config.cUrl}/${selectedCountryCode}/states/${selectedStateCode}/cities`, { headers: { "X-CSCAPI-KEY": config.ckey } })
         .then(response => {
@@ -148,22 +201,27 @@ const loadCities = () => {
             return response.json();
         })
         .then(data => {
-            citySelect.innerHTML = '<option value="">Select City</option>';
-            if (data && Array.isArray(data)) {
-                data.forEach(city => {
-                    const option = document.createElement('option');
-                    option.value = city.name;
-                    option.textContent = city.name;
-                    citySelect.appendChild(option);
-                });
-            } else {
-                console.error('Invalid cities data:', data);
-            }
+            cache.setCities(selectedCountryCode, selectedStateCode, data);
+            populateCities(data);
         })
         .catch(error => {
             console.error('Error loading cities:', error);
             citySelect.innerHTML = '<option value="">Error loading cities</option>';
         });
+};
+
+const populateCities = (data) => {
+    citySelect.innerHTML = '<option value="">Select City</option>';
+    if (data && Array.isArray(data)) {
+        data.forEach(city => {
+            const option = document.createElement('option');
+            option.value = city.name;
+            option.textContent = city.name;
+            citySelect.appendChild(option);
+        });
+    } else {
+        console.error('Invalid cities data:', data);
+    }
 };
 
 // Event listeners and initial load
