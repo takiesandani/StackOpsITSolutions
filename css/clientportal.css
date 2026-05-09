@@ -3975,6 +3975,26 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   }
 }
 
+/* Critical fix for evidence modals */
+.sunbird-governance-evidence-modal {
+    display: none; /* Keeps it hidden by default */
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(10px);
+    z-index: 10000;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Shows the modal when JS adds the 'open' class */
+.sunbird-governance-evidence-modal.open {
+    display: flex;
+}
+
 @media (max-width: 480px) {
   .header-top {
     padding: 0 15px;
