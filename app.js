@@ -46,6 +46,7 @@ const generatePassword = () => {
 
 // Dropdown population functions (your original working code)
 const loadCountries = () => {
+    countrySelect.disabled = false;
     stateSelect.disabled = true;
     citySelect.disabled = true;
     stateSelect.style.pointerEvents = 'none';
@@ -53,20 +54,44 @@ const loadCountries = () => {
     countrySelect.innerHTML = '<option selected>Select Country</option>';
 
     fetch(config.cUrl, { headers: { "X-CSCAPI-KEY": config.ckey } })
-        .then(response => response.json())
-        .then(data => {
-            data.forEach(country => {
-                const option = document.createElement('option');
-                option.value = country.iso2;
-                option.textContent = country.name;
-                countrySelect.appendChild(option);
-            });
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
         })
-        .catch(error => console.error('Error loading countries:', error));
+        .then(data => {
+            countrySelect.innerHTML = '<option value="">Select Country</option>';
+            if (data && Array.isArray(data)) {
+                data.forEach(country => {
+                    const option = document.createElement('option');
+                    option.value = country.iso2;
+                    option.textContent = country.name;
+                    countrySelect.appendChild(option);
+                });
+            } else {
+                console.error('Invalid data format from API:', data);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading countries:', error);
+            countrySelect.innerHTML = '<option value="">Error loading countries - Please refresh</option>';
+        });
 };
 
 const loadStates = () => {
     const selectedCountryCode = countrySelect.value;
+    stateSelect.innerHTML = '<option value="">Select State</option>';
+    citySelect.innerHTML = '<option value="">Select City</option>';
+    
+    if (!selectedCountryCode) {
+        stateSelect.disabled = true;
+        citySelect.disabled = true;
+        stateSelect.style.pointerEvents = 'none';
+        citySelect.style.pointerEvents = 'none';
+        return;
+    }
+
     stateSelect.disabled = false;
     citySelect.disabled = true;
     stateSelect.style.pointerEvents = 'auto';
@@ -74,41 +99,71 @@ const loadStates = () => {
     stateSelect.innerHTML = '<option selected>Select State</option>';
     citySelect.innerHTML = '<option selected>Select City</option>';
 
-    if (selectedCountryCode) {
-        fetch(`${config.cUrl}/${selectedCountryCode}/states`, { headers: { "X-CSCAPI-KEY": config.ckey } })
-            .then(response => response.json())
-            .then(data => {
+    fetch(`${config.cUrl}/${selectedCountryCode}/states`, { headers: { "X-CSCAPI-KEY": config.ckey } })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            stateSelect.innerHTML = '<option value="">Select State</option>';
+            if (data && Array.isArray(data)) {
                 data.forEach(state => {
                     const option = document.createElement('option');
                     option.value = state.iso2;
                     option.textContent = state.name;
                     stateSelect.appendChild(option);
                 });
-            })
-            .catch(error => console.error('Error loading states:', error));
-    }
+            } else {
+                console.error('Invalid states data:', data);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading states:', error);
+            stateSelect.innerHTML = '<option value="">Error loading states</option>';
+        });
 };
 
 const loadCities = () => {
     const selectedCountryCode = countrySelect.value;
     const selectedStateCode = stateSelect.value;
+    citySelect.innerHTML = '<option value="">Select City</option>';
+
+    if (!selectedCountryCode || !selectedStateCode) {
+        citySelect.disabled = true;
+        citySelect.style.pointerEvents = 'none';
+        return;
+    }
+
     citySelect.disabled = false;
     citySelect.style.pointerEvents = 'auto';
     citySelect.innerHTML = '<option selected>Select City</option>';
 
-    if (selectedCountryCode && selectedStateCode) {
-        fetch(`${config.cUrl}/${selectedCountryCode}/states/${selectedStateCode}/cities`, { headers: { "X-CSCAPI-KEY": config.ckey } })
-            .then(response => response.json())
-            .then(data => {
+    fetch(`${config.cUrl}/${selectedCountryCode}/states/${selectedStateCode}/cities`, { headers: { "X-CSCAPI-KEY": config.ckey } })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            citySelect.innerHTML = '<option value="">Select City</option>';
+            if (data && Array.isArray(data)) {
                 data.forEach(city => {
                     const option = document.createElement('option');
                     option.value = city.name;
                     option.textContent = city.name;
                     citySelect.appendChild(option);
                 });
-            })
-            .catch(error => console.error('Error loading cities:', error));
-    }
+            } else {
+                console.error('Invalid cities data:', data);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading cities:', error);
+            citySelect.innerHTML = '<option value="">Error loading cities</option>';
+        });
 };
 
 // Event listeners and initial load
@@ -123,6 +178,21 @@ document.addEventListener('DOMContentLoaded', () => {
     // Form submission handler
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
+        
+        // Validate address fields
+        if (!countrySelect.value) {
+            showNotification('Please select a country', false);
+            return;
+        }
+        if (!stateSelect.value) {
+            showNotification('Please select a state', false);
+            return;
+        }
+        if (!citySelect.value) {
+            showNotification('Please select a city', false);
+            return;
+        }
+        
         registerBtn.disabled = true;
         registerBtn.textContent = 'Registering...';
 
