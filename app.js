@@ -1,7 +1,9 @@
-// Configuration for the country/state/city API
+// Configuration for APIs
 const config = {
-    cUrl: 'https://api.countrystatecity.in/v1/countries',
-    ckey: 'NHhvOEcyWk50N2Vna3VFTE00bFp3MjFKR0ZEOUhkZlg4RTk1MlJlaA=='
+    // RestCountries API (more reliable, no rate limits)
+    countriesUrl: 'https://restcountries.com/v3.1/all',
+    // Fallback: Nominatim API for geographic data (no key needed)
+    nominatimUrl: 'https://nominatim.openstreetmap.org'
 };
 
 // Fallback countries list in case API fails
@@ -73,8 +75,6 @@ const cache = {
     }
 };
 const countrySelect = document.querySelector('.country');
-const stateSelect = document.querySelector('.state');
-const citySelect = document.querySelector('.city');
 const form = document.getElementById('admin-register-form');
 const notification = document.getElementById('notification');
 const registerBtn = document.getElementById('register-btn');
@@ -111,7 +111,7 @@ const generatePassword = () => {
     document.getElementById('password').value = generatedPassword;
 };
 
-// Dropdown population functions (your original working code)
+// Dropdown population functions
 const loadCountries = async () => {
     countrySelect.disabled = false;
     stateSelect.disabled = true;
@@ -130,18 +130,23 @@ const loadCountries = async () => {
     countrySelect.innerHTML = '<option value="">Loading countries...</option>';
 
     try {
-        const response = await fetchWithRetry(config.cUrl, { 
-            headers: { "X-CSCAPI-KEY": config.ckey } 
-        });
+        const response = await fetchWithRetry(config.countriesUrl, {});
         const data = await response.json();
-        cache.setCountries(data);
-        populateCountries(data);
+        
+        // Transform RestCountries data to our format
+        const countries = data.map(country => ({
+            iso2: country.cca2,
+            name: country.name.common
+        })).sort((a, b) => a.name.localeCompare(b.name));
+        
+        cache.setCountries(countries);
+        populateCountries(countries);
     } catch (error) {
         console.error('Error loading countries from API, using fallback:', error);
         // Use fallback countries
         cache.setCountries(fallbackCountries);
         populateCountries(fallbackCountries);
-        showNotification('Using limited country list. Full list will load when available.', false);
+        showNotification('Using limited country list.', false);
     }
 };
 
@@ -159,116 +164,14 @@ const populateCountries = (data) => {
     }
 };
 
-const loadStates = async () => {
-    const selectedCountryCode = countrySelect.value;
-    stateSelect.innerHTML = '<option value="">Select State</option>';
-    citySelect.innerHTML = '<option value="">Select City</option>';
-    
-    if (!selectedCountryCode) {
-        stateSelect.disabled = true;
-        citySelect.disabled = true;
-        stateSelect.style.pointerEvents = 'none';
-        citySelect.style.pointerEvents = 'none';
-        return;
-    }
-
-    stateSelect.disabled = false;
-    citySelect.disabled = true;
-    stateSelect.style.pointerEvents = 'auto';
-    citySelect.style.pointerEvents = 'none';
-
-    // Check cache first
-    const cachedStates = cache.getStates(selectedCountryCode);
-    if (cachedStates) {
-        populateStates(cachedStates);
-        return;
-    }
-
-    stateSelect.innerHTML = '<option value="">Loading states...</option>';
-
-    try {
-        const response = await fetchWithRetry(`${config.cUrl}/${selectedCountryCode}/states`, { 
-            headers: { "X-CSCAPI-KEY": config.ckey } 
-        });
-        const data = await response.json();
-        cache.setStates(selectedCountryCode, data);
-        populateStates(data);
-    } catch (error) {
-        console.error('Error loading states:', error);
-        stateSelect.innerHTML = '<option value="">Error loading states - Please try again</option>';
-    }
-};
-
-const populateStates = (data) => {
-    stateSelect.innerHTML = '<option value="">Select State</option>';
-    if (data && Array.isArray(data)) {
-        data.forEach(state => {
-            const option = document.createElement('option');
-            option.value = state.iso2;
-            option.textContent = state.name;
-            stateSelect.appendChild(option);
-        });
-    } else {
-        console.error('Invalid states data:', data);
-    }
-};
-
-const loadCities = async () => {
-    const selectedCountryCode = countrySelect.value;
-    const selectedStateCode = stateSelect.value;
-    citySelect.innerHTML = '<option value="">Select City</option>';
-
-    if (!selectedCountryCode || !selectedStateCode) {
-        citySelect.disabled = true;
-        citySelect.style.pointerEvents = 'none';
-        return;
-    }
-
-    citySelect.disabled = false;
-    citySelect.style.pointerEvents = 'auto';
-
-    // Check cache first
-    const cachedCities = cache.getCities(selectedCountryCode, selectedStateCode);
-    if (cachedCities) {
-        populateCities(cachedCities);
-        return;
-    }
-
-    citySelect.innerHTML = '<option value="">Loading cities...</option>';
-
-    try {
-        const response = await fetchWithRetry(`${config.cUrl}/${selectedCountryCode}/states/${selectedStateCode}/cities`, { 
-            headers: { "X-CSCAPI-KEY": config.ckey } 
-        });
-        const data = await response.json();
-        cache.setCities(selectedCountryCode, selectedStateCode, data);
-        populateCities(data);
-    } catch (error) {
-        console.error('Error loading cities:', error);
-        citySelect.innerHTML = '<option value="">Error loading cities - Please try again</option>';
-    }
-};
-
-const populateCities = (data) => {
-    citySelect.innerHTML = '<option value="">Select City</option>';
-    if (data && Array.isArray(data)) {
-        data.forEach(city => {
-            const option = document.createElement('option');
-            option.value = city.name;
-            option.textContent = city.name;
-            citySelect.appendChild(option);
-        });
-    } else {
-        console.error('Invalid cities data:', data);
-    }
-};
+// Get reference to state and city inputs (now text inputs instead of selects)
+const stateInput = document.getElementById('state');
+const cityInput = document.getElementById('city');
 
 // Event listeners and initial load
 document.addEventListener('DOMContentLoaded', () => {
-    // Attach event listeners to the dropdowns
-    countrySelect.addEventListener('change', loadStates);
-    stateSelect.addEventListener('change', loadCities);
-
+    // Note: state and city are now text inputs, no dropdown loading needed
+    
     // Attach event listener for the generate password button
     document.getElementById('generate-password-btn').addEventListener('click', generatePassword);
 
@@ -281,12 +184,12 @@ document.addEventListener('DOMContentLoaded', () => {
             showNotification('Please select a country', false);
             return;
         }
-        if (!stateSelect.value) {
-            showNotification('Please select a state', false);
+        if (!stateInput.value.trim()) {
+            showNotification('Please enter a state or province', false);
             return;
         }
-        if (!citySelect.value) {
-            showNotification('Please select a city', false);
+        if (!cityInput.value.trim()) {
+            showNotification('Please enter a city', false);
             return;
         }
         
@@ -303,8 +206,8 @@ document.addEventListener('DOMContentLoaded', () => {
             website: form.website.value,
             industry: form.industry.value,
             address: form.address.value,
-            city: citySelect.options[citySelect.selectedIndex].textContent,
-            state: stateSelect.options[stateSelect.selectedIndex].textContent,
+            city: cityInput.value.trim(),
+            state: stateInput.value.trim(),
             zipCode: form.zipCode.value,
             country: countrySelect.options[countrySelect.selectedIndex].textContent
         };
