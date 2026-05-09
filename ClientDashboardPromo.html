@@ -411,6 +411,51 @@
             box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25), inset 0 1px 2px rgba(255, 255, 255, 0.5);
         }
 
+        /* ===== PERSUASIVE ELEMENTS ===== */
+        .live-status-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(0, 230, 118, 0.1);
+            color: #00e676;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 200;
+            border: 1px solid rgba(0, 230, 118, 0.3);
+            margin-bottom: 1rem;
+            animation: pulse-green 2s infinite;
+        }
+
+        @keyframes pulse-green {
+            0% { box-shadow: 0 0 0 0 rgba(0, 230, 118, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(0, 230, 118, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(0, 230, 118, 0); }
+        }
+
+        .trust-banner {
+            background: linear-gradient(90deg, transparent, rgba(255, 120, 2, 0.05), transparent);
+            padding: 10px;
+            text-align: center;
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.6);
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            margin-bottom: 2rem;
+        }
+
+        .value-badge {
+            background: #ff7802;
+            color: white;
+            font-size: 0.65rem;
+            padding: 2px 8px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            font-weight: 200;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+
         .cta-section h2 {
             font-size: clamp(1.4rem, 3vw, 2rem);
             margin-bottom: clamp(0.8rem, 1.5vw, 1rem);
@@ -739,8 +784,11 @@
         <!-- ===== HERO SECTION ===== -->
         <section class="hero-section">
             <div>
+                <div class="live-status-tag">
+                    <i class="fas fa-circle"></i> SOC Operational: 24/7 Monitoring Active
+                </div>
                 <h1>One Platform to Run your <span>entire IT Environment</span></h1>
-                <p>Designed with security operations in mind—giving you centralized visibility and control across Microsoft, identity, and support systems, without the complexity, cost, or overhead of a traditional SOC.</p>
+                <p>Experience the power of a fully managed Security Operations Center. Our dashboard transforms complex IT infrastructure into a single, intuitive interface—giving you total visibility and peace of mind without the enterprise overhead.</p>
 
                 <div class="credential-box">
                     <div class="credential-icon">
@@ -797,8 +845,8 @@
                                 <i class="fas fa-check"></i>
                             </div>
                             <div class="benefit-text">
-                                <h4>Multi-Service Integration</h4>
-                                <p>Unified access to all your IT services: Microsoft 365, Backup & Recovery, Cloud Services, and more.</p>
+                                <h4>Unified Command Center</h4>
+                                <p>Consolidate your entire IT footprint—from Microsoft 365 to Backup & Recovery—into one simplified, high-performance portal.</p>
                             </div>
                         </div>
 
@@ -807,8 +855,8 @@
                                 <i class="fas fa-check"></i>
                             </div>
                             <div class="benefit-text">
-                                <h4>Advanced Security</h4>
-                                <p>Multi-factor authentication and encrypted connections protect your sensitive business data.</p>
+                                <h4>Zero-Trust Peace of Mind</h4>
+                                <p>Live identity monitoring and encrypted governance ensure your business data is shielded by enterprise-grade protocols 24/7.</p>
                             </div>
                         </div>
 
@@ -817,8 +865,8 @@
                                 <i class="fas fa-check"></i>
                             </div>
                             <div class="benefit-text">
-                                <h4>Real-Time Analytics</h4>
-                                <p>Comprehensive insights into your IT infrastructure with detailed charts and performance metrics.</p>
+                                <h4>Executive Decision Intelligence</h4>
+                                <p>Stop guessing. Our dashboard provides actionable, real-time insights that allow you to make data-driven decisions in seconds.</p>
                             </div>
                         </div>
 
@@ -874,24 +922,24 @@
                         <div class="feature-icon">
                             <i class="fas fa-chart-line"></i>
                         </div>
-                        <h3>Real-Time Monitoring</h3>
-                        <p>Track your IT infrastructure health, security scores, and uptime metrics in real-time with live dashboards and instant alerts.</p>
+                        <h3>Live Defense Map <span class="value-badge">PRO</span></h3>
+                        <p>Visualize every login, threat, and system health metric on a real-time map. Know exactly what's happening across your environment, the moment it happens.</p>
                     </div>
 
                     <div class="feature-card">
                         <div class="feature-icon">
                             <i class="fas fa-lock"></i>
                         </div>
-                        <h3>Security Management</h3>
-                        <p>Monitor critical risks, manage Cisco DUO licenses, and maintain enterprise-grade security standards with detailed risk assessments.</p>
+                        <h3>Compliance Automation <span class="value-badge">ENTERPRISE</span></h3>
+                        <p>Our intelligent system automatically validates MFA enforcement and admin privileges, ensuring you stay audit-ready without the manual effort.</p>
                     </div>
 
                     <div class="feature-card">
                         <div class="feature-icon">
                             <i class="fas fa-folder-open"></i>
                         </div>
-                        <h3>Project Management</h3>
-                        <p>Organize and track all your IT projects in one place, with detailed status updates and comprehensive project analytics.</p>
+                        <h3>Project Transparency</h3>
+                        <p>Follow your IT roadmap with total clarity. Track milestones, technical debt, and infrastructure upgrades through a transparent, live project tracker.</p>
                     </div>
 
                     <div class="feature-card">
@@ -1013,8 +1061,11 @@
         <!-- ===== CALL TO ACTION ===== -->
         <div class="container">
             <div class="cta-section">
-                <h2>Ready to Access Your Dashboard?</h2>
-                <p>Sign in with the credentials provided in your email to start managing your IT infrastructure today. Don't have an account yet?</p>
+                <div class="live-status-tag" style="background: rgba(255, 120, 2, 0.1); color: #ff7802; border-color: rgba(255, 120, 2, 0.3);">
+                    <i class="fas fa-bolt"></i> High Demand: 5 Activation Slots Remaining This Month
+                </div>
+                <h2>Claim Your Enterprise Command Center</h2>
+                <p>Don't settle for fragmented IT. Join our elite circle of clients who manage their entire infrastructure with absolute clarity and security. Ready to upgrade your operations?</p>
 
                 <div class="cta-buttons">
                     <div class="glow-wrap">
