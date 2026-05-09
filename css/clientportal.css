@@ -818,17 +818,17 @@
 
 .side-peek-nav {
   position: absolute;
-  top: 50%;
+  top: calc(50% - (var(--side-peek-card-height, 130px) / 2));
   width: min(var(--side-peek-card-width), var(--side-peek-max-width));
   border: none;
   background: transparent;
   padding: 0;
-  transform: translateY(-50%);
+  transform: none;
   cursor: pointer;
   z-index: 1;
   transition:
     opacity 0.25s ease,
-    transform 0.25s ease;
+    top 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .side-peek-nav:disabled,
