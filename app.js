@@ -114,10 +114,6 @@ const generatePassword = () => {
 // Dropdown population functions
 const loadCountries = async () => {
     countrySelect.disabled = false;
-    stateSelect.disabled = true;
-    citySelect.disabled = true;
-    stateSelect.style.pointerEvents = 'none';
-    citySelect.style.pointerEvents = 'none';
     countrySelect.innerHTML = '<option value="">Select Country</option>';
 
     // Check cache first
