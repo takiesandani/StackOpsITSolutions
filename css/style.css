@@ -153,53 +153,288 @@ section {
     background-size: cover; /* Changed from 'cover' to 'contain' */
 }
 
-/* Header & Navigation */
-header {
-  width: 100%;
-  padding: 1rem 3vw;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+/* ========================================================= */
+/* HEADER LAYOUT                                             */
+/* ========================================================= */
 
-  background: rgba(255, 255, 255, 0);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  box-shadow:
-    0 0 20px rgba(51, 115, 255, 0.411),
-    0 8px 40px rgba(0, 0, 0, 0.25);
-
-  border-radius: 20px;
+.site-header {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 3vw;
+    position: relative;
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 28px;
+    box-shadow:
+        0 0 20px rgba(51, 115, 255, 0.18),
+        0 8px 40px rgba(0, 0, 0, 0.18);
 }
 
-header.sticky {
-    padding: 10px 5%;
-    background: var(--dark);
-    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+/* ========================================================= */
+/* CENTER NAVIGATION                                         */
+/* ========================================================= */
+
+.center-nav {
+    position: absolute;
+    border-radius: 39px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    list-style: none;
 }
 
-/* Compact header on small phones */
-@media (max-width: 480px) {
-    header {
-        padding: 0.8rem 1.2rem;
+.center-nav li {
+    margin: 0;
+    border-radius: 25px;
+}
+
+.center-nav a {
+    display: inline-flex;
+    align-items: center;
+    box-shadow: rgba(245, 245, 245, 0.146) 0px 0px 0px 1px inset;
+    justify-content: center;
+    position: relative;
+    gap: -10px !important;
+    padding: 10px 18px;
+    border-radius: 39px !important;
+    color: #ffffff;
+    font-size: 12px !important;
+    font-weight: 200 !important;
+    background: rgba(255, 255, 255, 0);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    transition:
+        transform 0.3s ease,
+        background 0.3s ease,
+        border-color 0.3s ease,
+        box-shadow 0.3s ease;
+}
+
+/* Remove old underline hover */
+.center-nav a::after {
+    display: none;
+}
+
+/* Hover Effect */
+.center-nav a:hover {
+    transform: translateY(-2px);
+
+    background: rgba(255, 255, 255, 0.09);
+
+    border-color: rgba(0, 110, 255, 0.35);
+
+    box-shadow:
+        0 0 12px rgba(0, 110, 255, 0.18),
+        0 4px 18px rgba(0, 0, 0, 0.2);
+
+    color: #ffffff;
+}
+
+/* Active Button */
+.center-nav a.active {
+    background: rgba(0, 110, 255, 0.068);
+    border-color: rgba(0, 110, 255, 0.45);
+    box-shadow:
+        0 0 12px rgba(0, 110, 255, 0.2),
+        0 0 30px rgba(0, 110, 255, 0.08);
+    border-radius: 39px;
+    color: #ffffff;
+}
+
+/* ========================================================= */
+/* RIGHT SIDE ACTIONS                                        */
+/* ========================================================= */
+
+.header-actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+/* ========================================================= */
+/* GLASS ICON BUTTONS                                        */
+/* ========================================================= */
+
+.glass-icon-btn {
+    width: 46px;
+    height: 46px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    text-decoration: none;
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    box-shadow:
+        0 4px 18px rgba(0, 0, 0, 0.18),
+        0 0 12px rgba(0, 110, 255, 0.08);
+    transition:
+        transform 0.3s ease,
+        box-shadow 0.3s ease,
+        background 0.3s ease,
+        border-color 0.3s ease;
+}
+
+.glass-icon-btn i {
+    font-size: 16px;
+}
+
+/* Hover */
+.glass-icon-btn:hover {
+    transform: translateY(-2px) scale(1.05);
+
+    background: rgba(255, 255, 255, 0.08);
+
+    border-color: rgba(0, 110, 255, 0.4);
+
+    box-shadow:
+        0 0 18px rgba(0, 110, 255, 0.22),
+        0 6px 20px rgba(0, 0, 0, 0.25);
+
+    color: #ffffff;
+}
+
+/* ========================================================= */
+/* MOBILE RESPONSIVE                                         */
+/* ========================================================= */
+
+@media (max-width: 992px) {
+
+    .center-nav {
+        display: none;
     }
 
-    .nav-links a {
-        padding: 4px 8px;
-        font-size: 14px;
-    }
-
-    .Shop {
-        height: 22px;
-        margin-top: 0;
-    }
     .hamburger {
-        font-size: 20px;
-        padding: 0;
-        margin: 0;
-        line-height: 1;
-      }
+        display: block;
+    }
+
+    .header-actions {
+        gap: 10px;
+    }
+
+    .glass-icon-btn {
+        width: 42px;
+        height: 42px;
+    }
+}
+
+/* ========================================================= */
+/* SHOP BUTTON SPECIAL PULSE                                 */
+/* ========================================================= */
+
+#shop-link {
+    position: relative;
+
+    overflow: visible;
+
+    animation: pulse-green 2s infinite;
+}
+
+/* Outer Pulse Ring */
+#shop-link::before {
+    content: "";
+
+    position: absolute;
+
+    inset: -8px;
+
+    border-radius: 50%;
+
+    border: 2px solid rgba(255, 255, 255, 0.6);
+
+    animation: pulse-ring 2s infinite;
+
+    z-index: -1;
+}
+
+/* Soft Glow Layer */
+#shop-link::after {
+    content: "";
+
+    position: absolute;
+
+    inset: -14px;
+
+    border-radius: 50%;
+
+    background: radial-gradient(
+        circle,
+        rgba(0, 128, 255, 0.35) 0%,
+        rgba(0, 255, 128, 0) 70%
+    );
+
+    animation: pulse-fade 1s infinite;
+
+    z-index: -2;
+}
+
+/* ========================================================= */
+/* ANIMATIONS                                                 */
+/* ========================================================= */
+
+
+@keyframes pulse-ring {
+
+    0% {
+        transform: scale(0.9);
+        opacity: 0.9;
+    }
+
+    70% {
+        transform: scale(1.35);
+        opacity: 0;
+    }
+
+    100% {
+        transform: scale(1.35);
+        opacity: 0;
+    }
+}
+
+@keyframes pulse-fade {
+
+    0% {
+        transform: scale(1);
+        opacity: 0.7;
+    }
+
+    70% {
+        transform: scale(1.45);
+        opacity: 0;
+    }
+
+    100% {
+        transform: scale(1.45);
+        opacity: 0;
+    }
+}
+
+/* ========================================================= */
+/* HOME BUTTON BLUE GLOW                                     */
+/* ========================================================= */
+
+a[aria-label="Home"] {
+    box-shadow:
+        0 0 8px rgba(0, 110, 255, 0.25),
+        0 0 16px rgba(0, 110, 255, 0.12),
+        0 4px 12px rgba(0, 0, 0, 0.18);
+}
+
+/* Hover Enhancement */
+a[aria-label="Home"]:hover {
+    box-shadow:
+        0 0 12px rgba(0, 110, 255, 0.4),
+        0 0 22px rgba(0, 110, 255, 0.2),
+        0 6px 18px rgba(0, 0, 0, 0.22);
 }
 
 /* Logo styles */
@@ -414,20 +649,20 @@ header.sticky {
 
 /* Services Detail Page */
 .page-header {
-    padding: 60px 0 30px;
+    padding: 20px 0 10px;
     text-align: center;
-    background: rgba(28, 28, 28, 0.7);
+    background: transparent;
 }
 
 .page-header h1 {
-    font-size: 2.2rem;
+    font-size: 1.2rem;
     line-height: 1;
     margin-bottom: 8px;
     color: white;
 }
 
 .page-header p {
-    font-size: 1.2rem;
+    font-size: 0.8rem;
     max-width: 700px;
     margin: 0 auto;
     opacity: 0.8;
@@ -2019,6 +2254,106 @@ footer a:hover {
 /*======================================================================================================*/
 /* approach Page                                                 */
 /*======================================================================================================*/
+/* ========================================================= */
+/* APPROACH IMAGE SECTION - FIXED RESPONSIVE POSITIONING      */
+/* ========================================================= */
+
+.approach-image-section {
+    width: 80%;
+
+    padding: 0;
+
+    margin: 0 auto;
+
+    display: flex;
+
+    justify-content: center;
+
+    align-items: center;
+
+    height: 940px;
+
+    margin-top: -5%;
+
+    position: relative;
+
+    overflow: hidden;
+
+    flex-shrink: 0;
+}
+
+.approach-image-section img {
+    width: 100%;
+
+    max-width: 100%;
+
+    height: 100%;
+
+    object-fit: contain;
+
+    object-position: center center;
+
+    display: block;
+
+    border: none;
+
+    flex-shrink: 0;
+
+    transform: translateZ(0);
+}
+
+/* ========================================================= */
+/* MOBILE FIX                                                 */
+/* Keeps image in SAME visual position                        */
+/* Only resizes instead of moving downward                    */
+/* ========================================================= */
+
+@media (max-width: 768px) {
+
+    .approach-image-section {
+        width: 92%;
+
+        height: auto;
+
+        min-height: 420px;
+
+        margin-top: -5%;
+
+        align-items: flex-start;
+    }
+
+    .approach-image-section img {
+        width: 100%;
+
+        height: auto;
+
+        max-height: 420px;
+
+        object-fit: contain;
+
+        object-position: top center;
+    }
+}
+
+/* Extra Small Phones */
+
+@media (max-width: 480px) {
+
+    .approach-image-section {
+        width: 96%;
+
+        min-height: 320px;
+
+        margin-top: -5%;
+    }
+
+    .approach-image-section img {
+        max-height: 320px;
+
+        object-position: top center;
+    }
+}
+
 .approach-steps {
     padding: 80px 0;
 }
