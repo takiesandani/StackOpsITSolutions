@@ -6270,9 +6270,9 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 /* SUNBIRD GOVERNANCE & COMPLIANCE TABLE SIZING AND SCROLLING     */
 /* ============================================================== */
 
-/* This prevents the card from being cut off and adds scrolling */
+/* Reduced max-height to strictly limit the card size */
 .sunbird-governance-table-wrap {
-    max-height: 220px; /* Limits the table height to approximately 3.5 rows */
+    max-height: 140px; /* Considerably shorter height limit */
     overflow-y: auto;
     overflow-x: auto;
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -6293,32 +6293,34 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 .sunbird-governance-table-wrap::-webkit-scrollbar-thumb {
-    background: rgba(0, 110, 255, 0.4);
+    background: gray;
     border-radius: 4px;
 }
 
 .sunbird-governance-table {
     width: 100%;
-    min-width: 450px; /* Forces horizontal scroll if the screen is too tight */
+    min-width: 450px; 
     border-collapse: collapse;
 }
 
+/* Made header transparent and reduced padding */
 .sunbird-governance-table th {
     position: sticky;
     top: 0;
-    background: rgba(20, 28, 40, 0.98); /* Keeps header solid while scrolling */
+    background: transparent; /* Removed the background completely */
     z-index: 2;
-    padding: 10px 12px;
-    font-size: 0.75rem;
+    padding: 6px 10px; /* Tighter padding to shrink the table size */
+    font-size: 0.7rem;
     text-transform: uppercase;
     color: #94a3b8;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     text-align: left;
 }
 
+/* Reduced padding on table rows */
 .sunbird-governance-table td {
-    padding: 10px 12px;
-    font-size: 0.85rem;
+    padding: 6px 10px; /* Tighter padding to shrink the table size */
+    font-size: 0.8rem;
     color: #cbd5e1;
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     vertical-align: middle;
@@ -6333,7 +6335,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 .sunbird-governance-activity-cell {
-    margin-bottom: 6px;
+    margin-bottom: 4px; /* Tighter margin */
     font-weight: 500;
     color: #f1f5f9;
 }
