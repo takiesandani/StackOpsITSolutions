@@ -6272,15 +6272,15 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
 /* Reduced max-height to strictly limit the card size */
 .sunbird-governance-table-wrap {
-    max-height: 140px; /* Considerably shorter height limit */
+    max-height: 170px; /* Considerably shorter height limit */
     overflow-y: auto;
     overflow-x: auto;
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
-    background: rgba(0, 0, 0, 0.2);
+    background: rgba(0, 0, 0, 0.);
     margin-top: 10px;
     scrollbar-width: thin;
-    scrollbar-color: rgba(0, 110, 255, 0.4) transparent;
+    scrollbar-color: gray transparent;
 }
 
 .sunbird-governance-table-wrap::-webkit-scrollbar {
