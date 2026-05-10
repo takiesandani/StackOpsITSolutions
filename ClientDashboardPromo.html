@@ -756,6 +756,225 @@
                 url('Images/Orangebackground.jpg') no-repeat center center;
             background-size: cover;
         }
+
+        /* ========================================================= */
+/* GLASS FOOTER                                               */
+/* ========================================================= */
+
+.glass-footer {
+    position: relative;
+
+    margin-top: 80px;
+
+    padding: 70px 0 30px;
+
+    background: rgba(255, 255, 255, 0.04);
+
+    backdrop-filter: blur(24px);
+
+    -webkit-backdrop-filter: blur(24px);
+
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+
+    box-shadow:
+        0 -10px 40px rgba(255, 140, 0, 0.08),
+        0 0 30px rgba(255, 140, 0, 0.05);
+
+    overflow: hidden;
+}
+
+/* Soft Orange Glow */
+
+.glass-footer::before {
+    content: "";
+
+    position: absolute;
+
+    width: 400px;
+
+    height: 400px;
+
+    top: -180px;
+
+    right: -120px;
+
+    background: radial-gradient(
+        circle,
+        rgba(255, 140, 0, 0.18) 0%,
+        rgba(255, 140, 0, 0) 70%
+    );
+
+    pointer-events: none;
+}
+
+/* ========================================================= */
+/* GRID                                                       */
+/* ========================================================= */
+
+.footer-grid {
+    display: grid;
+
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+
+    gap: 24px;
+
+    margin-bottom: 50px;
+}
+
+/* ========================================================= */
+/* FOOTER CARDS                                               */
+/* ========================================================= */
+
+.footer-card {
+    display: flex;
+    flex-direction: column;
+    padding: 24px;
+    transition:
+        transform 0.3s ease,
+        border-color 0.3s ease,
+        box-shadow 0.3s ease;
+}
+
+
+/* ========================================================= */
+/* TITLES                                                     */
+/* ========================================================= */
+
+.footer-card h4 {
+    color: #ffffff;
+
+    font-weight: 200;
+
+    margin-bottom: 18px;
+
+    font-size: clamp(0.95rem, 1.5vw, 1.05rem);
+
+    letter-spacing: 0.5px;
+}
+
+/* ========================================================= */
+/* LINKS                                                      */
+/* ========================================================= */
+
+.footer-card a {
+    display: block;
+
+    width: fit-content;
+
+    margin-bottom: 14px;
+
+    text-decoration: none;
+
+    color: rgba(255, 255, 255, 0.78);
+
+    font-size: clamp(0.78rem, 1.2vw, 0.92rem);
+
+    font-weight: 100;
+
+    transition:
+        transform 0.3s ease,
+        color 0.3s ease,
+        text-shadow 0.3s ease;
+}
+
+.footer-card a:hover {
+    transform: translateX(6px);
+
+    color: #c9872f;
+
+    text-shadow: 0 0 10px rgba(255, 174, 66, 0.45);
+}
+
+.footer-card i {
+    margin-right: 8px;
+
+    color: #ffffff;
+}
+
+/* ========================================================= */
+/* FOOTER BOTTOM                                              */
+/* ========================================================= */
+
+.footer-bottom {
+    padding-top: 24px;
+
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+
+    display: flex;
+
+    justify-content: space-between;
+
+    align-items: center;
+
+    gap: 20px;
+
+    flex-wrap: wrap;
+}
+
+.footer-bottom p {
+    color: rgba(255, 255, 255, 0.45);
+
+    font-size: clamp(0.72rem, 1vw, 0.88rem);
+
+    font-weight: 200;
+}
+
+/* Bottom Links */
+
+.footer-bottom-links {
+    display: flex;
+
+    gap: 18px;
+}
+
+.footer-bottom-links a {
+    text-decoration: none;
+
+    color: rgba(255, 255, 255, 0.45);
+
+    font-size: clamp(0.72rem, 1vw, 0.88rem);
+
+    transition:
+        color 0.3s ease,
+        text-shadow 0.3s ease;
+}
+
+.footer-bottom-links a:hover {
+    color: #ffae42;
+
+    text-shadow: 0 0 10px rgba(255, 174, 66, 0.4);
+}
+
+/* ========================================================= */
+/* MOBILE                                                     */
+/* ========================================================= */
+
+@media (max-width: 768px) {
+
+    .glass-footer {
+        padding: 50px 0 25px;
+    }
+
+    .footer-grid {
+        gap: 18px;
+    }
+
+    .footer-card {
+        padding: 20px;
+    }
+
+    .footer-bottom {
+        flex-direction: column;
+
+        text-align: center;
+    }
+
+    .footer-bottom-links {
+        justify-content: center;
+
+        flex-wrap: wrap;
+    }
+}
     </style>
 </head>
 <body>
@@ -1109,44 +1328,74 @@
     </main>
 
     <!-- ===== FOOTER ===== -->
-    <footer>
+    <footer class="glass-footer">
+
         <div class="container">
-            <div class="menu-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 2rem; margin-bottom: 2rem;">
-                <div>
-                    <h4 style="color: var(--primary); font-weight: 200; margin-bottom: 1rem; font-size: clamp(0.9rem, 1.5vw, 1rem);">Quick Links</h4>
-                    <a href="Home.html" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);">Home</a>
-                    <a href="about.html" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);">About Us</a>
-                    <a href="service.html" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);">Services</a>
-                    <a href="contact.html" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);">Contact</a>
+
+            <div class="footer-grid">
+
+                <!-- Quick Links -->
+                <div class="footer-card">
+                    <h4>Quick Links</h4>
+
+                    <a href="Home.html">Home</a>
+                    <a href="about.html">About Us</a>
+                    <a href="service.html">Services</a>
+                    <a href="contact.html">Contact</a>
                 </div>
 
-                <div>
-                    <h4 style="color: var(--primary); font-weight: 200; margin-bottom: 1rem; font-size: clamp(0.9rem, 1.5vw, 1rem);">Services</h4>
-                    <a href="service.html" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);">Infrastructure Solutions</a>
-                    <a href="service.html" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);">Cybersecurity</a>
-                    <a href="service.html" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);">Managed Services</a>
-                    <a href="service.html" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);">Cloud Services</a>
+                <!-- Services -->
+                <div class="footer-card">
+                    <h4>Services</h4>
+
+                    <a href="service.html">Infrastructure Solutions</a>
+                    <a href="service.html">Cybersecurity</a>
+                    <a href="service.html">Managed Services</a>
+                    <a href="service.html">Cloud Services</a>
                 </div>
 
-                <div>
-                    <h4 style="color: var(--primary); font-weight: 200; margin-bottom: 1rem; font-size: clamp(0.9rem, 1.5vw, 1rem);">Support</h4>
-                    <a href="contact.html" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);">Contact Support</a>
-                    <a href="consultation.html" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);">Request Consultation</a>
-                    <a href="ClientDashboardPromo.html" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);">Client Portal</a>
+                <!-- Support -->
+                <div class="footer-card">
+                    <h4>Support</h4>
+
+                    <a href="contact.html">Contact Support</a>
+                    <a href="consultation.html">Request Consultation</a>
+                    <a href="ClientDashboardPromo.html">Client Portal</a>
                 </div>
 
-                <div>
-                    <h4 style="color: var(--primary); font-weight: 200; margin-bottom: 1rem; font-size: clamp(0.9rem, 1.5vw, 1rem);">Connect With Us</h4>
-                    <a href="https://facebook.com" target="_blank" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);"><i class="fab fa-facebook"></i> Facebook</a>
-                    <a href="https://linkedin.com" target="_blank" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);"><i class="fab fa-linkedin"></i> LinkedIn</a>
-                    <a href="https://twitter.com" target="_blank" style="font-size: clamp(0.75rem, 1.2vw, 0.9rem);"><i class="fab fa-twitter"></i> Twitter</a>
+                <!-- Socials -->
+                <div class="footer-card">
+                    <h4>Connect With Us</h4>
+
+                    <a href="https://facebook.com" target="_blank">
+                        <i class="fab fa-facebook"></i> Facebook
+                    </a>
+
+                    <a href="https://linkedin.com" target="_blank">
+                        <i class="fab fa-linkedin"></i> LinkedIn
+                    </a>
+
+                    <a href="https://twitter.com" target="_blank">
+                        <i class="fab fa-twitter"></i> Twitter
+                    </a>
+                </div>
+
+            </div>
+
+            <!-- Bottom Footer -->
+            <div class="footer-bottom">
+                <p>
+                    &copy; 2026 StackOps IT Solutions. All rights reserved.
+                </p>
+
+                <div class="footer-bottom-links">
+                    <a href="#">Privacy Policy</a>
+                    <a href="#">Terms of Service</a>
                 </div>
             </div>
 
-            <div style="text-align: center; color: rgba(255, 255, 255, 0.5); padding-top: 2rem; border-top: 1px solid rgba(255, 255, 255, 0.1); font-size: clamp(0.7rem, 1vw, 0.85rem); font-weight: 100;">
-                <p>&copy; 2026 StackOps IT Solutions. All rights reserved. | <a href="#" style="color: rgba(255, 255, 255, 0.5);">Privacy Policy</a> | <a href="#" style="color: rgba(255, 255, 255, 0.5);">Terms of Service</a></p>
-            </div>
         </div>
+
     </footer>
 
     <script>
