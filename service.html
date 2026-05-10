@@ -78,7 +78,20 @@
         </button>
         <!-- LEFT SIDEBAR MENU -->
         <aside class="solutions-sidebar" id="solutionsSidebar">
-            <button class="solution-button active" data-solution="cisco" data-name="Cisco Duo" data-category="Security">
+
+            
+            <!-- TO-DO Fix order -->
+            <button class="solution-button active" data-solution="stackctrl" data-name="StackCTRL" data-category="Command Center">
+                <div class="solution-button-icon">
+                    <img src="Images/Logos/Ctrl big.png" style="height: 60px; width: 60px;" alt="StackCTRL" />
+                </div>
+                <div class="solution-button-text">
+                    <div class="solution-button-name">StackCTRL</div>
+                    <div class="solution-button-category">SOC</div>
+                </div>
+            </button>
+
+            <button class="solution-button" data-solution="cisco" data-name="Cisco Duo" data-category="Security">
                 <div class="solution-button-icon">
                     <img src="Images/cisco-duo.png" alt="Cisco Duo" />
                 </div>
@@ -95,17 +108,6 @@
                 <div class="solution-button-text">
                     <div class="solution-button-name">Microsoft Partner</div>
                     <div class="solution-button-category">Enterprise</div>
-                </div>
-            </button>
-
-            <!-- TO-DO Fix order -->
-            <button class="solution-button" data-solution="stackctrl" data-name="StackCTRL" data-category="Command Center">
-                <div class="solution-button-icon">
-                    <img src="Images/Logos/Ctrl big.png" style="height: 60px; width: 60px;" alt="StackCTRL" />
-                </div>
-                <div class="solution-button-text">
-                    <div class="solution-button-name">StackCTRL</div>
-                    <div class="solution-button-category">SOC</div>
                 </div>
             </button>
         </aside>
@@ -682,7 +684,7 @@
             });
 
             // Initialize active state
-            updateActiveButton('cisco');
+            updateActiveButton('stackctrl');
 
             // Solution switching with hover preview
             sidebarButtons.forEach(button => {
