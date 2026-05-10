@@ -6309,7 +6309,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
     top: 0;
     background: transparent; /* Removed the background completely */
     z-index: 2;
-    padding: 6px 10px; /* Tighter padding to shrink the table size */
+    padding: 8px 10px; /* Tighter padding to shrink the table size */
     font-size: 0.7rem;
     text-transform: uppercase;
     color: #94a3b8;
@@ -6319,7 +6319,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
 /* Reduced padding on table rows */
 .sunbird-governance-table td {
-    padding: 6px 10px; /* Tighter padding to shrink the table size */
+    padding: 8px 10px; /* Tighter padding to shrink the table size */
     font-size: 0.8rem;
     color: #cbd5e1;
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
