@@ -786,6 +786,7 @@ let latestDevicesCardData = null;
 let latestEmailCardData = null;
 let isNetworkSecurityLocked = false;
 let isCredentialSecurityLocked = false;
+let projectGridHasRendered = false;
 
 function toBooleanMfa(value) {
     if (typeof value === 'boolean') return value;
@@ -886,7 +887,6 @@ async function bootstrapDashboardDataAfterLogin() {
     // Fire all key dashboard data fetches in parallel.
     await Promise.allSettled([
         fetchDuoStats(),
-        fetchIdentityData(mockProjects.find(p => p.id === 2)),
         fetchApplicationsData(),
         fetchDevicesCardData(),
         fetchEmailCardData(),
@@ -1108,6 +1108,7 @@ function populateApplicationsCard(apiData) {
     ];
     appProject.cardFooter = highRiskApps > 0 ? `${highRiskApps} high risk apps` : 'No high risk apps detected';
     appProject.lastUpdate = new Date().toLocaleTimeString();
+    saveProjectCardToCache(appProject);
     
     // Re-render project cards
     displayCurrentProject();
@@ -1334,8 +1335,10 @@ async function fetchDevicesCardData() {
         const token = localStorage.getItem('authToken');
         if (!token) return;
 
-        project.status = 'loading';
-        displayCurrentProject();
+        if (!hasRealProjectMetrics(project)) {
+            project.status = 'loading';
+            displayCurrentProject();
+        }
 
         const response = await fetch('/api/db/device-metrics', {
             method: 'GET',
@@ -1365,6 +1368,7 @@ async function fetchDevicesCardData() {
         ];
         project.cardFooter = nonCompliant > 0 ? `${nonCompliant} non-compliant devices` : 'All devices compliant';
         project.lastUpdate = new Date().toLocaleTimeString();
+        saveProjectCardToCache(project);
         displayCurrentProject();
     } catch (error) {
         console.error('[Devices Card] Error:', error);
@@ -1382,8 +1386,10 @@ async function fetchEmailCardData() {
         const token = localStorage.getItem('authToken');
         if (!token) return;
 
-        project.status = 'loading';
-        displayCurrentProject();
+        if (!hasRealProjectMetrics(project)) {
+            project.status = 'loading';
+            displayCurrentProject();
+        }
 
         const response = await fetch('/api/db/email-metrics', {
             method: 'GET',
@@ -1409,6 +1415,7 @@ async function fetchEmailCardData() {
         const activeThreats = metrics.ActiveThreats || metrics.activeThreats || 0;
         project.cardFooter = activeThreats > 0 ? `${activeThreats} active threats detected` : 'No active threats';
         project.lastUpdate = new Date().toLocaleTimeString();
+        saveProjectCardToCache(project);
         displayCurrentProject();
     } catch (error) {
         console.error('[Email Card] Error:', error);
@@ -4240,6 +4247,53 @@ let sunbirdDashboardData = null;
 
 let identityDashboardUpdateInterval = null;
 let lastIdentityMetrics = null;
+const PROJECT_CARD_CACHE_KEY = 'stackopsProjectCardSnapshot';
+
+function hasRealProjectMetrics(project) {
+    return Array.isArray(project?.cardMetrics) && project.cardMetrics.some(metric => {
+        const value = Number(String(metric.value ?? '').replace(':', '').replace('%', '').trim());
+        return Number.isFinite(value) && value > 0;
+    });
+}
+
+function readProjectCardCache() {
+    try {
+        return JSON.parse(localStorage.getItem(PROJECT_CARD_CACHE_KEY) || '{}');
+    } catch (error) {
+        return {};
+    }
+}
+
+function saveProjectCardToCache(project) {
+    if (!project || !hasRealProjectMetrics(project)) return;
+    const snapshot = readProjectCardCache();
+    snapshot[project.id] = {
+        status: project.status,
+        securityScore: project.securityScore,
+        risks: project.risks,
+        cardMetrics: project.cardMetrics,
+        cardFooter: project.cardFooter,
+        lastUpdate: project.lastUpdate,
+        savedAt: Date.now()
+    };
+    localStorage.setItem(PROJECT_CARD_CACHE_KEY, JSON.stringify(snapshot));
+}
+
+function applyCachedProjectCards() {
+    const snapshot = readProjectCardCache();
+    mockProjects.forEach(project => {
+        const cached = snapshot[project.id];
+        if (!cached || !Array.isArray(cached.cardMetrics)) return;
+        if (hasRealProjectMetrics(project)) return;
+
+        project.status = cached.status || 'active';
+        project.securityScore = cached.securityScore ?? project.securityScore;
+        project.risks = cached.risks || project.risks;
+        project.cardMetrics = cached.cardMetrics;
+        project.cardFooter = cached.cardFooter || project.cardFooter;
+        project.lastUpdate = cached.lastUpdate || project.lastUpdate;
+    });
+}
 
 // Normalize API response to ensure all required analytics data exists
 function normalizeSunbirdDashboardData(data) {
@@ -4374,6 +4428,7 @@ function updateIdentityProjectCardFromDashboard(data) {
     ];
     project.cardFooter = `Users: ${totalUsers} | Active: ${activeUsers}`;
     project.lastUpdate = new Date().toLocaleTimeString();
+    saveProjectCardToCache(project);
 }
 
 async function fetchIdentityAccessData() {
@@ -4388,7 +4443,7 @@ async function fetchIdentityAccessData() {
         identityProjectForState = mockProjects.find(p => p.id === 2);
         isFirstLoad = !sunbirdDashboardData;
         
-        if (isFirstLoad && identityProjectForState) {
+        if (isFirstLoad && identityProjectForState && !hasRealProjectMetrics(identityProjectForState)) {
             identityProjectForState.status = 'loading';
             displayCurrentProject();
         }
@@ -5388,6 +5443,7 @@ function populateIdentityTable() {
 function initializeProjectsList() {
     const projectsGrid = document.getElementById('projects-grid');
     if (!projectsGrid) return;
+    applyCachedProjectCards();
     projectsGrid.innerHTML = '';
     
     const carouselProjects = getFilteredProjects();
@@ -5403,7 +5459,7 @@ function initializeProjectsList() {
     const isLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
     if (token && isLoggedIn) {
         fetchDuoStats();
-        fetchIdentityAccessData(); 
+        fetchIdentityData(mockProjects.find(p => p.id === 2));
         fetchApplicationsData(); 
         fetchDevicesCardData();
         fetchEmailCardData();
@@ -5415,6 +5471,7 @@ function displayCurrentProject() {
     if (carouselProjects.length === 0) return;
     
     const projectsGrid = document.getElementById('projects-grid');
+    projectsGrid.classList.toggle('project-grid-updating', projectGridHasRendered);
     projectsGrid.innerHTML = '';
     
     // Display 3 projects at a time
@@ -5461,6 +5518,7 @@ function displayCurrentProject() {
     });
 
     renderSidePeekCards();
+    projectGridHasRendered = true;
     
     document.getElementById('project-current').textContent = currentProjectIndex + 1;
     
@@ -5970,18 +6028,6 @@ function buildApplicationsPreviewModel() {
 // Fetch  Identity Protection data from API
 async function fetchIdentityData(project) {
     try {
-        // Sunbird requires enriched identity payload (roles, MFA, risk, sign-in metadata).
-        // The DB identity-details response can be safely merged with enrichment payloads.
-        if (isSunbirdUser()) {
-            console.log('[Identity] Sunbird user detected, using enriched identity loader');
-            // Render instantly using any already-loaded snapshot, then hydrate in background.
-            initializeIdentityDashboard();
-            fetchIdentityAccessData().catch((error) => {
-                console.error('[Identity] Background hydrate failed:', error);
-            });
-            return;
-        }
-
         console.log('[Identity] Fetching cached identity metrics...');
         const authToken = localStorage.getItem('authToken');
         
@@ -6016,6 +6062,7 @@ async function fetchIdentityData(project) {
         project.securityScore = securityScore;
         project.lastUpdate = new Date().toLocaleTimeString();
         project.cardFooter = `Users: ${totalUsers} | Active: ${activeUsers}`;
+        saveProjectCardToCache(project);
         displayCurrentProject();
         
     } catch (error) {
