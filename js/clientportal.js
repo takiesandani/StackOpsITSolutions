@@ -3751,12 +3751,22 @@ function showError(message) {
 let isSunbirdDashboard = false;
 let sunbirdDashboardData = null;
 
+// ════════════════════════════════════════════════════════════════════════════════
+// IDENTITY ACCESS DATA - Smooth Updates from Cached Database
+// ════════════════════════════════════════════════════════════════════════════════
+
+let identityDashboardUpdateInterval = null;
+let lastIdentityMetrics = null;
+
 async function fetchIdentityAccessData() {
     const requestId = ++identityFetchRequestId;
     const isStaleRequest = () => requestId !== identityFetchRequestId;
+    
     try {
         const identityProjectForState = mockProjects.find(p => p.id === 2);
-        if (identityProjectForState) {
+        const isFirstLoad = !sunbirdDashboardData;
+        
+        if (isFirstLoad && identityProjectForState) {
             identityProjectForState.status = 'loading';
             displayCurrentProject();
         }
@@ -3769,379 +3779,227 @@ async function fetchIdentityAccessData() {
             return;
         }
 
-        // Only fetch  Identity Protection data for Sunbird users
         if (!isSunbirdUser()) {
             console.log('[Identity Access] Non-Sunbird user. Skipping fetch.');
             return;
         }
 
-        console.log('[Identity Access] Attempting to fetch Sunbird dashboard data...');
+        console.log('[Identity Access] Fetching cached dashboard data from database...');
         
-        // Try to fetch Sunbird enhanced dashboard first
-        try {
-            const sunbirdResponse = await fetch('/api/sunbird/identity-dashboard', {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            if (sunbirdResponse.ok) {
-                const sunbirdData = await sunbirdResponse.json();
-                if (isStaleRequest()) return;
-                if (sunbirdData.success) {
-                    console.log('[Identity Access] Sunbird dashboard loaded successfully');
-                    isSunbirdDashboard = true;
-                    sunbirdDashboardData = sunbirdData;
-                    
-                    // Map Sunbird data to existing global variables and ENRICH with missing fields
-                    microsoftUsersData = (sunbirdData.users || []).map(user => ({
-                        // Core identity fields
-                        id: user.id,
-                        displayName: user.displayName,
-                        mail: user.mail,
-                        userPrincipalName: user.userPrincipalName,
-                        jobTitle: user.jobTitle,
-                        mobilePhone: user.mobilePhone,
-                        isExternal: user.isExternal,
-                        
-                        // Roles (from Sunbird)
-                        roles: user.roles || [],
-                        
-                        // MFA fields (from Sunbird)
-                        mfaEnabled: toBooleanMfa(user.mfaEnabled),
-                        authMethodCount: user.authMethods?.length || user.authMethodCount || 0,
-                        authMethods: user.authMethods || [],
-                        
-                        // Risk assessment (from Sunbird)
-                        riskLevel: user.riskLevel || 'SAFE',
-                        
-                        // Sign-in and location data (from Sunbird)
-                        lastSignIn: {
-                            dateTime: user.lastSignIn?.dateTime || user.latestSignInDateTime || null,
-                            location: user.lastSignIn?.location || user.signInLocation || 'Unknown',
-                            device: user.lastSignIn?.device || user.deviceDetail?.displayName || user.deviceName || 'Unknown Device',
-                            ipAddress: user.lastSignIn?.ipAddress || user.ipAddress || 'N/A'
-                        },
-                        
-                        // Status fields (from Sunbird)
-                        accountEnabled: user.accountEnabled !== false,
-                        
-                        // Preserve any additional Sunbird-specific fields
-                        ...user
-                    }));
-                    if (isStaleRequest()) return;
-                    
-                    console.log('[Identity Access] Sunbird users enriched with MFA, Risk, and Sign-in data');
-                    console.log('[Identity Access] Sample enriched user:', microsoftUsersData[0]);
-                    console.log('[Identity Access] Sample roles:', microsoftUsersData[0]?.roles);
-                    console.log('[Identity Access] Sample jobTitle:', microsoftUsersData[0]?.jobTitle);
-                    
-                    // Detailed logging for first 3 users
-                    microsoftUsersData.slice(0, 3).forEach((user, idx) => {
-                        console.log(`[Identity Access] User ${idx}: ${user.displayName} - roles:`, user.roles, 'jobTitle:', user.jobTitle);
-                    });
-                    
-                    // Build role map from enriched users
-                    userRolesMap = {};
-                    microsoftUsersData.forEach(user => {
-                        if (user.roles && user.roles.length > 0) {
-                            userRolesMap[user.id] = user.roles.map(r => typeof r === 'string' ? r : (r?.name || 'Unknown Role'));
-                        }
-                    });
-                    
-                    // Build mock roles data for compatibility
-                    microsoftRolesData = [];
-                    microsoftUsersData.forEach(user => {
-                        if (user.roles && user.roles.length > 0) {
-                            user.roles.forEach(role => {
-                                const roleName = typeof role === 'string' ? role : (role?.name || 'Unknown Role');
-                                microsoftRolesData.push({
-                                    id: role?.id || `role-${roleName}`,
-                                    principalId: user.id,
-                                    roleName: roleName
-                                });
-                            });
-                        }
-                    });
-                    
-                    console.log('[Identity Access] Sunbird data mapped to globals');
-                    console.log(`[Identity Access] Enriched ${microsoftUsersData.length} users with roles, MFA, risk, and sign-in data`);
-                    
-                    // Update card with Sunbird metrics
-                    const identityProject = mockProjects.find(p => p.id === 2);
-                    if (identityProject) {
-                        const usersWithoutMfa = (sunbirdData.users || []).filter(user => !user.mfaEnabled).length;
-                        identityProject.cardMetrics = [
-                            { label: "Total Users", value: `: ${sunbirdData.summary.totalUsers}`, icon: "fas fa-users" },
-                            { label: "Active (24h)", value: `: ${sunbirdData.summary.activeUsers24h}`, icon: "fas fa-user-check" },
-                            { label: "Admin Roles", value: `: ${sunbirdData.summary.adminUsers}`, icon: "fas fa-crown" },
-                            { label: "Security Score", value: `: ${sunbirdData.summary.securityScore}`, icon: "fas fa-shield-alt" }
-                        ];
-                        identityProject.status = 'active';
-                        identityProject.cardFooter = usersWithoutMfa > 0 ? `${usersWithoutMfa} users without MFA` : 'All users secured';
-                        identityProject.lastUpdate = new Date().toLocaleTimeString();
-                        displayCurrentProject();
-                    }
-
-                    // If Identity dashboard view is open, reinitialize immediately with fresh data.
-                    const dashboardView = document.getElementById('dashboard-view');
-                    const projectName = document.getElementById('project-name');
-                    const isIdentityOpen = dashboardView &&
-                        dashboardView.style.display !== 'none' &&
-                        String(projectName?.textContent || '').toLowerCase().includes('identity protection');
-                    if (isIdentityOpen) {
-                        console.log('[Identity Access] Identity dashboard open, reinitializing with fresh data');
-                        setTimeout(() => initializeIdentityDashboard(), 100);
-                    }
-                    
-                    return; // Skip to end - Sunbird data fully loaded
-                }
-            }
-        } catch (sunbirdError) {
-            console.log('[Identity Access] Sunbird endpoint not available, falling back to standard API');
-        }
-
-        // Fallback: load users first for fast paint, enrich in background.
-        console.log('[Identity Access] Fast-loading cached identity users first...');
-        const usersStart = performance.now();
-        const usersResponse = await fetch('/api/db/identity-details', {
+        const sunbirdResponse = await fetch('/api/sunbird/identity-dashboard-cached', {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             }
         });
-        if (isStaleRequest()) return;
-        if (!usersResponse.ok) {
-            const errData = await usersResponse.json().catch(() => ({}));
-            throw new Error(errData.message || `Users API failed: ${usersResponse.status}`);
-        }
-        const usersData = await usersResponse.json();
-        if (isStaleRequest()) return;
-        if (!usersData.success || !Array.isArray(usersData.users)) {
-            throw new Error(usersData.message || 'Invalid users response format');
-        }
-        microsoftUsersData = usersData.users || [];
-        console.log(`[Identity Access] ✓ Loaded ${microsoftUsersData.length} users (${(performance.now() - usersStart).toFixed(0)}ms)`);
 
-        // Fast card update before enrichers complete.
-        const identityProjectQuick = mockProjects.find(p => p.id === 2);
-        if (identityProjectQuick) {
-            identityProjectQuick.cardMetrics = [
-                { label: "Total Users", value: `: ${microsoftUsersData.length}`, icon: "fas fa-users" },
-                { label: "Active (24h)", value: ": ...", icon: "fas fa-user-check" },
-                { label: "Admin Roles", value: ": ...", icon: "fas fa-crown" },
-                { label: "Security Score", value: ": ...", icon: "fas fa-shield-alt" }
-            ];
-            identityProjectQuick.status = 'active';
-            identityProjectQuick.cardFooter = `Users loaded: ${microsoftUsersData.length} | Enriching...`;
-            identityProjectQuick.lastUpdate = new Date().toLocaleTimeString();
-            displayCurrentProject();
-            const isIdentityOpenQuick = document.getElementById('dashboard-view')?.style.display !== 'none' &&
-                String(document.getElementById('project-name')?.textContent || '').toLowerCase().includes('identity protection');
-            if (isIdentityOpenQuick) {
-                setTimeout(() => initializeIdentityDashboard(), 30);
-            }
-        }
-
-        // Background enrichers
-        const startTime = performance.now();
-        const [rolesResult, mfaResult, signInResult] = await Promise.allSettled([
-            fetch('/api/microsoft-roles', {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
-            }),
-            fetch('/api/user-mfa-status', {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
-            }),
-            fetch('/api/sign-in-logs', {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
-            })
-        ]);
-        if (isStaleRequest()) return;
-        const loadTime = performance.now() - startTime;
-        console.log(`[Identity Access] Enrichment API calls completed in ${loadTime.toFixed(0)}ms`);
-
-        // Process Roles - OPTIONAL
-        if (rolesResult.status === 'fulfilled' && rolesResult.value.ok) {
-            try {
-                const rolesData = await rolesResult.value.json();
-                if (isStaleRequest()) return;
-                if (rolesData.success && rolesData.roleAssignments) {
-                    microsoftRolesData = rolesData.roleAssignments || [];
-                    buildUserRolesMap();
-                    console.log(`[Identity Access] ✓ Loaded ${microsoftRolesData.length} role assignments`);
-                }
-            } catch (e) {
-                console.warn('[Identity Access] Could not process roles:', e.message);
-            }
-        } else {
-            console.warn('[Identity Access] ⚠ Roles API unavailable');
-        }
-
-        // Process MFA Status - OPTIONAL (Enriches existing users)
-        if (mfaResult.status === 'fulfilled' && mfaResult.value.ok) {
-            try {
-                const mfaData = await mfaResult.value.json();
-                if (isStaleRequest()) return;
-                if (mfaData.success && mfaData.mfaStatus) {
-                    // Merge MFA data into user objects
-                    mfaData.mfaStatus.forEach(mfaInfo => {
-                        const user = microsoftUsersData.find(u => u.id === mfaInfo.userId);
-                        if (user) {
-                            user.mfaEnabled = toBooleanMfa(mfaInfo.mfaEnabled);
-                            user.authMethodCount = mfaInfo.authMethodCount || 0;
-                            user.authMethods = mfaInfo.authMethods || [];
-                        }
-                    });
-                    console.log(`[Identity Access] ✓ Enriched ${mfaData.mfaStatus.length} users with MFA data`);
-                }
-            } catch (e) {
-                console.warn('[Identity Access] ⚠ Could not process MFA data:', e.message);
-            }
-        } else {
-            console.warn('[Identity Access] ⚠ MFA API unavailable - using defaults');
-            // Set default MFA status if API unavailable
-            microsoftUsersData.forEach(user => {
-                if (user.mfaEnabled === undefined) user.mfaEnabled = false;
-                user.mfaEnabled = toBooleanMfa(user.mfaEnabled);
-                if (user.authMethodCount === undefined) user.authMethodCount = 0;
-            });
-        }
-
-        // Process Sign-In Logs - OPTIONAL (Enriches user activity)
-        if (signInResult.status === 'fulfilled' && signInResult.value.ok) {
-            try {
-                const signInData = await signInResult.value.json();
-                if (isStaleRequest()) return;
-                if (signInData.success && signInData.signInLogs) {
-                    // Merge sign-in data into user objects
-                    const userSignInMap = {}; // userId -> latest sign-in
-                    signInData.signInLogs.forEach(log => {
-                        const userId = log.userId;
-                        if (!userSignInMap[userId] || new Date(log.createdDateTime) > new Date(userSignInMap[userId].createdDateTime)) {
-                            userSignInMap[userId] = log;
-                        }
-                    });
+        if (sunbirdResponse.ok) {
+            const sunbirdData = await sunbirdResponse.json();
+            if (isStaleRequest()) return;
+            
+            if (sunbirdData.success) {
+                console.log('[Identity Access] Cached dashboard loaded successfully');
+                isSunbirdDashboard = true;
+                sunbirdDashboardData = sunbirdData;
+                
+                // Enrich users
+                microsoftUsersData = (sunbirdData.users || []).map(user => ({
+                    id: user.id,
+                    displayName: user.displayName,
+                    mail: user.mail,
+                    userPrincipalName: user.userPrincipalName,
+                    jobTitle: user.jobTitle,
+                    mobilePhone: user.mobilePhone,
+                    roles: user.roles || [],
+                    mfaEnabled: toBooleanMfa(user.mfaEnabled),
+                    authMethodCount: user.authMethodCount || 0,
+                    riskLevel: user.riskLevel || 'SAFE',
+                    isExternal: user.isExternal,
+                    accountEnabled: user.accountEnabled !== false,
+                    lastSignIn: {
+                        dateTime: user.lastSignIn?.dateTime || null,
+                        location: user.lastSignIn?.location || 'Unknown',
+                        device: user.lastSignIn?.device || 'Unknown Device',
+                        daysSince: user.lastSignIn?.daysSince || 999
+                    },
+                    ...user
+                }));
+                
+                // FIRST LOAD: Render everything normally
+                if (isFirstLoad) {
+                    console.log('[Identity Access] FIRST LOAD - Rendering full dashboard');
+                    initializeIdentityInsights();
+                    initializeIdentityCharts();
+                    populateIdentityUsersTable();
                     
-                    // Update users with latest sign-in info
-                    microsoftUsersData.forEach(user => {
-                        if (userSignInMap[user.id]) {
-                            const signIn = userSignInMap[user.id];
-                            user.lastSignIn = {
-                                dateTime: signIn.createdDateTime,
-                                location: signIn.location || 'Unknown',
-                                device: signIn.deviceDetail?.displayName || 'Unknown Device',
-                                ipAddress: signIn.ipAddress || 'N/A'
-                            };
-                        } else {
-                            user.lastSignIn = {
-                                dateTime: null,
-                                location: 'No sign-in',
-                                device: 'Unknown',
-                                ipAddress: 'N/A'
-                            };
-                        }
-                    });
-                    console.log(`[Identity Access] ✓ Enriched sign-in data for ${Object.keys(userSignInMap).length} users`);
+                    if (identityProjectForState) {
+                        identityProjectForState.status = 'completed';
+                        displayCurrentProject();
+                    }
+                    
+                    // Store initial metrics for comparison
+                    lastIdentityMetrics = JSON.parse(JSON.stringify(sunbirdData.metrics));
+                    
+                    // Start polling for updates every 1 minute
+                    startIdentityDashboardUpdates();
+                    
+                } else {
+                    // SUBSEQUENT UPDATES: Only update values smoothly
+                    console.log('[Identity Access] UPDATE - Smoothly updating values only');
+                    updateIdentityDashboardValuesSmootly();
                 }
-            } catch (e) {
-                console.warn('[Identity Access] ⚠ Could not process sign-in logs:', e.message);
+                
             }
         } else {
-            console.warn('[Identity Access] ⚠ Sign-In Logs API unavailable');
-            // Set default sign-in status
-            microsoftUsersData.forEach(user => {
-                if (!user.lastSignIn) {
-                    user.lastSignIn = {
-                        dateTime: null,
-                        location: 'Unknown',
-                        device: 'Unknown',
-                        ipAddress: 'N/A'
-                    };
-                }
-            });
+            throw new Error(`API returned ${sunbirdResponse.status}`);
         }
-
-        // Calculate risk levels for users (local computation)
-        microsoftUsersData.forEach(user => {
-            let riskLevel = 'SAFE';
-            const isAdmin = !!userRolesMap[user.id];
-            const hasOldSignIn = user.lastSignIn && user.lastSignIn.dateTime 
-                ? ((Date.now() - new Date(user.lastSignIn.dateTime).getTime()) > 30 * 24 * 60 * 60 * 1000) 
-                : false;
-            const missingMFA = isAdmin && !user.mfaEnabled;
-            
-            if (missingMFA || hasOldSignIn) {
-                riskLevel = 'HIGH';
-            } else if (user.isExternal || (user.authMethodCount && user.authMethodCount === 1)) {
-                riskLevel = 'MEDIUM';
-            }
-            
-            user.riskLevel = riskLevel;
-        });
-        console.log('[Identity Access] ✓ Risk levels calculated for all users');
-
-        // Update the  Identity Protection project card with real data
-        const identityProject = mockProjects.find(p => p.id === 2);
-        if (identityProject) {
-            const externalUsers = microsoftUsersData.filter(u => u.isExternal).length;
-            const adminsCount = Object.keys(userRolesMap).length;
-            const active24h = microsoftUsersData.filter(u => {
-                const dt = u?.lastSignIn?.dateTime ? new Date(u.lastSignIn.dateTime).getTime() : 0;
-                if (!dt) return false;
-                return (Date.now() - dt) <= (24 * 60 * 60 * 1000);
-            }).length;
-            const usersWithoutMfa = microsoftUsersData.filter(u => !u.mfaEnabled).length;
-            
-            identityProject.cardMetrics = [
-                { label: "Total Users", value: `: ${microsoftUsersData.length}`, icon: "fas fa-users" },
-                { label: "Active (24h)", value: `: ${active24h}`, icon: "fas fa-user-check" },
-                { label: "Admin Roles", value: `: ${adminsCount}`, icon: "fas fa-crown" },
-                { label: "Security Score", value: `: ${Math.max(0, 100 - (externalUsers + usersWithoutMfa))}`, icon: "fas fa-shield-alt" }
-            ];
-            identityProject.status = 'active';
-            identityProject.cardFooter = usersWithoutMfa > 0 ? `${usersWithoutMfa} users without MFA` : 'All users secured';
-            identityProject.lastUpdate = new Date().toLocaleTimeString();
-            
-            // Refresh the display to show updated data
-            displayCurrentProject();
-            console.log('[Identity Access] Card updated with real user data');
-        }
-        if (isStaleRequest()) return;
-
-        // If Identity dashboard view is open, reinitialize with updated fallback data.
-        const dashboardView = document.getElementById('dashboard-view');
-        const projectName = document.getElementById('project-name');
-        const isIdentityOpen = dashboardView &&
-            dashboardView.style.display !== 'none' &&
-            String(projectName?.textContent || '').toLowerCase().includes('identity protection');
-        if (isIdentityOpen) {
-            setTimeout(() => initializeIdentityDashboard(), 100);
-        }
-
+        
     } catch (error) {
-        console.error('[Identity Access] Error fetching data:', error.message);
-        const identityProject = mockProjects.find(p => p.id === 2);
-        if (identityProject) {
-            identityProject.status = 'error';
-            identityProject.cardFooter = 'Data unavailable';
+        console.error('[Identity Access] Error:', error);
+        const identityProjectForState = mockProjects.find(p => p.id === 2);
+        if (identityProjectForState) {
+            identityProjectForState.status = 'error';
             displayCurrentProject();
         }
     }
+}
+
+// Start polling for updates every 1 minute
+function startIdentityDashboardUpdates() {
+    if (identityDashboardUpdateInterval) return;
+    
+    console.log('[Identity Dashboard] Starting smooth updates every 1 minute...');
+    
+    identityDashboardUpdateInterval = setInterval(() => {
+        fetchUpdatedIdentityData();
+    }, 60000); // Every 1 minute
+}
+
+// Stop polling
+function stopIdentityDashboardUpdates() {
+    if (identityDashboardUpdateInterval) {
+        clearInterval(identityDashboardUpdateInterval);
+        identityDashboardUpdateInterval = null;
+        console.log('[Identity Dashboard] Stopped polling updates');
+    }
+}
+
+// Fetch updated data silently
+async function fetchUpdatedIdentityData() {
+    try {
+        const token = localStorage.getItem('authToken');
+        if (!token) return;
+        
+        const response = await fetch('/api/sunbird/identity-dashboard-cached', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+                sunbirdDashboardData = data;
+                microsoftUsersData = (data.users || []).map(user => ({...user}));
+                
+                // Smoothly update UI values
+                updateIdentityDashboardValuesSmootly();
+            }
+        }
+    } catch (error) {
+        console.error('[Identity Dashboard] Failed to fetch update:', error);
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// Smooth Value Updates - NO FLASHING
+// Only text content changes, DOM structure stays intact
+// ════════════════════════════════════════════════════════════════════════════════
+
+function updateIdentityDashboardValuesSmootly() {
+    try {
+        const metrics = sunbirdDashboardData.metrics;
+        const riskBreakdown = sunbirdDashboardData.riskBreakdown;
+        
+        const updates = [
+            // Main stats
+            { selector: '[data-stat="totalUsers"]', value: metrics.totalUsers || 0 },
+            { selector: '[data-stat="adminUsers"]', value: metrics.adminUsers || 0 },
+            { selector: '[data-stat="mfaEnabledUsers"]', value: metrics.mfaEnabledUsers || 0 },
+            { selector: '[data-stat="mfaPercentage"]', value: (metrics.mfaPercentage || 0) + '%' },
+            { selector: '[data-stat="highRiskUsers"]', value: metrics.highRiskUsers || 0 },
+            { selector: '[data-stat="mediumRiskUsers"]', value: metrics.mediumRiskUsers || 0 },
+            { selector: '[data-stat="activeUsers24h"]', value: metrics.activeUsers24h || 0 },
+            { selector: '[data-stat="completeProfiles"]', value: metrics.usersWithCompleteProfile || 0 },
+            { selector: '[data-stat="identityRiskScore"]', value: metrics.identityRiskScore || 0 },
+            { selector: '[data-stat="privilegedWithoutMFA"]', value: metrics.privilegedUsersWithoutMFA || 0 },
+            
+            // Inactivity breakdown
+            { selector: '[data-inactivity="0-7"]', value: riskBreakdown.inactivity['0-7days'] || 0 },
+            { selector: '[data-inactivity="7-30"]', value: riskBreakdown.inactivity['7-30days'] || 0 },
+            { selector: '[data-inactivity="30-90"]', value: riskBreakdown.inactivity['30-90days'] || 0 },
+            { selector: '[data-inactivity="90+"]', value: riskBreakdown.inactivity['90+days'] || 0 },
+            
+            // Device trust
+            { selector: '[data-device="managed"]', value: riskBreakdown.deviceTrust.managed || 0 },
+            { selector: '[data-device="unmanaged"]', value: riskBreakdown.deviceTrust.unmanaged || 0 },
+            { selector: '[data-device="unknown"]', value: riskBreakdown.deviceTrust.unknown || 0 },
+            
+            // Auth strength
+            { selector: '[data-auth="passwordOnly"]', value: riskBreakdown.authenticationStrength.passwordOnly || 0 },
+            { selector: '[data-auth="basicMFA"]', value: riskBreakdown.authenticationStrength.basicMFA || 0 },
+            { selector: '[data-auth="strongMFA"]', value: riskBreakdown.authenticationStrength.strongMFA || 0 }
+        ];
+        
+        // Update all values smoothly (just text, no re-rendering)
+        updates.forEach(({ selector, value }) => {
+            const element = document.querySelector(selector);
+            if (element && element.textContent !== String(value)) {
+                // Subtle fade effect on change
+                element.textContent = value;
+                element.style.opacity = '0.7';
+                setTimeout(() => { 
+                    if (element) element.style.opacity = '1'; 
+                }, 200);
+            }
+        });
+        
+        // Update tables only if data changed significantly
+        if (hasMetricsChanged()) {
+            console.log('[Identity Dashboard] Metrics changed - updating table');
+            populateIdentityUsersTable();
+        }
+        
+        console.log('[Identity Dashboard] ✅ Values updated smoothly - no flashing');
+        
+    } catch (error) {
+        console.error('[Identity Dashboard] Error updating values:', error);
+    }
+}
+
+// Check if metrics have significantly changed
+function hasMetricsChanged() {
+    if (!lastIdentityMetrics) return true;
+    
+    const current = sunbirdDashboardData.metrics;
+    const threshold = 0.02; // 2% change threshold
+    
+    const checks = [
+        Math.abs((current.totalUsers - lastIdentityMetrics.totalUsers) / lastIdentityMetrics.totalUsers) > threshold,
+        Math.abs((current.highRiskUsers - lastIdentityMetrics.highRiskUsers) / (lastIdentityMetrics.highRiskUsers || 1)) > threshold,
+        Math.abs((current.mfaPercentage - lastIdentityMetrics.mfaPercentage)) > 2,
+        current.identityRiskScore !== lastIdentityMetrics.identityRiskScore
+    ];
+    
+    if (checks.some(c => c)) {
+        lastIdentityMetrics = JSON.parse(JSON.stringify(current));
+        return true;
+    }
+    
+    return false;
 }
 
 // Build a map of users to their assigned roles
