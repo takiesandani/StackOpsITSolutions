@@ -3964,7 +3964,27 @@ async function fetchIdentityAccessData() {
                     populateIdentityTable();
                     
                     if (identityProjectForState) {
-                        identityProjectForState.status = 'completed';
+                        // Update card metrics with actual data
+                        const totalUsers = microsoftUsersData.length;
+                        const activeUsers24h = microsoftUsersData.filter(u => {
+                            const lastSignIn = u?.lastSignIn?.dateTime;
+                            if (!lastSignIn) return false;
+                            const dt = new Date(lastSignIn).getTime();
+                            const now = Date.now();
+                            return (now - dt) <= (24 * 60 * 60 * 1000);
+                        }).length;
+                        const adminRoles = new Set(microsoftUsersData.filter(u => (u.roles || []).length > 0).map(u => u.id)).size;
+                        const securityScore = Math.round((microsoftUsersData.filter(u => u.mfaEnabled).length / totalUsers) * 100) || 0;
+                        
+                        identityProjectForState.status = 'active';
+                        identityProjectForState.cardMetrics = [
+                            { label: "Total Users", value: `: ${totalUsers}`, icon: "fas fa-users" },
+                            { label: "Active (24h)", value: `: ${activeUsers24h}`, icon: "fas fa-user-check" },
+                            { label: "Admin Roles", value: `: ${adminRoles}`, icon: "fas fa-crown" },
+                            { label: "MFA Enabled", value: `: ${securityScore}%`, icon: "fas fa-shield-alt" }
+                        ];
+                        identityProjectForState.cardFooter = `Users: ${totalUsers} | Active: ${activeUsers24h}`;
+                        identityProjectForState.lastUpdate = new Date().toLocaleTimeString();
                         displayCurrentProject();
                     }
                     
@@ -3978,6 +3998,28 @@ async function fetchIdentityAccessData() {
                     // SUBSEQUENT UPDATES: Only update values smoothly
                     console.log('[Identity Access] UPDATE - Smoothly updating values only');
                     updateIdentityDashboardValuesSmoothly();
+                    
+                    // Also update card metrics for non-first loads
+                    const identityProjectForUpdate = mockProjects.find(p => p.id === 2);
+                    if (identityProjectForUpdate && microsoftUsersData.length > 0) {
+                        const totalUsers = microsoftUsersData.length;
+                        const activeUsers24h = microsoftUsersData.filter(u => {
+                            const lastSignIn = u?.lastSignIn?.dateTime;
+                            if (!lastSignIn) return false;
+                            const dt = new Date(lastSignIn).getTime();
+                            const now = Date.now();
+                            return (now - dt) <= (24 * 60 * 60 * 1000);
+                        }).length;
+                        const adminRoles = new Set(microsoftUsersData.filter(u => (u.roles || []).length > 0).map(u => u.id)).size;
+                        const securityScore = Math.round((microsoftUsersData.filter(u => u.mfaEnabled).length / totalUsers) * 100) || 0;
+                        
+                        identityProjectForUpdate.cardMetrics = [
+                            { label: "Total Users", value: `: ${totalUsers}`, icon: "fas fa-users" },
+                            { label: "Active (24h)", value: `: ${activeUsers24h}`, icon: "fas fa-user-check" },
+                            { label: "Admin Roles", value: `: ${adminRoles}`, icon: "fas fa-crown" },
+                            { label: "MFA Enabled", value: `: ${securityScore}%`, icon: "fas fa-shield-alt" }
+                        ];
+                    }
                 }
                 
             }
@@ -5583,6 +5625,9 @@ function resetDashboard() {
     const allCards = document.querySelectorAll('.project-card');
     allCards.forEach(card => card.classList.remove('glow-selected'));
     hideProjectPreview();
+    
+    // Re-render the project cards with updated metrics after returning to projects view
+    displayCurrentProject();
 }
 
 // ============================================
