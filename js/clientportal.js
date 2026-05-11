@@ -572,7 +572,7 @@ function switchProjectTab(tabId) {
 // Handles user management, role assignments, and identity data
 // from Microsoft Graph, including user lists and access control
 
-// Fetch Microsoft users and populate  Identity Protection cards
+// Fetch Microsoft users and populate Identity Protection cards
 async function fetchMicrosoftUsersForCard() {
     try {
         const authToken = localStorage.getItem('authToken');
@@ -581,13 +581,10 @@ async function fetchMicrosoftUsersForCard() {
             return;
         }
 
-        // Only fetch Microsoft users for Sunbird users
         if (!isSunbirdUser()) {
             console.log('[Microsoft Users] Non-Sunbird user. Skipping fetch.');
             return;
         }
-        
-        console.log('[Microsoft Users] Fetching users data...');
         
         const response = await fetch('/api/db/identity-details', {
             method: 'GET',
@@ -605,10 +602,7 @@ async function fetchMicrosoftUsersForCard() {
             return;
         }
         
-        microsoftUsersData = data.users || [];
-        console.log(`[Microsoft Users] Loaded ${microsoftUsersData.length} users`);
-        
-        // Populate  Identity Protection cards
+        // Pass the entire data object to the population function
         populateIdentityCards(data);
         
     } catch (error) {
@@ -617,31 +611,31 @@ async function fetchMicrosoftUsersForCard() {
     }
 }
 
-// Populate  Identity Protection cards
+// Populate Identity Protection cards
 function populateIdentityCards(apiData) {
     const container = document.getElementById('identity-cards-container');
-    
-    if (!container) {
-        console.error('[Identity Cards] Container not found');
-        return;
-    }
-    
+    if (!container) return;
+
     container.innerHTML = '';
     
-    // Calculate statistics from API data
-    const totalUsers = apiData.totalUsers || microsoftUsersData.length;
-    const externalUsers = microsoftUsersData.filter(u => u.isExternal).length;
-    const internalUsers = totalUsers - externalUsers;
-    const missingData = microsoftUsersData.filter(u => !u.jobTitle || !u.mobilePhone).length;
+    // 1. Prioritize aggregate stats sent from the database/backend
+    // 2. Fallback to calculating from the users array if aggregates aren't provided
+    const users = apiData.users || [];
+    const stats = {
+        total: apiData.totalUsers ?? users.length,
+        external: apiData.externalCount ?? users.filter(u => u.isExternal).length,
+        missing: apiData.missingDataCount ?? users.filter(u => !u.jobTitle || !u.mobilePhone).length
+    };
     
-    // Create main  Identity Protection card
+    const internalUsers = stats.total - stats.external;
+
     const card = document.createElement('div');
     card.className = 'identity-card';
     card.innerHTML = `
         <div class="identity-card-header">
-            <i class="fas fa-users"></i>
+            <i class="fas fa-shield-alt"></i>
             <div>
-                <div class="identity-card-title"> Identity Protection</div>
+                <div class="identity-card-title">Identity Protection</div>
                 <div class="identity-card-type">User Management & Access Control</div>
             </div>
         </div>
@@ -659,11 +653,11 @@ function populateIdentityCards(apiData) {
         
         <div class="identity-card-stats">
             <div class="identity-stat">
-                <span class="identity-stat-value">${totalUsers}</span>
+                <span class="identity-stat-value">${stats.total}</span>
                 <span class="identity-stat-label">Total Users</span>
             </div>
             <div class="identity-stat">
-                <span class="identity-stat-value">${externalUsers}</span>
+                <span class="identity-stat-value">${stats.external}</span>
                 <span class="identity-stat-label">External</span>
             </div>
             <div class="identity-stat">
@@ -671,7 +665,7 @@ function populateIdentityCards(apiData) {
                 <span class="identity-stat-label">Internal</span>
             </div>
             <div class="identity-stat">
-                <span class="identity-stat-value">${missingData}</span>
+                <span class="identity-stat-value">${stats.missing}</span>
                 <span class="identity-stat-label">Missing Data</span>
             </div>
         </div>
@@ -682,8 +676,6 @@ function populateIdentityCards(apiData) {
     `;
     
     container.appendChild(card);
-    
-    console.log(`[Identity Cards] Created card with ${totalUsers} users (${externalUsers} external, ${missingData} missing data)`);
 }
 
 // ============================================
