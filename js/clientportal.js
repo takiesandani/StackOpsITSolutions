@@ -485,6 +485,19 @@ function isSunbirdUser() {
     }
 }
 
+function isSunbirdIdentityClient() {
+    try {
+        const rawUser = localStorage.getItem('user');
+        const user = rawUser ? JSON.parse(rawUser) : {};
+        const email = String(user?.email || sessionStorage.getItem('userEmail') || '').toLowerCase();
+        const client = String(user?.access || user?.client || '').toLowerCase();
+        return client === 'sunbird' || email === 'sandanindivhuwo17@gmail.com' || email.includes('@sunbird.eu');
+    } catch (error) {
+        const email = String(sessionStorage.getItem('userEmail') || '').toLowerCase();
+        return email === 'sandanindivhuwo17@gmail.com' || email.includes('@sunbird.eu');
+    }
+}
+
 // Check if current user is sedfa client (has Cisco Duo access)
 // Access type is set by backend from user_duo_accounts table
 function isSedfaUser() {
@@ -1928,6 +1941,11 @@ function renderTopAppsChart() {
 // Open Identity full dashboard
 function openIdentityDashboard() {
     console.log('[Identity Dashboard] Opening full dashboard...');
+
+    if (isSunbirdIdentityClient()) {
+        openSunbirdIdentityDashboard();
+        return;
+    }
     
     const dashboardView = document.getElementById('dashboard-view');
     if (!dashboardView) return;
@@ -2020,6 +2038,562 @@ function openIdentityDashboard() {
         }, 100);
     }
 }
+
+const SUNBIRD_IDENTITY_CACHE_KEY = 'sunbirdIdentityDashboardSnapshot';
+let sunbirdIdentityTableState = {
+    search: '',
+    risk: 'all',
+    mfa: 'all',
+    type: 'all',
+    sort: 'risk'
+};
+
+function escapeIdentityText(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    }[char]));
+}
+
+function getIdentityRoleNames(user) {
+    return (user?.roles || [])
+        .map(role => typeof role === 'string' ? role : (role?.name || role?.roleName || ''))
+        .filter(Boolean);
+}
+
+function isIdentityPrivileged(user) {
+    return getIdentityRoleNames(user).some(role => /(admin|global|privileged|security|directory|exchange|sharepoint|compliance)/i.test(role));
+}
+
+function getIdentityLastSignInTime(user) {
+    const raw = user?.lastSignIn?.dateTime || user?.signInActivity?.lastSignInDateTime || null;
+    const time = raw ? new Date(raw).getTime() : 0;
+    return Number.isFinite(time) ? time : 0;
+}
+
+function getIdentityDaysSinceSignIn(user) {
+    if (Number.isFinite(Number(user?.lastSignIn?.daysSince))) return Number(user.lastSignIn.daysSince);
+    const time = getIdentityLastSignInTime(user);
+    if (!time) return 999;
+    return Math.floor((Date.now() - time) / (24 * 60 * 60 * 1000));
+}
+
+function formatIdentityDate(user) {
+    const time = getIdentityLastSignInTime(user);
+    if (!time) return 'Never';
+    return new Date(time).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function getIdentityRiskRank(user) {
+    const risk = String(user?.riskLevel || 'SAFE').toUpperCase();
+    if (risk === 'HIGH') return 3;
+    if (risk === 'MEDIUM') return 2;
+    return 1;
+}
+
+function getSunbirdIdentityUsers(data = sunbirdDashboardData) {
+    if (Array.isArray(data?.users) && data.users.length > 0) return data.users;
+    return Array.isArray(microsoftUsersData) ? microsoftUsersData : [];
+}
+
+function buildSunbirdIdentityModel(data = sunbirdDashboardData) {
+    const users = getSunbirdIdentityUsers(data);
+    const totalUsers = users.length;
+    const privilegedUsers = users.filter(isIdentityPrivileged);
+    const mfaEnabledUsers = users.filter(user => toBooleanMfa(user.mfaEnabled));
+    const mfaMissingUsers = users.filter(user => !toBooleanMfa(user.mfaEnabled));
+    const highRiskUsers = users.filter(user => String(user.riskLevel || '').toUpperCase() === 'HIGH');
+    const mediumRiskUsers = users.filter(user => String(user.riskLevel || '').toUpperCase() === 'MEDIUM');
+    const safeUsers = Math.max(0, totalUsers - highRiskUsers.length - mediumRiskUsers.length);
+    const externalUsers = users.filter(user => user.isExternal);
+    const inactiveUsers = users.filter(user => getIdentityDaysSinceSignIn(user) > 30);
+    const unknownDeviceUsers = users.filter(user => /unknown|no sign-in|n\/a/i.test(String(user?.lastSignIn?.device || 'Unknown')));
+    const adminsWithoutMfa = privilegedUsers.filter(user => !toBooleanMfa(user.mfaEnabled));
+    const failedSignInUsers = users.filter(user => /fail/i.test(String(user?.lastSignIn?.status || '')));
+    const multiplePrivilegedRoles = users.filter(user => getIdentityRoleNames(user).filter(role => /(admin|global|privileged|security|directory)/i.test(role)).length > 1);
+
+    return {
+        users,
+        metrics: {
+            totalUsers,
+            mfaEnabled: mfaEnabledUsers.length,
+            mfaMissing: mfaMissingUsers.length,
+            mfaCoverage: totalUsers ? Math.round((mfaEnabledUsers.length / totalUsers) * 100) : 0,
+            privilegedUsers: privilegedUsers.length,
+            highRiskUsers: highRiskUsers.length,
+            mediumRiskUsers: mediumRiskUsers.length,
+            safeUsers,
+            externalUsers: externalUsers.length,
+            inactiveUsers: inactiveUsers.length,
+            failedSignIns: failedSignInUsers.length,
+            unknownDevices: unknownDeviceUsers.length,
+            adminsWithoutMfa: adminsWithoutMfa.length,
+            multiplePrivilegedRoles: multiplePrivilegedRoles.length
+        },
+        evidence: {
+            allUsers: users,
+            mfaEnabledUsers,
+            mfaMissingUsers,
+            privilegedUsers,
+            highRiskUsers,
+            adminsWithoutMfa,
+            usersWithoutMfa: mfaMissingUsers,
+            inactiveUsers,
+            failedSignInUsers,
+            externalUsers,
+            unknownDeviceUsers,
+            multiplePrivilegedRoles
+        }
+    };
+}
+
+function openSunbirdIdentityDashboard() {
+    const dashboardView = document.getElementById('dashboard-view');
+    const projectsView = document.getElementById('projects-view');
+    if (!dashboardView) return;
+
+    if (projectsView) projectsView.style.display = 'none';
+    dashboardView.style.display = 'block';
+    dashboardView.style.visibility = 'visible';
+    dashboardView.style.opacity = '1';
+
+    const projectName = document.getElementById('project-name');
+    const projectStatus = document.getElementById('project-status');
+    if (projectName) projectName.textContent = 'Identity Protection';
+    if (projectStatus) projectStatus.textContent = 'Active';
+
+    dashboardView.innerHTML = renderSunbirdIdentityShell();
+    setupSunbirdIdentityDashboard();
+
+    const cached = readSunbirdIdentitySnapshot();
+    if (cached) {
+        sunbirdDashboardData = normalizeSunbirdDashboardData(cached);
+        microsoftUsersData = getSunbirdIdentityUsers(sunbirdDashboardData);
+        microsoftRolesData = Array.isArray(sunbirdDashboardData.roleAssignments) ? sunbirdDashboardData.roleAssignments : microsoftRolesData;
+        buildUserRolesMap();
+        renderSunbirdIdentityDashboard();
+    } else if (getSunbirdIdentityUsers().length > 0) {
+        renderSunbirdIdentityDashboard();
+    }
+
+    loadSunbirdIdentityDashboardData();
+}
+
+function renderSunbirdIdentityShell() {
+    return `
+        <section class="sunbird-identity-dashboard" id="sunbird-identity-dashboard">
+            <div class="sunbird-id-header">
+                <button id="sunbird-id-back" class="sunbird-id-back-btn" type="button">
+                    <i class="fas fa-arrow-left"></i>
+                    <span>Back</span>
+                </button>
+                <div>
+                    <h2>Identity Protection</h2>
+                    <p>Identity and access evidence for Sunbird users.</p>
+                </div>
+            </div>
+
+            <div class="sunbird-id-metrics" id="sunbird-id-metrics"></div>
+            <div class="sunbird-id-insights" id="sunbird-id-insights"></div>
+            <div class="sunbird-id-charts" id="sunbird-id-charts"></div>
+
+            <section class="sunbird-id-table-section">
+                <div class="sunbird-id-table-toolbar">
+                    <input id="sunbird-id-search" class="sunbird-id-search" type="search" placeholder="Search name, email, role, risk, location, device">
+                    <select id="sunbird-id-risk-filter" class="sunbird-id-select">
+                        <option value="all">All risks</option>
+                        <option value="safe">Safe</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                    </select>
+                    <select id="sunbird-id-mfa-filter" class="sunbird-id-select">
+                        <option value="all">All MFA</option>
+                        <option value="yes">MFA yes</option>
+                        <option value="no">MFA no</option>
+                    </select>
+                    <select id="sunbird-id-type-filter" class="sunbird-id-select">
+                        <option value="all">All types</option>
+                        <option value="internal">Internal</option>
+                        <option value="external">External</option>
+                    </select>
+                    <select id="sunbird-id-sort" class="sunbird-id-select">
+                        <option value="risk">Sort risk</option>
+                        <option value="lastSignIn">Sort last sign-in</option>
+                    </select>
+                    <button id="sunbird-id-clear" class="sunbird-id-clear-btn" type="button">Clear</button>
+                </div>
+
+                <div class="sunbird-id-table-wrap">
+                    <table class="sunbird-id-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Job Title</th>
+                                <th>Roles</th>
+                                <th>Type</th>
+                                <th>MFA</th>
+                                <th>Auth Methods</th>
+                                <th>Risk</th>
+                                <th>Status</th>
+                                <th>Last Sign-In</th>
+                                <th>Location</th>
+                                <th>Device</th>
+                                <th>Phone</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sunbird-id-users-body"></tbody>
+                    </table>
+                </div>
+            </section>
+        </section>
+        <div id="sunbird-id-evidence-modal" class="sunbird-id-modal" aria-hidden="true"></div>
+    `;
+}
+
+function readSunbirdIdentitySnapshot() {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(SUNBIRD_IDENTITY_CACHE_KEY) || 'null');
+        return parsed?.users ? parsed : null;
+    } catch (error) {
+        return null;
+    }
+}
+
+function saveSunbirdIdentitySnapshot(data) {
+    if (!data?.users?.length) return;
+    localStorage.setItem(SUNBIRD_IDENTITY_CACHE_KEY, JSON.stringify({
+        ...data,
+        savedAt: new Date().toISOString()
+    }));
+}
+
+async function loadSunbirdIdentityDashboardData() {
+    try {
+        const token = localStorage.getItem('authToken');
+        if (!token) return;
+
+        const response = await fetch('/api/sunbird/identity-dashboard-cached', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.message || 'Identity data unavailable');
+
+        sunbirdDashboardData = normalizeSunbirdDashboardData(data);
+        microsoftUsersData = getSunbirdIdentityUsers(sunbirdDashboardData);
+        microsoftRolesData = Array.isArray(sunbirdDashboardData.roleAssignments) ? sunbirdDashboardData.roleAssignments : microsoftRolesData;
+        buildUserRolesMap();
+        saveSunbirdIdentitySnapshot(sunbirdDashboardData);
+        updateIdentityProjectCardFromDashboard(sunbirdDashboardData);
+        renderSunbirdIdentityDashboard(false);
+    } catch (error) {
+        console.error('[Sunbird Identity Dashboard] Failed to load:', error.message);
+        const body = document.getElementById('sunbird-id-users-body');
+        if (body && !getSunbirdIdentityUsers().length) {
+            body.innerHTML = '<tr><td colspan="13" class="sunbird-id-empty">Identity data is unavailable.</td></tr>';
+        }
+    }
+}
+
+function setupSunbirdIdentityDashboard() {
+    document.getElementById('sunbird-id-back')?.addEventListener('click', goBackToProjects);
+    document.getElementById('sunbird-id-search')?.addEventListener('input', event => {
+        sunbirdIdentityTableState.search = event.target.value;
+        renderSunbirdIdentityTable();
+    });
+    document.getElementById('sunbird-id-risk-filter')?.addEventListener('change', event => {
+        sunbirdIdentityTableState.risk = event.target.value;
+        renderSunbirdIdentityTable();
+    });
+    document.getElementById('sunbird-id-mfa-filter')?.addEventListener('change', event => {
+        sunbirdIdentityTableState.mfa = event.target.value;
+        renderSunbirdIdentityTable();
+    });
+    document.getElementById('sunbird-id-type-filter')?.addEventListener('change', event => {
+        sunbirdIdentityTableState.type = event.target.value;
+        renderSunbirdIdentityTable();
+    });
+    document.getElementById('sunbird-id-sort')?.addEventListener('change', event => {
+        sunbirdIdentityTableState.sort = event.target.value;
+        renderSunbirdIdentityTable();
+    });
+    document.getElementById('sunbird-id-clear')?.addEventListener('click', () => {
+        sunbirdIdentityTableState = { search: '', risk: 'all', mfa: 'all', type: 'all', sort: 'risk' };
+        ['sunbird-id-search', 'sunbird-id-risk-filter', 'sunbird-id-mfa-filter', 'sunbird-id-type-filter', 'sunbird-id-sort'].forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.value = id === 'sunbird-id-sort' ? 'risk' : 'all';
+            if (id === 'sunbird-id-search') el.value = '';
+        });
+        renderSunbirdIdentityTable();
+    });
+}
+
+function renderSunbirdIdentityDashboard() {
+    const model = buildSunbirdIdentityModel();
+    renderSunbirdIdentityMetrics(model);
+    renderSunbirdIdentityInsights(model);
+    renderSunbirdIdentityCharts(model);
+    renderSunbirdIdentityTable(model);
+}
+
+function renderSunbirdIdentityMetrics(model) {
+    const metricsEl = document.getElementById('sunbird-id-metrics');
+    if (!metricsEl) return;
+    const metrics = [
+        { key: 'total-users', label: 'Total Users', value: model.metrics.totalUsers, tone: 'neutral', evidence: 'allUsers' },
+        { key: 'mfa-coverage', label: 'MFA Coverage', value: `${model.metrics.mfaCoverage}%`, tone: model.metrics.mfaCoverage >= 90 ? 'good' : model.metrics.mfaCoverage >= 70 ? 'warn' : 'bad', evidence: 'mfaMissingUsers' },
+        { key: 'privileged-users', label: 'Privileged Users', value: model.metrics.privilegedUsers, tone: model.metrics.privilegedUsers > 5 ? 'warn' : 'neutral', evidence: 'privilegedUsers' },
+        { key: 'high-risk-users', label: 'High Risk Users', value: model.metrics.highRiskUsers, tone: model.metrics.highRiskUsers > 0 ? 'bad' : 'good', evidence: 'highRiskUsers' }
+    ];
+
+    metricsEl.innerHTML = metrics.map(metric => `
+        <article class="sunbird-id-metric-card tone-${metric.tone}">
+            <div class="sunbird-id-metric-value">${escapeIdentityText(metric.value)}</div>
+            <div class="sunbird-id-metric-label">${escapeIdentityText(metric.label)}</div>
+            <button type="button" onclick="openSunbirdIdentityEvidence('${metric.evidence}', '${metric.key}')" class="sunbird-id-evidence-btn">View Evidence</button>
+        </article>
+    `).join('');
+}
+
+function renderSunbirdIdentityInsights(model) {
+    const insightsEl = document.getElementById('sunbird-id-insights');
+    if (!insightsEl) return;
+    const insights = [
+        { title: 'Admins without MFA', value: model.metrics.adminsWithoutMfa, evidence: 'adminsWithoutMfa', filter: { mfa: 'no' }, tone: 'bad' },
+        { title: 'Users without MFA', value: model.metrics.mfaMissing, evidence: 'usersWithoutMfa', filter: { mfa: 'no' }, tone: 'warn' },
+        { title: 'Inactive users', value: model.metrics.inactiveUsers, evidence: 'inactiveUsers', sort: 'lastSignIn', tone: 'warn' },
+        { title: 'Failed sign-ins', value: model.metrics.failedSignIns, evidence: 'failedSignInUsers', tone: 'bad' },
+        { title: 'External users', value: model.metrics.externalUsers, evidence: 'externalUsers', filter: { type: 'external' }, tone: 'neutral' },
+        { title: 'Unknown devices', value: model.metrics.unknownDevices, evidence: 'unknownDeviceUsers', tone: 'warn' },
+        { title: 'Multiple privileged roles', value: model.metrics.multiplePrivilegedRoles, evidence: 'multiplePrivilegedRoles', tone: 'bad' }
+    ];
+
+    insightsEl.innerHTML = insights.map((item, index) => `
+        <button type="button" class="sunbird-id-insight tone-${item.tone}" onclick="openSunbirdIdentityEvidence('${item.evidence}', 'insight-${index}')">
+            <span>${escapeIdentityText(item.title)}</span>
+            <strong>${item.value}</strong>
+        </button>
+    `).join('');
+}
+
+function renderSunbirdIdentityCharts(model) {
+    const chartsEl = document.getElementById('sunbird-id-charts');
+    if (!chartsEl) return;
+    chartsEl.innerHTML = `
+        ${renderSunbirdBarChart('Risk distribution', [
+            { label: 'Safe', value: model.metrics.safeUsers, tone: 'good' },
+            { label: 'Medium', value: model.metrics.mediumRiskUsers, tone: 'warn' },
+            { label: 'High', value: model.metrics.highRiskUsers, tone: 'bad' }
+        ], model.metrics.totalUsers)}
+        ${renderSunbirdBarChart('MFA coverage', [
+            { label: 'Enabled', value: model.metrics.mfaEnabled, tone: 'good' },
+            { label: 'Missing', value: model.metrics.mfaMissing, tone: 'bad' }
+        ], model.metrics.totalUsers)}
+        ${renderSunbirdBarChart('Access level', [
+            { label: 'Privileged', value: model.metrics.privilegedUsers, tone: 'warn' },
+            { label: 'Standard', value: Math.max(0, model.metrics.totalUsers - model.metrics.privilegedUsers), tone: 'neutral' }
+        ], model.metrics.totalUsers)}
+        ${renderSunbirdSignInTrend(model.users)}
+    `;
+}
+
+function renderSunbirdBarChart(title, items, total) {
+    const max = Math.max(1, total, ...items.map(item => item.value));
+    return `
+        <article class="sunbird-id-chart-card">
+            <h3>${escapeIdentityText(title)}</h3>
+            <div class="sunbird-id-bars">
+                ${items.map(item => `
+                    <div class="sunbird-id-bar-row">
+                        <span>${escapeIdentityText(item.label)}</span>
+                        <div class="sunbird-id-bar-track"><div class="sunbird-id-bar-fill tone-${item.tone}" style="width:${Math.round((item.value / max) * 100)}%"></div></div>
+                        <strong>${item.value}</strong>
+                    </div>
+                `).join('')}
+            </div>
+        </article>
+    `;
+}
+
+function renderSunbirdSignInTrend(users) {
+    const buckets = { '0-1d': 0, '2-7d': 0, '8-30d': 0, '30d+': 0 };
+    users.forEach(user => {
+        const days = getIdentityDaysSinceSignIn(user);
+        if (days <= 1) buckets['0-1d']++;
+        else if (days <= 7) buckets['2-7d']++;
+        else if (days <= 30) buckets['8-30d']++;
+        else buckets['30d+']++;
+    });
+    return renderSunbirdBarChart('Sign-in activity', Object.entries(buckets).map(([label, value]) => ({
+        label,
+        value,
+        tone: label === '30d+' ? 'warn' : 'neutral'
+    })), users.length);
+}
+
+function getFilteredSunbirdIdentityUsers(model = buildSunbirdIdentityModel()) {
+    const search = sunbirdIdentityTableState.search.trim().toLowerCase();
+    const riskFilter = sunbirdIdentityTableState.risk;
+    const mfaFilter = sunbirdIdentityTableState.mfa;
+    const typeFilter = sunbirdIdentityTableState.type;
+
+    return model.users.filter(user => {
+        const risk = String(user.riskLevel || 'SAFE').toLowerCase();
+        const roles = getIdentityRoleNames(user).join(' ');
+        const haystack = [
+            user.displayName,
+            user.mail,
+            user.userPrincipalName,
+            user.jobTitle,
+            roles,
+            risk,
+            user?.lastSignIn?.location,
+            user?.lastSignIn?.device
+        ].join(' ').toLowerCase();
+
+        if (search && !haystack.includes(search)) return false;
+        if (riskFilter !== 'all' && risk !== riskFilter) return false;
+        if (mfaFilter !== 'all' && (toBooleanMfa(user.mfaEnabled) ? 'yes' : 'no') !== mfaFilter) return false;
+        if (typeFilter !== 'all' && (user.isExternal ? 'external' : 'internal') !== typeFilter) return false;
+        return true;
+    }).sort((a, b) => {
+        if (sunbirdIdentityTableState.sort === 'lastSignIn') return getIdentityLastSignInTime(b) - getIdentityLastSignInTime(a);
+        return getIdentityRiskRank(b) - getIdentityRiskRank(a);
+    });
+}
+
+function renderSunbirdIdentityTable(model = buildSunbirdIdentityModel()) {
+    const body = document.getElementById('sunbird-id-users-body');
+    if (!body) return;
+    const users = getFilteredSunbirdIdentityUsers(model);
+
+    if (users.length === 0) {
+        body.innerHTML = '<tr><td colspan="13" class="sunbird-id-empty">No users match the current filters.</td></tr>';
+        return;
+    }
+
+    body.innerHTML = users.map(user => {
+        const roles = getIdentityRoleNames(user);
+        const risk = String(user.riskLevel || 'SAFE').toLowerCase();
+        return `
+            <tr>
+                <td data-label="Name">${escapeIdentityText(user.displayName || 'Unknown')}</td>
+                <td data-label="Email">${escapeIdentityText(user.mail || user.userPrincipalName || 'N/A')}</td>
+                <td data-label="Job Title">${escapeIdentityText(user.jobTitle || 'No Title')}</td>
+                <td data-label="Roles"><div class="sunbird-id-role-list">${roles.length ? roles.map(role => `<span>${escapeIdentityText(role)}</span>`).join('') : '<em>Standard</em>'}</div></td>
+                <td data-label="Type"><span class="sunbird-id-pill">${user.isExternal ? 'External' : 'Internal'}</span></td>
+                <td data-label="MFA"><span class="sunbird-id-pill ${toBooleanMfa(user.mfaEnabled) ? 'ok' : 'bad'}">${toBooleanMfa(user.mfaEnabled) ? 'Yes' : 'No'}</span></td>
+                <td data-label="Auth Methods">${escapeIdentityText(user.authMethodCount ?? 0)}</td>
+                <td data-label="Risk"><span class="sunbird-id-risk ${risk}">${escapeIdentityText(risk)}</span></td>
+                <td data-label="Status">${user.accountEnabled === false ? 'Disabled' : 'Active'}</td>
+                <td data-label="Last Sign-In">${escapeIdentityText(formatIdentityDate(user))}</td>
+                <td data-label="Location">${escapeIdentityText(user?.lastSignIn?.location || 'Unknown')}</td>
+                <td data-label="Device">${escapeIdentityText(user?.lastSignIn?.device || 'Unknown')}</td>
+                <td data-label="Phone">${escapeIdentityText(user.mobilePhone || 'N/A')}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function applySunbirdIdentityTableFilter(filter = {}) {
+    sunbirdIdentityTableState = { ...sunbirdIdentityTableState, ...filter };
+    const setValue = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.value = value;
+    };
+    setValue('sunbird-id-risk-filter', sunbirdIdentityTableState.risk);
+    setValue('sunbird-id-mfa-filter', sunbirdIdentityTableState.mfa);
+    setValue('sunbird-id-type-filter', sunbirdIdentityTableState.type);
+    setValue('sunbird-id-sort', sunbirdIdentityTableState.sort);
+    renderSunbirdIdentityTable();
+    document.querySelector('.sunbird-id-table-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function openSunbirdIdentityEvidence(evidenceKey) {
+    const model = buildSunbirdIdentityModel();
+    const users = model.evidence[evidenceKey] || [];
+    const modal = document.getElementById('sunbird-id-evidence-modal');
+    if (!modal) return;
+
+    const titleMap = {
+        allUsers: 'Total Users',
+        mfaMissingUsers: 'MFA Coverage Evidence',
+        privilegedUsers: 'Privileged Users',
+        highRiskUsers: 'High Risk Users',
+        adminsWithoutMfa: 'Admins Without MFA',
+        usersWithoutMfa: 'Users Without MFA',
+        inactiveUsers: 'Inactive Users',
+        failedSignInUsers: 'Failed Sign-ins',
+        externalUsers: 'External Users',
+        unknownDeviceUsers: 'Unknown Devices',
+        multiplePrivilegedRoles: 'Multiple Privileged Roles'
+    };
+
+    const filterMap = {
+        mfaMissingUsers: { mfa: 'no' },
+        usersWithoutMfa: { mfa: 'no' },
+        adminsWithoutMfa: { mfa: 'no' },
+        highRiskUsers: { risk: 'high' },
+        externalUsers: { type: 'external' },
+        inactiveUsers: { sort: 'lastSignIn' }
+    };
+
+    modal.innerHTML = `
+        <div class="sunbird-id-modal-backdrop" onclick="closeSunbirdIdentityEvidence()"></div>
+        <div class="sunbird-id-modal-panel" role="dialog" aria-modal="true">
+            <div class="sunbird-id-modal-header">
+                <div>
+                    <h3>${escapeIdentityText(titleMap[evidenceKey] || 'Evidence')}</h3>
+                    <p>${users.length} user${users.length === 1 ? '' : 's'} matched this evidence set.</p>
+                </div>
+                <button type="button" onclick="closeSunbirdIdentityEvidence()" class="sunbird-id-modal-close">&times;</button>
+            </div>
+            <div class="sunbird-id-evidence-summary">
+                ${evidenceKey === 'mfaMissingUsers' || evidenceKey === 'usersWithoutMfa' ? `
+                    <span>Total users: ${model.metrics.totalUsers}</span>
+                    <span>MFA enabled: ${model.metrics.mfaEnabled}</span>
+                    <span>MFA missing: ${model.metrics.mfaMissing}</span>
+                ` : `
+                    <span>Total users: ${model.metrics.totalUsers}</span>
+                    <span>Evidence count: ${users.length}</span>
+                `}
+            </div>
+            <div class="sunbird-id-evidence-list">
+                ${users.length ? users.slice(0, 80).map(user => `
+                    <div class="sunbird-id-evidence-user">
+                        <strong>${escapeIdentityText(user.displayName || 'Unknown')}</strong>
+                        <span>${escapeIdentityText(user.mail || user.userPrincipalName || 'N/A')}</span>
+                        <small>${escapeIdentityText(getIdentityRoleNames(user).join(', ') || user.riskLevel || 'SAFE')}</small>
+                    </div>
+                `).join('') : '<div class="sunbird-id-empty">No evidence found for this item.</div>'}
+            </div>
+            <div class="sunbird-id-modal-actions">
+                <button type="button" class="sunbird-id-evidence-btn" onclick='applySunbirdIdentityTableFilter(${JSON.stringify(filterMap[evidenceKey] || {})}); closeSunbirdIdentityEvidence();'>View in Table</button>
+            </div>
+        </div>
+    `;
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeSunbirdIdentityEvidence() {
+    const modal = document.getElementById('sunbird-id-evidence-modal');
+    if (!modal) return;
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+}
+
+window.openSunbirdIdentityEvidence = openSunbirdIdentityEvidence;
+window.closeSunbirdIdentityEvidence = closeSunbirdIdentityEvidence;
+window.applySunbirdIdentityTableFilter = applySunbirdIdentityTableFilter;
 
 // Initialize  Identity Protection dashboard
 function initializeIdentityDashboard() {
@@ -4542,9 +5116,10 @@ async function fetchIdentityAccessData() {
             // FIRST LOAD: Render everything normally
             if (isFirstLoad) {
                 console.log('[Identity Access] FIRST LOAD - Rendering full dashboard');
-                initializeIdentityInsights();
-                initializeIdentityCharts();
-                populateIdentityTable();
+                if (document.getElementById('sunbird-identity-dashboard')) {
+                    saveSunbirdIdentitySnapshot(sunbirdDashboardData);
+                    renderSunbirdIdentityDashboard();
+                }
                 
                 displayCurrentProject();
                 
