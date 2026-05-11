@@ -68,23 +68,25 @@ function initializeSmoothLoadingStyles() {
 // Smooth show function - prevents flashing
 function smoothShow(element, duration = 300) {
     if (!element) return;
+    element.style.display = 'block'; // Show first immediately
     element.style.transition = `opacity ${duration}ms ease-in-out`;
-    element.style.opacity = '0';
-    element.style.display = 'block'; // Show first
     
-    // Trigger reflow to ensure transition happens
+    // Force reflow to ensure opacity transition works
     void element.offsetWidth;
+    
     element.style.opacity = '1';
 }
 
-// Smooth hide function - prevents flashing
+// Smooth hide function - prevents flashing  
 function smoothHide(element, duration = 300) {
     if (!element) return;
     element.style.transition = `opacity ${duration}ms ease-in-out`;
     element.style.opacity = '0';
     
     setTimeout(() => {
-        element.style.display = 'none';
+        if (element.style.opacity === '0') { // Only hide if still faded
+            element.style.display = 'none';
+        }
     }, duration);
 }
 
@@ -1880,15 +1882,20 @@ function initializeIdentityInsights() {
     const missingPhones = microsoftUsersData.filter(u => !u.mobilePhone || u.mobilePhone === 'N/A' || (typeof u.mobilePhone === 'string' && u.mobilePhone.trim() === '')).length;
     const completeProfiles = microsoftUsersData.filter(u => (u.jobTitle && u.jobTitle !== 'No Title' && u.jobTitle.trim() !== '') && (u.mobilePhone && u.mobilePhone !== 'N/A' && typeof u.mobilePhone === 'string' && u.mobilePhone.trim() !== '')).length;
     
-    // Update missing data display
-    document.getElementById('missingJobTitles').textContent = missingJobTitles;
-    document.getElementById('missingPhones').textContent = missingPhones;
-    document.getElementById('completeProfiles').textContent = completeProfiles;
+    // Update missing data display with null checks
+    const missingJobTitlesEl = document.getElementById('missingJobTitles');
+    const missingPhonesEl = document.getElementById('missingPhones');
+    const completeProfilesEl = document.getElementById('completeProfiles');
+    if (missingJobTitlesEl) missingJobTitlesEl.textContent = missingJobTitles;
+    if (missingPhonesEl) missingPhonesEl.textContent = missingPhones;
+    if (completeProfilesEl) completeProfilesEl.textContent = completeProfiles;
     
     // Calculate and update health score
     const healthScore = Math.round((completeProfiles / microsoftUsersData.length) * 100);
-    document.getElementById('healthScoreValue').textContent = healthScore;
-    document.getElementById('healthScoreProgress').style.width = healthScore + '%';
+    const healthScoreValueEl = document.getElementById('healthScoreValue');
+    const healthScoreProgressEl = document.getElementById('healthScoreProgress');
+    if (healthScoreValueEl) healthScoreValueEl.textContent = healthScore;
+    if (healthScoreProgressEl) healthScoreProgressEl.style.width = healthScore + '%';
     
     // Update risk panel
     const hasBreakGlass = microsoftUsersData.some(u => u.mail?.toLowerCase().includes('break glass'));
@@ -1898,6 +1905,7 @@ function initializeIdentityInsights() {
     }
     
     const riskMediumText = document.getElementById('riskMediumText');
+    if (riskMediumText) riskMediumText.textContent = missingPhones;
     if (riskMediumText) {
         riskMediumText.textContent = `Medium Risk: ${missingJobTitles} users without job titles, ${missingPhones} users without phone`;
     }
@@ -5387,22 +5395,21 @@ function buildApplicationsPreviewModel() {
 function viewProjectDashboard(project) {
     currentProject = project;
     
-    smoothHide(document.getElementById('projects-view'), 250);
-    smoothHide(document.getElementById('dashboard-view'), 250);
+    // Hide projects view immediately without fade to avoid flashing
+    document.getElementById('projects-view').style.display = 'none';
     
     // If this is the  Identity Protection card, fetch API data
     if (project.isIdentityCard) {
-        smoothShow(document.getElementById('dashboard-view'), 250);
         fetchIdentityData(project);
     } 
     // If this is the Devices card, fetch device data
     else if (project.isDevicesCard) {
-        smoothShow(document.getElementById('devices-view'), 250);
+        document.getElementById('devices-view').style.display = 'none';
         fetchDevicesData(project);
     }
     // If this is the Threat & Activity card, fetch security data
     else if (project.isSecurityCard) {
-        smoothShow(document.getElementById('security-events-view'), 250);
+        document.getElementById('security-events-view').style.display = 'none';
         fetchSecurityEventsData(project);
     }
     // If this is the Email Security card, fetch email security data
@@ -5412,7 +5419,9 @@ function viewProjectDashboard(project) {
             console.warn('[Email Security] View element not found');
             return;
         }
-        smoothShow(emailSecurityView, 250);
+        }
+        emailSecurityView.style.display = 'none';
+        fetchEmailSecurityData(project);
         fetchEmailSecurityData(project);
     }
     // If this is the Backup and Recovery card, fetch backup recovery data
@@ -5422,16 +5431,18 @@ function viewProjectDashboard(project) {
             console.warn('[Backup Recovery] View element not found');
             return;
         }
-        smoothShow(backupRecoveryView, 250);
+        }
+        backupRecoveryView.style.display = 'none';
+        fetchBackupRecoveryData(project);
         fetchBackupRecoveryData(project);
     }
     // If this is the Applications card, fetch applications data
     else if (project.isApplicationsCard) {
-        smoothShow(document.getElementById('dashboard-view'), 250);
+        document.getElementById('dashboard-view').style.display = 'none';
         openApplicationsDashboard();
     }
     else {
-        smoothShow(document.getElementById('dashboard-view'), 250);
+        document.getElementById('dashboard-view').style.display = 'none';
         updateDashboardData(project);
         initializeCharts(project);
         initializeTabs();
