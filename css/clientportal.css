@@ -6364,7 +6364,8 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
 /* Sunbird-only Identity Protection dashboard rebuild */
 .dashboard-view.sunbird-identity-active,
-.dashboard-view.sunbird-device-active {
+.dashboard-view.sunbird-device-active,
+.dashboard-view.sunbird-email-active {
   margin-top: 10px;
   padding: 10px 24px 24px;
   background: transparent;
@@ -7083,6 +7084,10 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   grid-template-columns: minmax(240px, 1fr) repeat(4, minmax(138px, 170px)) auto;
 }
 
+.sunbird-email-table-toolbar {
+  grid-template-columns: minmax(240px, 1fr) repeat(4, minmax(138px, 170px)) auto;
+}
+
 .sunbird-id-search,
 .sunbird-id-select {
   width: 100%;
@@ -7133,6 +7138,10 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
 .sunbird-devices-table {
   min-width: 1320px;
+}
+
+.sunbird-email-table {
+  min-width: 1240px;
 }
 
 .sunbird-id-table th,

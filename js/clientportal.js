@@ -153,7 +153,11 @@ function restoreDashboardViewHTML() {
     if (
         dashboardView &&
         originalDashboardViewHTML !== null &&
-        (dashboardView.querySelector('#sunbird-identity-dashboard') || dashboardView.querySelector('#sunbird-devices-dashboard'))
+        (
+            dashboardView.querySelector('#sunbird-identity-dashboard') ||
+            dashboardView.querySelector('#sunbird-devices-dashboard') ||
+            dashboardView.querySelector('#sunbird-email-dashboard')
+        )
     ) {
         dashboardView.innerHTML = originalDashboardViewHTML;
     }
@@ -183,9 +187,15 @@ function openDashboard(project) {
         return;
     }
 
+    if (Number(project.id) === 5 || project.isEmailSecurityCard === true) {
+        openSunbirdEmailSecurityDashboard();
+        return;
+    }
+
     restoreDashboardViewHTML();
     document.getElementById('dashboard-view')?.classList.remove('sunbird-identity-active');
     document.getElementById('dashboard-view')?.classList.remove('sunbird-device-active');
+    document.getElementById('dashboard-view')?.classList.remove('sunbird-email-active');
     
     // Get dashboard type with fallback
     const dashboardType = project.dashboardType || "Security"; // RULE 18: Fallback config
@@ -496,6 +506,7 @@ function goBackToProjects() {
         dashboardView.style.display = 'none';
         dashboardView.classList.remove('sunbird-identity-active');
         dashboardView.classList.remove('sunbird-device-active');
+        dashboardView.classList.remove('sunbird-email-active');
     }
     
     // Destroy charts
@@ -2234,6 +2245,7 @@ function openSunbirdIdentityDashboard() {
     dashboardView.style.visibility = 'visible';
     dashboardView.style.opacity = '1';
     dashboardView.classList.remove('sunbird-device-active');
+    dashboardView.classList.remove('sunbird-email-active');
     dashboardView.classList.add('sunbird-identity-active');
 
     const projectName = document.getElementById('project-name');
@@ -2869,6 +2881,7 @@ function openSunbirdDevicesDashboard() {
     dashboardView.style.visibility = 'visible';
     dashboardView.style.opacity = '1';
     dashboardView.classList.remove('sunbird-identity-active');
+    dashboardView.classList.remove('sunbird-email-active');
     dashboardView.classList.add('sunbird-device-active');
 
     captureDashboardViewHTML();
@@ -3668,6 +3681,749 @@ window.closeSunbirdDeviceEvidence = closeSunbirdDeviceEvidence;
 window.applySunbirdDeviceTableFilter = applySunbirdDeviceTableFilter;
 window.toggleSunbirdDeviceInsightEvidenceLock = toggleSunbirdDeviceInsightEvidenceLock;
 window.handleSunbirdDeviceInsightEvidenceKey = handleSunbirdDeviceInsightEvidenceKey;
+
+const SUNBIRD_EMAIL_CACHE_KEY = 'sunbirdEmailSecurityDashboardSnapshot';
+let sunbirdEmailDashboardData = null;
+let sunbirdEmailTableState = {
+    search: '',
+    severity: 'all',
+    threat: 'all',
+    status: 'all',
+    sort: 'newest'
+};
+let lockedSunbirdEmailInsightEvidenceKey = null;
+
+function openSunbirdEmailSecurityDashboard() {
+    const dashboardView = document.getElementById('dashboard-view');
+    const projectsView = document.getElementById('projects-view');
+    if (!dashboardView) return;
+
+    if (projectsView) projectsView.style.display = 'none';
+    dashboardView.style.display = 'block';
+    dashboardView.style.visibility = 'visible';
+    dashboardView.style.opacity = '1';
+    dashboardView.classList.remove('sunbird-identity-active');
+    dashboardView.classList.remove('sunbird-device-active');
+    dashboardView.classList.add('sunbird-email-active');
+
+    captureDashboardViewHTML();
+    dashboardView.innerHTML = renderSunbirdEmailShell();
+    setupSunbirdEmailDashboard();
+
+    const cached = readSunbirdEmailSnapshot();
+    if (cached) {
+        sunbirdEmailDashboardData = normalizeSunbirdEmailData(cached);
+    } else if (latestEmailCardData) {
+        sunbirdEmailDashboardData = normalizeSunbirdEmailData(latestEmailCardData);
+    } else {
+        sunbirdEmailDashboardData = normalizeSunbirdEmailData({ success: true, alerts: [], incidents: [] });
+    }
+    renderSunbirdEmailDashboard();
+    loadSunbirdEmailDashboardData();
+}
+
+function renderSunbirdEmailShell() {
+    return `
+        <section class="sunbird-identity-dashboard sunbird-email-dashboard" id="sunbird-email-dashboard">
+            <div class="sunbird-id-header">
+                <button id="sunbird-email-back" class="sunbird-id-back-btn" type="button">
+                    <span class="sunbird-id-back-icon" aria-hidden="true">&larr;</span>
+                    <span>Back</span>
+                </button>
+                <div>
+                    <h2>Email Security</h2>
+                    <p>Email threat intelligence, incidents, affected users, and evidence.</p>
+                </div>
+                <div class="sunbird-id-microsoft-badge" aria-label="Microsoft Solutions">
+                    <span class="sunbird-id-ms-logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+                    <span>Microsoft Solutions</span>
+                </div>
+            </div>
+
+            <div class="sunbird-id-metrics" id="sunbird-email-metrics"></div>
+            <div class="sunbird-id-insights" id="sunbird-email-insights"></div>
+            <div class="sunbird-id-charts" id="sunbird-email-charts"></div>
+            <div class="sunbird-id-signins" id="sunbird-email-panels"></div>
+
+            <section class="sunbird-id-table-section">
+                <div class="sunbird-id-table-toolbar sunbird-email-table-toolbar">
+                    <input id="sunbird-email-search" class="sunbird-id-search" type="search" placeholder="Search sender, user, title, threat, severity, status">
+                    <select id="sunbird-email-severity-filter" class="sunbird-id-select">
+                        <option value="all">All severity</option>
+                        <option value="critical">Critical</option>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                    </select>
+                    <select id="sunbird-email-threat-filter" class="sunbird-id-select">
+                        <option value="all">All threats</option>
+                        <option value="phishing">Phishing</option>
+                        <option value="malware">Malware</option>
+                        <option value="spam">Spam</option>
+                        <option value="bec">BEC</option>
+                        <option value="spoofing">Spoofing</option>
+                        <option value="other">Other</option>
+                    </select>
+                    <select id="sunbird-email-status-filter" class="sunbird-id-select">
+                        <option value="all">All status</option>
+                        <option value="newalert">New</option>
+                        <option value="inprogress">In progress</option>
+                        <option value="resolved">Resolved</option>
+                        <option value="dismissed">Dismissed</option>
+                    </select>
+                    <select id="sunbird-email-sort" class="sunbird-id-select">
+                        <option value="newest">Sort newest</option>
+                        <option value="severity">Sort severity</option>
+                        <option value="threat">Sort threat</option>
+                    </select>
+                    <button id="sunbird-email-clear" class="sunbird-id-clear-btn" type="button">Clear</button>
+                </div>
+
+                <div class="sunbird-id-table-wrap">
+                    <table class="sunbird-id-table sunbird-email-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Threat</th>
+                                <th>Severity</th>
+                                <th>Status</th>
+                                <th>Sender</th>
+                                <th>Targeted User</th>
+                                <th>Subject / Alert</th>
+                                <th>Action</th>
+                                <th>Category</th>
+                                <th>Evidence</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sunbird-email-body"></tbody>
+                    </table>
+                </div>
+            </section>
+        </section>
+        <div id="sunbird-email-evidence-modal" class="sunbird-id-modal" aria-hidden="true"></div>
+    `;
+}
+
+function setupSunbirdEmailDashboard() {
+    document.getElementById('sunbird-email-back')?.addEventListener('click', goBackToProjects);
+    document.getElementById('sunbird-email-search')?.addEventListener('input', event => {
+        sunbirdEmailTableState.search = event.target.value;
+        renderSunbirdEmailTable();
+    });
+    document.getElementById('sunbird-email-severity-filter')?.addEventListener('change', event => {
+        sunbirdEmailTableState.severity = event.target.value;
+        renderSunbirdEmailTable();
+    });
+    document.getElementById('sunbird-email-threat-filter')?.addEventListener('change', event => {
+        sunbirdEmailTableState.threat = event.target.value;
+        renderSunbirdEmailTable();
+    });
+    document.getElementById('sunbird-email-status-filter')?.addEventListener('change', event => {
+        sunbirdEmailTableState.status = event.target.value;
+        renderSunbirdEmailTable();
+    });
+    document.getElementById('sunbird-email-sort')?.addEventListener('change', event => {
+        sunbirdEmailTableState.sort = event.target.value;
+        renderSunbirdEmailTable();
+    });
+    document.getElementById('sunbird-email-clear')?.addEventListener('click', () => {
+        sunbirdEmailTableState = { search: '', severity: 'all', threat: 'all', status: 'all', sort: 'newest' };
+        ['sunbird-email-search', 'sunbird-email-severity-filter', 'sunbird-email-threat-filter', 'sunbird-email-status-filter', 'sunbird-email-sort'].forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.value = id === 'sunbird-email-sort' ? 'newest' : 'all';
+            if (id === 'sunbird-email-search') el.value = '';
+        });
+        renderSunbirdEmailTable();
+    });
+}
+
+function readSunbirdEmailSnapshot() {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(SUNBIRD_EMAIL_CACHE_KEY) || 'null');
+        return parsed?.summary || parsed?.alerts ? parsed : null;
+    } catch (error) {
+        return null;
+    }
+}
+
+function saveSunbirdEmailSnapshot(data) {
+    if (!data?.summary && !data?.alerts) return;
+    localStorage.setItem(SUNBIRD_EMAIL_CACHE_KEY, JSON.stringify({
+        ...data,
+        savedAt: new Date().toISOString()
+    }));
+}
+
+async function loadSunbirdEmailDashboardData() {
+    const token = localStorage.getItem('authToken');
+    if (!token) return;
+
+    try {
+        const metricsResponse = await fetch('/api/db/email-metrics', {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+        });
+        const metricsData = await metricsResponse.json();
+        if (metricsResponse.ok && metricsData.success) {
+            sunbirdEmailDashboardData = normalizeSunbirdEmailData({ ...(sunbirdEmailDashboardData || {}), metrics: metricsData.metrics });
+            latestEmailCardData = metricsData;
+            renderSunbirdEmailDashboard();
+        }
+    } catch (error) {
+        console.warn('[Email Dashboard] Cached metrics unavailable:', error.message);
+    }
+
+    try {
+        const cachedResponse = await fetch('/api/db/email-security', {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+        });
+        const cachedData = await cachedResponse.json();
+        if (!cachedResponse.ok || !cachedData.success) throw new Error(cachedData.message || 'Cached email security unavailable');
+        sunbirdEmailDashboardData = normalizeSunbirdEmailData(cachedData);
+        saveSunbirdEmailSnapshot(sunbirdEmailDashboardData);
+        renderSunbirdEmailDashboard();
+    } catch (cachedError) {
+        try {
+            const liveResponse = await fetch('/api/email-security', {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+            });
+            const liveData = await liveResponse.json();
+            if (!liveResponse.ok || !liveData.success) throw new Error(liveData.message || 'Email security unavailable');
+            sunbirdEmailDashboardData = normalizeSunbirdEmailData(liveData);
+            saveSunbirdEmailSnapshot(sunbirdEmailDashboardData);
+            renderSunbirdEmailDashboard();
+        } catch (liveError) {
+            console.warn('[Email Dashboard] Detailed evidence unavailable:', liveError.message);
+        }
+    }
+}
+
+function normalizeSunbirdEmailData(data = {}) {
+    const payload = data.payload && typeof data.payload === 'object' ? data.payload : data;
+    const metrics = payload.metrics || data.metrics || {};
+    const alerts = Array.isArray(payload.alerts) ? payload.alerts : [];
+    const incidents = Array.isArray(payload.incidents) ? payload.incidents : [];
+    const affectedUsers = payload.affectedUsers || {};
+    const summary = payload.summary || {};
+    const activeThreats = summary.activeThreats ?? getSunbirdMetricNumber(metrics, ['ActiveThreats', 'activeThreats'], alerts.filter(a => ['newalert', 'inprogress'].includes(String(a.status || '').toLowerCase())).length);
+    const highSeverityAlerts = summary.highSeverityAlerts ?? getSunbirdMetricNumber(metrics, ['HighSeverity', 'highSeverity'], alerts.filter(a => ['critical', 'high'].includes(String(a.severity || '').toLowerCase())).length);
+    const affectedUsersCount = summary.affectedUsersCount ?? getSunbirdMetricNumber(metrics, ['UsersTargeted', 'usersTargeted'], Array.isArray(affectedUsers.all) ? affectedUsers.all.length : 0);
+    const activeIncidents = summary.activeIncidents ?? getSunbirdMetricNumber(metrics, ['OpenIncidents', 'openIncidents'], incidents.filter(i => ['active', 'inprogress'].includes(String(i.status || '').toLowerCase())).length);
+    const threats = payload.threats || buildSunbirdEmailThreatBreakdown(alerts);
+
+    return {
+        ...payload,
+        alerts,
+        incidents,
+        threats,
+        affectedUsers,
+        insights: Array.isArray(payload.insights) ? payload.insights : [],
+        summary: {
+            ...summary,
+            activeThreats,
+            highSeverityAlerts,
+            affectedUsersCount,
+            activeIncidents,
+            threatResolutionRate: summary.threatResolutionRate ?? calculateSunbirdEmailResolutionRate(alerts),
+            securityScore: summary.securityScore ?? calculateSunbirdEmailSecurityScore(alerts)
+        }
+    };
+}
+
+function buildSunbirdEmailModel(data = sunbirdEmailDashboardData) {
+    const normalized = normalizeSunbirdEmailData(data || {});
+    const alerts = normalized.alerts.map(alert => ({
+        ...alert,
+        threatType: getSunbirdEmailThreatType(alert)
+    }));
+    const highSeverityAlerts = alerts.filter(alert => ['critical', 'high'].includes(String(alert.severity || '').toLowerCase()));
+    const phishingAlerts = alerts.filter(alert => alert.threatType === 'phishing');
+    const malwareAlerts = alerts.filter(alert => alert.threatType === 'malware');
+    const spamAlerts = alerts.filter(alert => alert.threatType === 'spam');
+    const becAlerts = alerts.filter(alert => alert.threatType === 'bec');
+    const quarantinedAlerts = alerts.filter(alert => /quarantine|blocked|prevented|remediated/i.test(getSunbirdEmailAction(alert)));
+    const affectedUserRows = getSunbirdEmailAffectedUserRows(normalized, alerts);
+    const recommendations = buildSunbirdEmailRecommendations(normalized, { highSeverityAlerts, phishingAlerts, malwareAlerts, affectedUserRows, quarantinedAlerts });
+
+    return {
+        ...normalized,
+        alerts,
+        recommendations,
+        evidence: {
+            allAlerts: alerts,
+            highSeverityAlerts,
+            phishingAlerts,
+            malwareAlerts,
+            spamAlerts,
+            becAlerts,
+            quarantinedAlerts,
+            affectedUsers: affectedUserRows,
+            activeIncidents: normalized.incidents.filter(i => ['active', 'inprogress'].includes(String(i.status || '').toLowerCase())),
+            incidents: normalized.incidents,
+            recommendations
+        }
+    };
+}
+
+function renderSunbirdEmailDashboard() {
+    const model = buildSunbirdEmailModel();
+    renderSunbirdEmailMetrics(model);
+    renderSunbirdEmailInsights(model);
+    renderSunbirdEmailCharts(model);
+    renderSunbirdEmailPanels(model);
+    renderSunbirdEmailTable(model);
+}
+
+function renderSunbirdEmailMetrics(model) {
+    const el = document.getElementById('sunbird-email-metrics');
+    if (!el) return;
+    const metrics = [
+        { key: 'active-threats', label: 'Active Threats', value: model.summary.activeThreats, tone: model.summary.activeThreats ? 'bad' : 'good', evidence: 'allAlerts' },
+        { key: 'high-severity', label: 'High Severity', value: model.summary.highSeverityAlerts, tone: model.summary.highSeverityAlerts ? 'bad' : 'good', evidence: 'highSeverityAlerts' },
+        { key: 'users-targeted', label: 'Users Targeted', value: model.summary.affectedUsersCount, tone: model.summary.affectedUsersCount > 5 ? 'warn' : 'neutral', evidence: 'affectedUsers' },
+        { key: 'security-score', label: 'Email Security Score', value: `${model.summary.securityScore || 0}%`, tone: model.summary.securityScore >= 80 ? 'good' : model.summary.securityScore >= 60 ? 'warn' : 'bad', evidence: 'recommendations' }
+    ];
+    el.innerHTML = metrics.map(metric => `
+        <article class="sunbird-id-metric-card tone-${metric.tone}">
+            <div class="sunbird-id-metric-value">${escapeIdentityText(metric.value)}</div>
+            <div class="sunbird-id-metric-label">${escapeIdentityText(metric.label)}</div>
+            <button type="button" onclick="openSunbirdEmailEvidence('${metric.evidence}')" class="sunbird-id-evidence-btn">View Evidence</button>
+        </article>
+    `).join('');
+}
+
+function renderSunbirdEmailInsights(model) {
+    const el = document.getElementById('sunbird-email-insights');
+    if (!el) return;
+    const insights = [
+        { title: 'Phishing', value: model.evidence.phishingAlerts.length, evidence: 'phishingAlerts', tone: model.evidence.phishingAlerts.length ? 'bad' : 'good', filter: { threat: 'phishing' } },
+        { title: 'Malware', value: model.evidence.malwareAlerts.length, evidence: 'malwareAlerts', tone: model.evidence.malwareAlerts.length ? 'bad' : 'good', filter: { threat: 'malware' } },
+        { title: 'Spam', value: model.evidence.spamAlerts.length, evidence: 'spamAlerts', tone: model.evidence.spamAlerts.length ? 'warn' : 'neutral', filter: { threat: 'spam' } },
+        { title: 'BEC attempts', value: model.evidence.becAlerts.length, evidence: 'becAlerts', tone: model.evidence.becAlerts.length ? 'bad' : 'neutral', filter: { threat: 'bec' } },
+        { title: 'Quarantined', value: model.evidence.quarantinedAlerts.length, evidence: 'quarantinedAlerts', tone: 'warn' },
+        { title: 'Open incidents', value: model.evidence.activeIncidents.length, evidence: 'activeIncidents', tone: model.evidence.activeIncidents.length ? 'bad' : 'good' },
+        { title: 'Recommendations', value: model.recommendations.length, evidence: 'recommendations', tone: model.recommendations.some(r => r.priority === 'critical') ? 'bad' : 'warn' }
+    ];
+    el.innerHTML = insights.map((item, index) => `
+        <article class="sunbird-id-insight tone-${item.tone}" role="button" tabindex="0" data-email-evidence-key="${item.evidence}" onclick="toggleSunbirdEmailInsightEvidenceLock('${item.evidence}')" onkeydown="handleSunbirdEmailInsightEvidenceKey(event, '${item.evidence}')">
+            <span>${escapeIdentityText(item.title)}</span>
+            <strong>${escapeIdentityText(item.value)}</strong>
+            ${renderSunbirdEmailInsightEvidencePreview(item, model, index)}
+        </article>
+    `).join('');
+}
+
+function renderSunbirdEmailInsightEvidencePreview(item, model, index) {
+    const rows = getSunbirdEmailEvidenceRows(item.evidence, model);
+    const previewRows = rows.slice(0, 4);
+    return `
+        <div class="sunbird-id-insight-evidence" onclick="event.stopPropagation()">
+            <p>${rows.length} evidence item${rows.length === 1 ? '' : 's'} matched this email signal.</p>
+            <div class="sunbird-id-insight-evidence-list">
+                ${previewRows.length ? previewRows.map(row => `
+                    <div>
+                        <strong>${escapeIdentityText(row.title)}</strong>
+                        <span>${escapeIdentityText(row.subtitle)}</span>
+                        <small>${escapeIdentityText(row.meta)}</small>
+                    </div>
+                `).join('') : '<em>No evidence found.</em>'}
+            </div>
+            ${rows.length > previewRows.length ? `<small>${rows.length - previewRows.length} more in full evidence</small>` : ''}
+            <button type="button" onclick="openSunbirdEmailEvidence('${item.evidence}', 'insight-${index}')">Open Evidence</button>
+        </div>
+    `;
+}
+
+function renderSunbirdEmailCharts(model) {
+    const el = document.getElementById('sunbird-email-charts');
+    if (!el) return;
+    const total = Math.max(1, model.alerts.length);
+    const threats = model.threats.byType || {};
+    const severity = model.threats.bySeverity || {};
+    el.innerHTML = `
+        ${renderSunbirdPieChart('Threat type distribution', [
+            { label: 'Phishing', value: threats.Phishing || model.evidence.phishingAlerts.length, tone: 'bad' },
+            { label: 'Malware', value: threats.Malware || model.evidence.malwareAlerts.length, tone: 'warn' },
+            { label: 'Spam', value: threats.Spam || model.evidence.spamAlerts.length, tone: 'neutral' },
+            { label: 'Other', value: threats.Other || 0, tone: 'good' }
+        ], total)}
+        ${renderSunbirdPieChart('Severity distribution', [
+            { label: 'High', value: severity.high || 0, tone: 'bad' },
+            { label: 'Medium', value: severity.medium || 0, tone: 'warn' },
+            { label: 'Low', value: severity.low || 0, tone: 'good' }
+        ], total)}
+        ${renderSunbirdDeviceBars('Most targeted users', getSunbirdEmailTargetedUserChartItems(model), Math.max(1, ...getSunbirdEmailTargetedUserChartItems(model).map(item => item.value)))}
+        ${renderSunbirdEmailHealthGraph(model)}
+    `;
+    animateSunbirdIdentityCharts();
+}
+
+function renderSunbirdEmailHealthGraph(model) {
+    const resolved = model.summary.threatResolutionRate || 0;
+    const score = model.summary.securityScore || 0;
+    const exposure = model.alerts.length ? Math.max(0, 100 - Math.min(100, model.evidence.highSeverityAlerts.length * 12)) : 100;
+    return `
+        <article class="sunbird-id-chart-card sunbird-id-health-card">
+            <h3>Email posture</h3>
+            ${[
+                { label: 'Score', value: score, tone: score >= 80 ? 'good' : 'warn' },
+                { label: 'Resolution', value: resolved, tone: resolved >= 75 ? 'good' : 'warn' },
+                { label: 'Exposure', value: exposure, tone: exposure >= 80 ? 'good' : 'warn' }
+            ].map(item => `
+                <div class="sunbird-id-health-row">
+                    <span>${item.label}</span>
+                    <div class="sunbird-id-health-track"><div class="sunbird-id-health-fill tone-${item.tone}" style="width:${item.value}%"></div></div>
+                    <strong>${item.value}%</strong>
+                </div>
+            `).join('')}
+        </article>
+    `;
+}
+
+function renderSunbirdEmailPanels(model) {
+    const el = document.getElementById('sunbird-email-panels');
+    if (!el) return;
+    el.innerHTML = `
+        ${renderSunbirdEmailFeedPanel('Threat intelligence feed', getSunbirdEmailEvidenceRows('allAlerts', model).slice(0, 10))}
+        ${renderSunbirdEmailFeedPanel('Incident drilldown', getSunbirdEmailEvidenceRows('incidents', model).slice(0, 10))}
+        ${renderSunbirdEmailFeedPanel('VIP / user risk monitoring', getSunbirdEmailEvidenceRows('affectedUsers', model).slice(0, 10))}
+        ${renderSunbirdEmailFeedPanel('Security recommendations', getSunbirdEmailEvidenceRows('recommendations', model).slice(0, 10))}
+    `;
+}
+
+function renderSunbirdEmailFeedPanel(title, rows) {
+    return `
+        <article class="sunbird-id-signin-card">
+            <h3>${escapeIdentityText(title)}</h3>
+            <div class="sunbird-id-signin-list">
+                ${rows.length ? rows.map(row => `
+                    <div class="sunbird-id-signin-item">
+                        <div>
+                            <strong>${escapeIdentityText(row.title)}</strong>
+                            <span>${escapeIdentityText(row.subtitle)}</span>
+                            <div class="sunbird-id-issue-tags"><em>${escapeIdentityText(row.meta)}</em></div>
+                        </div>
+                    </div>
+                `).join('') : '<div class="sunbird-id-empty compact">No matching email evidence.</div>'}
+            </div>
+        </article>
+    `;
+}
+
+function renderSunbirdEmailTable(model = buildSunbirdEmailModel()) {
+    const body = document.getElementById('sunbird-email-body');
+    if (!body) return;
+    const alerts = getFilteredSunbirdEmailAlerts(model);
+    if (!alerts.length) {
+        body.innerHTML = '<tr><td colspan="10" class="sunbird-id-empty">No email threats match the current filters.</td></tr>';
+        return;
+    }
+    body.innerHTML = alerts.map(alert => {
+        const severity = String(alert.severity || 'low').toLowerCase();
+        const threat = getSunbirdEmailThreatType(alert);
+        return `
+            <tr>
+                <td data-label="Time">${escapeIdentityText(formatSunbirdDeviceDate(alert.created || alert.createdDateTime))}</td>
+                <td data-label="Threat"><span class="sunbird-id-role-list"><span>${escapeIdentityText(threat)}</span></span></td>
+                <td data-label="Severity"><span class="sunbird-id-risk ${severity === 'critical' || severity === 'high' ? 'high' : severity === 'medium' ? 'medium' : 'safe'}">${escapeIdentityText(severity)}</span></td>
+                <td data-label="Status"><span class="sunbird-id-pill">${escapeIdentityText(alert.status || 'newAlert')}</span></td>
+                <td data-label="Sender">${escapeIdentityText(getSunbirdEmailSender(alert))}</td>
+                <td data-label="Targeted User">${escapeIdentityText(getSunbirdEmailTargetUser(alert))}</td>
+                <td data-label="Subject / Alert">${escapeIdentityText(alert.title || 'Email alert')}</td>
+                <td data-label="Action">${escapeIdentityText(getSunbirdEmailAction(alert))}</td>
+                <td data-label="Category">${escapeIdentityText(alert.category || 'Email Threat')}</td>
+                <td data-label="Evidence">${escapeIdentityText((alert.description || '').slice(0, 90) || 'Security alert evidence')}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function getFilteredSunbirdEmailAlerts(model = buildSunbirdEmailModel()) {
+    const search = sunbirdEmailTableState.search.trim().toLowerCase();
+    return model.alerts.filter(alert => {
+        const severity = String(alert.severity || 'low').toLowerCase();
+        const threat = getSunbirdEmailThreatType(alert);
+        const status = String(alert.status || '').toLowerCase();
+        const haystack = [
+            alert.title,
+            alert.description,
+            alert.category,
+            severity,
+            threat,
+            status,
+            getSunbirdEmailSender(alert),
+            getSunbirdEmailTargetUser(alert),
+            getSunbirdEmailAction(alert)
+        ].join(' ').toLowerCase();
+        if (search && !haystack.includes(search)) return false;
+        if (sunbirdEmailTableState.severity !== 'all' && severity !== sunbirdEmailTableState.severity) return false;
+        if (sunbirdEmailTableState.threat !== 'all' && threat !== sunbirdEmailTableState.threat) return false;
+        if (sunbirdEmailTableState.status !== 'all' && status !== sunbirdEmailTableState.status) return false;
+        return true;
+    }).sort((a, b) => {
+        if (sunbirdEmailTableState.sort === 'severity') return getSunbirdEmailSeverityRank(b) - getSunbirdEmailSeverityRank(a);
+        if (sunbirdEmailTableState.sort === 'threat') return getSunbirdEmailThreatType(a).localeCompare(getSunbirdEmailThreatType(b));
+        return getSunbirdEmailTime(b) - getSunbirdEmailTime(a);
+    });
+}
+
+function applySunbirdEmailTableFilter(filter = {}) {
+    sunbirdEmailTableState = { ...sunbirdEmailTableState, ...filter };
+    const setValue = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.value = value;
+    };
+    setValue('sunbird-email-severity-filter', sunbirdEmailTableState.severity);
+    setValue('sunbird-email-threat-filter', sunbirdEmailTableState.threat);
+    setValue('sunbird-email-status-filter', sunbirdEmailTableState.status);
+    setValue('sunbird-email-sort', sunbirdEmailTableState.sort);
+    renderSunbirdEmailTable();
+    document.querySelector('.sunbird-email-dashboard .sunbird-id-table-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function openSunbirdEmailEvidence(evidenceKey) {
+    const model = buildSunbirdEmailModel();
+    const rows = getSunbirdEmailEvidenceRows(evidenceKey, model);
+    const modal = document.getElementById('sunbird-email-evidence-modal');
+    if (!modal) return;
+    const titleMap = {
+        allAlerts: 'Threat Mail Evidence',
+        highSeverityAlerts: 'High Severity Email Threats',
+        phishingAlerts: 'Phishing Detections',
+        malwareAlerts: 'Malware Email Detections',
+        spamAlerts: 'Spam Detections',
+        becAlerts: 'Business Email Compromise Attempts',
+        quarantinedAlerts: 'Quarantined / Blocked Emails',
+        affectedUsers: 'Users Targeted',
+        activeIncidents: 'Open Email Incidents',
+        incidents: 'Incident Drilldown',
+        recommendations: 'Security Recommendations'
+    };
+    const filterMap = {
+        highSeverityAlerts: { severity: 'high' },
+        phishingAlerts: { threat: 'phishing' },
+        malwareAlerts: { threat: 'malware' },
+        spamAlerts: { threat: 'spam' },
+        becAlerts: { threat: 'bec' }
+    };
+    modal.innerHTML = `
+        <div class="sunbird-id-modal-backdrop" onclick="closeSunbirdEmailEvidence()"></div>
+        <div class="sunbird-id-modal-panel" role="dialog" aria-modal="true">
+            <div class="sunbird-id-modal-header">
+                <div>
+                    <h3>${escapeIdentityText(titleMap[evidenceKey] || 'Email Evidence')}</h3>
+                    <p>${rows.length} evidence item${rows.length === 1 ? '' : 's'} matched this set.</p>
+                </div>
+                <button type="button" onclick="closeSunbirdEmailEvidence()" class="sunbird-id-modal-close">&times;</button>
+            </div>
+            <div class="sunbird-id-evidence-summary">
+                <span>Active threats: ${model.summary.activeThreats || 0}</span>
+                <span>High severity: ${model.summary.highSeverityAlerts || 0}</span>
+                <span>Users targeted: ${model.summary.affectedUsersCount || 0}</span>
+            </div>
+            <div class="sunbird-id-evidence-list">
+                ${rows.length ? rows.slice(0, 100).map(row => `
+                    <div class="sunbird-id-evidence-user">
+                        <strong>${escapeIdentityText(row.title)}</strong>
+                        <span>${escapeIdentityText(row.subtitle)}</span>
+                        <small>${escapeIdentityText(row.meta)}</small>
+                    </div>
+                `).join('') : '<div class="sunbird-id-empty">No evidence found for this item.</div>'}
+            </div>
+            <div class="sunbird-id-modal-actions">
+                <button type="button" class="sunbird-id-evidence-btn" onclick='applySunbirdEmailTableFilter(${JSON.stringify(filterMap[evidenceKey] || {})}); closeSunbirdEmailEvidence();'>View in Table</button>
+            </div>
+        </div>
+    `;
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeSunbirdEmailEvidence() {
+    const modal = document.getElementById('sunbird-email-evidence-modal');
+    if (!modal) return;
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+}
+
+function getSunbirdEmailEvidenceRows(evidenceKey, model = buildSunbirdEmailModel()) {
+    if (evidenceKey === 'affectedUsers') {
+        return model.evidence.affectedUsers.map(user => ({
+            title: user.user,
+            subtitle: `${user.threatCount} email threat${user.threatCount === 1 ? '' : 's'}`,
+            meta: 'Targeted mailbox evidence'
+        }));
+    }
+    if (evidenceKey === 'incidents' || evidenceKey === 'activeIncidents') {
+        return (model.evidence[evidenceKey] || []).map(incident => ({
+            title: incident.displayName || 'Email incident',
+            subtitle: incident.description || incident.assignedTo || 'Incident evidence',
+            meta: `${incident.severity || 'medium'} | ${incident.status || 'active'}`
+        }));
+    }
+    if (evidenceKey === 'recommendations') {
+        return model.recommendations.map(item => ({
+            title: item.title,
+            subtitle: item.detail,
+            meta: item.priority
+        }));
+    }
+    return (model.evidence[evidenceKey] || []).map(alert => ({
+        title: alert.title || 'Email alert',
+        subtitle: `${getSunbirdEmailTargetUser(alert)} | ${getSunbirdEmailSender(alert)}`,
+        meta: `${getSunbirdEmailThreatType(alert)} | ${alert.severity || 'low'} | ${getSunbirdEmailAction(alert)}`
+    }));
+}
+
+function toggleSunbirdEmailInsightEvidenceLock(evidenceKey) {
+    const tile = document.querySelector(`.sunbird-id-insight[data-email-evidence-key="${evidenceKey}"]`);
+    if (!tile) return;
+    const shouldLock = lockedSunbirdEmailInsightEvidenceKey !== evidenceKey;
+    document.querySelectorAll('.sunbird-id-insight.locked').forEach(item => item.classList.remove('locked'));
+    lockedSunbirdEmailInsightEvidenceKey = shouldLock ? evidenceKey : null;
+    if (shouldLock) tile.classList.add('locked');
+}
+
+function handleSunbirdEmailInsightEvidenceKey(event, evidenceKey) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    toggleSunbirdEmailInsightEvidenceLock(evidenceKey);
+}
+
+function buildSunbirdEmailThreatBreakdown(alerts) {
+    const byType = {};
+    const bySeverity = { high: 0, medium: 0, low: 0 };
+    alerts.forEach(alert => {
+        const label = getSunbirdEmailThreatLabel(alert);
+        byType[label] = (byType[label] || 0) + 1;
+        const severity = String(alert.severity || 'low').toLowerCase();
+        if (severity === 'critical' || severity === 'high') bySeverity.high++;
+        else if (severity === 'medium') bySeverity.medium++;
+        else bySeverity.low++;
+    });
+    return { byType, bySeverity };
+}
+
+function calculateSunbirdEmailResolutionRate(alerts) {
+    if (!alerts.length) return 100;
+    const resolved = alerts.filter(alert => /resolved|dismissed|closed/i.test(String(alert.status || ''))).length;
+    return Math.round((resolved / alerts.length) * 100);
+}
+
+function calculateSunbirdEmailSecurityScore(alerts) {
+    let score = 100;
+    alerts.slice(0, 30).forEach(alert => {
+        const severity = String(alert.severity || 'low').toLowerCase();
+        score -= severity === 'critical' ? 18 : severity === 'high' ? 12 : severity === 'medium' ? 5 : 2;
+    });
+    return Math.max(0, Math.min(100, score));
+}
+
+function getSunbirdEmailThreatType(alert) {
+    const text = `${alert.title || ''} ${alert.description || ''} ${alert.category || ''}`.toLowerCase();
+    if (/business email|bec|impersonation|spoof/.test(text)) return text.includes('spoof') ? 'spoofing' : 'bec';
+    if (text.includes('phish')) return 'phishing';
+    if (text.includes('malware') || text.includes('attachment') || text.includes('ransomware')) return 'malware';
+    if (text.includes('spam')) return 'spam';
+    return 'other';
+}
+
+function getSunbirdEmailThreatLabel(alert) {
+    const type = getSunbirdEmailThreatType(alert);
+    return {
+        phishing: 'Phishing',
+        malware: 'Malware',
+        spam: 'Spam',
+        bec: 'BEC',
+        spoofing: 'Spoofing',
+        other: 'Other'
+    }[type] || 'Other';
+}
+
+function getSunbirdEmailSender(alert) {
+    return alert.sender || alert.from || alert.sourceAddress || alert.vendorInformation || 'Unknown sender';
+}
+
+function getSunbirdEmailTargetUser(alert) {
+    const users = Array.isArray(alert.userStates) ? alert.userStates : [];
+    return users[0]?.accountName || alert.recipient || alert.userPrincipalName || 'Unknown user';
+}
+
+function getSunbirdEmailAction(alert) {
+    const status = String(alert.status || '').toLowerCase();
+    if (/resolved|dismissed|closed/.test(status)) return 'Resolved';
+    if (/quarantine|blocked|prevented/.test(`${alert.title || ''} ${alert.description || ''}`.toLowerCase())) return 'Blocked / Quarantined';
+    if (/inprogress/.test(status)) return 'Investigation active';
+    return 'Needs review';
+}
+
+function getSunbirdEmailTime(alert) {
+    const raw = alert.created || alert.createdDateTime || alert.eventDateTime;
+    const time = raw ? new Date(raw).getTime() : 0;
+    return Number.isFinite(time) ? time : 0;
+}
+
+function getSunbirdEmailSeverityRank(alert) {
+    const severity = String(alert.severity || 'low').toLowerCase();
+    if (severity === 'critical') return 4;
+    if (severity === 'high') return 3;
+    if (severity === 'medium') return 2;
+    return 1;
+}
+
+function getSunbirdEmailAffectedUserRows(data, alerts) {
+    if (Array.isArray(data.affectedUsers?.mostTargeted) && data.affectedUsers.mostTargeted.length) {
+        return data.affectedUsers.mostTargeted.map(user => ({
+            user: user.user || user.accountName || 'Unknown user',
+            threatCount: user.threatCount || user.count || 0
+        }));
+    }
+    const counts = {};
+    alerts.forEach(alert => {
+        const user = getSunbirdEmailTargetUser(alert);
+        counts[user] = (counts[user] || 0) + 1;
+    });
+    return Object.entries(counts)
+        .sort((a, b) => b[1] - a[1])
+        .map(([user, threatCount]) => ({ user, threatCount }));
+}
+
+function getSunbirdEmailTargetedUserChartItems(model) {
+    return model.evidence.affectedUsers.slice(0, 5).map((user, index) => ({
+        label: user.user.split('@')[0] || user.user,
+        value: user.threatCount,
+        tone: index === 0 ? 'bad' : index === 1 ? 'warn' : 'neutral'
+    }));
+}
+
+function buildSunbirdEmailRecommendations(model, evidence) {
+    const recs = [];
+    if (evidence.highSeverityAlerts.length) {
+        recs.push({ priority: 'critical', title: 'Review high severity email threats', detail: `${evidence.highSeverityAlerts.length} high severity alert(s) need investigation.` });
+    }
+    if (evidence.phishingAlerts.length) {
+        recs.push({ priority: 'high', title: 'Strengthen phishing protection', detail: 'Review Safe Links, anti-phishing policy, and targeted user training.' });
+    }
+    if (evidence.malwareAlerts.length) {
+        recs.push({ priority: 'high', title: 'Validate Safe Attachments coverage', detail: `${evidence.malwareAlerts.length} malware-related email alert(s) detected.` });
+    }
+    if (evidence.affectedUserRows.length > 5) {
+        recs.push({ priority: 'medium', title: 'Prioritize targeted mailbox review', detail: `${evidence.affectedUserRows.length} users are represented in threat evidence.` });
+    }
+    if (!recs.length) {
+        recs.push({ priority: 'low', title: 'Maintain monitoring baseline', detail: 'No urgent email-security recommendations from current evidence.' });
+    }
+    return recs;
+}
+
+window.openSunbirdEmailEvidence = openSunbirdEmailEvidence;
+window.closeSunbirdEmailEvidence = closeSunbirdEmailEvidence;
+window.applySunbirdEmailTableFilter = applySunbirdEmailTableFilter;
+window.toggleSunbirdEmailInsightEvidenceLock = toggleSunbirdEmailInsightEvidenceLock;
+window.handleSunbirdEmailInsightEvidenceKey = handleSunbirdEmailInsightEvidenceKey;
 
 // Initialize  Identity Protection dashboard
 function initializeIdentityDashboard() {
@@ -5415,7 +6171,6 @@ function setupEventListeners() {
     const resendCodeLink = document.getElementById('resend-code-link');
     const backToLoginLink = document.getElementById('back-to-login');
     const backBtnSecurity = document.getElementById('btn-back-security');
-    const backBtnEmailSecurity = document.getElementById('btn-back-email-security') || document.getElementById('btn-back-email');
     const backBtnBackupRecovery = document.getElementById('btn-back-backup-recovery');
 
     if (loginForm) {
@@ -5481,7 +6236,6 @@ function setupEventListeners() {
 
     // Back buttons for full dashboards (non-generic views)
     if (backBtnSecurity) backBtnSecurity.addEventListener('click', goBackToProjects);
-    if (backBtnEmailSecurity) backBtnEmailSecurity.addEventListener('click', goBackToProjects);
     if (backBtnBackupRecovery) backBtnBackupRecovery.addEventListener('click', goBackToProjects);
 
     if (passwordToggle) {
