@@ -1404,11 +1404,29 @@ async function fetchDevicesCardData() {
         }
 
         latestDevicesCardData = data;
-        const metrics = data.metrics || {};
-        const total = metrics.TotalDevices || metrics.totalDevices || 0;
-        const nonCompliant = metrics.NonCompliant || metrics.nonCompliant || 0;
-        const notEncrypted = metrics.NotEncrypted || metrics.notEncrypted || 0;
-        const stale7days = metrics.StaleDevices || metrics.staleDevices || 0;
+        try {
+            const detailResponse = await fetch('/api/microsoft-devices', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            const detailData = await detailResponse.json();
+            if (detailResponse.ok && detailData.success) {
+                latestDevicesCardData = normalizeSunbirdDevicesData(detailData);
+                sunbirdDevicesDashboardData = latestDevicesCardData;
+                saveSunbirdDevicesSnapshot(latestDevicesCardData);
+            }
+        } catch (detailError) {
+            console.warn('[Devices Card] Detailed device data unavailable, using cached metrics:', detailError.message);
+        }
+
+        const normalized = normalizeSunbirdDevicesData(latestDevicesCardData);
+        const total = normalized.summary.totalDevices || 0;
+        const nonCompliant = normalized.summary.nonCompliantDevices || 0;
+        const notEncrypted = Math.max(0, total - (normalized.summary.encryptedDevices || 0));
+        const stale7days = normalized.activityBreakdown?.stale7days ?? normalized.summary.staleDevices ?? 0;
 
         project.status = 'active';
         project.cardMetrics = [
@@ -3012,19 +3030,37 @@ function getSunbirdMetricNumber(metrics, keys, fallback = 0) {
 
 function normalizeSunbirdDevicesData(data = {}) {
     const devices = Array.isArray(data.devices) ? data.devices : [];
+    const hasDeviceEvidence = devices.length > 0;
     const metrics = data.metrics || {};
     const summary = data.summary || {};
-    const totalDevices = summary.totalDevices ?? getSunbirdMetricNumber(metrics, ['TotalDevices', 'totalDevices'], devices.length);
-    const nonCompliantDevices = summary.nonCompliantDevices ?? summary.nonCompliant ?? getSunbirdMetricNumber(metrics, ['NonCompliant', 'nonCompliant'], devices.filter(d => normalizeSunbirdDeviceCompliance(d) !== 'compliant').length);
-    const notEncryptedDevices = summary.notEncryptedDevices ?? getSunbirdMetricNumber(metrics, ['NotEncrypted', 'notEncrypted'], devices.filter(d => !d.isEncrypted).length);
-    const staleDevices = summary.staleDevices ?? getSunbirdMetricNumber(metrics, ['StaleDevices', 'staleDevices'], devices.filter(d => getSunbirdDeviceDaysSinceSync(d) > 7).length);
-    const compliantDevices = summary.compliantDevices ?? Math.max(0, totalDevices - nonCompliantDevices);
-    const encryptedDevices = summary.encryptedDevices ?? Math.max(0, totalDevices - notEncryptedDevices);
-    const activityBreakdown = data.activityBreakdown || summary.activityBreakdown || {
+    const totalDevices = hasDeviceEvidence ? devices.length : summary.totalDevices ?? getSunbirdMetricNumber(metrics, ['TotalDevices', 'totalDevices'], 0);
+    const nonCompliantDevices = hasDeviceEvidence
+        ? devices.filter(d => normalizeSunbirdDeviceCompliance(d) !== 'compliant').length
+        : summary.nonCompliantDevices ?? summary.nonCompliant ?? getSunbirdMetricNumber(metrics, ['NonCompliant', 'nonCompliant'], 0);
+    const notEncryptedDevices = hasDeviceEvidence
+        ? devices.filter(d => !d.isEncrypted).length
+        : summary.notEncryptedDevices ?? getSunbirdMetricNumber(metrics, ['NotEncrypted', 'notEncrypted'], 0);
+    const staleDeviceEvidenceCount = devices.filter(d => getSunbirdDeviceDaysSinceSync(d) > 7 && getSunbirdDeviceDaysSinceSync(d) <= 30).length;
+    const deadDeviceEvidenceCount = devices.filter(d => getSunbirdDeviceDaysSinceSync(d) > 30).length;
+    const staleDevices = hasDeviceEvidence
+        ? staleDeviceEvidenceCount
+        : summary.staleDevices ?? getSunbirdMetricNumber(metrics, ['StaleDevices', 'staleDevices'], 0);
+    const compliantDevices = hasDeviceEvidence
+        ? devices.filter(d => normalizeSunbirdDeviceCompliance(d) === 'compliant').length
+        : summary.compliantDevices ?? Math.max(0, totalDevices - nonCompliantDevices);
+    const encryptedDevices = hasDeviceEvidence
+        ? devices.filter(d => d.isEncrypted).length
+        : summary.encryptedDevices ?? Math.max(0, totalDevices - notEncryptedDevices);
+    const activityBreakdown = { ...(data.activityBreakdown || summary.activityBreakdown || {
         active24h: devices.filter(d => getSunbirdDeviceDaysSinceSync(d) <= 1).length,
-        stale7days: devices.filter(d => getSunbirdDeviceDaysSinceSync(d) > 7 && getSunbirdDeviceDaysSinceSync(d) <= 30).length || staleDevices,
-        dead30days: devices.filter(d => getSunbirdDeviceDaysSinceSync(d) > 30).length
-    };
+        stale7days: staleDeviceEvidenceCount,
+        dead30days: deadDeviceEvidenceCount
+    }) };
+    if (hasDeviceEvidence) {
+        activityBreakdown.active24h = devices.filter(d => getSunbirdDeviceDaysSinceSync(d) <= 1).length;
+        activityBreakdown.stale7days = staleDeviceEvidenceCount;
+        activityBreakdown.dead30days = deadDeviceEvidenceCount;
+    }
 
     return {
         ...data,
@@ -3045,7 +3081,7 @@ function normalizeSunbirdDevicesData(data = {}) {
             compliantDevices,
             encryptedDevices,
             staleDevices,
-            highRiskDevices: summary.highRiskDevices ?? devices.filter(d => getSunbirdDeviceRiskLevel(d) === 'high').length,
+            highRiskDevices: hasDeviceEvidence ? devices.filter(d => getSunbirdDeviceRiskLevel(d) === 'high').length : summary.highRiskDevices ?? 0,
             compliancePercentage: summary.compliancePercentage ?? (totalDevices ? Math.round((compliantDevices / totalDevices) * 100) : 0),
             encryptionPercentage: summary.encryptionPercentage ?? (totalDevices ? Math.round((encryptedDevices / totalDevices) * 100) : 0),
             deviceSecurityScore: summary.deviceSecurityScore ?? calculateSunbirdDeviceSecurityScore(totalDevices, compliantDevices, encryptedDevices, activityBreakdown.active24h)
@@ -3092,7 +3128,7 @@ function buildSunbirdDevicesModel(data = sunbirdDevicesDashboardData) {
     const devices = normalized.devices;
     const nonCompliantDevices = devices.filter(d => normalizeSunbirdDeviceCompliance(d) !== 'compliant');
     const notEncryptedDevices = devices.filter(d => !d.isEncrypted);
-    const staleDevices = devices.filter(d => getSunbirdDeviceDaysSinceSync(d) > 7);
+    const staleDevices = devices.filter(d => getSunbirdDeviceDaysSinceSync(d) > 7 && getSunbirdDeviceDaysSinceSync(d) <= 30);
     const deadDevices = devices.filter(d => getSunbirdDeviceDaysSinceSync(d) > 30);
     const highRiskDevices = devices.filter(d => getSunbirdDeviceRiskLevel(d) === 'high');
     const mediumRiskDevices = devices.filter(d => getSunbirdDeviceRiskLevel(d) === 'medium');
@@ -3108,6 +3144,7 @@ function buildSunbirdDevicesModel(data = sunbirdDevicesDashboardData) {
             nonCompliantDevices,
             notEncryptedDevices,
             staleDevices,
+            stale7daysDevices: staleDevices,
             deadDevices,
             highRiskDevices,
             mediumRiskDevices,
@@ -3295,23 +3332,45 @@ function renderSunbirdDeviceAlertPanel(title, alerts) {
 function renderSunbirdDeviceActivityPanel(model) {
     const activity = model.activityBreakdown || {};
     const rows = [
-        { title: 'Active (24h)', value: activity.active24h || 0, tone: 'good' },
-        { title: 'Stale (7+ days)', value: activity.stale7days || model.evidence.staleDevices.length || 0, tone: 'warn' },
-        { title: 'Dead (30+ days)', value: activity.dead30days || model.evidence.deadDevices.length || 0, tone: 'bad' },
-        { title: 'Security score', value: `${model.summary.deviceSecurityScore || 0}%`, tone: model.summary.deviceSecurityScore >= 80 ? 'good' : model.summary.deviceSecurityScore >= 60 ? 'warn' : 'bad' }
+        { title: 'Active (24h)', value: model.evidence.active24hDevices.length || activity.active24h || 0, tone: 'good', evidence: 'active24hDevices' },
+        { title: 'Stale (7+ days)', value: model.evidence.stale7daysDevices.length || activity.stale7days || 0, tone: 'warn', evidence: 'stale7daysDevices' },
+        { title: 'Dead (30+ days)', value: model.evidence.deadDevices.length || activity.dead30days || 0, tone: 'bad', evidence: 'deadDevices' },
+        { title: 'Security score', value: `${model.summary.deviceSecurityScore || 0}%`, tone: model.summary.deviceSecurityScore >= 80 ? 'good' : model.summary.deviceSecurityScore >= 60 ? 'warn' : 'bad', evidence: 'allDevices' }
     ];
     return `
         <article class="sunbird-id-signin-card">
             <h3>Device activity timeline</h3>
             <div class="sunbird-device-mini-grid">
                 ${rows.map(row => `
-                    <button type="button" class="sunbird-device-mini-stat tone-${row.tone}" onclick="${row.title.includes('Stale') ? "openSunbirdDeviceEvidence('staleDevices')" : row.title.includes('Dead') ? "openSunbirdDeviceEvidence('deadDevices')" : row.title.includes('Active') ? "openSunbirdDeviceEvidence('active24hDevices')" : "openSunbirdDeviceEvidence('allDevices')"}">
+                    <article class="sunbird-device-mini-stat tone-${row.tone}" role="button" tabindex="0" onclick="openSunbirdDeviceEvidence('${row.evidence}')" onkeydown="if(event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openSunbirdDeviceEvidence('${row.evidence}'); }">
                         <span>${escapeIdentityText(row.title)}</span>
                         <strong>${escapeIdentityText(row.value)}</strong>
-                    </button>
+                        ${renderSunbirdDeviceMiniStatEvidence(row, model)}
+                    </article>
                 `).join('')}
             </div>
         </article>
+    `;
+}
+
+function renderSunbirdDeviceMiniStatEvidence(row, model) {
+    const rows = getSunbirdDeviceEvidenceRows(row.evidence, model);
+    const previewRows = rows.slice(0, 3);
+    return `
+        <div class="sunbird-device-mini-evidence" onclick="event.stopPropagation()">
+            <p>${rows.length} evidence item${rows.length === 1 ? '' : 's'} matched this timeline signal.</p>
+            <div class="sunbird-id-insight-evidence-list">
+                ${previewRows.length ? previewRows.map(item => `
+                    <div>
+                        <strong>${escapeIdentityText(item.title)}</strong>
+                        <span>${escapeIdentityText(item.subtitle)}</span>
+                        <small>${escapeIdentityText(item.meta)}</small>
+                    </div>
+                `).join('') : '<em>No evidence found.</em>'}
+            </div>
+            ${rows.length > previewRows.length ? `<small>${rows.length - previewRows.length} more in full evidence</small>` : ''}
+            <small>Click tile to open full evidence.</small>
+        </div>
     `;
 }
 
@@ -3432,6 +3491,7 @@ function openSunbirdDeviceEvidence(evidenceKey) {
         nonCompliantDevices: 'Non-compliant Devices',
         notEncryptedDevices: 'Devices Without Encryption',
         staleDevices: 'Stale Devices',
+        stale7daysDevices: 'Stale 7+ Day Devices',
         deadDevices: 'Dead 30+ Day Devices',
         highRiskDevices: 'High Risk Devices',
         active24hDevices: 'Active Devices',
@@ -3445,6 +3505,7 @@ function openSunbirdDeviceEvidence(evidenceKey) {
         notEncryptedDevices: { encryption: 'no' },
         highRiskDevices: { risk: 'high' },
         staleDevices: { sort: 'lastSync' },
+        stale7daysDevices: { sort: 'lastSync' },
         deadDevices: { sort: 'lastSync' }
     };
 
@@ -7482,19 +7543,19 @@ function buildIdentityPreviewModel() {
 }
 
 function buildDevicesPreviewModel() {
-    
-    const data = latestDevicesCardData || {};
+    const data = normalizeSunbirdDevicesData(latestDevicesCardData || {});
     const summary = data.summary || {};
     const devices = Array.isArray(data.devices) ? data.devices : [];
-    const totalDevices = summary.totalDevices || devices.length || 0;
-    const compliantDevices = devices.filter(d => d.complianceState === 'compliant').length;
-    const graceDevices = devices.filter(d => d.complianceState === 'inGracePeriod').length;
-    const encryptedDevices = summary.encryptedDevices || devices.filter(d => d.isEncrypted).length;
-    const nonCompliant = devices.filter(d => d.complianceState === 'noncompliant').length;
+    const metrics = data.metrics || {};
+    const totalDevices = summary.totalDevices ?? getSunbirdMetricNumber(metrics, ['TotalDevices', 'totalDevices'], devices.length);
+    const compliantDevices = summary.compliantDevices ?? devices.filter(d => normalizeSunbirdDeviceCompliance(d) === 'compliant').length;
+    const graceDevices = devices.filter(d => String(d.complianceState || '').toLowerCase() === 'ingraceperiod').length;
+    const encryptedDevices = summary.encryptedDevices ?? devices.filter(d => d.isEncrypted).length;
+    const nonCompliant = summary.nonCompliantDevices ?? getSunbirdMetricNumber(metrics, ['NonCompliant', 'nonCompliant'], devices.filter(d => normalizeSunbirdDeviceCompliance(d) === 'noncompliant').length);
     const notEncrypted = Math.max(0, totalDevices - encryptedDevices);
-    const staleDevices = data.activityBreakdown?.stale7days || 0;
-    const highRisk = devices.filter(d => d.complianceState === 'noncompliant' && !d.isEncrypted).length;
-    const mediumRisk = devices.filter(d => d.complianceState === 'inGracePeriod').length;
+    const staleDevices = data.activityBreakdown?.stale7days ?? summary.staleDevices ?? 0;
+    const highRisk = summary.highRiskDevices ?? devices.filter(d => getSunbirdDeviceRiskLevel(d) === 'high').length;
+    const mediumRisk = devices.length ? devices.filter(d => getSunbirdDeviceRiskLevel(d) === 'medium').length : graceDevices + staleDevices;
     const healthy = compliantDevices;
 
     const keyInsight =
