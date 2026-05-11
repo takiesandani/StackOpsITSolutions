@@ -1640,35 +1640,71 @@ function openIdentityDashboard() {
         };
     }
     
-    // Render an identity-specific loading view immediately to avoid showing generic dashboard content.
-    dashboardView.innerHTML = generateIdentityDashboardHTML();
-    showIdentityTableLoadingSkeleton();
-
-    // Trigger fresh fetch whenever user opens Identity dashboard.
-    fetchIdentityAccessData();
-
-    // WAIT for data to load before initializing dashboard
-    if (microsoftUsersData.length > 0) {
-        console.log('[Identity Dashboard] Data already loaded, initializing immediately');
-        initializeIdentityDashboard();
-    } else {
-        // Otherwise wait for data to load with timeout
-        console.log('[Identity Dashboard] Waiting for data to load...');
-        let waitTime = 0;
-        const maxWait = 12000; // Max 12 seconds for slower Graph calls
-        const checkInterval = setInterval(() => {
-            waitTime += 100;
-            if (microsoftUsersData.length > 0) {
-                console.log('[Identity Dashboard] Data loaded successfully');
-                clearInterval(checkInterval);
-                initializeIdentityDashboard();
-            } else if (waitTime >= maxWait) {
-                console.warn('[Identity Dashboard] Data load timeout, initializing with available data');
-                clearInterval(checkInterval);
-                initializeIdentityDashboard();
-            }
-        }, 100);
+    // Trigger fresh fetch whenever user opens Identity dashboard
+    console.log('[Identity Dashboard] Ensuring data is loaded...');
+    
+    // First, populate from cached sunbirdDashboardData if available
+    if (sunbirdDashboardData && sunbirdDashboardData.users && microsoftUsersData.length === 0) {
+        console.log('[Identity Dashboard] Using cached Sunbird data');
+        microsoftUsersData = (sunbirdDashboardData.users || []).map(user => ({
+            id: user.id,
+            displayName: user.displayName,
+            mail: user.mail,
+            userPrincipalName: user.userPrincipalName,
+            jobTitle: user.jobTitle,
+            mobilePhone: user.mobilePhone,
+            roles: user.roles || [],
+            mfaEnabled: toBooleanMfa(user.mfaEnabled),
+            authMethodCount: user.authMethodCount || 0,
+            riskLevel: user.riskLevel || 'SAFE',
+            isExternal: user.isExternal,
+            accountEnabled: user.accountEnabled !== false,
+            lastSignIn: {
+                dateTime: user.lastSignIn?.dateTime || null,
+                location: user.lastSignIn?.location || 'Unknown',
+                device: user.lastSignIn?.device || 'Unknown Device',
+                daysSince: user.lastSignIn?.daysSince || 999
+            },
+            ...user
+        }));
+        isSunbirdDashboard = true;
     }
+    
+    // Now render dashboard with current data (cached or empty)
+    if (dashboardView) {
+        dashboardView.innerHTML = generateIdentityDashboardHTML();
+        dashboardView.style.display = 'block';
+    }
+    showIdentityTableLoadingSkeleton();
+    
+    // Populate table with current cached data immediately
+    setTimeout(() => {
+        console.log('[Identity Dashboard] Populating table with cached data');
+        populateIdentityTable();
+        setupIdentitySearch();
+        initializeIdentityInsights();
+    }, 50);
+    
+    // Then fetch fresh data and refresh
+    fetchIdentityAccessData().then(() => {
+        console.log('[Identity Dashboard] Data fetch completed, data available:', microsoftUsersData.length);
+        
+        // Refresh the dashboard display with fresh data
+        if (dashboardView && microsoftUsersData.length > 0) {
+            dashboardView.innerHTML = generateIdentityDashboardHTML();
+            dashboardView.style.display = 'block';
+            showIdentityTableLoadingSkeleton();
+            
+            setTimeout(() => {
+                console.log('[Identity Dashboard] Refreshing display with fresh data');
+                populateIdentityTable();
+                setupIdentitySearch();
+                initializeIdentityInsights();
+            }, 50);
+        }
+    }).catch((error) => {
+        console.error('[Identity Dashboard] Fetch error (using cached data):', error);
+    });
 }
 
 // Initialize  Identity Protection dashboard
