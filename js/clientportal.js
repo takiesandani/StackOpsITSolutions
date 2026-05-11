@@ -1,112 +1,9 @@
 /* Client Portal JavaScript */
 
 // ════════════════════════════════════════════════════════════════════════════════
-// SMOOTH LOADING & FADE UTILITIES - Prevent Container Flashing
+// DASHBOARD LOADING SYSTEM - SIMPLIFIED & RELIABLE
 // ════════════════════════════════════════════════════════════════════════════════
-
-// Add smooth fade CSS animations to prevent flashing
-function initializeSmoothLoadingStyles() {
-    if (document.getElementById('smooth-loading-styles')) return; // Already added
-    
-    const style = document.createElement('style');
-    style.id = 'smooth-loading-styles';
-    style.textContent = `
-        /* Skeleton Loading Animation */
-        @keyframes skeleton-loading {
-            0% { background-color: #e0e0e0; }
-            50% { background-color: #f0f0f0; }
-            100% { background-color: #e0e0e0; }
-        }
-        
-        .skeleton-block {
-            background-color: #e0e0e0;
-            height: 16px;
-            border-radius: 4px;
-            animation: skeleton-loading 1.5s infinite;
-        }
-        
-        .op-skeleton-block {
-            background-color: #e0e0e0;
-            height: 16px;
-            border-radius: 4px;
-            animation: skeleton-loading 1.5s infinite;
-        }
-        
-        .skeleton-row {
-            opacity: 1;
-        }
-        
-        .op-skeleton-row {
-            opacity: 1;
-        }
-        
-        /* Smooth fade transitions */
-        .fade-out {
-            transition: opacity 0.3s ease-in-out;
-            opacity: 0;
-        }
-        
-        .fade-in {
-            transition: opacity 0.3s ease-in-out;
-            opacity: 1;
-        }
-        
-        /* Keep containers visible during loading - use opacity instead of display */
-        .content-loading {
-            opacity: 0.6;
-            pointer-events: none;
-        }
-        
-        .content-loaded {
-            opacity: 1;
-            pointer-events: auto;
-        }
-    `;
-    document.head.appendChild(style);
-}
-
-// Smooth show function - prevents flashing
-function smoothShow(element, duration = 300) {
-    if (!element) return;
-    element.style.display = 'block'; // Show first immediately
-    element.style.transition = `opacity ${duration}ms ease-in-out`;
-    
-    // Force reflow to ensure opacity transition works
-    void element.offsetWidth;
-    
-    element.style.opacity = '1';
-}
-
-// Smooth hide function - prevents flashing  
-function smoothHide(element, duration = 300) {
-    if (!element) return;
-    element.style.transition = `opacity ${duration}ms ease-in-out`;
-    element.style.opacity = '0';
-    
-    setTimeout(() => {
-        if (element.style.opacity === '0') { // Only hide if still faded
-            element.style.display = 'none';
-        }
-    }, duration);
-}
-
-// Replace display operations - prevents flashing
-function setElementVisibility(element, isVisible, useFade = true) {
-    if (!element) return;
-    
-    if (useFade) {
-        if (isVisible) {
-            smoothShow(element);
-        } else {
-            smoothHide(element);
-        }
-    } else {
-        element.style.display = isVisible ? 'block' : 'none';
-    }
-}
-
-// Initialize styles on page load
-initializeSmoothLoadingStyles();
+// Rebuilt according to strict rules: No animations, no delays, instant rendering
 
 let currentProject = null;
 let charts = {};
@@ -125,6 +22,456 @@ const HIDDEN_PROJECT_CARD_IDS = [4, 7, 8, 6]; // Security & Events, Backup and R
 
 // SEDFA/Duo user-specific card IDs (Cisco Duo Licenses, Cloud data services, Infrastructure Monitoring)
 const SEDFA_CARD_IDS = [1, 6, 11];
+
+// ════════════════════════════════════════════════════════════════════════════════
+// DASHBOARD CONFIGURATION - UNIVERSAL TEMPLATE FOR ALL DASHBOARDS
+// ════════════════════════════════════════════════════════════════════════════════
+
+const dashboardConfigs = {
+    "Identity Protection": {
+        title: "Identity Protection Dashboard",
+        subtitle: "User Management & Access Control",
+        stats: [
+            { id: "stat-users", label: "Total Users", icon: "fas fa-users", value: "0" },
+            { id: "stat-active", label: "Active (24h)", icon: "fas fa-user-check", value: "0" },
+            { id: "stat-admin", label: "Admin Roles", icon: "fas fa-crown", value: "0" },
+            { id: "stat-score", label: "Security Score", icon: "fas fa-shield-alt", value: "0" }
+        ],
+        charts: [
+            { id: "riskChart", title: "Risk Assessment Overview", type: "line" },
+            { id: "securityChart", title: "Security Status", type: "doughnut" },
+            { id: "healthChart", title: "System Health", type: "radar" },
+            { id: "threatChart", title: "Threat Detection Timeline", type: "bar" }
+        ],
+        sections: [
+            { name: "Security Events", content: "" },
+            { name: "User Access", content: "" },
+            { name: "Risk Alerts", content: "" }
+        ]
+    },
+    "Device Protection": {
+        title: "Device Protection Dashboard",
+        subtitle: "Device Management & Compliance",
+        stats: [
+            { id: "stat-devices", label: "Total Devices", icon: "fas fa-desktop", value: "0" },
+            { id: "stat-noncompliant", label: "Non-Compliant", icon: "fas fa-times-circle", value: "0" },
+            { id: "stat-encrypted", label: "Not Encrypted", icon: "fas fa-lock-open", value: "0" },
+            { id: "stat-stale", label: "Stale (7+ days)", icon: "fas fa-clock", value: "0" }
+        ],
+        charts: [
+            { id: "riskChart", title: "Risk Assessment Overview", type: "line" },
+            { id: "securityChart", title: "Compliance Status", type: "doughnut" },
+            { id: "healthChart", title: "Device Health", type: "radar" },
+            { id: "threatChart", title: "Threat Timeline", type: "bar" }
+        ],
+        sections: [
+            { name: "Device Inventory", content: "" },
+            { name: "Compliance Status", content: "" },
+            { name: "Security Patches", content: "" }
+        ]
+    },
+    "Security": {
+        title: "Security Dashboard",
+        subtitle: "Real-Time Security Intelligence & Threat Response",
+        stats: [
+            { id: "stat-incidents", label: "Active Incidents", icon: "fas fa-exclamation-triangle", value: "0" },
+            { id: "stat-alerts", label: "High Alerts", icon: "fas fa-bell", value: "0" },
+            { id: "stat-threats", label: "Threats Detected", icon: "fas fa-virus", value: "0" },
+            { id: "stat-response", label: "Response Time", icon: "fas fa-clock", value: "N/A" }
+        ],
+        charts: [
+            { id: "riskChart", title: "Risk Assessment Overview", type: "line" },
+            { id: "securityChart", title: "Security Posture", type: "doughnut" },
+            { id: "healthChart", title: "Threat Analysis", type: "radar" },
+            { id: "threatChart", title: "Incident Timeline", type: "bar" }
+        ],
+        sections: [
+            { name: "Active Threats", content: "" },
+            { name: "Security Alerts", content: "" },
+            { name: "Incident Response", content: "" }
+        ]
+    },
+    "Compliance": {
+        title: "Compliance Dashboard",
+        subtitle: "Compliance Controls & Recovery Operations",
+        stats: [
+            { id: "stat-compliant", label: "Compliant Systems", icon: "fas fa-check-circle", value: "0" },
+            { id: "stat-violations", label: "Policy Violations", icon: "fas fa-exclamation-circle", value: "0" },
+            { id: "stat-storage", label: "Total Storage", icon: "fas fa-database", value: "0 TB" },
+            { id: "stat-coverage", label: "Services Covered", icon: "fas fa-shield-alt", value: "0" }
+        ],
+        charts: [
+            { id: "riskChart", title: "Compliance Trend", type: "line" },
+            { id: "securityChart", title: "Compliance Status", type: "doughnut" },
+            { id: "healthChart", title: "Policy Adherence", type: "radar" },
+            { id: "threatChart", title: "Violation Timeline", type: "bar" }
+        ],
+        sections: [
+            { name: "Compliance Status", content: "" },
+            { name: "Policy Violations", content: "" },
+            { name: "Remediation Actions", content: "" }
+        ]
+    },
+    "Service Desk": {
+        title: "Service Desk Dashboard",
+        subtitle: "Support Tickets & Service Operations",
+        stats: [
+            { id: "stat-open", label: "Open Tickets", icon: "fas fa-ticket-alt", value: "0" },
+            { id: "stat-resolved", label: "Resolved (24h)", icon: "fas fa-check-circle", value: "0" },
+            { id: "stat-avgtime", label: "Avg Resolution", icon: "fas fa-hourglass-end", value: "0 hrs" },
+            { id: "stat-satisfaction", label: "Satisfaction", icon: "fas fa-smile", value: "0%" }
+        ],
+        charts: [
+            { id: "riskChart", title: "Ticket Volume Trend", type: "line" },
+            { id: "securityChart", title: "Ticket Status Distribution", type: "doughnut" },
+            { id: "healthChart", title: "Resolution Performance", type: "radar" },
+            { id: "threatChart", title: "Priority Timeline", type: "bar" }
+        ],
+        sections: [
+            { name: "Open Tickets", content: "" },
+            { name: "In Progress", content: "" },
+            { name: "Recently Resolved", content: "" }
+        ]
+    }
+};
+
+// ════════════════════════════════════════════════════════════════════════════════
+// NEW DASHBOARD SYSTEM - RULE 2: ONE SIMPLE DASHBOARD LOADER
+// ════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * RULE 17: ONE EVENT LISTENER ONLY
+ * Main function to open any dashboard
+ * Usage: onclick="openDashboard(project)"
+ */
+function openDashboard(project) {
+    console.log('[Dashboard] Opening dashboard for project:', project);
+    
+    // RULE 1: Validate project
+    if (!project) {
+        console.error('[Dashboard] No project provided');
+        return;
+    }
+    
+    // Get dashboard type with fallback
+    const dashboardType = project.dashboardType || "Security"; // RULE 18: Fallback config
+    console.log('[Dashboard] Dashboard type:', dashboardType);
+    
+    // Get configuration
+    const config = dashboardConfigs[dashboardType];
+    if (!config) {
+        console.error('[Dashboard] Configuration missing for:', dashboardType);
+        // Use Security as fallback
+        const fallbackConfig = dashboardConfigs["Security"];
+        renderDashboard(fallbackConfig, project);
+        return;
+    }
+    
+    // RULE 2: Hide projects view
+    const projectsView = document.getElementById('projects-view');
+    if (projectsView) projectsView.style.display = 'none';
+    
+    // RULE 2: Show dashboard view
+    const dashboardView = document.getElementById('dashboard-view');
+    if (dashboardView) dashboardView.style.display = 'block';
+    
+    // RULE 2: Render dashboard
+    renderDashboard(config, project);
+}
+
+/**
+ * RULE 5: Render dashboard HTML with universal template
+ * Process: No animations, set innerHTML, then initialize charts
+ */
+function renderDashboard(config, project) {
+    console.log('[Dashboard] Rendering:', config.title);
+    
+    const dashboardView = document.getElementById('dashboard-view');
+    if (!dashboardView) {
+        console.error('[Dashboard] Dashboard view element not found');
+        return;
+    }
+    
+    // RULE 10: Clear dashboard content
+    const dashboardContent = dashboardView.querySelector('.charts-section') || dashboardView.querySelector('.monitoring-section');
+    
+    // Update title
+    const titleElement = document.getElementById('project-name');
+    if (titleElement) titleElement.textContent = config.title;
+    
+    // RULE 2: Initialize charts immediately
+    initializeDashboardCharts(config);
+    
+    console.log('[Dashboard] Dashboard rendered successfully');
+}
+
+/**
+ * RULE 6: Initialize charts
+ * Process: Destroy old charts, create new charts
+ */
+function initializeDashboardCharts(config) {
+    console.log('[Dashboard] Initializing charts for:', config.title);
+    
+    // RULE 7: Destroy old chart instances
+    if (window.dashboardCharts) {
+        Object.values(window.dashboardCharts).forEach(chart => {
+            if (chart && typeof chart.destroy === 'function') {
+                chart.destroy();
+            }
+        });
+    }
+    window.dashboardCharts = {};
+    
+    // RULE 6: Create new charts
+    config.charts.forEach(chartConfig => {
+        const canvas = document.getElementById(chartConfig.id);
+        if (!canvas) {
+            console.warn('[Dashboard] Canvas not found:', chartConfig.id);
+            return;
+        }
+        
+        try {
+            const ctx = canvas.getContext('2d');
+            window.dashboardCharts[chartConfig.id] = createChart(ctx, chartConfig);
+            console.log('[Dashboard] Chart created:', chartConfig.id);
+        } catch (error) {
+            console.error('[Dashboard] Error creating chart:', chartConfig.id, error);
+        }
+    });
+}
+
+/**
+ * Helper function to create chart based on type
+ */
+function createChart(ctx, chartConfig) {
+    switch(chartConfig.type) {
+        case 'line':
+            return new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                    datasets: [
+                        {
+                            label: 'Critical',
+                            data: [2, 3, 2, 4, 2, 1, 2],
+                            borderColor: '#dc3545',
+                            backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                            tension: 0.4,
+                            fill: true,
+                            pointBackgroundColor: '#dc3545'
+                        },
+                        {
+                            label: 'High',
+                            data: [5, 6, 4, 7, 5, 3, 3],
+                            borderColor: '#ffc107',
+                            backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                            tension: 0.4,
+                            fill: false,
+                            pointBackgroundColor: '#ffc107'
+                        },
+                        {
+                            label: 'Medium',
+                            data: [8, 9, 7, 10, 8, 6, 5],
+                            borderColor: '#ff9800',
+                            backgroundColor: 'rgba(255, 152, 0, 0.1)',
+                            tension: 0.4,
+                            fill: false,
+                            pointBackgroundColor: '#ff9800'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: '#bdbdbd',
+                                boxWidth: 12,
+                                padding: 15
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.05)',
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: '#bdbdbd'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false,
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: '#bdbdbd'
+                            }
+                        }
+                    }
+                }
+            });
+        case 'doughnut':
+            return new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Secure', 'Vulnerable'],
+                    datasets: [{
+                        data: [70, 30],
+                        backgroundColor: [
+                            'rgba(40, 167, 69, 0.8)',
+                            'rgba(220, 53, 69, 0.8)'
+                        ],
+                        borderColor: ['#28a745', '#dc3545'],
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: '#bdbdbd',
+                                padding: 15
+                            }
+                        }
+                    }
+                }
+            });
+        case 'radar':
+            return new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: ['Performance', 'Availability', 'Security', 'Compliance', 'Backup'],
+                    datasets: [{
+                        label: 'Health Score',
+                        data: [92, 88, 85, 90, 88],
+                        borderColor: '#006eff',
+                        backgroundColor: 'rgba(0, 110, 255, 0.2)',
+                        pointBackgroundColor: '#006eff',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: '#006eff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: '#bdbdbd'
+                            }
+                        }
+                    },
+                    scales: {
+                        r: {
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#bdbdbd',
+                                backdropColor: 'transparent'
+                            }
+                        }
+                    }
+                }
+            });
+        case 'bar':
+        default:
+            return new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                    datasets: [
+                        {
+                            label: 'Critical',
+                            data: [2, 3, 1, 5, 2, 1, 3],
+                            backgroundColor: 'rgba(220, 53, 69, 0.8)',
+                            borderColor: '#dc3545',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'High',
+                            data: [5, 7, 3, 8, 4, 2, 6],
+                            backgroundColor: 'rgba(255, 193, 7, 0.8)',
+                            borderColor: '#ffc107',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Medium',
+                            data: [3, 4, 2, 6, 4, 3, 5],
+                            backgroundColor: 'rgba(255, 152, 0, 0.8)',
+                            borderColor: '#ff9800',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: '#bdbdbd',
+                                padding: 15
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.05)',
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: '#bdbdbd'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false,
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: '#bdbdbd'
+                            }
+                        }
+                    }
+                }
+            });
+    }
+}
+
+/**
+ * RULE 9 & 10: Simplified goBackToProjects
+ * No animations, just display changes
+ */
+function goBackToProjects() {
+    console.log('[Dashboard] Returning to projects');
+    
+    const projectsView = document.getElementById('projects-view');
+    const dashboardView = document.getElementById('dashboard-view');
+    
+    if (projectsView) projectsView.style.display = 'block';
+    if (dashboardView) dashboardView.style.display = 'none';
+    
+    // Destroy charts
+    if (window.dashboardCharts) {
+        Object.values(window.dashboardCharts).forEach(chart => {
+            if (chart && typeof chart.destroy === 'function') {
+                chart.destroy();
+            }
+        });
+        window.dashboardCharts = {};
+    }
+    
+    currentProject = null;
+}
 
 // Check if current user is a Sunbird client
 function isSunbirdUser() {
@@ -255,7 +602,8 @@ const mockProjects = [
         cardFooter: "Live data",
         hasTabs: false,
         microsoftGraphEnabled: true,
-        isIdentityCard: true
+        isIdentityCard: true,
+        dashboardType: "Identity Protection"
     },
     {
         id: 3,
@@ -276,7 +624,28 @@ const mockProjects = [
         cardFooter: "Live device status",
         hasTabs: false,
         microsoftGraphEnabled: true,
-        isDevicesCard: true
+        isDevicesCard: true,
+        dashboardType: "Device Protection"
+    },
+    {
+        id: 4,
+        name: "Security & Events",
+        type: "Real-Time SOC Threat Intelligence & Response",
+        status: "active",
+        risks: { critical: 0, high: 0, medium: 0 },
+        securityScore: 0,
+        uptime: 100,
+        lastUpdate: "Loading...",
+        icon: "fas fa-bell-slash",
+        cardMetrics: [
+            { label: "Active Incidents", value: ": ...", icon: "fas fa-exclamation-triangle" },
+            { label: "High Alerts", value: ": ...", icon: "fas fa-bell" }
+        ],
+        cardFooter: "Fetching from Microsoft Graph Security...",
+        hasTabs: false,
+        microsoftGraphEnabled: true,
+        isSecurityCard: true,
+        dashboardType: "Security"
     },
     {
         id: 5,
@@ -297,26 +666,8 @@ const mockProjects = [
         cardFooter: "Monitoring threats",
         hasTabs: false,
         microsoftGraphEnabled: true,
-        isEmailSecurityCard: true
-    },
-    {
-        id: 4,
-        name: "Security & Events",
-        type: "Real-Time SOC Threat Intelligence & Response",
-        status: "active",
-        risks: { critical: 0, high: 0, medium: 0 },
-        securityScore: 0,
-        uptime: 100,
-        lastUpdate: "Loading...",
-        icon: "fas fa-bell-slash",
-        cardMetrics: [
-            { label: "Active Incidents", value: ": ...", icon: "fas fa-exclamation-triangle" },
-            { label: "High Alerts", value: ": ...", icon: "fas fa-bell" }
-        ],
-        cardFooter: "Fetching from Microsoft Graph Security...",
-        hasTabs: false,
-        microsoftGraphEnabled: true,
-        isSecurityCard: true
+        isEmailSecurityCard: true,
+        dashboardType: "Security"
     },
     {
         id: 6,
@@ -351,7 +702,8 @@ const mockProjects = [
         cardFooter: "Fetching from Microsoft Graph...",
         hasTabs: false,
         microsoftGraphEnabled: true,
-        isBackupRecoveryCard: true
+        isBackupRecoveryCard: true,
+        dashboardType: "Compliance"
     },
     {
         id: 8,
@@ -372,7 +724,8 @@ const mockProjects = [
         cardFooter: "Access monitoring active",
         hasTabs: false,
         microsoftGraphEnabled: true,
-        isApplicationsCard: true
+        isApplicationsCard: true,
+        dashboardType: "Device Protection"
     },
     {
         id: 11,
@@ -1109,18 +1462,19 @@ function openApplicationsDashboard() {
     const dashboardView = document.getElementById('dashboard-view');
     if (!dashboardView) return;
 
-    // Show dashboard view with smooth transitions
-    smoothHide(document.getElementById('projects-view'), 250);
-    smoothShow(dashboardView, 250);
+    // Show dashboard view immediately (no animations)
+    const projectsView = document.getElementById('projects-view');
+    if (projectsView) projectsView.style.display = 'none';
+    dashboardView.style.display = 'block';
     
-    // Hide generic dashboard parts smoothly
+    // Hide generic dashboard parts
     const statsGrid = dashboardView.querySelector('.stats-grid');
     const chartsSection = dashboardView.querySelector('.charts-section');
     const dashboardTabs = dashboardView.querySelector('.dashboard-tabs');
     
-    if (statsGrid) smoothHide(statsGrid, 250);
-    if (chartsSection) smoothHide(chartsSection, 250);
-    if (dashboardTabs) smoothHide(dashboardTabs, 250);
+    if (statsGrid) statsGrid.style.display = 'none';
+    if (chartsSection) chartsSection.style.display = 'none';
+    if (dashboardTabs) dashboardTabs.style.display = 'none';
 
     // Update dashboard title
     const projectName = document.getElementById('project-name');
@@ -1157,7 +1511,7 @@ function openApplicationsDashboard() {
     const backBtn = document.getElementById('btn-back');
     if (backBtn) {
         backBtn.onclick = function() {
-            resetDashboard();
+            goBackToProjects();
             
             // Restore generic parts
             if (statsGrid) statsGrid.style.display = 'grid';
@@ -1214,7 +1568,7 @@ function generateApplicationsDashboardHTML() {
             <!-- Dashboard Header with Back Button and Title -->
             <div class="dashboard-header">
                 <div class="dashboard-header-left">
-                    <button class="btn-back-dashboard" id="btn-back-identity" onclick="resetDashboard()">
+                    <button class="btn-back-dashboard" id="btn-back-identity" onclick="goBackToProjects()">
                         <i class="fas fa-arrow-left"></i> Back
                     </button>
                     <h2 class="dashboard-heading">Applications - Access & Risk Management</h2>
@@ -1571,18 +1925,19 @@ function openIdentityDashboard() {
     const dashboardView = document.getElementById('dashboard-view');
     if (!dashboardView) return;
 
-    // Show dashboard view with smooth transitions
-    smoothHide(document.getElementById('projects-view'), 250);
-    smoothShow(dashboardView, 250);
+    // Show dashboard view immediately (no animations)
+    const projectsView = document.getElementById('projects-view');
+    if (projectsView) projectsView.style.display = 'none';
+    dashboardView.style.display = 'block';
     
-    // Hide generic dashboard parts to prioritize Identity content with smooth transitions
+    // Hide generic dashboard parts to prioritize Identity content
     const statsGrid = dashboardView.querySelector('.stats-grid');
     const chartsSection = dashboardView.querySelector('.charts-section');
     const dashboardTabs = dashboardView.querySelector('.dashboard-tabs');
     
-    if (statsGrid) smoothHide(statsGrid, 250);
-    if (chartsSection) smoothHide(chartsSection, 250);
-    if (dashboardTabs) smoothHide(dashboardTabs, 250);
+    if (statsGrid) statsGrid.style.display = 'none';
+    if (chartsSection) chartsSection.style.display = 'none';
+    if (dashboardTabs) dashboardTabs.style.display = 'none';
 
     // Update dashboard title
     const projectName = document.getElementById('project-name');
@@ -1620,7 +1975,7 @@ function openIdentityDashboard() {
     const backBtn = document.getElementById('btn-back');
     if (backBtn) {
         backBtn.onclick = function() {
-            resetDashboard();
+            goBackToProjects();
             
             // Restore generic parts for other projects
             if (statsGrid) statsGrid.style.display = 'grid';
@@ -2745,27 +3100,27 @@ window.viewRiskFromRegister = function(encodedTab, encodedRisk) {
             } else {
                 pendingIdentityRiskFocus = 'all';
             }
-            viewProjectDashboard(identityProject);
+            openDashboard(identityProject);
         }
         return;
     }
 
     if (tab === 'Security Alerts') {
         const secProject = mockProjects.find(p => p.isSecurityCard);
-        if (secProject) viewProjectDashboard(secProject);
+        if (secProject) openDashboard(secProject);
         return;
     }
 
     if (tab === 'Backup & Recovery') {
         const backupProject = mockProjects.find(p => p.isBackupRecoveryCard);
-        if (backupProject) viewProjectDashboard(backupProject);
+        if (backupProject) openDashboard(backupProject);
         return;
     }
 
     // Applications / other project card summaries
     const appProject = mockProjects.find(p => p.isApplicationsCard) || mockProjects.find(p => p.name === 'Applications');
     if (appProject) {
-        viewProjectDashboard(appProject);
+        openDashboard(appProject);
     }
 };
 
@@ -5288,7 +5643,7 @@ function showProjectPreview(project) {
 
             <div class="glow-wrap">
                 <div class="glowing-border-layer"></div>
-                <button class="btn-view-full-dashboard" onclick="viewProjectDashboard(mockProjects.find(p => p.id === ${project.id}))">
+                <button class="btn-view-full-dashboard" onclick="openDashboard(mockProjects.find(p => p.id === ${project.id}))">
                     <i class="fas fa-arrow-right"></i> View Full Dashboard
                 </button>
             </div>
@@ -5574,63 +5929,6 @@ function buildApplicationsPreviewModel() {
     };
 }
 
-function viewProjectDashboard(project) {
-    currentProject = project;
-    
-    // Hide projects view immediately without fade to avoid flashing
-    document.getElementById('projects-view').style.display = 'none';
-    
-    // If this is the  Identity Protection card, fetch API data
-    if (project.isIdentityCard) {
-        fetchIdentityData(project);
-    } 
-    // If this is the Devices card, fetch device data
-    else if (project.isDevicesCard) {
-        document.getElementById('devices-view').style.display = 'none';
-        fetchDevicesData(project);
-    }
-    // If this is the Threat & Activity card, fetch security data
-    else if (project.isSecurityCard) {
-        document.getElementById('security-events-view').style.display = 'none';
-        fetchSecurityEventsData(project);
-    }
-    // If this is the Email Security card, fetch email security data
-    else if (project.isEmailSecurityCard) {
-        const emailSecurityView = document.getElementById('email-security-view');
-        if (!emailSecurityView) {
-            console.warn('[Email Security] View element not found');
-            return;
-        }
-        
-        emailSecurityView.style.display = 'none';
-        fetchEmailSecurityData(project);
-        fetchEmailSecurityData(project);
-    }
-    // If this is the Backup and Recovery card, fetch backup recovery data
-    else if (project.isBackupRecoveryCard) {
-        const backupRecoveryView = document.getElementById('backup-recovery-view');
-        if (!backupRecoveryView) {
-            console.warn('[Backup Recovery] View element not found');
-            return;
-        }
-    
-        backupRecoveryView.style.display = 'none';
-        fetchBackupRecoveryData(project);
-        fetchBackupRecoveryData(project);
-    }
-    // If this is the Applications card, fetch applications data
-    else if (project.isApplicationsCard) {
-        document.getElementById('dashboard-view').style.display = 'none';
-        openApplicationsDashboard();
-    }
-    else {
-        document.getElementById('dashboard-view').style.display = 'none';
-        updateDashboardData(project);
-        initializeCharts(project);
-        initializeTabs();
-    }
-}
-
 // ============================================
 //  Identity Protection DATA API
 // ============================================
@@ -5645,7 +5943,6 @@ async function fetchIdentityData(project) {
         if (isSunbirdUser()) {
             console.log('[Identity] Sunbird user detected, using enriched identity loader');
             // Render instantly using any already-loaded snapshot, then hydrate in background.
-            updateDashboardData(project);
             initializeIdentityDashboard();
             fetchIdentityAccessData().catch((error) => {
                 console.error('[Identity] Background hydrate failed:', error);
@@ -5686,335 +5983,10 @@ async function fetchIdentityData(project) {
         project.lastUpdate = new Date().toLocaleTimeString();
         project.cardFooter = `Users: ${totalUsers} | Active: ${activeUsers}`;
         
-        updateDashboardData(project);
-        
     } catch (error) {
         console.error('[Identity] Error:', error);
         showNotification('Failed to load  Identity Protection data', false);
-        updateDashboardData(project);
     }
-}
-
-function goBackToProjects() {
-    resetDashboard();
-}
-
-function resetDashboard() {
-    smoothShow(document.getElementById('projects-view'), 250);
-    smoothHide(document.getElementById('dashboard-view'), 250);
-    const devicesView = document.getElementById('devices-view');
-    const securityEventsView = document.getElementById('security-events-view');
-    const emailSecurityView = document.getElementById('email-security-view');
-    const backupRecoveryView = document.getElementById('backup-recovery-view');
-
-    if (devicesView) smoothHide(devicesView, 250);
-    if (securityEventsView) smoothHide(securityEventsView, 250);
-    if (emailSecurityView) smoothHide(emailSecurityView, 250);
-    if (backupRecoveryView) smoothHide(backupRecoveryView, 250);
-
-    currentProject = null;
-    destroyCharts();
-    
-    // Restore site header if it was hidden
-    const siteHeader = document.querySelector('.site-header');
-    if (siteHeader) {
-        siteHeader.classList.remove('header-hidden');
-        siteHeader.classList.add('header-visible');
-    }
-    
-    // Remove dashboard scroll listener if it exists
-    // Note: We need to make handleDashboardScroll global or accessible
-    if (typeof window.removeDashboardScroll === 'function') {
-        window.removeDashboardScroll();
-    }
-    
-    previewLockedByClick = false;
-    selectedProjectId = null;
-    const allCards = document.querySelectorAll('.project-card');
-    allCards.forEach(card => card.classList.remove('glow-selected'));
-    hideProjectPreview();
-}
-
-// ============================================
-// DASHBOARD DATA PROCESSING & RENDERING
-// ============================================
-// Updates dashboard statistics and project information
-// from retrieved API data
-
-/* DASHBOARD DATA */
-function updateDashboardData(project) {
-    // For  Identity Protection, data is shown in the summary-stats section generated by generateIdentityDashboardHTML
-    // No need to update stat boxes for Identity cards
-    if (project.isIdentityCard) {
-        document.getElementById('project-name').textContent = project.name + ' - Dashboard';
-        return;
-    }
-    
-    // For other projects, use original data
-    document.getElementById('project-name').textContent = project.name + ' - Dashboard';
-    document.getElementById('stat-risks').textContent = project.risks.critical;
-    document.getElementById('stat-security').textContent = project.securityScore + '%';
-    document.getElementById('stat-uptime').textContent = project.uptime + '%';
-    document.getElementById('stat-last-update').textContent = project.lastUpdate;
-}
-
-// ============================================
-// DASHBOARD CHARTS & VISUALIZATIONS
-// ============================================
-// Initializes and manages chart.js visualizations
-// for risk, security, health, and threat analysis
-
-/* CHARTS */
-function initializeCharts(project) {
-    initRiskChart(project);
-    initSecurityChart(project);
-    initHealthChart(project);
-    initThreatChart(project);
-}
-
-function initRiskChart(project) {
-    const ctx = document.getElementById('riskChart').getContext('2d');
-    
-    if (charts.risk) {
-        charts.risk.destroy();
-    }
-    
-    charts.risk = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-            datasets: [
-                {
-                    label: 'Critical',
-                    data: [2, 3, 2, 4, 2, 1, 2],
-                    borderColor: '#dc3545',
-                    backgroundColor: 'rgba(220, 53, 69, 0.1)',
-                    tension: 0.4,
-                    fill: true,
-                    pointBackgroundColor: '#dc3545'
-                },
-                {
-                    label: 'High',
-                    data: [5, 6, 4, 7, 5, 3, 3],
-                    borderColor: '#ffc107',
-                    backgroundColor: 'rgba(255, 193, 7, 0.1)',
-                    tension: 0.4,
-                    fill: false,
-                    pointBackgroundColor: '#ffc107'
-                },
-                {
-                    label: 'Medium',
-                    data: [8, 9, 7, 10, 8, 6, 5],
-                    borderColor: '#ff9800',
-                    backgroundColor: 'rgba(255, 152, 0, 0.1)',
-                    tension: 0.4,
-                    fill: false,
-                    pointBackgroundColor: '#ff9800'
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    labels: {
-                        color: '#bdbdbd',
-                        boxWidth: 12,
-                        padding: 15
-                    }
-                }
-            },
-            scales: {
-                y: {
-                    grid: {
-                        color: 'rgba(255, 255, 255, 0.05)',
-                        drawBorder: false
-                    },
-                    ticks: {
-                        color: '#bdbdbd'
-                    }
-                },
-                x: {
-                    grid: {
-                        display: false,
-                        drawBorder: false
-                    },
-                    ticks: {
-                        color: '#bdbdbd'
-                    }
-                }
-            }
-        }
-    });
-}
-
-function initSecurityChart(project) {
-    const ctx = document.getElementById('securityChart').getContext('2d');
-    
-    if (charts.security) {
-        charts.security.destroy();
-    }
-    
-    const securePercentage = project.securityScore;
-    const vulnerablePercentage = 100 - securePercentage;
-    
-    charts.security = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-            labels: ['Secure', 'Vulnerable'],
-            datasets: [{
-                data: [securePercentage, vulnerablePercentage],
-                backgroundColor: [
-                    'rgba(40, 167, 69, 0.8)',
-                    'rgba(220, 53, 69, 0.8)'
-                ],
-                borderColor: ['#28a745', '#dc3545'],
-                borderWidth: 2
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    labels: {
-                        color: '#bdbdbd',
-                        padding: 15
-                    }
-                }
-            }
-        }
-    });
-}
-
-function initHealthChart(project) {
-    const ctx = document.getElementById('healthChart').getContext('2d');
-    
-    if (charts.health) {
-        charts.health.destroy();
-    }
-    
-    const uptime = project.uptime;
-    const downtime = 100 - uptime;
-    
-    charts.health = new Chart(ctx, {
-        type: 'radar',
-        data: {
-            labels: ['Performance', 'Availability', 'Security', 'Compliance', 'Backup'],
-            datasets: [{
-                label: 'Health Score',
-                data: [92, uptime, project.securityScore, 85, 88],
-                borderColor: '#006eff',
-                backgroundColor: 'rgba(0, 110, 255, 0.2)',
-                pointBackgroundColor: '#006eff',
-                pointBorderColor: '#fff',
-                pointHoverBackgroundColor: '#fff',
-                pointHoverBorderColor: '#006eff'
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    labels: {
-                        color: '#bdbdbd'
-                    }
-                }
-            },
-            scales: {
-                r: {
-                    grid: {
-                        color: 'rgba(255, 255, 255, 0.1)'
-                    },
-                    ticks: {
-                        color: '#bdbdbd',
-                        backdropColor: 'transparent'
-                    }
-                }
-            }
-        }
-    });
-}
-
-function initThreatChart(project) {
-    const ctx = document.getElementById('threatChart').getContext('2d');
-    
-    if (charts.threat) {
-        charts.threat.destroy();
-    }
-    
-    charts.threat = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-            datasets: [
-                {
-                    label: 'Malware Detected',
-                    data: [2, 3, 1, 5, 2, 1, 3],
-                    backgroundColor: 'rgba(220, 53, 69, 0.8)',
-                    borderColor: '#dc3545',
-                    borderWidth: 1
-                },
-                {
-                    label: 'Intrusion Attempts',
-                    data: [5, 7, 3, 8, 4, 2, 6],
-                    backgroundColor: 'rgba(255, 193, 7, 0.8)',
-                    borderColor: '#ffc107',
-                    borderWidth: 1
-                },
-                {
-                    label: 'Vulnerabilities Found',
-                    data: [3, 4, 2, 6, 4, 3, 5],
-                    backgroundColor: 'rgba(255, 152, 0, 0.8)',
-                    borderColor: '#ff9800',
-                    borderWidth: 1
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    labels: {
-                        color: '#bdbdbd',
-                        padding: 15
-                    }
-                }
-            },
-            scales: {
-                y: {
-                    grid: {
-                        color: 'rgba(255, 255, 255, 0.05)',
-                        drawBorder: false
-                    },
-                    ticks: {
-                        color: '#bdbdbd'
-                    }
-                },
-                x: {
-                    grid: {
-                        display: false,
-                        drawBorder: false
-                    },
-                    ticks: {
-                        color: '#bdbdbd'
-                    }
-                }
-            }
-        }
-    });
-}
-
-function destroyCharts() {
-    Object.values(charts).forEach(chart => {
-        if (chart) {
-            chart.destroy();
-        }
-    });
-    charts = {};
 }
 
 /* UTILITIES */
@@ -6073,7 +6045,7 @@ window.openSunbirdFullDashboard = function(target) {
         return;
     }
 
-    viewProjectDashboard(project);
+    openDashboard(project);
 };
 
 // ============================================
