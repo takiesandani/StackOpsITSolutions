@@ -1,5 +1,111 @@
 /* Client Portal JavaScript */
 
+// ════════════════════════════════════════════════════════════════════════════════
+// SMOOTH LOADING & FADE UTILITIES - Prevent Container Flashing
+// ════════════════════════════════════════════════════════════════════════════════
+
+// Add smooth fade CSS animations to prevent flashing
+function initializeSmoothLoadingStyles() {
+    if (document.getElementById('smooth-loading-styles')) return; // Already added
+    
+    const style = document.createElement('style');
+    style.id = 'smooth-loading-styles';
+    style.textContent = `
+        /* Skeleton Loading Animation */
+        @keyframes skeleton-loading {
+            0% { background-color: #e0e0e0; }
+            50% { background-color: #f0f0f0; }
+            100% { background-color: #e0e0e0; }
+        }
+        
+        .skeleton-block {
+            background-color: #e0e0e0;
+            height: 16px;
+            border-radius: 4px;
+            animation: skeleton-loading 1.5s infinite;
+        }
+        
+        .op-skeleton-block {
+            background-color: #e0e0e0;
+            height: 16px;
+            border-radius: 4px;
+            animation: skeleton-loading 1.5s infinite;
+        }
+        
+        .skeleton-row {
+            opacity: 1;
+        }
+        
+        .op-skeleton-row {
+            opacity: 1;
+        }
+        
+        /* Smooth fade transitions */
+        .fade-out {
+            transition: opacity 0.3s ease-in-out;
+            opacity: 0;
+        }
+        
+        .fade-in {
+            transition: opacity 0.3s ease-in-out;
+            opacity: 1;
+        }
+        
+        /* Keep containers visible during loading - use opacity instead of display */
+        .content-loading {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+        
+        .content-loaded {
+            opacity: 1;
+            pointer-events: auto;
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+// Smooth show function - prevents flashing
+function smoothShow(element, duration = 300) {
+    if (!element) return;
+    element.style.transition = \`opacity \${duration}ms ease-in-out\`;
+    element.style.opacity = '0';
+    element.style.display = 'block'; // Show first
+    
+    // Trigger reflow to ensure transition happens
+    void element.offsetWidth;
+    element.style.opacity = '1';
+}
+
+// Smooth hide function - prevents flashing
+function smoothHide(element, duration = 300) {
+    if (!element) return;
+    element.style.transition = \`opacity \${duration}ms ease-in-out\`;
+    element.style.opacity = '0';
+    
+    setTimeout(() => {
+        element.style.display = 'none';
+    }, duration);
+}
+
+// Replace display operations - prevents flashing
+function setElementVisibility(element, isVisible, useFade = true) {
+    if (!element) return;
+    
+    if (useFade) {
+        if (isVisible) {
+            smoothShow(element);
+        } else {
+            smoothHide(element);
+        }
+    } else {
+        element.style.display = isVisible ? 'block' : 'none';
+    }
+}
+
+// Initialize styles on page load
+initializeSmoothLoadingStyles();
+
 let currentProject = null;
 let charts = {};
 let currentProjectIndex = 0;
@@ -1008,18 +1114,18 @@ function openApplicationsDashboard() {
     const dashboardView = document.getElementById('dashboard-view');
     if (!dashboardView) return;
 
-    // Show dashboard view
-    document.getElementById('projects-view').style.display = 'none';
-    dashboardView.style.display = 'block';
+    // Show dashboard view with smooth transitions
+    smoothHide(document.getElementById('projects-view'), 250);
+    smoothShow(dashboardView, 250);
     
-    // Hide generic dashboard parts
+    // Hide generic dashboard parts smoothly
     const statsGrid = dashboardView.querySelector('.stats-grid');
     const chartsSection = dashboardView.querySelector('.charts-section');
     const dashboardTabs = dashboardView.querySelector('.dashboard-tabs');
     
-    if (statsGrid) statsGrid.style.display = 'none';
-    if (chartsSection) chartsSection.style.display = 'none';
-    if (dashboardTabs) dashboardTabs.style.display = 'none';
+    if (statsGrid) smoothHide(statsGrid, 250);
+    if (chartsSection) smoothHide(chartsSection, 250);
+    if (dashboardTabs) smoothHide(dashboardTabs, 250);
 
     // Update dashboard title
     const projectName = document.getElementById('project-name');
@@ -1470,18 +1576,18 @@ function openIdentityDashboard() {
     const dashboardView = document.getElementById('dashboard-view');
     if (!dashboardView) return;
 
-    // Show dashboard view
-    document.getElementById('projects-view').style.display = 'none';
-    dashboardView.style.display = 'block';
+    // Show dashboard view with smooth transitions
+    smoothHide(document.getElementById('projects-view'), 250);
+    smoothShow(dashboardView, 250);
     
-    // Hide generic dashboard parts to prioritize Identity content
+    // Hide generic dashboard parts to prioritize Identity content with smooth transitions
     const statsGrid = dashboardView.querySelector('.stats-grid');
     const chartsSection = dashboardView.querySelector('.charts-section');
     const dashboardTabs = dashboardView.querySelector('.dashboard-tabs');
     
-    if (statsGrid) statsGrid.style.display = 'none';
-    if (chartsSection) chartsSection.style.display = 'none';
-    if (dashboardTabs) dashboardTabs.style.display = 'none';
+    if (statsGrid) smoothHide(statsGrid, 250);
+    if (chartsSection) smoothHide(chartsSection, 250);
+    if (dashboardTabs) smoothHide(dashboardTabs, 250);
 
     // Update dashboard title
     const projectName = document.getElementById('project-name');
@@ -2461,7 +2567,7 @@ function populateSecurityInsights() {
 // Render Sunbird Summary Cards (Security Score, Risk, Activity)
 function renderSunbirdSummaryCards() {
     const summaryCardsDiv = document.getElementById('sunbird-summary-cards');
-    if (!summaryCardsDiv || !sunbirdDashboardData) return;
+    if (!summaryCardsDiv || !sunbirdDashboardData || !sunbirdDashboardData.summary) return;
 
     const securityScore = Math.round(sunbirdDashboardData.summary.securityScore || 0);
     const identityRiskScore = Math.round(sunbirdDashboardData.summary.identityRiskScore || 0);
@@ -3970,7 +4076,7 @@ function updateIdentityDashboardValuesSmootly() {
         // Update tables only if data changed significantly
         if (hasMetricsChanged()) {
             console.log('[Identity Dashboard] Metrics changed - updating table');
-            populateIdentityUsersTable();
+            populateIdentityTable();
         }
         
         console.log('[Identity Dashboard] ✅ Values updated smoothly - no flashing');
@@ -5281,49 +5387,51 @@ function buildApplicationsPreviewModel() {
 function viewProjectDashboard(project) {
     currentProject = project;
     
-    document.getElementById('projects-view').style.display = 'none';
-    document.getElementById('dashboard-view').style.display = 'none';
+    smoothHide(document.getElementById('projects-view'), 250);
+    smoothHide(document.getElementById('dashboard-view'), 250);
     
     // If this is the  Identity Protection card, fetch API data
     if (project.isIdentityCard) {
-        document.getElementById('dashboard-view').style.display = 'block';
+        smoothShow(document.getElementById('dashboard-view'), 250);
         fetchIdentityData(project);
     } 
     // If this is the Devices card, fetch device data
     else if (project.isDevicesCard) {
-        document.getElementById('devices-view').style.display = 'block';
+        smoothShow(document.getElementById('devices-view'), 250);
         fetchDevicesData(project);
     }
     // If this is the Threat & Activity card, fetch security data
     else if (project.isSecurityCard) {
-        document.getElementById('security-events-view').style.display = 'block';
+        smoothShow(document.getElementById('security-events-view'), 250);
         fetchSecurityEventsData(project);
     }
     // If this is the Email Security card, fetch email security data
     else if (project.isEmailSecurityCard) {
-        if (!document.getElementById('email-security-view')) {
+        const emailSecurityView = document.getElementById('email-security-view');
+        if (!emailSecurityView) {
             console.warn('[Email Security] View element not found');
             return;
         }
-        document.getElementById('email-security-view').style.display = 'block';
+        smoothShow(emailSecurityView, 250);
         fetchEmailSecurityData(project);
     }
     // If this is the Backup and Recovery card, fetch backup recovery data
     else if (project.isBackupRecoveryCard) {
-        if (!document.getElementById('backup-recovery-view')) {
+        const backupRecoveryView = document.getElementById('backup-recovery-view');
+        if (!backupRecoveryView) {
             console.warn('[Backup Recovery] View element not found');
             return;
         }
-        document.getElementById('backup-recovery-view').style.display = 'block';
+        smoothShow(backupRecoveryView, 250);
         fetchBackupRecoveryData(project);
     }
     // If this is the Applications card, fetch applications data
     else if (project.isApplicationsCard) {
-        document.getElementById('dashboard-view').style.display = 'block';
+        smoothShow(document.getElementById('dashboard-view'), 250);
         openApplicationsDashboard();
     }
     else {
-        document.getElementById('dashboard-view').style.display = 'block';
+        smoothShow(document.getElementById('dashboard-view'), 250);
         updateDashboardData(project);
         initializeCharts(project);
         initializeTabs();
@@ -5399,17 +5507,17 @@ function goBackToProjects() {
 }
 
 function resetDashboard() {
-    document.getElementById('projects-view').style.display = 'block';
-    document.getElementById('dashboard-view').style.display = 'none';
+    smoothShow(document.getElementById('projects-view'), 250);
+    smoothHide(document.getElementById('dashboard-view'), 250);
     const devicesView = document.getElementById('devices-view');
     const securityEventsView = document.getElementById('security-events-view');
     const emailSecurityView = document.getElementById('email-security-view');
     const backupRecoveryView = document.getElementById('backup-recovery-view');
 
-    if (devicesView) devicesView.style.display = 'none';
-    if (securityEventsView) securityEventsView.style.display = 'none';
-    if (emailSecurityView) emailSecurityView.style.display = 'none';
-    if (backupRecoveryView) backupRecoveryView.style.display = 'none';
+    if (devicesView) smoothHide(devicesView, 250);
+    if (securityEventsView) smoothHide(securityEventsView, 250);
+    if (emailSecurityView) smoothHide(emailSecurityView, 250);
+    if (backupRecoveryView) smoothHide(backupRecoveryView, 250);
 
     currentProject = null;
     destroyCharts();
@@ -6912,14 +7020,14 @@ function initializeTabs() {
     // Always clear and hide all tab contents first
     tabContents.forEach(content => {
         content.classList.remove('active');
-        content.style.display = 'none';
+        smoothHide(content, 0); // No fade for initial setup
     });
     tabBtns.forEach(btn => {
         btn.classList.remove('active');
     });
     
     if (currentProject && currentProject.hasTabs) {
-        dashboardTabs.style.display = 'block';
+        smoothShow(dashboardTabs, 250);
         
         // Add event listeners to tab buttons (remove duplicates by cloning)
         tabBtns.forEach(btn => {
@@ -6945,25 +7053,25 @@ function initializeTabs() {
         const allTab = document.getElementById('all-tab');
         if (allTab) {
             allTab.classList.add('active');
-            allTab.style.display = 'block';
+            smoothShow(allTab, 250);
         }
         document.querySelector('[data-tab="all-tab"]').classList.add('active');
     } else {
-        dashboardTabs.style.display = 'none';
+        smoothHide(dashboardTabs, 250);
         // Show the all-tab content when no project-specific tabs
         const allTab = document.getElementById('all-tab');
         if (allTab) {
             allTab.classList.add('active');
-            allTab.style.display = 'block';
+            smoothShow(allTab, 250);
         }
     }
 }
 
 function switchTab(tabId, tabBtns, tabContents) {
-    // Hide all tabs
+    // Hide all tabs with smooth transition
     tabContents.forEach(content => {
         content.classList.remove('active');
-        content.style.display = 'none';
+        smoothHide(content, 200);
     });
     
     // Deactivate all buttons
@@ -6971,11 +7079,11 @@ function switchTab(tabId, tabBtns, tabContents) {
         btn.classList.remove('active');
     });
     
-    // Show selected tab
+    // Show selected tab with smooth transition
     const selectedTab = document.getElementById(tabId);
     if (selectedTab) {
         selectedTab.classList.add('active');
-        selectedTab.style.display = 'block';
+        smoothShow(selectedTab, 200);
     }
     
     // Activate selected button
