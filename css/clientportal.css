@@ -6363,6 +6363,12 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 /* Sunbird-only Identity Protection dashboard rebuild */
+.dashboard-view.sunbird-identity-active {
+  margin-top: 10px;
+  padding: 10px 24px 24px;
+  background: transparent;
+}
+
 .sunbird-identity-dashboard,
 .sunbird-identity-dashboard *,
 .sunbird-id-modal,
@@ -6374,44 +6380,49 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 .sunbird-identity-dashboard {
   width: 100%;
   min-height: 100vh;
-  padding: 24px;
+  padding: 4px 0 24px;
   color: #f8fafc;
-  background:
-    linear-gradient(180deg, rgba(10, 15, 25, 0.96), rgba(8, 12, 20, 0.98)),
-    radial-gradient(circle at 15% 0%, rgba(255, 126, 25, 0.18), transparent 34%);
+  background: transparent;
 }
 
 .sunbird-id-header {
-  display: flex;
+  display: block;
   align-items: center;
-  gap: 16px;
-  margin-bottom: 20px;
+  margin-bottom: 12px;
+  position: relative;
+  min-height: 48px;
+  padding: 4px 150px;
 }
 
 .sunbird-id-header h2 {
   margin: 0;
   color: #fff;
-  font-size: 1.55rem;
+  font-size: 1.65rem;
   letter-spacing: 0;
   font-weight: 200;
+  text-align: center;
 }
 
 .sunbird-id-header p {
   margin: 4px 0 0;
-  color: #9ca3af;
+  color: rgba(255, 255, 255, 0.72);
   font-size: 0.9rem;
+  text-align: center;
 }
 
 .sunbird-id-back-btn,
 .sunbird-id-evidence-btn,
 .sunbird-id-clear-btn,
 .sunbird-id-modal-close {
-  border: 1px solid rgba(255, 126, 25, 0.28);
-  background: rgba(255, 126, 25, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  background: rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
   color: #fff;
   min-height: 38px;
-  border-radius: 6px;
-  padding: 8px 12px;
+  border-radius: 30px;
+  padding: 8px 18px;
+  width: fit-content;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -6419,32 +6430,41 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   gap: 8px;
 }
 
+.sunbird-id-back-btn {
+  position: absolute;
+  left: 0;
+  top: 6px;
+}
+
 .sunbird-id-back-btn:hover,
 .sunbird-id-evidence-btn:hover,
 .sunbird-id-clear-btn:hover {
-  background: rgba(255, 126, 25, 0.2);
+  background: rgba(255, 255, 255, 0.22);
 }
 
 .sunbird-id-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .sunbird-id-metric-card,
 .sunbird-id-chart-card,
-.sunbird-id-table-section {
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  background: rgba(15, 23, 42, 0.72);
+.sunbird-id-table-section,
+.sunbird-id-signin-card {
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.08));
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
   border-radius: 8px;
-  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 16px 38px rgba(0, 0, 0, 0.14);
 }
 
 .sunbird-id-metric-card {
   padding: 16px;
   min-height: 132px;
-  border-top: 2px solid rgba(255, 126, 25, 0.72);
+  border-top: 2px solid rgba(255, 255, 255, 0.55);
 }
 
 .sunbird-id-metric-card.tone-good { border-top-color: #22c55e; }
@@ -6458,7 +6478,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 .sunbird-id-metric-label {
-  color: #cbd5e1;
+  color: rgba(255, 255, 255, 0.78);
   margin: 8px 0 14px;
   font-size: 0.9rem;
 }
@@ -6467,12 +6487,14 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   display: grid;
   grid-template-columns: repeat(7, minmax(120px, 1fr));
   gap: 10px;
-  margin: 0 0 14px;
+  margin: 0 0 12px;
 }
 
 .sunbird-id-insight {
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  background: rgba(2, 6, 23, 0.48);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   color: #e5e7eb;
   border-radius: 8px;
   padding: 12px;
@@ -6483,7 +6505,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
 .sunbird-id-insight span {
   display: block;
-  color: #aab3c2;
+  color: rgba(255, 255, 255, 0.72);
   font-size: 0.78rem;
 }
 
@@ -6502,7 +6524,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .sunbird-id-chart-card {
@@ -6514,6 +6536,63 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   color: #f8fafc;
   font-size: 0.98rem;
   font-weight: 200;
+}
+
+.sunbird-id-pie-card {
+  display: grid;
+  grid-template-columns: 118px 1fr;
+  align-items: center;
+  gap: 12px;
+}
+
+.sunbird-id-pie-card h3 {
+  grid-column: 1 / -1;
+}
+
+.sunbird-id-pie {
+  width: 112px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  position: relative;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.22);
+}
+
+.sunbird-id-pie::after {
+  content: "";
+  position: absolute;
+  inset: 22px;
+  border-radius: inherit;
+  background: rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(12px);
+}
+
+.sunbird-id-pie span {
+  position: relative;
+  z-index: 1;
+  color: #fff;
+  font-size: 1.2rem;
+}
+
+.sunbird-id-legend {
+  display: grid;
+  gap: 7px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.78rem;
+}
+
+.sunbird-id-legend span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.sunbird-id-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
 }
 
 .sunbird-id-bars {
@@ -6528,6 +6607,85 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   align-items: center;
   color: #cbd5e1;
   font-size: 0.78rem;
+}
+
+.sunbird-id-health-card {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.sunbird-id-health-row {
+  display: grid;
+  grid-template-columns: 88px 1fr 44px;
+  gap: 8px;
+  align-items: center;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.78rem;
+}
+
+.sunbird-id-health-track {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  overflow: hidden;
+}
+
+.sunbird-id-health-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: #38bdf8;
+}
+
+.sunbird-id-health-fill.tone-good { background: #34d399; }
+.sunbird-id-health-fill.tone-warn { background: #ff9f1c; }
+
+.sunbird-id-signins {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.sunbird-id-signin-card {
+  padding: 14px;
+}
+
+.sunbird-id-signin-card h3 {
+  margin: 0 0 10px;
+  color: #fff;
+  font-size: 0.98rem;
+  font-weight: 200;
+}
+
+.sunbird-id-signin-list {
+  max-height: 290px;
+  overflow: auto;
+  display: grid;
+  gap: 8px;
+  padding-right: 4px;
+}
+
+.sunbird-id-signin-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 9px;
+}
+
+.sunbird-id-signin-item strong,
+.sunbird-id-signin-item span,
+.sunbird-id-signin-item small {
+  display: block;
+  font-weight: 200;
+}
+
+.sunbird-id-signin-item span,
+.sunbird-id-signin-item small {
+  color: rgba(255, 255, 255, 0.68);
 }
 
 .sunbird-id-bar-row strong {
@@ -6569,9 +6727,11 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 .sunbird-id-select {
   width: 100%;
   min-height: 38px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 6px;
-  background: rgba(2, 6, 23, 0.58);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 30px;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   color: #f8fafc;
   padding: 8px 10px;
   font-weight: 200;
@@ -6581,6 +6741,28 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   width: 100%;
   overflow-x: auto;
   border-radius: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.38) transparent;
+}
+
+.sunbird-id-table-wrap::-webkit-scrollbar,
+.sunbird-id-signin-list::-webkit-scrollbar,
+.sunbird-id-evidence-list::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.sunbird-id-table-wrap::-webkit-scrollbar-track,
+.sunbird-id-signin-list::-webkit-scrollbar-track,
+.sunbird-id-evidence-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sunbird-id-table-wrap::-webkit-scrollbar-thumb,
+.sunbird-id-signin-list::-webkit-scrollbar-thumb,
+.sunbird-id-evidence-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.34);
+  border-radius: 999px;
 }
 
 .sunbird-id-table {
@@ -6592,7 +6774,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 .sunbird-id-table th,
 .sunbird-id-table td {
   padding: 10px 9px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   text-align: left;
   color: #dbe4ef;
   font-size: 0.78rem;
@@ -6600,8 +6782,9 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 .sunbird-id-table th {
-  color: #94a3b8;
-  background: rgba(15, 23, 42, 0.92);
+  color: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(12px);
   position: sticky;
   top: 0;
   z-index: 1;
@@ -6622,7 +6805,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   min-height: 22px;
   border-radius: 999px;
   padding: 3px 8px;
-  background: rgba(148, 163, 184, 0.14);
+  background: rgba(255, 255, 255, 0.14);
   color: #e5e7eb;
 }
 
@@ -6677,8 +6860,10 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   display: flex;
   flex-direction: column;
   border-radius: 8px;
-  border: 1px solid rgba(255, 126, 25, 0.25);
-  background: #0b1220;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(18, 25, 38, 0.86);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
   color: #f8fafc;
 }
 
@@ -6770,6 +6955,10 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   .sunbird-id-table-toolbar {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
+  .sunbird-id-signins {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 720px) {
@@ -6778,13 +6967,19 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   }
 
   .sunbird-id-header {
-    align-items: flex-start;
-    flex-direction: column;
+    padding: 52px 0 0;
+  }
+
+  .sunbird-id-back-btn {
+    left: 50%;
+    transform: translateX(-50%);
+    top: 0;
   }
 
   .sunbird-id-metrics,
   .sunbird-id-insights,
   .sunbird-id-charts,
+  .sunbird-id-signins,
   .sunbird-id-table-toolbar {
     grid-template-columns: 1fr;
   }

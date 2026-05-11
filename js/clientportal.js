@@ -157,6 +157,8 @@ function openDashboard(project) {
         openIdentityDashboard();
         return;
     }
+
+    document.getElementById('dashboard-view')?.classList.remove('sunbird-identity-active');
     
     // Get dashboard type with fallback
     const dashboardType = project.dashboardType || "Security"; // RULE 18: Fallback config
@@ -463,7 +465,10 @@ function goBackToProjects() {
     const dashboardView = document.getElementById('dashboard-view');
     
     if (projectsView) projectsView.style.display = 'block';
-    if (dashboardView) dashboardView.style.display = 'none';
+    if (dashboardView) {
+        dashboardView.style.display = 'none';
+        dashboardView.classList.remove('sunbird-identity-active');
+    }
     
     // Destroy charts
     if (window.dashboardCharts) {
@@ -2164,6 +2169,7 @@ function openSunbirdIdentityDashboard() {
     dashboardView.style.display = 'block';
     dashboardView.style.visibility = 'visible';
     dashboardView.style.opacity = '1';
+    dashboardView.classList.add('sunbird-identity-active');
 
     const projectName = document.getElementById('project-name');
     const projectStatus = document.getElementById('project-status');
@@ -2204,6 +2210,7 @@ function renderSunbirdIdentityShell() {
             <div class="sunbird-id-metrics" id="sunbird-id-metrics"></div>
             <div class="sunbird-id-insights" id="sunbird-id-insights"></div>
             <div class="sunbird-id-charts" id="sunbird-id-charts"></div>
+            <div class="sunbird-id-signins" id="sunbird-id-signins"></div>
 
             <section class="sunbird-id-table-section">
                 <div class="sunbird-id-table-toolbar">
@@ -2346,6 +2353,7 @@ function renderSunbirdIdentityDashboard() {
     renderSunbirdIdentityMetrics(model);
     renderSunbirdIdentityInsights(model);
     renderSunbirdIdentityCharts(model);
+    renderSunbirdIdentitySignIns(model);
     renderSunbirdIdentityTable(model);
 }
 
@@ -2393,20 +2401,76 @@ function renderSunbirdIdentityCharts(model) {
     const chartsEl = document.getElementById('sunbird-id-charts');
     if (!chartsEl) return;
     chartsEl.innerHTML = `
-        ${renderSunbirdBarChart('Risk distribution', [
+        ${renderSunbirdPieChart('Risk distribution', [
             { label: 'Safe', value: model.metrics.safeUsers, tone: 'good' },
             { label: 'Medium', value: model.metrics.mediumRiskUsers, tone: 'warn' },
             { label: 'High', value: model.metrics.highRiskUsers, tone: 'bad' }
         ], model.metrics.totalUsers)}
-        ${renderSunbirdBarChart('MFA coverage', [
+        ${renderSunbirdPieChart('MFA coverage', [
             { label: 'Enabled', value: model.metrics.mfaEnabled, tone: 'good' },
             { label: 'Missing', value: model.metrics.mfaMissing, tone: 'bad' }
         ], model.metrics.totalUsers)}
-        ${renderSunbirdBarChart('Access level', [
+        ${renderSunbirdPieChart('Access level', [
             { label: 'Privileged', value: model.metrics.privilegedUsers, tone: 'warn' },
             { label: 'Standard', value: Math.max(0, model.metrics.totalUsers - model.metrics.privilegedUsers), tone: 'neutral' }
         ], model.metrics.totalUsers)}
-        ${renderSunbirdSignInTrend(model.users)}
+        ${renderSunbirdHealthGraph(model)}
+    `;
+}
+
+function getSunbirdToneColor(tone) {
+    return {
+        good: '#34d399',
+        warn: '#ff9f1c',
+        bad: '#ef4444',
+        neutral: '#38bdf8'
+    }[tone] || '#ffffff';
+}
+
+function renderSunbirdPieChart(title, items, total) {
+    const safeTotal = Math.max(1, total || items.reduce((sum, item) => sum + item.value, 0));
+    let cursor = 0;
+    const segments = items.map(item => {
+        const start = cursor;
+        const end = cursor + ((item.value / safeTotal) * 100);
+        cursor = end;
+        return `${getSunbirdToneColor(item.tone)} ${start}% ${end}%`;
+    }).join(', ');
+
+    return `
+        <article class="sunbird-id-chart-card sunbird-id-pie-card">
+            <h3>${escapeIdentityText(title)}</h3>
+            <div class="sunbird-id-pie" style="background: conic-gradient(${segments || 'rgba(255,255,255,0.16) 0 100%'})">
+                <span>${total || 0}</span>
+            </div>
+            <div class="sunbird-id-legend">
+                ${items.map(item => `
+                    <span><i style="background:${getSunbirdToneColor(item.tone)}"></i>${escapeIdentityText(item.label)} ${item.value}</span>
+                `).join('')}
+            </div>
+        </article>
+    `;
+}
+
+function renderSunbirdHealthGraph(model) {
+    const mfa = model.metrics.mfaCoverage;
+    const risk = model.metrics.totalUsers ? Math.round(((model.metrics.safeUsers + model.metrics.mediumRiskUsers * 0.5) / model.metrics.totalUsers) * 100) : 0;
+    const activity = model.metrics.totalUsers ? Math.round(((model.metrics.totalUsers - model.metrics.inactiveUsers) / model.metrics.totalUsers) * 100) : 0;
+    return `
+        <article class="sunbird-id-chart-card sunbird-id-health-card">
+            <h3>Identity health</h3>
+            ${[
+                { label: 'MFA', value: mfa, tone: mfa >= 80 ? 'good' : 'warn' },
+                { label: 'Risk posture', value: risk, tone: risk >= 80 ? 'good' : 'warn' },
+                { label: 'Recent activity', value: activity, tone: activity >= 70 ? 'good' : 'warn' }
+            ].map(item => `
+                <div class="sunbird-id-health-row">
+                    <span>${item.label}</span>
+                    <div class="sunbird-id-health-track"><div class="sunbird-id-health-fill tone-${item.tone}" style="width:${item.value}%"></div></div>
+                    <strong>${item.value}%</strong>
+                </div>
+            `).join('')}
+        </article>
     `;
 }
 
@@ -2442,6 +2506,45 @@ function renderSunbirdSignInTrend(users) {
         value,
         tone: label === '30d+' ? 'warn' : 'neutral'
     })), users.length);
+}
+
+function renderSunbirdIdentitySignIns(model) {
+    const signinsEl = document.getElementById('sunbird-id-signins');
+    if (!signinsEl) return;
+    const latest = model.users
+        .sort((a, b) => getIdentityLastSignInTime(b) - getIdentityLastSignInTime(a))
+        .slice(0, 10);
+    const failed = model.users
+        .filter(user => /fail/i.test(String(user?.lastSignIn?.status || '')))
+        .sort((a, b) => getIdentityLastSignInTime(b) - getIdentityLastSignInTime(a))
+        .slice(0, 10);
+
+    signinsEl.innerHTML = `
+        ${renderSunbirdSignInList('Latest sign-ins', latest)}
+        ${renderSunbirdSignInList('Failed sign-ins', failed)}
+    `;
+}
+
+function renderSunbirdSignInList(title, users) {
+    return `
+        <article class="sunbird-id-signin-card">
+            <h3>${escapeIdentityText(title)}</h3>
+            <div class="sunbird-id-signin-list">
+                ${users.length ? users.map(user => `
+                    <div class="sunbird-id-signin-item">
+                        <div>
+                            <strong>${escapeIdentityText(user.displayName || 'Unknown')}</strong>
+                            <span>${escapeIdentityText(user.mail || user.userPrincipalName || 'N/A')}</span>
+                        </div>
+                        <div>
+                            <small>${escapeIdentityText(formatIdentityDate(user))}</small>
+                            <small>${escapeIdentityText(user?.lastSignIn?.location || 'Unknown')}</small>
+                        </div>
+                    </div>
+                `).join('') : '<div class="sunbird-id-empty compact">No matching sign-ins.</div>'}
+            </div>
+        </article>
+    `;
 }
 
 function getFilteredSunbirdIdentityUsers(model = buildSunbirdIdentityModel()) {
@@ -6312,7 +6415,7 @@ function showProjectPreview(project) {
             <div class="glow-wrap">
                 <div class="glowing-border-layer"></div>
                 <button class="btn-view-full-dashboard" onclick="openDashboard(mockProjects.find(p => p.id === ${project.id}))">
-                    <i class="fas fa-arrow-right"></i> View Full Dashboard
+                    <i class="fas fa-arrow-right"></i> View ${project.name.trim()} Dashboard
                 </button>
             </div>
         </div>
