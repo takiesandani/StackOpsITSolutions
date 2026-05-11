@@ -6454,7 +6454,8 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 .sunbird-id-metric-card,
 .sunbird-id-chart-card,
 .sunbird-id-table-section,
-.sunbird-id-signin-card {
+.sunbird-id-signin-card,
+.sunbird-id-insight {
   position: relative;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.3);
@@ -6476,7 +6477,8 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 .sunbird-id-metric-card::before,
 .sunbird-id-chart-card::before,
 .sunbird-id-table-section::before,
-.sunbird-id-signin-card::before {
+.sunbird-id-signin-card::before,
+.sunbird-id-insight::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -6494,7 +6496,8 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 .sunbird-id-metric-card > *,
 .sunbird-id-chart-card > *,
 .sunbird-id-table-section > *,
-.sunbird-id-signin-card > * {
+.sunbird-id-signin-card > *,
+.sunbird-id-insight > * {
   position: relative;
   z-index: 2;
 }
@@ -6539,16 +6542,12 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 .sunbird-id-insight {
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
-  backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
-  -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
   color: #e5e7eb;
-  border-radius: 12px;
   padding: 12px;
   min-height: 78px;
   text-align: left;
   cursor: pointer;
+  overflow: visible;
 }
 
 .sunbird-id-insight span {
@@ -6565,8 +6564,106 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   font-weight: 200;
 }
 
-.sunbird-id-insight.tone-bad { border-color: rgba(239, 68, 68, 0.35); }
-.sunbird-id-insight.tone-warn { border-color: rgba(255, 159, 28, 0.35); }
+.sunbird-id-insight.tone-good { border-color: rgba(34, 197, 94, 0.72); }
+.sunbird-id-insight.tone-bad { border-color: rgba(239, 68, 68, 0.72); }
+.sunbird-id-insight.tone-warn { border-color: rgba(255, 159, 28, 0.72); }
+.sunbird-id-insight.tone-neutral { border-color: rgba(255, 255, 255, 0.3); }
+
+.sunbird-id-insight:hover,
+.sunbird-id-insight.locked {
+  z-index: 20;
+  transform: translateY(-2px);
+}
+
+.sunbird-id-insight-evidence {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: calc(100% - 4px);
+  display: none;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(10, 12, 16, 0.78));
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.38);
+}
+
+.sunbird-id-insight:hover .sunbird-id-insight-evidence,
+.sunbird-id-insight.locked .sunbird-id-insight-evidence {
+  display: grid;
+}
+
+.sunbird-id-insight-evidence p,
+.sunbird-id-insight-evidence small,
+.sunbird-id-insight-evidence em {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.72rem;
+  font-style: normal;
+}
+
+.sunbird-id-insight-evidence-list {
+  display: grid;
+  gap: 6px;
+  max-height: 164px;
+  overflow: auto;
+  padding-right: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.34) transparent;
+}
+
+.sunbird-id-insight-evidence-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.sunbird-id-insight-evidence-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sunbird-id-insight-evidence-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.34);
+  border-radius: 999px;
+}
+
+.sunbird-id-insight-evidence-list div {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 7px;
+}
+
+.sunbird-id-insight-evidence-list strong,
+.sunbird-id-insight-evidence-list span,
+.sunbird-id-insight-evidence-list small {
+  display: block;
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 200;
+}
+
+.sunbird-id-insight-evidence-list strong {
+  color: #fff;
+}
+
+.sunbird-id-insight-evidence-list span,
+.sunbird-id-insight-evidence-list small {
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.sunbird-id-insight-evidence button {
+  width: fit-content;
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  min-height: 30px;
+  border-radius: 30px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 0.72rem;
+}
 
 .sunbird-id-charts {
   display: grid;
@@ -6598,29 +6695,25 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 .sunbird-id-pie {
-  width: 112px;
+  width: 118px;
   aspect-ratio: 1;
   border-radius: 50%;
   display: grid;
   place-items: center;
   position: relative;
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.22);
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,0.18),
+    0 0 22px rgba(255, 159, 28, 0.08);
 }
 
 .sunbird-id-pie::after {
   content: "";
   position: absolute;
-  inset: 22px;
+  inset: 34px;
   border-radius: inherit;
-  background: rgba(255, 255, 255, 0.18);
-  backdrop-filter: blur(12px);
-}
-
-.sunbird-id-pie span {
-  position: relative;
-  z-index: 1;
-  color: #fff;
-  font-size: 1.2rem;
+  background: rgba(5, 10, 16, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(10px);
 }
 
 .sunbird-id-legend {
@@ -6798,7 +6891,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   background: rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  color: #f8fafc;
+  color: white;
   padding: 8px 10px;
   font-weight: 200;
 }
@@ -6873,6 +6966,12 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   padding: 3px 8px;
   background: rgba(255, 255, 255, 0.14);
   color: #e5e7eb;
+}
+
+.sunbird-id-role-list span {
+  border: 1px solid rgba(59, 130, 246, 0.48);
+  background: rgba(37, 99, 235, 0.2);
+  color: #93c5fd;
 }
 
 .sunbird-id-pill.ok,

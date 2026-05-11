@@ -2074,6 +2074,7 @@ let sunbirdIdentityTableState = {
     type: 'all',
     sort: 'risk'
 };
+let lockedSunbirdInsightEvidenceKey = null;
 
 function escapeIdentityText(value) {
     return String(value ?? '').replace(/[&<>"']/g, char => ({
@@ -2425,11 +2426,52 @@ function renderSunbirdIdentityInsights(model) {
     ];
 
     insightsEl.innerHTML = insights.map((item, index) => `
-        <button type="button" class="sunbird-id-insight tone-${item.tone}" onclick="openSunbirdIdentityEvidence('${item.evidence}', 'insight-${index}')">
+        <article class="sunbird-id-insight tone-${item.tone}" role="button" tabindex="0" data-evidence-key="${item.evidence}" onclick="toggleSunbirdInsightEvidenceLock('${item.evidence}')" onkeydown="handleSunbirdInsightEvidenceKey(event, '${item.evidence}')">
             <span>${escapeIdentityText(item.title)}</span>
             <strong>${item.value}</strong>
-        </button>
+            ${renderSunbirdInsightEvidencePreview(item, model, index)}
+        </article>
     `).join('');
+}
+
+function renderSunbirdInsightEvidencePreview(item, model, index) {
+    const users = model.evidence[item.evidence] || [];
+    const previewUsers = users.slice(0, 4);
+    const summary = item.evidence === 'failedSignInUsers'
+        ? 'Issue reason is shown for each matched sign-in.'
+        : `${users.length} user${users.length === 1 ? '' : 's'} matched this evidence.`;
+
+    return `
+        <div class="sunbird-id-insight-evidence" onclick="event.stopPropagation()">
+            <p>${escapeIdentityText(summary)}</p>
+            <div class="sunbird-id-insight-evidence-list">
+                ${previewUsers.length ? previewUsers.map(user => `
+                    <div>
+                        <strong>${escapeIdentityText(user.displayName || 'Unknown')}</strong>
+                        <span>${escapeIdentityText(user.mail || user.userPrincipalName || 'N/A')}</span>
+                        ${item.evidence === 'failedSignInUsers' ? `<small>${getSunbirdSignInIssueReasons(user).map(escapeIdentityText).join(', ') || 'Sign-in issue'}</small>` : ''}
+                    </div>
+                `).join('') : '<em>No evidence found.</em>'}
+            </div>
+            ${users.length > previewUsers.length ? `<small>${users.length - previewUsers.length} more in full evidence</small>` : ''}
+            <button type="button" onclick="openSunbirdIdentityEvidence('${item.evidence}', 'insight-${index}')">Open Evidence</button>
+        </div>
+    `;
+}
+
+function toggleSunbirdInsightEvidenceLock(evidenceKey) {
+    const tile = document.querySelector(`.sunbird-id-insight[data-evidence-key="${evidenceKey}"]`);
+    if (!tile) return;
+    const shouldLock = lockedSunbirdInsightEvidenceKey !== evidenceKey;
+    document.querySelectorAll('.sunbird-id-insight.locked').forEach(item => item.classList.remove('locked'));
+    lockedSunbirdInsightEvidenceKey = shouldLock ? evidenceKey : null;
+    if (shouldLock) tile.classList.add('locked');
+}
+
+function handleSunbirdInsightEvidenceKey(event, evidenceKey) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    toggleSunbirdInsightEvidenceLock(evidenceKey);
 }
 
 function renderSunbirdIdentityCharts(model) {
@@ -2453,7 +2495,15 @@ function renderSunbirdIdentityCharts(model) {
     `;
 }
 
-function getSunbirdToneColor(tone) {
+function getSunbirdToneColor(tone, alpha = 1) {
+    const colors = {
+        good: [52, 211, 153],
+        warn: [255, 159, 28],
+        bad: [239, 68, 68],
+        neutral: [56, 189, 248]
+    };
+    const color = colors[tone] || [255, 255, 255];
+    if (alpha < 1) return `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${alpha})`;
     return {
         good: '#34d399',
         warn: '#ff9f1c',
@@ -2469,18 +2519,17 @@ function renderSunbirdPieChart(title, items, total) {
         const start = cursor;
         const end = cursor + ((item.value / safeTotal) * 100);
         cursor = end;
-        return `${getSunbirdToneColor(item.tone)} ${start}% ${end}%`;
+        return `${getSunbirdToneColor(item.tone, 0.82)} ${start}% ${end}%`;
     }).join(', ');
 
     return `
         <article class="sunbird-id-chart-card sunbird-id-pie-card">
             <h3>${escapeIdentityText(title)}</h3>
             <div class="sunbird-id-pie" style="background: conic-gradient(${segments || 'rgba(255,255,255,0.16) 0 100%'})">
-                <span>${total || 0}</span>
             </div>
             <div class="sunbird-id-legend">
                 ${items.map(item => `
-                    <span><i style="background:${getSunbirdToneColor(item.tone)}"></i>${escapeIdentityText(item.label)} ${item.value}</span>
+                    <span><i style="background:${getSunbirdToneColor(item.tone, 0.78)}"></i>${escapeIdentityText(item.label)} ${item.value}</span>
                 `).join('')}
             </div>
         </article>
@@ -2737,6 +2786,8 @@ function closeSunbirdIdentityEvidence() {
 window.openSunbirdIdentityEvidence = openSunbirdIdentityEvidence;
 window.closeSunbirdIdentityEvidence = closeSunbirdIdentityEvidence;
 window.applySunbirdIdentityTableFilter = applySunbirdIdentityTableFilter;
+window.toggleSunbirdInsightEvidenceLock = toggleSunbirdInsightEvidenceLock;
+window.handleSunbirdInsightEvidenceKey = handleSunbirdInsightEvidenceKey;
 
 // Initialize  Identity Protection dashboard
 function initializeIdentityDashboard() {
