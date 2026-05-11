@@ -139,6 +139,22 @@ const dashboardConfigs = {
 // NEW DASHBOARD SYSTEM - RULE 2: ONE SIMPLE DASHBOARD LOADER
 // ════════════════════════════════════════════════════════════════════════════════
 
+let originalDashboardViewHTML = null;
+
+function captureDashboardViewHTML() {
+    const dashboardView = document.getElementById('dashboard-view');
+    if (dashboardView && originalDashboardViewHTML === null) {
+        originalDashboardViewHTML = dashboardView.innerHTML;
+    }
+}
+
+function restoreDashboardViewHTML() {
+    const dashboardView = document.getElementById('dashboard-view');
+    if (dashboardView && originalDashboardViewHTML !== null && dashboardView.querySelector('#sunbird-identity-dashboard')) {
+        dashboardView.innerHTML = originalDashboardViewHTML;
+    }
+}
+
 /**
  * RULE 17: ONE EVENT LISTENER ONLY
  * Main function to open any dashboard
@@ -153,11 +169,12 @@ function openDashboard(project) {
         return;
     }
 
-    if (project.isIdentityCard || project.dashboardType === 'Identity Protection') {
+    if (Number(project.id) === 2 || project.isIdentityCard === true) {
         openIdentityDashboard();
         return;
     }
 
+    restoreDashboardViewHTML();
     document.getElementById('dashboard-view')?.classList.remove('sunbird-identity-active');
     
     // Get dashboard type with fallback
@@ -2122,7 +2139,15 @@ function buildSunbirdIdentityModel(data = sunbirdDashboardData) {
     const inactiveUsers = users.filter(user => getIdentityDaysSinceSignIn(user) > 30);
     const unknownDeviceUsers = users.filter(user => /unknown|no sign-in|n\/a/i.test(String(user?.lastSignIn?.device || 'Unknown')));
     const adminsWithoutMfa = privilegedUsers.filter(user => !toBooleanMfa(user.mfaEnabled));
-    const failedSignInUsers = users.filter(user => /fail/i.test(String(user?.lastSignIn?.status || '')));
+    const failedSignInUsers = users.filter(user => {
+        const status = String(user?.lastSignIn?.status || '').toLowerCase();
+        const location = String(user?.lastSignIn?.location || '').toLowerCase();
+        const device = String(user?.lastSignIn?.device || '').toLowerCase();
+        return status.includes('fail') ||
+            String(user.riskLevel || '').toUpperCase() === 'HIGH' ||
+            location.includes('unknown') ||
+            device.includes('unknown');
+    });
     const multiplePrivilegedRoles = users.filter(user => getIdentityRoleNames(user).filter(role => /(admin|global|privileged|security|directory)/i.test(role)).length > 1);
 
     return {
@@ -2176,6 +2201,7 @@ function openSunbirdIdentityDashboard() {
     if (projectName) projectName.textContent = 'Identity Protection';
     if (projectStatus) projectStatus.textContent = 'Active';
 
+    captureDashboardViewHTML();
     dashboardView.innerHTML = renderSunbirdIdentityShell();
     setupSunbirdIdentityDashboard();
 
@@ -2383,7 +2409,7 @@ function renderSunbirdIdentityInsights(model) {
         { title: 'Admins without MFA', value: model.metrics.adminsWithoutMfa, evidence: 'adminsWithoutMfa', filter: { mfa: 'no' }, tone: 'bad' },
         { title: 'Users without MFA', value: model.metrics.mfaMissing, evidence: 'usersWithoutMfa', filter: { mfa: 'no' }, tone: 'warn' },
         { title: 'Inactive users', value: model.metrics.inactiveUsers, evidence: 'inactiveUsers', sort: 'lastSignIn', tone: 'warn' },
-        { title: 'Failed sign-ins', value: model.metrics.failedSignIns, evidence: 'failedSignInUsers', tone: 'bad' },
+        { title: 'Sign-in issues', value: model.metrics.failedSignIns, evidence: 'failedSignInUsers', tone: 'bad' },
         { title: 'External users', value: model.metrics.externalUsers, evidence: 'externalUsers', filter: { type: 'external' }, tone: 'neutral' },
         { title: 'Unknown devices', value: model.metrics.unknownDevices, evidence: 'unknownDeviceUsers', tone: 'warn' },
         { title: 'Multiple privileged roles', value: model.metrics.multiplePrivilegedRoles, evidence: 'multiplePrivilegedRoles', tone: 'bad' }
@@ -2514,14 +2540,13 @@ function renderSunbirdIdentitySignIns(model) {
     const latest = model.users
         .sort((a, b) => getIdentityLastSignInTime(b) - getIdentityLastSignInTime(a))
         .slice(0, 10);
-    const failed = model.users
-        .filter(user => /fail/i.test(String(user?.lastSignIn?.status || '')))
+    const failed = model.evidence.failedSignInUsers
         .sort((a, b) => getIdentityLastSignInTime(b) - getIdentityLastSignInTime(a))
         .slice(0, 10);
 
     signinsEl.innerHTML = `
         ${renderSunbirdSignInList('Latest sign-ins', latest)}
-        ${renderSunbirdSignInList('Failed sign-ins', failed)}
+        ${renderSunbirdSignInList('Sign-in issues', failed)}
     `;
 }
 
@@ -2639,7 +2664,7 @@ function openSunbirdIdentityEvidence(evidenceKey) {
         adminsWithoutMfa: 'Admins Without MFA',
         usersWithoutMfa: 'Users Without MFA',
         inactiveUsers: 'Inactive Users',
-        failedSignInUsers: 'Failed Sign-ins',
+        failedSignInUsers: 'Sign-in Issues',
         externalUsers: 'External Users',
         unknownDeviceUsers: 'Unknown Devices',
         multiplePrivilegedRoles: 'Multiple Privileged Roles'
@@ -6415,7 +6440,7 @@ function showProjectPreview(project) {
             <div class="glow-wrap">
                 <div class="glowing-border-layer"></div>
                 <button class="btn-view-full-dashboard" onclick="openDashboard(mockProjects.find(p => p.id === ${project.id}))">
-                    <i class="fas fa-arrow-right"></i> View ${project.name.trim()} Dashboard
+                    <i class="fas fa-arrow-right"></i> View Full Dashboard
                 </button>
             </div>
         </div>
