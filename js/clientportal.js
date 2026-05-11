@@ -152,6 +152,11 @@ function openDashboard(project) {
         console.error('[Dashboard] No project provided');
         return;
     }
+
+    if (project.isIdentityCard || project.dashboardType === 'Identity Protection') {
+        openIdentityDashboard();
+        return;
+    }
     
     // Get dashboard type with fallback
     const dashboardType = project.dashboardType || "Security"; // RULE 18: Fallback config
