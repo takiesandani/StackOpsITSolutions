@@ -4348,6 +4348,34 @@ function normalizeSunbirdDashboardData(data) {
     };
 }
 
+function updateIdentityProjectCardFromDashboard(data) {
+    const project = mockProjects.find(p => p.id === 2);
+    if (!project || !data) return;
+
+    const metrics = data.metrics || {};
+    const summary = data.summary || {};
+    const totalUsers = summary.totalUsers ?? metrics.totalUsers ?? 0;
+    const activeUsers = summary.activeUsers24h ?? metrics.activeUsers24h ?? 0;
+    const adminRoles = summary.adminUsers ?? metrics.adminUsers ?? 0;
+    const securityScore = summary.securityScore ?? metrics.securityScore ?? 0;
+
+    project.status = 'active';
+    project.securityScore = securityScore;
+    project.risks = {
+        critical: summary.highRiskUsers ?? metrics.highRiskUsers ?? 0,
+        high: summary.privilegedUsersWithoutMFA ?? metrics.privilegedUsersWithoutMFA ?? 0,
+        medium: summary.mediumRiskUsers ?? metrics.mediumRiskUsers ?? 0
+    };
+    project.cardMetrics = [
+        { label: "Total Users", value: `: ${totalUsers}`, icon: "fas fa-users" },
+        { label: "Active (24h)", value: `: ${activeUsers}`, icon: "fas fa-user-check" },
+        { label: "Admin Roles", value: `: ${adminRoles}`, icon: "fas fa-crown" },
+        { label: "Security Score", value: `: ${securityScore}`, icon: "fas fa-shield-alt" }
+    ];
+    project.cardFooter = `Users: ${totalUsers} | Active: ${activeUsers}`;
+    project.lastUpdate = new Date().toLocaleTimeString();
+}
+
 async function fetchIdentityAccessData() {
     const requestId = ++identityFetchRequestId;
     const isStaleRequest = () => requestId !== identityFetchRequestId;
@@ -4424,6 +4452,7 @@ async function fetchIdentityAccessData() {
             isSunbirdDashboard = true;
             // Normalize the API response to ensure all required data structures exist
             sunbirdDashboardData = normalizeSunbirdDashboardData(sunbirdData);
+            updateIdentityProjectCardFromDashboard(sunbirdDashboardData);
             
             // Enrich users - handle empty array gracefully
             const usersFromApi = sunbirdDashboardData.users || [];
@@ -4450,6 +4479,8 @@ async function fetchIdentityAccessData() {
                 },
                 ...user
             }));
+            microsoftRolesData = Array.isArray(sunbirdDashboardData.roleAssignments) ? sunbirdDashboardData.roleAssignments : [];
+            buildUserRolesMap();
             
             console.log(`[Identity Access] Enriched to ${microsoftUsersData.length} users`);
             
@@ -4460,10 +4491,7 @@ async function fetchIdentityAccessData() {
                 initializeIdentityCharts();
                 populateIdentityTable();
                 
-                if (identityProjectForState) {
-                    identityProjectForState.status = 'Active';
-                    displayCurrentProject();
-                }
+                displayCurrentProject();
                 
                 // Store initial metrics for comparison
                 lastIdentityMetrics = JSON.parse(JSON.stringify(sunbirdData.metrics || {}));
@@ -4547,9 +4575,13 @@ async function fetchUpdatedIdentityData() {
             if (data.success) {
                 sunbirdDashboardData = normalizeSunbirdDashboardData(data);
                 microsoftUsersData = (sunbirdDashboardData.users || []).map(user => ({...user}));
+                microsoftRolesData = Array.isArray(sunbirdDashboardData.roleAssignments) ? sunbirdDashboardData.roleAssignments : microsoftRolesData;
+                buildUserRolesMap();
+                updateIdentityProjectCardFromDashboard(sunbirdDashboardData);
                 
                 // Smoothly update UI values
                 updateIdentityDashboardValuesSmootly();
+                displayCurrentProject();
             }
         }
     } catch (error) {
@@ -5980,11 +6012,19 @@ async function fetchIdentityData(project) {
             { label: "Admin Roles", value: `: ${adminRoles}`, icon: "fas fa-crown" },
             { label: "Security Score", value: `: ${securityScore}`, icon: "fas fa-shield-alt" }
         ];
+        project.status = 'active';
+        project.securityScore = securityScore;
         project.lastUpdate = new Date().toLocaleTimeString();
         project.cardFooter = `Users: ${totalUsers} | Active: ${activeUsers}`;
+        displayCurrentProject();
         
     } catch (error) {
         console.error('[Identity] Error:', error);
+        if (project) {
+            project.status = 'error';
+            project.cardFooter = 'Data unavailable';
+            displayCurrentProject();
+        }
         showNotification('Failed to load  Identity Protection data', false);
     }
 }
@@ -7291,6 +7331,8 @@ async function fetchMicrosoftUsersData() {
         
         const data = await response.json();
         microsoftUsersData = data.users || [];
+        microsoftRolesData = Array.isArray(data.roleAssignments) ? data.roleAssignments : [];
+        buildUserRolesMap();
         
         console.log(`[Microsoft Graph] Retrieved ${microsoftUsersData.length} users`);
         

@@ -186,13 +186,12 @@ async function fetchMicrosoftRoleAssignments(token) {
   }
 }
 
-// Fetch sign-in logs from Microsoft Graph (last 30 days)
-async function fetchMicrosoftSignIns(token) {
+// Fetch sign-in logs from Microsoft Graph
+async function fetchMicrosoftSignIns(token, daysBack = 30) {
   try {
-    // Construct filter for last 30 days
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const filterDate = thirtyDaysAgo.toISOString();
+    const since = new Date();
+    since.setDate(since.getDate() - daysBack);
+    const filterDate = since.toISOString();
 
     const response = await fetch(
       `https://graph.microsoft.com/v1.0/auditLogs/signIns?$filter=createdDateTime ge ${filterDate}&$top=999&$select=createdDateTime,userPrincipalName,userId,appDisplayName,clientAppUsed,ipAddress,location,deviceDetail,status`,
@@ -1303,6 +1302,17 @@ async function ensureDatabaseSchema() {
                 UsersPayload LONGTEXT,
                 LastUpdated DATETIME,
                 UNIQUE KEY uq_identity_user_details_company (CompanyID),
+                FOREIGN KEY (CompanyID) REFERENCES Companies(ID)
+            )
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS MicrosoftRoleAssignmentsCache (
+                ID INT AUTO_INCREMENT PRIMARY KEY,
+                CompanyID INT,
+                AssignmentsPayload LONGTEXT,
+                LastUpdated DATETIME,
+                UNIQUE KEY uq_role_assignments_company (CompanyID),
                 FOREIGN KEY (CompanyID) REFERENCES Companies(ID)
             )
         `);
@@ -4639,7 +4649,7 @@ async function fetchIdentityMetricsFromApi() {
     const [users, roleAssignments, signIns] = await Promise.all([
         fetchMicrosoftUsers(token),
         fetchMicrosoftRoleAssignments(token),
-        fetchMicrosoftSignIns(token)
+        fetchMicrosoftSignIns(token, 1)
     ]);
 
     const totalUsers = users.length;
@@ -4648,6 +4658,93 @@ async function fetchIdentityMetricsFromApi() {
     const adminRoles = roleAssignments.length;
     const score = Math.max(0, Math.min(100, Math.round(100 - (adminRoles * 0.4) - ((totalUsers - activeUsers) * 0.2))));
     return { totalUsers, activeUsers, adminRoles, securityScore: score };
+}
+
+function processMicrosoftRoleAssignments(roleAssignments) {
+    return (roleAssignments || []).map(assignment => {
+        const roleName = assignment.roleDefinition?.displayName || assignment.roleName || 'Unknown Role';
+        return {
+            id: assignment.id,
+            principalId: assignment.principalId,
+            roleId: assignment.roleDefinition?.id || assignment.roleDefinitionId || assignment.roleId,
+            roleName,
+            principalType: assignment.principalType,
+            resourceScope: assignment.resourceScope,
+            directoryScopeId: assignment.directoryScopeId
+        };
+    });
+}
+
+function buildRolesByPrincipal(roleAssignments) {
+    const rolesByPrincipal = {};
+    (roleAssignments || []).forEach(assignment => {
+        const principalId = assignment.principalId;
+        if (!principalId) return;
+
+        if (!rolesByPrincipal[principalId]) rolesByPrincipal[principalId] = [];
+        const role = {
+            id: assignment.roleId,
+            name: assignment.roleName || 'Unknown Role'
+        };
+
+        if (!rolesByPrincipal[principalId].some(existing => existing.name === role.name)) {
+            rolesByPrincipal[principalId].push(role);
+        }
+    });
+    return rolesByPrincipal;
+}
+
+function mergeUsersWithRoleAssignments(users, roleAssignments) {
+    const rolesByPrincipal = buildRolesByPrincipal(roleAssignments);
+    return (users || []).map(user => {
+        const roles = rolesByPrincipal[user.id] || user.roles || [];
+        return {
+            ...user,
+            roles,
+            hasAdminRole: roles.some(role => {
+                const name = String(role?.name || role || '').toLowerCase();
+                return name.includes('admin') || name.includes('global');
+            })
+        };
+    });
+}
+
+async function upsertRoleAssignmentsCache(companyId, roleAssignments) {
+    if (!pool || !companyId) return;
+    await pool.query(
+        `REPLACE INTO MicrosoftRoleAssignmentsCache (CompanyID, AssignmentsPayload, LastUpdated)
+         VALUES (?, ?, NOW())`,
+        [companyId, JSON.stringify(roleAssignments || [])]
+    );
+}
+
+async function getCachedRoleAssignments(companyId) {
+    if (!pool || !companyId) return null;
+    const [rows] = await pool.query(
+        'SELECT AssignmentsPayload, LastUpdated FROM MicrosoftRoleAssignmentsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1',
+        [companyId]
+    );
+    if (!rows.length || !rows[0].AssignmentsPayload) return null;
+
+    try {
+        return {
+            roleAssignments: JSON.parse(rows[0].AssignmentsPayload) || [],
+            fetchedAt: rows[0].LastUpdated
+        };
+    } catch (error) {
+        console.warn('[Microsoft Roles Cache] Failed to parse cached roles:', error.message);
+        return null;
+    }
+}
+
+async function fetchRoleAssignmentsFromApi(companyId) {
+    const token = await getMicrosoftGraphToken();
+    const rawAssignments = await fetchMicrosoftRoleAssignments(token);
+    const roleAssignments = processMicrosoftRoleAssignments(rawAssignments);
+    if (companyId) {
+        await upsertRoleAssignmentsCache(companyId, roleAssignments);
+    }
+    return roleAssignments;
 }
 
 function normalizeMicrosoftUsers(users) {
@@ -4666,11 +4763,16 @@ function normalizeMicrosoftUsers(users) {
 
 async function fetchIdentityDetailsFromApi() {
     const token = await getMicrosoftGraphToken();
-    const users = await fetchMicrosoftUsers(token);
+    const [users, rawRoleAssignments] = await Promise.all([
+        fetchMicrosoftUsers(token),
+        fetchMicrosoftRoleAssignments(token)
+    ]);
     const processedUsers = normalizeMicrosoftUsers(users);
+    const roleAssignments = processMicrosoftRoleAssignments(rawRoleAssignments);
     return {
         totalUsers: processedUsers.length,
-        users: processedUsers
+        users: mergeUsersWithRoleAssignments(processedUsers, roleAssignments),
+        roleAssignments
     };
 }
 
@@ -4883,6 +4985,7 @@ async function upsertDashboardMetricCaches() {
                  VALUES (?, ?, NOW())`,
                 [companyId, JSON.stringify(identityDetails.users || [])]
             );
+            await upsertRoleAssignmentsCache(companyId, identityDetails.roleAssignments || []);
             await pool.query(
                 `REPLACE INTO DeviceMetricsCache (CompanyID, TotalDevices, NonCompliant, NotEncrypted, StaleDevices, LastUpdated)
                  VALUES (?, ?, ?, ?, ?, NOW())`,
@@ -4953,11 +5056,25 @@ app.get('/api/db/identity-details', authenticateToken, async (req, res) => {
                 users = [];
             }
             if (Array.isArray(users) && users.length > 0) {
+                let cachedRoles = await getCachedRoleAssignments(context.companyId);
+                if (!cachedRoles || cachedRoles.roleAssignments.length === 0) {
+                    try {
+                        const liveRoles = await fetchRoleAssignmentsFromApi(context.companyId);
+                        cachedRoles = { roleAssignments: liveRoles, fetchedAt: new Date().toISOString() };
+                    } catch (roleError) {
+                        console.warn('[Identity Details] Failed to refresh role cache:', roleError.message);
+                    }
+                }
+
+                const roleAssignments = cachedRoles?.roleAssignments || [];
+                const usersWithRoles = mergeUsersWithRoleAssignments(users, roleAssignments);
+
                 return res.json({
                     success: true,
                     source: 'db',
-                    totalUsers: users.length,
-                    users,
+                    totalUsers: usersWithRoles.length,
+                    users: usersWithRoles,
+                    roleAssignments,
                     fetchedAt: rows[0].LastUpdated
                 });
             }
@@ -4969,11 +5086,13 @@ app.get('/api/db/identity-details', authenticateToken, async (req, res) => {
              VALUES (?, ?, NOW())`,
             [context.companyId, JSON.stringify(api.users || [])]
         );
+        await upsertRoleAssignmentsCache(context.companyId, api.roleAssignments || []);
         return res.json({
             success: true,
             source: 'api-fallback',
             totalUsers: api.totalUsers,
             users: api.users,
+            roleAssignments: api.roleAssignments || [],
             fetchedAt: new Date().toISOString()
         });
     } catch (error) {
@@ -5146,9 +5265,8 @@ app.get('/api/microsoft-roles', authenticateToken, async (req, res) => {
         const userEmail = req.user.email;
         console.log(`[Microsoft Graph] Fetching role assignments for: ${userEmail}`);
 
-        // Get the tenant for this user
-        const tenant = getTenantByEmail(userEmail);
-        if (!tenant) {
+        const context = await getAccessContextByUser(req.user);
+        if (!context?.companyId) {
             console.warn(`[Microsoft Graph] User ${userEmail} does not belong to any configured tenant`);
             return res.status(403).json({ 
                 error: 'User does not have access to Microsoft Graph data',
@@ -5156,26 +5274,21 @@ app.get('/api/microsoft-roles', authenticateToken, async (req, res) => {
             });
         }
 
-        console.log(`[Microsoft Graph] User belongs to tenant: ${tenant.clientId}`);
+        console.log(`[Microsoft Graph] User belongs to tenant: ${context.accessType || context.clientId || 'standard'}`);
 
-        // Get Microsoft Graph token
-        const token = await getMicrosoftGraphToken();
-
-        // Fetch only role assignments (includes roleDefinition via $expand)
-        const roleAssignments = await fetchMicrosoftRoleAssignments(token);
-
-        // Process role assignments
-        const processedAssignments = roleAssignments.map(assignment => {
-            const roleName = assignment.roleDefinition?.displayName || 'Unknown Role';
-            return {
-                id: assignment.id,
-                principalId: assignment.principalId,
-                roleId: assignment.roleDefinition?.id || assignment.roleId,
-                roleName: roleName,
-                resourceScope: assignment.resourceScope,
-                directoryScopeId: assignment.directoryScopeId
-            };
-        });
+        let processedAssignments = [];
+        let source = 'api';
+        let fetchedAt = new Date().toISOString();
+        try {
+            processedAssignments = await fetchRoleAssignmentsFromApi(context.companyId);
+        } catch (apiError) {
+            console.warn('[Microsoft Graph] Live role fetch failed, trying DB cache:', apiError.message);
+            const cached = await getCachedRoleAssignments(context.companyId);
+            if (!cached) throw apiError;
+            processedAssignments = cached.roleAssignments;
+            source = 'db-cache';
+            fetchedAt = cached.fetchedAt;
+        }
 
         // Extract unique roles for summary
         const uniqueRoles = [...new Set(processedAssignments.map(a => a.roleName))];
@@ -5184,12 +5297,13 @@ app.get('/api/microsoft-roles', authenticateToken, async (req, res) => {
 
         res.json({
             success: true,
-            tenant: tenant.clientId,
+            tenant: context.accessType || context.clientId || 'standard',
+            source,
             totalAssignments: processedAssignments.length,
             totalRoles: uniqueRoles.length,
             roleAssignments: processedAssignments,
             uniqueRoles: uniqueRoles,
-            fetchedAt: new Date().toISOString()
+            fetchedAt
         });
 
     } catch (error) {
@@ -6272,6 +6386,77 @@ app.get('/api/sunbird/identity-dashboard-cached', authenticateToken, async (req,
             console.warn('[Sunbird Cached Dashboard] Failed to fetch identity_signin_activity:', e.message);
         }
 
+        const cacheHasUsableMetrics = metricsRows.length > 0 && (
+            Number(metricsRows[0].total_users || 0) > 0 ||
+            Number(metricsRows[0].admin_users || 0) > 0 ||
+            Number(metricsRows[0].active_users_24h || 0) > 0
+        );
+
+        if (!cacheHasUsableMetrics) {
+            try {
+                console.log('[Sunbird Cached Dashboard] Cache empty, hydrating identity metrics from Microsoft Graph');
+                const liveMetrics = await fetchIdentityMetricsFromApi();
+                const liveDetails = await fetchIdentityDetailsFromApi();
+                const normalizedUsers = Array.isArray(liveDetails.users) ? liveDetails.users : [];
+                const externalUsers = normalizedUsers.filter(user => user.isExternal).length;
+                const usersWithCompleteProfile = normalizedUsers.filter(user =>
+                    user.jobTitle && user.jobTitle !== 'No Title' &&
+                    user.mobilePhone && user.mobilePhone !== 'N/A'
+                ).length;
+
+                metricsRows = [{
+                    total_users: liveMetrics.totalUsers,
+                    admin_users: liveMetrics.adminRoles,
+                    mfa_enabled_users: 0,
+                    mfa_percentage: 0,
+                    high_risk_users: 0,
+                    medium_risk_users: externalUsers,
+                    active_users_24h: liveMetrics.activeUsers,
+                    users_with_complete_profile: usersWithCompleteProfile,
+                    privileged_users_without_mfa: 0,
+                    identity_risk_score: Math.max(0, 100 - liveMetrics.securityScore)
+                }];
+
+                usersRows = normalizedUsers.map(user => ({
+                    id: user.id,
+                    display_name: user.displayName,
+                    mail: user.mail,
+                    user_principal_name: user.userPrincipalName,
+                    job_title: user.jobTitle,
+                    mobile_phone: user.mobilePhone,
+                    roles: JSON.stringify(user.roles || []),
+                    mfa_enabled: false,
+                    auth_method_count: 0,
+                    risk_level: user.isExternal ? 'MEDIUM' : 'SAFE',
+                    is_external: user.isExternal,
+                    account_enabled: true,
+                    last_signin_datetime: null,
+                    days_since_signin: 999,
+                    last_signin_location: 'Unknown',
+                    last_signin_device: 'Unknown'
+                }));
+
+                if (tenant.companyId) {
+                    await pool.query(
+                        `REPLACE INTO IdentityMetricsCache (CompanyID, TotalUsers, ActiveUsers, AdminRoles, SecurityScore, LastUpdated)
+                         VALUES (?, ?, ?, ?, ?, NOW())`,
+                        [tenant.companyId, liveMetrics.totalUsers, liveMetrics.activeUsers, liveMetrics.adminRoles, liveMetrics.securityScore]
+                    ).catch(e => console.warn('[Sunbird Cached Dashboard] Failed to mirror IdentityMetricsCache:', e.message));
+
+                    await pool.query(
+                        `REPLACE INTO IdentityUserDetailsCache (CompanyID, UsersPayload, LastUpdated)
+                         VALUES (?, ?, NOW())`,
+                        [tenant.companyId, JSON.stringify(normalizedUsers)]
+                    ).catch(e => console.warn('[Sunbird Cached Dashboard] Failed to mirror IdentityUserDetailsCache:', e.message));
+
+                    await upsertRoleAssignmentsCache(tenant.companyId, liveDetails.roleAssignments || [])
+                        .catch(e => console.warn('[Sunbird Cached Dashboard] Failed to mirror roles cache:', e.message));
+                }
+            } catch (e) {
+                console.warn('[Sunbird Cached Dashboard] Microsoft Graph hydration failed:', e.message);
+            }
+        }
+
         // Build metrics object
         const metrics = metricsRows.length > 0 ? {
             totalUsers: metricsRows[0].total_users || 0,
@@ -6334,7 +6519,7 @@ app.get('/api/sunbird/identity-dashboard-cached', authenticateToken, async (req,
         }
 
         // Build users array with enriched data
-        const users = usersRows.map(user => ({
+        let users = usersRows.map(user => ({
             id: user.id,
             displayName: user.display_name || 'Unknown User',
             mail: user.mail,
@@ -6354,6 +6539,36 @@ app.get('/api/sunbird/identity-dashboard-cached', authenticateToken, async (req,
                 device: user.last_signin_device || 'Unknown'
             }
         }));
+
+        let roleAssignments = [];
+        if (tenant.companyId) {
+            const cachedRoles = await getCachedRoleAssignments(tenant.companyId);
+            roleAssignments = cachedRoles?.roleAssignments || [];
+        }
+
+        const usersMissingRoles = users.length > 0 && users.every(user => !Array.isArray(user.roles) || user.roles.length === 0);
+        if (usersMissingRoles && roleAssignments.length === 0 && tenant.companyId) {
+            try {
+                roleAssignments = await fetchRoleAssignmentsFromApi(tenant.companyId);
+            } catch (roleError) {
+                console.warn('[Sunbird Cached Dashboard] Failed to hydrate roles from Microsoft Graph:', roleError.message);
+            }
+        }
+
+        if (usersMissingRoles && roleAssignments.length > 0) {
+            users = mergeUsersWithRoleAssignments(users, roleAssignments);
+        }
+
+        const topRoles = Object.entries(
+            roleAssignments.reduce((acc, assignment) => {
+                const roleName = assignment.roleName || 'Unknown Role';
+                acc[roleName] = (acc[roleName] || 0) + 1;
+                return acc;
+            }, {})
+        )
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 8)
+            .map(([role, count]) => ({ role, count }));
 
         // Build cache metadata
         const cacheMetadata = cacheMetadataRows.length > 0 ? {
@@ -6385,6 +6600,8 @@ app.get('/api/sunbird/identity-dashboard-cached', authenticateToken, async (req,
             metrics,
             riskBreakdown,
             users,
+            roleAssignments,
+            topRoles,
             signinActivity,
             summary: {
                 totalUsers: metrics.totalUsers,
