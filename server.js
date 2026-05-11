@@ -6078,6 +6078,190 @@ app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) =
     }
 });
 
+// ============================================================================
+// SUNBIRD IDENTITY DASHBOARD - CACHED VERSION (Database-Backed)
+// ============================================================================
+// This endpoint serves cached identity dashboard data from MySQL tables
+// for faster loading and reduced Microsoft Graph API calls
+// ============================================================================
+
+app.get('/api/sunbird/identity-dashboard-cached', authenticateToken, async (req, res) => {
+    try {
+        const userEmail = req.user.email;
+        console.log(`[Sunbird Cached Dashboard] Fetching cached data for: ${userEmail}`);
+
+        // Verify this is Sunbird client only
+        const tenant = getTenantByEmail(userEmail);
+        if (!tenant || tenant.clientId !== 'sunbird') {
+            console.warn(`[Sunbird Cached Dashboard] Access denied for ${userEmail}`);
+            return res.status(403).json({ 
+                error: 'Access denied',
+                message: 'This feature is only available for Sunbird client'
+            });
+        }
+
+        console.log('[Sunbird Cached Dashboard] User verified as Sunbird client');
+
+        // Fetch data from MySQL cache tables
+        const [metricsRows] = await pool.query(
+            'SELECT * FROM identity_metrics WHERE tenant_id = ? ORDER BY last_updated DESC LIMIT 1',
+            ['sunbird']
+        );
+
+        const [usersRows] = await pool.query(
+            'SELECT * FROM identity_users WHERE 1=1 ORDER BY last_updated DESC'
+        );
+
+        const [riskRows] = await pool.query(
+            'SELECT * FROM identity_risk_scores WHERE tenant_id = ? ORDER BY last_updated DESC LIMIT 1',
+            ['sunbird']
+        );
+
+        const [cacheMetadataRows] = await pool.query(
+            'SELECT * FROM identity_cache_metadata WHERE tenant_id = ? LIMIT 1',
+            ['sunbird']
+        );
+
+        const [signinActivityRows] = await pool.query(
+            'SELECT * FROM identity_signin_activity WHERE tenant_id = ? ORDER BY last_updated DESC LIMIT 1',
+            ['sunbird']
+        );
+
+        // Build metrics object
+        const metrics = metricsRows.length > 0 ? {
+            totalUsers: metricsRows[0].total_users || 0,
+            adminUsers: metricsRows[0].admin_users || 0,
+            mfaEnabledUsers: metricsRows[0].mfa_enabled_users || 0,
+            mfaPercentage: parseFloat(metricsRows[0].mfa_percentage) || 0,
+            highRiskUsers: metricsRows[0].high_risk_users || 0,
+            mediumRiskUsers: metricsRows[0].medium_risk_users || 0,
+            activeUsers24h: metricsRows[0].active_users_24h || 0,
+            usersWithCompleteProfile: metricsRows[0].users_with_complete_profile || 0,
+            privilegedUsersWithoutMFA: metricsRows[0].privileged_users_without_mfa || 0,
+            identityRiskScore: metricsRows[0].identity_risk_score || 0
+        } : {
+            totalUsers: 0,
+            adminUsers: 0,
+            mfaEnabledUsers: 0,
+            mfaPercentage: 0,
+            highRiskUsers: 0,
+            mediumRiskUsers: 0,
+            activeUsers24h: 0,
+            usersWithCompleteProfile: 0,
+            privilegedUsersWithoutMFA: 0,
+            identityRiskScore: 0
+        };
+
+        // Build risk breakdown object
+        const riskBreakdown = riskRows.length > 0 ? {
+            inactivity: {
+                '0-7days': riskRows[0].inactive_0_7_days || 0,
+                '7-30days': riskRows[0].inactive_7_30_days || 0,
+                '30-90days': riskRows[0].inactive_30_90_days || 0,
+                '90+days': riskRows[0].inactive_90_plus_days || 0
+            },
+            deviceTrust: {
+                managed: riskRows[0].device_managed || 0,
+                unmanaged: riskRows[0].device_unmanaged || 0,
+                unknown: riskRows[0].device_unknown || 0
+            },
+            authenticationStrength: {
+                passwordOnly: riskRows[0].auth_password_only || 0,
+                basicMFA: riskRows[0].auth_basic_mfa || 0,
+                strongMFA: riskRows[0].auth_strong_mfa || 0
+            }
+        } : {
+            inactivity: { '0-7days': 0, '7-30days': 0, '30-90days': 0, '90+days': 0 },
+            deviceTrust: { managed: 0, unmanaged: 0, unknown: 0 },
+            authenticationStrength: { passwordOnly: 0, basicMFA: 0, strongMFA: 0 }
+        };
+
+        // Build users array with enriched data
+        const users = usersRows.map(user => ({
+            id: user.id,
+            displayName: user.display_name || 'Unknown User',
+            mail: user.mail,
+            userPrincipalName: user.user_principal_name,
+            jobTitle: user.job_title || 'No Title',
+            mobilePhone: user.mobile_phone || 'N/A',
+            roles: user.roles ? JSON.parse(user.roles) : [],
+            mfaEnabled: toBooleanMfa(user.mfa_enabled),
+            authMethodCount: user.auth_method_count || 0,
+            riskLevel: user.risk_level || 'SAFE',
+            isExternal: user.is_external || false,
+            accountEnabled: user.account_enabled !== false,
+            lastSignIn: {
+                dateTime: user.last_signin_datetime ? new Date(user.last_signin_datetime).toISOString() : null,
+                daysSince: user.days_since_signin || 999,
+                location: user.last_signin_location || 'Unknown',
+                device: user.last_signin_device || 'Unknown'
+            }
+        }));
+
+        // Build cache metadata
+        const cacheMetadata = cacheMetadataRows.length > 0 ? {
+            lastSyncTime: cacheMetadataRows[0].last_sync_time,
+            nextSyncTime: cacheMetadataRows[0].next_sync_time,
+            syncStatus: cacheMetadataRows[0].sync_status,
+            syncErrorMessage: cacheMetadataRows[0].sync_error_message,
+            totalUsersSynced: cacheMetadataRows[0].total_users_synced,
+            syncDurationSeconds: cacheMetadataRows[0].sync_duration_seconds
+        } : null;
+
+        // Build signin activity
+        const signinActivity = signinActivityRows.length > 0 ? {
+            signInCount24h: signinActivityRows[0].sign_in_count_24h || 0,
+            failedSigninCount24h: signinActivityRows[0].failed_signin_count_24h || 0,
+            uniqueLocationsCount: signinActivityRows[0].unique_locations_count || 0,
+            topLocations: signinActivityRows[0].top_locations ? JSON.parse(signinActivityRows[0].top_locations) : [],
+            recentSignins: signinActivityRows[0].recent_signings ? JSON.parse(signinActivityRows[0].recent_signings) : []
+        } : null;
+
+        console.log(`[Sunbird Cached Dashboard] Loaded ${users.length} users from cache`);
+
+        res.json({
+            success: true,
+            tenant: tenant.clientId,
+            fetchedAt: new Date().toISOString(),
+            source: 'database_cache',
+            cacheMetadata,
+            metrics,
+            riskBreakdown,
+            users,
+            signinActivity,
+            summary: {
+                totalUsers: metrics.totalUsers,
+                activeUsers24h: metrics.activeUsers24h,
+                activeUsersPercentage: metrics.totalUsers > 0 ? Math.round((metrics.activeUsers24h / metrics.totalUsers) * 100) : 0,
+                adminUsers: metrics.adminUsers,
+                mfaEnabledPercentage: metrics.mfaPercentage,
+                highRiskUsers: metrics.highRiskUsers,
+                highRiskBreakdown: {
+                    adminWithoutMFA: metrics.privilegedUsersWithoutMFA,
+                    neverSignedIn: users.filter(u => u.lastSignIn.daysSince > 999).length,
+                    externalUser: users.filter(u => u.isExternal).length
+                },
+                securityScore: Math.round(
+                    (metrics.mfaPercentage * 0.4) +
+                    ((100 - (metrics.totalUsers > 0 ? (metrics.highRiskUsers / metrics.totalUsers) * 100 : 0)) * 0.3) +
+                    ((metrics.adminUsers <= 5 ? 100 : 50) * 0.3)
+                ),
+                identityRiskScore: metrics.identityRiskScore,
+                mediumRiskUsers: metrics.mediumRiskUsers,
+                privilegedUsersWithoutMFA: metrics.privilegedUsersWithoutMFA
+            }
+        });
+
+    } catch (error) {
+        console.error('[Sunbird Cached Dashboard] Error:', error.message);
+        
+        res.status(500).json({ 
+            error: 'Failed to fetch cached dashboard data',
+            message: error.message
+        });
+    }
+});
+
 // ====================================================================================================//
 //                        MICROSOFT GRAPH - DEVICES & SECURITY                                        //
 // ====================================================================================================//
