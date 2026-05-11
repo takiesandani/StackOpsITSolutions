@@ -6378,9 +6378,9 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 .sunbird-identity-dashboard {
-  width: 100%;
+  width: 80%;
   min-height: 100vh;
-  padding: 4px 0 24px;
+  padding: 7px 0 30px;
   color: #f8fafc;
   background: transparent;
 }
