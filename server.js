@@ -6176,6 +6176,17 @@ app.get('/api/sunbird/identity-dashboard-cached', authenticateToken, async (req,
             authenticationStrength: { passwordOnly: 0, basicMFA: 0, strongMFA: 0 }
         };
 
+        // Helper function for safe JSON parsing
+        function safeJsonParse(str, defaultValue = []) {
+            if (!str || str.trim() === '') return defaultValue;
+            try {
+                return JSON.parse(str);
+            } catch (e) {
+                console.warn('[Sunbird Cached Dashboard] JSON parse error:', e.message, 'for value:', str);
+                return defaultValue;
+            }
+        }
+
         // Build users array with enriched data
         const users = usersRows.map(user => ({
             id: user.id,
@@ -6184,7 +6195,7 @@ app.get('/api/sunbird/identity-dashboard-cached', authenticateToken, async (req,
             userPrincipalName: user.user_principal_name,
             jobTitle: user.job_title || 'No Title',
             mobilePhone: user.mobile_phone || 'N/A',
-            roles: user.roles ? JSON.parse(user.roles) : [],
+            roles: safeJsonParse(user.roles, []),
             mfaEnabled: toBooleanMfa(user.mfa_enabled),
             authMethodCount: user.auth_method_count || 0,
             riskLevel: user.risk_level || 'SAFE',
@@ -6213,8 +6224,8 @@ app.get('/api/sunbird/identity-dashboard-cached', authenticateToken, async (req,
             signInCount24h: signinActivityRows[0].sign_in_count_24h || 0,
             failedSigninCount24h: signinActivityRows[0].failed_signin_count_24h || 0,
             uniqueLocationsCount: signinActivityRows[0].unique_locations_count || 0,
-            topLocations: signinActivityRows[0].top_locations ? JSON.parse(signinActivityRows[0].top_locations) : [],
-            recentSignins: signinActivityRows[0].recent_signings ? JSON.parse(signinActivityRows[0].recent_signings) : []
+            topLocations: safeJsonParse(signinActivityRows[0].top_locations, []),
+            recentSignins: safeJsonParse(signinActivityRows[0].recent_signings, [])
         } : null;
 
         console.log(`[Sunbird Cached Dashboard] Loaded ${users.length} users from cache`);
