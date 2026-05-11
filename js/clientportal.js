@@ -4792,13 +4792,11 @@ function generateIdentityDashboardHTML() {
             <!-- Dashboard Header with Back Button and Title -->
             <div class="identity-dashboard-header">
                 <div class="identity-header-left">
-                    <div class="btn-back">
-                        <div class="glow-wrap">
-                            <div class="glowing-border-layer"></div>
-                            <button id="btn-back-identity" class="btn-back-identity">
-                                <i class="fas fa-arrow-left"></i> Back
-                            </button>
-                        </div>
+                    <div class="btn-back-wrapper glow-wrap">
+                        <div class="glowing-border-layer"></div>
+                        <button id="btn-back-identity" class="btn-back">
+                            <i class="fas fa-arrow-left"></i> Back
+                        </button>
                     </div>
                     <h2 class="identity-dashboard-title"> Identity Protection - Dashboard</h2>
                 </div>
@@ -5782,7 +5780,9 @@ function buildIdentityPreviewModel() {
             text: `${user.displayName || 'User'} signed in from ${user?.lastSignIn?.location || 'Unknown'}`
         }));
 
-    const keyInsight = adminWithoutMfa > 0
+    const keyInsight = recentSignIns.length > 0
+        ? 'Latest sign-ins'
+        : adminWithoutMfa > 0
         ? `${adminWithoutMfa} admins do not have MFA enabled`
         : inactiveUsers > 0
             ? `${inactiveUsers} users have not signed in within 30 days`
