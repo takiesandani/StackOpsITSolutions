@@ -1578,6 +1578,11 @@ function openIdentityDashboard() {
     const dashboardView = document.getElementById('dashboard-view');
     if (!dashboardView) return;
 
+    // Save original dashboard HTML before overwriting it (first time only)
+    if (!window.originalDashboardHTML) {
+        window.originalDashboardHTML = dashboardView.innerHTML;
+    }
+
     // Show dashboard view with smooth transitions
     smoothHide(document.getElementById('projects-view'), 250);
     smoothShow(dashboardView, 250);
@@ -1688,7 +1693,13 @@ function initializeIdentityDashboard() {
     // Update dashboard content with Identity-specific layout
     const dashboardView = document.getElementById('dashboard-view');
     if (dashboardView) {
+        // Save original dashboard HTML before overwriting it (first time only)
+        if (!window.originalDashboardHTML) {
+            window.originalDashboardHTML = dashboardView.innerHTML;
+        }
+
         dashboardView.innerHTML = generateIdentityDashboardHTML();
+        dashboardView.style.display = 'block';
     }
     
     // Show loading skeleton immediately
@@ -2163,7 +2174,7 @@ function renderRoleDistributionChart() {
     
     // Count roles distribution
     const roleDistribution = {};
-    microsoftRolesData.forEach(assignment => {
+    (microsoftRolesData || []).forEach(assignment => {
         const roleName = assignment.roleName || 'Unknown';
         roleDistribution[roleName] = (roleDistribution[roleName] || 0) + 1;
     });
@@ -2826,7 +2837,7 @@ function renderSystemHealthRadar() {
     const canvasElement = document.getElementById('systemHealthRadar');
     if (!canvasElement || !sunbirdDashboardData) return;
 
-    const health = sunbirdDashboardData.systemHealth;
+    const health = sunbirdDashboardData.systemHealth || {};
     
     // Set canvas dimensions
     canvasElement.width = 400;
@@ -2891,7 +2902,7 @@ function renderRiskDistributionPie() {
     const canvasElement = document.getElementById('riskDistributionPie');
     if (!canvasElement || !sunbirdDashboardData) return;
 
-    const riskDist = sunbirdDashboardData.riskDistribution;
+    const riskDist = sunbirdDashboardData.riskDistribution || {};
     const highRisk = riskDist.HIGH || 0;
     const mediumRisk = riskDist.MEDIUM || 0;
     const safeRisk = riskDist.SAFE || 0;
@@ -3358,11 +3369,16 @@ function renderSunbirdAnalytics() {
     
     try {
         renderSunbirdSummaryCards();
+        
+        // Ensure analytics rows are visible
+        const analyticsRow1 = document.getElementById('sunbird-analytics-row-1');
+        if (analyticsRow1) analyticsRow1.style.display = 'grid';
+        
         renderSystemHealthRadar();
         renderRiskDistributionPie();
         renderAuthenticationStrengthChart();
         renderDeviceTrustChart();
-        renderRoleDistributionChart();
+        renderSunbirdRoleDistributionChart();
         renderInactiveBreakdownChart();
         renderIdentityHygieneBreakdown();
         renderSignInInsights();
@@ -3945,7 +3961,7 @@ async function fetchIdentityAccessData() {
                     console.log('[Identity Access] FIRST LOAD - Rendering full dashboard');
                     initializeIdentityInsights();
                     initializeIdentityCharts();
-                    populateIdentityUsersTable();
+                    populateIdentityTable();
                     
                     if (identityProjectForState) {
                         identityProjectForState.status = 'completed';
@@ -3961,7 +3977,7 @@ async function fetchIdentityAccessData() {
                 } else {
                     // SUBSEQUENT UPDATES: Only update values smoothly
                     console.log('[Identity Access] UPDATE - Smoothly updating values only');
-                    updateIdentityDashboardValuesSmootly();
+                    updateIdentityDashboardValuesSmoothly();
                 }
                 
             }
@@ -4020,7 +4036,7 @@ async function fetchUpdatedIdentityData() {
                 microsoftUsersData = (data.users || []).map(user => ({...user}));
                 
                 // Smoothly update UI values
-                updateIdentityDashboardValuesSmootly();
+                updateIdentityDashboardValuesSmoothly();
             }
         }
     } catch (error) {
@@ -4033,7 +4049,7 @@ async function fetchUpdatedIdentityData() {
 // Only text content changes, DOM structure stays intact
 // ════════════════════════════════════════════════════════════════════════════════
 
-function updateIdentityDashboardValuesSmootly() {
+function updateIdentityDashboardValuesSmoothly() {
     try {
         const metrics = sunbirdDashboardData.metrics;
         const riskBreakdown = sunbirdDashboardData.riskBreakdown;
@@ -5516,6 +5532,26 @@ function goBackToProjects() {
 function resetDashboard() {
     smoothShow(document.getElementById('projects-view'), 250);
     smoothHide(document.getElementById('dashboard-view'), 250);
+
+    // Restore original dashboard HTML if it was overwritten by Identity dashboard
+    const dashboardView = document.getElementById('dashboard-view');
+    if (window.originalDashboardHTML && dashboardView) {
+        dashboardView.innerHTML = window.originalDashboardHTML;
+    }
+
+    // Reset sunbird analytics row visibility
+    const analyticsRows = [
+        'sunbird-summary-cards',
+        'sunbird-analytics-row-1',
+        'sunbird-analytics-row-2',
+        'sunbird-analytics-row-3',
+        'sunbird-insights-row'
+    ];
+    analyticsRows.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+
     const devicesView = document.getElementById('devices-view');
     const securityEventsView = document.getElementById('security-events-view');
     const emailSecurityView = document.getElementById('email-security-view');
