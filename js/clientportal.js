@@ -1690,25 +1690,45 @@ function initializeIdentityDashboard() {
     const dashboardView = document.getElementById('dashboard-view');
     if (dashboardView) {
         dashboardView.innerHTML = generateIdentityDashboardHTML();
+        // CRITICAL: Show the dashboard view!
+        dashboardView.style.display = 'grid';
+        dashboardView.style.visibility = 'visible';
+        dashboardView.style.opacity = '1';
     }
     
     // Show loading skeleton immediately
     showIdentityTableLoadingSkeleton();
     
-    // Initialize table population, search, and insights
-    setTimeout(() => {
+    // Use requestAnimationFrame to ensure DOM has rendered before populating
+    requestAnimationFrame(() => {
         console.log('[Identity Dashboard] Initializing table, search, and insights');
         populateIdentityTable();
         setupIdentitySearch();
         initializeIdentityInsights();
-    }, 100);
+    });
 }
 
 // Show loading skeleton while table data loads
 function showIdentityTableLoadingSkeleton() {
+    console.log('[Identity Skeleton] Creating skeleton rows...');
     const tableBody = document.getElementById('users-table-body');
-    if (!tableBody) return;
     
+    if (!tableBody) {
+        console.warn('[Identity Skeleton] ⚠️ Table body not yet available, will retry');
+        // Retry once more after a brief delay
+        setTimeout(() => {
+            const tb = document.getElementById('users-table-body');
+            if (tb) {
+                console.log('[Identity Skeleton] ✅ Table body found on retry');
+                showIdentityTableLoadingSkeleton();
+            } else {
+                console.error('[Identity Skeleton] ❌ Table body still not found after retry');
+            }
+        }, 50);
+        return;
+    }
+    
+    console.log('[Identity Skeleton] ✅ Table body found, adding skeleton rows');
     tableBody.innerHTML = '';
     
     // Create 8 skeleton rows
@@ -1732,6 +1752,7 @@ function showIdentityTableLoadingSkeleton() {
         `;
         tableBody.appendChild(row);
     }
+    console.log('[Identity Skeleton] ✅ Skeleton rows added');
 }
 
 function setupIdentitySearch() {
@@ -4817,20 +4838,28 @@ function populateIdentityTable() {
     const tableBody = document.getElementById('users-table-body');
     const table = document.getElementById('users-table');
     
+    console.log('[Identity Table] ====== POPULATE TABLE START ======');
+    console.log('[Identity Table] Searching for table body with ID: users-table-body');
+    console.log('[Identity Table] Searching for table with ID: users-table');
+    
     if (!tableBody) {
-        console.error('[Identity Table] Table body not found');
+        console.error('[Identity Table] ❌ Table body not found');
+        console.error('[Identity Table] Document body innerHTML preview:', document.body.innerHTML.substring(0, 500));
         return;
     }
-
+    
+    console.log('[Identity Table] ✅ Table body found');
     console.log(`[Identity Table] Populating table with ${microsoftUsersData.length} users (Sunbird: ${isSunbirdDashboard})`);
     console.log('[Identity Table] Sample user data:', microsoftUsersData[0]);
 
     tableBody.innerHTML = '';
+    console.log('[Identity Table] ✅ Cleared table body');
 
     // Update table headers based on dashboard type
     if (table) {
         const thead = table.querySelector('thead tr');
         if (thead) {
+            console.log('[Identity Table] ✅ Table head found');
             if (isSunbirdDashboard) {
                 thead.innerHTML = `
                     <th>Name</th>
