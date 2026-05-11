@@ -2234,12 +2234,18 @@ function renderSunbirdIdentityShell() {
         <section class="sunbird-identity-dashboard" id="sunbird-identity-dashboard">
             <div class="sunbird-id-header">
                 <button id="sunbird-id-back" class="sunbird-id-back-btn" type="button">
-                    <i class="fas fa-arrow-left"></i>
+                    <span class="sunbird-id-back-icon" aria-hidden="true">&larr;</span>
                     <span>Back</span>
                 </button>
                 <div>
                     <h2>Identity Protection</h2>
                     <p>Identity and access evidence for Sunbird users.</p>
+                </div>
+                <div class="sunbird-id-microsoft-badge" aria-label="Microsoft Solutions">
+                    <span class="sunbird-id-ms-logo" aria-hidden="true">
+                        <i></i><i></i><i></i><i></i>
+                    </span>
+                    <span>Microsoft Solutions</span>
                 </div>
             </div>
 
@@ -2493,6 +2499,29 @@ function renderSunbirdIdentityCharts(model) {
         ], model.metrics.totalUsers)}
         ${renderSunbirdHealthGraph(model)}
     `;
+    animateSunbirdIdentityCharts();
+}
+
+function animateSunbirdIdentityCharts() {
+    const cards = document.querySelectorAll('.sunbird-id-chart-card');
+    if (!cards.length) return;
+
+    if (window.sunbirdIdentityChartObserver) {
+        window.sunbirdIdentityChartObserver.disconnect();
+    }
+
+    if (!('IntersectionObserver' in window)) {
+        cards.forEach(card => card.classList.add('is-visible'));
+        return;
+    }
+
+    window.sunbirdIdentityChartObserver = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+            entry.target.classList.toggle('is-visible', entry.isIntersecting);
+        });
+    }, { threshold: 0.35 });
+
+    cards.forEach(card => window.sunbirdIdentityChartObserver.observe(card));
 }
 
 function getSunbirdToneColor(tone, alpha = 1) {
