@@ -1356,15 +1356,41 @@ async function ensureDatabaseSchema() {
                 FOREIGN KEY (CompanyID) REFERENCES Companies(ID)
             )
         `);
+        // Create indexes safely for MySQL
 
-        // User constraints/indexes for faster login and tenant lookups
-        await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_company ON Users(CompanyID)`);
-        await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_email ON Users(Email)`);
-        await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_users_email ON Users(Email)`);
-    } catch (err) {
-        console.error('ensureDatabaseSchema error:', err);
-    }
-}
+        const [idx1] = await pool.query(`
+            SHOW INDEX FROM Users WHERE Key_name = 'idx_users_company'
+        `);
+
+        if (idx1.length === 0) {
+            await pool.query(`
+                CREATE INDEX idx_users_company ON Users(CompanyID)
+            `);
+        }
+
+        const [idx2] = await pool.query(`
+            SHOW INDEX FROM Users WHERE Key_name = 'idx_users_email'
+        `);
+
+        if (idx2.length === 0) {
+            await pool.query(`
+                CREATE INDEX idx_users_email ON Users(Email)
+            `);
+        }
+
+        const [idx3] = await pool.query(`
+            SHOW INDEX FROM Users WHERE Key_name = 'uq_users_email'
+        `);
+
+        if (idx3.length === 0) {
+            await pool.query(`
+                CREATE UNIQUE INDEX uq_users_email ON Users(Email)
+            `);
+        }
+            } catch (err) {
+                console.error('ensureDatabaseSchema error:', err);
+            }
+        }
 
 // Call seed availability and schema check NON-BLOCKING with retry logic
 setTimeout(() => {
@@ -5883,7 +5909,9 @@ app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) =
         const totalUsers = enrichedUsers.length;
         const adminUsers = enrichedUsers.filter(u => u.hasAdminRole).length;
         const mfaEnabledUsers = enrichedUsers.filter(u => u.mfaEnabled).length;
-        const mfaPercentage = ((mfaEnabledUsers / totalUsers) * 100).toFixed(1);
+        const mfaPercentage = totalUsers > 0
+    ? ((mfaEnabledUsers / totalUsers) * 100).toFixed(1)
+    : 0;
         const highRiskUsers = enrichedUsers.filter(u => u.riskLevel === 'HIGH').length;
         const mediumRiskUsers = enrichedUsers.filter(u => u.riskLevel === 'MEDIUM').length;
         const activeUsers24h = enrichedUsers.filter(u => u.lastSignIn.daysSince <= 1).length;
@@ -6114,7 +6142,13 @@ app.get('/api/sunbird/identity-dashboard-cached', authenticateToken, async (req,
             userPrincipalName: u.user_principal_name,
             jobTitle: u.job_title,
             mobilePhone: u.mobile_phone,
-            roles: JSON.parse(u.roles || '[]'),
+            roles: (() => {
+                try {
+                    return JSON.parse(u.roles || '[]');
+                } catch {
+                    return [];
+                }
+            })(),
             mfaEnabled: u.mfa_enabled === 1,
             authMethodCount: u.auth_method_count,
             riskLevel: u.risk_level,
@@ -8318,7 +8352,12 @@ async function syncIdentityDataToDatabase(tenantId) {
                 risk_level: riskLevel,
                 is_external: user.mail?.endsWith('.com') && !user.mail?.endsWith('sunbird.com') ? 1 : 0,
                 account_enabled: user.accountEnabled !== false ? 1 : 0,
-                last_signin_datetime: lastSignInDate?.toISOString() || null,
+                last_signin_datetime: lastSignInDate
+                ? lastSignInDate
+                    .toISOString()
+                    .slice(0, 19)
+                    .replace('T', ' ')
+                : null,
                 last_signin_location: lastSignIn?.location || 'No sign-in',
                 last_signin_device: lastSignIn?.deviceDetail?.displayName || 'Unknown',
                 days_since_signin: daysSinceSignIn,
@@ -8330,7 +8369,9 @@ async function syncIdentityDataToDatabase(tenantId) {
         const totalUsers = enrichedUsers.length;
         const adminUsers = enrichedUsers.filter(u => u.is_admin).length;
         const mfaEnabledUsers = enrichedUsers.filter(u => u.mfa_enabled).length;
-        const mfaPercentage = ((mfaEnabledUsers / totalUsers) * 100).toFixed(1);
+        const mfaPercentage = totalUsers > 0
+    ? ((mfaEnabledUsers / totalUsers) * 100).toFixed(1)
+    : 0;
         const highRiskUsers = enrichedUsers.filter(u => u.risk_level === 'HIGH').length;
         const mediumRiskUsers = enrichedUsers.filter(u => u.risk_level === 'MEDIUM').length;
         const activeUsers24h = enrichedUsers.filter(u => u.days_since_signin <= 1).length;
@@ -8420,7 +8461,8 @@ async function updateIdentityDatabaseCache(tenantId, enrichedUsers, metrics, bre
         await conn.beginTransaction();
         
         // Clear old user data
-        await conn.query('DELETE FROM identity_users');
+        // Only clear after successful preparation
+        await conn.query('TRUNCATE TABLE identity_users');
         
         // Insert fresh user data
         if (enrichedUsers.length > 0) {
