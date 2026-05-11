@@ -150,7 +150,11 @@ function captureDashboardViewHTML() {
 
 function restoreDashboardViewHTML() {
     const dashboardView = document.getElementById('dashboard-view');
-    if (dashboardView && originalDashboardViewHTML !== null && dashboardView.querySelector('#sunbird-identity-dashboard')) {
+    if (
+        dashboardView &&
+        originalDashboardViewHTML !== null &&
+        (dashboardView.querySelector('#sunbird-identity-dashboard') || dashboardView.querySelector('#sunbird-devices-dashboard'))
+    ) {
         dashboardView.innerHTML = originalDashboardViewHTML;
     }
 }
@@ -174,8 +178,14 @@ function openDashboard(project) {
         return;
     }
 
+    if (Number(project.id) === 3 || project.isDevicesCard === true) {
+        openSunbirdDevicesDashboard();
+        return;
+    }
+
     restoreDashboardViewHTML();
     document.getElementById('dashboard-view')?.classList.remove('sunbird-identity-active');
+    document.getElementById('dashboard-view')?.classList.remove('sunbird-device-active');
     
     // Get dashboard type with fallback
     const dashboardType = project.dashboardType || "Security"; // RULE 18: Fallback config
@@ -485,6 +495,7 @@ function goBackToProjects() {
     if (dashboardView) {
         dashboardView.style.display = 'none';
         dashboardView.classList.remove('sunbird-identity-active');
+        dashboardView.classList.remove('sunbird-device-active');
     }
     
     // Destroy charts
@@ -2204,6 +2215,7 @@ function openSunbirdIdentityDashboard() {
     dashboardView.style.display = 'block';
     dashboardView.style.visibility = 'visible';
     dashboardView.style.opacity = '1';
+    dashboardView.classList.remove('sunbird-device-active');
     dashboardView.classList.add('sunbird-identity-active');
 
     const projectName = document.getElementById('project-name');
@@ -2817,6 +2829,784 @@ window.closeSunbirdIdentityEvidence = closeSunbirdIdentityEvidence;
 window.applySunbirdIdentityTableFilter = applySunbirdIdentityTableFilter;
 window.toggleSunbirdInsightEvidenceLock = toggleSunbirdInsightEvidenceLock;
 window.handleSunbirdInsightEvidenceKey = handleSunbirdInsightEvidenceKey;
+
+const SUNBIRD_DEVICES_CACHE_KEY = 'sunbirdDevicesDashboardSnapshot';
+let sunbirdDevicesDashboardData = null;
+let sunbirdDevicesTableState = {
+    search: '',
+    risk: 'all',
+    compliance: 'all',
+    encryption: 'all',
+    sort: 'risk'
+};
+let lockedSunbirdDeviceInsightEvidenceKey = null;
+
+function openSunbirdDevicesDashboard() {
+    const dashboardView = document.getElementById('dashboard-view');
+    const projectsView = document.getElementById('projects-view');
+    if (!dashboardView) return;
+
+    if (projectsView) projectsView.style.display = 'none';
+    dashboardView.style.display = 'block';
+    dashboardView.style.visibility = 'visible';
+    dashboardView.style.opacity = '1';
+    dashboardView.classList.remove('sunbird-identity-active');
+    dashboardView.classList.add('sunbird-device-active');
+
+    captureDashboardViewHTML();
+    dashboardView.innerHTML = renderSunbirdDevicesShell();
+    setupSunbirdDevicesDashboard();
+
+    const cached = readSunbirdDevicesSnapshot();
+    if (cached) {
+        sunbirdDevicesDashboardData = normalizeSunbirdDevicesData(cached);
+        renderSunbirdDevicesDashboard();
+    } else if (latestDevicesCardData) {
+        sunbirdDevicesDashboardData = normalizeSunbirdDevicesData(latestDevicesCardData);
+        renderSunbirdDevicesDashboard();
+    } else {
+        sunbirdDevicesDashboardData = normalizeSunbirdDevicesData({ success: true, devices: [] });
+        renderSunbirdDevicesDashboard();
+    }
+
+    loadSunbirdDevicesDashboardData();
+}
+
+function renderSunbirdDevicesShell() {
+    return `
+        <section class="sunbird-identity-dashboard sunbird-devices-dashboard" id="sunbird-devices-dashboard">
+            <div class="sunbird-id-header">
+                <button id="sunbird-devices-back" class="sunbird-id-back-btn" type="button">
+                    <span class="sunbird-id-back-icon" aria-hidden="true">&larr;</span>
+                    <span>Back</span>
+                </button>
+                <div>
+                    <h2>Device Protection</h2>
+                    <p>Devices, compliance, encryption, activity, and security evidence.</p>
+                </div>
+                <div class="sunbird-id-microsoft-badge" aria-label="Microsoft Solutions">
+                    <span class="sunbird-id-ms-logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+                    <span>Microsoft Solutions</span>
+                </div>
+            </div>
+
+            <div class="sunbird-id-metrics" id="sunbird-devices-metrics"></div>
+            <div class="sunbird-id-insights" id="sunbird-devices-insights"></div>
+            <div class="sunbird-id-charts" id="sunbird-devices-charts"></div>
+            <div class="sunbird-id-signins" id="sunbird-devices-panels"></div>
+
+            <section class="sunbird-id-table-section">
+                <div class="sunbird-id-table-toolbar sunbird-devices-table-toolbar">
+                    <input id="sunbird-devices-search" class="sunbird-id-search" type="search" placeholder="Search device, user, OS, compliance, serial, management">
+                    <select id="sunbird-devices-risk-filter" class="sunbird-id-select">
+                        <option value="all">All risks</option>
+                        <option value="safe">Safe</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                    </select>
+                    <select id="sunbird-devices-compliance-filter" class="sunbird-id-select">
+                        <option value="all">All compliance</option>
+                        <option value="compliant">Compliant</option>
+                        <option value="noncompliant">Non-compliant</option>
+                        <option value="unknown">Unknown</option>
+                    </select>
+                    <select id="sunbird-devices-encryption-filter" class="sunbird-id-select">
+                        <option value="all">All encryption</option>
+                        <option value="yes">Encrypted</option>
+                        <option value="no">Not encrypted</option>
+                    </select>
+                    <select id="sunbird-devices-sort" class="sunbird-id-select">
+                        <option value="risk">Sort risk</option>
+                        <option value="lastSync">Sort last sync</option>
+                        <option value="name">Sort name</option>
+                    </select>
+                    <button id="sunbird-devices-clear" class="sunbird-id-clear-btn" type="button">Clear</button>
+                </div>
+
+                <div class="sunbird-id-table-wrap">
+                    <table class="sunbird-id-table sunbird-devices-table">
+                        <thead>
+                            <tr>
+                                <th>Device</th>
+                                <th>User</th>
+                                <th>OS</th>
+                                <th>Version</th>
+                                <th>Compliance</th>
+                                <th>Encryption</th>
+                                <th>Management</th>
+                                <th>Last Sync</th>
+                                <th>Registration</th>
+                                <th>Enrollment</th>
+                                <th>Serial</th>
+                                <th>Risk</th>
+                                <th>Issues</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sunbird-devices-body"></tbody>
+                    </table>
+                </div>
+            </section>
+        </section>
+        <div id="sunbird-device-evidence-modal" class="sunbird-id-modal" aria-hidden="true"></div>
+    `;
+}
+
+function setupSunbirdDevicesDashboard() {
+    document.getElementById('sunbird-devices-back')?.addEventListener('click', goBackToProjects);
+    document.getElementById('sunbird-devices-search')?.addEventListener('input', event => {
+        sunbirdDevicesTableState.search = event.target.value;
+        renderSunbirdDevicesTable();
+    });
+    document.getElementById('sunbird-devices-risk-filter')?.addEventListener('change', event => {
+        sunbirdDevicesTableState.risk = event.target.value;
+        renderSunbirdDevicesTable();
+    });
+    document.getElementById('sunbird-devices-compliance-filter')?.addEventListener('change', event => {
+        sunbirdDevicesTableState.compliance = event.target.value;
+        renderSunbirdDevicesTable();
+    });
+    document.getElementById('sunbird-devices-encryption-filter')?.addEventListener('change', event => {
+        sunbirdDevicesTableState.encryption = event.target.value;
+        renderSunbirdDevicesTable();
+    });
+    document.getElementById('sunbird-devices-sort')?.addEventListener('change', event => {
+        sunbirdDevicesTableState.sort = event.target.value;
+        renderSunbirdDevicesTable();
+    });
+    document.getElementById('sunbird-devices-clear')?.addEventListener('click', () => {
+        sunbirdDevicesTableState = { search: '', risk: 'all', compliance: 'all', encryption: 'all', sort: 'risk' };
+        ['sunbird-devices-search', 'sunbird-devices-risk-filter', 'sunbird-devices-compliance-filter', 'sunbird-devices-encryption-filter', 'sunbird-devices-sort'].forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.value = id === 'sunbird-devices-sort' ? 'risk' : 'all';
+            if (id === 'sunbird-devices-search') el.value = '';
+        });
+        renderSunbirdDevicesTable();
+    });
+}
+
+function readSunbirdDevicesSnapshot() {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(SUNBIRD_DEVICES_CACHE_KEY) || 'null');
+        return parsed?.summary || parsed?.devices ? parsed : null;
+    } catch (error) {
+        return null;
+    }
+}
+
+function saveSunbirdDevicesSnapshot(data) {
+    if (!data?.summary && !data?.devices) return;
+    localStorage.setItem(SUNBIRD_DEVICES_CACHE_KEY, JSON.stringify({
+        ...data,
+        savedAt: new Date().toISOString()
+    }));
+}
+
+function getSunbirdMetricNumber(metrics, keys, fallback = 0) {
+    for (const key of keys) {
+        const value = metrics?.[key];
+        if (value !== undefined && value !== null && value !== '') return Number(value) || 0;
+    }
+    return fallback;
+}
+
+function normalizeSunbirdDevicesData(data = {}) {
+    const devices = Array.isArray(data.devices) ? data.devices : [];
+    const metrics = data.metrics || {};
+    const summary = data.summary || {};
+    const totalDevices = summary.totalDevices ?? getSunbirdMetricNumber(metrics, ['TotalDevices', 'totalDevices'], devices.length);
+    const nonCompliantDevices = summary.nonCompliantDevices ?? summary.nonCompliant ?? getSunbirdMetricNumber(metrics, ['NonCompliant', 'nonCompliant'], devices.filter(d => normalizeSunbirdDeviceCompliance(d) !== 'compliant').length);
+    const notEncryptedDevices = summary.notEncryptedDevices ?? getSunbirdMetricNumber(metrics, ['NotEncrypted', 'notEncrypted'], devices.filter(d => !d.isEncrypted).length);
+    const staleDevices = summary.staleDevices ?? getSunbirdMetricNumber(metrics, ['StaleDevices', 'staleDevices'], devices.filter(d => getSunbirdDeviceDaysSinceSync(d) > 7).length);
+    const compliantDevices = summary.compliantDevices ?? Math.max(0, totalDevices - nonCompliantDevices);
+    const encryptedDevices = summary.encryptedDevices ?? Math.max(0, totalDevices - notEncryptedDevices);
+    const activityBreakdown = data.activityBreakdown || summary.activityBreakdown || {
+        active24h: devices.filter(d => getSunbirdDeviceDaysSinceSync(d) <= 1).length,
+        stale7days: devices.filter(d => getSunbirdDeviceDaysSinceSync(d) > 7 && getSunbirdDeviceDaysSinceSync(d) <= 30).length || staleDevices,
+        dead30days: devices.filter(d => getSunbirdDeviceDaysSinceSync(d) > 30).length
+    };
+
+    return {
+        ...data,
+        devices,
+        alerts: Array.isArray(data.alerts) ? data.alerts : [],
+        policies: Array.isArray(data.policies) ? data.policies : [],
+        compliance: data.compliance || {
+            compliant: compliantDevices,
+            nonCompliant: nonCompliantDevices,
+            unknown: devices.filter(d => normalizeSunbirdDeviceCompliance(d) === 'unknown').length
+        },
+        osDistribution: data.osDistribution || buildSunbirdDeviceOsDistribution(devices),
+        managementStatus: data.managementStatus || buildSunbirdDeviceManagementStatus(devices),
+        activityBreakdown,
+        summary: {
+            ...summary,
+            totalDevices,
+            compliantDevices,
+            encryptedDevices,
+            staleDevices,
+            highRiskDevices: summary.highRiskDevices ?? devices.filter(d => getSunbirdDeviceRiskLevel(d) === 'high').length,
+            compliancePercentage: summary.compliancePercentage ?? (totalDevices ? Math.round((compliantDevices / totalDevices) * 100) : 0),
+            encryptionPercentage: summary.encryptionPercentage ?? (totalDevices ? Math.round((encryptedDevices / totalDevices) * 100) : 0),
+            deviceSecurityScore: summary.deviceSecurityScore ?? calculateSunbirdDeviceSecurityScore(totalDevices, compliantDevices, encryptedDevices, activityBreakdown.active24h)
+        }
+    };
+}
+
+async function loadSunbirdDevicesDashboardData() {
+    const token = localStorage.getItem('authToken');
+    if (!token) return;
+
+    try {
+        const metricsResponse = await fetch('/api/db/device-metrics', {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+        });
+        const metricsData = await metricsResponse.json();
+        if (metricsResponse.ok && metricsData.success) {
+            sunbirdDevicesDashboardData = normalizeSunbirdDevicesData({ ...(sunbirdDevicesDashboardData || {}), metrics: metricsData.metrics });
+            latestDevicesCardData = metricsData;
+            renderSunbirdDevicesDashboard();
+        }
+    } catch (error) {
+        console.warn('[Device Dashboard] Cached metrics unavailable:', error.message);
+    }
+
+    try {
+        const detailResponse = await fetch('/api/microsoft-devices', {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+        });
+        const detailData = await detailResponse.json();
+        if (!detailResponse.ok || !detailData.success) throw new Error(detailData.message || 'Device details unavailable');
+        sunbirdDevicesDashboardData = normalizeSunbirdDevicesData(detailData);
+        saveSunbirdDevicesSnapshot(sunbirdDevicesDashboardData);
+        renderSunbirdDevicesDashboard();
+    } catch (error) {
+        console.warn('[Device Dashboard] Detailed evidence unavailable:', error.message);
+    }
+}
+
+function buildSunbirdDevicesModel(data = sunbirdDevicesDashboardData) {
+    const normalized = normalizeSunbirdDevicesData(data || {});
+    const devices = normalized.devices;
+    const nonCompliantDevices = devices.filter(d => normalizeSunbirdDeviceCompliance(d) !== 'compliant');
+    const notEncryptedDevices = devices.filter(d => !d.isEncrypted);
+    const staleDevices = devices.filter(d => getSunbirdDeviceDaysSinceSync(d) > 7);
+    const deadDevices = devices.filter(d => getSunbirdDeviceDaysSinceSync(d) > 30);
+    const highRiskDevices = devices.filter(d => getSunbirdDeviceRiskLevel(d) === 'high');
+    const mediumRiskDevices = devices.filter(d => getSunbirdDeviceRiskLevel(d) === 'medium');
+    const safeDevices = devices.filter(d => getSunbirdDeviceRiskLevel(d) === 'safe');
+    const unmanagedDevices = devices.filter(d => !String(d.managementAgent || '').trim() || /unknown|none/i.test(String(d.managementAgent || '')));
+    const aadRegisteredDevices = devices.filter(d => d.azureADRegistered);
+
+    return {
+        ...normalized,
+        evidence: {
+            allDevices: devices,
+            compliantDevices: devices.filter(d => normalizeSunbirdDeviceCompliance(d) === 'compliant'),
+            nonCompliantDevices,
+            notEncryptedDevices,
+            staleDevices,
+            deadDevices,
+            highRiskDevices,
+            mediumRiskDevices,
+            safeDevices,
+            active24hDevices: devices.filter(d => getSunbirdDeviceDaysSinceSync(d) <= 1),
+            unmanagedDevices,
+            aadRegisteredDevices,
+            securityAlerts: normalized.alerts,
+            policies: normalized.policies
+        }
+    };
+}
+
+function renderSunbirdDevicesDashboard() {
+    const model = buildSunbirdDevicesModel();
+    renderSunbirdDevicesMetrics(model);
+    renderSunbirdDevicesInsights(model);
+    renderSunbirdDevicesCharts(model);
+    renderSunbirdDevicesPanels(model);
+    renderSunbirdDevicesTable(model);
+}
+
+function renderSunbirdDevicesMetrics(model) {
+    const el = document.getElementById('sunbird-devices-metrics');
+    if (!el) return;
+    const summary = model.summary;
+    const metrics = [
+        { key: 'total-devices', label: 'Total Devices', value: summary.totalDevices, tone: 'neutral', evidence: 'allDevices' },
+        { key: 'compliant-devices', label: 'Compliant', value: `${summary.compliancePercentage}%`, tone: summary.compliancePercentage >= 85 ? 'good' : summary.compliancePercentage >= 65 ? 'warn' : 'bad', evidence: 'nonCompliantDevices' },
+        { key: 'encrypted-devices', label: 'Encrypted', value: `${summary.encryptionPercentage}%`, tone: summary.encryptionPercentage >= 90 ? 'good' : summary.encryptionPercentage >= 70 ? 'warn' : 'bad', evidence: 'notEncryptedDevices' },
+        { key: 'active-devices', label: 'Active (24h)', value: model.activityBreakdown.active24h || 0, tone: 'neutral', evidence: 'active24hDevices' }
+    ];
+
+    el.innerHTML = metrics.map(metric => `
+        <article class="sunbird-id-metric-card tone-${metric.tone}">
+            <div class="sunbird-id-metric-value">${escapeIdentityText(metric.value)}</div>
+            <div class="sunbird-id-metric-label">${escapeIdentityText(metric.label)}</div>
+            <button type="button" onclick="openSunbirdDeviceEvidence('${metric.evidence}')" class="sunbird-id-evidence-btn">View Evidence</button>
+        </article>
+    `).join('');
+}
+
+function renderSunbirdDevicesInsights(model) {
+    const el = document.getElementById('sunbird-devices-insights');
+    if (!el) return;
+    const insights = [
+        { title: 'High risk devices', value: model.evidence.highRiskDevices.length || model.summary.highRiskDevices || 0, evidence: 'highRiskDevices', tone: 'bad', filter: { risk: 'high' } },
+        { title: 'Non-compliant', value: model.evidence.nonCompliantDevices.length || Math.max(0, model.summary.totalDevices - model.summary.compliantDevices), evidence: 'nonCompliantDevices', tone: 'bad', filter: { compliance: 'noncompliant' } },
+        { title: 'Not encrypted', value: model.evidence.notEncryptedDevices.length || Math.max(0, model.summary.totalDevices - model.summary.encryptedDevices), evidence: 'notEncryptedDevices', tone: 'warn', filter: { encryption: 'no' } },
+        { title: 'Stale devices', value: model.evidence.staleDevices.length || model.summary.staleDevices || 0, evidence: 'staleDevices', tone: 'warn', sort: 'lastSync' },
+        { title: 'Dead 30+ days', value: model.evidence.deadDevices.length || model.activityBreakdown.dead30days || 0, evidence: 'deadDevices', tone: 'bad', sort: 'lastSync' },
+        { title: 'Unmanaged', value: model.evidence.unmanagedDevices.length, evidence: 'unmanagedDevices', tone: 'warn' },
+        { title: 'Security alerts', value: model.alerts.length, evidence: 'securityAlerts', tone: model.alerts.length ? 'bad' : 'good' }
+    ];
+
+    el.innerHTML = insights.map((item, index) => `
+        <article class="sunbird-id-insight tone-${item.tone}" role="button" tabindex="0" data-device-evidence-key="${item.evidence}" onclick="toggleSunbirdDeviceInsightEvidenceLock('${item.evidence}')" onkeydown="handleSunbirdDeviceInsightEvidenceKey(event, '${item.evidence}')">
+            <span>${escapeIdentityText(item.title)}</span>
+            <strong>${escapeIdentityText(item.value)}</strong>
+            ${renderSunbirdDeviceInsightEvidencePreview(item, model, index)}
+        </article>
+    `).join('');
+}
+
+function renderSunbirdDeviceInsightEvidencePreview(item, model, index) {
+    const rows = getSunbirdDeviceEvidenceRows(item.evidence, model);
+    const previewRows = rows.slice(0, 4);
+    return `
+        <div class="sunbird-id-insight-evidence" onclick="event.stopPropagation()">
+            <p>${rows.length} evidence item${rows.length === 1 ? '' : 's'} matched this signal.</p>
+            <div class="sunbird-id-insight-evidence-list">
+                ${previewRows.length ? previewRows.map(row => `
+                    <div>
+                        <strong>${escapeIdentityText(row.title)}</strong>
+                        <span>${escapeIdentityText(row.subtitle)}</span>
+                        <small>${escapeIdentityText(row.meta)}</small>
+                    </div>
+                `).join('') : '<em>No evidence found.</em>'}
+            </div>
+            ${rows.length > previewRows.length ? `<small>${rows.length - previewRows.length} more in full evidence</small>` : ''}
+            <button type="button" onclick="openSunbirdDeviceEvidence('${item.evidence}', 'insight-${index}')">Open Evidence</button>
+        </div>
+    `;
+}
+
+function renderSunbirdDevicesCharts(model) {
+    const el = document.getElementById('sunbird-devices-charts');
+    if (!el) return;
+    const total = model.summary.totalDevices || model.devices.length || 0;
+    const osItems = Object.entries(model.osDistribution || {}).slice(0, 5).map(([label, value], index) => ({
+        label,
+        value,
+        tone: index === 0 ? 'neutral' : index === 1 ? 'good' : index === 2 ? 'warn' : 'bad'
+    }));
+
+    el.innerHTML = `
+        ${renderSunbirdPieChart('Compliance breakdown', [
+            { label: 'Compliant', value: model.compliance.compliant || 0, tone: 'good' },
+            { label: 'Non-compliant', value: model.compliance.nonCompliant || 0, tone: 'bad' },
+            { label: 'Unknown', value: model.compliance.unknown || 0, tone: 'warn' }
+        ], total)}
+        ${renderSunbirdPieChart('Encryption coverage', [
+            { label: 'Encrypted', value: model.summary.encryptedDevices || 0, tone: 'good' },
+            { label: 'Missing', value: Math.max(0, total - (model.summary.encryptedDevices || 0)), tone: 'bad' }
+        ], total)}
+        ${renderSunbirdPieChart('Management status', [
+            { label: 'Managed', value: model.managementStatus.managed || 0, tone: 'good' },
+            { label: 'Unmanaged', value: model.managementStatus.unmanaged || 0, tone: 'bad' },
+            { label: 'AAD registered', value: model.managementStatus.aadRegistered || 0, tone: 'neutral' }
+        ], total)}
+        ${renderSunbirdDeviceBars('OS distribution', osItems, Math.max(1, ...osItems.map(item => item.value), total))}
+    `;
+    animateSunbirdIdentityCharts();
+}
+
+function renderSunbirdDeviceBars(title, items, total) {
+    return `
+        <article class="sunbird-id-chart-card">
+            <h3>${escapeIdentityText(title)}</h3>
+            <div class="sunbird-id-bars">
+                ${items.length ? items.map(item => `
+                    <div class="sunbird-id-bar-row sunbird-device-bar-row">
+                        <span>${escapeIdentityText(item.label)}</span>
+                        <div class="sunbird-id-bar-track"><div class="sunbird-id-bar-fill tone-${item.tone}" style="width:${Math.max(4, Math.round((item.value / Math.max(1, total)) * 100))}%"></div></div>
+                        <strong>${escapeIdentityText(item.value)}</strong>
+                    </div>
+                `).join('') : '<div class="sunbird-id-empty compact">No OS data available.</div>'}
+            </div>
+        </article>
+    `;
+}
+
+function renderSunbirdDevicesPanels(model) {
+    const el = document.getElementById('sunbird-devices-panels');
+    if (!el) return;
+    el.innerHTML = `
+        ${renderSunbirdDeviceListPanel('High risk devices', getSunbirdDeviceEvidenceRows('highRiskDevices', model).slice(0, 10))}
+        ${renderSunbirdDeviceAlertPanel('Security alerts feed', model.alerts.slice(0, 10))}
+        ${renderSunbirdDeviceActivityPanel(model)}
+        ${renderSunbirdDevicePolicyPanel(model)}
+    `;
+}
+
+function renderSunbirdDeviceListPanel(title, rows) {
+    return `
+        <article class="sunbird-id-signin-card">
+            <h3>${escapeIdentityText(title)}</h3>
+            <div class="sunbird-id-signin-list">
+                ${rows.length ? rows.map(row => `
+                    <div class="sunbird-id-signin-item">
+                        <div>
+                            <strong>${escapeIdentityText(row.title)}</strong>
+                            <span>${escapeIdentityText(row.subtitle)}</span>
+                            <div class="sunbird-id-issue-tags"><em>${escapeIdentityText(row.meta)}</em></div>
+                        </div>
+                    </div>
+                `).join('') : '<div class="sunbird-id-empty compact">No matching device evidence.</div>'}
+            </div>
+        </article>
+    `;
+}
+
+function renderSunbirdDeviceAlertPanel(title, alerts) {
+    return `
+        <article class="sunbird-id-signin-card">
+            <h3>${escapeIdentityText(title)}</h3>
+            <div class="sunbird-id-signin-list">
+                ${alerts.length ? alerts.map(alert => `
+                    <div class="sunbird-id-signin-item">
+                        <div>
+                            <strong>${escapeIdentityText(alert.title || 'Security alert')}</strong>
+                            <span>${escapeIdentityText(alert.vendorInformation || alert.status || 'Microsoft security')}</span>
+                            <div class="sunbird-id-issue-tags"><em>${escapeIdentityText(alert.severity || 'medium')}</em></div>
+                        </div>
+                        <div>
+                            <small>${escapeIdentityText(formatSunbirdDeviceDate(alert.createdDateTime || alert.eventDateTime))}</small>
+                        </div>
+                    </div>
+                `).join('') : '<div class="sunbird-id-empty compact">No active security alerts.</div>'}
+            </div>
+        </article>
+    `;
+}
+
+function renderSunbirdDeviceActivityPanel(model) {
+    const activity = model.activityBreakdown || {};
+    const rows = [
+        { title: 'Active (24h)', value: activity.active24h || 0, tone: 'good' },
+        { title: 'Stale (7+ days)', value: activity.stale7days || model.evidence.staleDevices.length || 0, tone: 'warn' },
+        { title: 'Dead (30+ days)', value: activity.dead30days || model.evidence.deadDevices.length || 0, tone: 'bad' },
+        { title: 'Security score', value: `${model.summary.deviceSecurityScore || 0}%`, tone: model.summary.deviceSecurityScore >= 80 ? 'good' : model.summary.deviceSecurityScore >= 60 ? 'warn' : 'bad' }
+    ];
+    return `
+        <article class="sunbird-id-signin-card">
+            <h3>Device activity timeline</h3>
+            <div class="sunbird-device-mini-grid">
+                ${rows.map(row => `
+                    <button type="button" class="sunbird-device-mini-stat tone-${row.tone}" onclick="${row.title.includes('Stale') ? "openSunbirdDeviceEvidence('staleDevices')" : row.title.includes('Dead') ? "openSunbirdDeviceEvidence('deadDevices')" : row.title.includes('Active') ? "openSunbirdDeviceEvidence('active24hDevices')" : "openSunbirdDeviceEvidence('allDevices')"}">
+                        <span>${escapeIdentityText(row.title)}</span>
+                        <strong>${escapeIdentityText(row.value)}</strong>
+                    </button>
+                `).join('')}
+            </div>
+        </article>
+    `;
+}
+
+function renderSunbirdDevicePolicyPanel(model) {
+    const policies = model.policies || [];
+    const coverage = model.summary.totalDevices ? model.summary.compliancePercentage : 0;
+    return `
+        <article class="sunbird-id-signin-card">
+            <h3>Policy coverage</h3>
+            <div class="sunbird-device-policy-summary">
+                <div>
+                    <span>Coverage</span>
+                    <strong>${coverage}%</strong>
+                </div>
+                <div>
+                    <span>Policies</span>
+                    <strong>${policies.length}</strong>
+                </div>
+            </div>
+            <div class="sunbird-id-signin-list sunbird-device-policy-list">
+                ${policies.length ? policies.slice(0, 6).map(policy => `
+                    <div class="sunbird-id-signin-item">
+                        <div>
+                            <strong>${escapeIdentityText(policy.displayName || policy.name || policy.id || 'Compliance policy')}</strong>
+                            <span>${escapeIdentityText(policy.description || policy.platforms || 'Policy evidence')}</span>
+                        </div>
+                    </div>
+                `).join('') : '<div class="sunbird-id-empty compact">No policy evidence available.</div>'}
+            </div>
+            <button type="button" class="sunbird-id-evidence-btn sunbird-device-policy-btn" onclick="openSunbirdDeviceEvidence('policies')">View Evidence</button>
+        </article>
+    `;
+}
+
+function renderSunbirdDevicesTable(model = buildSunbirdDevicesModel()) {
+    const body = document.getElementById('sunbird-devices-body');
+    if (!body) return;
+    const devices = getFilteredSunbirdDevices(model);
+    if (!devices.length) {
+        body.innerHTML = '<tr><td colspan="13" class="sunbird-id-empty">No devices match the current filters.</td></tr>';
+        return;
+    }
+
+    body.innerHTML = devices.map(device => {
+        const risk = getSunbirdDeviceRiskLevel(device);
+        const issues = getSunbirdDeviceIssueReasons(device);
+        return `
+            <tr>
+                <td data-label="Device">${escapeIdentityText(device.deviceName || 'Unknown')}</td>
+                <td data-label="User">${escapeIdentityText(device.userPrincipalName || 'N/A')}</td>
+                <td data-label="OS">${escapeIdentityText(device.operatingSystem || 'Unknown')}</td>
+                <td data-label="Version">${escapeIdentityText(device.osVersion || 'N/A')}</td>
+                <td data-label="Compliance"><span class="sunbird-id-pill ${normalizeSunbirdDeviceCompliance(device) === 'compliant' ? 'ok' : 'bad'}">${escapeIdentityText(normalizeSunbirdDeviceCompliance(device))}</span></td>
+                <td data-label="Encryption"><span class="sunbird-id-pill ${device.isEncrypted ? 'ok' : 'bad'}">${device.isEncrypted ? 'Encrypted' : 'Not encrypted'}</span></td>
+                <td data-label="Management">${escapeIdentityText(device.managementAgent || 'Unknown')}</td>
+                <td data-label="Last Sync">${escapeIdentityText(formatSunbirdDeviceDate(device.lastSyncDateTime))}</td>
+                <td data-label="Registration"><span class="sunbird-id-pill ${device.azureADRegistered ? 'ok' : ''}">${device.azureADRegistered ? 'AAD registered' : 'Not registered'}</span></td>
+                <td data-label="Enrollment">${escapeIdentityText(device.deviceEnrollmentType || 'Unknown')}</td>
+                <td data-label="Serial">${escapeIdentityText(device.serialNumber || 'N/A')}</td>
+                <td data-label="Risk"><span class="sunbird-id-risk ${risk}">${escapeIdentityText(risk)}</span></td>
+                <td data-label="Issues"><div class="sunbird-id-role-list">${issues.length ? issues.map(issue => `<span>${escapeIdentityText(issue)}</span>`).join('') : '<em>None</em>'}</div></td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function getFilteredSunbirdDevices(model = buildSunbirdDevicesModel()) {
+    const search = sunbirdDevicesTableState.search.trim().toLowerCase();
+    return model.devices.filter(device => {
+        const risk = getSunbirdDeviceRiskLevel(device);
+        const compliance = normalizeSunbirdDeviceCompliance(device);
+        const haystack = [
+            device.deviceName,
+            device.userPrincipalName,
+            device.operatingSystem,
+            device.osVersion,
+            compliance,
+            device.managementAgent,
+            device.serialNumber,
+            device.deviceEnrollmentType,
+            getSunbirdDeviceIssueReasons(device).join(' ')
+        ].join(' ').toLowerCase();
+
+        if (search && !haystack.includes(search)) return false;
+        if (sunbirdDevicesTableState.risk !== 'all' && risk !== sunbirdDevicesTableState.risk) return false;
+        if (sunbirdDevicesTableState.compliance !== 'all' && compliance !== sunbirdDevicesTableState.compliance) return false;
+        if (sunbirdDevicesTableState.encryption !== 'all' && (device.isEncrypted ? 'yes' : 'no') !== sunbirdDevicesTableState.encryption) return false;
+        return true;
+    }).sort((a, b) => {
+        if (sunbirdDevicesTableState.sort === 'lastSync') return getSunbirdDeviceLastSyncTime(b) - getSunbirdDeviceLastSyncTime(a);
+        if (sunbirdDevicesTableState.sort === 'name') return String(a.deviceName || '').localeCompare(String(b.deviceName || ''));
+        return getSunbirdDeviceRiskRank(b) - getSunbirdDeviceRiskRank(a);
+    });
+}
+
+function applySunbirdDeviceTableFilter(filter = {}) {
+    sunbirdDevicesTableState = { ...sunbirdDevicesTableState, ...filter };
+    const setValue = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.value = value;
+    };
+    setValue('sunbird-devices-risk-filter', sunbirdDevicesTableState.risk);
+    setValue('sunbird-devices-compliance-filter', sunbirdDevicesTableState.compliance);
+    setValue('sunbird-devices-encryption-filter', sunbirdDevicesTableState.encryption);
+    setValue('sunbird-devices-sort', sunbirdDevicesTableState.sort);
+    renderSunbirdDevicesTable();
+    document.querySelector('.sunbird-devices-dashboard .sunbird-id-table-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function openSunbirdDeviceEvidence(evidenceKey) {
+    const model = buildSunbirdDevicesModel();
+    const rows = getSunbirdDeviceEvidenceRows(evidenceKey, model);
+    const modal = document.getElementById('sunbird-device-evidence-modal');
+    if (!modal) return;
+    const titleMap = {
+        allDevices: 'Total Devices',
+        compliantDevices: 'Compliant Devices',
+        nonCompliantDevices: 'Non-compliant Devices',
+        notEncryptedDevices: 'Devices Without Encryption',
+        staleDevices: 'Stale Devices',
+        deadDevices: 'Dead 30+ Day Devices',
+        highRiskDevices: 'High Risk Devices',
+        active24hDevices: 'Active Devices',
+        unmanagedDevices: 'Unmanaged Devices',
+        aadRegisteredDevices: 'Azure AD Registered Devices',
+        securityAlerts: 'Security Alerts',
+        policies: 'Compliance Policies'
+    };
+    const filterMap = {
+        nonCompliantDevices: { compliance: 'noncompliant' },
+        notEncryptedDevices: { encryption: 'no' },
+        highRiskDevices: { risk: 'high' },
+        staleDevices: { sort: 'lastSync' },
+        deadDevices: { sort: 'lastSync' }
+    };
+
+    modal.innerHTML = `
+        <div class="sunbird-id-modal-backdrop" onclick="closeSunbirdDeviceEvidence()"></div>
+        <div class="sunbird-id-modal-panel" role="dialog" aria-modal="true">
+            <div class="sunbird-id-modal-header">
+                <div>
+                    <h3>${escapeIdentityText(titleMap[evidenceKey] || 'Device Evidence')}</h3>
+                    <p>${rows.length} evidence item${rows.length === 1 ? '' : 's'} matched this set.</p>
+                </div>
+                <button type="button" onclick="closeSunbirdDeviceEvidence()" class="sunbird-id-modal-close">&times;</button>
+            </div>
+            <div class="sunbird-id-evidence-summary">
+                <span>Total devices: ${model.summary.totalDevices || 0}</span>
+                <span>Evidence count: ${rows.length}</span>
+                <span>Security score: ${model.summary.deviceSecurityScore || 0}</span>
+            </div>
+            <div class="sunbird-id-evidence-list">
+                ${rows.length ? rows.slice(0, 100).map(row => `
+                    <div class="sunbird-id-evidence-user">
+                        <strong>${escapeIdentityText(row.title)}</strong>
+                        <span>${escapeIdentityText(row.subtitle)}</span>
+                        <small>${escapeIdentityText(row.meta)}</small>
+                    </div>
+                `).join('') : '<div class="sunbird-id-empty">No evidence found for this item.</div>'}
+            </div>
+            <div class="sunbird-id-modal-actions">
+                <button type="button" class="sunbird-id-evidence-btn" onclick='applySunbirdDeviceTableFilter(${JSON.stringify(filterMap[evidenceKey] || {})}); closeSunbirdDeviceEvidence();'>View in Table</button>
+            </div>
+        </div>
+    `;
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeSunbirdDeviceEvidence() {
+    const modal = document.getElementById('sunbird-device-evidence-modal');
+    if (!modal) return;
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+}
+
+function getSunbirdDeviceEvidenceRows(evidenceKey, model = buildSunbirdDevicesModel()) {
+    if (evidenceKey === 'securityAlerts') {
+        return (model.alerts || []).map(alert => ({
+            title: alert.title || 'Security alert',
+            subtitle: alert.vendorInformation || alert.status || 'Microsoft security',
+            meta: `${alert.severity || 'medium'} | ${formatSunbirdDeviceDate(alert.createdDateTime || alert.eventDateTime)}`
+        }));
+    }
+    if (evidenceKey === 'policies') {
+        return (model.policies || []).map(policy => ({
+            title: policy.displayName || policy.name || policy.id || 'Compliance policy',
+            subtitle: policy.description || 'Device compliance policy',
+            meta: policy.platforms || policy.createdDateTime || 'Policy evidence'
+        }));
+    }
+    return (model.evidence?.[evidenceKey] || []).map(device => ({
+        title: device.deviceName || 'Unknown device',
+        subtitle: device.userPrincipalName || device.operatingSystem || 'N/A',
+        meta: getSunbirdDeviceIssueReasons(device).join(', ') || `${normalizeSunbirdDeviceCompliance(device)} | ${device.isEncrypted ? 'Encrypted' : 'Not encrypted'}`
+    }));
+}
+
+function toggleSunbirdDeviceInsightEvidenceLock(evidenceKey) {
+    const tile = document.querySelector(`.sunbird-id-insight[data-device-evidence-key="${evidenceKey}"]`);
+    if (!tile) return;
+    const shouldLock = lockedSunbirdDeviceInsightEvidenceKey !== evidenceKey;
+    document.querySelectorAll('.sunbird-id-insight.locked').forEach(item => item.classList.remove('locked'));
+    lockedSunbirdDeviceInsightEvidenceKey = shouldLock ? evidenceKey : null;
+    if (shouldLock) tile.classList.add('locked');
+}
+
+function handleSunbirdDeviceInsightEvidenceKey(event, evidenceKey) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    toggleSunbirdDeviceInsightEvidenceLock(evidenceKey);
+}
+
+function buildSunbirdDeviceOsDistribution(devices) {
+    return devices.reduce((acc, device) => {
+        const os = device.operatingSystem || 'Unknown';
+        acc[os] = (acc[os] || 0) + 1;
+        return acc;
+    }, {});
+}
+
+function buildSunbirdDeviceManagementStatus(devices) {
+    return {
+        managed: devices.filter(d => String(d.managementAgent || '').trim() && !/unknown|none/i.test(String(d.managementAgent || ''))).length,
+        unmanaged: devices.filter(d => !String(d.managementAgent || '').trim() || /unknown|none/i.test(String(d.managementAgent || ''))).length,
+        aadRegistered: devices.filter(d => d.azureADRegistered).length
+    };
+}
+
+function calculateSunbirdDeviceSecurityScore(total, compliant, encrypted, active24h) {
+    if (!total) return 0;
+    const compliance = compliant / total;
+    const encryption = encrypted / total;
+    const activity = active24h / total;
+    return Math.round(((compliance + encryption + activity) / 3) * 100);
+}
+
+function normalizeSunbirdDeviceCompliance(device) {
+    const value = String(device?.complianceState || 'unknown').toLowerCase().replace(/[_\s-]/g, '');
+    if (value === 'noncompliant') return 'noncompliant';
+    if (value === 'compliant') return 'compliant';
+    return 'unknown';
+}
+
+function getSunbirdDeviceLastSyncTime(device) {
+    const raw = device?.lastSyncDateTime;
+    const time = raw ? new Date(raw).getTime() : 0;
+    return Number.isFinite(time) ? time : 0;
+}
+
+function getSunbirdDeviceDaysSinceSync(device) {
+    const time = getSunbirdDeviceLastSyncTime(device);
+    if (!time) return 999;
+    return Math.floor((Date.now() - time) / (24 * 60 * 60 * 1000));
+}
+
+function formatSunbirdDeviceDate(value) {
+    if (!value) return 'Never';
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return 'Never';
+    return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function getSunbirdDeviceIssueReasons(device) {
+    const reasons = [];
+    const compliance = normalizeSunbirdDeviceCompliance(device);
+    const days = getSunbirdDeviceDaysSinceSync(device);
+    if (compliance !== 'compliant') reasons.push(compliance === 'unknown' ? 'Unknown compliance' : 'Non-compliant');
+    if (!device.isEncrypted) reasons.push('Not encrypted');
+    if (days > 30) reasons.push('Dead 30+ days');
+    else if (days > 7) reasons.push('Stale 7+ days');
+    if (!String(device.managementAgent || '').trim() || /unknown|none/i.test(String(device.managementAgent || ''))) reasons.push('Unmanaged');
+    if (device.hasPendingActions) reasons.push('Pending actions');
+    return reasons;
+}
+
+function getSunbirdDeviceRiskLevel(device) {
+    const reasons = getSunbirdDeviceIssueReasons(device);
+    if ((!device.isEncrypted && normalizeSunbirdDeviceCompliance(device) !== 'compliant') || reasons.includes('Dead 30+ days')) return 'high';
+    if (reasons.length > 0) return 'medium';
+    return 'safe';
+}
+
+function getSunbirdDeviceRiskRank(device) {
+    const risk = getSunbirdDeviceRiskLevel(device);
+    if (risk === 'high') return 3;
+    if (risk === 'medium') return 2;
+    return 1;
+}
+
+window.openSunbirdDeviceEvidence = openSunbirdDeviceEvidence;
+window.closeSunbirdDeviceEvidence = closeSunbirdDeviceEvidence;
+window.applySunbirdDeviceTableFilter = applySunbirdDeviceTableFilter;
+window.toggleSunbirdDeviceInsightEvidenceLock = toggleSunbirdDeviceInsightEvidenceLock;
+window.handleSunbirdDeviceInsightEvidenceKey = handleSunbirdDeviceInsightEvidenceKey;
 
 // Initialize  Identity Protection dashboard
 function initializeIdentityDashboard() {
@@ -4563,7 +5353,6 @@ function setupEventListeners() {
     const verifyMfaBtn = document.getElementById('verify-mfa-btn');
     const resendCodeLink = document.getElementById('resend-code-link');
     const backToLoginLink = document.getElementById('back-to-login');
-    const backBtnDevices = document.getElementById('btn-back-devices');
     const backBtnSecurity = document.getElementById('btn-back-security');
     const backBtnEmailSecurity = document.getElementById('btn-back-email-security') || document.getElementById('btn-back-email');
     const backBtnBackupRecovery = document.getElementById('btn-back-backup-recovery');
@@ -4630,7 +5419,6 @@ function setupEventListeners() {
     }
 
     // Back buttons for full dashboards (non-generic views)
-    if (backBtnDevices) backBtnDevices.addEventListener('click', goBackToProjects);
     if (backBtnSecurity) backBtnSecurity.addEventListener('click', goBackToProjects);
     if (backBtnEmailSecurity) backBtnEmailSecurity.addEventListener('click', goBackToProjects);
     if (backBtnBackupRecovery) backBtnBackupRecovery.addEventListener('click', goBackToProjects);

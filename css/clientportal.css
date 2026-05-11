@@ -6363,7 +6363,8 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 /* Sunbird-only Identity Protection dashboard rebuild */
-.dashboard-view.sunbird-identity-active {
+.dashboard-view.sunbird-identity-active,
+.dashboard-view.sunbird-device-active {
   margin-top: 10px;
   padding: 10px 24px 24px;
   background: transparent;
@@ -6879,6 +6880,66 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   font-weight: 200;
 }
 
+.sunbird-device-mini-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sunbird-device-mini-stat {
+  min-height: 76px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  text-align: left;
+  padding: 10px;
+  cursor: pointer;
+}
+
+.sunbird-device-mini-stat span,
+.sunbird-device-policy-summary span {
+  display: block;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 0.78rem;
+  font-weight: 200;
+}
+
+.sunbird-device-mini-stat strong,
+.sunbird-device-policy-summary strong {
+  display: block;
+  margin-top: 8px;
+  color: #fff;
+  font-size: 1.35rem;
+  font-weight: 200;
+}
+
+.sunbird-device-mini-stat.tone-good { border-color: rgba(34, 197, 94, 0.5); }
+.sunbird-device-mini-stat.tone-warn { border-color: rgba(255, 159, 28, 0.5); }
+.sunbird-device-mini-stat.tone-bad { border-color: rgba(239, 68, 68, 0.5); }
+
+.sunbird-device-policy-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.sunbird-device-policy-summary div {
+  border: 1px solid rgba(96, 165, 250, 0.22);
+  background: rgba(37, 99, 235, 0.12);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.sunbird-device-policy-list {
+  max-height: 160px;
+}
+
+.sunbird-device-policy-btn {
+  margin-top: 10px;
+}
+
 .sunbird-id-signin-list {
   max-height: 290px;
   overflow: auto;
@@ -6944,12 +7005,18 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   height: 100%;
   border-radius: inherit;
   background: #ff7e19;
+  transform-origin: left center;
+  transition: width 0.7s ease, filter 0.3s ease;
 }
 
 .sunbird-id-bar-fill.tone-good { background: #22c55e; }
 .sunbird-id-bar-fill.tone-warn { background: #ff9f1c; }
 .sunbird-id-bar-fill.tone-bad { background: #ef4444; }
 .sunbird-id-bar-fill.tone-neutral { background: #38bdf8; }
+
+.sunbird-id-chart-card:hover .sunbird-id-bar-fill {
+  filter: saturate(1.2) brightness(1.12);
+}
 
 .sunbird-id-table-section {
   padding: 14px;
@@ -6960,6 +7027,10 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   grid-template-columns: minmax(220px, 1fr) repeat(4, minmax(132px, 160px)) auto;
   gap: 10px;
   margin-bottom: 12px;
+}
+
+.sunbird-devices-table-toolbar {
+  grid-template-columns: minmax(240px, 1fr) repeat(4, minmax(138px, 170px)) auto;
 }
 
 .sunbird-id-search,
@@ -7008,6 +7079,10 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   width: 100%;
   min-width: 1180px;
   border-collapse: collapse;
+}
+
+.sunbird-devices-table {
+  min-width: 1320px;
 }
 
 .sunbird-id-table th,
