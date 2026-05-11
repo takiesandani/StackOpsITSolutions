@@ -5419,9 +5419,7 @@ function viewProjectDashboard(project) {
             console.warn('[Email Security] View element not found');
             return;
         }
-        }
         emailSecurityView.style.display = 'none';
-        fetchEmailSecurityData(project);
         fetchEmailSecurityData(project);
     }
     // If this is the Backup and Recovery card, fetch backup recovery data
@@ -5431,9 +5429,7 @@ function viewProjectDashboard(project) {
             console.warn('[Backup Recovery] View element not found');
             return;
         }
-        }
         backupRecoveryView.style.display = 'none';
-        fetchBackupRecoveryData(project);
         fetchBackupRecoveryData(project);
     }
     // If this is the Applications card, fetch applications data
