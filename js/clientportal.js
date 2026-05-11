@@ -428,6 +428,7 @@ let sunbirdBillingCardLockedHeight = null;
 let identityRiskFocus = 'all';
 let pendingIdentityRiskFocus = 'all';
 let identityFetchRequestId = 0;
+let retryCount = 0; // Retry counter for Identity Access API failures
 let latestDevicesCardData = null;
 let latestEmailCardData = null;
 let isNetworkSecurityLocked = false;
@@ -3908,73 +3909,117 @@ async function fetchIdentityAccessData() {
             }
         });
 
-        if (sunbirdResponse.ok) {
-            const sunbirdData = await sunbirdResponse.json();
-            if (isStaleRequest()) return;
+        // Handle non-ok responses
+        if (!sunbirdResponse.ok) {
+            let errorData = null;
+            const contentType = sunbirdResponse.headers.get('content-type');
             
-            if (sunbirdData.success) {
-                console.log('[Identity Access] Cached dashboard loaded successfully');
-                isSunbirdDashboard = true;
-                sunbirdDashboardData = sunbirdData;
-                
-                // Enrich users
-                microsoftUsersData = (sunbirdData.users || []).map(user => ({
-                    id: user.id,
-                    displayName: user.displayName,
-                    mail: user.mail,
-                    userPrincipalName: user.userPrincipalName,
-                    jobTitle: user.jobTitle,
-                    mobilePhone: user.mobilePhone,
-                    roles: user.roles || [],
-                    mfaEnabled: toBooleanMfa(user.mfaEnabled),
-                    authMethodCount: user.authMethodCount || 0,
-                    riskLevel: user.riskLevel || 'SAFE',
-                    isExternal: user.isExternal,
-                    accountEnabled: user.accountEnabled !== false,
-                    lastSignIn: {
-                        dateTime: user.lastSignIn?.dateTime || null,
-                        location: user.lastSignIn?.location || 'Unknown',
-                        device: user.lastSignIn?.device || 'Unknown Device',
-                        daysSince: user.lastSignIn?.daysSince || 999
-                    },
-                    ...user
-                }));
-                
-                // FIRST LOAD: Render everything normally
-                if (isFirstLoad) {
-                    console.log('[Identity Access] FIRST LOAD - Rendering full dashboard');
-                    initializeIdentityInsights();
-                    initializeIdentityCharts();
-                    populateIdentityUsersTable();
-                    
-                    if (identityProjectForState) {
-                        identityProjectForState.status = 'completed';
-                        displayCurrentProject();
-                    }
-                    
-                    // Store initial metrics for comparison
-                    lastIdentityMetrics = JSON.parse(JSON.stringify(sunbirdData.metrics));
-                    
-                    // Start polling for updates every 1 minute
-                    startIdentityDashboardUpdates();
-                    
+            try {
+                if (contentType && contentType.includes('application/json')) {
+                    errorData = await sunbirdResponse.json();
+                    console.error(`[Identity Access] API error (${sunbirdResponse.status}):`, errorData);
                 } else {
-                    // SUBSEQUENT UPDATES: Only update values smoothly
-                    console.log('[Identity Access] UPDATE - Smoothly updating values only');
-                    updateIdentityDashboardValuesSmootly();
+                    const text = await sunbirdResponse.text();
+                    console.error(`[Identity Access] API error (${sunbirdResponse.status}):`, text);
+                }
+            } catch (parseErr) {
+                console.error(`[Identity Access] Could not parse error response:`, parseErr.message);
+            }
+            
+            throw new Error(`API returned ${sunbirdResponse.status}${errorData?.message ? ': ' + errorData.message : ''}`);
+        }
+
+        // Parse JSON response
+        let sunbirdData;
+        try {
+            sunbirdData = await sunbirdResponse.json();
+        } catch (parseErr) {
+            console.error('[Identity Access] Failed to parse JSON response:', parseErr.message);
+            throw new Error('Invalid JSON response from server');
+        }
+        
+        if (isStaleRequest()) return;
+        
+        if (sunbirdData.success) {
+            console.log('[Identity Access] Cached dashboard loaded successfully');
+            isSunbirdDashboard = true;
+            sunbirdDashboardData = sunbirdData;
+            
+            // Enrich users - handle empty array gracefully
+            const usersFromApi = sunbirdData.users || [];
+            console.log(`[Identity Access] Processing ${usersFromApi.length} users from API`);
+            
+            microsoftUsersData = usersFromApi.map(user => ({
+                id: user.id,
+                displayName: user.displayName,
+                mail: user.mail,
+                userPrincipalName: user.userPrincipalName,
+                jobTitle: user.jobTitle,
+                mobilePhone: user.mobilePhone,
+                roles: user.roles || [],
+                mfaEnabled: toBooleanMfa(user.mfaEnabled),
+                authMethodCount: user.authMethodCount || 0,
+                riskLevel: user.riskLevel || 'SAFE',
+                isExternal: user.isExternal,
+                accountEnabled: user.accountEnabled !== false,
+                lastSignIn: {
+                    dateTime: user.lastSignIn?.dateTime || null,
+                    location: user.lastSignIn?.location || 'Unknown',
+                    device: user.lastSignIn?.device || 'Unknown Device',
+                    daysSince: user.lastSignIn?.daysSince || 999
+                },
+                ...user
+            }));
+            
+            console.log(`[Identity Access] Enriched to ${microsoftUsersData.length} users`);
+            
+            // FIRST LOAD: Render everything normally
+            if (isFirstLoad) {
+                console.log('[Identity Access] FIRST LOAD - Rendering full dashboard');
+                initializeIdentityInsights();
+                initializeIdentityCharts();
+                populateIdentityUsersTable();
+                
+                if (identityProjectForState) {
+                    identityProjectForState.status = 'completed';
+                    displayCurrentProject();
                 }
                 
+                // Store initial metrics for comparison
+                lastIdentityMetrics = JSON.parse(JSON.stringify(sunbirdData.metrics || {}));
+                
+                // Start polling for updates every 1 minute
+                startIdentityDashboardUpdates();
+                
+            } else {
+                // SUBSEQUENT UPDATES: Only update values smoothly
+                console.log('[Identity Access] UPDATE - Smoothly updating values only');
+                updateIdentityDashboardValuesSmootly();
             }
         } else {
-            throw new Error(`API returned ${sunbirdResponse.status}`);
+            console.warn('[Identity Access] API response not successful:', sunbirdData);
+            throw new Error(sunbirdData.message || 'API did not return success status');
         }
         
     } catch (error) {
         console.error('[Identity Access] Error:', error);
+        console.error('[Identity Access] Error stack:', error.stack);
         const identityProjectForState = mockProjects.find(p => p.id === 2);
         if (identityProjectForState) {
             identityProjectForState.status = 'error';
             displayCurrentProject();
+        }
+        
+        // Only retry if this is the first load and we haven't tried too many times
+        if (isFirstLoad && retryCount < 3) {
+            retryCount++;
+            console.log(`[Identity Access] Retrying in 2 seconds (attempt ${retryCount}/3)...`);
+            setTimeout(() => {
+                fetchIdentityAccessData();
+            }, 2000);
+        } else if (isFirstLoad && retryCount >= 3) {
+            console.error('[Identity Access] Max retries reached, giving up');
+            retryCount = 0;
         }
     }
 }

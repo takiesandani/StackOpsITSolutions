@@ -6079,11 +6079,129 @@ app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) =
 });
 
 // ============================================================================
+// ADMIN: Manage User Access Types (Set Sunbird or other tenant access)
+// ============================================================================
+app.post('/api/admin/users/access-type', authenticateToken, async (req, res) => {
+    try {
+        const { email, accessType } = req.body;
+        
+        if (!email || !accessType) {
+            return res.status(400).json({ 
+                success: false,
+                error: 'Missing email or accessType'
+            });
+        }
+
+        // Get user by email
+        const [userRows] = await pool.query(
+            'SELECT ID FROM Users WHERE LOWER(Email) = LOWER(?)',
+            [email]
+        );
+
+        if (userRows.length === 0) {
+            return res.status(404).json({ 
+                success: false,
+                error: 'User not found'
+            });
+        }
+
+        const userId = userRows[0].ID;
+
+        // Check if access record exists
+        const [existingRows] = await pool.query(
+            'SELECT ID FROM TenantAccessControl WHERE UserID = ?',
+            [userId]
+        );
+
+        if (existingRows.length > 0) {
+            // Update existing record
+            await pool.query(
+                'UPDATE TenantAccessControl SET AccessType = ? WHERE UserID = ?',
+                [accessType, userId]
+            );
+            console.log(`[Admin] Updated ${email} access type to ${accessType}`);
+        } else {
+            // Insert new record
+            await pool.query(
+                'INSERT INTO TenantAccessControl (UserID, AccessType) VALUES (?, ?)',
+                [userId, accessType]
+            );
+            console.log(`[Admin] Created ${email} access type as ${accessType}`);
+        }
+
+        // Clear cache for this user
+        accessContextCache.delete(String(email || '').toLowerCase());
+
+        res.json({ 
+            success: true,
+            message: `User access type updated to ${accessType}`,
+            email,
+            accessType
+        });
+
+    } catch (error) {
+        console.error('[Admin] Error updating access type:', error.message);
+        res.status(500).json({ 
+            success: false,
+            error: 'Failed to update user access type',
+            message: error.message
+        });
+    }
+});
+
+// ============================================================================
+// HELPER FUNCTION: Convert various types to boolean for MFA
+// ============================================================================
+function toBooleanMfa(value) {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value > 0;
+    if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        return normalized === 'true' || normalized === 'yes' || normalized === 'enabled' || normalized === '1';
+    }
+    return false;
+}
+
+// ============================================================================
 // SUNBIRD IDENTITY DASHBOARD - CACHED VERSION (Database-Backed)
 // ============================================================================
 // This endpoint serves cached identity dashboard data from MySQL tables
 // for faster loading and reduced Microsoft Graph API calls
 // ============================================================================
+
+/**
+ * Verify user is Sunbird client - checks cache first, then database
+ */
+async function verifySunbirdUser(userEmail) {
+    try {
+        // Check cache first
+        const cachedTenant = getTenantByEmail(userEmail);
+        if (cachedTenant && cachedTenant.clientId === 'sunbird') {
+            return cachedTenant;
+        }
+
+        // If not in cache, check database directly
+        const accessContext = await getUserAccessContextByEmail(userEmail);
+        if (accessContext && (accessContext.accessType === 'sunbird' || accessContext.clientId === 'sunbird')) {
+            // Update cache for future requests
+            accessContextCache.set(String(userEmail || '').toLowerCase(), {
+                accessType: accessContext.accessType,
+                tenantId: accessContext.tenantId,
+                companyId: accessContext.companyId
+            });
+            return {
+                clientId: accessContext.accessType,
+                tenantId: accessContext.tenantId,
+                companyId: accessContext.companyId
+            };
+        }
+
+        return null;
+    } catch (error) {
+        console.error('[Sunbird Verification] Error checking user:', error.message);
+        return null;
+    }
+}
 
 app.get('/api/sunbird/identity-dashboard-cached', authenticateToken, async (req, res) => {
     try {
@@ -6091,10 +6209,11 @@ app.get('/api/sunbird/identity-dashboard-cached', authenticateToken, async (req,
         console.log(`[Sunbird Cached Dashboard] Fetching cached data for: ${userEmail}`);
 
         // Verify this is Sunbird client only
-        const tenant = getTenantByEmail(userEmail);
+        const tenant = await verifySunbirdUser(userEmail);
         if (!tenant || tenant.clientId !== 'sunbird') {
             console.warn(`[Sunbird Cached Dashboard] Access denied for ${userEmail}`);
             return res.status(403).json({ 
+                success: false,
                 error: 'Access denied',
                 message: 'This feature is only available for Sunbird client'
             });
@@ -6103,29 +6222,55 @@ app.get('/api/sunbird/identity-dashboard-cached', authenticateToken, async (req,
         console.log('[Sunbird Cached Dashboard] User verified as Sunbird client');
 
         // Fetch data from MySQL cache tables
-        const [metricsRows] = await pool.query(
-            'SELECT * FROM identity_metrics WHERE tenant_id = ? ORDER BY last_updated DESC LIMIT 1',
-            ['sunbird']
-        );
+        let metricsRows = [];
+        let usersRows = [];
+        let riskRows = [];
+        let cacheMetadataRows = [];
+        let signinActivityRows = [];
 
-        const [usersRows] = await pool.query(
-            'SELECT * FROM identity_users WHERE 1=1 ORDER BY last_updated DESC'
-        );
+        try {
+            [metricsRows] = await pool.query(
+                'SELECT * FROM identity_metrics WHERE tenant_id = ? ORDER BY last_updated DESC LIMIT 1',
+                ['sunbird']
+            );
+        } catch (e) {
+            console.warn('[Sunbird Cached Dashboard] Failed to fetch identity_metrics:', e.message);
+        }
 
-        const [riskRows] = await pool.query(
-            'SELECT * FROM identity_risk_scores WHERE tenant_id = ? ORDER BY last_updated DESC LIMIT 1',
-            ['sunbird']
-        );
+        try {
+            [usersRows] = await pool.query(
+                'SELECT * FROM identity_users WHERE 1=1 ORDER BY last_updated DESC'
+            );
+        } catch (e) {
+            console.warn('[Sunbird Cached Dashboard] Failed to fetch identity_users:', e.message);
+        }
 
-        const [cacheMetadataRows] = await pool.query(
-            'SELECT * FROM identity_cache_metadata WHERE tenant_id = ? LIMIT 1',
-            ['sunbird']
-        );
+        try {
+            [riskRows] = await pool.query(
+                'SELECT * FROM identity_risk_scores WHERE tenant_id = ? ORDER BY last_updated DESC LIMIT 1',
+                ['sunbird']
+            );
+        } catch (e) {
+            console.warn('[Sunbird Cached Dashboard] Failed to fetch identity_risk_scores:', e.message);
+        }
 
-        const [signinActivityRows] = await pool.query(
-            'SELECT * FROM identity_signin_activity WHERE tenant_id = ? ORDER BY last_updated DESC LIMIT 1',
-            ['sunbird']
-        );
+        try {
+            [cacheMetadataRows] = await pool.query(
+                'SELECT * FROM identity_cache_metadata WHERE tenant_id = ? LIMIT 1',
+                ['sunbird']
+            );
+        } catch (e) {
+            console.warn('[Sunbird Cached Dashboard] Failed to fetch identity_cache_metadata:', e.message);
+        }
+
+        try {
+            [signinActivityRows] = await pool.query(
+                'SELECT * FROM identity_signin_activity WHERE tenant_id = ? ORDER BY last_updated DESC LIMIT 1',
+                ['sunbird']
+            );
+        } catch (e) {
+            console.warn('[Sunbird Cached Dashboard] Failed to fetch identity_signin_activity:', e.message);
+        }
 
         // Build metrics object
         const metrics = metricsRows.length > 0 ? {
@@ -6265,10 +6410,14 @@ app.get('/api/sunbird/identity-dashboard-cached', authenticateToken, async (req,
 
     } catch (error) {
         console.error('[Sunbird Cached Dashboard] Error:', error.message);
+        console.error('[Sunbird Cached Dashboard] Stack:', error.stack);
         
-        res.status(500).json({ 
+        // Always return valid JSON to prevent "Unexpected end of JSON input" errors
+        return res.status(500).json({ 
+            success: false,
             error: 'Failed to fetch cached dashboard data',
-            message: error.message
+            message: error.message || 'An unexpected error occurred',
+            timestamp: new Date().toISOString()
         });
     }
 });
