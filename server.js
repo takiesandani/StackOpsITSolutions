@@ -6323,7 +6323,8 @@ app.get('/api/sunbird/identity-dashboard-cached', authenticateToken, async (req,
 
         // Helper function for safe JSON parsing
         function safeJsonParse(str, defaultValue = []) {
-            if (!str || str.trim() === '') return defaultValue;
+            // Check if str is a string and has content
+            if (typeof str !== 'string' || !str.trim()) return defaultValue;
             try {
                 return JSON.parse(str);
             } catch (e) {

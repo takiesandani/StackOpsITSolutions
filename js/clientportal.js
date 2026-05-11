@@ -3877,9 +3877,13 @@ async function fetchIdentityAccessData() {
     const requestId = ++identityFetchRequestId;
     const isStaleRequest = () => requestId !== identityFetchRequestId;
     
+    // Declare these outside try block so they're accessible in catch
+    let isFirstLoad;
+    let identityProjectForState;
+    
     try {
-        const identityProjectForState = mockProjects.find(p => p.id === 2);
-        const isFirstLoad = !sunbirdDashboardData;
+        identityProjectForState = mockProjects.find(p => p.id === 2);
+        isFirstLoad = !sunbirdDashboardData;
         
         if (isFirstLoad && identityProjectForState) {
             identityProjectForState.status = 'loading';
@@ -4004,7 +4008,11 @@ async function fetchIdentityAccessData() {
     } catch (error) {
         console.error('[Identity Access] Error:', error);
         console.error('[Identity Access] Error stack:', error.stack);
-        const identityProjectForState = mockProjects.find(p => p.id === 2);
+        
+        if (!identityProjectForState) {
+            identityProjectForState = mockProjects.find(p => p.id === 2);
+        }
+        
         if (identityProjectForState) {
             identityProjectForState.status = 'error';
             displayCurrentProject();
