@@ -1578,11 +1578,6 @@ function openIdentityDashboard() {
     const dashboardView = document.getElementById('dashboard-view');
     if (!dashboardView) return;
 
-    // Save original dashboard HTML before overwriting it (first time only)
-    if (!window.originalDashboardHTML) {
-        window.originalDashboardHTML = dashboardView.innerHTML;
-    }
-
     // Show dashboard view with smooth transitions
     smoothHide(document.getElementById('projects-view'), 250);
     smoothShow(dashboardView, 250);
@@ -1640,71 +1635,35 @@ function openIdentityDashboard() {
         };
     }
     
-    // Trigger fresh fetch whenever user opens Identity dashboard
-    console.log('[Identity Dashboard] Ensuring data is loaded...');
-    
-    // First, populate from cached sunbirdDashboardData if available
-    if (sunbirdDashboardData && sunbirdDashboardData.users && microsoftUsersData.length === 0) {
-        console.log('[Identity Dashboard] Using cached Sunbird data');
-        microsoftUsersData = (sunbirdDashboardData.users || []).map(user => ({
-            id: user.id,
-            displayName: user.displayName,
-            mail: user.mail,
-            userPrincipalName: user.userPrincipalName,
-            jobTitle: user.jobTitle,
-            mobilePhone: user.mobilePhone,
-            roles: user.roles || [],
-            mfaEnabled: toBooleanMfa(user.mfaEnabled),
-            authMethodCount: user.authMethodCount || 0,
-            riskLevel: user.riskLevel || 'SAFE',
-            isExternal: user.isExternal,
-            accountEnabled: user.accountEnabled !== false,
-            lastSignIn: {
-                dateTime: user.lastSignIn?.dateTime || null,
-                location: user.lastSignIn?.location || 'Unknown',
-                device: user.lastSignIn?.device || 'Unknown Device',
-                daysSince: user.lastSignIn?.daysSince || 999
-            },
-            ...user
-        }));
-        isSunbirdDashboard = true;
-    }
-    
-    // Now render dashboard with current data (cached or empty)
-    if (dashboardView) {
-        dashboardView.innerHTML = generateIdentityDashboardHTML();
-        dashboardView.style.display = 'block';
-    }
+    // Render an identity-specific loading view immediately to avoid showing generic dashboard content.
+    dashboardView.innerHTML = generateIdentityDashboardHTML();
     showIdentityTableLoadingSkeleton();
-    
-    // Populate table with current cached data immediately
-    setTimeout(() => {
-        console.log('[Identity Dashboard] Populating table with cached data');
-        populateIdentityTable();
-        setupIdentitySearch();
-        initializeIdentityInsights();
-    }, 50);
-    
-    // Then fetch fresh data and refresh
-    fetchIdentityAccessData().then(() => {
-        console.log('[Identity Dashboard] Data fetch completed, data available:', microsoftUsersData.length);
-        
-        // Refresh the dashboard display with fresh data
-        if (dashboardView && microsoftUsersData.length > 0) {
-            dashboardView.innerHTML = generateIdentityDashboardHTML();
-            dashboardView.style.display = 'block';
-            showIdentityTableLoadingSkeleton();
-            
-            setTimeout(() => {
-                console.log('[Identity Dashboard] Refreshing display with fresh data');
-                populateIdentityTable();
-                setupIdentitySearch();
-                initializeIdentityInsights();
-            }, 50);
-        }
-    }).catch((error) => {
-        console.error('[Identity Dashboard] Fetch error (using cached data):', error);
-    });
+
+    // Trigger fresh fetch whenever user opens Identity dashboard.
+    fetchIdentityAccessData();
+
+    // WAIT for data to load before initializing dashboard
+    if (microsoftUsersData.length > 0) {
+        console.log('[Identity Dashboard] Data already loaded, initializing immediately');
+        initializeIdentityDashboard();
+    } else {
+        // Otherwise wait for data to load with timeout
+        console.log('[Identity Dashboard] Waiting for data to load...');
+        let waitTime = 0;
+        const maxWait = 12000; // Max 12 seconds for slower Graph calls
+        const checkInterval = setInterval(() => {
+            waitTime += 100;
+            if (microsoftUsersData.length > 0) {
+                console.log('[Identity Dashboard] Data loaded successfully');
+                clearInterval(checkInterval);
+                initializeIdentityDashboard();
+            } else if (waitTime >= maxWait) {
+                console.warn('[Identity Dashboard] Data load timeout, initializing with available data');
+                clearInterval(checkInterval);
+                initializeIdentityDashboard();
+            }
+        }, 100);
+    }
 }
 
 // Initialize  Identity Protection dashboard
@@ -1729,13 +1688,7 @@ function initializeIdentityDashboard() {
     // Update dashboard content with Identity-specific layout
     const dashboardView = document.getElementById('dashboard-view');
     if (dashboardView) {
-        // Save original dashboard HTML before overwriting it (first time only)
-        if (!window.originalDashboardHTML) {
-            window.originalDashboardHTML = dashboardView.innerHTML;
-        }
-
         dashboardView.innerHTML = generateIdentityDashboardHTML();
-        dashboardView.style.display = 'block';
     }
     
     // Show loading skeleton immediately
@@ -2210,7 +2163,7 @@ function renderRoleDistributionChart() {
     
     // Count roles distribution
     const roleDistribution = {};
-    (microsoftRolesData || []).forEach(assignment => {
+    microsoftRolesData.forEach(assignment => {
         const roleName = assignment.roleName || 'Unknown';
         roleDistribution[roleName] = (roleDistribution[roleName] || 0) + 1;
     });
@@ -2873,7 +2826,7 @@ function renderSystemHealthRadar() {
     const canvasElement = document.getElementById('systemHealthRadar');
     if (!canvasElement || !sunbirdDashboardData) return;
 
-    const health = sunbirdDashboardData.systemHealth || {};
+    const health = sunbirdDashboardData.systemHealth;
     
     // Set canvas dimensions
     canvasElement.width = 400;
@@ -2938,7 +2891,7 @@ function renderRiskDistributionPie() {
     const canvasElement = document.getElementById('riskDistributionPie');
     if (!canvasElement || !sunbirdDashboardData) return;
 
-    const riskDist = sunbirdDashboardData.riskDistribution || {};
+    const riskDist = sunbirdDashboardData.riskDistribution;
     const highRisk = riskDist.HIGH || 0;
     const mediumRisk = riskDist.MEDIUM || 0;
     const safeRisk = riskDist.SAFE || 0;
@@ -3405,16 +3358,11 @@ function renderSunbirdAnalytics() {
     
     try {
         renderSunbirdSummaryCards();
-        
-        // Ensure analytics rows are visible
-        const analyticsRow1 = document.getElementById('sunbird-analytics-row-1');
-        if (analyticsRow1) analyticsRow1.style.display = 'grid';
-        
         renderSystemHealthRadar();
         renderRiskDistributionPie();
         renderAuthenticationStrengthChart();
         renderDeviceTrustChart();
-        renderSunbirdRoleDistributionChart();
+        renderRoleDistributionChart();
         renderInactiveBreakdownChart();
         renderIdentityHygieneBreakdown();
         renderSignInInsights();
@@ -3997,30 +3945,10 @@ async function fetchIdentityAccessData() {
                     console.log('[Identity Access] FIRST LOAD - Rendering full dashboard');
                     initializeIdentityInsights();
                     initializeIdentityCharts();
-                    populateIdentityTable();
+                    populateIdentityUsersTable();
                     
                     if (identityProjectForState) {
-                        // Update card metrics with actual data
-                        const totalUsers = microsoftUsersData.length;
-                        const activeUsers24h = microsoftUsersData.filter(u => {
-                            const lastSignIn = u?.lastSignIn?.dateTime;
-                            if (!lastSignIn) return false;
-                            const dt = new Date(lastSignIn).getTime();
-                            const now = Date.now();
-                            return (now - dt) <= (24 * 60 * 60 * 1000);
-                        }).length;
-                        const adminRoles = new Set(microsoftUsersData.filter(u => (u.roles || []).length > 0).map(u => u.id)).size;
-                        const securityScore = Math.round((microsoftUsersData.filter(u => u.mfaEnabled).length / totalUsers) * 100) || 0;
-                        
-                        identityProjectForState.status = 'active';
-                        identityProjectForState.cardMetrics = [
-                            { label: "Total Users", value: `: ${totalUsers}`, icon: "fas fa-users" },
-                            { label: "Active (24h)", value: `: ${activeUsers24h}`, icon: "fas fa-user-check" },
-                            { label: "Admin Roles", value: `: ${adminRoles}`, icon: "fas fa-crown" },
-                            { label: "MFA Enabled", value: `: ${securityScore}%`, icon: "fas fa-shield-alt" }
-                        ];
-                        identityProjectForState.cardFooter = `Users: ${totalUsers} | Active: ${activeUsers24h}`;
-                        identityProjectForState.lastUpdate = new Date().toLocaleTimeString();
+                        identityProjectForState.status = 'completed';
                         displayCurrentProject();
                     }
                     
@@ -4033,29 +3961,7 @@ async function fetchIdentityAccessData() {
                 } else {
                     // SUBSEQUENT UPDATES: Only update values smoothly
                     console.log('[Identity Access] UPDATE - Smoothly updating values only');
-                    updateIdentityDashboardValuesSmoothly();
-                    
-                    // Also update card metrics for non-first loads
-                    const identityProjectForUpdate = mockProjects.find(p => p.id === 2);
-                    if (identityProjectForUpdate && microsoftUsersData.length > 0) {
-                        const totalUsers = microsoftUsersData.length;
-                        const activeUsers24h = microsoftUsersData.filter(u => {
-                            const lastSignIn = u?.lastSignIn?.dateTime;
-                            if (!lastSignIn) return false;
-                            const dt = new Date(lastSignIn).getTime();
-                            const now = Date.now();
-                            return (now - dt) <= (24 * 60 * 60 * 1000);
-                        }).length;
-                        const adminRoles = new Set(microsoftUsersData.filter(u => (u.roles || []).length > 0).map(u => u.id)).size;
-                        const securityScore = Math.round((microsoftUsersData.filter(u => u.mfaEnabled).length / totalUsers) * 100) || 0;
-                        
-                        identityProjectForUpdate.cardMetrics = [
-                            { label: "Total Users", value: `: ${totalUsers}`, icon: "fas fa-users" },
-                            { label: "Active (24h)", value: `: ${activeUsers24h}`, icon: "fas fa-user-check" },
-                            { label: "Admin Roles", value: `: ${adminRoles}`, icon: "fas fa-crown" },
-                            { label: "MFA Enabled", value: `: ${securityScore}%`, icon: "fas fa-shield-alt" }
-                        ];
-                    }
+                    updateIdentityDashboardValuesSmootly();
                 }
                 
             }
@@ -4114,7 +4020,7 @@ async function fetchUpdatedIdentityData() {
                 microsoftUsersData = (data.users || []).map(user => ({...user}));
                 
                 // Smoothly update UI values
-                updateIdentityDashboardValuesSmoothly();
+                updateIdentityDashboardValuesSmootly();
             }
         }
     } catch (error) {
@@ -4127,7 +4033,7 @@ async function fetchUpdatedIdentityData() {
 // Only text content changes, DOM structure stays intact
 // ════════════════════════════════════════════════════════════════════════════════
 
-function updateIdentityDashboardValuesSmoothly() {
+function updateIdentityDashboardValuesSmootly() {
     try {
         const metrics = sunbirdDashboardData.metrics;
         const riskBreakdown = sunbirdDashboardData.riskBreakdown;
@@ -5513,7 +5419,9 @@ function viewProjectDashboard(project) {
             console.warn('[Email Security] View element not found');
             return;
         }
+        
         emailSecurityView.style.display = 'none';
+        fetchEmailSecurityData(project);
         fetchEmailSecurityData(project);
     }
     // If this is the Backup and Recovery card, fetch backup recovery data
@@ -5523,7 +5431,9 @@ function viewProjectDashboard(project) {
             console.warn('[Backup Recovery] View element not found');
             return;
         }
+    
         backupRecoveryView.style.display = 'none';
+        fetchBackupRecoveryData(project);
         fetchBackupRecoveryData(project);
     }
     // If this is the Applications card, fetch applications data
@@ -5610,26 +5520,6 @@ function goBackToProjects() {
 function resetDashboard() {
     smoothShow(document.getElementById('projects-view'), 250);
     smoothHide(document.getElementById('dashboard-view'), 250);
-
-    // Restore original dashboard HTML if it was overwritten by Identity dashboard
-    const dashboardView = document.getElementById('dashboard-view');
-    if (window.originalDashboardHTML && dashboardView) {
-        dashboardView.innerHTML = window.originalDashboardHTML;
-    }
-
-    // Reset sunbird analytics row visibility
-    const analyticsRows = [
-        'sunbird-summary-cards',
-        'sunbird-analytics-row-1',
-        'sunbird-analytics-row-2',
-        'sunbird-analytics-row-3',
-        'sunbird-insights-row'
-    ];
-    analyticsRows.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.style.display = 'none';
-    });
-
     const devicesView = document.getElementById('devices-view');
     const securityEventsView = document.getElementById('security-events-view');
     const emailSecurityView = document.getElementById('email-security-view');
@@ -5661,9 +5551,6 @@ function resetDashboard() {
     const allCards = document.querySelectorAll('.project-card');
     allCards.forEach(card => card.classList.remove('glow-selected'));
     hideProjectPreview();
-    
-    // Re-render the project cards with updated metrics after returning to projects view
-    displayCurrentProject();
 }
 
 // ============================================
