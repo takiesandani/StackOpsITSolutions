@@ -2827,7 +2827,7 @@ function renderSystemHealthRadar() {
     const canvasElement = document.getElementById('systemHealthRadar');
     if (!canvasElement || !sunbirdDashboardData) return;
 
-    const health = sunbirdDashboardData.systemHealth;
+    const health = sunbirdDashboardData.systemHealth || {};
     
     // Set canvas dimensions
     canvasElement.width = 400;
@@ -3982,7 +3982,7 @@ async function fetchIdentityAccessData() {
                 console.log('[Identity Access] FIRST LOAD - Rendering full dashboard');
                 initializeIdentityInsights();
                 initializeIdentityCharts();
-                populateIdentityUsersTable();
+                populateIdentityTable();
                 
                 if (identityProjectForState) {
                     identityProjectForState.status = 'completed';
