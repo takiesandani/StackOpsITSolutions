@@ -68,7 +68,7 @@ function initializeSmoothLoadingStyles() {
 // Smooth show function - prevents flashing
 function smoothShow(element, duration = 300) {
     if (!element) return;
-    element.style.transition = \`opacity \${duration}ms ease-in-out\`;
+    element.style.transition = `opacity ${duration}ms ease-in-out`;
     element.style.opacity = '0';
     element.style.display = 'block'; // Show first
     
@@ -80,7 +80,7 @@ function smoothShow(element, duration = 300) {
 // Smooth hide function - prevents flashing
 function smoothHide(element, duration = 300) {
     if (!element) return;
-    element.style.transition = \`opacity \${duration}ms ease-in-out\`;
+    element.style.transition = `opacity ${duration}ms ease-in-out`;
     element.style.opacity = '0';
     
     setTimeout(() => {
