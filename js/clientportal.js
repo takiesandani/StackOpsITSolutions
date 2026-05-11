@@ -2139,15 +2139,7 @@ function buildSunbirdIdentityModel(data = sunbirdDashboardData) {
     const inactiveUsers = users.filter(user => getIdentityDaysSinceSignIn(user) > 30);
     const unknownDeviceUsers = users.filter(user => /unknown|no sign-in|n\/a/i.test(String(user?.lastSignIn?.device || 'Unknown')));
     const adminsWithoutMfa = privilegedUsers.filter(user => !toBooleanMfa(user.mfaEnabled));
-    const failedSignInUsers = users.filter(user => {
-        const status = String(user?.lastSignIn?.status || '').toLowerCase();
-        const location = String(user?.lastSignIn?.location || '').toLowerCase();
-        const device = String(user?.lastSignIn?.device || '').toLowerCase();
-        return status.includes('fail') ||
-            String(user.riskLevel || '').toUpperCase() === 'HIGH' ||
-            location.includes('unknown') ||
-            device.includes('unknown');
-    });
+    const failedSignInUsers = users.filter(user => getSunbirdSignInIssueReasons(user).length > 0);
     const multiplePrivilegedRoles = users.filter(user => getIdentityRoleNames(user).filter(role => /(admin|global|privileged|security|directory)/i.test(role)).length > 1);
 
     return {
@@ -2183,6 +2175,23 @@ function buildSunbirdIdentityModel(data = sunbirdDashboardData) {
             multiplePrivilegedRoles
         }
     };
+}
+
+function getSunbirdSignInIssueReasons(user) {
+    const reasons = [];
+    const status = String(user?.lastSignIn?.status || '').toLowerCase();
+    const location = String(user?.lastSignIn?.location || '').toLowerCase();
+    const device = String(user?.lastSignIn?.device || '').toLowerCase();
+    const risk = String(user?.riskLevel || '').toUpperCase();
+    const daysSince = getIdentityDaysSinceSignIn(user);
+
+    if (status.includes('fail')) reasons.push('Failed sign-in');
+    if (risk === 'HIGH') reasons.push('High-risk user');
+    if (location.includes('unknown') || location === 'no sign-in') reasons.push('Unknown location');
+    if (device.includes('unknown') || device === 'no sign-in') reasons.push('Unknown device');
+    if (daysSince > 30) reasons.push('Inactive sign-in');
+
+    return reasons;
 }
 
 function openSunbirdIdentityDashboard() {
@@ -2545,12 +2554,12 @@ function renderSunbirdIdentitySignIns(model) {
         .slice(0, 10);
 
     signinsEl.innerHTML = `
-        ${renderSunbirdSignInList('Latest sign-ins', latest)}
-        ${renderSunbirdSignInList('Sign-in issues', failed)}
+        ${renderSunbirdSignInList('Latest sign-ins', latest, false)}
+        ${renderSunbirdSignInList('Sign-in issues', failed, true)}
     `;
 }
 
-function renderSunbirdSignInList(title, users) {
+function renderSunbirdSignInList(title, users, showIssues = false) {
     return `
         <article class="sunbird-id-signin-card">
             <h3>${escapeIdentityText(title)}</h3>
@@ -2560,6 +2569,7 @@ function renderSunbirdSignInList(title, users) {
                         <div>
                             <strong>${escapeIdentityText(user.displayName || 'Unknown')}</strong>
                             <span>${escapeIdentityText(user.mail || user.userPrincipalName || 'N/A')}</span>
+                            ${showIssues ? `<div class="sunbird-id-issue-tags">${getSunbirdSignInIssueReasons(user).map(reason => `<em>${escapeIdentityText(reason)}</em>`).join('')}</div>` : ''}
                         </div>
                         <div>
                             <small>${escapeIdentityText(formatIdentityDate(user))}</small>
