@@ -6341,7 +6341,8 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 .dashboard-view.sunbird-identity-active,
 .dashboard-view.sunbird-device-active,
 .dashboard-view.sunbird-email-active,
-.dashboard-view.sunbird-security-active {
+.dashboard-view.sunbird-security-active,
+.dashboard-view.sunbird-backup-active {
   margin-top: 10px;
   padding: 10px 24px 24px;
   background: transparent;
@@ -6908,6 +6909,10 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
 .sunbird-security-table {
   min-width: 1180px;
+}
+
+.sunbird-backup-table {
+  min-width: 1120px;
 }
 
 .sunbird-id-pie-card {

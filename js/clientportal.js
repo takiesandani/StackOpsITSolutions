@@ -18,7 +18,7 @@ const SUNBIRD_ONLY_CARD_IDS = [2, 3, 4, 5, 7, 8, 9, 10]; // Identity Protection,
 const HIDDEN_FROM_SUNBIRD_IDS = []; // All Sunbird cards are visible to them
 
 // Cards to hide from the main project cards UI (keep functionality in code)
-const HIDDEN_PROJECT_CARD_IDS = [4, 7, 8, 6]; // Security & Events, Backup and Recovery, Applications
+const HIDDEN_PROJECT_CARD_IDS = [4, 8, 6]; // Security & Events, Applications
 
 // SEDFA/Duo user-specific card IDs (Cisco Duo Licenses, Cloud data services, Infrastructure Monitoring)
 const SEDFA_CARD_IDS = [1, 6, 11];
@@ -157,7 +157,8 @@ function restoreDashboardViewHTML() {
             dashboardView.querySelector('#sunbird-identity-dashboard') ||
             dashboardView.querySelector('#sunbird-devices-dashboard') ||
             dashboardView.querySelector('#sunbird-email-dashboard') ||
-            dashboardView.querySelector('#sunbird-security-dashboard')
+            dashboardView.querySelector('#sunbird-security-dashboard') ||
+            dashboardView.querySelector('#sunbird-backup-dashboard')
         )
     ) {
         dashboardView.innerHTML = originalDashboardViewHTML;
@@ -198,11 +199,17 @@ function openDashboard(project) {
         return;
     }
 
+    if ((Number(project.id) === 7 || project.isBackupRecoveryCard === true) && isSunbirdUser()) {
+        openSunbirdBackupDashboard();
+        return;
+    }
+
     restoreDashboardViewHTML();
     document.getElementById('dashboard-view')?.classList.remove('sunbird-identity-active');
     document.getElementById('dashboard-view')?.classList.remove('sunbird-device-active');
     document.getElementById('dashboard-view')?.classList.remove('sunbird-email-active');
     document.getElementById('dashboard-view')?.classList.remove('sunbird-security-active');
+    document.getElementById('dashboard-view')?.classList.remove('sunbird-backup-active');
     
     // Get dashboard type with fallback
     const dashboardType = project.dashboardType || "Security"; // RULE 18: Fallback config
@@ -515,6 +522,7 @@ function goBackToProjects() {
         dashboardView.classList.remove('sunbird-device-active');
         dashboardView.classList.remove('sunbird-email-active');
         dashboardView.classList.remove('sunbird-security-active');
+        dashboardView.classList.remove('sunbird-backup-active');
     }
     
     // Destroy charts
@@ -960,6 +968,7 @@ async function bootstrapDashboardDataAfterLogin() {
         fetchApplicationsData(),
         fetchDevicesCardData(),
         fetchEmailCardData(),
+        fetchBackupCardData(),
         initializeBillingCard()
     ]);
 
@@ -2290,6 +2299,7 @@ function openSunbirdIdentityDashboard() {
     dashboardView.classList.remove('sunbird-device-active');
     dashboardView.classList.remove('sunbird-email-active');
     dashboardView.classList.remove('sunbird-security-active');
+    dashboardView.classList.remove('sunbird-backup-active');
     dashboardView.classList.add('sunbird-identity-active');
 
     const projectName = document.getElementById('project-name');
@@ -2927,6 +2937,7 @@ function openSunbirdDevicesDashboard() {
     dashboardView.classList.remove('sunbird-identity-active');
     dashboardView.classList.remove('sunbird-email-active');
     dashboardView.classList.remove('sunbird-security-active');
+    dashboardView.classList.remove('sunbird-backup-active');
     dashboardView.classList.add('sunbird-device-active');
 
     captureDashboardViewHTML();
@@ -3754,6 +3765,7 @@ function openSunbirdEmailSecurityDashboard() {
     dashboardView.classList.remove('sunbird-identity-active');
     dashboardView.classList.remove('sunbird-device-active');
     dashboardView.classList.remove('sunbird-security-active');
+    dashboardView.classList.remove('sunbird-backup-active');
     dashboardView.classList.add('sunbird-email-active');
 
     captureDashboardViewHTML();
@@ -4735,6 +4747,7 @@ function openSunbirdSecurityDashboard() {
     dashboardView.classList.remove('sunbird-identity-active');
     dashboardView.classList.remove('sunbird-device-active');
     dashboardView.classList.remove('sunbird-email-active');
+    dashboardView.classList.remove('sunbird-backup-active');
     dashboardView.classList.add('sunbird-security-active');
 
     captureDashboardViewHTML();
@@ -5561,6 +5574,674 @@ window.applySunbirdSecurityTableFilter = applySunbirdSecurityTableFilter;
 window.toggleSunbirdSecurityInsightEvidenceLock = toggleSunbirdSecurityInsightEvidenceLock;
 window.handleSunbirdSecurityInsightEvidenceKey = handleSunbirdSecurityInsightEvidenceKey;
 window.setSunbirdSecurityTrendWindow = setSunbirdSecurityTrendWindow;
+
+const SUNBIRD_BACKUP_CACHE_KEY = 'sunbirdBackupRecoveryDashboardSnapshot';
+let sunbirdBackupTableState = { search: '', service: 'all', activity: 'all', sort: 'storage' };
+let lockedSunbirdBackupInsightEvidenceKey = null;
+
+function openSunbirdBackupDashboard() {
+    const dashboardView = document.getElementById('dashboard-view');
+    const projectsView = document.getElementById('projects-view');
+    if (!dashboardView) return;
+
+    if (projectsView) projectsView.style.display = 'none';
+    dashboardView.style.display = 'block';
+    dashboardView.style.visibility = 'visible';
+    dashboardView.style.opacity = '1';
+    dashboardView.classList.remove('sunbird-identity-active');
+    dashboardView.classList.remove('sunbird-device-active');
+    dashboardView.classList.remove('sunbird-email-active');
+    dashboardView.classList.remove('sunbird-security-active');
+    dashboardView.classList.add('sunbird-backup-active');
+
+    captureDashboardViewHTML();
+    dashboardView.innerHTML = renderSunbirdBackupShell();
+    setupSunbirdBackupDashboard();
+
+    const cached = readSunbirdBackupSnapshot();
+    cachedSunbirdBackupData = normalizeSunbirdBackupData(cached || cachedSunbirdBackupData || { success: true });
+    renderSunbirdBackupDashboard();
+    loadSunbirdBackupDashboardData();
+}
+
+function renderSunbirdBackupShell() {
+    return `
+        <section class="sunbird-identity-dashboard sunbird-backup-dashboard" id="sunbird-backup-dashboard">
+            <div class="sunbird-id-header">
+                <button id="sunbird-backup-back" class="sunbird-id-back-btn" type="button">
+                    <span class="sunbird-id-back-icon" aria-hidden="true">&larr;</span>
+                    <span>Back</span>
+                </button>
+                <div>
+                    <h2>Backup & Recovery</h2>
+                    <p>Microsoft 365 storage, activity, coverage, and recovery evidence.</p>
+                </div>
+                <div class="sunbird-id-microsoft-badge" aria-label="Microsoft Solutions">
+                    <span class="sunbird-id-ms-logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+                    <span>Microsoft Solutions</span>
+                </div>
+            </div>
+
+            <div class="sunbird-id-metrics" id="sunbird-backup-metrics"></div>
+            <div class="sunbird-id-insights" id="sunbird-backup-insights"></div>
+            <div class="sunbird-id-charts" id="sunbird-backup-charts"></div>
+            <div class="sunbird-id-signins" id="sunbird-backup-panels"></div>
+
+            <section class="sunbird-id-table-section">
+                <div class="sunbird-id-table-toolbar sunbird-backup-table-toolbar">
+                    <input id="sunbird-backup-search" class="sunbird-id-search" type="search" placeholder="Search user, site, service, activity, storage">
+                    <select id="sunbird-backup-service-filter" class="sunbird-id-select">
+                        <option value="all">All services</option>
+                        <option value="OneDrive">OneDrive</option>
+                        <option value="SharePoint">SharePoint</option>
+                        <option value="Exchange">Exchange</option>
+                    </select>
+                    <select id="sunbird-backup-activity-filter" class="sunbird-id-select">
+                        <option value="all">All activity</option>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
+                    <select id="sunbird-backup-sort" class="sunbird-id-select">
+                        <option value="storage">Sort storage</option>
+                        <option value="activity">Sort last activity</option>
+                        <option value="service">Sort service</option>
+                    </select>
+                    <button id="sunbird-backup-clear" class="sunbird-id-clear-btn" type="button">Clear</button>
+                    <button id="sunbird-backup-export" class="sunbird-id-clear-btn" type="button">Export CSV</button>
+                </div>
+                <div class="sunbird-id-table-wrap">
+                    <table class="sunbird-id-table sunbird-backup-table">
+                        <thead>
+                            <tr>
+                                <th>Service</th>
+                                <th>Name</th>
+                                <th>Principal / URL</th>
+                                <th>Storage</th>
+                                <th>Files / Items</th>
+                                <th>Last Activity</th>
+                                <th>Activity Age</th>
+                                <th>Risk</th>
+                                <th>Evidence</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sunbird-backup-body"></tbody>
+                    </table>
+                </div>
+            </section>
+        </section>
+        <div id="sunbird-backup-evidence-modal" class="sunbird-id-modal" aria-hidden="true"></div>
+    `;
+}
+
+function setupSunbirdBackupDashboard() {
+    document.getElementById('sunbird-backup-back')?.addEventListener('click', goBackToProjects);
+    document.getElementById('sunbird-backup-search')?.addEventListener('input', event => {
+        sunbirdBackupTableState.search = event.target.value;
+        renderSunbirdBackupTable();
+    });
+    document.getElementById('sunbird-backup-service-filter')?.addEventListener('change', event => {
+        sunbirdBackupTableState.service = event.target.value;
+        renderSunbirdBackupTable();
+    });
+    document.getElementById('sunbird-backup-activity-filter')?.addEventListener('change', event => {
+        sunbirdBackupTableState.activity = event.target.value;
+        renderSunbirdBackupTable();
+    });
+    document.getElementById('sunbird-backup-sort')?.addEventListener('change', event => {
+        sunbirdBackupTableState.sort = event.target.value;
+        renderSunbirdBackupTable();
+    });
+    document.getElementById('sunbird-backup-clear')?.addEventListener('click', () => {
+        sunbirdBackupTableState = { search: '', service: 'all', activity: 'all', sort: 'storage' };
+        ['sunbird-backup-search', 'sunbird-backup-service-filter', 'sunbird-backup-activity-filter', 'sunbird-backup-sort'].forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.value = id === 'sunbird-backup-sort' ? 'storage' : id === 'sunbird-backup-search' ? '' : 'all';
+        });
+        renderSunbirdBackupTable();
+    });
+    document.getElementById('sunbird-backup-export')?.addEventListener('click', exportSunbirdBackupCsv);
+}
+
+function readSunbirdBackupSnapshot() {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(SUNBIRD_BACKUP_CACHE_KEY) || 'null');
+        return parsed?.summary || parsed?.storage ? parsed : null;
+    } catch (error) {
+        return null;
+    }
+}
+
+function saveSunbirdBackupSnapshot(data) {
+    if (!data?.summary && !data?.storage) return;
+    localStorage.setItem(SUNBIRD_BACKUP_CACHE_KEY, JSON.stringify({ ...data, savedAt: new Date().toISOString() }));
+}
+
+async function loadSunbirdBackupDashboardData() {
+    try {
+        const data = await fetchSunbirdBackupRecoveryData();
+        cachedSunbirdBackupData = normalizeSunbirdBackupData(data);
+        saveSunbirdBackupSnapshot(cachedSunbirdBackupData);
+        updateBackupProjectCardFromData(cachedSunbirdBackupData);
+        renderSunbirdBackupDashboard();
+    } catch (error) {
+        console.warn('[Backup Dashboard] Cached/live data unavailable:', error.message);
+    }
+}
+
+function normalizeSunbirdBackupData(data = {}) {
+    const payload = data.payload && typeof data.payload === 'object' ? data.payload : data;
+    const summary = payload.summary || {};
+    const storage = payload.storage || {};
+    const byService = storage.byService || {};
+    const users = Array.isArray(storage.users) ? storage.users : [];
+    const sites = Array.isArray(storage.sites) ? storage.sites : [];
+    const totalStorageGB = summary.totalStorageGB ?? Number(((byService.onedrive || 0) + (byService.sharepoint || 0) + (byService.exchange || 0)).toFixed(1));
+    return {
+        ...payload,
+        summary: {
+            ...summary,
+            totalStorageGB,
+            oneDriveStorageGB: summary.oneDriveStorageGB ?? byService.onedrive ?? 0,
+            sharePointStorageGB: summary.sharePointStorageGB ?? byService.sharepoint ?? 0,
+            exchangeStorageGB: summary.exchangeStorageGB ?? byService.exchange ?? 0,
+            activeUsersCount: summary.activeUsersCount ?? users.filter(user => user.lastActivity).length,
+            inactiveUsersCount: summary.inactiveUsersCount ?? users.filter(user => !user.lastActivity || getSunbirdBackupActivityAge(user.lastActivity) > 30).length,
+            servicesCovered: summary.servicesCovered ?? 3,
+            backupConfigured: Boolean(summary.backupConfigured)
+        },
+        storage: {
+            ...storage,
+            byService: {
+                onedrive: byService.onedrive ?? summary.oneDriveStorageGB ?? 0,
+                sharepoint: byService.sharepoint ?? summary.sharePointStorageGB ?? 0,
+                exchange: byService.exchange ?? summary.exchangeStorageGB ?? 0
+            },
+            users,
+            sites,
+            inactiveUserStorageGB: storage.inactiveUserStorageGB ?? 0
+        },
+        insights: Array.isArray(payload.insights) ? payload.insights : []
+    };
+}
+
+function buildSunbirdBackupModel(data = cachedSunbirdBackupData) {
+    const normalized = normalizeSunbirdBackupData(data || {});
+    const rows = buildSunbirdBackupRows(normalized);
+    const inactiveRows = rows.filter(row => row.activityAge > 30 || !row.lastActivity);
+    const highStorageRows = rows.filter(row => row.storageGB >= 20);
+    const staleRows = rows.filter(row => row.activityAge > 90 || !row.lastActivity);
+    const serviceRows = [
+        { service: 'OneDrive', storageGB: normalized.summary.oneDriveStorageGB || 0 },
+        { service: 'SharePoint', storageGB: normalized.summary.sharePointStorageGB || 0 },
+        { service: 'Exchange', storageGB: normalized.summary.exchangeStorageGB || 0 }
+    ];
+    const backupCoverageScore = Math.round(((normalized.summary.servicesCovered || 0) / 3) * 100);
+    const dataExposureRiskScore = Math.min(100, Math.round((inactiveRows.length * 3) + (highStorageRows.length * 5) + (normalized.storage.inactiveUserStorageGB || 0) / 10));
+    const recommendations = buildSunbirdBackupRecommendations(normalized, { inactiveRows, highStorageRows, staleRows, backupCoverageScore, dataExposureRiskScore });
+    return {
+        ...normalized,
+        rows,
+        serviceRows,
+        recommendations,
+        scores: { backupCoverageScore, dataExposureRiskScore },
+        evidence: {
+            allRows: rows,
+            serviceRows,
+            inactiveRows,
+            highStorageRows,
+            staleRows,
+            topUsers: rows.filter(row => row.service !== 'SharePoint').sort((a, b) => b.storageGB - a.storageGB).slice(0, 20),
+            topSites: rows.filter(row => row.service === 'SharePoint').sort((a, b) => b.storageGB - a.storageGB).slice(0, 10),
+            lastActivityBuckets: buildSunbirdBackupActivityBuckets(rows),
+            insights: normalized.insights,
+            recommendations
+        }
+    };
+}
+
+function renderSunbirdBackupDashboard() {
+    const model = buildSunbirdBackupModel();
+    renderSunbirdBackupMetrics(model);
+    renderSunbirdBackupInsights(model);
+    renderSunbirdBackupCharts(model);
+    renderSunbirdBackupPanels(model);
+    renderSunbirdBackupTable(model);
+}
+
+function renderSunbirdBackupMetrics(model) {
+    const el = document.getElementById('sunbird-backup-metrics');
+    if (!el) return;
+    const metrics = [
+        { label: 'Total Storage', value: `${model.summary.totalStorageGB || 0} GB`, tone: model.summary.totalStorageGB > 1000 ? 'warn' : 'neutral', evidence: 'serviceRows' },
+        { label: 'Active Users', value: model.summary.activeUsersCount || 0, tone: 'good', evidence: 'topUsers' },
+        { label: 'Inactive Users', value: model.summary.inactiveUsersCount || 0, tone: model.summary.inactiveUsersCount ? 'warn' : 'good', evidence: 'inactiveRows' },
+        { label: 'Coverage Score', value: `${model.scores.backupCoverageScore}%`, tone: model.scores.backupCoverageScore >= 100 ? 'good' : 'warn', evidence: 'recommendations' }
+    ];
+    el.innerHTML = metrics.map(metric => `
+        <article class="sunbird-id-metric-card tone-${metric.tone}">
+            <div class="sunbird-id-metric-value">${escapeIdentityText(metric.value)}</div>
+            <div class="sunbird-id-metric-label">${escapeIdentityText(metric.label)}</div>
+            <button type="button" onclick="openSunbirdBackupEvidence('${metric.evidence}')" class="sunbird-id-evidence-btn">View Evidence</button>
+        </article>
+    `).join('');
+}
+
+function renderSunbirdBackupInsights(model) {
+    const el = document.getElementById('sunbird-backup-insights');
+    if (!el) return;
+    const insights = [
+        { title: 'Growth risk', value: `${model.summary.totalStorageGB || 0} GB`, evidence: 'serviceRows', tone: model.summary.totalStorageGB > 1000 ? 'bad' : 'warn' },
+        { title: 'Inactive data holders', value: model.evidence.inactiveRows.length, evidence: 'inactiveRows', tone: model.evidence.inactiveRows.length ? 'bad' : 'good' },
+        { title: 'Top storage users', value: model.evidence.topUsers.length, evidence: 'topUsers', tone: 'neutral' },
+        { title: 'Top SharePoint sites', value: model.evidence.topSites.length, evidence: 'topSites', tone: 'neutral' },
+        { title: 'Stale activity', value: model.evidence.staleRows.length, evidence: 'staleRows', tone: model.evidence.staleRows.length ? 'warn' : 'good' },
+        { title: 'Exposure risk score', value: `${model.scores.dataExposureRiskScore}%`, evidence: 'inactiveRows', tone: model.scores.dataExposureRiskScore > 50 ? 'bad' : 'warn' },
+        { title: 'Recommendations', value: model.recommendations.length, evidence: 'recommendations', tone: 'warn' }
+    ];
+    el.innerHTML = insights.map((item, index) => `
+        <article class="sunbird-id-insight tone-${item.tone}" role="button" tabindex="0" data-backup-evidence-key="${item.evidence}" onclick="toggleSunbirdBackupInsightEvidenceLock('${item.evidence}')" onkeydown="handleSunbirdBackupInsightEvidenceKey(event, '${item.evidence}')">
+            <span>${escapeIdentityText(item.title)}</span>
+            <strong>${escapeIdentityText(item.value)}</strong>
+            ${renderSunbirdBackupInsightEvidencePreview(item, model, index)}
+        </article>
+    `).join('');
+}
+
+function renderSunbirdBackupInsightEvidencePreview(item, model, index) {
+    const rows = getSunbirdBackupEvidenceRows(item.evidence, model);
+    return `
+        <div class="sunbird-id-insight-evidence" onclick="event.stopPropagation()">
+            <p>${rows.length} evidence item${rows.length === 1 ? '' : 's'} matched this backup signal.</p>
+            <div class="sunbird-id-insight-evidence-list">
+                ${rows.slice(0, 4).map(row => `
+                    <div>
+                        <strong>${escapeIdentityText(row.title)}</strong>
+                        <span>${escapeIdentityText(row.subtitle)}</span>
+                        <small>${escapeIdentityText(row.meta)}</small>
+                    </div>
+                `).join('') || '<em>No evidence found.</em>'}
+            </div>
+            ${rows.length > 4 ? `<small>${rows.length - 4} more in full evidence</small>` : ''}
+            <button type="button" onclick="openSunbirdBackupEvidence('${item.evidence}', 'insight-${index}')">Open Evidence</button>
+        </div>
+    `;
+}
+
+function renderSunbirdBackupCharts(model) {
+    const el = document.getElementById('sunbird-backup-charts');
+    if (!el) return;
+    const buckets = model.evidence.lastActivityBuckets;
+    el.innerHTML = `
+        ${renderSunbirdPieChart('Storage distribution', [
+            { label: 'OneDrive', value: model.summary.oneDriveStorageGB || 0, tone: 'neutral' },
+            { label: 'SharePoint', value: model.summary.sharePointStorageGB || 0, tone: 'warn' },
+            { label: 'Exchange', value: model.summary.exchangeStorageGB || 0, tone: 'good' }
+        ], Math.max(1, model.summary.totalStorageGB || 0))}
+        ${renderSunbirdDeviceBars('User activity buckets', [
+            { label: '0-7d', value: buckets.recent, tone: 'good' },
+            { label: '8-30d', value: buckets.warm, tone: 'neutral' },
+            { label: '31-90d', value: buckets.stale, tone: 'warn' },
+            { label: '90d+', value: buckets.cold, tone: 'bad' }
+        ], Math.max(1, buckets.recent, buckets.warm, buckets.stale, buckets.cold))}
+        ${renderSunbirdDeviceBars('Service comparison', model.serviceRows.map((row, index) => ({
+            label: row.service,
+            value: row.storageGB,
+            tone: index === 0 ? 'neutral' : index === 1 ? 'warn' : 'good'
+        })), Math.max(1, ...model.serviceRows.map(row => row.storageGB)))}
+        ${renderSunbirdBackupHealthGraph(model)}
+    `;
+    animateSunbirdIdentityCharts();
+}
+
+function renderSunbirdBackupHealthGraph(model) {
+    const coverage = model.scores.backupCoverageScore;
+    const active = model.summary.activeUsersCount || 0;
+    const inactive = model.summary.inactiveUsersCount || 0;
+    const activity = active + inactive ? Math.round((active / (active + inactive)) * 100) : 100;
+    const exposure = Math.max(0, 100 - model.scores.dataExposureRiskScore);
+    return `
+        <article class="sunbird-id-chart-card sunbird-id-health-card">
+            <h3>Recovery posture</h3>
+            ${[
+                { label: 'Coverage', value: coverage, tone: coverage >= 100 ? 'good' : 'warn' },
+                { label: 'Activity', value: activity, tone: activity >= 75 ? 'good' : 'warn' },
+                { label: 'Exposure', value: exposure, tone: exposure >= 70 ? 'good' : 'warn' }
+            ].map(item => `
+                <div class="sunbird-id-health-row">
+                    <span>${item.label}</span>
+                    <div class="sunbird-id-health-track"><div class="sunbird-id-health-fill tone-${item.tone}" style="width:${item.value}%"></div></div>
+                    <strong>${item.value}%</strong>
+                </div>
+            `).join('')}
+        </article>
+    `;
+}
+
+function renderSunbirdBackupPanels(model) {
+    const el = document.getElementById('sunbird-backup-panels');
+    if (!el) return;
+    el.innerHTML = `
+        ${renderSunbirdBackupFeedPanel('Top 20 users by storage', getSunbirdBackupEvidenceRows('topUsers', model).slice(0, 10))}
+        ${renderSunbirdBackupFeedPanel('Top 10 SharePoint sites', getSunbirdBackupEvidenceRows('topSites', model).slice(0, 10))}
+        ${renderSunbirdBackupFeedPanel('Storage insights', getSunbirdBackupEvidenceRows('insights', model).slice(0, 10))}
+        ${renderSunbirdBackupFeedPanel('Actionable recommendations', getSunbirdBackupEvidenceRows('recommendations', model).slice(0, 10))}
+    `;
+}
+
+function renderSunbirdBackupFeedPanel(title, rows) {
+    return `
+        <article class="sunbird-id-signin-card">
+            <h3>${escapeIdentityText(title)}</h3>
+            <div class="sunbird-id-signin-list">
+                ${rows.length ? rows.map(row => `
+                    <div class="sunbird-id-signin-item">
+                        <div>
+                            <strong>${escapeIdentityText(row.title)}</strong>
+                            <span>${escapeIdentityText(row.subtitle)}</span>
+                            <div class="sunbird-id-issue-tags"><em>${escapeIdentityText(row.meta)}</em></div>
+                        </div>
+                    </div>
+                `).join('') : '<div class="sunbird-id-empty compact">No matching backup evidence.</div>'}
+            </div>
+        </article>
+    `;
+}
+
+function renderSunbirdBackupTable(model = buildSunbirdBackupModel()) {
+    const body = document.getElementById('sunbird-backup-body');
+    if (!body) return;
+    const rows = getFilteredSunbirdBackupRows(model);
+    if (!rows.length) {
+        body.innerHTML = '<tr><td colspan="9" class="sunbird-id-empty">No backup evidence matches the current filters.</td></tr>';
+        return;
+    }
+    body.innerHTML = rows.map(row => `
+        <tr>
+            <td data-label="Service"><span class="sunbird-id-role-list"><span>${escapeIdentityText(row.service)}</span></span></td>
+            <td data-label="Name">${escapeIdentityText(row.name)}</td>
+            <td data-label="Principal / URL">${escapeIdentityText(row.principal)}</td>
+            <td data-label="Storage">${escapeIdentityText(`${row.storageGB} GB`)}</td>
+            <td data-label="Files / Items">${escapeIdentityText(row.itemCount)}</td>
+            <td data-label="Last Activity">${escapeIdentityText(row.lastActivity || 'N/A')}</td>
+            <td data-label="Activity Age">${escapeIdentityText(row.activityAge >= 999 ? 'Unknown' : `${row.activityAge} days`)}</td>
+            <td data-label="Risk"><span class="sunbird-id-risk ${row.risk === 'high' ? 'high' : row.risk === 'medium' ? 'medium' : 'safe'}">${escapeIdentityText(row.risk)}</span></td>
+            <td data-label="Evidence"><button type="button" class="sunbird-id-evidence-btn" onclick='openSunbirdBackupRowEvidence(${JSON.stringify(row.id)})'>Open</button></td>
+        </tr>
+    `).join('');
+}
+
+function getFilteredSunbirdBackupRows(model = buildSunbirdBackupModel()) {
+    const search = sunbirdBackupTableState.search.trim().toLowerCase();
+    return model.rows.filter(row => {
+        const haystack = [row.service, row.name, row.principal, row.lastActivity, row.risk, row.itemCount].join(' ').toLowerCase();
+        if (search && !haystack.includes(search)) return false;
+        if (sunbirdBackupTableState.service !== 'all' && row.service !== sunbirdBackupTableState.service) return false;
+        if (sunbirdBackupTableState.activity !== 'all') {
+            const activeState = row.activityAge <= 30 ? 'active' : 'inactive';
+            if (activeState !== sunbirdBackupTableState.activity) return false;
+        }
+        return true;
+    }).sort((a, b) => {
+        if (sunbirdBackupTableState.sort === 'activity') return a.activityAge - b.activityAge;
+        if (sunbirdBackupTableState.sort === 'service') return a.service.localeCompare(b.service);
+        return b.storageGB - a.storageGB;
+    });
+}
+
+function buildSunbirdBackupRows(data) {
+    const rows = [];
+    (data.storage.users || []).forEach((user, index) => {
+        const service = user.items !== undefined ? 'Exchange' : 'OneDrive';
+        const bytes = Number(user.storage || 0);
+        const storageGB = Number((bytes / (1024 ** 3)).toFixed(2));
+        const lastActivity = user.lastActivity || '';
+        rows.push({
+            id: `${service}-${index}-${user.user}`,
+            service,
+            name: user.displayName || user.user || 'Unknown user',
+            principal: user.user || 'N/A',
+            storageGB,
+            itemCount: service === 'Exchange' ? `${user.items || 0} items` : `${user.files || 0} files`,
+            lastActivity,
+            activityAge: getSunbirdBackupActivityAge(lastActivity),
+            risk: getSunbirdBackupRowRisk(storageGB, lastActivity),
+            raw: user
+        });
+    });
+    (data.storage.sites || []).forEach((site, index) => {
+        const bytes = Number(site.storage || 0);
+        const storageGB = Number((bytes / (1024 ** 3)).toFixed(2));
+        const lastActivity = site.lastActivity || '';
+        rows.push({
+            id: `SharePoint-${index}-${site.url || site.owner}`,
+            service: 'SharePoint',
+            name: site.owner || 'SharePoint site',
+            principal: site.url || 'N/A',
+            storageGB,
+            itemCount: `${site.files || 0} files`,
+            lastActivity,
+            activityAge: getSunbirdBackupActivityAge(lastActivity),
+            risk: getSunbirdBackupRowRisk(storageGB, lastActivity),
+            raw: site
+        });
+    });
+    return rows;
+}
+
+function getSunbirdBackupActivityAge(value) {
+    if (!value) return 999;
+    const time = new Date(value).getTime();
+    if (!Number.isFinite(time)) return 999;
+    return Math.max(0, Math.floor((Date.now() - time) / (24 * 60 * 60 * 1000)));
+}
+
+function getSunbirdBackupRowRisk(storageGB, lastActivity) {
+    const age = getSunbirdBackupActivityAge(lastActivity);
+    if (age > 90 || storageGB >= 50) return 'high';
+    if (age > 30 || storageGB >= 20) return 'medium';
+    return 'safe';
+}
+
+function buildSunbirdBackupActivityBuckets(rows) {
+    return rows.reduce((acc, row) => {
+        if (row.activityAge <= 7) acc.recent += 1;
+        else if (row.activityAge <= 30) acc.warm += 1;
+        else if (row.activityAge <= 90) acc.stale += 1;
+        else acc.cold += 1;
+        return acc;
+    }, { recent: 0, warm: 0, stale: 0, cold: 0 });
+}
+
+function buildSunbirdBackupRecommendations(model, evidence) {
+    const recs = [];
+    if (!model.summary.backupConfigured) {
+        recs.push({ priority: 'critical', title: 'Validate external backup coverage', detail: 'Microsoft-native retention is visible, but external backup status is not confirmed by current Graph report data.' });
+    }
+    if (evidence.inactiveRows.length) {
+        recs.push({ priority: 'high', title: 'Review inactive users holding data', detail: `${evidence.inactiveRows.length} inactive or stale owner(s) still hold recoverable data.` });
+    }
+    if (evidence.highStorageRows.length) {
+        recs.push({ priority: 'medium', title: 'Monitor large storage holders', detail: `${evidence.highStorageRows.length} user/site record(s) exceed storage risk thresholds.` });
+    }
+    if (evidence.backupCoverageScore < 100) {
+        recs.push({ priority: 'medium', title: 'Improve service coverage', detail: `${model.summary.servicesCovered || 0} of 3 Microsoft 365 service areas are currently represented.` });
+    }
+    if (!recs.length) {
+        recs.push({ priority: 'low', title: 'Maintain backup evidence baseline', detail: 'Storage, activity, and service coverage are currently stable in cached Graph report data.' });
+    }
+    return recs;
+}
+
+function getSunbirdBackupEvidenceRows(evidenceKey, model = buildSunbirdBackupModel()) {
+    if (evidenceKey === 'serviceRows') {
+        return model.serviceRows.map(row => ({ title: row.service, subtitle: `${row.storageGB || 0} GB`, meta: 'Microsoft Graph storage report' }));
+    }
+    if (evidenceKey === 'insights') {
+        return (model.insights || []).map(item => ({ title: item.message || item.type || 'Insight', subtitle: item.detail || 'Backup insight', meta: item.type || 'info' }));
+    }
+    if (evidenceKey === 'recommendations') {
+        return model.recommendations.map(item => ({ title: item.title, subtitle: item.detail, meta: item.priority || 'medium' }));
+    }
+    if (evidenceKey === 'lastActivityBuckets') {
+        const buckets = model.evidence.lastActivityBuckets;
+        return Object.entries(buckets).map(([label, value]) => ({ title: label, subtitle: `${value} record(s)`, meta: 'Last activity age bucket' }));
+    }
+    const rows = model.evidence[evidenceKey] || model.rows || [];
+    return rows.map(row => ({
+        title: row.name || row.service || 'Backup evidence',
+        subtitle: row.principal || `${row.storageGB || 0} GB`,
+        meta: `${row.service || ''} | ${row.storageGB || 0} GB | ${row.lastActivity || 'No activity'}`
+    }));
+}
+
+function openSunbirdBackupEvidence(evidenceKey) {
+    const model = buildSunbirdBackupModel();
+    const rows = getSunbirdBackupEvidenceRows(evidenceKey, model);
+    const modal = document.getElementById('sunbird-backup-evidence-modal');
+    if (!modal) return;
+    const titleMap = {
+        serviceRows: 'Storage by Service Evidence',
+        inactiveRows: 'Inactive Users Holding Data',
+        highStorageRows: 'Storage Growth Risk',
+        staleRows: 'Last Activity Risk',
+        topUsers: 'Top Users by Storage',
+        topSites: 'Top SharePoint Sites by Storage',
+        insights: 'Storage Insights',
+        recommendations: 'Actionable Recommendations'
+    };
+    modal.innerHTML = `
+        <div class="sunbird-id-modal-backdrop" onclick="closeSunbirdBackupEvidence()"></div>
+        <div class="sunbird-id-modal-panel" role="dialog" aria-modal="true">
+            <div class="sunbird-id-modal-header">
+                <div>
+                    <h3>${escapeIdentityText(titleMap[evidenceKey] || 'Backup Evidence')}</h3>
+                    <p>${rows.length} evidence item${rows.length === 1 ? '' : 's'} matched this set.</p>
+                </div>
+                <button type="button" onclick="closeSunbirdBackupEvidence()" class="sunbird-id-modal-close">&times;</button>
+            </div>
+            <div class="sunbird-id-evidence-summary">
+                <span>Total storage: ${model.summary.totalStorageGB || 0} GB</span>
+                <span>Active users: ${model.summary.activeUsersCount || 0}</span>
+                <span>Coverage: ${model.scores.backupCoverageScore}%</span>
+            </div>
+            <div class="sunbird-id-evidence-list">
+                ${rows.length ? rows.slice(0, 120).map(row => `
+                    <div class="sunbird-id-evidence-user">
+                        <strong>${escapeIdentityText(row.title)}</strong>
+                        <span>${escapeIdentityText(row.subtitle)}</span>
+                        <small>${escapeIdentityText(row.meta)}</small>
+                    </div>
+                `).join('') : '<div class="sunbird-id-empty">No evidence found for this item.</div>'}
+            </div>
+            <div class="sunbird-id-modal-actions">
+                <button type="button" class="sunbird-id-evidence-btn" onclick="closeSunbirdBackupEvidence()">Close</button>
+            </div>
+        </div>
+    `;
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+}
+
+function openSunbirdBackupRowEvidence(rowId) {
+    const model = buildSunbirdBackupModel();
+    const row = model.rows.find(item => item.id === rowId);
+    if (!row) return;
+    openSunbirdBackupRowsModal(row.name, [{
+        title: row.name,
+        subtitle: row.principal,
+        meta: `${row.service} | ${row.storageGB} GB | ${row.itemCount} | Last activity: ${row.lastActivity || 'N/A'} | Risk: ${row.risk}`
+    }]);
+}
+
+function openSunbirdBackupRowsModal(title, rows) {
+    const modal = document.getElementById('sunbird-backup-evidence-modal');
+    if (!modal) return;
+    modal.innerHTML = `
+        <div class="sunbird-id-modal-backdrop" onclick="closeSunbirdBackupEvidence()"></div>
+        <div class="sunbird-id-modal-panel" role="dialog" aria-modal="true">
+            <div class="sunbird-id-modal-header">
+                <div><h3>${escapeIdentityText(title)}</h3><p>${rows.length} evidence item${rows.length === 1 ? '' : 's'}.</p></div>
+                <button type="button" onclick="closeSunbirdBackupEvidence()" class="sunbird-id-modal-close">&times;</button>
+            </div>
+            <div class="sunbird-id-evidence-list">
+                ${rows.map(row => `<div class="sunbird-id-evidence-user"><strong>${escapeIdentityText(row.title)}</strong><span>${escapeIdentityText(row.subtitle)}</span><small>${escapeIdentityText(row.meta)}</small></div>`).join('')}
+            </div>
+            <div class="sunbird-id-modal-actions"><button type="button" class="sunbird-id-evidence-btn" onclick="closeSunbirdBackupEvidence()">Close</button></div>
+        </div>
+    `;
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeSunbirdBackupEvidence() {
+    const modal = document.getElementById('sunbird-backup-evidence-modal');
+    if (!modal) return;
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+}
+
+function toggleSunbirdBackupInsightEvidenceLock(evidenceKey) {
+    const tile = document.querySelector(`.sunbird-id-insight[data-backup-evidence-key="${evidenceKey}"]`);
+    if (!tile) return;
+    const shouldLock = lockedSunbirdBackupInsightEvidenceKey !== evidenceKey;
+    document.querySelectorAll('.sunbird-id-insight.locked').forEach(item => item.classList.remove('locked'));
+    lockedSunbirdBackupInsightEvidenceKey = shouldLock ? evidenceKey : null;
+    if (shouldLock) tile.classList.add('locked');
+}
+
+function handleSunbirdBackupInsightEvidenceKey(event, evidenceKey) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    toggleSunbirdBackupInsightEvidenceLock(evidenceKey);
+}
+
+function exportSunbirdBackupCsv() {
+    const rows = getFilteredSunbirdBackupRows(buildSunbirdBackupModel());
+    const header = ['Service', 'Name', 'Principal', 'StorageGB', 'Items', 'LastActivity', 'ActivityAge', 'Risk'];
+    const csv = [
+        header.join(','),
+        ...rows.map(row => [row.service, row.name, row.principal, row.storageGB, row.itemCount, row.lastActivity, row.activityAge, row.risk]
+            .map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `backup-recovery-evidence-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+}
+
+function updateBackupProjectCardFromData(data) {
+    const project = mockProjects.find(p => p.isBackupRecoveryCard);
+    if (!project) return;
+    const model = buildSunbirdBackupModel(data);
+    project.status = 'active';
+    project.cardMetrics = [
+        { label: 'Total Storage', value: `: ${model.summary.totalStorageGB || 0} GB`, icon: 'fas fa-database' },
+        { label: 'Active Users', value: `: ${model.summary.activeUsersCount || 0}`, icon: 'fas fa-users' },
+        { label: 'Inactive Users', value: `: ${model.summary.inactiveUsersCount || 0}`, icon: 'fas fa-user-clock' },
+        { label: 'Coverage Score', value: `: ${model.scores.backupCoverageScore}%`, icon: 'fas fa-cloud' }
+    ];
+    project.cardFooter = `${model.summary.servicesCovered || 0}/3 services covered | ${model.summary.totalStorageGB || 0} GB`;
+    project.risks = {
+        critical: model.recommendations.filter(item => item.priority === 'critical').length,
+        high: model.recommendations.filter(item => item.priority === 'high').length,
+        medium: model.recommendations.filter(item => item.priority === 'medium').length
+    };
+    project.lastUpdate = new Date().toLocaleTimeString();
+    saveProjectCardToCache(project);
+    if (currentProject?.id === project.id) displayCurrentProject();
+}
+
+window.openSunbirdBackupDashboard = openSunbirdBackupDashboard;
+window.openSunbirdBackupEvidence = openSunbirdBackupEvidence;
+window.openSunbirdBackupRowEvidence = openSunbirdBackupRowEvidence;
+window.closeSunbirdBackupEvidence = closeSunbirdBackupEvidence;
+window.toggleSunbirdBackupInsightEvidenceLock = toggleSunbirdBackupInsightEvidenceLock;
+window.handleSunbirdBackupInsightEvidenceKey = handleSunbirdBackupInsightEvidenceKey;
 
 // Initialize  Identity Protection dashboard
 function initializeIdentityDashboard() {
@@ -7307,7 +7988,6 @@ function setupEventListeners() {
     const verifyMfaBtn = document.getElementById('verify-mfa-btn');
     const resendCodeLink = document.getElementById('resend-code-link');
     const backToLoginLink = document.getElementById('back-to-login');
-    const backBtnBackupRecovery = document.getElementById('btn-back-backup-recovery');
 
     if (loginForm) {
         loginForm.addEventListener('submit', handleLogin);
@@ -7371,7 +8051,6 @@ function setupEventListeners() {
     }
 
     // Back buttons for full dashboards (non-generic views)
-    if (backBtnBackupRecovery) backBtnBackupRecovery.addEventListener('click', goBackToProjects);
 
     if (passwordToggle) {
         passwordToggle.addEventListener('click', togglePasswordVisibility);
@@ -9356,6 +10035,7 @@ function buildProjectPreviewModel(project) {
     if (project.isDevicesCard) return buildDevicesPreviewModel(project);
     if (project.isEmailSecurityCard) return buildEmailPreviewModel(project);
     if (project.isApplicationsCard) return buildApplicationsPreviewModel(project);
+    if (project.isBackupRecoveryCard) return buildBackupPreviewModel(project);
 
     return {
         topMetrics: [
@@ -9523,6 +10203,36 @@ function buildEmailPreviewModel() {
         ],
         keyInsight,
         miniFeed: feed
+    };
+}
+
+function buildBackupPreviewModel() {
+    const data = normalizeSunbirdBackupData(cachedSunbirdBackupData || {});
+    const model = buildSunbirdBackupModel(data);
+    const summary = model.summary || {};
+    const topRows = model.rows.slice().sort((a, b) => b.storageGB - a.storageGB).slice(0, 3);
+    const keyInsight = model.evidence.inactiveRows.length
+        ? `${model.evidence.inactiveRows.length} inactive or stale owners hold recoverable data`
+        : model.summary.totalStorageGB
+            ? `${model.summary.totalStorageGB} GB represented across Microsoft 365 reports`
+            : 'Backup and recovery evidence is awaiting cached Graph report data';
+    return {
+        topMetrics: [
+            { label: 'Total Storage', value: `${summary.totalStorageGB || 0} GB`, icon: 'fas fa-database', tone: 'info' },
+            { label: 'OneDrive', value: `${summary.oneDriveStorageGB || 0} GB`, icon: 'fas fa-cloud', tone: 'info' },
+            { label: 'SharePoint', value: `${summary.sharePointStorageGB || 0} GB`, icon: 'fas fa-sitemap', tone: 'warning' },
+            { label: 'Exchange', value: `${summary.exchangeStorageGB || 0} GB`, icon: 'fas fa-envelope', tone: 'success' }
+        ],
+        riskBreakdown: [
+            { label: 'High', value: model.evidence.staleRows.length, tone: 'critical' },
+            { label: 'Medium', value: model.evidence.highStorageRows.length, tone: 'high' },
+            { label: 'Coverage', value: `${model.scores.backupCoverageScore}%`, tone: 'medium' }
+        ],
+        keyInsight,
+        miniFeed: topRows.map(row => ({
+            icon: row.service === 'SharePoint' ? 'fas fa-sitemap' : row.service === 'Exchange' ? 'fas fa-envelope' : 'fas fa-cloud',
+            text: `${row.name}: ${row.storageGB} GB (${row.service})`
+        }))
     };
 }
 
@@ -10000,6 +10710,7 @@ async function fetchSunbirdBackupRecoveryData() {
     if (!token) throw new Error('Authentication required');
 
     const response = await fetch('/api/db/backup-recovery', {
+        cache: 'no-store',
         headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
@@ -10015,6 +10726,19 @@ async function fetchSunbirdBackupRecoveryData() {
         throw new Error(data.message || 'Invalid backup response');
     }
     return data;
+}
+
+async function fetchBackupCardData() {
+    const project = mockProjects.find(p => p.isBackupRecoveryCard);
+    if (!project || !isSunbirdUser()) return;
+    try {
+        const data = await fetchSunbirdBackupRecoveryData();
+        cachedSunbirdBackupData = normalizeSunbirdBackupData(data);
+        saveSunbirdBackupSnapshot(cachedSunbirdBackupData);
+        updateBackupProjectCardFromData(cachedSunbirdBackupData);
+    } catch (error) {
+        console.warn('[Backup Card] Unable to load cached backup data:', error.message);
+    }
 }
 
 async function renderSunbirdSecurityAlertsView(forceRefresh = false) {
@@ -10152,6 +10876,7 @@ async function renderSunbirdBackupRecoveryView(forceRefresh = false) {
         }
 
         const data = cachedSunbirdBackupData;
+        updateBackupProjectCardFromData(data);
         const summary = data.summary || {};
         const byService = data.storage?.byService || {};
 
