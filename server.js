@@ -1389,6 +1389,17 @@ async function ensureDatabaseSchema() {
             )
         `);
 
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS ApplicationPayloadCache (
+                ID INT AUTO_INCREMENT PRIMARY KEY,
+                CompanyID INT,
+                Payload LONGTEXT,
+                LastUpdated DATETIME,
+                UNIQUE KEY uq_application_payload_company (CompanyID),
+                FOREIGN KEY (CompanyID) REFERENCES Companies(ID)
+            )
+        `);
+
         // User constraints/indexes for faster login and tenant lookups
         await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_company ON Users(CompanyID)`);
         await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_email ON Users(Email)`);
@@ -4823,6 +4834,75 @@ async function fetchApplicationMetricsFromApi() {
     return { totalApps, externalApps, highRiskApps, highAccessApps };
 }
 
+async function fetchApplicationsPayloadFromApi() {
+    const token = await getMicrosoftGraphToken();
+    const [servicePrincipalsRaw, users, groups] = await Promise.all([
+        fetchMicrosoftServicePrincipals(token),
+        fetchMicrosoftUsers(token),
+        fetchMicrosoftGroups(token)
+    ]);
+
+    const processedApps = await mapWithConcurrency(servicePrincipalsRaw, 5, async (sp) => {
+        const publisherName = sp.publisherName ? sp.publisherName.toLowerCase() : '';
+        const isExternal = !publisherName.includes('microsoft');
+        const scopeCount = sp.oauth2PermissionScopes ? sp.oauth2PermissionScopes.length : 0;
+        const roleCount = sp.appRoles ? sp.appRoles.length : 0;
+        let assignedCount = 0;
+        let assignedGroups = [];
+
+        try {
+            const assignments = await fetchAppRoleAssignments(token, sp.id);
+            assignedCount = assignments.length;
+            assignedGroups = assignments
+                .filter(a => a.principalType === 'Group')
+                .map(a => a.principalDisplayName)
+                .filter((value, index, array) => value && array.indexOf(value) === index);
+        } catch (error) {
+            console.warn(`[Applications] Failed assignments for ${sp.displayName}:`, error.message);
+        }
+
+        return {
+            id: sp.id,
+            name: sp.displayName || 'Unknown App',
+            displayName: sp.displayName || 'Unknown App',
+            type: isExternal ? 'External' : 'Microsoft',
+            isExternal,
+            createdDateTime: sp.createdDateTime,
+            scopeCount,
+            roleCount,
+            userCount: assignedCount,
+            assignedGroups,
+            publisherName: sp.publisherName || 'Unknown'
+        };
+    });
+
+    const totalApplications = processedApps.length;
+    const externalApplications = processedApps.filter(app => app.isExternal).length;
+    const highRiskApps = processedApps.filter(app => app.isExternal || ((app.scopeCount || 0) + (app.roleCount || 0)) > 10 || (app.userCount || 0) > 50).length;
+    const highAccessApps = processedApps.filter(app => (app.userCount || 0) >= 20 || (app.assignedGroups || []).length >= 3).length;
+
+    return {
+        success: true,
+        fetchedAt: new Date().toISOString(),
+        totalApplications,
+        externalApplications,
+        highRiskApps,
+        highAccessApps,
+        applications: processedApps,
+        topAppsByUsers: processedApps.slice().sort((a, b) => (b.userCount || 0) - (a.userCount || 0)).slice(0, 10),
+        userCount: users.length,
+        groupCount: groups.length,
+        summary: {
+            totalApplications,
+            externalApplications,
+            highRiskApps,
+            highAccessApps,
+            userCount: users.length,
+            groupCount: groups.length
+        }
+    };
+}
+
 async function fetchEmailMetricsFromApi() {
     const payload = await fetchEmailSecurityPayloadFromApi();
     return {
@@ -5151,11 +5231,12 @@ async function upsertDashboardMetricCaches() {
     for (const row of rows) {
         const companyId = row.CompanyID;
         try {
-            const [identity, identityDetails, devices, apps, email, emailSecurity, securityEvents, backup] = await Promise.all([
+            const [identity, identityDetails, devices, apps, appPayload, email, emailSecurity, securityEvents, backup] = await Promise.all([
                 fetchIdentityMetricsFromApi(),
                 fetchIdentityDetailsFromApi(),
                 fetchDeviceMetricsFromApi(),
                 fetchApplicationMetricsFromApi(),
+                fetchApplicationsPayloadFromApi(),
                 fetchEmailMetricsFromApi(),
                 fetchEmailSecurityPayloadFromApi(),
                 fetchSecurityEventsPayloadFromApi(),
@@ -5182,6 +5263,11 @@ async function upsertDashboardMetricCaches() {
                 `REPLACE INTO ApplicationMetricsCache (CompanyID, TotalApps, ExternalApps, HighRiskApps, HighAccessApps, LastUpdated)
                  VALUES (?, ?, ?, ?, ?, NOW())`,
                 [companyId, apps.totalApps, apps.externalApps, apps.highRiskApps, apps.highAccessApps]
+            );
+            await pool.query(
+                `REPLACE INTO ApplicationPayloadCache (CompanyID, Payload, LastUpdated)
+                 VALUES (?, ?, NOW())`,
+                [companyId, JSON.stringify(appPayload)]
             );
             await pool.query(
                 `REPLACE INTO EmailMetricsCache (CompanyID, ActiveThreats, HighSeverity, UsersTargeted, OpenIncidents, LastUpdated)
@@ -5407,6 +5493,37 @@ app.get('/api/db/application-metrics', authenticateToken, async (req, res) => {
     }
 });
 
+app.get('/api/db/applications', authenticateToken, async (req, res) => {
+    try {
+        const context = await getAccessContextByUser(req.user);
+        if (!context?.companyId) return res.status(403).json({ success: false, message: 'Access mapping not configured' });
+
+        const [rows] = await pool.query(
+            'SELECT Payload, LastUpdated FROM ApplicationPayloadCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1',
+            [context.companyId]
+        );
+
+        if (rows.length > 0 && rows[0].Payload) {
+            try {
+                const payload = JSON.parse(rows[0].Payload);
+                if (payload && payload.success && Array.isArray(payload.applications)) {
+                    return res.json({ ...payload, source: 'db', fetchedAt: rows[0].LastUpdated });
+                }
+            } catch (_) {}
+        }
+
+        const api = await fetchApplicationsPayloadFromApi();
+        await pool.query(
+            `REPLACE INTO ApplicationPayloadCache (CompanyID, Payload, LastUpdated)
+             VALUES (?, ?, NOW())`,
+            [context.companyId, JSON.stringify(api)]
+        );
+        return res.json({ ...api, source: 'api-fallback' });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 function isBackupRecoveryPayloadComplete(payload) {
     if (!payload || !payload.success || !payload.summary || !payload.storage) return false;
     if (!Array.isArray(payload.storage.sites)) return false;
@@ -5598,83 +5715,8 @@ app.get('/api/microsoft-applications', authenticateToken, async (req, res) => {
             return res.status(403).json({ error: 'Access denied' });
         }
 
-        const token = await getMicrosoftGraphToken();
-
-        // Fetch service principals, users, and groups in parallel
-        const [servicePrincipalsRaw, users, groups] = await Promise.all([
-            fetchMicrosoftServicePrincipals(token),
-            fetchMicrosoftUsers(token),
-            fetchMicrosoftGroups(token)
-        ]);
-
-        // No cap: Process all applications found in the tenant
-        const servicePrincipals = servicePrincipalsRaw;
-
-
-        const processedApps = await mapWithConcurrency(servicePrincipals, 5, async (sp) => {
-            
-            // Detect Type (Microsoft vs External)
-            const publisherName = sp.publisherName ? sp.publisherName.toLowerCase() : '';
-            const isExternal = !publisherName.includes('microsoft');
-            
-            const scopeCount = sp.oauth2PermissionScopes ? sp.oauth2PermissionScopes.length : 0;
-            const roleCount = sp.appRoles ? sp.appRoles.length : 0;
-            
-            let assignedCount = 0;
-            let assignedGroups = [];
-            
-            try {
-                // Fetch app role assignments SAFELY
-                const response = await fetch(`https://graph.microsoft.com/v1.0/servicePrincipals/${sp.id}/appRoleAssignedTo?$top=999`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    const assignments = data.value || [];
-                    assignedCount = assignments.length;
-                    
-                    // Extract Group Names if available
-                    assignedGroups = assignments
-                        .filter(a => a.principalType === 'Group')
-                        .map(a => a.principalDisplayName)
-                        .filter((v, i, a) => a.indexOf(v) === i); // Keep unique
-                } else if (response.status === 429) {
-                    console.warn(`[Graph API] Throttled on app ${sp.displayName}`);
-                }
-            } catch (error) {
-                console.error(`[Microsoft Graph] Failed assignments for ${sp.displayName}`);
-            }
-            
-            return {
-                id: sp.id,
-                name: sp.displayName || 'Unknown App',
-                type: isExternal ? 'External' : 'Microsoft',
-                isExternal: isExternal,
-                createdDateTime: sp.createdDateTime,
-                scopeCount: scopeCount,
-                roleCount: roleCount,
-                userCount: assignedCount,
-                assignedGroups: assignedGroups
-            };
-        });
-
-        // Calculate app statistics
-        const totalApps = processedApps.length;
-        const externalApps = processedApps.filter(app => app.isExternal).length;
-        const topAppsbyUsers = processedApps.sort((a, b) => b.userCount - a.userCount).slice(0, 5);
-
-        res.json({
-            success: true,
-            tenant: tenant.clientId,
-            totalApplications: totalApps,
-            externalApplications: externalApps,
-            applications: processedApps,
-            topAppsByUsers: topAppsbyUsers,
-            userCount: users.length,
-            groupCount: groups.length,
-            fetchedAt: new Date().toISOString()
-        });
+        const payload = await fetchApplicationsPayloadFromApi();
+        res.json({ ...payload, tenant: tenant.clientId, source: 'api' });
 
     } catch (error) {
         console.error('[Microsoft Graph] Error fetching applications:', error);

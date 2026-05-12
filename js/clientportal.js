@@ -158,7 +158,8 @@ function restoreDashboardViewHTML() {
             dashboardView.querySelector('#sunbird-devices-dashboard') ||
             dashboardView.querySelector('#sunbird-email-dashboard') ||
             dashboardView.querySelector('#sunbird-security-dashboard') ||
-            dashboardView.querySelector('#sunbird-backup-dashboard')
+            dashboardView.querySelector('#sunbird-backup-dashboard') ||
+            dashboardView.querySelector('#sunbird-applications-dashboard')
         )
     ) {
         dashboardView.innerHTML = originalDashboardViewHTML;
@@ -204,12 +205,18 @@ function openDashboard(project) {
         return;
     }
 
+    if ((Number(project.id) === 8 || project.isApplicationsCard === true) && isSunbirdUser()) {
+        openSunbirdApplicationsDashboard();
+        return;
+    }
+
     restoreDashboardViewHTML();
     document.getElementById('dashboard-view')?.classList.remove('sunbird-identity-active');
     document.getElementById('dashboard-view')?.classList.remove('sunbird-device-active');
     document.getElementById('dashboard-view')?.classList.remove('sunbird-email-active');
     document.getElementById('dashboard-view')?.classList.remove('sunbird-security-active');
     document.getElementById('dashboard-view')?.classList.remove('sunbird-backup-active');
+    document.getElementById('dashboard-view')?.classList.remove('sunbird-applications-active');
     
     // Get dashboard type with fallback
     const dashboardType = project.dashboardType || "Security"; // RULE 18: Fallback config
@@ -523,6 +530,7 @@ function goBackToProjects() {
         dashboardView.classList.remove('sunbird-email-active');
         dashboardView.classList.remove('sunbird-security-active');
         dashboardView.classList.remove('sunbird-backup-active');
+        dashboardView.classList.remove('sunbird-applications-active');
     }
     
     // Destroy charts
@@ -846,6 +854,10 @@ let microsoftUsersData = [];
 let microsoftRolesData = [];
 let userRolesMap = {}; // Maps userId to array of role names
 let applicationsData = []; // Applications from Microsoft Graph
+const SUNBIRD_APPLICATIONS_CACHE_KEY = 'sunbirdApplicationsDashboardSnapshot';
+let sunbirdApplicationsPayload = null;
+let sunbirdApplicationsTableState = { search: '', type: 'all', risk: 'all', sort: 'risk' };
+let lockedSunbirdApplicationsInsightEvidenceKey = null;
 let servicePrincipalsData = []; // Service Principals for app mapping
 let groupsData = []; // Groups for access mapping
 let sunbirdBillingMenuSelection = 'security';
@@ -1130,23 +1142,37 @@ async function fetchApplicationsData() {
         }
         
         console.log('[Applications] Fetching applications data...');
-        
-        const response = await fetch('/api/db/application-metrics', {
+
+        const payloadResponse = await fetch('/api/db/applications', {
             method: 'GET',
+            cache: 'no-store',
             headers: {
                 'Authorization': `Bearer ${authToken}`,
                 'Content-Type': 'application/json'
             }
         });
-        
-        const data = await response.json();
-        
-        if (!response.ok) {
-            console.error('[Applications] Error:', data.message);
-            showNotification('Failed to load Applications data', false);
-            return;
+
+        if (payloadResponse.ok) {
+            const payloadData = await payloadResponse.json();
+            if (payloadData.success) {
+                sunbirdApplicationsPayload = normalizeSunbirdApplicationsData(payloadData);
+                applicationsData = sunbirdApplicationsPayload.applications;
+                saveSunbirdApplicationsSnapshot(sunbirdApplicationsPayload);
+                populateApplicationsCard(sunbirdApplicationsPayload.summary);
+                return;
+            }
         }
-        
+
+        const response = await fetch('/api/db/application-metrics', {
+            method: 'GET',
+            cache: 'no-store',
+            headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || 'Failed to load application metrics');
         const metrics = data.metrics || {};
         applicationsData = applicationsData || [];
         console.log('[Applications] Loaded DB application metrics');
@@ -2300,6 +2326,7 @@ function openSunbirdIdentityDashboard() {
     dashboardView.classList.remove('sunbird-email-active');
     dashboardView.classList.remove('sunbird-security-active');
     dashboardView.classList.remove('sunbird-backup-active');
+    dashboardView.classList.remove('sunbird-applications-active');
     dashboardView.classList.add('sunbird-identity-active');
 
     const projectName = document.getElementById('project-name');
@@ -2938,6 +2965,7 @@ function openSunbirdDevicesDashboard() {
     dashboardView.classList.remove('sunbird-email-active');
     dashboardView.classList.remove('sunbird-security-active');
     dashboardView.classList.remove('sunbird-backup-active');
+    dashboardView.classList.remove('sunbird-applications-active');
     dashboardView.classList.add('sunbird-device-active');
 
     captureDashboardViewHTML();
@@ -3766,6 +3794,7 @@ function openSunbirdEmailSecurityDashboard() {
     dashboardView.classList.remove('sunbird-device-active');
     dashboardView.classList.remove('sunbird-security-active');
     dashboardView.classList.remove('sunbird-backup-active');
+    dashboardView.classList.remove('sunbird-applications-active');
     dashboardView.classList.add('sunbird-email-active');
 
     captureDashboardViewHTML();
@@ -4748,6 +4777,7 @@ function openSunbirdSecurityDashboard() {
     dashboardView.classList.remove('sunbird-device-active');
     dashboardView.classList.remove('sunbird-email-active');
     dashboardView.classList.remove('sunbird-backup-active');
+    dashboardView.classList.remove('sunbird-applications-active');
     dashboardView.classList.add('sunbird-security-active');
 
     captureDashboardViewHTML();
@@ -6342,6 +6372,422 @@ window.openSunbirdBackupRowEvidence = openSunbirdBackupRowEvidence;
 window.closeSunbirdBackupEvidence = closeSunbirdBackupEvidence;
 window.toggleSunbirdBackupInsightEvidenceLock = toggleSunbirdBackupInsightEvidenceLock;
 window.handleSunbirdBackupInsightEvidenceKey = handleSunbirdBackupInsightEvidenceKey;
+
+function normalizeSunbirdApplicationsData(data = {}) {
+    const payload = data.payload && typeof data.payload === 'object' ? data.payload : data;
+    const apps = (Array.isArray(payload.applications) ? payload.applications : []).map(app => {
+        const assignedGroups = Array.isArray(app.assignedGroups)
+            ? app.assignedGroups.filter(Boolean)
+            : String(app.assignedGroups || '').split(',').map(group => group.trim()).filter(Boolean);
+        const scopeCount = Number(app.scopeCount || app.scopes || 0);
+        const roleCount = Number(app.roleCount || app.roles || 0);
+        const userCount = Number(app.userCount || app.users || app.assignmentCount || 0);
+        const explicitType = String(app.type || '').toLowerCase();
+        const publisherName = String(app.publisherName || '').toLowerCase();
+        const isExternal = explicitType
+            ? explicitType === 'external'
+            : Boolean(app.isExternal || (publisherName && !publisherName.includes('microsoft')));
+        return {
+            ...app,
+            id: app.id || app.spId || app.appId || app.servicePrincipalId || '',
+            name: app.name || app.displayName || 'Unknown App',
+            displayName: app.displayName || app.name || 'Unknown App',
+            type: isExternal ? 'External' : 'Microsoft',
+            isExternal,
+            assignedGroups,
+            scopeCount,
+            roleCount,
+            userCount,
+            publisherName: app.publisherName || 'Unknown'
+        };
+    });
+    const summary = payload.summary || {};
+    const externalApplications = summary.externalApplications ?? payload.externalApplications ?? apps.filter(app => app.isExternal || app.type === 'External').length;
+    const highRiskApps = summary.highRiskApps ?? payload.highRiskApps ?? apps.filter(app => calculateAppRisk(app).level === 'high').length;
+    const highAccessApps = summary.highAccessApps ?? payload.highAccessApps ?? apps.filter(app => (app.userCount || 0) >= 20 || (app.assignedGroups || []).length >= 3).length;
+    return {
+        ...payload,
+        applications: apps,
+        summary: {
+            ...summary,
+            totalApplications: summary.totalApplications ?? payload.totalApplications ?? apps.length,
+            externalApplications,
+            highRiskApps,
+            highAccessApps,
+            userCount: summary.userCount ?? payload.userCount ?? 0,
+            groupCount: summary.groupCount ?? payload.groupCount ?? 0
+        }
+    };
+}
+
+function readSunbirdApplicationsSnapshot() {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(SUNBIRD_APPLICATIONS_CACHE_KEY) || 'null');
+        return parsed?.applications ? parsed : null;
+    } catch (error) {
+        return null;
+    }
+}
+
+function saveSunbirdApplicationsSnapshot(data) {
+    if (!data?.applications) return;
+    localStorage.setItem(SUNBIRD_APPLICATIONS_CACHE_KEY, JSON.stringify({ ...data, savedAt: new Date().toISOString() }));
+}
+
+function buildSunbirdApplicationsModel(data = sunbirdApplicationsPayload || readSunbirdApplicationsSnapshot() || { applications: applicationsData }) {
+    const normalized = normalizeSunbirdApplicationsData(data || {});
+    const apps = normalized.applications.map(app => ({ ...app, risk: calculateAppRisk(app) }));
+    const externalApps = apps.filter(app => app.isExternal || app.type === 'External');
+    const highRiskApps = apps.filter(app => app.risk.level === 'high');
+    const highAccessApps = apps.filter(app => (app.userCount || 0) >= 20 || (app.assignedGroups || []).length >= 3);
+    const excessivePermissionApps = apps.filter(app => ((app.scopeCount || 0) + (app.roleCount || 0)) > 10);
+    const groupAssignedApps = apps.filter(app => (app.assignedGroups || []).length > 0);
+    const governanceScore = calculateSunbirdApplicationsGovernanceScore(apps);
+    return {
+        ...normalized,
+        applications: apps,
+        governanceScore,
+        evidence: {
+            allApps: apps,
+            externalApps,
+            highRiskApps,
+            highAccessApps,
+            excessivePermissionApps,
+            groupAssignedApps,
+            permissionBuckets: buildSunbirdApplicationsPermissionBuckets(apps),
+            recommendations: buildSunbirdApplicationsRecommendations(apps, governanceScore)
+        },
+        summary: {
+            ...normalized.summary,
+            totalApplications: apps.length,
+            externalApplications: externalApps.length,
+            highRiskApps: highRiskApps.length,
+            highAccessApps: highAccessApps.length,
+            excessivePermissionApps: excessivePermissionApps.length,
+            groupAssignedApps: groupAssignedApps.length
+        }
+    };
+}
+
+function openSunbirdApplicationsDashboard() {
+    const dashboardView = document.getElementById('dashboard-view');
+    const projectsView = document.getElementById('projects-view');
+    if (!dashboardView) return;
+    if (projectsView) projectsView.style.display = 'none';
+    dashboardView.style.display = 'block';
+    dashboardView.style.visibility = 'visible';
+    dashboardView.style.opacity = '1';
+    dashboardView.classList.remove('sunbird-identity-active');
+    dashboardView.classList.remove('sunbird-device-active');
+    dashboardView.classList.remove('sunbird-email-active');
+    dashboardView.classList.remove('sunbird-security-active');
+    dashboardView.classList.remove('sunbird-backup-active');
+    dashboardView.classList.add('sunbird-applications-active');
+
+    captureDashboardViewHTML();
+    dashboardView.innerHTML = renderSunbirdApplicationsShell();
+    setupSunbirdApplicationsDashboard();
+
+    const cached = readSunbirdApplicationsSnapshot();
+    if (cached) {
+        sunbirdApplicationsPayload = normalizeSunbirdApplicationsData(cached);
+        applicationsData = sunbirdApplicationsPayload.applications;
+    }
+    renderSunbirdApplicationsDashboard();
+    loadSunbirdApplicationsDashboardData();
+}
+
+function renderSunbirdApplicationsShell() {
+    return `
+        <section class="sunbird-identity-dashboard sunbird-applications-dashboard" id="sunbird-applications-dashboard">
+            <div class="sunbird-id-header">
+                <button id="sunbird-applications-back" class="sunbird-id-back-btn" type="button"><span class="sunbird-id-back-icon" aria-hidden="true">&larr;</span><span>Back</span></button>
+                <div><h2>Applications & Access</h2><p>Enterprise app inventory, access, permissions, and risk evidence.</p></div>
+                <div class="sunbird-id-microsoft-badge" aria-label="Microsoft Solutions"><span class="sunbird-id-ms-logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>Microsoft Solutions</span></div>
+            </div>
+            <div class="sunbird-id-metrics" id="sunbird-applications-metrics"></div>
+            <div class="sunbird-id-insights" id="sunbird-applications-insights"></div>
+            <div class="sunbird-id-charts" id="sunbird-applications-charts"></div>
+            <div class="sunbird-id-signins" id="sunbird-applications-panels"></div>
+            <section class="sunbird-id-table-section">
+                <div class="sunbird-id-table-toolbar">
+                    <input id="sunbird-applications-search" class="sunbird-id-search" type="search" placeholder="Search app, type, group, risk reason">
+                    <select id="sunbird-applications-type-filter" class="sunbird-id-select"><option value="all">All types</option><option value="Microsoft">Microsoft</option><option value="External">External</option></select>
+                    <select id="sunbird-applications-risk-filter" class="sunbird-id-select"><option value="all">All risk</option><option value="high">High</option><option value="safe">Safe</option></select>
+                    <select id="sunbird-applications-sort" class="sunbird-id-select"><option value="risk">Sort risk</option><option value="users">Sort users</option><option value="permissions">Sort permissions</option><option value="created">Sort created</option></select>
+                    <button id="sunbird-applications-clear" class="sunbird-id-clear-btn" type="button">Clear</button>
+                </div>
+                <div class="sunbird-id-table-wrap">
+                    <table class="sunbird-id-table sunbird-applications-table">
+                        <thead><tr><th>App</th><th>Type</th><th>Users</th><th>Groups</th><th>Scopes</th><th>Roles</th><th>Created</th><th>Risk</th><th>Evidence</th></tr></thead>
+                        <tbody id="sunbird-applications-body"></tbody>
+                    </table>
+                </div>
+            </section>
+        </section>
+        <div id="sunbird-applications-evidence-modal" class="sunbird-id-modal" aria-hidden="true"></div>
+    `;
+}
+
+function setupSunbirdApplicationsDashboard() {
+    document.getElementById('sunbird-applications-back')?.addEventListener('click', goBackToProjects);
+    document.getElementById('sunbird-applications-search')?.addEventListener('input', e => { sunbirdApplicationsTableState.search = e.target.value; renderSunbirdApplicationsTable(); });
+    document.getElementById('sunbird-applications-type-filter')?.addEventListener('change', e => { sunbirdApplicationsTableState.type = e.target.value; renderSunbirdApplicationsTable(); });
+    document.getElementById('sunbird-applications-risk-filter')?.addEventListener('change', e => { sunbirdApplicationsTableState.risk = e.target.value; renderSunbirdApplicationsTable(); });
+    document.getElementById('sunbird-applications-sort')?.addEventListener('change', e => { sunbirdApplicationsTableState.sort = e.target.value; renderSunbirdApplicationsTable(); });
+    document.getElementById('sunbird-applications-clear')?.addEventListener('click', () => {
+        sunbirdApplicationsTableState = { search: '', type: 'all', risk: 'all', sort: 'risk' };
+        ['sunbird-applications-search', 'sunbird-applications-type-filter', 'sunbird-applications-risk-filter', 'sunbird-applications-sort'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = id === 'sunbird-applications-sort' ? 'risk' : id === 'sunbird-applications-search' ? '' : 'all';
+        });
+        renderSunbirdApplicationsTable();
+    });
+}
+
+async function loadSunbirdApplicationsDashboardData() {
+    await fetchApplicationsData();
+    renderSunbirdApplicationsDashboard();
+}
+
+function renderSunbirdApplicationsDashboard() {
+    const model = buildSunbirdApplicationsModel();
+    renderSunbirdApplicationsMetrics(model);
+    renderSunbirdApplicationsInsights(model);
+    renderSunbirdApplicationsCharts(model);
+    renderSunbirdApplicationsPanels(model);
+    renderSunbirdApplicationsTable(model);
+}
+
+function renderSunbirdApplicationsMetrics(model) {
+    const el = document.getElementById('sunbird-applications-metrics');
+    if (!el) return;
+    const metrics = [
+        { label: 'Total Apps', value: model.summary.totalApplications, tone: 'neutral', evidence: 'allApps' },
+        { label: 'External Apps', value: model.summary.externalApplications, tone: model.summary.externalApplications ? 'warn' : 'good', evidence: 'externalApps' },
+        { label: 'High Risk Apps', value: model.summary.highRiskApps, tone: model.summary.highRiskApps ? 'bad' : 'good', evidence: 'highRiskApps' },
+        { label: 'Governance Score', value: `${model.governanceScore}%`, tone: model.governanceScore >= 80 ? 'good' : model.governanceScore >= 60 ? 'warn' : 'bad', evidence: 'recommendations' }
+    ];
+    el.innerHTML = metrics.map(metric => `<article class="sunbird-id-metric-card tone-${metric.tone}"><div class="sunbird-id-metric-value">${escapeIdentityText(metric.value)}</div><div class="sunbird-id-metric-label">${escapeIdentityText(metric.label)}</div><button type="button" onclick="openSunbirdApplicationsEvidence('${metric.evidence}')" class="sunbird-id-evidence-btn">View Evidence</button></article>`).join('');
+}
+
+function renderSunbirdApplicationsInsights(model) {
+    const el = document.getElementById('sunbird-applications-insights');
+    if (!el) return;
+    const insights = [
+        { title: 'External apps', value: model.evidence.externalApps.length, evidence: 'externalApps', tone: model.evidence.externalApps.length ? 'bad' : 'good' },
+        { title: 'High access apps', value: model.evidence.highAccessApps.length, evidence: 'highAccessApps', tone: model.evidence.highAccessApps.length ? 'warn' : 'good' },
+        { title: 'Excessive permissions', value: model.evidence.excessivePermissionApps.length, evidence: 'excessivePermissionApps', tone: model.evidence.excessivePermissionApps.length ? 'bad' : 'good' },
+        { title: 'Group-assigned apps', value: model.evidence.groupAssignedApps.length, evidence: 'groupAssignedApps', tone: 'neutral' },
+        { title: 'Users in tenant', value: model.summary.userCount || 0, evidence: 'allApps', tone: 'neutral' },
+        { title: 'Groups in tenant', value: model.summary.groupCount || 0, evidence: 'groupAssignedApps', tone: 'neutral' },
+        { title: 'Recommendations', value: model.evidence.recommendations.length, evidence: 'recommendations', tone: 'warn' }
+    ];
+    el.innerHTML = insights.map((item, index) => `
+        <article class="sunbird-id-insight tone-${item.tone}" role="button" tabindex="0" data-applications-evidence-key="${item.evidence}" onclick="toggleSunbirdApplicationsInsightEvidenceLock('${item.evidence}')" onkeydown="handleSunbirdApplicationsInsightEvidenceKey(event, '${item.evidence}')">
+            <span>${escapeIdentityText(item.title)}</span><strong>${escapeIdentityText(item.value)}</strong>${renderSunbirdApplicationsInsightEvidencePreview(item, model, index)}
+        </article>`).join('');
+}
+
+function renderSunbirdApplicationsInsightEvidencePreview(item, model, index) {
+    const rows = getSunbirdApplicationsEvidenceRows(item.evidence, model);
+    return `<div class="sunbird-id-insight-evidence" onclick="event.stopPropagation()"><p>${rows.length} evidence item${rows.length === 1 ? '' : 's'} matched this app signal.</p><div class="sunbird-id-insight-evidence-list">${rows.slice(0, 4).map(row => `<div><strong>${escapeIdentityText(row.title)}</strong><span>${escapeIdentityText(row.subtitle)}</span><small>${escapeIdentityText(row.meta)}</small></div>`).join('') || '<em>No evidence found.</em>'}</div>${rows.length > 4 ? `<small>${rows.length - 4} more in full evidence</small>` : ''}<button type="button" onclick="openSunbirdApplicationsEvidence('${item.evidence}', 'insight-${index}')">Open Evidence</button></div>`;
+}
+
+function renderSunbirdApplicationsCharts(model) {
+    const el = document.getElementById('sunbird-applications-charts');
+    if (!el) return;
+    const buckets = model.evidence.permissionBuckets;
+    el.innerHTML = `
+        ${renderSunbirdPieChart('Internal vs external apps', [
+            { label: 'Microsoft', value: Math.max(0, model.summary.totalApplications - model.summary.externalApplications), tone: 'good' },
+            { label: 'External', value: model.summary.externalApplications, tone: 'warn' }
+        ], Math.max(1, model.summary.totalApplications))}
+        ${renderSunbirdDeviceBars('Permission risk buckets', [
+            { label: '0-3', value: buckets.low, tone: 'good' },
+            { label: '4-10', value: buckets.medium, tone: 'warn' },
+            { label: '10+', value: buckets.high, tone: 'bad' }
+        ], Math.max(1, buckets.low, buckets.medium, buckets.high))}
+        ${renderSunbirdDeviceBars('High access apps', model.applications.slice().sort((a,b)=>(b.userCount||0)-(a.userCount||0)).slice(0,5).map((app,index)=>({ label: app.name || app.displayName, value: app.userCount || 0, tone: index === 0 ? 'bad' : 'neutral' })), Math.max(1, ...model.applications.map(app => app.userCount || 0)))}
+        ${renderSunbirdApplicationsHealthGraph(model)}
+    `;
+    animateSunbirdIdentityCharts();
+}
+
+function renderSunbirdApplicationsHealthGraph(model) {
+    const externalRatio = model.summary.totalApplications ? Math.round(100 - ((model.summary.externalApplications / model.summary.totalApplications) * 100)) : 100;
+    const permissionScore = model.summary.totalApplications ? Math.round(100 - ((model.evidence.excessivePermissionApps.length / model.summary.totalApplications) * 100)) : 100;
+    return `<article class="sunbird-id-chart-card sunbird-id-health-card"><h3>App governance</h3>${[
+        { label: 'Score', value: model.governanceScore, tone: model.governanceScore >= 80 ? 'good' : 'warn' },
+        { label: 'Internal ratio', value: externalRatio, tone: externalRatio >= 70 ? 'good' : 'warn' },
+        { label: 'Permission hygiene', value: permissionScore, tone: permissionScore >= 80 ? 'good' : 'warn' }
+    ].map(item => `<div class="sunbird-id-health-row"><span>${item.label}</span><div class="sunbird-id-health-track"><div class="sunbird-id-health-fill tone-${item.tone}" style="width:${item.value}%"></div></div><strong>${item.value}%</strong></div>`).join('')}</article>`;
+}
+
+function renderSunbirdApplicationsPanels(model) {
+    const el = document.getElementById('sunbird-applications-panels');
+    if (!el) return;
+    el.innerHTML = `
+        ${renderSunbirdApplicationsFeedPanel('External apps risk panel', getSunbirdApplicationsEvidenceRows('externalApps', model).slice(0, 10))}
+        ${renderSunbirdApplicationsFeedPanel('High access apps', getSunbirdApplicationsEvidenceRows('highAccessApps', model).slice(0, 10))}
+        ${renderSunbirdApplicationsFeedPanel('Permission risk evidence', getSunbirdApplicationsEvidenceRows('excessivePermissionApps', model).slice(0, 10))}
+        ${renderSunbirdApplicationsFeedPanel('Security recommendations', getSunbirdApplicationsEvidenceRows('recommendations', model).slice(0, 10))}
+    `;
+}
+
+function renderSunbirdApplicationsFeedPanel(title, rows) {
+    return `<article class="sunbird-id-signin-card"><h3>${escapeIdentityText(title)}</h3><div class="sunbird-id-signin-list">${rows.length ? rows.map(row => `<div class="sunbird-id-signin-item"><div><strong>${escapeIdentityText(row.title)}</strong><span>${escapeIdentityText(row.subtitle)}</span><div class="sunbird-id-issue-tags"><em>${escapeIdentityText(row.meta)}</em></div></div></div>`).join('') : '<div class="sunbird-id-empty compact">No matching application evidence.</div>'}</div></article>`;
+}
+
+function renderSunbirdApplicationsTable(model = buildSunbirdApplicationsModel()) {
+    const body = document.getElementById('sunbird-applications-body');
+    if (!body) return;
+    const apps = getFilteredSunbirdApplications(model);
+    if (!apps.length) {
+        body.innerHTML = '<tr><td colspan="9" class="sunbird-id-empty">No applications match the current filters.</td></tr>';
+        return;
+    }
+    body.innerHTML = apps.map(app => {
+        const permissions = (app.scopeCount || 0) + (app.roleCount || 0);
+        return `<tr><td data-label="App">${escapeIdentityText(app.name || app.displayName || 'Unknown App')}</td><td data-label="Type"><span class="sunbird-id-pill">${escapeIdentityText(app.type || 'Unknown')}</span></td><td data-label="Users">${app.userCount || 0}</td><td data-label="Groups">${(app.assignedGroups || []).length}</td><td data-label="Scopes">${app.scopeCount || 0}</td><td data-label="Roles">${app.roleCount || 0}</td><td data-label="Created">${escapeIdentityText(formatSunbirdDeviceDate(app.createdDateTime))}</td><td data-label="Risk"><span class="sunbird-id-risk ${app.risk.level === 'high' ? 'high' : 'safe'}">${escapeIdentityText(app.risk.level)}</span></td><td data-label="Evidence"><button type="button" class="sunbird-id-evidence-btn" onclick='openSunbirdApplicationAppEvidence(${JSON.stringify(app.id)})'>Open</button></td></tr>`;
+    }).join('');
+}
+
+function getFilteredSunbirdApplications(model = buildSunbirdApplicationsModel()) {
+    const search = sunbirdApplicationsTableState.search.trim().toLowerCase();
+    return model.applications.filter(app => {
+        const permissions = (app.scopeCount || 0) + (app.roleCount || 0);
+        const haystack = [app.name, app.displayName, app.type, app.publisherName, app.risk.reasons.join(' '), (app.assignedGroups || []).join(' '), permissions].join(' ').toLowerCase();
+        if (search && !haystack.includes(search)) return false;
+        if (sunbirdApplicationsTableState.type !== 'all' && app.type !== sunbirdApplicationsTableState.type) return false;
+        if (sunbirdApplicationsTableState.risk !== 'all' && app.risk.level !== sunbirdApplicationsTableState.risk) return false;
+        return true;
+    }).sort((a, b) => {
+        if (sunbirdApplicationsTableState.sort === 'users') return (b.userCount || 0) - (a.userCount || 0);
+        if (sunbirdApplicationsTableState.sort === 'permissions') return ((b.scopeCount || 0) + (b.roleCount || 0)) - ((a.scopeCount || 0) + (a.roleCount || 0));
+        if (sunbirdApplicationsTableState.sort === 'created') return new Date(b.createdDateTime || 0) - new Date(a.createdDateTime || 0);
+        return (a.risk.level === 'high' ? -1 : 1) - (b.risk.level === 'high' ? -1 : 1);
+    });
+}
+
+function getSunbirdApplicationsEvidenceRows(evidenceKey, model = buildSunbirdApplicationsModel()) {
+    if (evidenceKey === 'permissionBuckets') {
+        const b = model.evidence.permissionBuckets;
+        return [{ title: '0-3 permissions', subtitle: `${b.low} app(s)`, meta: 'Low' }, { title: '4-10 permissions', subtitle: `${b.medium} app(s)`, meta: 'Medium' }, { title: '10+ permissions', subtitle: `${b.high} app(s)`, meta: 'High' }];
+    }
+    if (evidenceKey === 'recommendations') return model.evidence.recommendations.map(item => ({ title: item.title, subtitle: item.detail, meta: item.priority }));
+    return (model.evidence[evidenceKey] || model.applications || []).map(app => ({ title: app.name || app.displayName || 'Application', subtitle: `${app.type || 'Unknown'} | ${app.userCount || 0} users | ${(app.assignedGroups || []).length} groups`, meta: `${(app.scopeCount || 0) + (app.roleCount || 0)} permissions | ${app.risk?.reasons?.join(', ') || 'Evidence'}` }));
+}
+
+function openSunbirdApplicationsEvidence(evidenceKey) {
+    const model = buildSunbirdApplicationsModel();
+    const rows = getSunbirdApplicationsEvidenceRows(evidenceKey, model);
+    const modal = ensureSunbirdApplicationsEvidenceModal();
+    if (!modal) return;
+    modal.innerHTML = `<div class="sunbird-id-modal-backdrop" onclick="closeSunbirdApplicationsEvidence()"></div><div class="sunbird-id-modal-panel" role="dialog" aria-modal="true"><div class="sunbird-id-modal-header"><div><h3>${escapeIdentityText(evidenceKey)}</h3><p>${rows.length} evidence item${rows.length === 1 ? '' : 's'} matched this set.</p></div><button type="button" onclick="closeSunbirdApplicationsEvidence()" class="sunbird-id-modal-close">&times;</button></div><div class="sunbird-id-evidence-summary"><span>Total apps: ${model.summary.totalApplications}</span><span>External: ${model.summary.externalApplications}</span><span>Score: ${model.governanceScore}%</span></div><div class="sunbird-id-evidence-list">${rows.map(row => `<div class="sunbird-id-evidence-user"><strong>${escapeIdentityText(row.title)}</strong><span>${escapeIdentityText(row.subtitle)}</span><small>${escapeIdentityText(row.meta)}</small></div>`).join('') || '<div class="sunbird-id-empty">No evidence found.</div>'}</div><div class="sunbird-id-modal-actions"><button type="button" class="sunbird-id-evidence-btn" onclick="closeSunbirdApplicationsEvidence()">Close</button></div></div>`;
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+}
+
+async function openSunbirdApplicationAppEvidence(appId) {
+    const model = buildSunbirdApplicationsModel();
+    const app = model.applications.find(item => item.id === appId);
+    if (!app) return;
+    let detail = null;
+    try {
+        const token = localStorage.getItem('authToken');
+        const response = await fetch(`/api/app-access/${appId}`, { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } });
+        if (response.ok) detail = await response.json();
+    } catch (_) {}
+    const directUsers = Number(detail?.users ?? app.userCount ?? 0);
+    const groups = Array.isArray(detail?.groups) ? detail.groups : (app.assignedGroups || []);
+    const totalAssignments = Number(detail?.totalAssignments ?? app.userCount ?? 0);
+    const rows = [{
+        title: app.name || app.displayName || 'Application',
+        subtitle: `${app.type} | ${directUsers} direct users | ${groups.length} groups | ${totalAssignments} total assignments`,
+        meta: `${(app.scopeCount || 0) + (app.roleCount || 0)} permissions | ${groups.length ? `Groups: ${groups.join(', ')}` : app.risk.reasons.join(', ')}`
+    }];
+    openSunbirdApplicationsRowsModal(app.name || 'Application evidence', rows);
+}
+
+function openSunbirdApplicationsRowsModal(title, rows) {
+    const modal = ensureSunbirdApplicationsEvidenceModal();
+    if (!modal) return;
+    modal.innerHTML = `<div class="sunbird-id-modal-backdrop" onclick="closeSunbirdApplicationsEvidence()"></div><div class="sunbird-id-modal-panel" role="dialog" aria-modal="true"><div class="sunbird-id-modal-header"><div><h3>${escapeIdentityText(title)}</h3><p>${rows.length} evidence item${rows.length === 1 ? '' : 's'}.</p></div><button type="button" onclick="closeSunbirdApplicationsEvidence()" class="sunbird-id-modal-close">&times;</button></div><div class="sunbird-id-evidence-list">${rows.map(row => `<div class="sunbird-id-evidence-user"><strong>${escapeIdentityText(row.title)}</strong><span>${escapeIdentityText(row.subtitle)}</span><small>${escapeIdentityText(row.meta)}</small></div>`).join('')}</div><div class="sunbird-id-modal-actions"><button type="button" class="sunbird-id-evidence-btn" onclick="closeSunbirdApplicationsEvidence()">Close</button></div></div>`;
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeSunbirdApplicationsEvidence() {
+    const modal = document.getElementById('sunbird-applications-evidence-modal');
+    if (!modal) return;
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+}
+
+function ensureSunbirdApplicationsEvidenceModal() {
+    let modal = document.getElementById('sunbird-applications-evidence-modal');
+    if (modal) return modal;
+    modal = document.createElement('div');
+    modal.id = 'sunbird-applications-evidence-modal';
+    modal.className = 'sunbird-id-modal';
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(modal);
+    return modal;
+}
+
+function toggleSunbirdApplicationsInsightEvidenceLock(evidenceKey) {
+    const tile = document.querySelector(`.sunbird-id-insight[data-applications-evidence-key="${evidenceKey}"]`);
+    if (!tile) return;
+    const shouldLock = lockedSunbirdApplicationsInsightEvidenceKey !== evidenceKey;
+    document.querySelectorAll('.sunbird-id-insight.locked').forEach(item => item.classList.remove('locked'));
+    lockedSunbirdApplicationsInsightEvidenceKey = shouldLock ? evidenceKey : null;
+    if (shouldLock) tile.classList.add('locked');
+}
+
+function handleSunbirdApplicationsInsightEvidenceKey(event, evidenceKey) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    toggleSunbirdApplicationsInsightEvidenceLock(evidenceKey);
+}
+
+function buildSunbirdApplicationsPermissionBuckets(apps) {
+    return apps.reduce((acc, app) => {
+        const permissions = (app.scopeCount || 0) + (app.roleCount || 0);
+        if (permissions > 10) acc.high += 1;
+        else if (permissions >= 4) acc.medium += 1;
+        else acc.low += 1;
+        return acc;
+    }, { low: 0, medium: 0, high: 0 });
+}
+
+function calculateSunbirdApplicationsGovernanceScore(apps) {
+    if (!apps.length) return 100;
+    const externalRatio = apps.filter(app => app.isExternal || app.type === 'External').length / apps.length;
+    const highAccessRatio = apps.filter(app => (app.userCount || 0) > 50).length / apps.length;
+    const permissionRatio = apps.filter(app => ((app.scopeCount || 0) + (app.roleCount || 0)) > 10).length / apps.length;
+    const groupRatio = apps.filter(app => (app.assignedGroups || []).length > 0).length / apps.length;
+    return Math.max(0, Math.round(100 - ((externalRatio * 35) + (highAccessRatio * 25) + (permissionRatio * 25) + (groupRatio * 10))));
+}
+
+function buildSunbirdApplicationsRecommendations(apps, score) {
+    const recs = [];
+    const external = apps.filter(app => app.isExternal || app.type === 'External').length;
+    const excessive = apps.filter(app => ((app.scopeCount || 0) + (app.roleCount || 0)) > 10).length;
+    const highAccess = apps.filter(app => (app.userCount || 0) > 50).length;
+    if (external) recs.push({ priority: 'high', title: 'Review external enterprise apps', detail: `${external} external app(s) are connected.` });
+    if (excessive) recs.push({ priority: 'high', title: 'Review excessive permissions', detail: `${excessive} app(s) have more than 10 permissions.` });
+    if (highAccess) recs.push({ priority: 'medium', title: 'Validate high access apps', detail: `${highAccess} app(s) have broad user access.` });
+    if (!recs.length) recs.push({ priority: 'low', title: 'Maintain application governance', detail: `Governance score is ${score}%.` });
+    return recs;
+}
+
+window.openSunbirdApplicationsDashboard = openSunbirdApplicationsDashboard;
+window.openSunbirdApplicationsEvidence = openSunbirdApplicationsEvidence;
+window.openSunbirdApplicationAppEvidence = openSunbirdApplicationAppEvidence;
+window.closeSunbirdApplicationsEvidence = closeSunbirdApplicationsEvidence;
+window.toggleSunbirdApplicationsInsightEvidenceLock = toggleSunbirdApplicationsInsightEvidenceLock;
+window.handleSunbirdApplicationsInsightEvidenceKey = handleSunbirdApplicationsInsightEvidenceKey;
 
 // Initialize  Identity Protection dashboard
 function initializeIdentityDashboard() {
@@ -11033,67 +11479,13 @@ async function renderSunbirdApplicationsView(forceRefresh = false) {
 
     try {
         if (!isSunbirdBillingViewActive('applications')) return;
-        billingCard.innerHTML = renderSunbirdPremiumLoader('Loading applications');
+        billingCard.innerHTML = renderSunbirdApplicationsBillingMarkup(buildSunbirdApplicationsModel());
 
-        // Fetch app data if it doesn't exist yet or if forced
-        if (forceRefresh || applicationsData.length === 0) {
+        if (forceRefresh || !sunbirdApplicationsPayload) {
             await fetchApplicationsData();
         }
-
-        const apps = applicationsData || [];
-        const totalApps = apps.length;
-        const externalApps = apps.filter(a => a.isExternal).length;
-        
-        // Use your simple risk logic helper!
-        const highRiskApps = apps.filter(a => calculateAppRisk(a).level === 'high').length;
-
-        // Sort by users (descending) and get top 5
-        const topApps = [...apps]
-            .sort((a, b) => (b.userCount || 0) - (a.userCount || 0))
-            .slice(0, 5);
-
-        const topAppsHtml = topApps.length > 0 
-            ? topApps.map(app => `
-                <div class="sunbird-storage-row">
-                    <span>${app.name || 'Unknown App'} <small style="color: #64748b; margin-left: 6px;">(${app.type})</small></span>
-                    <strong>${app.userCount || 0} Users</strong>
-                </div>
-            `).join('')
-            : '<div class="sunbird-empty-row" style="padding: 20px;">No application user data found</div>';
-
         if (!isSunbirdBillingViewActive('applications')) return;
-        
-        // We use grid-template-columns: repeat(3, 1fr) to fit the 3 stats evenly
-        billingCard.innerHTML = `
-            <div class="sunbird-panel-view">
-                <div class="billing-card-header">
-                    <i class="fas fa-cubes"></i>
-                    <h3>Applications & Access</h3>
-                </div>
-
-                <div class="sunbird-mini-stats" style="grid-template-columns: repeat(3, 1fr);">
-                    <div class="sunbird-mini-stat">
-                        <span>Total Apps</span>
-                        <strong>${totalApps}</strong>
-                    </div>
-                    <div class="sunbird-mini-stat">
-                        <span>External Apps</span>
-                        <strong>${externalApps}</strong>
-                    </div>
-                    <div class="sunbird-mini-stat" style="${highRiskApps > 0 ? 'background: rgba(239, 68, 68, 0.08); border-color: rgba(239, 68, 68, 0.3);' : ''}">
-                        <span style="${highRiskApps > 0 ? 'color: #fca5a5;' : ''}">High Risk Apps</span>
-                        <strong style="${highRiskApps > 0 ? 'color: #f87171;' : ''}">${highRiskApps}</strong>
-                    </div>
-                </div>
-
-                <div class="sunbird-section-title" style="margin-top: 10px;">Top 5 Apps by Users</div>
-                <div class="sunbird-storage-list">
-                    ${topAppsHtml}
-                </div>
-                
-                ${renderSunbirdFullDashboardButton('applications')}
-            </div>
-        `;
+        billingCard.innerHTML = renderSunbirdApplicationsBillingMarkup(buildSunbirdApplicationsModel());
     } catch (error) {
         console.error('[Sunbird Applications View] Error:', error);
         if (!isSunbirdBillingViewActive('applications')) return;
@@ -11111,6 +11503,55 @@ async function renderSunbirdApplicationsView(forceRefresh = false) {
         ensureSunbirdBillingCardDimensions();
         syncSunbirdLeftMenuHeight();
     }
+}
+
+function renderSunbirdApplicationsBillingMarkup(model) {
+    const topApps = model.applications
+        .slice()
+        .sort((a, b) => (b.userCount || 0) - (a.userCount || 0))
+        .slice(0, 6);
+    const riskRows = [
+        { label: 'External apps', value: model.summary.externalApplications, tone: model.summary.externalApplications ? 'bad' : 'good' },
+        { label: 'High risk apps', value: model.summary.highRiskApps, tone: model.summary.highRiskApps ? 'bad' : 'good' },
+        { label: 'Excessive permissions', value: model.summary.excessivePermissionApps, tone: model.summary.excessivePermissionApps ? 'warn' : 'good' },
+        { label: 'High access apps', value: model.summary.highAccessApps, tone: model.summary.highAccessApps ? 'warn' : 'good' }
+    ];
+    const topAppsHtml = topApps.length ? topApps.map(app => `
+        <button type="button" class="sunbird-storage-row sunbird-app-preview-row" onclick='openSunbirdApplicationAppEvidence(${JSON.stringify(app.id)})'>
+            <span>${escapeIdentityText(app.name || 'Unknown App')} <small>${escapeIdentityText(app.type || 'Unknown')}</small></span>
+            <strong>${app.userCount || 0} users</strong>
+        </button>
+    `).join('') : '<div class="sunbird-empty-row" style="padding: 16px;">No cached application inventory found yet</div>';
+
+    return `
+        <div class="sunbird-panel-view">
+            <div class="billing-card-header">
+                <i class="fas fa-cubes"></i>
+                <h3>Applications & Access</h3>
+            </div>
+
+            <div class="sunbird-mini-stats sunbird-app-preview-stats">
+                <div class="sunbird-mini-stat"><span>Total Apps</span><strong>${model.summary.totalApplications || 0}</strong></div>
+                <div class="sunbird-mini-stat"><span>External</span><strong>${model.summary.externalApplications || 0}</strong></div>
+                <div class="sunbird-mini-stat"><span>High Risk</span><strong>${model.summary.highRiskApps || 0}</strong></div>
+                <div class="sunbird-mini-stat"><span>Score</span><strong>${model.governanceScore || 100}%</strong></div>
+            </div>
+
+            <div class="sunbird-app-preview-scroll">
+                <div class="sunbird-section-title">Access risk summary</div>
+                <div class="sunbird-app-risk-grid">
+                    ${riskRows.map(row => `<div class="sunbird-app-risk-mini tone-${row.tone}"><span>${escapeIdentityText(row.label)}</span><strong>${row.value || 0}</strong></div>`).join('')}
+                </div>
+
+                <div class="sunbird-section-title">Top apps by assigned access</div>
+                <div class="sunbird-storage-list sunbird-app-preview-list">
+                    ${topAppsHtml}
+                </div>
+            </div>
+
+            ${renderSunbirdFullDashboardButton('applications')}
+        </div>
+    `;
 }
 
 function renderSunbirdPremiumLoader(message) {

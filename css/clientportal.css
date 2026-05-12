@@ -6342,7 +6342,8 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 .dashboard-view.sunbird-device-active,
 .dashboard-view.sunbird-email-active,
 .dashboard-view.sunbird-security-active,
-.dashboard-view.sunbird-backup-active {
+.dashboard-view.sunbird-backup-active,
+.dashboard-view.sunbird-applications-active {
   margin-top: 10px;
   padding: 10px 24px 24px;
   background: transparent;
@@ -6913,6 +6914,75 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
 .sunbird-backup-table {
   min-width: 1120px;
+}
+
+.sunbird-applications-table {
+  min-width: 1180px;
+}
+
+.sunbird-app-preview-stats {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.sunbird-app-preview-scroll {
+  max-height: 390px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.sunbird-app-risk-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.sunbird-app-risk-mini {
+  min-height: 58px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(12, 18, 28, 0.56);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.sunbird-app-risk-mini span {
+  display: block;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.72rem;
+  line-height: 1.2;
+}
+
+.sunbird-app-risk-mini strong {
+  display: block;
+  margin-top: 6px;
+  color: #fff;
+  font-size: 1.05rem;
+}
+
+.sunbird-app-risk-mini.tone-good {
+  border-color: rgba(16, 185, 129, 0.42);
+}
+
+.sunbird-app-risk-mini.tone-warn {
+  border-color: rgba(255, 159, 28, 0.52);
+}
+
+.sunbird-app-risk-mini.tone-bad {
+  border-color: rgba(255, 77, 94, 0.58);
+}
+
+.sunbird-app-preview-row {
+  width: 100%;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.sunbird-app-preview-row small {
+  color: rgba(255, 255, 255, 0.54);
+  margin-left: 6px;
 }
 
 .sunbird-id-pie-card {
