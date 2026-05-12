@@ -7032,6 +7032,23 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
 .sunbird-id-health-fill.tone-good { background: #34d399; }
 .sunbird-id-health-fill.tone-warn { background: #ff9f1c; }
+.sunbird-id-health-fill.tone-bad { background: #ef4444; }
+
+.sunbird-backup-activity-radar-card {
+  min-height: 250px;
+}
+
+.sunbird-backup-chart-canvas {
+  height: 200px;
+  width: 100%;
+}
+
+.sunbird-backup-chart-canvas canvas {
+  display: block;
+  box-sizing: border-box;
+  height: 200px;
+  width: 100%;
+}
 
 .sunbird-id-signins {
   display: grid;

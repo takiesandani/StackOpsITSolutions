@@ -5736,6 +5736,10 @@ function normalizeSunbirdBackupData(data = {}) {
     const byService = storage.byService || {};
     const users = Array.isArray(storage.users) ? storage.users : [];
     const sites = Array.isArray(storage.sites) ? storage.sites : [];
+    const inactiveUsers = Array.isArray(storage.inactiveUsers) ? storage.inactiveUsers : [];
+    const inactiveUsersCount = inactiveUsers.length
+        ? new Set(inactiveUsers.map(user => String(user.user || '').toLowerCase()).filter(Boolean)).size
+        : (summary.inactiveUsersCount ?? users.filter(user => !user.lastActivity || getSunbirdBackupActivityAge(user.lastActivity) > 30).length);
     const totalStorageGB = summary.totalStorageGB ?? Number(((byService.onedrive || 0) + (byService.sharepoint || 0) + (byService.exchange || 0)).toFixed(1));
     return {
         ...payload,
@@ -5746,7 +5750,7 @@ function normalizeSunbirdBackupData(data = {}) {
             sharePointStorageGB: summary.sharePointStorageGB ?? byService.sharepoint ?? 0,
             exchangeStorageGB: summary.exchangeStorageGB ?? byService.exchange ?? 0,
             activeUsersCount: summary.activeUsersCount ?? users.filter(user => user.lastActivity).length,
-            inactiveUsersCount: summary.inactiveUsersCount ?? users.filter(user => !user.lastActivity || getSunbirdBackupActivityAge(user.lastActivity) > 30).length,
+            inactiveUsersCount,
             servicesCovered: summary.servicesCovered ?? 3,
             backupConfigured: Boolean(summary.backupConfigured)
         },
@@ -5759,6 +5763,7 @@ function normalizeSunbirdBackupData(data = {}) {
             },
             users,
             sites,
+            inactiveUsers,
             inactiveUserStorageGB: storage.inactiveUserStorageGB ?? 0
         },
         insights: Array.isArray(payload.insights) ? payload.insights : []
@@ -5768,7 +5773,8 @@ function normalizeSunbirdBackupData(data = {}) {
 function buildSunbirdBackupModel(data = cachedSunbirdBackupData) {
     const normalized = normalizeSunbirdBackupData(data || {});
     const rows = buildSunbirdBackupRows(normalized);
-    const inactiveRows = rows.filter(row => row.activityAge > 30 || !row.lastActivity);
+    const userRows = rows.filter(row => row.service !== 'SharePoint');
+    const inactiveRows = userRows.filter(row => row.activityAge > 30 || !row.lastActivity);
     const highStorageRows = rows.filter(row => row.storageGB >= 20);
     const staleRows = rows.filter(row => row.activityAge > 90 || !row.lastActivity);
     const serviceRows = [
@@ -5791,9 +5797,9 @@ function buildSunbirdBackupModel(data = cachedSunbirdBackupData) {
             inactiveRows,
             highStorageRows,
             staleRows,
-            topUsers: rows.filter(row => row.service !== 'SharePoint').sort((a, b) => b.storageGB - a.storageGB).slice(0, 20),
+            topUsers: userRows.sort((a, b) => b.storageGB - a.storageGB).slice(0, 20),
             topSites: rows.filter(row => row.service === 'SharePoint').sort((a, b) => b.storageGB - a.storageGB).slice(0, 10),
-            lastActivityBuckets: buildSunbirdBackupActivityBuckets(rows),
+            lastActivityBuckets: buildSunbirdBackupActivityBuckets(userRows),
             insights: normalized.insights,
             recommendations
         }
@@ -5878,12 +5884,7 @@ function renderSunbirdBackupCharts(model) {
             { label: 'SharePoint', value: model.summary.sharePointStorageGB || 0, tone: 'warn' },
             { label: 'Exchange', value: model.summary.exchangeStorageGB || 0, tone: 'good' }
         ], Math.max(1, model.summary.totalStorageGB || 0))}
-        ${renderSunbirdDeviceBars('User activity buckets', [
-            { label: '0-7d', value: buckets.recent, tone: 'good' },
-            { label: '8-30d', value: buckets.warm, tone: 'neutral' },
-            { label: '31-90d', value: buckets.stale, tone: 'warn' },
-            { label: '90d+', value: buckets.cold, tone: 'bad' }
-        ], Math.max(1, buckets.recent, buckets.warm, buckets.stale, buckets.cold))}
+        ${renderSunbirdBackupActivityRadarCard()}
         ${renderSunbirdDeviceBars('Service comparison', model.serviceRows.map((row, index) => ({
             label: row.service,
             value: row.storageGB,
@@ -5891,7 +5892,90 @@ function renderSunbirdBackupCharts(model) {
         })), Math.max(1, ...model.serviceRows.map(row => row.storageGB)))}
         ${renderSunbirdBackupHealthGraph(model)}
     `;
+    renderSunbirdBackupActivityFreshnessRadar(model);
     animateSunbirdIdentityCharts();
+}
+
+function renderSunbirdBackupActivityRadarCard() {
+    return `
+        <article class="sunbird-id-chart-card sunbird-backup-activity-radar-card">
+            <h3>User Activity Freshness</h3>
+            <div class="sunbird-backup-chart-canvas">
+                <canvas id="sunbirdBackupActivityRadar"></canvas>
+            </div>
+        </article>
+    `;
+}
+
+function renderSunbirdBackupActivityFreshnessRadar(model) {
+    const canvas = document.getElementById('sunbirdBackupActivityRadar');
+    if (!canvas) return;
+    if (typeof Chart === 'undefined') {
+        setTimeout(() => renderSunbirdBackupActivityFreshnessRadar(model), 100);
+        return;
+    }
+
+    const buckets = model.evidence.lastActivityBuckets || { recent: 0, warm: 0, stale: 0, cold: 0 };
+    const maxBucket = Math.max(1, buckets.recent, buckets.warm, buckets.stale, buckets.cold);
+    const toScore = value => Math.round((value / maxBucket) * 100);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    if (window.sunbirdBackupActivityRadarInstance && typeof window.sunbirdBackupActivityRadarInstance.destroy === 'function') {
+        window.sunbirdBackupActivityRadarInstance.destroy();
+    }
+
+    window.sunbirdBackupActivityRadarInstance = new Chart(ctx, {
+        type: 'radar',
+        data: {
+            labels: ['0-7d Active', '8-30d Warm', '31-90d Stale', '90d+ Cold'],
+            datasets: [{
+                label: 'Activity Buckets',
+                data: [toScore(buckets.recent), toScore(buckets.warm), toScore(buckets.stale), toScore(buckets.cold)],
+                borderColor: '#006eff',
+                backgroundColor: 'rgba(0, 110, 255, 0.2)',
+                pointBackgroundColor: '#006eff',
+                pointBorderColor: '#fff',
+                pointHoverBackgroundColor: '#fff',
+                pointHoverBorderColor: '#006eff'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    labels: {
+                        color: '#bdbdbd'
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: context => {
+                            const rawCounts = [buckets.recent, buckets.warm, buckets.stale, buckets.cold];
+                            return `${context.dataset.label}: ${rawCounts[context.dataIndex] || 0} record(s)`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                r: {
+                    beginAtZero: true,
+                    max: 100,
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                    },
+                    ticks: {
+                        color: '#bdbdbd',
+                        backdropColor: 'transparent'
+                    },
+                    pointLabels: {
+                        color: '#bdbdbd'
+                    }
+                }
+            }
+        }
+    });
 }
 
 function renderSunbirdBackupHealthGraph(model) {
@@ -5899,14 +5983,14 @@ function renderSunbirdBackupHealthGraph(model) {
     const active = model.summary.activeUsersCount || 0;
     const inactive = model.summary.inactiveUsersCount || 0;
     const activity = active + inactive ? Math.round((active / (active + inactive)) * 100) : 100;
-    const exposure = Math.max(0, 100 - model.scores.dataExposureRiskScore);
+    const exposureRisk = model.scores.dataExposureRiskScore;
     return `
         <article class="sunbird-id-chart-card sunbird-id-health-card">
             <h3>Recovery posture</h3>
             ${[
                 { label: 'Coverage', value: coverage, tone: coverage >= 100 ? 'good' : 'warn' },
                 { label: 'Activity', value: activity, tone: activity >= 75 ? 'good' : 'warn' },
-                { label: 'Exposure', value: exposure, tone: exposure >= 70 ? 'good' : 'warn' }
+                { label: 'Exposure risk', value: exposureRisk, tone: exposureRisk <= 30 ? 'good' : exposureRisk <= 60 ? 'warn' : 'bad' }
             ].map(item => `
                 <div class="sunbird-id-health-row">
                     <span>${item.label}</span>
@@ -5991,7 +6075,7 @@ function getFilteredSunbirdBackupRows(model = buildSunbirdBackupModel()) {
 
 function buildSunbirdBackupRows(data) {
     const rows = [];
-    (data.storage.users || []).forEach((user, index) => {
+    mergeSunbirdBackupUserRecords(data.storage.users || [], data.storage.inactiveUsers || []).forEach((user, index) => {
         const service = user.items !== undefined ? 'Exchange' : 'OneDrive';
         const bytes = Number(user.storage || 0);
         const storageGB = Number((bytes / (1024 ** 3)).toFixed(2));
@@ -6029,6 +6113,16 @@ function buildSunbirdBackupRows(data) {
     return rows;
 }
 
+function mergeSunbirdBackupUserRecords(users, inactiveUsers) {
+    const records = new Map();
+    [...users, ...inactiveUsers].forEach(user => {
+        const key = `${user.items !== undefined ? 'Exchange' : 'OneDrive'}:${String(user.user || user.displayName || '').toLowerCase()}`;
+        if (!key.endsWith(':')) records.set(key, user);
+        else records.set(`${key}${records.size}`, user);
+    });
+    return Array.from(records.values());
+}
+
 function getSunbirdBackupActivityAge(value) {
     if (!value) return 999;
     const time = new Date(value).getTime();
@@ -6044,10 +6138,16 @@ function getSunbirdBackupRowRisk(storageGB, lastActivity) {
 }
 
 function buildSunbirdBackupActivityBuckets(rows) {
-    return rows.reduce((acc, row) => {
-        if (row.activityAge <= 7) acc.recent += 1;
-        else if (row.activityAge <= 30) acc.warm += 1;
-        else if (row.activityAge <= 90) acc.stale += 1;
+    const userActivity = new Map();
+    rows.forEach(row => {
+        const key = String(row.principal || row.name || '').toLowerCase();
+        if (!key) return;
+        userActivity.set(key, Math.min(userActivity.get(key) ?? 999, row.activityAge));
+    });
+    return Array.from(userActivity.values()).reduce((acc, activityAge) => {
+        if (activityAge <= 7) acc.recent += 1;
+        else if (activityAge <= 30) acc.warm += 1;
+        else if (activityAge <= 90) acc.stale += 1;
         else acc.cold += 1;
         return acc;
     }, { recent: 0, warm: 0, stale: 0, cold: 0 });

@@ -5003,27 +5003,24 @@ async function fetchBackupRecoveryPayloadFromApi() {
 
     // Fetch OneDrive usage (returns CSV)
     const oneDriveUrl = 'https://graph.microsoft.com/v1.0/reports/getOneDriveUsageAccountDetail(period=\'D7\')';
-    const oneDriveResponse = await fetch(oneDriveUrl, { headers: { 'Authorization': `Bearer ${token}` } });
-    const oneDriveCSV = await oneDriveResponse.text();
+    const oneDriveCSV = await fetchGraphReportCSV(oneDriveUrl, token, 'OneDrive');
     const oneDriveData = parseGraphReportCSV(oneDriveCSV, 'OneDrive');
 
     // Fetch SharePoint usage (returns CSV)
     const sharePointUrl = 'https://graph.microsoft.com/v1.0/reports/getSharePointSiteUsageDetail(period=\'D7\')';
-    const sharePointResponse = await fetch(sharePointUrl, { headers: { 'Authorization': `Bearer ${token}` } });
-    const sharePointCSV = await sharePointResponse.text();
+    const sharePointCSV = await fetchGraphReportCSV(sharePointUrl, token, 'SharePoint');
     const sharePointData = parseGraphReportCSV(sharePointCSV, 'SharePoint');
 
     // Fetch Exchange (Mailbox) usage (returns CSV)
     const exchangeUrl = 'https://graph.microsoft.com/v1.0/reports/getMailboxUsageDetail(period=\'D7\')';
-    const exchangeResponse = await fetch(exchangeUrl, { headers: { 'Authorization': `Bearer ${token}` } });
-    const exchangeCSV = await exchangeResponse.text();
+    const exchangeCSV = await fetchGraphReportCSV(exchangeUrl, token, 'Exchange');
     const exchangeData = parseGraphReportCSV(exchangeCSV, 'Exchange');
 
     // Process OneDrive storage (in bytes)
     let oneDriveStorageBytes = 0;
     const oneDriveUsers = [];
     oneDriveData.forEach(item => {
-        const storageBytes = parseInt(item['Storage Used (Byte)'] || 0);
+        const storageBytes = parseGraphReportNumber(item['Storage Used (Byte)']);
         oneDriveStorageBytes += storageBytes;
         if (item['Owner Principal Name'] && storageBytes > 0) {
             oneDriveUsers.push({
@@ -5040,7 +5037,7 @@ async function fetchBackupRecoveryPayloadFromApi() {
     let sharePointStorageBytes = 0;
     const sharePointSites = [];
     sharePointData.forEach(item => {
-        const storageBytes = parseInt(item['Storage Used (Byte)'] || 0);
+        const storageBytes = parseGraphReportNumber(item['Storage Used (Byte)']);
         sharePointStorageBytes += storageBytes;
         if (item['Site URL'] && storageBytes > 0) {
             sharePointSites.push({
@@ -5057,7 +5054,7 @@ async function fetchBackupRecoveryPayloadFromApi() {
     let exchangeStorageBytes = 0;
     const exchangeUsers = [];
     exchangeData.forEach(item => {
-        const storageBytes = parseInt(item['Storage Used (Byte)'] || 0);
+        const storageBytes = parseGraphReportNumber(item['Storage Used (Byte)']);
         exchangeStorageBytes += storageBytes;
         if (item['User Principal Name'] && storageBytes > 0) {
             exchangeUsers.push({
@@ -5076,21 +5073,26 @@ async function fetchBackupRecoveryPayloadFromApi() {
     const sharePointStorageGB = parseFloat((sharePointStorageBytes / (1024 ** 3)).toFixed(1));
     const exchangeStorageGB = parseFloat((exchangeStorageBytes / (1024 ** 3)).toFixed(1));
 
-    const activeUserEmails = new Set([
-        ...oneDriveUsers.map(u => u.user),
-        ...exchangeUsers.map(u => u.user)
-    ]);
-    const activeUsersCount = activeUserEmails.size;
-
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const allUsers = [...oneDriveUsers, ...exchangeUsers];
-    const inactiveUsers = allUsers.filter(u => {
-        if (!u.lastActivity) return true;
-        const lastActivity = new Date(u.lastActivity);
-        return lastActivity < thirtyDaysAgo;
+    const userActivity = new Map();
+    allUsers.forEach(u => {
+        const key = String(u.user || '').toLowerCase();
+        if (!key) return;
+        const lastActivityTime = u.lastActivity ? new Date(u.lastActivity).getTime() : 0;
+        const current = userActivity.get(key) || { latest: 0 };
+        userActivity.set(key, { latest: Math.max(current.latest, Number.isFinite(lastActivityTime) ? lastActivityTime : 0) });
     });
-    const inactiveUsersCount = new Set(inactiveUsers.map(u => u.user)).size;
+    const activeUserKeys = new Set();
+    const inactiveUserKeys = new Set();
+    userActivity.forEach((activity, key) => {
+        if (activity.latest && activity.latest >= thirtyDaysAgo.getTime()) activeUserKeys.add(key);
+        else inactiveUserKeys.add(key);
+    });
+    const inactiveUsers = allUsers.filter(u => inactiveUserKeys.has(String(u.user || '').toLowerCase()));
+    const activeUsersCount = activeUserKeys.size;
+    const inactiveUsersCount = inactiveUserKeys.size;
     const inactiveUserStorageBytes = inactiveUsers.reduce((sum, u) => sum + u.storage, 0);
     const inactiveUserStorageGB = parseFloat((inactiveUserStorageBytes / (1024 ** 3)).toFixed(1));
 
@@ -5115,7 +5117,8 @@ async function fetchBackupRecoveryPayloadFromApi() {
         },
         inactiveUserStorageGB,
         sites: sharePointSites.sort((a, b) => b.storage - a.storage).slice(0, 10),
-        users: allUsers.sort((a, b) => b.storage - a.storage).slice(0, 20)
+        users: allUsers.sort((a, b) => b.storage - a.storage).slice(0, 20),
+        inactiveUsers: inactiveUsers.sort((a, b) => b.storage - a.storage)
     };
 
     const insights = [];
@@ -5404,6 +5407,14 @@ app.get('/api/db/application-metrics', authenticateToken, async (req, res) => {
     }
 });
 
+function isBackupRecoveryPayloadComplete(payload) {
+    if (!payload || !payload.success || !payload.summary || !payload.storage) return false;
+    if (!Array.isArray(payload.storage.sites)) return false;
+    if (!Array.isArray(payload.storage.users)) return false;
+    if (!Array.isArray(payload.storage.inactiveUsers)) return false;
+    return true;
+}
+
 app.get('/api/db/backup-recovery', authenticateToken, async (req, res) => {
     try {
         const context = await getAccessContextByUser(req.user);
@@ -5417,13 +5428,14 @@ app.get('/api/db/backup-recovery', authenticateToken, async (req, res) => {
         if (rows.length > 0 && rows[0].Payload) {
             try {
                 const payload = JSON.parse(rows[0].Payload);
-                if (payload && payload.success) {
+                if (isBackupRecoveryPayloadComplete(payload)) {
                     return res.json({
                         ...payload,
                         source: 'db',
                         fetchedAt: rows[0].LastUpdated
                     });
                 }
+                console.warn('[Backup Recovery Cache] Cached payload is missing evidence arrays; refreshing from Graph.');
             } catch (_) {}
         }
 
@@ -7653,6 +7665,48 @@ app.get('/api/email-security', authenticateToken, async (req, res) => {
  * Helper: Parse CSV response from Microsoft Graph Reports API
  * Handles both comma-separated and tab-separated formats
  */
+async function fetchGraphReportCSV(url, token, reportType = 'unknown') {
+    const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+    const body = await response.text();
+
+    if (!response.ok) {
+        throw new Error(`${reportType} Graph report failed (${response.status}): ${body.slice(0, 240)}`);
+    }
+
+    return body;
+}
+
+function parseGraphReportNumber(value) {
+    const parsed = Number(String(value ?? '').replace(/[^0-9.-]/g, ''));
+    return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function parseGraphCSVLine(line, delimiter) {
+    const values = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let index = 0; index < line.length; index += 1) {
+        const char = line[index];
+        const next = line[index + 1];
+
+        if (char === '"' && inQuotes && next === '"') {
+            current += '"';
+            index += 1;
+        } else if (char === '"') {
+            inQuotes = !inQuotes;
+        } else if (char === delimiter && !inQuotes) {
+            values.push(current.trim());
+            current = '';
+        } else {
+            current += char;
+        }
+    }
+
+    values.push(current.trim());
+    return values;
+}
+
 function parseGraphReportCSV(csvText, reportType = 'unknown') {
     try {
         const lines = csvText.trim().split('\n');
@@ -7668,7 +7722,7 @@ function parseGraphReportCSV(csvText, reportType = 'unknown') {
         console.log(`[CSV Parser] ${reportType} - Detected delimiter: ${delimiter === ',' ? 'COMMA' : 'TAB'}`);
 
         // Parse header
-        const header = headerLine.split(delimiter).map(h => h.trim());
+        const header = parseGraphCSVLine(headerLine.replace(/^\uFEFF/, ''), delimiter);
         console.log(`[CSV Parser] ${reportType} - Headers: ${header.join(', ')}`);
         
         // Parse rows
@@ -7676,7 +7730,7 @@ function parseGraphReportCSV(csvText, reportType = 'unknown') {
         for (let i = 1; i < lines.length; i++) {
             if (!lines[i].trim()) continue;
             
-            const values = lines[i].split(delimiter).map(v => v.trim());
+            const values = parseGraphCSVLine(lines[i], delimiter);
             const row = {};
             
             header.forEach((key, index) => {
@@ -7705,7 +7759,15 @@ function parseGraphReportCSV(csvText, reportType = 'unknown') {
  */
 app.get('/api/backup-recovery', authenticateToken, async (req, res) => {
     try {
+        const context = await getAccessContextByUser(req.user);
         const payload = await fetchBackupRecoveryPayloadFromApi();
+        if (context?.companyId) {
+            await pool.query(
+                `REPLACE INTO BackupRecoveryPayloadCache (CompanyID, Payload, LastUpdated)
+                 VALUES (?, ?, NOW())`,
+                [context.companyId, JSON.stringify(payload)]
+            );
+        }
         res.json(payload);
 
     } catch (error) {
