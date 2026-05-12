@@ -6340,7 +6340,8 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 /* Sunbird-only Identity Protection dashboard rebuild */
 .dashboard-view.sunbird-identity-active,
 .dashboard-view.sunbird-device-active,
-.dashboard-view.sunbird-email-active {
+.dashboard-view.sunbird-email-active,
+.dashboard-view.sunbird-security-active {
   margin-top: 10px;
   padding: 10px 24px 24px;
   background: transparent;
@@ -6820,6 +6821,93 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
 .sunbird-email-risk-trend-card:hover .sunbird-email-risk-chart polyline {
   filter: drop-shadow(0 0 8px currentColor);
+}
+
+.sunbird-security-chart-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.sunbird-security-chart-heading h3 {
+  margin: 0;
+}
+
+.sunbird-security-risk-window {
+  display: inline-flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.sunbird-security-risk-window button {
+  border: 0;
+  border-radius: 30px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.72);
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 0.76rem;
+}
+
+.sunbird-security-risk-window button.active,
+.sunbird-security-risk-window button:hover {
+  color: #fff;
+  background: rgba(255, 159, 28, 0.24);
+}
+
+.sunbird-security-radar-card {
+  display: grid;
+  place-items: stretch;
+}
+
+.sunbird-security-radar {
+  width: 100%;
+  min-height: 205px;
+}
+
+.sunbird-security-radar .grid {
+  fill: rgba(59, 130, 246, 0.08);
+  stroke: rgba(96, 165, 250, 0.25);
+  stroke-width: 1;
+}
+
+.sunbird-security-radar .value {
+  fill: rgba(0, 110, 255, 0.22);
+  stroke: #0076ff;
+  stroke-width: 3;
+  filter: drop-shadow(0 0 10px rgba(0, 118, 255, 0.55));
+  transform-origin: center;
+  transform: scale(0.6);
+  opacity: 0.6;
+  transition: transform 0.85s ease, opacity 0.85s ease;
+}
+
+.sunbird-id-chart-card.is-visible .sunbird-security-radar .value,
+.sunbird-security-radar-card:hover .sunbird-security-radar .value {
+  transform: scale(1);
+  opacity: 1;
+}
+
+.sunbird-security-radar text {
+  fill: rgba(255, 255, 255, 0.68);
+  font-size: 8px;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+.sunbird-security-ai-card p {
+  color: rgba(255, 255, 255, 0.78);
+  line-height: 1.5;
+  margin: 0 0 12px;
+}
+
+.sunbird-security-table {
+  min-width: 1180px;
 }
 
 .sunbird-id-pie-card {

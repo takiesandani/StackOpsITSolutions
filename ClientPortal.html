@@ -9,7 +9,6 @@
     <link rel="stylesheet" href="css/clientportal.css">
     <link rel="stylesheet" href="css/applications-dashboard.css">
     <link rel="stylesheet" href="css/scrollbar.css">
-    <link rel="stylesheet" href="css/security-dashboard.css">
     <link rel="stylesheet" href="css/backup-recovery-dashboard.css"> 
 
     <style>
@@ -1411,158 +1410,6 @@
             </div>
         </div>
 
-        <!-- Threat & Activity DASHBOARD VIEW (SOC) -->
-        <div id="security-events-view" class="security-view" style="display: none;">
-            <div class="container-fluid">
-                <!-- Header with Back Button -->
-                <div class="security-dashboard-title">
-                    <div class="sec-title-section">
-<div class="btn-back-wrapper glow-wrap">
-                            <div class="glowing-border-layer"></div>
-                            <button id="btn-back-security" class="btn-back">
-                                <i class="fas fa-arrow-left"></i>
-                                Back
-                            </button>
-                        </div>
-                        <i class="fas fa-shield-alt"></i>
-                        <h2>Threat & Activity - Dashboard</h2>
-                    </div>
-                    <span class="project-status" id="security-status">Live Monitoring</span>
-                </div>
-
-                <!-- Summary Cards Row -->
-                <div class="security-summary-cards">
-                    <div class="security-stat-card info">
-                        <div class="sec-stat-icon info"><i class="fas fa-exclamation-triangle"></i></div>
-                        <div class="sec-stat-content">
-                            <h3 id="sec-active-incidents">0</h3>
-                            <p>Active Incidents</p>
-                        </div>
-                    </div>
-
-                    <div class="security-stat-card critical">
-                        <div class="sec-stat-icon critical"><i class="fas fa-bell"></i></div>
-                        <div class="sec-stat-content">
-                            <h3 id="sec-high-alerts">0</h3>
-                            <p>High Severity Alerts</p>
-                        </div>
-                    </div>
-
-                    <div class="security-stat-card warning">
-                        <div class="sec-stat-icon warning"><i class="fas fa-clock"></i></div>
-                        <div class="sec-stat-content">
-                            <h3 id="sec-total-alerts">0</h3>
-                            <p>Total Alerts (24h)</p>
-                        </div>
-                    </div>
-
-                    <div class="security-stat-card critical">
-                        <div class="sec-stat-icon critical"><i class="fas fa-virus"></i></div>
-                        <div class="sec-stat-content">
-                            <h3 id="sec-threat-indicators">0</h3>
-                            <p>Threat Indicators</p>
-                        </div>
-                    </div>
-
-                    <div class="security-stat-card critical">
-                        <div class="sec-stat-icon critical"><i class="fas fa-user-slash"></i></div>
-                        <div class="sec-stat-content">
-                            <h3 id="sec-users-under-attack">0</h3>
-                            <p>Users Under Attack</p>
-                        </div>
-                    </div>
-
-                    <div class="security-stat-card info">
-                        <div class="sec-stat-icon info"><i class="fas fa-shield-check"></i></div>
-                        <div class="sec-stat-content">
-                            <h3 id="sec-security-score">--</h3>
-                            <p>Security Score</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Risks Panel -->
-                <div class="security-risks-section">
-                    <h3><i class="fas fa-fire"></i> Real-Time Threats</h3>
-                    <div class="risks-grid" id="security-risks-container">
-                        <div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #94a3b8;">
-                            <i class="fas fa-spinner fa-spin loading-spinner"></i> Loading threats...
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Charts Section -->
-                <div class="security-charts-section">
-                    <!-- Alert Severity Distribution -->
-                    <div class="chart-card">
-                        <h3><i class="fas fa-pie-chart"></i> Alert Severity Distribution</h3>
-                        <div class="chart-container">
-                            <canvas id="severityChart"></canvas>
-                        </div>
-                    </div>
-
-                    <!-- Incident Status Distribution -->
-                    <div class="chart-card">
-                        <h3><i class="fas fa-chart-bar"></i> Incident Status</h3>
-                        <div class="chart-container">
-                            <canvas id="statusChart"></canvas>
-                        </div>
-                    </div>
-
-                    <!-- Threat Types -->
-                    <div class="chart-card">
-                        <h3><i class="fas fa-doughnut-chart"></i> Threat Types</h3>
-                        <div class="chart-container">
-                            <canvas id="threatChart"></canvas>
-                        </div>
-                    </div>
-
-                    <!-- Alert Timeline -->
-                    <div class="chart-card full-width">
-                        <h3><i class="fas fa-chart-line"></i> Alert Timeline (24h)</h3>
-                        <div class="chart-container">
-                            <canvas id="timelineChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Activity Feed Section -->
-                <div class="monitor-card">
-                    <h3><i class="fas fa-stream"></i> Real-Time Activity Feed</h3>
-                    <div class="activity-feed-container" id="activity-feed">
-                        <div style="text-align: center; padding: 40px; color: #94a3b8;">
-                            <i class="fas fa-spinner fa-spin loading-spinner"></i> Loading activity...
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Incidents Table -->
-                <div class="incident-table-container">
-                    <h3><i class="fas fa-table"></i> Security Incidents</h3>
-                    <table class="incident-table">
-                        <thead>
-                            <tr>
-                                <th>Incident Name</th>
-                                <th>Severity</th>
-                                <th>Status</th>
-                                <th>Assigned To</th>
-                                <th>Created</th>
-                                <th>Last Updated</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody id="incidents-tbody">
-                            <tr>
-                                <td colspan="7" style="text-align: center; padding: 20px; color: #94a3b8;">
-                                    <i class="fas fa-spinner fa-spin loading-spinner"></i> Loading incidents...
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
         <!-- Backup & Recovery Dashboard View -->
         <div id="backup-recovery-view" class="backup-recovery-view" style="display: none;">
             <div class="container-fluid">
@@ -1735,7 +1582,6 @@
 
     <script src="js/script.js"></script>
     <script src="js/clientportal.js"></script>
-    <script src="js/security-dashboard.js"></script>
     <script src="js/backup-recovery-dashboard.js"></script>
     <script src="js/chatbot.js"></script>
 

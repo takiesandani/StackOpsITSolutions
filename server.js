@@ -1355,6 +1355,17 @@ async function ensureDatabaseSchema() {
         `);
 
         await pool.query(`
+            CREATE TABLE IF NOT EXISTS SecurityEventsPayloadCache (
+                ID INT AUTO_INCREMENT PRIMARY KEY,
+                CompanyID INT,
+                Payload LONGTEXT,
+                LastUpdated DATETIME,
+                UNIQUE KEY uq_security_events_payload_company (CompanyID),
+                FOREIGN KEY (CompanyID) REFERENCES Companies(ID)
+            )
+        `);
+
+        await pool.query(`
             CREATE TABLE IF NOT EXISTS BackupRecoveryPayloadCache (
                 ID INT AUTO_INCREMENT PRIMARY KEY,
                 CompanyID INT,
@@ -5215,13 +5226,14 @@ async function upsertDashboardMetricCaches() {
     for (const row of rows) {
         const companyId = row.CompanyID;
         try {
-            const [identity, identityDetails, devices, apps, email, emailSecurity, backup] = await Promise.all([
+            const [identity, identityDetails, devices, apps, email, emailSecurity, securityEvents, backup] = await Promise.all([
                 fetchIdentityMetricsFromApi(),
                 fetchIdentityDetailsFromApi(),
                 fetchDeviceMetricsFromApi(),
                 fetchApplicationMetricsFromApi(),
                 fetchEmailMetricsFromApi(),
                 fetchEmailSecurityPayloadFromApi(),
+                fetchSecurityEventsPayloadFromApi(),
                 fetchBackupRecoveryPayloadFromApi()
             ]);
 
@@ -5256,6 +5268,12 @@ async function upsertDashboardMetricCaches() {
                 `REPLACE INTO EmailSecurityPayloadCache (CompanyID, Payload, LastUpdated)
                  VALUES (?, ?, NOW())`,
                 [companyId, JSON.stringify(emailSecurity)]
+            );
+
+            await pool.query(
+                `REPLACE INTO SecurityEventsPayloadCache (CompanyID, Payload, LastUpdated)
+                 VALUES (?, ?, NOW())`,
+                [companyId, JSON.stringify(securityEvents)]
             );
 
             await pool.query(
@@ -7294,6 +7312,322 @@ async function fetchSecuritySignIns(token) {
     }
 }
 
+function normalizeSecuritySeverity(value) {
+    return String(value || 'medium').toLowerCase();
+}
+
+function normalizeSecurityStatus(value) {
+    return String(value || 'newAlert').toLowerCase();
+}
+
+function getSecurityEventTime(item) {
+    return item?.created || item?.createdDateTime || item?.eventTime || item?.timestamp || item?.updated || new Date().toISOString();
+}
+
+function getSecuritySeverityRank(value) {
+    const rank = { critical: 4, high: 3, medium: 2, low: 1, informational: 0, unknown: 0 };
+    return rank[String(value || 'unknown').toLowerCase()] || 0;
+}
+
+function getSecurityMitreMapping(item = {}) {
+    const text = [
+        item.title,
+        item.displayName,
+        item.description,
+        item.category,
+        item.source,
+        item.vendor,
+        item.message
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    if (/phish|spoof|email|mail|bec|business email/.test(text)) {
+        return { tactic: 'Initial Access', technique: 'Phishing' };
+    }
+    if (/credential|password|signin|sign-in|login|mfa|impossible travel|account/.test(text)) {
+        return { tactic: 'Credential Access', technique: 'Valid Accounts' };
+    }
+    if (/malware|ransom|payload|execution|script|trojan|virus/.test(text)) {
+        return { tactic: 'Execution', technique: 'Malware' };
+    }
+    if (/persist|startup|autorun|scheduled task/.test(text)) {
+        return { tactic: 'Persistence', technique: 'Account Persistence' };
+    }
+    if (/exfil|download|data|leak/.test(text)) {
+        return { tactic: 'Exfiltration', technique: 'Data Exfiltration' };
+    }
+    return { tactic: 'Defense Evasion', technique: 'Suspicious Activity' };
+}
+
+function countSecurityGroups(rows, getter) {
+    const counts = {};
+    rows.forEach(row => {
+        const key = getter(row) || 'Unknown';
+        counts[key] = (counts[key] || 0) + 1;
+    });
+    return Object.entries(counts)
+        .map(([label, value]) => ({ label, value }))
+        .sort((a, b) => b.value - a.value);
+}
+
+async function fetchSecurityEventsPayloadFromApi() {
+    const token = await getMicrosoftGraphToken();
+    const [alerts, incidents, threatIndicators, signIns] = await Promise.all([
+        fetchSecurityAlerts(token),
+        fetchSecurityIncidents(token),
+        fetchThreatIndicators(token),
+        fetchSecuritySignIns(token)
+    ]);
+
+    const processedAlerts = alerts.map(alert => ({
+        id: alert.id,
+        title: alert.title || 'Unknown Alert',
+        description: alert.description || '',
+        severity: normalizeSecuritySeverity(alert.severity),
+        status: normalizeSecurityStatus(alert.status),
+        created: alert.createdDateTime || new Date().toISOString(),
+        eventTime: alert.eventDateTime || alert.createdDateTime || new Date().toISOString(),
+        category: alert.category || alert.serviceSource || 'Other',
+        vendor: alert.vendorInformation?.provider || alert.serviceSource || 'Microsoft',
+        source: alert.serviceSource || alert.vendorInformation?.provider || 'Microsoft Security',
+        user: (alert.userStates || [])[0]?.accountName || 'Unknown user'
+    }));
+
+    const processedIncidents = incidents.map(incident => ({
+        id: incident.id,
+        displayName: incident.displayName || 'Unknown Incident',
+        description: incident.description || '',
+        severity: normalizeSecuritySeverity(incident.severity),
+        status: normalizeSecurityStatus(incident.status || 'active'),
+        created: incident.createdDateTime || new Date().toISOString(),
+        updated: incident.lastUpdateDateTime || new Date().toISOString(),
+        assignedTo: incident.assignedTo || 'Unassigned',
+        redirectUrl: incident.incidentUrl || '#'
+    }));
+
+    const suspiciousSignIns = signIns.filter(signIn => {
+        const riskLevel = signIn.riskLevelDuringSignIn;
+        const status = signIn.status?.errorCode === 0 ? 'Success' : 'Failed';
+        return (riskLevel && riskLevel !== 'none') || status === 'Failed';
+    }).slice(0, 80).map(signIn => ({
+        id: signIn.id,
+        user: signIn.userPrincipalName || 'Unknown',
+        timestamp: signIn.createdDateTime || new Date().toISOString(),
+        ipAddress: signIn.ipAddress || 'Unknown',
+        location: signIn.location?.city ? `${signIn.location.city}, ${signIn.location.countryOrRegion}` : (signIn.location?.countryOrRegion || 'Unknown Location'),
+        country: signIn.location?.countryOrRegion || 'Unknown',
+        riskLevel: signIn.riskLevelDuringSignIn || 'none',
+        status: signIn.status?.errorCode === 0 ? 'Success' : 'Failed',
+        errorCode: signIn.status?.errorCode || 0,
+        failureReason: signIn.status?.failureReason || (signIn.status?.errorCode ? `Sign-in error ${signIn.status.errorCode}` : 'Suspicious sign-in')
+    }));
+
+    const processedThreats = threatIndicators.slice(0, 80).map(threat => ({
+        id: threat.id,
+        indicator: threat.networkIPv4 || threat.networkIPv6 || threat.domainName || threat.fileHashValue || 'Unknown',
+        type: threat.networkIPv4 ? 'IPv4' : threat.networkIPv6 ? 'IPv6' : threat.domainName ? 'Domain' : 'FileHash',
+        severity: normalizeSecuritySeverity(threat.severity),
+        action: threat.targetProduct || 'Block',
+        description: threat.description || 'Threat detected',
+        created: threat.createdDateTime || new Date().toISOString()
+    }));
+
+    const activeIncidents = processedIncidents.filter(i => ['active', 'inprogress'].includes(i.status));
+    const highSeverityAlerts = processedAlerts.filter(a => ['critical', 'high'].includes(a.severity));
+    const userFailureMap = {};
+    suspiciousSignIns.forEach(signIn => {
+        if (signIn.status === 'Failed') {
+            userFailureMap[signIn.user] = (userFailureMap[signIn.user] || 0) + 1;
+        }
+    });
+    const usersUnderAttack = Object.entries(userFailureMap)
+        .filter(([, count]) => count >= 3)
+        .map(([user, failedAttempts]) => ({ user, failedAttempts }))
+        .sort((a, b) => b.failedAttempts - a.failedAttempts)
+        .slice(0, 10);
+
+    const severityScores = { critical: 25, high: 15, medium: 5, low: 2 };
+    let securityScore = 100;
+    processedThreats.forEach(threat => { securityScore -= severityScores[threat.severity] || 2; });
+    processedAlerts.slice(0, 20).forEach(alert => { securityScore -= severityScores[alert.severity] || 2; });
+    usersUnderAttack.forEach(user => { securityScore -= user.failedAttempts * 2; });
+    securityScore = Math.max(0, Math.min(100, securityScore));
+
+    const activityFeed = [
+        ...processedIncidents.slice(0, 8).map(incident => ({
+            type: 'incident',
+            message: `${incident.severity.toUpperCase()} Incident: ${incident.displayName}`,
+            timestamp: incident.created,
+            severity: incident.severity
+        })),
+        ...highSeverityAlerts.slice(0, 8).map(alert => ({
+            type: 'alert',
+            message: `${alert.severity.toUpperCase()}: ${alert.title}`,
+            timestamp: alert.created,
+            severity: alert.severity
+        })),
+        ...suspiciousSignIns.slice(0, 8).map(signIn => ({
+            type: 'signin',
+            message: `${signIn.status} sign-in: ${signIn.user} from ${signIn.location}`,
+            timestamp: signIn.timestamp,
+            severity: signIn.status === 'Failed' ? 'medium' : 'low'
+        }))
+    ].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    const allSecurityEvents = [
+        ...processedAlerts.map(alert => ({ ...alert, recordType: 'alert', name: alert.title, timestamp: getSecurityEventTime(alert) })),
+        ...processedIncidents.map(incident => ({ ...incident, recordType: 'incident', name: incident.displayName, timestamp: getSecurityEventTime(incident) })),
+        ...suspiciousSignIns.map(signIn => ({ ...signIn, recordType: 'signin', name: `${signIn.status} sign-in`, severity: signIn.status === 'Failed' ? 'medium' : 'low' })),
+        ...processedThreats.map(threat => ({ ...threat, recordType: 'indicator', name: threat.indicator, timestamp: getSecurityEventTime(threat) }))
+    ];
+
+    const mitreMap = {};
+    allSecurityEvents.forEach(event => {
+        const mapping = getSecurityMitreMapping(event);
+        const key = `${mapping.tactic}::${mapping.technique}`;
+        if (!mitreMap[key]) {
+            mitreMap[key] = {
+                tactic: mapping.tactic,
+                technique: mapping.technique,
+                count: 0,
+                severity: 'low',
+                evidence: []
+            };
+        }
+        mitreMap[key].count += 1;
+        if (getSecuritySeverityRank(event.severity) > getSecuritySeverityRank(mitreMap[key].severity)) {
+            mitreMap[key].severity = event.severity || 'medium';
+        }
+        mitreMap[key].evidence.push({
+            title: event.name || event.title || event.displayName || 'Security event',
+            subtitle: event.user || event.source || event.location || event.category || 'Microsoft Security',
+            timestamp: event.timestamp || getSecurityEventTime(event),
+            severity: event.severity || 'medium'
+        });
+    });
+
+    const alertUsers = processedAlerts
+        .map(alert => alert.user)
+        .filter(user => user && user !== 'Unknown user')
+        .map(user => ({ user, signal: 'alert' }));
+    const signInUsers = suspiciousSignIns.map(signIn => ({ user: signIn.user, signal: 'sign-in' }));
+    const targetedCounts = {};
+    [...alertUsers, ...signInUsers].forEach(item => {
+        targetedCounts[item.user] = targetedCounts[item.user] || { user: item.user, alerts: 0, signIns: 0, total: 0, evidence: [] };
+        targetedCounts[item.user].total += 1;
+        if (item.signal === 'alert') targetedCounts[item.user].alerts += 1;
+        if (item.signal === 'sign-in') targetedCounts[item.user].signIns += 1;
+    });
+    processedAlerts.forEach(alert => {
+        if (!targetedCounts[alert.user]) return;
+        targetedCounts[alert.user].evidence.push({
+            title: alert.title,
+            subtitle: alert.category || alert.source || 'Security alert',
+            timestamp: alert.created,
+            severity: alert.severity
+        });
+    });
+    suspiciousSignIns.forEach(signIn => {
+        if (!targetedCounts[signIn.user]) return;
+        targetedCounts[signIn.user].evidence.push({
+            title: signIn.failureReason || 'Suspicious sign-in',
+            subtitle: `${signIn.ipAddress} | ${signIn.location}`,
+            timestamp: signIn.timestamp,
+            severity: signIn.status === 'Failed' ? 'medium' : 'low'
+        });
+    });
+    const topTargetedUsers = Object.values(targetedCounts)
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 15);
+
+    const sourceDistribution = countSecurityGroups(processedAlerts, alert => alert.source || alert.vendor || 'Microsoft Security');
+    const categoryDistribution = countSecurityGroups(processedAlerts, alert => alert.category || 'Other');
+    const regionDistribution = countSecurityGroups(suspiciousSignIns, signIn => signIn.country || signIn.location || 'Unknown');
+    const attackTimeline = allSecurityEvents
+        .sort((a, b) => new Date(b.timestamp || getSecurityEventTime(b)) - new Date(a.timestamp || getSecurityEventTime(a)))
+        .slice(0, 50)
+        .map(event => ({
+            type: event.recordType,
+            title: event.name || event.title || event.displayName || 'Security event',
+            subtitle: event.user || event.source || event.location || event.category || 'Microsoft Security',
+            timestamp: event.timestamp || getSecurityEventTime(event),
+            severity: event.severity || 'medium',
+            mitre: getSecurityMitreMapping(event)
+        }));
+
+    const highRiskSignals = highSeverityAlerts.length + activeIncidents.length + usersUnderAttack.length;
+    const aiSummary = highRiskSignals > 0
+        ? `Security attention is required. ${highSeverityAlerts.length} high or critical alert(s), ${activeIncidents.length} active incident(s), and ${usersUnderAttack.length} user attack pattern(s) were found.`
+        : 'Security posture is currently stable across cached Microsoft security signals.';
+    const recommendations = [
+        highSeverityAlerts.length ? { priority: 'critical', title: 'Review high severity alerts', detail: `${highSeverityAlerts.length} high or critical alert(s) need analyst review.` } : null,
+        usersUnderAttack.length ? { priority: 'high', title: 'Investigate repeated suspicious sign-ins', detail: `${usersUnderAttack.length} user(s) show repeated failed or risky access attempts.` } : null,
+        activeIncidents.length ? { priority: 'high', title: 'Triage active incidents', detail: `${activeIncidents.length} active incident(s) are still open.` } : null,
+        processedThreats.length ? { priority: 'medium', title: 'Validate threat indicators', detail: `${processedThreats.length} threat indicator(s) are present in the tenant feed.` } : null,
+        { priority: highRiskSignals ? 'medium' : 'low', title: 'Keep cached SOC data fresh', detail: 'The dashboard reads cached security evidence first and refreshes through the backend Graph connector.' }
+    ].filter(Boolean);
+
+    return {
+        success: true,
+        fetchedAt: new Date().toISOString(),
+        summary: {
+            activeIncidents: activeIncidents.length,
+            highSeverityAlerts: highSeverityAlerts.length,
+            totalAlerts: processedAlerts.length,
+            threatIndicators: processedThreats.length,
+            usersUnderAttack: usersUnderAttack.length,
+            securityScore
+        },
+        incidents: processedIncidents,
+        alerts: processedAlerts,
+        threats: processedThreats,
+        signIns: {
+            all: signIns.length,
+            suspicious: suspiciousSignIns,
+            usersUnderAttack
+        },
+        activityFeed: activityFeed.slice(0, 30),
+        mitre: Object.values(mitreMap).sort((a, b) => b.count - a.count).slice(0, 20),
+        topTargetedUsers,
+        sourceDistribution,
+        categoryDistribution,
+        regionDistribution,
+        attackTimeline,
+        aiSummary,
+        recommendations
+    };
+}
+
+app.get('/api/db/security-events', authenticateToken, async (req, res) => {
+    try {
+        const context = await getAccessContextByUser(req.user);
+        if (!context?.companyId) return res.status(403).json({ success: false, message: 'Access mapping not configured' });
+
+        const [rows] = await pool.query(
+            'SELECT Payload, LastUpdated FROM SecurityEventsPayloadCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1',
+            [context.companyId]
+        );
+
+        if (rows.length > 0 && rows[0].Payload) {
+            try {
+                const payload = JSON.parse(rows[0].Payload);
+                if (payload && payload.success) {
+                    return res.json({ ...payload, source: 'db', fetchedAt: rows[0].LastUpdated });
+                }
+            } catch (_) {}
+        }
+
+        const api = await fetchSecurityEventsPayloadFromApi();
+        await pool.query(
+            `REPLACE INTO SecurityEventsPayloadCache (CompanyID, Payload, LastUpdated)
+             VALUES (?, ?, NOW())`,
+            [context.companyId, JSON.stringify(api)]
+        );
+        return res.json({ ...api, source: 'api-fallback' });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 /**
  * Route: GET /api/security-events
  * Comprehensive SOC dashboard aggregating alerts, incidents, threat indicators, and sign-ins
@@ -7312,198 +7646,18 @@ app.get('/api/security-events', authenticateToken, async (req, res) => {
             });
         }
 
-        const token = await getMicrosoftGraphToken();
-        console.log('[Security Events] 🔑 Microsoft Graph token obtained successfully');
-
-        // Fetch all security data in parallel
-        console.log('[Security Events] 🚀 Fetching security data from Microsoft Graph...');
-        const [alerts, incidents, threatIndicators, signIns] = await Promise.all([
-            fetchSecurityAlerts(token),
-            fetchSecurityIncidents(token),
-            fetchThreatIndicators(token),
-            fetchSecuritySignIns(token)
-        ]);
-
-        console.log('[Security Events] 📊 Raw data from Microsoft Graph API:', {
-            alertsCount: alerts.length,
-            incidentsCount: incidents.length,
-            threatIndicatorsCount: threatIndicators.length,
-            signInsCount: signIns.length
+        const payload = await fetchSecurityEventsPayloadFromApi();
+        console.log(`[Security Events] Compiled cached/live SOC payload for ${userEmail}:`, {
+            alerts: payload.alerts.length,
+            incidents: payload.incidents.length,
+            mitre: payload.mitre.length,
+            usersUnderAttack: payload.signIns.usersUnderAttack.length
         });
-
-        // ===== DATA PROCESSING & CORRELATION =====
-
-        // 1. Process alerts
-        console.log('[Security Events] 🔄 Processing alerts...');
-        const processedAlerts = alerts.map(alert => ({
-            id: alert.id,
-            title: alert.title || 'Unknown Alert',
-            description: alert.description || '',
-            severity: alert.severity || 'medium',
-            status: alert.status || 'newAlert',
-            created: alert.createdDateTime || new Date().toISOString(),
-            eventTime: alert.eventDateTime || new Date().toISOString(),
-            category: alert.category || 'Other',
-            vendor: alert.vendorInformation?.provider || 'Microsoft'
-        }));
-
-        // 2. Process incidents
-        console.log('[Security Events] 🔄 Processing incidents...');
-        const processedIncidents = incidents.map(incident => ({
-            id: incident.id,
-            displayName: incident.displayName || 'Unknown Incident',
-            description: incident.description || '',
-            severity: incident.severity || 'medium',
-            status: incident.status || 'active',
-            created: incident.createdDateTime || new Date().toISOString(),
-            updated: incident.lastUpdateDateTime || new Date().toISOString(),
-            assignedTo: incident.assignedTo || 'Unassigned',
-            redirectUrl: incident.incidentUrl || '#'
-        }));
-
-        // 3. Identify suspicious sign-ins
-        console.log('[Security Events] 🔄 Processing sign-in data...');
-        const suspiciousSignIns = signIns.filter(signIn => {
-            const riskLevel = signIn.riskLevelDuringSignIn;
-            const status = signIn.status?.errorCode === 0 ? 'Success' : 'Failed';
-            return (riskLevel && riskLevel !== 'none') || status === 'Failed';
-        }).slice(0, 50).map(signIn => ({
-            id: signIn.id,
-            user: signIn.userPrincipalName || 'Unknown',
-            timestamp: signIn.createdDateTime || new Date().toISOString(),
-            ipAddress: signIn.ipAddress || 'Unknown',
-            location: signIn.location?.city ? `${signIn.location.city}, ${signIn.location.countryOrRegion}` : 'Unknown Location',
-            riskLevel: signIn.riskLevelDuringSignIn || 'none',
-            status: signIn.status?.errorCode === 0 ? 'Success' : 'Failed',
-            errorCode: signIn.status?.errorCode || 0
-        }));
-
-        // 4. Process threat indicators
-        const processedThreats = threatIndicators.slice(0, 50).map(threat => ({
-            id: threat.id,
-            indicator: threat.networkIPv4 || threat.networkIPv6 || threat.domainName || threat.fileHashValue || 'Unknown',
-            type: threat.networkIPv4 ? 'IPv4' : threat.networkIPv6 ? 'IPv6' : threat.domainName ? 'Domain' : 'FileHash',
-            severity: threat.severity || 'medium',
-            action: threat.targetProduct || 'Block',
-            description: threat.description || 'Threat detected',
-            created: threat.createdDateTime || new Date().toISOString()
-        }));
-
-        // ===== CORRELATION & INSIGHTS =====
-
-        // Count active incidents
-        const activeIncidents = processedIncidents.filter(i => 
-            i.status === 'active' || i.status === 'inProgress'
-        );
-
-        // Count high severity alerts
-        const highSeverityAlerts = processedAlerts.filter(a => 
-            a.severity === 'high' || a.severity === 'critical'
-        );
-
-        // Find users under attack (multiple failed logins or suspicious activity)
-        const userFailureMap = {};
-        suspiciousSignIns.forEach(signIn => {
-            if (signIn.status === 'Failed') {
-                userFailureMap[signIn.user] = (userFailureMap[signIn.user] || 0) + 1;
-            }
-        });
-
-        const usersUnderAttack = Object.entries(userFailureMap)
-            .filter(([user, count]) => count >= 3)
-            .map(([user, count]) => ({ user, failedAttempts: count }))
-            .sort((a, b) => b.failedAttempts - a.failedAttempts)
-            .slice(0, 10);
-
-        // Calculate security score (0-100)
-        const severityScores = {
-            'critical': 25,
-            'high': 15,
-            'medium': 5,
-            'low': 2
-        };
-        
-        let securityScore = 100;
-        for (const threat of processedThreats) {
-            securityScore -= severityScores[threat.severity] || 2;
-        }
-        for (const alert of processedAlerts.slice(0, 10)) {
-            securityScore -= severityScores[alert.severity] || 2;
-        }
-        for (const signIn of usersUnderAttack) {
-            securityScore -= (signIn.failedAttempts * 2);
-        }
-        securityScore = Math.max(0, Math.min(100, securityScore));
-
-        // ===== ACTIVITY FEED =====
-        const activityFeed = [];
-        
-        // Add incidents to feed
-        processedIncidents.slice(0, 5).forEach(incident => {
-            activityFeed.push({
-                type: 'incident',
-                message: `${incident.severity.toUpperCase()} Incident: ${incident.displayName}`,
-                timestamp: incident.created,
-                severity: incident.severity
-            });
-        });
-
-        // Add high severity alerts
-        highSeverityAlerts.slice(0, 5).forEach(alert => {
-            activityFeed.push({
-                type: 'alert',
-                message: `${alert.severity.toUpperCase()}: ${alert.title}`,
-                timestamp: alert.created,
-                severity: alert.severity
-            });
-        });
-
-        // Add suspicious sign-ins
-        suspiciousSignIns.slice(0, 5).forEach(signIn => {
-            activityFeed.push({
-                type: 'signin',
-                message: `Failed login: ${signIn.user} from ${signIn.location}`,
-                timestamp: signIn.timestamp,
-                severity: 'medium'
-            });
-        });
-
-        // Sort by timestamp
-        activityFeed.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-
-        console.log('[Security Events] ✅ Compilation complete:');
-        console.log('[Security Events]   - Processed Alerts:', processedAlerts.length);
-        console.log('[Security Events]   - Processed Incidents:', processedIncidents.length);
-        console.log('[Security Events]   - Threat Indicators:', processedThreats.length);
-        console.log('[Security Events]   - Active Incidents:', activeIncidents.length);
-        console.log('[Security Events]   - High Severity Alerts:', highSeverityAlerts.length);
-        console.log('[Security Events]   - Users Under Attack:', usersUnderAttack.length);
-        console.log('[Security Events]   - Activity Feed Items:', activityFeed.length);
-        console.log('[Security Events]   - Security Score:', securityScore);
-
-        console.log(`[Security Events] 📤 Sending response to frontend for user: ${userEmail}`);
 
         res.json({
-            success: true,
+            ...payload,
             tenant: tenant.clientId,
-            fetchedAt: new Date().toISOString(),
-            summary: {
-                activeIncidents: activeIncidents.length,
-                highSeverityAlerts: highSeverityAlerts.length,
-                totalAlerts: processedAlerts.length,
-                threatIndicators: processedThreats.length,
-                usersUnderAttack: usersUnderAttack.length,
-                securityScore
-            },
-            incidents: processedIncidents,
-            alerts: processedAlerts,
-            threats: processedThreats,
-            signIns: {
-                all: signIns.length,
-                suspicious: suspiciousSignIns,
-                usersUnderAttack
-            },
-            activityFeed: activityFeed.slice(0, 20)
+            source: 'api'
         });
 
     } catch (error) {
