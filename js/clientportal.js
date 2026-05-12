@@ -4256,7 +4256,7 @@ function renderSunbirdEmailTable(model = buildSunbirdEmailModel()) {
                 <td data-label="Targeted User">${escapeIdentityText(getSunbirdEmailTargetUser(alert))}</td>
                 <td data-label="Subject / Alert">${escapeIdentityText(alert.title || 'Email alert')}</td>
                 <td data-label="Action">${escapeIdentityText(getSunbirdEmailAction(alert))}</td>
-                <td data-label="Category">${escapeIdentityText(alert.source || alert.category || 'Email Threat API')}</td>
+                <td data-label="Category">${escapeIdentityText(alert.category || 'Email Threat')}</td>
                 <td data-label="Evidence">${escapeIdentityText((alert.description || '').slice(0, 90) || 'Security alert evidence')}</td>
             </tr>
         `;
@@ -4434,7 +4434,7 @@ function getSunbirdEmailEvidenceRows(evidenceKey, model = buildSunbirdEmailModel
     return (model.evidence[evidenceKey] || []).map(alert => ({
         title: alert.title || 'Email alert',
         subtitle: `${getSunbirdEmailTargetUser(alert)} | ${getSunbirdEmailSender(alert)}`,
-        meta: `${getSunbirdEmailThreatType(alert)} | ${alert.severity || 'low'} | ${getSunbirdEmailAction(alert)} | ${alert.source || alert.vendorInformation || 'Email Threat API'}`
+        meta: `${getSunbirdEmailThreatType(alert)} | ${alert.severity || 'low'} | ${getSunbirdEmailAction(alert)}`
     }));
 }
 
@@ -4504,7 +4504,7 @@ function getSunbirdEmailThreatLabel(alert) {
 }
 
 function getSunbirdEmailSender(alert) {
-    return alert.sender || alert.from || alert.sourceAddress || 'Unknown sender';
+    return alert.sender || alert.from || alert.sourceAddress || alert.vendorInformation || 'Unknown sender';
 }
 
 function getSunbirdEmailTargetUser(alert) {
