@@ -4833,20 +4833,72 @@ async function fetchEmailMetricsFromApi() {
     };
 }
 
+async function fetchEmailActivityReport(token) {
+    try {
+        const response = await fetch("https://graph.microsoft.com/v1.0/reports/getEmailActivityUserDetail(period='D7')", {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) {
+            console.warn('[Email Security] Email activity report returned:', response.status);
+            return { users: [], summary: {} };
+        }
+        const csv = await response.text();
+        const rows = parseGraphReportCSV(csv, 'Email Activity');
+        const users = rows
+            .filter(row => row['User Principal Name'])
+            .map(row => ({
+                userPrincipalName: row['User Principal Name'],
+                displayName: row['Display Name'] || row['User Principal Name'],
+                lastActivityDate: row['Last Activity Date'] || '',
+                sendCount: Number(row['Send Count'] || 0),
+                receiveCount: Number(row['Receive Count'] || 0),
+                readCount: Number(row['Read Count'] || 0),
+                reportRefreshDate: row['Report Refresh Date'] || '',
+                reportPeriod: row['Report Period'] || '7'
+            }));
+        const summary = users.reduce((acc, user) => {
+            acc.activeMailboxes += user.lastActivityDate ? 1 : 0;
+            acc.sendCount += user.sendCount;
+            acc.receiveCount += user.receiveCount;
+            acc.readCount += user.readCount;
+            return acc;
+        }, { activeMailboxes: 0, sendCount: 0, receiveCount: 0, readCount: 0 });
+        summary.totalMailActivity = summary.sendCount + summary.receiveCount + summary.readCount;
+        return { users, summary };
+    } catch (error) {
+        console.warn('[Email Security] Email activity report failed:', error.message);
+        return { users: [], summary: {} };
+    }
+}
+
+function isEmailSecuritySignal(item = {}) {
+    const text = [
+        item.title,
+        item.description,
+        item.category,
+        item.serviceSource,
+        item.detectionSource,
+        item.vendorInformation?.provider
+    ].filter(Boolean).join(' ').toLowerCase();
+    return /(email|mail|exchange|phish|spam|spoof|malware|attachment|safe links|safe attachments|impersonation|business email|quarantine)/.test(text);
+}
+
 async function fetchEmailSecurityPayloadFromApi() {
     const token = await getMicrosoftGraphToken();
-    const [alerts, incidents] = await Promise.all([
+    const [alerts, incidents, mailActivity] = await Promise.all([
         fetchSecurityAlerts(token),
-        fetchSecurityIncidents(token)
+        fetchSecurityIncidents(token),
+        fetchEmailActivityReport(token)
     ]);
 
     const emailKeywords = ['phishing', 'malware', 'spam', 'email', 'attachment', 'suspicious mail', 'ransomware', 'spoof', 'impersonation'];
+    const emailAlerts = alerts.filter(isEmailSecuritySignal);
     const emailIncidents = incidents.filter(incident => {
         const text = `${incident.displayName || ''} ${incident.description || ''}`.toLowerCase();
         return emailKeywords.some(keyword => text.includes(keyword));
     });
 
-    const processedAlerts = alerts.map(alert => ({
+    const processedAlerts = emailAlerts.map(alert => ({
         id: alert.id,
         title: alert.title || 'Unknown Alert',
         description: alert.description || '',
@@ -4934,12 +4986,14 @@ async function fetchEmailSecurityPayloadFromApi() {
             activeIncidents,
             affectedUsersCount: affectedUsers.length,
             threatResolutionRate,
-            securityScore
+            securityScore,
+            mailActivity: mailActivity.summary || {}
         },
         alerts: processedAlerts,
         incidents: processedIncidents,
         threats: { byType, bySeverity },
         affectedUsers: { all: affectedUsers, mostTargeted },
+        mailActivity,
         insights
     };
 }
@@ -5268,7 +5322,10 @@ app.get('/api/db/email-metrics', authenticateToken, async (req, res) => {
         if (rows.length > 0) {
             const cached = rows[0];
             const hasSignals = Number(cached.ActiveThreats || 0) + Number(cached.HighSeverity || 0) + Number(cached.UsersTargeted || 0) + Number(cached.OpenIncidents || 0) > 0;
+            const ageMs = cached.LastUpdated ? Date.now() - new Date(cached.LastUpdated).getTime() : Number.POSITIVE_INFINITY;
+            const isFresh = Number.isFinite(ageMs) && ageMs < 5 * 60 * 1000;
             if (hasSignals) return res.json({ success: true, source: 'db', metrics: cached });
+            if (isFresh) return res.json({ success: true, source: 'db', metrics: cached });
         }
         const api = await fetchEmailMetricsFromApi();
         await pool.query(
@@ -5297,13 +5354,16 @@ app.get('/api/db/email-security', authenticateToken, async (req, res) => {
                 const payload = JSON.parse(rows[0].Payload);
                 if (payload && payload.success) {
                     const summary = payload.summary || {};
+                    const hasMailActivityShape = Array.isArray(payload.mailActivity?.users);
                     const hasSignals = (payload.alerts || []).length > 0 ||
                         (payload.incidents || []).length > 0 ||
+                        (payload.mailActivity?.users || []).length > 0 ||
                         Number(summary.activeThreats || 0) +
                         Number(summary.highSeverityAlerts || 0) +
                         Number(summary.affectedUsersCount || 0) +
-                        Number(summary.activeIncidents || 0) > 0;
-                    if (hasSignals) {
+                        Number(summary.activeIncidents || 0) +
+                        Number(summary.mailActivity?.totalMailActivity || 0) > 0;
+                    if (hasSignals && hasMailActivityShape) {
                         return res.json({
                             ...payload,
                             source: 'db',
