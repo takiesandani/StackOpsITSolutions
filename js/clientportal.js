@@ -9353,12 +9353,11 @@ function renderSunbirdPremiumLoader(message) {
     return `
         <div class="sunbird-panel-view sunbird-panel-loader-wrap">
             <div class="sunbird-premium-loader" aria-live="polite">
-                <div class="sunbird-loader-orbit"></div>
-                <div class="sunbird-loader-core"></div>
-                <div class="sunbird-loader-bars">
-                    <span></span><span></span><span></span>
+                <div class="sunbird-stack-loader-shell">
+                    <div class="sunbird-stack-loader-ring"></div>
+                    <img src="Images/Logos/StackCTRLLoading.png" alt="" class="sunbird-stack-loader-logo">
                 </div>
-                <p class="sunbird-panel-loading">${message}<span class="sunbird-loader-dots"></span></p>
+                <p class="sunbird-panel-loading">${message}</p>
             </div>
         </div>
     `;
