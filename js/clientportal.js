@@ -1412,6 +1412,7 @@ async function fetchDevicesCardData() {
 
         const response = await fetch('/api/db/device-metrics', {
             method: 'GET',
+            cache: 'no-store',
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
@@ -1426,6 +1427,7 @@ async function fetchDevicesCardData() {
         try {
             const detailResponse = await fetch('/api/microsoft-devices', {
                 method: 'GET',
+                cache: 'no-store',
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
@@ -1481,6 +1483,7 @@ async function fetchEmailCardData() {
 
         const response = await fetch('/api/db/email-metrics', {
             method: 'GET',
+            cache: 'no-store',
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
@@ -1496,6 +1499,7 @@ async function fetchEmailCardData() {
         try {
             const detailResponse = await fetch('/api/db/email-security', {
                 method: 'GET',
+                cache: 'no-store',
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
@@ -3084,7 +3088,7 @@ function normalizeSunbirdDevicesData(data = {}) {
     const summary = data.summary || {};
     const totalDevices = hasDeviceEvidence ? devices.length : summary.totalDevices ?? getSunbirdMetricNumber(metrics, ['TotalDevices', 'totalDevices'], 0);
     const nonCompliantDevices = hasDeviceEvidence
-        ? devices.filter(d => normalizeSunbirdDeviceCompliance(d) !== 'compliant').length
+        ? devices.filter(d => normalizeSunbirdDeviceCompliance(d) === 'noncompliant').length
         : summary.nonCompliantDevices ?? summary.nonCompliant ?? getSunbirdMetricNumber(metrics, ['NonCompliant', 'nonCompliant'], 0);
     const notEncryptedDevices = hasDeviceEvidence
         ? devices.filter(d => !d.isEncrypted).length
@@ -3127,6 +3131,8 @@ function normalizeSunbirdDevicesData(data = {}) {
         summary: {
             ...summary,
             totalDevices,
+            nonCompliantDevices,
+            notEncryptedDevices,
             compliantDevices,
             encryptedDevices,
             staleDevices,
@@ -3145,6 +3151,7 @@ async function loadSunbirdDevicesDashboardData() {
     try {
         const metricsResponse = await fetch('/api/db/device-metrics', {
             method: 'GET',
+            cache: 'no-store',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
         });
         const metricsData = await metricsResponse.json();
@@ -3160,6 +3167,7 @@ async function loadSunbirdDevicesDashboardData() {
     try {
         const detailResponse = await fetch('/api/microsoft-devices', {
             method: 'GET',
+            cache: 'no-store',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
         });
         const detailData = await detailResponse.json();
@@ -3175,7 +3183,7 @@ async function loadSunbirdDevicesDashboardData() {
 function buildSunbirdDevicesModel(data = sunbirdDevicesDashboardData) {
     const normalized = normalizeSunbirdDevicesData(data || {});
     const devices = normalized.devices;
-    const nonCompliantDevices = devices.filter(d => normalizeSunbirdDeviceCompliance(d) !== 'compliant');
+    const nonCompliantDevices = devices.filter(d => normalizeSunbirdDeviceCompliance(d) === 'noncompliant');
     const notEncryptedDevices = devices.filter(d => !d.isEncrypted);
     const staleDevices = devices.filter(d => getSunbirdDeviceDaysSinceSync(d) > 7 && getSunbirdDeviceDaysSinceSync(d) <= 30);
     const deadDevices = devices.filter(d => getSunbirdDeviceDaysSinceSync(d) > 30);
@@ -3899,6 +3907,7 @@ async function loadSunbirdEmailDashboardData() {
     try {
         const metricsResponse = await fetch('/api/db/email-metrics', {
             method: 'GET',
+            cache: 'no-store',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
         });
         const metricsData = await metricsResponse.json();
@@ -3914,6 +3923,7 @@ async function loadSunbirdEmailDashboardData() {
     try {
         const cachedResponse = await fetch('/api/db/email-security', {
             method: 'GET',
+            cache: 'no-store',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
         });
         const cachedData = await cachedResponse.json();
@@ -3925,6 +3935,7 @@ async function loadSunbirdEmailDashboardData() {
         try {
             const liveResponse = await fetch('/api/email-security', {
                 method: 'GET',
+                cache: 'no-store',
                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
             });
             const liveData = await liveResponse.json();
@@ -4081,7 +4092,6 @@ function renderSunbirdEmailCharts(model) {
     const threats = model.threats.byType || {};
     const severity = model.threats.bySeverity || {};
     el.innerHTML = `
-        ${renderSunbirdEmailRiskTrendChart(model)}
         ${renderSunbirdPieChart('Threat type distribution', [
             { label: 'Phishing', value: threats.Phishing || model.evidence.phishingAlerts.length, tone: 'bad' },
             { label: 'Malware', value: threats.Malware || model.evidence.malwareAlerts.length, tone: 'warn' },

@@ -4802,7 +4802,8 @@ async function fetchDeviceMetricsFromApi() {
     const token = await getMicrosoftGraphToken();
     const devices = await fetchMicrosoftDevices(token);
     const totalDevices = devices.length;
-    const nonCompliant = devices.filter(d => (d.complianceState || '').toLowerCase() === 'noncompliant').length;
+    const normalizeCompliance = value => String(value || 'unknown').toLowerCase().replace(/[_\s-]/g, '');
+    const nonCompliant = devices.filter(d => normalizeCompliance(d.complianceState) === 'noncompliant').length;
     const notEncrypted = devices.filter(d => !d.isEncrypted).length;
     const staleDevices = devices.filter(d => {
         if (!d.lastSyncDateTime) return true;
@@ -4853,11 +4854,9 @@ async function fetchGraphCollection(token, url, label) {
 }
 
 async function fetchEmailThreatSubmissions(token) {
-    return fetchGraphCollection(
-        token,
-        'https://graph.microsoft.com/v1.0/security/threatSubmission/emailThreats?$top=100',
-        'Email threat submissions'
-    );
+    // Microsoft Graph threatSubmission/emailThreats is not a stable GET feed in this tenant and returns 400.
+    // Keep Email Security on Defender alert sources instead of letting this optional endpoint slow or dirty the cache.
+    return [];
 }
 
 async function fetchDefenderOfficeAlerts(token) {
@@ -4955,15 +4954,13 @@ function normalizeDefenderOfficeAlert(alert) {
 
 async function fetchEmailSecurityPayloadFromApi() {
     const token = await getMicrosoftGraphToken();
-    const [emailThreatSubmissions, defenderOfficeAlerts, legacyAlerts, incidents] = await Promise.all([
-        fetchEmailThreatSubmissions(token),
+    const [defenderOfficeAlerts, legacyAlerts, incidents] = await Promise.all([
         fetchDefenderOfficeAlerts(token),
         fetchSecurityAlerts(token),
         fetchSecurityIncidents(token)
     ]);
 
     const emailKeywords = ['phishing', 'malware', 'spam', 'email', 'attachment', 'suspicious mail', 'ransomware', 'spoof', 'impersonation'];
-    const submissionAlerts = emailThreatSubmissions.map(item => normalizeGraphEmailThreat(item, 'Microsoft Email Threat Submissions'));
     const defenderAlerts = defenderOfficeAlerts.map(normalizeDefenderOfficeAlert);
     const strictLegacyAlerts = legacyAlerts
         .filter(isStrictEmailSecurityAlert)
@@ -4971,7 +4968,7 @@ async function fetchEmailSecurityPayloadFromApi() {
             ...alert,
             serviceSource: alert.serviceSource || alert.vendorInformation?.provider || 'Microsoft Security Email Alert'
         }));
-    const emailAlerts = [...submissionAlerts, ...defenderAlerts, ...strictLegacyAlerts]
+    const emailAlerts = [...defenderAlerts, ...strictLegacyAlerts]
         .filter((alert, index, all) => index === all.findIndex(item => item.id === alert.id));
     const emailIncidents = incidents.filter(incident => {
         const text = `${incident.displayName || ''} ${incident.description || ''}`.toLowerCase();
@@ -7061,13 +7058,14 @@ app.get('/api/microsoft-devices', authenticateToken, async (req, res) => {
         ]);
 
         // Process devices data
+        const normalizeCompliance = value => String(value || 'unknown').toLowerCase().replace(/[_\s-]/g, '');
         const processedDevices = devices.map(device => ({
             id: device.id,
             deviceName: device.deviceName || 'Unknown Device',
             userPrincipalName: device.userPrincipalName || 'N/A',
             operatingSystem: device.operatingSystem || 'Unknown',
             osVersion: device.osVersion || 'N/A',
-            complianceState: device.complianceState || 'unknown',
+            complianceState: normalizeCompliance(device.complianceState),
             isEncrypted: device.isEncrypted || false,
             encryptionStatus: device.isEncrypted ? 'Encrypted' : 'Not Encrypted',
             managementAgent: device.managementAgent || 'Unknown',
