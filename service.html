@@ -115,7 +115,7 @@
         <!-- RIGHT CONTENT AREA -->
         <div class="solutions-content">
             <!-- CISCO DUO SOLUTION -->
-            <section class="solution-content-section active" data-solution="cisco">
+            <section class="solution-content-section" data-solution="cisco">
                 <!-- HERO -->
                 <div class="solution-hero">
                     <h1 class="solution-hero-title">Duo MSP & StackOps IT Solution Overview</h1>
@@ -454,7 +454,7 @@
                 </section>
             </section>
 
-            <section class="solution-content-section" data-solution="stackctrl">
+            <section class="solution-content-section active" data-solution="stackctrl">
                 <div class="solution-hero">
                     <h1 class="solution-hero-title">StackCTRL: Measure. Control. Improve.</h1>
                     <h2 class="solution-section-title" style="color: #ff6f00;">Your Ultimate IT Command Center</h2>
@@ -464,7 +464,7 @@
                 </div>
 
                 <div class="solution-image-full">
-                    <img src="Images/StackCTRLPROMOl1a.png"g" alt="StackCTRL Dashboard Overview" style="border-radius: 38px; height: fit-content; border: 1px solid rgba(0, 110, 255, 0.2); object-fit: contain;" />
+                    <img src="Images/StackCTRLPROMOl1a.png" alt="StackCTRL Dashboard Overview" style="border-radius: 38px; height: fit-content; border: 1px solid rgba(0, 110, 255, 0.2); object-fit: contain;" />
                 </div>
 
                 <section class="solution-how-better">
@@ -660,7 +660,7 @@
             const solutionsMobileToggle = document.getElementById('solutionsMobileToggle');
             const toggleText = solutionsMobileToggle ? solutionsMobileToggle.querySelector('span') : null;
             
-            let currentLockedSolution = 'cisco';
+            let currentLockedSolution = 'stackctrl';
             let hoverTimeout;
             let currentlyHoveringButton = null;
 
@@ -685,6 +685,7 @@
 
             // Initialize active state
             updateActiveButton('stackctrl');
+            showSolutionContent('stackctrl', false);
 
             // Solution switching with hover preview
             sidebarButtons.forEach(button => {
