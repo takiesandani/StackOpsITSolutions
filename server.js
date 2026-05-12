@@ -4812,33 +4812,156 @@ async function fetchApplicationMetricsFromApi() {
 }
 
 async function fetchEmailMetricsFromApi() {
-    const token = await getMicrosoftGraphToken();
-    const [alerts, incidents] = await Promise.all([fetchSecurityAlerts(token), fetchSecurityIncidents(token)]);
-    const emailKeywords = ['phishing', 'malware', 'spam', 'email', 'attachment', 'suspicious mail', 'ransomware'];
-    const emailAlerts = alerts.filter(alert => {
-        const text = `${alert.category || ''} ${alert.title || ''} ${alert.description || ''}`.toLowerCase();
-        return emailKeywords.some(k => text.includes(k));
-    });
-    const highSeverity = emailAlerts.filter(a => ['high', 'critical'].includes(String(a.severity || '').toLowerCase())).length;
-    const activeThreats = emailAlerts.filter(a => ['newalert', 'inprogress'].includes(String(a.status || '').toLowerCase())).length;
-    const openIncidents = incidents.filter(i => ['active', 'inprogress'].includes(String(i.status || '').toLowerCase())).length;
+    const payload = await fetchEmailSecurityPayloadFromApi();
+    return {
+        activeThreats: payload.summary.activeThreats,
+        highSeverity: payload.summary.highSeverityAlerts,
+        usersTargeted: payload.summary.affectedUsersCount,
+        openIncidents: payload.summary.activeIncidents
+    };
+}
+
+async function fetchGraphCollection(token, url, label) {
+    try {
+        const response = await fetch(url, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        if (!response.ok) {
+            console.warn(`[Email Security] ${label} returned ${response.status}: ${response.statusText}`);
+            return [];
+        }
+        const data = await response.json();
+        return data.value || [];
+    } catch (error) {
+        console.warn(`[Email Security] ${label} failed:`, error.message);
+        return [];
+    }
+}
+
+async function fetchEmailThreatSubmissions(token) {
+    return fetchGraphCollection(
+        token,
+        'https://graph.microsoft.com/v1.0/security/threatSubmission/emailThreats?$top=100',
+        'Email threat submissions'
+    );
+}
+
+async function fetchDefenderOfficeAlerts(token) {
+    return fetchGraphCollection(
+        token,
+        "https://graph.microsoft.com/v1.0/security/alerts_v2?$top=100&$filter=serviceSource%20eq%20'microsoftDefenderForOffice365'",
+        'Defender for Office 365 alerts'
+    );
+}
+
+function isStrictEmailSecurityAlert(alert) {
+    const text = [
+        alert.category,
+        alert.title,
+        alert.description,
+        alert.serviceSource,
+        alert.detectionSource,
+        alert.vendorInformation?.provider
+    ].join(' ').toLowerCase();
+    return /(defender for office|office 365|email|mail|exchange|phish|spam|spoof|malware|attachment|safe links|safe attachments|impersonation|business email)/i.test(text);
+}
+
+function getEmailEvidenceUsers(alert) {
     const users = new Set();
-    emailAlerts.forEach(alert => (alert.userStates || []).forEach(user => users.add(user.accountName || 'Unknown')));
-    return { activeThreats, highSeverity, usersTargeted: users.size, openIncidents };
+    (alert.userStates || []).forEach(user => {
+        if (user.accountName) users.add(user.accountName);
+    });
+    (alert.evidence || []).forEach(item => {
+        const user = item.userPrincipalName || item.upn || item.mailboxPrimaryAddress || item.recipientEmailAddress || item.accountName;
+        if (user) users.add(user);
+    });
+    return Array.from(users);
+}
+
+function normalizeGraphEmailThreat(item, source) {
+    const recipient =
+        item.recipientEmailAddress ||
+        item.recipient ||
+        item.mailRecipient ||
+        item.internetMessageId ||
+        item.userPrincipalName ||
+        'Unknown user';
+    const sender =
+        item.senderEmailAddress ||
+        item.sender ||
+        item.from ||
+        item.p1Sender ||
+        item.p2Sender ||
+        'Unknown sender';
+    const threatType = item.threatType || item.category || item.detectionSource || item.classification || 'Email Threat';
+    const status = item.status || item.submissionStatus || item.result || item.incidentStatus || 'newAlert';
+    const severity = item.severity || item.confidenceLevel || (String(threatType).toLowerCase().includes('phish') ? 'high' : 'medium');
+    const created =
+        item.createdDateTime ||
+        item.receivedDateTime ||
+        item.submittedDateTime ||
+        item.lastUpdateDateTime ||
+        item.eventDateTime ||
+        new Date().toISOString();
+
+    return {
+        id: item.id || item.alertWebUrl || `${source}-${created}-${sender}-${recipient}`,
+        title: item.subject || item.title || item.displayName || `${threatType} email threat`,
+        description: item.description || item.summary || item.details || item.internetMessageId || '',
+        severity: String(severity || 'medium').toLowerCase(),
+        status: String(status || 'newAlert').toLowerCase(),
+        created,
+        category: threatType,
+        sender,
+        recipient,
+        vendorInformation: source,
+        source,
+        userStates: [{ accountName: recipient }]
+    };
+}
+
+function normalizeDefenderOfficeAlert(alert) {
+    const evidenceUsers = getEmailEvidenceUsers(alert);
+    const senderEvidence = (alert.evidence || []).find(item => item.senderEmailAddress || item.senderFromAddress || item.senderDisplayName);
+    return {
+        id: alert.id,
+        title: alert.title || 'Defender for Office 365 alert',
+        description: alert.description || '',
+        severity: String(alert.severity || 'medium').toLowerCase(),
+        status: String(alert.status || 'newAlert').toLowerCase(),
+        created: alert.createdDateTime || alert.firstActivityDateTime || alert.lastUpdateDateTime || new Date().toISOString(),
+        category: alert.category || alert.detectionSource || 'Defender for Office 365',
+        sender: senderEvidence?.senderEmailAddress || senderEvidence?.senderFromAddress || senderEvidence?.senderDisplayName || 'Unknown sender',
+        recipient: evidenceUsers[0] || 'Unknown user',
+        vendorInformation: alert.serviceSource || 'microsoftDefenderForOffice365',
+        source: 'Defender for Office 365',
+        userStates: evidenceUsers.length ? evidenceUsers.map(accountName => ({ accountName })) : [{ accountName: 'Unknown user' }]
+    };
 }
 
 async function fetchEmailSecurityPayloadFromApi() {
     const token = await getMicrosoftGraphToken();
-    const [alerts, incidents] = await Promise.all([
+    const [emailThreatSubmissions, defenderOfficeAlerts, legacyAlerts, incidents] = await Promise.all([
+        fetchEmailThreatSubmissions(token),
+        fetchDefenderOfficeAlerts(token),
         fetchSecurityAlerts(token),
         fetchSecurityIncidents(token)
     ]);
 
     const emailKeywords = ['phishing', 'malware', 'spam', 'email', 'attachment', 'suspicious mail', 'ransomware', 'spoof', 'impersonation'];
-    const emailAlerts = alerts.filter(alert => {
-        const text = `${alert.category || ''} ${alert.title || ''} ${alert.description || ''}`.toLowerCase();
-        return emailKeywords.some(keyword => text.includes(keyword));
-    });
+    const submissionAlerts = emailThreatSubmissions.map(item => normalizeGraphEmailThreat(item, 'Microsoft Email Threat Submissions'));
+    const defenderAlerts = defenderOfficeAlerts.map(normalizeDefenderOfficeAlert);
+    const strictLegacyAlerts = legacyAlerts
+        .filter(isStrictEmailSecurityAlert)
+        .map(alert => normalizeDefenderOfficeAlert({
+            ...alert,
+            serviceSource: alert.serviceSource || alert.vendorInformation?.provider || 'Microsoft Security Email Alert'
+        }));
+    const emailAlerts = [...submissionAlerts, ...defenderAlerts, ...strictLegacyAlerts]
+        .filter((alert, index, all) => index === all.findIndex(item => item.id === alert.id));
     const emailIncidents = incidents.filter(incident => {
         const text = `${incident.displayName || ''} ${incident.description || ''}`.toLowerCase();
         return emailKeywords.some(keyword => text.includes(keyword));
@@ -4850,9 +4973,12 @@ async function fetchEmailSecurityPayloadFromApi() {
         description: alert.description || '',
         severity: (alert.severity || 'medium').toLowerCase(),
         status: (alert.status || 'newAlert').toLowerCase(),
-        created: alert.createdDateTime || new Date().toISOString(),
+        created: alert.created || alert.createdDateTime || new Date().toISOString(),
         category: alert.category || 'Email Threat',
-        vendorInformation: alert.vendorInformation?.provider || 'Microsoft Security',
+        sender: alert.sender || 'Unknown sender',
+        recipient: alert.recipient || 'Unknown user',
+        source: alert.source || 'Microsoft Email Threat API',
+        vendorInformation: alert.vendorInformation || 'Microsoft Email Threat API',
         userStates: (alert.userStates || []).map(user => ({
             aadUserId: user.aadUserId,
             accountName: user.accountName || 'Unknown'
