@@ -4833,160 +4833,31 @@ async function fetchEmailMetricsFromApi() {
     };
 }
 
-async function fetchGraphCollection(token, url, label) {
-    try {
-        const response = await fetch(url, {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            }
-        });
-        if (!response.ok) {
-            console.warn(`[Email Security] ${label} returned ${response.status}: ${response.statusText}`);
-            return [];
-        }
-        const data = await response.json();
-        return data.value || [];
-    } catch (error) {
-        console.warn(`[Email Security] ${label} failed:`, error.message);
-        return [];
-    }
-}
-
-async function fetchEmailThreatSubmissions(token) {
-    // Microsoft Graph threatSubmission/emailThreats is not a stable GET feed in this tenant and returns 400.
-    // Keep Email Security on Defender alert sources instead of letting this optional endpoint slow or dirty the cache.
-    return [];
-}
-
-async function fetchDefenderOfficeAlerts(token) {
-    return fetchGraphCollection(
-        token,
-        "https://graph.microsoft.com/v1.0/security/alerts_v2?$top=100&$filter=serviceSource%20eq%20'microsoftDefenderForOffice365'",
-        'Defender for Office 365 alerts'
-    );
-}
-
-function isStrictEmailSecurityAlert(alert) {
-    const text = [
-        alert.category,
-        alert.title,
-        alert.description,
-        alert.serviceSource,
-        alert.detectionSource,
-        alert.vendorInformation?.provider
-    ].join(' ').toLowerCase();
-    return /(defender for office|office 365|email|mail|exchange|phish|spam|spoof|malware|attachment|safe links|safe attachments|impersonation|business email)/i.test(text);
-}
-
-function getEmailEvidenceUsers(alert) {
-    const users = new Set();
-    (alert.userStates || []).forEach(user => {
-        if (user.accountName) users.add(user.accountName);
-    });
-    (alert.evidence || []).forEach(item => {
-        const user = item.userPrincipalName || item.upn || item.mailboxPrimaryAddress || item.recipientEmailAddress || item.accountName;
-        if (user) users.add(user);
-    });
-    return Array.from(users);
-}
-
-function normalizeGraphEmailThreat(item, source) {
-    const recipient =
-        item.recipientEmailAddress ||
-        item.recipient ||
-        item.mailRecipient ||
-        item.internetMessageId ||
-        item.userPrincipalName ||
-        'Unknown user';
-    const sender =
-        item.senderEmailAddress ||
-        item.sender ||
-        item.from ||
-        item.p1Sender ||
-        item.p2Sender ||
-        'Unknown sender';
-    const threatType = item.threatType || item.category || item.detectionSource || item.classification || 'Email Threat';
-    const status = item.status || item.submissionStatus || item.result || item.incidentStatus || 'newAlert';
-    const severity = item.severity || item.confidenceLevel || (String(threatType).toLowerCase().includes('phish') ? 'high' : 'medium');
-    const created =
-        item.createdDateTime ||
-        item.receivedDateTime ||
-        item.submittedDateTime ||
-        item.lastUpdateDateTime ||
-        item.eventDateTime ||
-        new Date().toISOString();
-
-    return {
-        id: item.id || item.alertWebUrl || `${source}-${created}-${sender}-${recipient}`,
-        title: item.subject || item.title || item.displayName || `${threatType} email threat`,
-        description: item.description || item.summary || item.details || item.internetMessageId || '',
-        severity: String(severity || 'medium').toLowerCase(),
-        status: String(status || 'newAlert').toLowerCase(),
-        created,
-        category: threatType,
-        sender,
-        recipient,
-        vendorInformation: source,
-        source,
-        userStates: [{ accountName: recipient }]
-    };
-}
-
-function normalizeDefenderOfficeAlert(alert) {
-    const evidenceUsers = getEmailEvidenceUsers(alert);
-    const senderEvidence = (alert.evidence || []).find(item => item.senderEmailAddress || item.senderFromAddress || item.senderDisplayName);
-    return {
-        id: alert.id,
-        title: alert.title || 'Defender for Office 365 alert',
-        description: alert.description || '',
-        severity: String(alert.severity || 'medium').toLowerCase(),
-        status: String(alert.status || 'newAlert').toLowerCase(),
-        created: alert.createdDateTime || alert.firstActivityDateTime || alert.lastUpdateDateTime || new Date().toISOString(),
-        category: alert.category || alert.detectionSource || 'Defender for Office 365',
-        sender: senderEvidence?.senderEmailAddress || senderEvidence?.senderFromAddress || senderEvidence?.senderDisplayName || 'Unknown sender',
-        recipient: evidenceUsers[0] || 'Unknown user',
-        vendorInformation: alert.serviceSource || 'microsoftDefenderForOffice365',
-        source: 'Defender for Office 365',
-        userStates: evidenceUsers.length ? evidenceUsers.map(accountName => ({ accountName })) : [{ accountName: 'Unknown user' }]
-    };
-}
-
 async function fetchEmailSecurityPayloadFromApi() {
     const token = await getMicrosoftGraphToken();
-    const [defenderOfficeAlerts, legacyAlerts, incidents] = await Promise.all([
-        fetchDefenderOfficeAlerts(token),
+    const [alerts, incidents] = await Promise.all([
         fetchSecurityAlerts(token),
         fetchSecurityIncidents(token)
     ]);
 
     const emailKeywords = ['phishing', 'malware', 'spam', 'email', 'attachment', 'suspicious mail', 'ransomware', 'spoof', 'impersonation'];
-    const defenderAlerts = defenderOfficeAlerts.map(normalizeDefenderOfficeAlert);
-    const strictLegacyAlerts = legacyAlerts
-        .filter(isStrictEmailSecurityAlert)
-        .map(alert => normalizeDefenderOfficeAlert({
-            ...alert,
-            serviceSource: alert.serviceSource || alert.vendorInformation?.provider || 'Microsoft Security Email Alert'
-        }));
-    const emailAlerts = [...defenderAlerts, ...strictLegacyAlerts]
-        .filter((alert, index, all) => index === all.findIndex(item => item.id === alert.id));
     const emailIncidents = incidents.filter(incident => {
         const text = `${incident.displayName || ''} ${incident.description || ''}`.toLowerCase();
         return emailKeywords.some(keyword => text.includes(keyword));
     });
 
-    const processedAlerts = emailAlerts.map(alert => ({
+    const processedAlerts = alerts.map(alert => ({
         id: alert.id,
         title: alert.title || 'Unknown Alert',
         description: alert.description || '',
-        severity: (alert.severity || 'medium').toLowerCase(),
-        status: (alert.status || 'newAlert').toLowerCase(),
-        created: alert.created || alert.createdDateTime || new Date().toISOString(),
-        category: alert.category || 'Email Threat',
-        sender: alert.sender || 'Unknown sender',
-        recipient: alert.recipient || 'Unknown user',
-        source: alert.source || 'Microsoft Email Threat API',
-        vendorInformation: alert.vendorInformation || 'Microsoft Email Threat API',
+        severity: String(alert.severity || 'medium').toLowerCase(),
+        status: String(alert.status || 'newAlert').toLowerCase(),
+        created: alert.createdDateTime || new Date().toISOString(),
+        category: alert.category || 'Security Alert',
+        sender: 'Unknown sender',
+        recipient: (alert.userStates || [])[0]?.accountName || 'Unknown user',
+        source: alert.serviceSource || alert.vendorInformation?.provider || 'Microsoft Security',
+        vendorInformation: alert.vendorInformation?.provider || 'Microsoft Security',
         userStates: (alert.userStates || []).map(user => ({
             aadUserId: user.aadUserId,
             accountName: user.accountName || 'Unknown'
@@ -5394,7 +5265,11 @@ app.get('/api/db/email-metrics', authenticateToken, async (req, res) => {
         const context = await getAccessContextByUser(req.user);
         if (!context?.companyId) return res.status(403).json({ success: false, message: 'Access mapping not configured' });
         const [rows] = await pool.query('SELECT * FROM EmailMetricsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [context.companyId]);
-        if (rows.length > 0) return res.json({ success: true, source: 'db', metrics: rows[0] });
+        if (rows.length > 0) {
+            const cached = rows[0];
+            const hasSignals = Number(cached.ActiveThreats || 0) + Number(cached.HighSeverity || 0) + Number(cached.UsersTargeted || 0) + Number(cached.OpenIncidents || 0) > 0;
+            if (hasSignals) return res.json({ success: true, source: 'db', metrics: cached });
+        }
         const api = await fetchEmailMetricsFromApi();
         await pool.query(
             `REPLACE INTO EmailMetricsCache (CompanyID, ActiveThreats, HighSeverity, UsersTargeted, OpenIncidents, LastUpdated)
@@ -5421,11 +5296,20 @@ app.get('/api/db/email-security', authenticateToken, async (req, res) => {
             try {
                 const payload = JSON.parse(rows[0].Payload);
                 if (payload && payload.success) {
-                    return res.json({
-                        ...payload,
-                        source: 'db',
-                        fetchedAt: rows[0].LastUpdated
-                    });
+                    const summary = payload.summary || {};
+                    const hasSignals = (payload.alerts || []).length > 0 ||
+                        (payload.incidents || []).length > 0 ||
+                        Number(summary.activeThreats || 0) +
+                        Number(summary.highSeverityAlerts || 0) +
+                        Number(summary.affectedUsersCount || 0) +
+                        Number(summary.activeIncidents || 0) > 0;
+                    if (hasSignals) {
+                        return res.json({
+                            ...payload,
+                            source: 'db',
+                            fetchedAt: rows[0].LastUpdated
+                        });
+                    }
                 }
             } catch (_) {}
         }
