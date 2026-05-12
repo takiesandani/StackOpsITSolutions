@@ -2309,12 +2309,12 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 .sunbird-storage-row span {
-  color: #a8c0d7;
+  color: #00498e1e;
   font-size: 0.8rem;
 }
 
 .sunbird-storage-row strong {
-  color: #e8f4ff;
+  color: #0053a12b;
   font-size: 0.84rem;
 }
 
@@ -6975,9 +6975,30 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 .sunbird-app-preview-row {
   width: 100%;
   border: 0;
+  border-bottom: 1px solid rgba(120, 170, 210, 0.16);
+  background: rgba(2, 12, 28, 0.48);
   color: inherit;
   cursor: pointer;
   text-align: left;
+  font-family: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.sunbird-app-preview-list {
+  background: rgba(2, 12, 28, 0.5);
+}
+
+.sunbird-app-preview-row:hover {
+  background: rgba(255, 159, 28, 0.12);
+}
+
+.sunbird-app-preview-row span {
+  color: rgba(232, 244, 255, 0.9);
+}
+
+.sunbird-app-preview-row strong {
+  color: rgba(255, 255, 255, 0.86);
 }
 
 .sunbird-app-preview-row small {
