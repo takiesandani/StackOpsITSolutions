@@ -11701,9 +11701,6 @@ function initializeSunbirdLeftMenu() {
         <button class="sunbird-menu-item" type="button" data-menu="backup" onclick="window.switchBillingMenu('backup')">
             <i class="fas fa-hdd"></i><span>Backup & Recovery</span>
         </button>
-        <button class="sunbird-menu-item" type="button" data-menu="billing" onclick="window.switchBillingMenu('billing')">
-            <i class="fas fa-file-invoice"></i><span>Billing Statement</span>
-        </button>
         <button class="sunbird-menu-item" type="button" data-menu="reports" onclick="window.switchBillingMenu('reports')">
             <i class="fas fa-chart-line"></i><span>Reports</span>
         </button>
@@ -11718,6 +11715,9 @@ function initializeSunbirdLeftMenu() {
         </button>
         <button class="sunbird-menu-item" type="button" data-menu="applications" onclick="window.switchBillingMenu('applications')">
             <i class="fas fa-cubes"></i><span>Applications</span>
+        </button>
+        <button class="sunbird-menu-item" type="button" data-menu="billing" onclick="window.switchBillingMenu('billing')">
+            <i class="fas fa-file-invoice"></i><span>Billing Statement</span>
         </button>
     `;
     
