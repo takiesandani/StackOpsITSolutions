@@ -1233,12 +1233,14 @@ async function showAppAccessDetail(spId, appName) {
         // Show loading state
         const accessContainer = document.getElementById('apps-access-content');
         if (accessContainer) {
-            accessContainer.innerHTML = `
-                <div style="text-align: center; padding: 40px; color: #94a3b8;">
-                    <i class="fas fa-spinner fa-spin" style="font-size: 24px; margin-bottom: 12px;"></i>
-                    <div>Loading app access details...</div>
-                </div>
-            `;
+            accessContainer.innerHTML = isSunbirdUser()
+                ? renderSunbirdPremiumLoader('Loading app access details')
+                : `
+                    <div style="text-align: center; padding: 40px; color: #94a3b8;">
+                        <i class="fas fa-spinner fa-spin" style="font-size: 24px; margin-bottom: 12px;"></i>
+                        <div>Loading app access details...</div>
+                    </div>
+                `;
         }
         
         const response = await fetch(`/api/app-access/${spId}`, {
@@ -10962,7 +10964,9 @@ async function initializeBillingCard() {
         const isSessionLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true' || !!localUser;
         if (isSessionLoggedIn) {
             if (isSunbirdUser() && !isSunbirdBillingViewActive('billing') && billingCard.dataset?.sunbirdView) return;
-            billingCard.innerHTML = '<p style="color: #bdbdbd; text-align: left; padding: 20px;">Loading billing information...</p>';
+            billingCard.innerHTML = isSunbirdUser()
+                ? renderSunbirdPremiumLoader('Loading billing information')
+                : '<p style="color: #bdbdbd; text-align: left; padding: 20px;">Loading billing information...</p>';
             cachedSunbirdBillingHtml = billingCard.innerHTML;
             setTimeout(() => {
                 if (!localStorage.getItem('authToken')) return;
@@ -10972,7 +10976,9 @@ async function initializeBillingCard() {
         }
         if (billingAuthRetryCount < 6) {
             billingAuthRetryCount += 1;
-            billingCard.innerHTML = '<p style="color: #bdbdbd; text-align: left; padding: 20px;">Preparing your billing view...</p>';
+            billingCard.innerHTML = isSunbirdUser()
+                ? renderSunbirdPremiumLoader('Preparing billing view')
+                : '<p style="color: #bdbdbd; text-align: left; padding: 20px;">Preparing your billing view...</p>';
             setTimeout(() => initializeBillingCard(), 350);
             return;
         }
@@ -11479,7 +11485,11 @@ async function renderSunbirdApplicationsView(forceRefresh = false) {
 
     try {
         if (!isSunbirdBillingViewActive('applications')) return;
-        billingCard.innerHTML = renderSunbirdApplicationsBillingMarkup(buildSunbirdApplicationsModel());
+        if (forceRefresh || !sunbirdApplicationsPayload) {
+            billingCard.innerHTML = renderSunbirdPremiumLoader('Loading applications access');
+        } else {
+            billingCard.innerHTML = renderSunbirdApplicationsBillingMarkup(buildSunbirdApplicationsModel());
+        }
 
         if (forceRefresh || !sunbirdApplicationsPayload) {
             await fetchApplicationsData();
@@ -11893,17 +11903,7 @@ function initializeSupportCard() {
     }
 
     // 🚨 SUNBIRD ONLY LOGIC: Live Compliance Validation
-    supportCard.innerHTML = `
-        <div class="secondary-card-header">
-            <i class="fas fa-certificate"></i>
-            <h3>Compliance Validation</h3>
-        </div>
-        <div class="governance-content sunbird-governance-content">
-            <div style="text-align: center; padding: 20px; color: #94a3b8;">
-                <i class="fas fa-spinner fa-spin"></i> Validating live controls...
-            </div>
-        </div>
-    `;
+    supportCard.innerHTML = renderSunbirdPremiumLoader('Validating compliance controls');
 
     // Fetch dynamic API data
     fetchSunbirdComplianceData(supportCard);
@@ -11940,28 +11940,40 @@ async function fetchSunbirdComplianceData(supportCard) {
             `;
         }).join('');
 
-        supportCard.querySelector('.sunbird-governance-content').innerHTML = `
-            <div class="sunbird-governance-table-wrap">
-                <table class="sunbird-incidents-table sunbird-governance-table">
-                    <thead>
-                        <tr>
-                            <th>Control Name</th>
-                            <th>Area</th>
-                            <th>Insight</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${tableRows}
-                    </tbody>
-                </table>
+        supportCard.innerHTML = `
+            <div class="secondary-card-header">
+                <i class="fas fa-certificate"></i>
+                <h3>Compliance Validation</h3>
+            </div>
+            <div class="governance-content sunbird-governance-content">
+                <div class="sunbird-governance-table-wrap">
+                    <table class="sunbird-incidents-table sunbird-governance-table">
+                        <thead>
+                            <tr>
+                                <th>Control Name</th>
+                                <th>Area</th>
+                                <th>Insight</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${tableRows}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         `;
 
         ensureSunbirdComplianceEvidenceModal();
     } catch (error) {
         console.error('[Compliance] Error:', error);
-        supportCard.querySelector('.sunbird-governance-content').innerHTML = `
-            <div style="color: #ef4444; padding: 10px; text-align: center;">Failed to load compliance validation.</div>
+        supportCard.innerHTML = `
+            <div class="secondary-card-header">
+                <i class="fas fa-certificate"></i>
+                <h3>Compliance Validation</h3>
+            </div>
+            <div class="governance-content sunbird-governance-content">
+                <div style="color: #ef4444; padding: 10px; text-align: center;">Failed to load compliance validation.</div>
+            </div>
         `;
     }
 }
@@ -12305,43 +12317,7 @@ async function renderSunbirdOperationsView() {
     const billingCard = document.getElementById('billing-card');
     if (!billingCard) return;
 
-    // 1. Skeleton Loader (No text fetching)
-    const skeletonRows = Array(6).fill(`
-        <tr class="op-skeleton-row">
-            <td><div class="op-skeleton-block" style="width: 80%;"></div></td>
-            <td><div class="op-skeleton-block" style="width: 50%;"></div></td>
-            <td><div class="op-skeleton-block" style="width: 60px; border-radius: 20px;"></div></td>
-            <td><div class="op-skeleton-block" style="width: 70%;"></div></td>
-            <td><div class="op-skeleton-block" style="width: 80px;"></div></td>
-        </tr>
-    `).join('');
-
-    billingCard.innerHTML = `
-        <div class="sunbird-panel-view">
-            <div class="billing-card-header">
-                <i class="fas fa-tasks"></i>
-                <h3>Operations Action Queue</h3>
-            </div>
-            <div class="sunbird-section-title" style="margin-bottom: 10px;">Live Remediation Required</div>
-            
-            <div class="sunbird-incidents-table-wrap" style="max-height: 400px;">
-                <table class="sunbird-incidents-table">
-                    <thead>
-                        <tr>
-                            <th>Task</th>
-                            <th>Area</th>
-                            <th>Priority</th>
-                            <th>Insight</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody id="operations-tbody">
-                        ${skeletonRows}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    `;
+    billingCard.innerHTML = renderSunbirdPremiumLoader('Loading operations action queue');
 
     ensureSunbirdOperationsModal();
     ensureSunbirdBillingCardDimensions();
@@ -12358,47 +12334,80 @@ async function renderSunbirdOperationsView() {
         const data = await response.json();
         
         window.sunbirdOperationsTasks = data.tasks || [];
-
-        const tbody = document.getElementById('operations-tbody');
         
+        let rowsHtml = '';
         if (window.sunbirdOperationsTasks.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="5" class="sunbird-empty-row">No active tasks required. System is healthy.</td></tr>`;
-            return;
+            rowsHtml = `<tr><td colspan="5" class="sunbird-empty-row">No active tasks required. System is healthy.</td></tr>`;
+        } else {
+            rowsHtml = window.sunbirdOperationsTasks.map((task, index) => {
+                const isHigh = task.priority === 'High';
+                const isMed = task.priority === 'Medium';
+                const badgeClass = isHigh ? 'op-priority-high' : (isMed ? 'op-priority-medium' : 'op-priority-low');
+                const dotColor = isHigh ? '#f87171' : (isMed ? '#fbbf24' : '#34d399');
+                const insightClass = isHigh ? 'op-insight-danger' : (isMed ? 'op-insight-warning' : 'op-insight-success');
+
+                return `
+                    <tr>
+                        <td style="font-weight: 500; color: #e2e8f0;">${task.task}</td>
+                        <td style="color: #94a3b8;">${task.area}</td>
+                        <td>
+                            <span class="op-priority-badge ${badgeClass}">
+                                <span style="width: 6px; height: 6px; border-radius: 50%; background: ${dotColor};"></span>
+                                ${task.priority}
+                            </span>
+                        </td>
+                        <td class="op-insight-text ${insightClass}">${task.insight}</td>
+                        <td>
+                            <button class="btn-fix-this" onclick="window.openSunbirdOperationsModal(${index})">
+                                Fix this
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
         }
 
-        tbody.innerHTML = window.sunbirdOperationsTasks.map((task, index) => {
-            const isHigh = task.priority === 'High';
-            const isMed = task.priority === 'Medium';
-            const badgeClass = isHigh ? 'op-priority-high' : (isMed ? 'op-priority-medium' : 'op-priority-low');
-            const dotColor = isHigh ? '#f87171' : (isMed ? '#fbbf24' : '#34d399');
-            
-            const insightClass = isHigh ? 'op-insight-danger' : (isMed ? 'op-insight-warning' : 'op-insight-success');
-
-            return `
-                <tr>
-                    <td style="font-weight: 500; color: #e2e8f0;">${task.task}</td>
-                    <td style="color: #94a3b8;">${task.area}</td>
-                    <td>
-                        <span class="op-priority-badge ${badgeClass}">
-                            <span style="width: 6px; height: 6px; border-radius: 50%; background: ${dotColor};"></span>
-                            ${task.priority}
-                        </span>
-                    </td>
-                    <td class="op-insight-text ${insightClass}">${task.insight}</td>
-                    <td>
-                        <button class="btn-fix-this" onclick="window.openSunbirdOperationsModal(${index})">
-                            Fix this
-                        </button>
-                    </td>
-                </tr>
-            `;
-        }).join('');
+        billingCard.innerHTML = `
+            <div class="sunbird-panel-view">
+                <div class="billing-card-header">
+                    <i class="fas fa-tasks"></i>
+                    <h3>Operations Action Queue</h3>
+                </div>
+                <div class="sunbird-section-title" style="margin-bottom: 10px;">Live Remediation Required</div>
+                
+                <div class="sunbird-incidents-table-wrap" style="max-height: 400px;">
+                    <table class="sunbird-incidents-table">
+                        <thead>
+                            <tr>
+                                <th>Task</th>
+                                <th>Area</th>
+                                <th>Priority</th>
+                                <th>Insight</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="operations-tbody">
+                            ${rowsHtml}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
 
     } catch (error) {
         console.error('[Operations] Error:', error);
-        document.getElementById('operations-tbody').innerHTML = `
-            <tr><td colspan="5" class="sunbird-empty-row" style="color: #f87171;">Failed to load operations queue.</td></tr>
+        billingCard.innerHTML = `
+            <div class="sunbird-panel-view">
+                <div class="billing-card-header">
+                    <i class="fas fa-tasks"></i>
+                    <h3>Operations Action Queue</h3>
+                </div>
+                <p class="sunbird-panel-error">Failed to load operations queue.</p>
+            </div>
         `;
+    } finally {
+        ensureSunbirdBillingCardDimensions();
+        syncSunbirdLeftMenuHeight();
     }
 }
 

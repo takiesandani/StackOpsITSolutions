@@ -1400,6 +1400,28 @@ async function ensureDatabaseSchema() {
             )
         `);
 
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS SunbirdComplianceControlsCache (
+                ID INT AUTO_INCREMENT PRIMARY KEY,
+                CompanyID INT,
+                Payload LONGTEXT,
+                LastUpdated DATETIME,
+                UNIQUE KEY uq_sunbird_compliance_company (CompanyID),
+                FOREIGN KEY (CompanyID) REFERENCES Companies(ID)
+            )
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS SunbirdOperationsPayloadCache (
+                ID INT AUTO_INCREMENT PRIMARY KEY,
+                CompanyID INT,
+                Payload LONGTEXT,
+                LastUpdated DATETIME,
+                UNIQUE KEY uq_sunbird_operations_company (CompanyID),
+                FOREIGN KEY (CompanyID) REFERENCES Companies(ID)
+            )
+        `);
+
         // User constraints/indexes for faster login and tenant lookups
         await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_company ON Users(CompanyID)`);
         await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_email ON Users(Email)`);
@@ -5797,10 +5819,65 @@ app.get('/api/app-access/:spId', authenticateToken, async (req, res) => {
   }
 });
 
+const SUNBIRD_DASHBOARD_CACHE_TTL_MS = 10 * 60 * 1000;
+const SUNBIRD_PAYLOAD_CACHE_TABLES = new Set([
+    'SunbirdComplianceControlsCache',
+    'SunbirdOperationsPayloadCache'
+]);
+
+function getSunbirdCacheAgeMs(lastUpdated) {
+    if (!lastUpdated) return Number.POSITIVE_INFINITY;
+    const updatedAt = new Date(lastUpdated).getTime();
+    if (!Number.isFinite(updatedAt)) return Number.POSITIVE_INFINITY;
+    return Date.now() - updatedAt;
+}
+
+async function getSunbirdPayloadCache(tableName, companyId, { allowStale = false } = {}) {
+    if (!pool || !companyId || !SUNBIRD_PAYLOAD_CACHE_TABLES.has(tableName)) return null;
+
+    try {
+        const [rows] = await pool.query(
+            `SELECT Payload, LastUpdated FROM ${tableName} WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1`,
+            [companyId]
+        );
+
+        if (!rows.length || !rows[0].Payload) return null;
+
+        const payload = JSON.parse(rows[0].Payload);
+        const ageMs = getSunbirdCacheAgeMs(rows[0].LastUpdated);
+        const isFresh = ageMs <= SUNBIRD_DASHBOARD_CACHE_TTL_MS;
+        if (!allowStale && !isFresh) return null;
+
+        return {
+            payload,
+            isFresh,
+            ageMs,
+            lastUpdated: rows[0].LastUpdated
+        };
+    } catch (error) {
+        console.warn(`[Sunbird Cache] Unable to read ${tableName}:`, error.message);
+        return null;
+    }
+}
+
+async function upsertSunbirdPayloadCache(tableName, companyId, payload) {
+    if (!pool || !companyId || !payload || !SUNBIRD_PAYLOAD_CACHE_TABLES.has(tableName)) return;
+
+    try {
+        await pool.query(
+            `REPLACE INTO ${tableName} (CompanyID, Payload, LastUpdated) VALUES (?, ?, NOW())`,
+            [companyId, JSON.stringify(payload)]
+        );
+    } catch (error) {
+        console.warn(`[Sunbird Cache] Unable to write ${tableName}:`, error.message);
+    }
+}
+
 // ============================================================================
 // SUNBIRD ONLY: STRICT COMPLIANCE VALIDATION ENGINE (FULL MATRIX)
 // ============================================================================
 app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) => {
+    let companyId = null;
     try {
         const userEmail = req.user.email;
         const tenant = getTenantByEmail(userEmail);
@@ -5808,6 +5885,16 @@ app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) 
         // 🚨 STRICT SCOPE CONTROL
         if (!tenant || tenant.clientId !== 'sunbird') {
             return res.status(403).json({ error: 'Access denied. Sunbird only.' });
+        }
+
+        companyId = tenant.companyId || req.user.companyId || null;
+        const cached = await getSunbirdPayloadCache('SunbirdComplianceControlsCache', companyId);
+        if (cached?.payload?.success && Array.isArray(cached.payload.controls)) {
+            return res.json({
+                ...cached.payload,
+                source: 'db',
+                fetchedAt: cached.lastUpdated
+            });
         }
 
         const token = await getMicrosoftGraphToken();
@@ -5999,10 +6086,26 @@ app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) 
             evidenceData: { report_telemetry: "Active", last_sync: new Date().toISOString().split('T')[0] }
         });
 
-        res.json({ success: true, controls });
+        const payload = {
+            success: true,
+            controls,
+            source: 'api',
+            fetchedAt: new Date().toISOString()
+        };
+        await upsertSunbirdPayloadCache('SunbirdComplianceControlsCache', companyId, payload);
+        res.json(payload);
 
     } catch (error) {
         console.error('[Compliance API] Critical Error:', error);
+        const stale = await getSunbirdPayloadCache('SunbirdComplianceControlsCache', companyId, { allowStale: true });
+        if (stale?.payload?.success && Array.isArray(stale.payload.controls)) {
+            return res.json({
+                ...stale.payload,
+                source: 'db-stale',
+                fetchedAt: stale.lastUpdated,
+                warning: 'Serving stale cached compliance data because live refresh failed.'
+            });
+        }
         res.status(500).json({ error: 'Failed to aggregate compliance data' });
     }
 });
@@ -6011,6 +6114,7 @@ app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) 
 // SUNBIRD ONLY: OPERATIONS REMEDIATION ENGINE
 // ============================================================================
 app.get('/api/sunbird/operations', authenticateToken, async (req, res) => {
+    let companyId = null;
     try {
         const userEmail = req.user.email;
         const tenant = getTenantByEmail(userEmail);
@@ -6018,6 +6122,16 @@ app.get('/api/sunbird/operations', authenticateToken, async (req, res) => {
         // 🚨 STRICT SCOPE CONTROL
         if (!tenant || tenant.clientId !== 'sunbird') {
             return res.status(403).json({ error: 'Access denied. Sunbird only.' });
+        }
+
+        companyId = tenant.companyId || req.user.companyId || null;
+        const cached = await getSunbirdPayloadCache('SunbirdOperationsPayloadCache', companyId);
+        if (cached?.payload?.success && Array.isArray(cached.payload.tasks)) {
+            return res.json({
+                ...cached.payload,
+                source: 'db',
+                fetchedAt: cached.lastUpdated
+            });
         }
 
         const token = await getMicrosoftGraphToken();
@@ -6171,10 +6285,26 @@ app.get('/api/sunbird/operations', authenticateToken, async (req, res) => {
         const priorityWeight = { 'High': 3, 'Medium': 2, 'Low': 1 };
         tasks.sort((a, b) => priorityWeight[b.priority] - priorityWeight[a.priority]);
 
-        res.json({ success: true, tasks });
+        const payload = {
+            success: true,
+            tasks,
+            source: 'api',
+            fetchedAt: new Date().toISOString()
+        };
+        await upsertSunbirdPayloadCache('SunbirdOperationsPayloadCache', companyId, payload);
+        res.json(payload);
 
     } catch (error) {
         console.error('[Operations API] Critical Error:', error);
+        const stale = await getSunbirdPayloadCache('SunbirdOperationsPayloadCache', companyId, { allowStale: true });
+        if (stale?.payload?.success && Array.isArray(stale.payload.tasks)) {
+            return res.json({
+                ...stale.payload,
+                source: 'db-stale',
+                fetchedAt: stale.lastUpdated,
+                warning: 'Serving stale cached operations data because live refresh failed.'
+            });
+        }
         res.status(500).json({ error: 'Failed to generate operations queue' });
     }
 });
