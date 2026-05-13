@@ -91,7 +91,8 @@ class StackOpsChatbot {
                     object-fit: contain;
                     display: block;
                     margin: auto;
-                    animation: jumpImagePattern 8.2s ease-in-out infinite;
+                    animation: none !important;
+                    transform: none !important;
                 }
 
                 .main-toggle.on {
@@ -139,38 +140,6 @@ class StackOpsChatbot {
                     }
                     to {
                         opacity: 1;
-                        transform: translateY(0);
-                    }
-                }
-
-                @keyframes jumpImage {
-                    0%, 100% {
-                        transform: translateY(0);
-                    }
-                    50% {
-                        transform: translateY(-10px);
-                    }
-                }
-
-                @keyframes jumpImagePattern {
-                    /* First jump */
-                    0%, 3% {
-                        transform: translateY(0);
-                    }
-                    1.5%, 4.5% {
-                        transform: translateY(-10px);
-                    }
-                    
-                    /* Second jump */
-                    7%, 10% {
-                        transform: translateY(0);
-                    }
-                    8.5%, 11.5% {
-                        transform: translateY(-10px);
-                    }
-                    
-                    /* Rest for 7 seconds */
-                    12%, 100% {
                         transform: translateY(0);
                     }
                 }
