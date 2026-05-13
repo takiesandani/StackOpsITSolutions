@@ -702,7 +702,124 @@ const sendBillingEmail = async (to, subject, body, isHtml = false, attachments =
   }
 };
 
-// connecting to nodemailer to send emails from contact form
+// function to send email from info@stackopsit.co.za
+const sendInfoEmail = async (to, subject, body, isHtml = false, attachments = []) => {
+  try {
+    if (attachments.length > 0) {
+      console.warn('[Graph Email] Attachments are not yet supported via Graph API');
+    }
+
+    await sendGraphEmail(to, subject, body, isHtml, 'info@stackopsit.co.za');
+  } catch (error) {
+    console.error('[sendInfoEmail] Error:', error.message);
+    if (error.message && error.message.includes('Missing Azure credentials')) {
+      console.error('[sendInfoEmail] ⚠️ Azure credentials not configured. Please set AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET in Google Secret Manager');
+    }
+    throw error;
+  }
+};
+
+const STACKOPS_LEGAL_SIGNATURE = `StackOps IT Solutions (Pty) Ltd | Reg. No: 2016/120370/07 | B-BBEE Level: 1 Contributor: 135% | CSD Supplier: MAAA164124. Legally registered in South Africa, providing IT support, cybersecurity, governance, infrastructure, consulting services, and procurement of IT hardware in compliance with all applicable laws and regulations. All client information is protected in accordance with the Protection of Personal Information Act (POPIA) and our internal privacy and security policies. We are committed to safeguarding your data and ensuring confidentiality, integrity, and lawful processing at all times. All information, proposals, and pricing are accurate at the time of sending and governed by our Master Service Agreement (MSA) or client-specific contracts. Prices may be subject to change due to economic, regulatory, or supplier factors, with clients notified in advance. This email and attachments are confidential and intended solely for the named recipient(s). If received in error, please notify the sender immediately, delete the message, and do not disclose, copy, or distribute its contents. Unauthorized use of this communication is strictly prohibited. Emails are not guaranteed virus-free; StackOps IT Solutions accepts no liability for any damage, loss, or unauthorized access arising from this communication. StackOps IT Solutions is committed to business continuity, data security, and reliable technology operations. Our team provides professional, ethical, and transparent IT services, ensuring measurable value, operational efficiency, and compliance with industry best practices. View our Privacy Policy and Terms of Service here: StackOps IT Solutions | Your Complete IT Force`;
+
+function escapeHtml(value = '') {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function renderCorporateEmail({ title, greeting = 'Dear Client,', bodyHtml }) {
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <style>
+        body { margin: 0; padding: 0; background: #f5f7fb; color: #1f2937; font-family: Arial, sans-serif; line-height: 1.6; }
+        .email-container { max-width: 680px; margin: 24px auto; background: #ffffff; border: 1px solid #d9e2ec; border-radius: 6px; overflow: hidden; }
+        .header { padding: 20px 28px; background: #0f2742; color: #ffffff; }
+        .header h1 { margin: 0; font-size: 20px; font-weight: 700; }
+        .content { padding: 28px; }
+        .highlight-box { margin: 22px 0; padding: 18px; border: 1px solid #c7d2fe; background: #f8fafc; border-radius: 6px; text-align: center; }
+        .code { display: inline-block; font-family: Consolas, Monaco, monospace; font-size: 30px; letter-spacing: 6px; color: #0f2742; font-weight: 700; }
+        .button { display: inline-block; padding: 11px 18px; background: #0f2742; color: #ffffff !important; text-decoration: none; border-radius: 4px; font-weight: 700; }
+        .security-note { margin: 18px 0; padding: 14px; background: #fff7ed; border-left: 4px solid #f59e0b; color: #5f370e; }
+        .signature { padding: 20px 28px; background: #f8fafc; border-top: 1px solid #e5e7eb; font-size: 11px; color: #4b5563; line-height: 1.5; }
+      </style>
+    </head>
+    <body>
+      <div class="email-container">
+        <div class="header">
+          <h1>${escapeHtml(title)}</h1>
+        </div>
+        <div class="content">
+          <p>${escapeHtml(greeting)}</p>
+          ${bodyHtml}
+          <p>Kind regards,<br>The StackOps IT Solutions team</p>
+        </div>
+        <div class="signature">${escapeHtml(STACKOPS_LEGAL_SIGNATURE)}</div>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
+function buildMfaEmail(user, mfaCode) {
+  const firstName = user?.firstname || user?.firstName || '';
+  const greeting = firstName ? `Dear ${firstName},` : 'Dear Client,';
+  return renderCorporateEmail({
+    title: 'Multi-Factor Authentication Verification',
+    greeting,
+    bodyHtml: `
+      <p>We have received your request to sign in to the StackOps IT Solutions Client Portal. To complete your login securely, please use the multi-factor authentication code below.</p>
+      <div class="highlight-box">
+        <div class="code">${escapeHtml(mfaCode)}</div>
+      </div>
+      <p>Please copy and paste this code into the verification screen to continue signing in.</p>
+      <div class="security-note">This MFA code will expire after 10 minutes. If you did not request this login code, please do not share it with anyone and contact StackOps IT Solutions immediately.</div>
+    `
+  });
+}
+
+function buildPasswordResetEmail(user, resetLink) {
+  const firstName = user?.firstname || user?.firstName || '';
+  const greeting = firstName ? `Dear ${firstName},` : 'Dear Client,';
+  return renderCorporateEmail({
+    title: 'Password Reset Request',
+    greeting,
+    bodyHtml: `
+      <p>We received a request to reset the password for your StackOps IT Solutions Client Portal account.</p>
+      <p>To set a new password, please use the secure link below. This link is unique to your account and will expire after 1 hour.</p>
+      <p><a href="${escapeHtml(resetLink)}" class="button">Reset Password</a></p>
+      <p>If the button does not open, copy and paste this link into your browser:</p>
+      <p><a href="${escapeHtml(resetLink)}">${escapeHtml(resetLink)}</a></p>
+      <div class="security-note">If you did not request a password reset, you can safely ignore this email. Your existing password will remain unchanged.</div>
+    `
+  });
+}
+
+function buildClientCredentialsEmail({ firstName, lastName, email, password, loginLink, forgotPasswordLink }) {
+  const fullName = `${firstName || ''} ${lastName || ''}`.trim();
+  return renderCorporateEmail({
+    title: 'StackOps IT Solutions Client Portal Access',
+    greeting: fullName ? `Dear ${fullName},` : 'Dear Client,',
+    bodyHtml: `
+      <p>Your StackOps IT Solutions Client Portal account has been created. This portal provides secure access to your account information and client services.</p>
+      <p>Please use the credentials below to sign in for the first time:</p>
+      <div class="highlight-box" style="text-align: left;">
+        <p><strong>Email:</strong> ${escapeHtml(email)}</p>
+        <p><strong>Temporary password:</strong> <span style="font-family: Consolas, Monaco, monospace; font-weight: 700;">${escapeHtml(password)}</span></p>
+      </div>
+      <p><a href="${escapeHtml(loginLink)}" class="button">Open Client Portal</a></p>
+      <div class="security-note">For your protection, please reset your temporary password after your first login. You can use the password reset page at any time if you need to update your password.</div>
+      <p>Password reset page: <a href="${escapeHtml(forgotPasswordLink)}">${escapeHtml(forgotPasswordLink)}</a></p>
+      <p>If you have any questions or if this account was not expected, please contact StackOps IT Solutions for assistance.</p>
+    `
+  });
+}
 
 // function to generate invoice PDF - REDESIGNED to match professional layout
 async function generateInvoicePDF(invoiceData, items, companyData, clientData) {
@@ -2030,8 +2147,8 @@ app.post('/api/book', async (req, res) => {
 - Service: ${service}
 - Notes: ${message || 'N/A'}`;
         
-        await sendEmail(email, 'Booking Confirmation', clientConfirmation, true);
-        await sendEmail('noreply@stackopsit.co.za', 'New Consultation Booking', adminNotification); // Hardcoded EMAIL_USER
+        await sendInfoEmail(email, 'Booking Confirmation', clientConfirmation, true);
+        await sendInfoEmail('info@stackopsit.co.za', 'New Consultation Booking', adminNotification);
         
         res.status(200).send('Booking successful!');
         
@@ -2216,7 +2333,12 @@ app.post('/api/auth/signin', async (req, res) => {
         await insertMfaCode(user.id, mfaCode, expiresAt);
 
         try {
-            await sendEmail(user.email, 'Your MFA Code', `Your MFA code is ${mfaCode}. It will expire in 10 minutes.`);
+            await sendEmail(
+                user.email,
+                'Your StackOps IT Solutions MFA Verification Code',
+                buildMfaEmail(user, mfaCode),
+                true
+            );
         } catch (mailErr) {
             console.error('[Auth] Failed to send MFA email:', mailErr?.code || mailErr?.message || mailErr);
             return res.status(503).json({
@@ -2255,7 +2377,12 @@ app.post('/api/auth/send-mfa', async (req, res) => {
         await insertMfaCode(user.id, mfaCode, expiresAt);
 
         try {
-            await sendEmail(user.email, 'Your MFA Code', `Your MFA code is ${mfaCode}. It will expire in 10 minutes.`);
+            await sendEmail(
+                user.email,
+                'Your StackOps IT Solutions MFA Verification Code',
+                buildMfaEmail(user, mfaCode),
+                true
+            );
         } catch (mailErr) {
             console.error('[Auth] Failed to resend MFA email:', mailErr?.code || mailErr?.message || mailErr);
             return res.status(503).json({
@@ -2407,57 +2534,14 @@ app.post('/api/admin/register-client', async (req, res) => {
         if (registrationSuccessful) {
             const loginLink = "https://stackopsit.co.za/ClientPortal.html";
             const forgotPasswordLink = "https://stackopsit.co.za/forgot-password.html";
-            const emailBody = `
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <style>
-                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4; }
-                    .email-container { max-width: 600px; margin: 20px auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px; background-color: #ffffff; }
-                    .header { background-color: #007bff; padding: 10px 20px; text-align: center; border-radius: 8px 8px 0 0; }
-                    .header h2 { margin: 0; color: #ffffff; }
-                    .content { padding: 20px 0; }
-                    .credentials { background-color: #e9e9e9; padding: 15px; border-left: 5px solid #007bff; margin: 20px 0; }
-                    .credentials p { margin: 5px 0; }
-                    .password-display { font-family: monospace; font-size: 1.1em; font-weight: bold; color: #007bff; }
-                    .important-note { background-color: #fff3cd; padding: 15px; border-left: 5px solid #ffc107; margin: 20px 0; border-radius: 4px; }
-                    .important-note p { margin: 5px 0; }
-                    .footer { text-align: center; font-size: 0.8em; color: #888; margin-top: 20px; border-top: 1px solid #eee; padding-top: 10px; }
-                    a { color: #007bff; text-decoration: none; }
-                    .button { display: inline-block; padding: 10px 20px; margin-top: 15px; background-color: #007bff; color: white !important; text-decoration: none; border-radius: 5px; }
-                    .button-secondary { display: inline-block; padding: 10px 20px; margin-top: 15px; background-color: #6c757d; color: white !important; text-decoration: none; border-radius: 5px; }
-                    </style>
-                </head>
-                <body>
-                    <div class="email-container">
-                        <div class="header">
-                            <h2>Welcome to StackOps IT Solutions!</h2>
-                        </div>
-                        <div class="content">
-                            <p>Dear ${firstName} ${lastName},</p>
-                            <p>Welcome! An account has been created for you to access the StackOps IT Solutions Client Portal.</p>
-                            <p>You can use the following credentials to log in:</p>
-                            <div class="credentials">
-                                <p><strong>Email:</strong> ${email}</p>
-                                <p><strong>Password:</strong> <span class="password-display">${password}</span></p>
-                            </div>
-                            <div class="important-note">
-                                <p><strong>Important:</strong> Your password has been auto-generated. For security reasons, we strongly recommend that you reset your password after your first login using the "Forgot Password" feature.</p>
-                            </div>
-                            <p>Click here to get started:</p>
-                            <p><a href="${loginLink}" class="button">Client Portal Login</a></p>
-                            <p style="margin-top: 20px;">To reset your password, you can use the forgot password feature:</p>
-                            <p><a href="${forgotPasswordLink}" class="button-secondary">Reset Password</a></p>
-                            <p>If you have any questions, please do not hesitate to contact us.</p>
-                            <p>Best regards,<br>The StackOps IT Team</p>
-                        </div>
-                        <div class="footer">
-                            <p>&copy; ${new Date().getFullYear()} StackOps IT Solutions. All rights reserved.</p>
-                        </div>
-                    </div>
-                </body>
-                </html>
-            `;
+            const emailBody = buildClientCredentialsEmail({
+                firstName,
+                lastName,
+                email,
+                password,
+                loginLink,
+                forgotPasswordLink
+            });
             
             await sendEmail(email, 'Your StackOps IT Client Portal Credentials', emailBody, true);
             
@@ -2500,34 +2584,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 
         const resetLink = `https://stackopsit.co.za/reset-password.html?token=${resetToken}`;
 
-        const emailBody = `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <style>
-                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4; }
-                    .email-container { max-width: 600px; margin: 20px auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px; background-color: #ffffff; }
-                    .content { padding: 20px 0; }
-                    .button { display: inline-block; padding: 10px 20px; background-color: #007bff; color: white !important; text-decoration: none; border-radius: 5px; }
-                    .footer { text-align: center; font-size: 0.8em; color: #888; margin-top: 20px; border-top: 1px solid #eee; padding-top: 10px; }
-                </style>
-            </head>
-            <body>
-                <div class="email-container">
-                    <div class="content">
-                        <p>Hello,</p>
-                        <p>You have requested to reset your password. Please click the button below to proceed:</p>
-                        <p><a href="${resetLink}" class="button">Reset Password</a></p>
-                        <p style="margin-top: 20px;">This link will expire in 1 hour. If you did not request this, please ignore this email.</p>
-                        <p>Best regards,<br>The StackOps IT Team</p>
-                    </div>
-                    <div class="footer">
-                        <p>&copy; ${new Date().getFullYear()} StackOps IT Solutions. All rights reserved.</p>
-                    </div>
-                </div>
-            </body>
-            </html>
-        `;
+        const emailBody = buildPasswordResetEmail(user, resetLink);
 
         await sendEmail(email, 'Password Reset Request', emailBody, true);
 
@@ -2712,7 +2769,7 @@ app.post('/api/contact-message', async (req, res) => {
     `;
 
     try {
-        await sendEmail('noreply@stackopsit.co.za', `New Inquiry: ${company} - ${service}`, emailBody, true); // Hardcoded EMAIL_USER
+        await sendInfoEmail('info@stackopsit.co.za', `New Inquiry: ${company} - ${service}`, emailBody, true);
 
         res.json({ success: true });
     } catch (error) {
