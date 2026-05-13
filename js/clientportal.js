@@ -11167,13 +11167,21 @@ window.toggleBillingItems = function() {
 window.switchBillingMenu = async function(menuItem) {
     sunbirdBillingMenuSelection = menuItem;
 
+    const leftMenu = document.querySelector('.sunbird-left-menu');
+    if (leftMenu) {
+        leftMenu.classList.remove('is-open');
+        leftMenu.querySelector('.sunbird-menu-current')?.setAttribute('aria-expanded', 'false');
+    }
+
     const menuItems = document.querySelectorAll('.sunbird-menu-item');
     menuItems.forEach(item => item.classList.remove('active'));
     
-    const activeItem = document.querySelector(`[data-menu="${menuItem}"]`);
+    const activeItem = document.querySelector(`.sunbird-menu-item[data-menu="${menuItem}"]`);
     if (activeItem) {
         activeItem.classList.add('active');
     }
+
+    updateSunbirdMobileMenuCurrent(menuItem);
 
     const billingCard = document.getElementById('billing-card');
     if (!billingCard) return;
@@ -11231,6 +11239,11 @@ function ensureSunbirdBillingCardDimensions() {
     if (!isSunbirdUser()) return;
     const billingCard = document.getElementById('billing-card');
     if (!billingCard) return;
+
+    if (window.matchMedia('(max-width: 768px)').matches) {
+        billingCard.style.height = '';
+        return;
+    }
 
     if (!sunbirdBillingCardLockedHeight && billingCard.offsetHeight > 0) {
         sunbirdBillingCardLockedHeight = billingCard.offsetHeight;
@@ -11580,6 +11593,41 @@ function renderSunbirdPremiumLoader(message) {
 
 let sunbirdMenuResizeObserver = null;
 
+const SUNBIRD_MENU_LABELS = {
+    security: { label: 'Security Alerts', icon: 'fas fa-shield-alt' },
+    operations: { label: 'Operations', icon: 'fas fa-tasks' },
+    backup: { label: 'Backup & Recovery', icon: 'fas fa-hdd' },
+    billing: { label: 'Billing Statement', icon: 'fas fa-file-invoice' },
+    reports: { label: 'Reports', icon: 'fas fa-chart-line' },
+    risks: { label: 'Risks', icon: 'fas fa-triangle-exclamation' },
+    architecture: { label: 'Architecture', icon: 'fas fa-sitemap' },
+    sla: { label: 'SLA', icon: 'fas fa-handshake' },
+    applications: { label: 'Applications', icon: 'fas fa-cubes' }
+};
+
+function updateSunbirdMobileMenuCurrent(menuItem = sunbirdBillingMenuSelection) {
+    const currentButton = document.querySelector('.sunbird-menu-current');
+    if (!currentButton) return;
+
+    const meta = SUNBIRD_MENU_LABELS[menuItem] || SUNBIRD_MENU_LABELS.security;
+    currentButton.innerHTML = `
+        <span class="sunbird-menu-current-main">
+            <i class="${meta.icon}"></i>
+            <span>${meta.label}</span>
+        </span>
+        <i class="fas fa-chevron-down sunbird-menu-current-chevron" aria-hidden="true"></i>
+    `;
+    currentButton.setAttribute('aria-label', `Open Control Center menu. Current view: ${meta.label}`);
+}
+
+window.toggleSunbirdMobileMenu = function() {
+    const leftMenu = document.querySelector('.sunbird-left-menu');
+    if (!leftMenu) return;
+    const isOpen = leftMenu.classList.toggle('is-open');
+    const currentButton = leftMenu.querySelector('.sunbird-menu-current');
+    if (currentButton) currentButton.setAttribute('aria-expanded', String(isOpen));
+};
+
 function syncSunbirdLeftMenuHeight() {
     if (!isSunbirdUser()) return;
 
@@ -11587,6 +11635,13 @@ function syncSunbirdLeftMenuHeight() {
     const leftMenu = document.querySelector('.sunbird-left-menu');
     const wrapper = leftMenu?.parentElement;
     if (!billingCard || !leftMenu || !wrapper) return;
+
+    if (window.matchMedia('(max-width: 768px)').matches) {
+        leftMenu.style.height = 'auto';
+        leftMenu.style.top = 'auto';
+        wrapper.style.removeProperty('--sunbird-connector-y');
+        return;
+    }
 
     // Keep the menu sized to its content, but vertically centered
     // to the billing card for a "control rail" look.
@@ -11636,31 +11691,32 @@ function initializeSunbirdLeftMenu() {
     leftMenu.className = 'sunbird-left-menu';
     leftMenu.innerHTML = `
         <div class="sunbird-menu-heading">Control Center</div>
-        <button class="sunbird-menu-item" data-menu="security" onclick="window.switchBillingMenu('security')">
+        <button class="sunbird-menu-current" type="button" aria-expanded="false" onclick="window.toggleSunbirdMobileMenu()"></button>
+        <button class="sunbird-menu-item" type="button" data-menu="security" onclick="window.switchBillingMenu('security')">
             <i class="fas fa-shield-alt"></i><span>Security Alerts</span>
         </button>
-        <button class="sunbird-menu-item" data-menu="operations" onclick="window.switchBillingMenu('operations')">
+        <button class="sunbird-menu-item" type="button" data-menu="operations" onclick="window.switchBillingMenu('operations')">
             <i class="fas fa-tasks"></i><span>Operations</span>
         </button>
-        <button class="sunbird-menu-item" data-menu="backup" onclick="window.switchBillingMenu('backup')">
+        <button class="sunbird-menu-item" type="button" data-menu="backup" onclick="window.switchBillingMenu('backup')">
             <i class="fas fa-hdd"></i><span>Backup & Recovery</span>
         </button>
-        <button class="sunbird-menu-item" data-menu="billing" onclick="window.switchBillingMenu('billing')">
+        <button class="sunbird-menu-item" type="button" data-menu="billing" onclick="window.switchBillingMenu('billing')">
             <i class="fas fa-file-invoice"></i><span>Billing Statement</span>
         </button>
-        <button class="sunbird-menu-item" data-menu="reports" onclick="window.switchBillingMenu('reports')">
+        <button class="sunbird-menu-item" type="button" data-menu="reports" onclick="window.switchBillingMenu('reports')">
             <i class="fas fa-chart-line"></i><span>Reports</span>
         </button>
-        <button class="sunbird-menu-item" data-menu="risks" onclick="window.switchBillingMenu('risks')">
+        <button class="sunbird-menu-item" type="button" data-menu="risks" onclick="window.switchBillingMenu('risks')">
             <i class="fas fa-triangle-exclamation"></i><span>Risks</span>
         </button>
-        <button class="sunbird-menu-item" data-menu="architecture" onclick="window.switchBillingMenu('architecture')">
+        <button class="sunbird-menu-item" type="button" data-menu="architecture" onclick="window.switchBillingMenu('architecture')">
             <i class="fas fa-sitemap"></i><span>Architecture</span>
         </button>
-        <button class="sunbird-menu-item" data-menu="sla" onclick="window.switchBillingMenu('sla')">
+        <button class="sunbird-menu-item" type="button" data-menu="sla" onclick="window.switchBillingMenu('sla')">
             <i class="fas fa-handshake"></i><span>SLA</span>
         </button>
-        <button class="sunbird-menu-item" data-menu="applications" onclick="window.switchBillingMenu('applications')">
+        <button class="sunbird-menu-item" type="button" data-menu="applications" onclick="window.switchBillingMenu('applications')">
             <i class="fas fa-cubes"></i><span>Applications</span>
         </button>
     `;

@@ -1694,6 +1694,10 @@
   border-radius: 1px;
 }
 
+.sunbird-menu-current {
+  display: none;
+}
+
 .sunbird-left-menu::before {
   content: "";
   position: absolute;
@@ -2416,6 +2420,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   .dashboard-with-menu {
     display: flex;
     flex-direction: column;
+    gap: 14px;
   }
 
   .dashboard-with-menu::before,
@@ -2429,10 +2434,12 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
     top: auto;
     width: 100%;
     height: auto !important;
+    min-height: 0;
     flex-direction: row;
     overflow-x: auto;
-    padding-bottom: 8px;
+    padding: 12px;
     margin-top: 10px;
+    border-radius: 16px;
   }
 
   .sunbird-left-menu::before,
@@ -2443,6 +2450,8 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   .sunbird-menu-item {
     flex: 1;
     min-width: 140px;
+    max-width: none;
+    left: 0;
     white-space: nowrap;
   }
 }
@@ -5177,6 +5186,176 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   }
 }
 
+/* Sunbird control center and billing panel mobile optimization */
+@media (max-width: 600px) {
+  .dashboard-with-menu {
+    gap: 12px;
+  }
+
+  .sunbird-left-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    min-height: 0;
+    max-height: none;
+    padding: 12px;
+    overflow: visible;
+    border-radius: 16px;
+  }
+
+  .sunbird-menu-heading {
+    margin: 0;
+    padding: 4px 4px 8px;
+    font-size: 1.12rem;
+    line-height: 1.2;
+  }
+
+  .sunbird-menu-heading::after {
+    left: 4px;
+    width: 72px;
+  }
+
+  .sunbird-menu-current {
+    width: 100%;
+    min-height: 44px;
+    border: 1px solid rgba(255, 255, 255, 0.24);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.13);
+    color: #ffffff;
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    cursor: pointer;
+  }
+
+  .sunbird-menu-current-main {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    font-size: 0.84rem;
+  }
+
+  .sunbird-menu-current-main i,
+  .sunbird-menu-current-chevron {
+    color: rgba(255, 207, 160, 0.94);
+  }
+
+  .sunbird-menu-current-main span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sunbird-left-menu.is-open .sunbird-menu-current-chevron {
+    transform: rotate(180deg);
+  }
+
+  .sunbird-menu-item {
+    display: none;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    min-height: 40px;
+    left: 0;
+    padding: 10px 12px;
+    border-radius: 14px;
+    white-space: normal;
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .sunbird-left-menu.is-open .sunbird-menu-item {
+    display: flex;
+    order: 2;
+  }
+
+  .sunbird-left-menu.is-open .sunbird-menu-item.active {
+    order: 1;
+    background: rgba(255, 145, 0, 0.18);
+  }
+
+  .billing-card {
+    height: auto !important;
+    min-height: clamp(620px, 78vh, 860px);
+    padding: 16px;
+  }
+
+  .billing-card > .sunbird-panel-view {
+    height: auto;
+    min-height: 560px;
+    padding-right: 2px;
+  }
+
+  .billing-card-header {
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .billing-card-header h3 {
+    font-size: 1.05rem;
+    line-height: 1.25;
+  }
+
+  .sunbird-mini-stats,
+  .sunbird-app-preview-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .sunbird-mini-stat {
+    min-height: 74px;
+    padding: 10px;
+  }
+
+  .sunbird-mini-stat span {
+    color: #f2e3d2;
+    line-height: 1.25;
+  }
+
+  .sunbird-mini-stat strong {
+    font-size: 1rem;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+  }
+
+  .sunbird-storage-list {
+    margin-top: 8px;
+  }
+
+  .sunbird-dashboard-btn-wrap {
+    padding-top: 12px;
+  }
+}
+
+@media (max-width: 380px) {
+  .billing-card {
+    min-height: 600px;
+    padding: 14px;
+  }
+
+  .billing-card > .sunbird-panel-view {
+    min-height: 535px;
+  }
+
+  .sunbird-menu-heading {
+    font-size: 1.02rem;
+  }
+
+  .sunbird-menu-current {
+    min-height: 42px;
+    padding: 9px 10px;
+  }
+
+  .sunbird-menu-current-main,
+  .sunbird-menu-item {
+    font-size: 0.78rem;
+  }
+}
+
 /* ============================================
     Identity Protection DASHBOARD STYLES
    ============================================ */
@@ -7562,9 +7741,18 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   background: rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  color: gray;
+  color: #ffffff;
   padding: 8px 10px;
   font-weight: 200;
+}
+
+.sunbird-id-search::placeholder {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.sunbird-id-select option {
+  color: #ffffff;
+  background: #111827;
 }
 
 .sunbird-id-table-wrap {
@@ -7812,19 +8000,57 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   }
 
   .sunbird-id-header {
-    padding: 52px 0 0;
+    min-height: 92px;
+    padding: 46px 0 0;
   }
 
   .sunbird-id-back-btn {
-    left: 50%;
-    transform: translateX(-50%);
+    left: 0;
     top: 0;
+    min-height: 32px;
+    padding: 6px 12px;
+    font-size: 0.76rem;
+    gap: 6px;
+    transform: none;
+  }
+
+  .sunbird-id-back-icon {
+    width: 14px;
+    height: 14px;
+    font-size: 0.92rem;
   }
 
   .sunbird-id-microsoft-badge {
-    position: static;
-    margin: 12px auto 0;
-    width: fit-content;
+    position: absolute;
+    right: 0;
+    top: 0;
+    min-height: 32px;
+    margin: 0;
+    padding: 6px 9px;
+    gap: 6px;
+    font-size: 0.68rem;
+    white-space: nowrap;
+  }
+
+  .sunbird-id-ms-logo {
+    grid-template-columns: repeat(2, 5px);
+    grid-template-rows: repeat(2, 5px);
+    gap: 2px;
+  }
+
+  .sunbird-id-ms-logo i {
+    width: 5px;
+    height: 5px;
+  }
+
+  .sunbird-id-header h2 {
+    font-size: 1.42rem;
+    line-height: 1.25;
+  }
+
+  .sunbird-id-header p {
+    font-size: 0.78rem;
+    line-height: 1.35;
   }
 
   .sunbird-id-metrics,
