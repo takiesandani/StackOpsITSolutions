@@ -5163,6 +5163,21 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   .preview-feed-item {
     font-size: 0.78rem;
   }
+
+  .preview-container .glow-wrap {
+    width: auto;
+    min-width: 168px;
+    height: 38px;
+    border-radius: 19px;
+  }
+
+  .btn-view-full-dashboard {
+    width: calc(100% - 4px);
+    border-radius: 17px;
+    font-size: 0.72rem;
+    gap: 6px;
+    letter-spacing: 0.4px;
+  }
 }
 
 @media (max-width: 360px) {
@@ -5183,6 +5198,16 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
     flex-direction: row;
     justify-content: space-between;
     text-align: left;
+  }
+
+  .preview-container .glow-wrap {
+    min-width: 150px;
+    height: 34px;
+  }
+
+  .btn-view-full-dashboard {
+    font-size: 0.66rem;
+    gap: 5px;
   }
 }
 
@@ -7746,6 +7771,14 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   font-weight: 200;
 }
 
+.sunbird-id-search {
+  padding-left: 36px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: 14px center;
+  background-size: 14px 14px;
+}
+
 .sunbird-id-search::placeholder {
   color: rgba(255, 255, 255, 0.72);
 }
@@ -7996,39 +8029,40 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 @media (max-width: 720px) {
   .sunbird-identity-dashboard {
     width: 100%;
-    padding: 14px;
+    padding: 10px;
   }
 
   .sunbird-id-header {
-    min-height: 92px;
-    padding: 46px 0 0;
+    min-height: 76px;
+    padding: 38px 0 0;
+    margin-bottom: 8px;
   }
 
   .sunbird-id-back-btn {
     left: 0;
     top: 0;
-    min-height: 32px;
-    padding: 6px 12px;
-    font-size: 0.76rem;
-    gap: 6px;
+    min-height: 28px;
+    padding: 5px 10px;
+    font-size: 0.68rem;
+    gap: 5px;
     transform: none;
   }
 
   .sunbird-id-back-icon {
-    width: 14px;
-    height: 14px;
-    font-size: 0.92rem;
+    width: 12px;
+    height: 12px;
+    font-size: 0.82rem;
   }
 
   .sunbird-id-microsoft-badge {
     position: absolute;
     right: 0;
     top: 0;
-    min-height: 32px;
+    min-height: 28px;
     margin: 0;
-    padding: 6px 9px;
-    gap: 6px;
-    font-size: 0.68rem;
+    padding: 5px 8px;
+    gap: 5px;
+    font-size: 0.62rem;
     white-space: nowrap;
   }
 
@@ -8044,12 +8078,12 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   }
 
   .sunbird-id-header h2 {
-    font-size: 1.42rem;
+    font-size: 1.14rem;
     line-height: 1.25;
   }
 
   .sunbird-id-header p {
-    font-size: 0.78rem;
+    font-size: 0.68rem;
     line-height: 1.35;
   }
 
@@ -8066,6 +8100,91 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   }
 
   .sunbird-id-metric-value {
-    font-size: 1.75rem;
+    font-size: 1.35rem;
+  }
+
+  .sunbird-id-metrics {
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .sunbird-id-metric-card {
+    min-height: 104px;
+    padding: 12px 14px;
+  }
+
+  .sunbird-id-metric-label {
+    margin: 6px 0 12px;
+    font-size: 0.78rem;
+  }
+
+  .sunbird-id-evidence-btn,
+  .sunbird-id-clear-btn {
+    min-height: 30px;
+    padding: 6px 12px;
+    font-size: 0.72rem;
+    gap: 6px;
+  }
+
+  .sunbird-dashboard-btn {
+    min-height: 30px;
+    padding: 6px 11px;
+    font-size: 0.7rem;
+  }
+
+  .sunbird-dashboard-btn i {
+    margin-right: 4px;
+    font-size: 0.72rem;
+  }
+}
+
+@media (max-width: 380px) {
+  .sunbird-id-header {
+    min-height: 70px;
+    padding-top: 34px;
+  }
+
+  .sunbird-id-header h2 {
+    font-size: 1.02rem;
+  }
+
+  .sunbird-id-header p {
+    font-size: 0.64rem;
+  }
+
+  .sunbird-id-back-btn,
+  .sunbird-id-microsoft-badge {
+    min-height: 26px;
+    font-size: 0.58rem;
+  }
+
+  .sunbird-id-back-btn {
+    padding: 4px 8px;
+  }
+
+  .sunbird-id-microsoft-badge {
+    padding: 4px 7px;
+  }
+
+  .sunbird-id-metric-card {
+    min-height: 96px;
+    padding: 10px 12px;
+  }
+
+  .sunbird-id-metric-value {
+    font-size: 1.22rem;
+  }
+
+  .sunbird-id-metric-label {
+    font-size: 0.72rem;
+    margin-bottom: 10px;
+  }
+
+  .sunbird-id-evidence-btn,
+  .sunbird-id-clear-btn,
+  .sunbird-dashboard-btn {
+    min-height: 28px;
+    padding: 5px 10px;
+    font-size: 0.66rem;
   }
 }

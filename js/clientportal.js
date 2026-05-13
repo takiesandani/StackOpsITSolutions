@@ -11597,12 +11597,12 @@ const SUNBIRD_MENU_LABELS = {
     security: { label: 'Security Alerts', icon: 'fas fa-shield-alt' },
     operations: { label: 'Operations', icon: 'fas fa-tasks' },
     backup: { label: 'Backup & Recovery', icon: 'fas fa-hdd' },
-    billing: { label: 'Billing Statement', icon: 'fas fa-file-invoice' },
     reports: { label: 'Reports', icon: 'fas fa-chart-line' },
     risks: { label: 'Risks', icon: 'fas fa-triangle-exclamation' },
     architecture: { label: 'Architecture', icon: 'fas fa-sitemap' },
     sla: { label: 'SLA', icon: 'fas fa-handshake' },
-    applications: { label: 'Applications', icon: 'fas fa-cubes' }
+    applications: { label: 'Applications', icon: 'fas fa-cubes' },
+        billing: { label: 'Billing Statement', icon: 'fas fa-file-invoice' }
 };
 
 function updateSunbirdMobileMenuCurrent(menuItem = sunbirdBillingMenuSelection) {
