@@ -606,12 +606,13 @@ async function sendGraphEmail(to, subject, body, isHtml = true, fromAddress = 'n
       
       const token = await getGraphAccessToken();
       
+      const finalizedBody = applyStackOpsEmailEnding(body, isHtml);
       const emailPayload = {
         message: {
           subject: subject,
           body: {
             contentType: isHtml ? 'HTML' : 'Text',
-            content: body
+            content: finalizedBody
           },
           toRecipients: [
             {
@@ -720,6 +721,46 @@ const sendInfoEmail = async (to, subject, body, isHtml = false, attachments = []
 };
 
 const STACKOPS_LEGAL_SIGNATURE = `StackOps IT Solutions (Pty) Ltd | Reg. No: 2016/120370/07 | B-BBEE Level: 1 Contributor: 135% | CSD Supplier: MAAA164124. Legally registered in South Africa, providing IT support, cybersecurity, governance, infrastructure, consulting services, and procurement of IT hardware in compliance with all applicable laws and regulations. All client information is protected in accordance with the Protection of Personal Information Act (POPIA) and our internal privacy and security policies. We are committed to safeguarding your data and ensuring confidentiality, integrity, and lawful processing at all times. All information, proposals, and pricing are accurate at the time of sending and governed by our Master Service Agreement (MSA) or client-specific contracts. Prices may be subject to change due to economic, regulatory, or supplier factors, with clients notified in advance. This email and attachments are confidential and intended solely for the named recipient(s). If received in error, please notify the sender immediately, delete the message, and do not disclose, copy, or distribute its contents. Unauthorized use of this communication is strictly prohibited. Emails are not guaranteed virus-free; StackOps IT Solutions accepts no liability for any damage, loss, or unauthorized access arising from this communication. StackOps IT Solutions is committed to business continuity, data security, and reliable technology operations. Our team provides professional, ethical, and transparent IT services, ensuring measurable value, operational efficiency, and compliance with industry best practices. View our Privacy Policy and Terms of Service here: StackOps IT Solutions | Your Complete IT Force`;
+const STACKOPS_EMAIL_CLOSING_TEXT = 'Kind regards,\nThe StackOps IT Solutions Team';
+const STACKOPS_EMAIL_SIGNATURE_MARKER = 'CSD Supplier: MAAA164124.';
+
+function hasStackOpsSignature(content = '') {
+  return String(content).includes(STACKOPS_EMAIL_SIGNATURE_MARKER) &&
+    String(content).includes('Your Complete IT Force');
+}
+
+function hasStackOpsTeamClosing(content = '') {
+  return String(content).includes('The StackOps IT Solutions Team');
+}
+
+function applyStackOpsEmailEnding(body = '', isHtml = false) {
+  const content = String(body || '');
+  const needsClosing = !hasStackOpsTeamClosing(content);
+  const needsSignature = !hasStackOpsSignature(content);
+
+  if (!needsClosing && !needsSignature) return content;
+
+  if (!isHtml) {
+    const footerParts = [];
+    if (needsClosing) footerParts.push(STACKOPS_EMAIL_CLOSING_TEXT);
+    if (needsSignature) footerParts.push(STACKOPS_LEGAL_SIGNATURE);
+    return `${content.trim()}\n\n${footerParts.join('\n\n')}`;
+  }
+
+  const footerParts = [];
+  if (needsClosing) {
+    footerParts.push('<p style="margin:0 0 12px 0;">Kind regards,<br>The StackOps IT Solutions Team</p>');
+  }
+  if (needsSignature) {
+    footerParts.push(`<div style="font-size:11px; color:#4b5563; line-height:1.5; border-top:1px solid #e5e7eb; padding-top:14px;">${escapeHtml(STACKOPS_LEGAL_SIGNATURE)}</div>`);
+  }
+
+  const footerHtml = `<div style="margin-top:24px; padding:18px 0 0 0;">${footerParts.join('')}</div>`;
+  if (/<\/body>/i.test(content)) {
+    return content.replace(/<\/body>/i, `${footerHtml}</body>`);
+  }
+  return `${content}${footerHtml}`;
+}
 
 function escapeHtml(value = '') {
   return String(value)
@@ -758,7 +799,7 @@ function renderCorporateEmail({ title, greeting = 'Dear Client,', bodyHtml }) {
         <div class="content">
           <p>${escapeHtml(greeting)}</p>
           ${bodyHtml}
-          <p>Kind regards,<br>The StackOps IT Solutions team</p>
+          <p>Kind regards,<br>The StackOps IT Solutions Team</p>
         </div>
         <div class="signature">${escapeHtml(STACKOPS_LEGAL_SIGNATURE)}</div>
       </div>
@@ -2104,36 +2145,15 @@ app.post('/api/book', async (req, res) => {
             return res.status(409).send('The selected time slot is no longer available. Please choose another.');
         }
 
-        const clientConfirmation = `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <style>
-                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4; }
-                    .container { max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); border-top: 5px solid #007bff; }
-                    .content { padding: 30px; }
-                    .footer { text-align: center; font-size: 0.8em; color: #888; margin-top: 20px; border-top: 1px solid #eee; padding-top: 10px; }
-                    a { color: #007bff; text-decoration: none; }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <div class="content">
-                        <p>Hello ${name},</p>
-                        <p>Your consultation with StackOps IT Solutions has been successfully booked for **${date} at ${time}**. We look forward to speaking with you about your **${service}** inquiry!</p>
-                        <p>If you need to reschedule or cancel, please contact us by replying to this email.</p>
-                        <p>Best regards,</p>
-                        <p>The StackOps IT Team</p>
-                    </div>
-                    
-                    <div class="footer">
-                        <p>StackOps IT Solutions (Pty) Ltd | Reg. No: 2016/120370/07 | B-BBEE Level: 1 Contributor: 135% | CSD Supplier: MAAA1641244</p>
-                        <p>Legally registered in South Africa. All client information is protected in accordance with the Protection of Personal Information Act (POPIA) and our internal privacy and security policies.</p>
-                    </div>
-                </div>
-            </body>
-            </html>
-        `;
+        const clientConfirmation = renderCorporateEmail({
+            title: 'Consultation Booking Confirmation',
+            greeting: `Dear ${name},`,
+            bodyHtml: `
+                <p>Your consultation with StackOps IT Solutions has been successfully booked for <strong>${escapeHtml(date)} at ${escapeHtml(time)}</strong>.</p>
+                <p>We look forward to speaking with you about your <strong>${escapeHtml(service)}</strong> inquiry and assisting you with the next steps.</p>
+                <p>If you need to reschedule or cancel, please contact us by replying to this email.</p>
+            `
+        });
         
         const adminNotification = `New Consultation Booking:
 
