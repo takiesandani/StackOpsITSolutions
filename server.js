@@ -596,7 +596,7 @@ async function getGraphAccessToken() {
 }
 
 // Helper function to send email via Microsoft Graph API
-async function sendGraphEmail(to, subject, body, isHtml = true, fromAddress = 'info@stackopsit.co.za') {
+async function sendGraphEmail(to, subject, body, isHtml = true, fromAddress = 'noreply@stackopsit.co.za') {
   const maxRetries = 2;
   let lastError = null;
   
@@ -664,7 +664,7 @@ async function sendGraphEmail(to, subject, body, isHtml = true, fromAddress = 'i
   throw lastError;
 }
 
-// function to send email from info@stackopsit.co.za
+// function to send email from noreply@stackopsit.co.za
 const sendEmail = async (to, subject, body, isHtml = false, attachments = []) => {
   try {
     // Note: Graph API doesn't handle attachments the same way - for now, send without
@@ -672,7 +672,7 @@ const sendEmail = async (to, subject, body, isHtml = false, attachments = []) =>
       console.warn('[Graph Email] Attachments are not yet supported via Graph API');
     }
     
-    await sendGraphEmail(to, subject, body, isHtml, 'info@stackopsit.co.za');
+    await sendGraphEmail(to, subject, body, isHtml, 'noreply@stackopsit.co.za');
   } catch (error) {
     console.error('[sendEmail] Error:', error.message);
     // Check if it's a credential error
@@ -2031,7 +2031,7 @@ app.post('/api/book', async (req, res) => {
 - Notes: ${message || 'N/A'}`;
         
         await sendEmail(email, 'Booking Confirmation', clientConfirmation, true);
-        await sendEmail('info@stackopsit.co.za', 'New Consultation Booking', adminNotification); // Hardcoded EMAIL_USER
+        await sendEmail('noreply@stackopsit.co.za', 'New Consultation Booking', adminNotification); // Hardcoded EMAIL_USER
         
         res.status(200).send('Booking successful!');
         
@@ -2712,7 +2712,7 @@ app.post('/api/contact-message', async (req, res) => {
     `;
 
     try {
-        await sendEmail('info@stackopsit.co.za', `New Inquiry: ${company} - ${service}`, emailBody, true); // Hardcoded EMAIL_USER
+        await sendEmail('noreply@stackopsit.co.za', `New Inquiry: ${company} - ${service}`, emailBody, true); // Hardcoded EMAIL_USER
 
         res.json({ success: true });
     } catch (error) {
