@@ -1967,7 +1967,6 @@
   object-fit: contain;
   border-radius: 50%;
   filter: drop-shadow(0 0 12px rgba(255, 138, 0, 0.5));
-  animation: sunbird-stack-logo-spin 2.4s linear infinite;
 }
 
 @keyframes sunbird-spin {
@@ -1981,10 +1980,6 @@
 
 @keyframes sunbird-stack-ring-spin {
   to { transform: rotate(360deg); }
-}
-
-@keyframes sunbird-stack-logo-spin {
-  to { transform: rotate(-360deg); }
 }
 
 @keyframes sunbird-stack-ring-color {
@@ -2311,6 +2306,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   align-items: center;
   padding: 10px 12px;
   border-bottom: 1px solid rgba(120, 170, 210, 0.16);
+  color: white;
 }
 
 .sunbird-storage-row:last-child {
@@ -2318,7 +2314,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 .sunbird-storage-row span {
-  color: #00498e1e;
+  color: #ffffff1e;
   font-size: 0.8rem;
 }
 
