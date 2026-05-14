@@ -731,14 +731,14 @@ const STACKOPS_SUPPORT_EMAIL = 'support@stackopsit.co.za';
 
 function renderStackCtrlLockOutline() {
   return `
-    <svg viewBox="0 0 320 180" role="img" aria-label="Protected StackCTRL access" style="position:absolute; top:14px; right:18px; width:245px; max-width:72%; height:auto; opacity:0.62; z-index:1;">
-      <path d="M162 75V58C162 31 182 16 206 16C230 16 250 31 250 58V75" fill="none" stroke="#ff6b00" stroke-width="4" stroke-linecap="round"/>
-      <path d="M146 77H277C292 77 302 87 302 102V149C302 164 292 174 277 174H146" fill="none" stroke="#ff6b00" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M107 100V96C107 84 117 77 129 77H136" fill="none" stroke="#ff6b00" stroke-width="4" stroke-linecap="round"/>
-      <path d="M107 139V149C107 164 117 174 132 174H136" fill="none" stroke="#ff6b00" stroke-width="4" stroke-linecap="round"/>
-      <path d="M206 117V135" fill="none" stroke="#ff6b00" stroke-width="4" stroke-linecap="round"/>
-      <circle cx="206" cy="109" r="5" fill="none" stroke="#ff6b00" stroke-width="4"/>
-    </svg>
+    <div aria-hidden="true" style="position:absolute; top:18px; left:50%; margin-left:-118px; width:318px; height:142px; z-index:1; opacity:0.9;">
+      <div style="position:absolute; left:132px; top:0; width:86px; height:66px; border:3px solid #ff6b00; border-bottom:0; border-radius:48px 48px 0 0;"></div>
+      <div style="position:absolute; left:102px; top:62px; width:188px; height:76px; border-top:3px solid #ff6b00; border-right:3px solid #ff6b00; border-bottom:3px solid #ff6b00; border-left:0; border-radius:0 18px 18px 0;"></div>
+      <div style="position:absolute; left:64px; top:62px; width:28px; height:28px; border-top:3px solid #ff6b00; border-left:3px solid #ff6b00; border-radius:13px 0 0 0;"></div>
+      <div style="position:absolute; left:64px; top:110px; width:28px; height:28px; border-bottom:3px solid #ff6b00; border-left:3px solid #ff6b00; border-radius:0 0 0 13px;"></div>
+      <div style="position:absolute; left:186px; top:92px; width:12px; height:12px; border:3px solid #ff6b00; border-radius:50%;"></div>
+      <div style="position:absolute; left:194px; top:105px; width:3px; height:20px; background:#ff6b00; border-radius:3px;"></div>
+    </div>
   `;
 }
 
@@ -818,9 +818,9 @@ function applyStackOpsEmailBranding(body = '', subject = '') {
 
 function renderStackCtrlPlatformPanel({ title = 'StackCTRL Platform', detail = 'Protected client portal access' } = {}) {
   return `
-    <div style="position:relative; margin:24px 0; padding:34px 20px 28px 20px; background:#111820; border:1px solid rgba(255,112,27,0.28); border-radius:8px; text-align:center; overflow:hidden;">
+    <div style="position:relative; margin:24px 0; padding:36px 20px 30px 20px; min-height:152px; background:#111820; border:1px solid rgba(255,112,27,0.28); border-radius:8px; text-align:center; overflow:hidden;">
       ${renderStackCtrlLockOutline()}
-      <div style="position:relative; z-index:2; display:inline-block; padding:6px 14px; background:rgba(17,24,32,0.84); border-radius:4px;">
+      <div style="position:relative; z-index:2; display:inline-block; padding:6px 16px; background:#111820; border-radius:4px;">
         <img src="${STACKCTRL_EMAIL_LOGO_URL}" alt="StackCTRL" style="display:block; max-width:210px; height:auto; margin:0 auto; border:0;">
       </div>
       <div style="position:relative; z-index:2; color:#f8fafc; font-size:15px; font-weight:700; letter-spacing:0.2px; margin-top:14px;">${escapeHtml(title)}</div>
