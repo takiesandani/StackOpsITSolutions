@@ -790,7 +790,7 @@ function buildStackOpsBrandHeader(title = 'StackOps IT Solutions') {
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
         <tr>
           <td style="vertical-align:middle;">
-            <img src="${STACKOPS_EMAIL_LOGO_URL}" alt="StackOps IT Solutions" style="display:block; max-width:190px; height:auto; border:0;">
+            <img src="${STACKOPS_EMAIL_LOGO_URL}" alt="StackOps IT Solutions" style="display:block; max-width:160px; height:auto; border:0;">
           </td>
           <td style="vertical-align:middle; text-align:right; color:#dbeafe; font-family:Arial, sans-serif; font-size:17px; font-weight:700; line-height:1.4;">
             ${escapeHtml(title)}
@@ -821,7 +821,7 @@ function renderStackCtrlPlatformPanel({ title = 'StackCTRL Platform', detail = '
       <table role="presentation" align="center" cellspacing="0" cellpadding="0" style="border-collapse:collapse; margin:0 auto 14px auto;">
         <tr>
           <td style="vertical-align:middle; text-align:right; padding:0 0 0 0;">
-            <img src="${STACKCTRL_EMAIL_LOGO_URL}" alt="StackCTRL" style="display:block; width:210px; max-width:210px; height:auto; border:0;">
+            <img src="${STACKCTRL_EMAIL_LOGO_URL}" alt="StackCTRL" style="display:block; width:170px; max-width:170px; height:auto; border:0;">
           </td>
           <td style="vertical-align:middle; width:132px; padding:0 0 0 12px;">
             ${renderStackCtrlLockOutline()}
@@ -836,25 +836,25 @@ function renderStackCtrlPlatformPanel({ title = 'StackCTRL Platform', detail = '
 
 function renderMfaStackCtrlHeaderBanner() {
   return `
-<div class="mfa-stackctrl-banner" style="margin:24px 0; padding:18px 20px 22px 20px; background:#111820; border:1px solid #4b2c1e; border-radius:8px; text-align:center; overflow:hidden; font-family:Arial, Helvetica, sans-serif;">
-  <table role="presentation" class="mfa-stackctrl-table" align="center" cellspacing="0" cellpadding="0" style="border-collapse:collapse; margin:0 auto 14px auto;">
+<div class="mfa-stackctrl-banner" style="margin:18px 0 0 0; padding:10px 12px 18px 12px; background:#111820; border:1px solid #4b2c1e; border-radius:8px; text-align:center; overflow:hidden; font-family:Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse; margin:0;">
     <tr>
-      <td class="mfa-stackctrl-logo-cell" style="vertical-align:middle; text-align:right; padding:0;">
-        <img class="mfa-stackctrl-logo" src="https://i.postimg.cc/NjqZp4bp/Ctrl-big.png" alt="StackCTRL" style="position:relative; left:54px; top:28px; display:block; width:150px; max-width:150px; height:auto; border:0;">
-      </td>
-      <td class="mfa-stackctrl-lock-cell" style="vertical-align:middle; width:150px; padding:0 0 0 0px;">
-        <div class="mfa-lock-wrap" style="position:relative; left:-18px; top:18px;"><div class="mfa-padlock" role="img" aria-label="Protected padlock" style="width:150px; height:150px; margin:0 auto; text-align:center; line-height:0; font-size:0;">
-          <div class="mfa-lock-shackle" style="width:64px; height:51px; margin:0 0 0 22px; border:2px solid #dbdbdb; border-bottom:0; border-radius:34px 34px 0 0; line-height:0; font-size:0;">&nbsp;</div>
-          <div class="mfa-lock-body" style="position:relative; width:108px; height:75px; margin:-1px auto 0 auto; border:2px solid #dbdbdb; border-radius:12px; line-height:0; font-size:0;">
-            <div class="mfa-keyhole-dot" style="width:10px; height:10px; margin:25px auto 0 auto; border:2px solid #dbdbdb; border-radius:50%; line-height:0; font-size:0;">&nbsp;</div>
-            <div class="mfa-keyhole-stem" style="width:2px; height:18px; margin:0 auto; background:#dbdbdb; border-radius:2px; line-height:0; font-size:0;">&nbsp;</div>
+      <td style="text-align:right; padding:0 0 0 0; line-height:0; font-size:0;">
+        <div class="mfa-lock-wrap" style="display:inline-block; width:54px; height:54px; text-align:center; line-height:0; font-size:0;">
+          <div class="mfa-lock-shackle" style="width:22px; height:18px; margin:0 0 0 15px; border:1px solid #dbdbdb; border-bottom:0; border-radius:14px 14px 0 0; line-height:0; font-size:0;">&nbsp;</div>
+          <div class="mfa-lock-body" style="position:relative; width:38px; height:27px; margin:-1px 0 0 auto; border:1px solid #dbdbdb; border-radius:6px; line-height:0; font-size:0;">
+            <div class="mfa-keyhole-dot" style="width:4px; height:4px; margin:8px auto 0 auto; border:1px solid #dbdbdb; border-radius:50%; line-height:0; font-size:0;">&nbsp;</div>
+            <div class="mfa-keyhole-stem" style="width:1px; height:8px; margin:0 auto; background:#dbdbdb; border-radius:1px; line-height:0; font-size:0;">&nbsp;</div>
           </div>
-        </div></div>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td style="text-align:center; padding:0 0 0 0;">
+        <img class="mfa-stackctrl-logo" src="https://i.postimg.cc/NjqZp4bp/Ctrl-big.png" alt="StackCTRL" style="display:block; width:125px; max-width:125px; height:auto; margin:-10px auto 0 auto; border:0;">
       </td>
     </tr>
   </table>
-  <div class="mfa-stackctrl-heading" style="color:#f8fafc; font-size:15px; font-weight:700; letter-spacing:0; margin-top:8px;">StackCTRL is locked for your protection</div>
-  <div class="mfa-stackctrl-detail" style="color:#cbd5e1; font-size:12px; margin-top:4px;">Use the verification code below to unlock your client portal session.</div>
 </div>
   `;
 }
@@ -880,7 +880,7 @@ function renderCorporateEmail({ title, greeting = 'Dear Client,', bodyHtml, head
         .email-container { max-width: 680px; margin: 24px auto; background: #ffffff; border: 1px solid #d9e2ec; border-radius: 6px; overflow: hidden; }
         .header { background: #111820; padding: 24px 28px 26px 28px; }
         .brand-table { width: 100%; border-collapse: collapse; }
-        .brand-logo { display: block; max-width: 190px; height: auto; border: 0; }
+        .brand-logo { display: block; max-width: 160px; height: auto; border: 0; }
         .header h1 { margin: 0; color: #dbeafe; font-size: 18px; font-weight: 700; text-align: right; line-height: 1.4; }
         .content { padding: 28px; }
         .highlight-box { margin: 22px 0; padding: 18px; border: 1px solid #c7d2fe; background: #f8fafc; border-radius: 6px; text-align: center; }
@@ -892,21 +892,15 @@ function renderCorporateEmail({ title, greeting = 'Dear Client,', bodyHtml, head
           .email-container { width: 100% !important; max-width: 100% !important; margin: 0 auto !important; border-radius: 0 !important; }
           .header { padding: 16px 12px 18px 12px !important; }
           .brand-table, .brand-table tbody, .brand-table tr, .brand-table td { display: block !important; width: 100% !important; text-align: center !important; }
-          .brand-logo { max-width: 128px !important; margin: 0 auto 8px auto !important; }
+          .brand-logo { max-width: 108px !important; margin: 0 auto 8px auto !important; }
           .header h1 { text-align: center !important; font-size: 13px !important; line-height: 1.25 !important; margin: 0 auto !important; max-width: 230px !important; }
-          .mfa-stackctrl-banner { margin: 14px 0 0 0 !important; padding: 12px 8px 16px 8px !important; border-radius: 6px !important; }
-          .mfa-stackctrl-table { margin: 0 auto 8px auto !important; }
-          .mfa-stackctrl-logo-cell { width: 86px !important; max-width: 86px !important; text-align: right !important; }
-          .mfa-stackctrl-lock-cell { width: 86px !important; max-width: 86px !important; }
-          .mfa-stackctrl-logo { left: 30px !important; top: 15px !important; width: 88px !important; max-width: 88px !important; }
-          .mfa-lock-wrap { left: -6px !important; top: 8px !important; }
-          .mfa-padlock { width: 86px !important; height: 86px !important; }
-          .mfa-lock-shackle { width: 34px !important; height: 27px !important; margin: 0 0 0 15px !important; border-width: 1px !important; border-radius: 20px 20px 0 0 !important; }
-          .mfa-lock-body { width: 62px !important; height: 43px !important; border-width: 1px !important; border-radius: 8px !important; }
-          .mfa-keyhole-dot { width: 6px !important; height: 6px !important; margin: 12px auto 0 auto !important; border-width: 1px !important; }
-          .mfa-keyhole-stem { width: 2px !important; height: 10px !important; }
-          .mfa-stackctrl-heading { font-size: 12px !important; line-height: 1.25 !important; margin-top: 6px !important; }
-          .mfa-stackctrl-detail { font-size: 10px !important; line-height: 1.35 !important; max-width: 220px !important; margin: 4px auto 0 auto !important; }
+          .mfa-stackctrl-banner { margin: 12px 0 0 0 !important; padding: 8px 8px 12px 8px !important; border-radius: 6px !important; }
+          .mfa-stackctrl-logo { width: 92px !important; max-width: 92px !important; margin: -8px auto 0 auto !important; }
+          .mfa-lock-wrap { width: 42px !important; height: 42px !important; }
+          .mfa-lock-shackle { width: 18px !important; height: 14px !important; margin: 0 0 0 12px !important; border-width: 1px !important; border-radius: 12px 12px 0 0 !important; }
+          .mfa-lock-body { width: 30px !important; height: 22px !important; border-width: 1px !important; border-radius: 5px !important; }
+          .mfa-keyhole-dot { width: 3px !important; height: 3px !important; margin: 6px auto 0 auto !important; border-width: 1px !important; }
+          .mfa-keyhole-stem { width: 1px !important; height: 6px !important; }
           .content { padding: 20px 16px !important; }
           .code { font-size: 24px !important; letter-spacing: 4px !important; }
         }
@@ -951,7 +945,6 @@ function buildMfaEmail(user, mfaCode) {
       <div class="highlight-box">
         <div class="code">${escapeHtml(mfaCode)}</div>
       </div>
-      <p>Please copy and paste this code into the verification screen to continue signing in.</p>
       <div class="security-note">This MFA code will expire after 10 minutes. If you did not request this login code, please do not share it with anyone and contact us immediately at <a href="mailto:${STACKOPS_SUPPORT_EMAIL}" style="color:#1d4ed8; font-weight:700;">${STACKOPS_SUPPORT_EMAIL}</a>.</div>
     `
   });
