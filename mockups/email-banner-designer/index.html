@@ -310,7 +310,7 @@
             </label>
             <label>
               Entry height
-              <input id="openingHeight" type="range" min="0" max="64" value="28">
+              <input id="openingHeight" type="range" min="0" max="64" value="0">
             </label>
           </div>
           <label>
@@ -385,6 +385,8 @@
       const bodyHeight = Math.round(size * 0.5);
       const shackleWidth = Math.round(size * 0.45);
       const shackleHeight = Math.round(size * 0.34);
+      const keyDot = Math.max(8, Math.round(size * 0.09));
+      const keyStem = Math.max(12, Math.round(size * 0.14));
       const openTop = Math.max(stroke, Math.min(Number(openingTop), bodyHeight - stroke));
       const openHeight = Math.max(0, Math.min(Number(openingHeight), bodyHeight - openTop));
       const coverWidth = stroke + 6;
@@ -397,6 +399,8 @@
           <div style="width:${px(shackleWidth)}; height:${px(shackleHeight)}; margin:0 auto; border:${px(stroke)} solid ${accent}; border-bottom:0; border-radius:${px(Math.round(shackleWidth / 2))} ${px(Math.round(shackleWidth / 2))} 0 0; line-height:0; font-size:0;">&nbsp;</div>
           <div style="position:relative; width:${px(bodyWidth)}; height:${px(bodyHeight)}; margin:-1px auto 0 auto; border:${px(stroke)} solid ${accent}; border-radius:${px(radius)}; line-height:0; font-size:0;">
             ${entryCover}
+            <div style="width:${px(keyDot)}; height:${px(keyDot)}; margin:${px(Math.round(bodyHeight * 0.24))} auto 0 auto; border:${px(stroke)} solid ${accent}; border-radius:50%; line-height:0; font-size:0;">&nbsp;</div>
+            <div style="width:${px(stroke)}; height:${px(keyStem)}; margin:0 auto; background:${accent}; border-radius:${px(stroke)}; line-height:0; font-size:0;">&nbsp;</div>
           </div>
         </div>
       `;

@@ -844,9 +844,10 @@ function renderMfaStackCtrlHeaderBanner() {
       </td>
       <td style="vertical-align:middle; width:150px; padding:0 0 0 0px;">
         <div style="position:relative; left:-18px; top:18px;"><div role="img" aria-label="Protected padlock" style="width:150px; height:150px; margin:0 auto; text-align:center; line-height:0; font-size:0;">
-          <div style="width:68px; height:51px; margin:0 auto; border:2px solid #dbdbdb; border-bottom:0; border-radius:34px 34px 0 0; line-height:0; font-size:0;">&nbsp;</div>
+          <div style="width:64px; height:51px; margin:0 auto; border:2px solid #dbdbdb; border-bottom:0; border-radius:34px 34px 0 0; line-height:0; font-size:0;">&nbsp;</div>
           <div style="position:relative; width:108px; height:75px; margin:-1px auto 0 auto; border:2px solid #dbdbdb; border-radius:12px; line-height:0; font-size:0;">
-            <div style="position:absolute; left:-4px; top:4px; width:8px; height:61px; background:#111820; line-height:0; font-size:0;">&nbsp;</div>
+            <div style="width:10px; height:10px; margin:25px auto 0 auto; border:2px solid #dbdbdb; border-radius:50%; line-height:0; font-size:0;">&nbsp;</div>
+            <div style="width:2px; height:18px; margin:0 auto; background:#dbdbdb; border-radius:2px; line-height:0; font-size:0;">&nbsp;</div>
           </div>
         </div></div>
       </td>
