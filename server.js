@@ -1580,6 +1580,17 @@ async function ensureDatabaseSchema() {
             )
         `);
 
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS SunbirdGovernancePayloadCache (
+                ID INT AUTO_INCREMENT PRIMARY KEY,
+                CompanyID INT,
+                Payload LONGTEXT,
+                LastUpdated DATETIME,
+                UNIQUE KEY uq_sunbird_governance_company (CompanyID),
+                FOREIGN KEY (CompanyID) REFERENCES Companies(ID)
+            )
+        `);
+
         // User constraints/indexes for faster login and tenant lookups
         await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_company ON Users(CompanyID)`);
         await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_email ON Users(Email)`);
@@ -5899,7 +5910,8 @@ app.get('/api/app-access/:spId', authenticateToken, async (req, res) => {
 const SUNBIRD_DASHBOARD_CACHE_TTL_MS = 10 * 60 * 1000;
 const SUNBIRD_PAYLOAD_CACHE_TABLES = new Set([
     'SunbirdComplianceControlsCache',
-    'SunbirdOperationsPayloadCache'
+    'SunbirdOperationsPayloadCache',
+    'SunbirdGovernancePayloadCache'
 ]);
 
 function getSunbirdCacheAgeMs(lastUpdated) {
@@ -5951,6 +5963,389 @@ async function upsertSunbirdPayloadCache(tableName, companyId, payload) {
 }
 
 // ============================================================================
+// SUNBIRD ONLY: GOVERNANCE EVIDENCE REGISTER
+// ============================================================================
+app.get('/api/sunbird/governance', authenticateToken, async (req, res) => {
+    let companyId = null;
+    try {
+        const userEmail = req.user.email;
+        const tenant = getTenantByEmail(userEmail);
+
+        if (!tenant || tenant.clientId !== 'sunbird') {
+            return res.status(403).json({ error: 'Access denied. Sunbird only.' });
+        }
+
+        companyId = tenant.companyId || req.user.companyId || null;
+        const cached = await getSunbirdPayloadCache('SunbirdGovernancePayloadCache', companyId);
+        if (cached?.payload?.success && Array.isArray(cached.payload.rows)) {
+            return res.json({
+                ...cached.payload,
+                source: 'db',
+                fetchedAt: cached.lastUpdated
+            });
+        }
+
+        const token = await getMicrosoftGraphToken();
+        const fetchedAt = new Date().toISOString();
+        const lastReviewed = fetchedAt.split('T')[0];
+        const rows = [];
+
+        const addRow = ({ area, activity, dataSource, frequency, status, evidence, evidenceData = {}, connected = true }) => {
+            rows.push({
+                area,
+                activity,
+                source: dataSource,
+                dataSource,
+                frequency,
+                lastReviewed: connected ? lastReviewed : null,
+                status,
+                connected,
+                evidence,
+                evidenceData
+            });
+        };
+
+        const addManualRow = (area, activity, frequency, evidence) => {
+            addRow({
+                area,
+                activity,
+                dataSource: 'Manual attestation',
+                frequency,
+                status: 'Manual Review Required',
+                connected: false,
+                evidence,
+                evidenceData: {
+                    data_source: 'Manual governance process',
+                    graph_api_available: 'No',
+                    reason: 'This control depends on policy approval, business sign-off, training records, or test evidence outside Microsoft Graph.'
+                }
+            });
+        };
+
+        let users = [];
+        let roleAssignments = [];
+        let signIns = [];
+        let devices = [];
+        let apps = [];
+        let policies = [];
+        let alerts = [];
+
+        try { users = await fetchMicrosoftUsers(token); } catch (e) { console.warn('[Governance] Users unavailable:', e.message); }
+        try { roleAssignments = await fetchMicrosoftRoleAssignments(token); } catch (e) { console.warn('[Governance] Roles unavailable:', e.message); }
+        try { signIns = await fetchMicrosoftSignIns(token, 30); } catch (e) { console.warn('[Governance] Sign-ins unavailable:', e.message); }
+        try { devices = await fetchMicrosoftDevices(token); } catch (e) { console.warn('[Governance] Devices unavailable:', e.message); }
+        try { apps = await fetchMicrosoftServicePrincipals(token); } catch (e) { console.warn('[Governance] Applications unavailable:', e.message); }
+        try { policies = await fetchCompliancePolicies(token); } catch (e) { console.warn('[Governance] Compliance policies unavailable:', e.message); }
+        try { alerts = await fetchSecurityAlerts(token); } catch (e) { console.warn('[Governance] Security alerts unavailable:', e.message); }
+
+        const adminIds = new Set();
+        roleAssignments.forEach(assignment => {
+            const roleName = assignment.roleDefinition?.displayName || assignment.roleName || '';
+            if (/admin|global/i.test(roleName)) adminIds.add(assignment.principalId);
+        });
+
+        const userBrief = user => ({
+            name: user.displayName || user.userPrincipalName || user.mail || 'Unknown user',
+            email: user.mail || user.userPrincipalName || 'N/A',
+            id: user.id || 'N/A'
+        });
+        const deviceBrief = device => ({
+            name: device.deviceName || device.managedDeviceName || device.id || 'Unknown device',
+            user: device.userPrincipalName || device.emailAddress || 'N/A',
+            compliance: device.complianceState || 'unknown',
+            encrypted: device.isEncrypted ? 'Yes' : 'No',
+            lastSync: device.lastSyncDateTime || device.lastContactedDateTime || 'N/A'
+        });
+        const appBrief = app => ({
+            name: app.displayName || 'Unknown app',
+            publisher: app.publisherName || 'Unknown publisher',
+            type: app.servicePrincipalType || 'Unknown',
+            permissions: ((app.oauth2PermissionScopes || []).length + (app.appRoles || []).length)
+        });
+        const signInBrief = signIn => ({
+            user: signIn.userPrincipalName || 'Unknown user',
+            app: signIn.appDisplayName || 'Unknown app',
+            client: signIn.clientAppUsed || 'Unknown client',
+            time: signIn.createdDateTime || 'N/A',
+            status: signIn.status?.errorCode && signIn.status.errorCode !== 0 ? 'Failed' : 'Success'
+        });
+        const alertBrief = alert => ({
+            title: alert.title || alert.displayName || alert.alertWebUrl || 'Security alert',
+            severity: alert.severity || 'unknown',
+            status: alert.status || 'unknown'
+        });
+
+        let mfaRegistered = 0;
+        const usersWithoutMfa = [];
+        if (users.length) {
+            await mapWithConcurrency(users, 8, async (user) => {
+                const authMethods = await fetchUserAuthMethods(token, user.id);
+                if (hasRealMfaMethod(authMethods)) {
+                    mfaRegistered++;
+                } else {
+                    usersWithoutMfa.push(userBrief(user));
+                }
+            });
+        }
+
+        const externalUserRows = users.filter(user =>
+            String(user.userPrincipalName || user.mail || '').includes('#EXT#') ||
+            String(user.userPrincipalName || user.mail || '').toLowerCase().includes('onmicrosoft.com#ext#')
+        ).map(userBrief);
+        const mfaCoverage = users.length ? Math.round((mfaRegistered / users.length) * 100) : 0;
+        const adminUserRows = users.filter(user => adminIds.has(user.id)).map(userBrief);
+        const nonCompliantDeviceRows = devices.filter(device => String(device.complianceState || '').toLowerCase() !== 'compliant').map(deviceBrief);
+        const staleDeviceRows = devices.filter(device => {
+            const lastSync = new Date(device.lastSyncDateTime || device.lastContactedDateTime || 0).getTime();
+            if (!Number.isFinite(lastSync) || lastSync <= 0) return false;
+            return (Date.now() - lastSync) / (1000 * 60 * 60 * 24) > 30;
+        }).map(deviceBrief);
+        const externalAppRows = apps.filter(app => !(app.publisherName || '').toLowerCase().includes('microsoft')).map(appBrief);
+        const highPermissionAppRows = apps.filter(app => ((app.oauth2PermissionScopes || []).length + (app.appRoles || []).length) > 10).map(appBrief);
+        const failedSignInRows = signIns.filter(signIn => signIn.status?.errorCode && signIn.status.errorCode !== 0).map(signInBrief);
+        const legacySignInRows = signIns.filter(signIn => signIn.clientAppUsed && signIn.clientAppUsed !== 'Browser' && signIn.clientAppUsed !== 'Mobile Apps and Desktop clients').map(signInBrief);
+        const highAlertRows = alerts.filter(alert => /high|critical/i.test(alert.severity || '')).map(alertBrief);
+
+        addRow({
+            area: 'Access review',
+            activity: 'Review users',
+            dataSource: 'Microsoft Graph users',
+            frequency: 'Quarterly',
+            status: users.length ? 'Connected' : 'No Graph Evidence',
+            evidence: `${users.length} user accounts are available for review, including ${externalUserRows.length} guest/external accounts.`,
+            evidenceData: {
+                total_users: users.length,
+                external_users: externalUserRows.length,
+                users: users.slice(0, 20).map(userBrief),
+                external_user_sample: externalUserRows.slice(0, 20)
+            }
+        });
+
+        addRow({
+            area: 'Admin review',
+            activity: 'Review roles',
+            dataSource: 'Microsoft Graph directory roles',
+            frequency: 'Quarterly',
+            status: roleAssignments.length ? 'Connected' : 'No Graph Evidence',
+            evidence: `${adminIds.size} privileged accounts were detected from role assignments. Review these accounts against approved admin access.`,
+            evidenceData: {
+                role_assignments: roleAssignments.length,
+                privileged_principals: adminIds.size,
+                privileged_users: adminUserRows.slice(0, 20)
+            }
+        });
+
+        addRow({
+            area: 'Security review',
+            activity: 'Full stack review',
+            dataSource: 'Microsoft Graph security alerts',
+            frequency: 'Annual',
+            status: highAlertRows.length > 0 ? 'Attention Required' : 'Connected',
+            evidence: `${alerts.length} security alert records were checked, with ${highAlertRows.length} high or critical alerts.`,
+            evidenceData: {
+                total_alerts: alerts.length,
+                high_or_critical_alerts: highAlertRows.length,
+                alerts: highAlertRows.slice(0, 20)
+            }
+        });
+
+        addRow({
+            area: 'Threat review',
+            activity: 'Threat landscape',
+            dataSource: 'Microsoft Graph sign-in and security telemetry',
+            frequency: 'Annual',
+            status: failedSignInRows.length > 0 || highAlertRows.length > 0 ? 'Attention Required' : 'Connected',
+            evidence: `${signIns.length} sign-in events were reviewed from the last 30 days. ${failedSignInRows.length} failed sign-ins and ${highAlertRows.length} high/critical alerts were found.`,
+            evidenceData: {
+                sign_in_events_30_days: signIns.length,
+                failed_sign_ins_30_days: failedSignInRows.length,
+                high_or_critical_alerts: highAlertRows.length,
+                failed_sign_ins: failedSignInRows.slice(0, 20),
+                alerts: highAlertRows.slice(0, 20)
+            }
+        });
+
+        addManualRow(
+            'AI review',
+            'AI policy',
+            'Ongoing',
+            'Microsoft Graph does not confirm whether staff have accepted internal AI usage rules. Evidence should come from approved AI policy documents, acceptance records, and exception approvals.'
+        );
+
+        addRow({
+            area: 'Software review',
+            activity: 'App review',
+            dataSource: 'Microsoft Graph enterprise applications',
+            frequency: 'Annual',
+            status: externalAppRows.length > 10 || highPermissionAppRows.length > 0 ? 'Attention Required' : 'Connected',
+            evidence: `${apps.length} enterprise applications were found. ${externalAppRows.length} are non-Microsoft publishers and ${highPermissionAppRows.length} have broad permission surfaces.`,
+            evidenceData: {
+                total_enterprise_apps: apps.length,
+                external_publishers: externalAppRows.length,
+                high_permission_apps: highPermissionAppRows.length,
+                external_apps: externalAppRows.slice(0, 20),
+                high_permission_app_sample: highPermissionAppRows.slice(0, 20)
+            }
+        });
+
+        addRow({
+            area: 'Incident review',
+            activity: 'Post-incident',
+            dataSource: 'Microsoft Graph security alerts',
+            frequency: 'Triggered',
+            status: alerts.length ? 'Connected' : 'No Open Evidence',
+            evidence: alerts.length
+                ? `${alerts.length} alert records are available to support incident review and post-incident follow-up.`
+                : 'No security alerts were returned by Microsoft Graph for this review window.',
+            evidenceData: {
+                alert_records: alerts.length,
+                alerts: alerts.slice(0, 20).map(alertBrief)
+            }
+        });
+
+        addRow({
+            area: 'MFA audit',
+            activity: 'Identity check',
+            dataSource: 'Microsoft Graph authentication methods',
+            frequency: 'Quarterly',
+            status: mfaCoverage >= 90 ? 'Connected' : 'Attention Required',
+            evidence: `${mfaRegistered} of ${users.length} users have a registered MFA method. Current MFA coverage is ${mfaCoverage}%.`,
+            evidenceData: {
+                total_users: users.length,
+                mfa_registered: mfaRegistered,
+                mfa_missing: Math.max(0, users.length - mfaRegistered),
+                mfa_coverage: `${mfaCoverage}%`,
+                users_without_mfa: usersWithoutMfa.slice(0, 50)
+            }
+        });
+
+        addRow({
+            area: 'Device audit',
+            activity: 'Device posture',
+            dataSource: 'Microsoft Graph Intune devices',
+            frequency: 'Monthly',
+            status: nonCompliantDeviceRows.length > 0 || staleDeviceRows.length > 0 ? 'Attention Required' : 'Connected',
+            evidence: `${devices.length} managed devices were found. ${nonCompliantDeviceRows.length} are non-compliant and ${staleDeviceRows.length} have not synced in more than 30 days.`,
+            evidenceData: {
+                managed_devices: devices.length,
+                non_compliant_devices: nonCompliantDeviceRows.length,
+                stale_devices_30_days: staleDeviceRows.length,
+                non_compliant_device_list: nonCompliantDeviceRows.slice(0, 50),
+                stale_device_list: staleDeviceRows.slice(0, 50)
+            }
+        });
+
+        addRow({
+            area: 'Log review',
+            activity: 'Sign-in logs',
+            dataSource: 'Microsoft Graph sign-in logs',
+            frequency: 'Monthly',
+            status: signIns.length ? 'Connected' : 'No Graph Evidence',
+            evidence: `${signIns.length} sign-in records were available for the last 30 days, including ${failedSignInRows.length} failed sign-in attempts.`,
+            evidenceData: {
+                sign_in_events_30_days: signIns.length,
+                failed_sign_ins_30_days: failedSignInRows.length,
+                failed_sign_ins: failedSignInRows.slice(0, 50),
+                legacy_sign_ins: legacySignInRows.slice(0, 50)
+            }
+        });
+
+        try {
+            const backup = await fetchBackupRecoveryPayloadFromApi();
+            const summary = backup.summary || {};
+            addRow({
+                area: 'Backup review',
+                activity: 'Backup check',
+                dataSource: 'Microsoft Graph usage reports',
+                frequency: 'Monthly',
+                status: backup.success ? 'Connected' : 'No Graph Evidence',
+                evidence: `Microsoft 365 usage evidence is available for backup scope review: ${summary.totalStorageGB || 0} GB total storage and ${summary.activeUsersCount || 0} active users represented in report data.`,
+                evidenceData: {
+                    total_storage_gb: summary.totalStorageGB || 0,
+                    active_users: summary.activeUsersCount || 0,
+                    report_sources: 'OneDrive, SharePoint, Exchange usage reports'
+                }
+            });
+        } catch (e) {
+            addRow({
+                area: 'Backup review',
+                activity: 'Backup check',
+                dataSource: 'Microsoft Graph usage reports',
+                frequency: 'Monthly',
+                status: 'No Graph Evidence',
+                evidence: 'Microsoft 365 usage reports were not available during this refresh. Backup tool success/failure status must still come from the backup platform.',
+                evidenceData: {
+                    graph_available: 'No',
+                    reason: e.message
+                }
+            });
+        }
+
+        addManualRow(
+            'Restore testing',
+            'Recovery test',
+            'Quarterly',
+            'Restore testing cannot be proven by Microsoft Graph alone. Evidence should be a restore test record showing date, scope, result, owner, and any issues found.'
+        );
+
+        addRow({
+            area: 'Policy review',
+            activity: 'CA and compliance policies',
+            dataSource: 'Microsoft Graph compliance policies',
+            frequency: 'Quarterly',
+            status: policies.length ? 'Connected' : 'No Graph Evidence',
+            evidence: `${policies.length} Intune compliance policies returned by Microsoft Graph. Conditional Access policy detail may require additional Graph permissions before it can be included.`,
+            evidenceData: {
+                compliance_policies: policies.length,
+                graph_endpoint: '/deviceManagement/deviceCompliancePolicies',
+                note: 'Conditional Access policies require policy/read permissions not currently used by this endpoint.'
+            }
+        });
+
+        addRow({
+            area: 'Data review',
+            activity: 'SharePoint usage',
+            dataSource: 'Microsoft Graph usage reports',
+            frequency: 'Quarterly',
+            status: 'Connected',
+            evidence: 'SharePoint and OneDrive usage reports can support data footprint review. They do not replace a full permissions or sensitivity-label audit.',
+            evidenceData: {
+                graph_reports: 'SharePoint site usage and OneDrive account usage',
+                limitation: 'Permissions exposure and sensitivity labels require additional dedicated report logic.'
+            }
+        });
+
+        addManualRow(
+            'Awareness review',
+            'Training',
+            'Annual',
+            'Security awareness completion is not available from Microsoft Graph in this dashboard. Evidence should come from the training platform or signed attendance/completion records.'
+        );
+
+        const payload = {
+            success: true,
+            rows,
+            source: 'api',
+            fetchedAt
+        };
+        await upsertSunbirdPayloadCache('SunbirdGovernancePayloadCache', companyId, payload);
+        res.json(payload);
+    } catch (error) {
+        console.error('[Governance API] Critical Error:', error);
+        const stale = await getSunbirdPayloadCache('SunbirdGovernancePayloadCache', companyId, { allowStale: true });
+        if (stale?.payload?.success && Array.isArray(stale.payload.rows)) {
+            return res.json({
+                ...stale.payload,
+                source: 'db-stale',
+                fetchedAt: stale.lastUpdated,
+                warning: 'Serving stale cached governance data because live refresh failed.'
+            });
+        }
+        res.status(500).json({ error: 'Failed to aggregate governance data' });
+    }
+});
+
+// ============================================================================
 // SUNBIRD ONLY: STRICT COMPLIANCE VALIDATION ENGINE (FULL MATRIX)
 // ============================================================================
 app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) => {
@@ -5986,6 +6381,30 @@ app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) 
             if (!response.ok) return { value: [] };
             return await response.json();
         };
+        const userBrief = user => ({
+            name: user.displayName || user.userPrincipalName || user.mail || 'Unknown user',
+            email: user.mail || user.userPrincipalName || 'N/A',
+            id: user.id || 'N/A'
+        });
+        const deviceBrief = device => ({
+            name: device.deviceName || device.managedDeviceName || device.id || 'Unknown device',
+            user: device.userPrincipalName || device.emailAddress || 'N/A',
+            compliance: device.complianceState || 'unknown',
+            encrypted: device.isEncrypted ? 'Yes' : 'No',
+            management: device.managementAgent || 'unknown'
+        });
+        const appBrief = app => ({
+            name: app.displayName || 'Unknown app',
+            publisher: app.publisherName || 'Unknown publisher',
+            type: app.servicePrincipalType || 'Unknown',
+            permissions: ((app.oauth2PermissionScopes || []).length + (app.appRoles || []).length)
+        });
+        const signInBrief = signIn => ({
+            user: signIn.userPrincipalName || 'Unknown user',
+            app: signIn.appDisplayName || 'Unknown app',
+            client: signIn.clientAppUsed || 'Unknown client',
+            time: signIn.createdDateTime || 'N/A'
+        });
 
         // Helper for Manual/Hybrid controls
         const addManualControl = (name, area, insight, status = "Pending Review", additionalEvidence = {}) => {
@@ -6009,10 +6428,15 @@ app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) 
             const users = await fetchMicrosoftUsers(token);
             let mfaRegistered = 0;
             const totalUsers = users.length;
+            const usersWithoutMfa = [];
 
             await mapWithConcurrency(users, 8, async (user) => {
                 const authMethods = await fetchUserAuthMethods(token, user.id);
-                if (hasRealMfaMethod(authMethods)) mfaRegistered++;
+                if (hasRealMfaMethod(authMethods)) {
+                    mfaRegistered++;
+                } else {
+                    usersWithoutMfa.push(userBrief(user));
+                }
             });
 
             const coverage = totalUsers > 0 ? Math.round((mfaRegistered / totalUsers) * 100) : 0;
@@ -6021,13 +6445,15 @@ app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) 
 
             controls.push({
                 name: "MFA on all accounts", area: "Identity", insight: insight,
-                evidenceData: { total_users: totalUsers, mfa_registered: mfaRegistered, mfa_missing: totalUsers - mfaRegistered, coverage: `${coverage}%` }
+                evidenceData: { total_users: totalUsers, mfa_registered: mfaRegistered, mfa_missing: totalUsers - mfaRegistered, coverage: `${coverage}%`, users_without_mfa: usersWithoutMfa.slice(0, 50) }
             });
         } catch (e) { console.error('MFA Control Error', e); }
 
         // 2. ADMIN COUNT (API)
         try {
             const roleAssignments = await fetchMicrosoftRoleAssignments(token);
+            const users = await fetchMicrosoftUsers(token).catch(() => []);
+            const userMap = new Map(users.map(user => [user.id, userBrief(user)]));
             const adminSet = new Set();
             roleAssignments.forEach(assignment => {
                 const roleName = assignment.roleDefinition?.displayName || '';
@@ -6039,7 +6465,7 @@ app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) 
             controls.push({
                 name: "Admin accounts limited", area: "Identity",
                 insight: adminCount > 5 ? "🔴 Too many privileged users" : "🟢 Admin count within limits",
-                evidenceData: { privileged_users: adminCount, recommended_limit: "5" }
+                evidenceData: { privileged_users: adminCount, recommended_limit: "5", admin_accounts: Array.from(adminSet).map(id => userMap.get(id) || { name: id, email: 'Directory principal', id }).slice(0, 50) }
             });
         } catch (e) { console.error('Admin Count Error', e); }
 
@@ -6050,7 +6476,7 @@ app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) 
             controls.push({
                 name: "Legacy authentication blocked", area: "Identity",
                 insight: legacySignIns.length > 0 ? "🔴 Legacy auth risk" : "🟢 Legacy auth blocked",
-                evidenceData: { events_analyzed: signIns.length, legacy_auth_events: legacySignIns.length }
+                evidenceData: { events_analyzed: signIns.length, legacy_auth_events: legacySignIns.length, legacy_sign_ins: legacySignIns.slice(0, 50).map(signInBrief) }
             });
         } catch (e) { console.error('Legacy Auth Error', e); }
 
@@ -6070,9 +6496,12 @@ app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) 
         try {
             const devices = await fetchMicrosoftDevices(token);
             const totalDevices = devices.length;
-            const compliant = devices.filter(d => d.complianceState === 'compliant').length;
-            const encrypted = devices.filter(d => d.isEncrypted).length;
-            const managed = devices.filter(d => d.managementAgent && d.managementAgent !== 'unknown').length;
+            const nonCompliantDevices = devices.filter(d => d.complianceState !== 'compliant');
+            const unencryptedDevices = devices.filter(d => !d.isEncrypted);
+            const unmanagedDevices = devices.filter(d => !d.managementAgent || d.managementAgent === 'unknown');
+            const compliant = totalDevices - nonCompliantDevices.length;
+            const encrypted = totalDevices - unencryptedDevices.length;
+            const managed = totalDevices - unmanagedDevices.length;
 
             const compCoverage = totalDevices > 0 ? Math.round((compliant / totalDevices) * 100) : 0;
             const encCoverage = totalDevices > 0 ? Math.round((encrypted / totalDevices) * 100) : 0;
@@ -6081,19 +6510,19 @@ app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) 
             controls.push({
                 name: "Device compliance", area: "Devices",
                 insight: compCoverage < 95 ? "🔴 Non-compliant devices" : "🟢 Devices compliant",
-                evidenceData: { total_devices: totalDevices, compliant_devices: compliant, non_compliant: totalDevices - compliant, compliance_rate: `${compCoverage}%` }
+                evidenceData: { total_devices: totalDevices, compliant_devices: compliant, non_compliant: nonCompliantDevices.length, compliance_rate: `${compCoverage}%`, non_compliant_devices: nonCompliantDevices.slice(0, 50).map(deviceBrief) }
             });
 
             controls.push({
                 name: "Device encryption", area: "Devices",
                 insight: encCoverage < 100 ? "🔴 Data loss risk" : "🟢 All devices encrypted",
-                evidenceData: { total_devices: totalDevices, encrypted_devices: encrypted, unencrypted_devices: totalDevices - encrypted, encryption_rate: `${encCoverage}%` }
+                evidenceData: { total_devices: totalDevices, encrypted_devices: encrypted, unencrypted_devices: unencryptedDevices.length, encryption_rate: `${encCoverage}%`, unencrypted_device_list: unencryptedDevices.slice(0, 50).map(deviceBrief) }
             });
 
             controls.push({
                 name: "Work profile on devices", area: "Devices",
                 insight: manCoverage < 100 ? "🔴 Uncontrolled devices" : "🟢 Devices managed",
-                evidenceData: { total_devices: totalDevices, managed_devices: managed, unmanaged_devices: totalDevices - managed }
+                evidenceData: { total_devices: totalDevices, managed_devices: managed, unmanaged_devices: unmanagedDevices.length, unmanaged_device_list: unmanagedDevices.slice(0, 50).map(deviceBrief) }
             });
         } catch (e) { console.error('Device Controls Error', e); }
 
@@ -6109,11 +6538,11 @@ app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) 
         // 7. APPROVED APPLICATIONS ONLY (API)
         try {
             const apps = await fetchMicrosoftServicePrincipals(token);
-            const externalApps = apps.filter(app => !app.publisherName || !app.publisherName.toLowerCase().includes('microsoft')).length;
+            const externalApps = apps.filter(app => !app.publisherName || !app.publisherName.toLowerCase().includes('microsoft'));
             controls.push({
                 name: "Approved tools only", area: "Applications",
-                insight: externalApps > 10 ? "🔴 Shadow IT risk" : "🟢 App ecosystem secured",
-                evidenceData: { total_enterprise_apps: apps.length, external_publishers: externalApps }
+                insight: externalApps.length > 10 ? "🔴 Shadow IT risk" : "🟢 App ecosystem secured",
+                evidenceData: { total_enterprise_apps: apps.length, external_publishers: externalApps.length, external_applications: externalApps.slice(0, 50).map(appBrief) }
             });
         } catch (e) { console.error('Apps Control Error', e); }
 
@@ -6156,11 +6585,10 @@ app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) 
         addManualControl("Backup coverage", "Backup", "🟡 Partial protection");
         addManualControl("Backup tested", "Backup", "🔴 Recovery unproven");
 
-        // Data Visibility (API Placeholder from Reports)
-        controls.push({
-            name: "Data visibility", area: "Data",
-            insight: "🟢 Data footprint known",
-            evidenceData: { report_telemetry: "Active", last_sync: new Date().toISOString().split('T')[0] }
+        addManualControl("Data visibility", "Data", "🟡 Requires data governance review", "Partial Graph Coverage", {
+            data_source: "Microsoft 365 usage reports / manual data governance review",
+            graph_api_available: "Partial",
+            limitation: "Usage reports can show activity and storage footprint, but this control still needs permissions, sensitivity, and retention review evidence."
         });
 
         const payload = {
@@ -6224,8 +6652,31 @@ app.get('/api/sunbird/operations', authenticateToken, async (req, res) => {
             return await response.json();
         };
 
-        const addTask = (task, area, priority, insight, why, affected, remediation) => {
-            tasks.push({ task, area, priority, insight, why, affected, remediation });
+        const userBrief = user => ({
+            name: user.displayName || user.userPrincipalName || user.mail || 'Unknown user',
+            email: user.mail || user.userPrincipalName || 'N/A',
+            id: user.id || 'N/A'
+        });
+        const deviceBrief = device => ({
+            name: device.deviceName || device.managedDeviceName || device.id || 'Unknown device',
+            user: device.userPrincipalName || device.emailAddress || 'N/A',
+            compliance: device.complianceState || 'unknown',
+            encrypted: device.isEncrypted ? 'Yes' : 'No'
+        });
+        const signInBrief = signIn => ({
+            user: signIn.userPrincipalName || 'Unknown user',
+            app: signIn.appDisplayName || 'Unknown app',
+            client: signIn.clientAppUsed || 'Unknown client',
+            time: signIn.createdDateTime || 'N/A'
+        });
+        const alertBrief = alert => ({
+            title: alert.title || alert.displayName || 'Security alert',
+            severity: alert.severity || 'unknown',
+            status: alert.status || 'unknown'
+        });
+
+        const addTask = (task, area, priority, insight, why, affected, remediation, dataSource = 'Manual configuration review', evidenceRows = []) => {
+            tasks.push({ task, area, priority, insight, why, affected, remediation, dataSource, evidenceRows });
         };
 
         // ---------------------------------------------------------
@@ -6236,6 +6687,9 @@ app.get('/api/sunbird/operations', authenticateToken, async (req, res) => {
             let mfaMissingCount = 0;
             let weakAdminCount = 0;
             let mixedAdminCount = 0;
+            const usersWithoutMfa = [];
+            const weakAdminUsers = [];
+            const mixedAdminUsers = [];
 
             // Check roles for admin tasks
             const roleAssignments = await fetchMicrosoftRoleAssignments(token);
@@ -6252,15 +6706,24 @@ app.get('/api/sunbird/operations', authenticateToken, async (req, res) => {
                 const hasMfa = hasRealMfaMethod(authMethods);
                 const isAdmin = adminIds.has(user.id);
 
-                if (!hasMfa) mfaMissingCount++;
+                if (!hasMfa) {
+                    mfaMissingCount++;
+                    usersWithoutMfa.push(userBrief(user));
+                }
 
                 if (isAdmin) {
                     // Task 2: Enforce admin MFA (Checking for weak/no MFA)
-                    if (!hasMfa || authMethods.length < 2) weakAdminCount++;
+                    if (!hasMfa || authMethods.length < 2) {
+                        weakAdminCount++;
+                        weakAdminUsers.push(userBrief(user));
+                    }
 
                     // Task 3: Separate admin accounts (Heuristic: Standard email format used as admin)
                     const upn = (user.userPrincipalName || '').toLowerCase();
-                    if (!upn.includes('admin') && !upn.includes('adm-')) mixedAdminCount++;
+                    if (!upn.includes('admin') && !upn.includes('adm-')) {
+                        mixedAdminCount++;
+                        mixedAdminUsers.push(userBrief(user));
+                    }
                 }
             });
 
@@ -6269,7 +6732,9 @@ app.get('/api/sunbird/operations', authenticateToken, async (req, res) => {
                 addTask("Complete MFA rollout", "Identity", "High", "🔴 Users vulnerable",
                     "Users without MFA are highly susceptible to credential stuffing and phishing attacks.",
                     `${mfaMissingCount} users without MFA registered.`,
-                    "1. Open Azure AD Conditional Access.\n2. Enforce MFA policy for all users.\n3. Run registration campaign."
+                    "1. Open Azure AD Conditional Access.\n2. Enforce MFA policy for all users.\n3. Run registration campaign.",
+                    "Microsoft Graph authentication methods",
+                    usersWithoutMfa.slice(0, 50)
                 );
             }
 
@@ -6278,7 +6743,9 @@ app.get('/api/sunbird/operations', authenticateToken, async (req, res) => {
                 addTask("Enforce strong admin MFA", "Identity", "High", "🔴 Admin risk",
                     "Administrators are using weak authentication methods, risking complete tenant compromise.",
                     `${weakAdminCount} admin accounts lack phishing-resistant MFA.`,
-                    "1. Require FIDO2 or Microsoft Authenticator for admin roles.\n2. Disable SMS/Voice for privileged accounts."
+                    "1. Require FIDO2 or Microsoft Authenticator for admin roles.\n2. Disable SMS/Voice for privileged accounts.",
+                    "Microsoft Graph role assignments and authentication methods",
+                    weakAdminUsers.slice(0, 50)
                 );
             }
 
@@ -6287,7 +6754,9 @@ app.get('/api/sunbird/operations', authenticateToken, async (req, res) => {
                 addTask("Separate admin accounts", "Identity", "High", "🔴 Privilege misuse",
                     "Admin accounts are being used for day-to-day productivity (email, browsing), increasing the attack surface.",
                     `${mixedAdminCount} admin accounts detected as primary user accounts.`,
-                    "1. Create dedicated 'admin-username@' accounts.\n2. Strip admin privileges from standard daily accounts."
+                    "1. Create dedicated 'admin-username@' accounts.\n2. Strip admin privileges from standard daily accounts.",
+                    "Microsoft Graph directory roles and user principal names",
+                    mixedAdminUsers.slice(0, 50)
                 );
             }
 
@@ -6298,7 +6767,9 @@ app.get('/api/sunbird/operations', authenticateToken, async (req, res) => {
                 addTask("Block legacy authentication", "Identity", "High", "🔴 Legacy auth risk",
                     "Legacy protocols (POP, IMAP) bypass MFA and are actively being exploited.",
                     `${legacySignIns.length} legacy sign-in attempts detected.`,
-                    "1. Create Conditional Access policy to block legacy authentication.\n2. Disable legacy protocols in Exchange Admin Center."
+                    "1. Create Conditional Access policy to block legacy authentication.\n2. Disable legacy protocols in Exchange Admin Center.",
+                    "Microsoft Graph sign-in logs",
+                    legacySignIns.slice(0, 50).map(signInBrief)
                 );
             }
         } catch (e) { console.error('Operations: Identity Error', e); }
@@ -6308,15 +6779,19 @@ app.get('/api/sunbird/operations', authenticateToken, async (req, res) => {
         // ---------------------------------------------------------
         try {
             const devices = await fetchMicrosoftDevices(token);
-            const nonCompliant = devices.filter(d => d.complianceState !== 'compliant').length;
-            const unencrypted = devices.filter(d => !d.isEncrypted).length;
+            const nonCompliantDevices = devices.filter(d => d.complianceState !== 'compliant');
+            const unencryptedDevices = devices.filter(d => !d.isEncrypted);
+            const nonCompliant = nonCompliantDevices.length;
+            const unencrypted = unencryptedDevices.length;
 
             // Task 7: Enforce device compliance
             if (nonCompliant > 0) {
                 addTask("Enforce device compliance", "Devices", "High", "🔴 Unmanaged devices",
                     "Devices are accessing corporate data without meeting baseline security requirements.",
                     `${nonCompliant} devices are currently non-compliant.`,
-                    "1. Review Intune compliance policies.\n2. Setup Conditional Access to require compliant devices."
+                    "1. Review Intune compliance policies.\n2. Setup Conditional Access to require compliant devices.",
+                    "Microsoft Graph Intune managed devices",
+                    nonCompliantDevices.slice(0, 50).map(deviceBrief)
                 );
             }
 
@@ -6325,7 +6800,9 @@ app.get('/api/sunbird/operations', authenticateToken, async (req, res) => {
                 addTask("Enable BitLocker encryption", "Devices", "High", "🔴 Data loss risk",
                     "Unencrypted devices expose local data if the physical device is lost or stolen.",
                     `${unencrypted} devices are not encrypted.`,
-                    "1. Deploy BitLocker configuration profile via Intune.\n2. Force silent encryption for Windows endpoints."
+                    "1. Deploy BitLocker configuration profile via Intune.\n2. Force silent encryption for Windows endpoints.",
+                    "Microsoft Graph Intune managed devices",
+                    unencryptedDevices.slice(0, 50).map(deviceBrief)
                 );
             }
 
@@ -6335,7 +6812,9 @@ app.get('/api/sunbird/operations', authenticateToken, async (req, res) => {
                 addTask("Deploy endpoint protection", "Devices", "High", "🔴 Malware risk",
                     "Active threats detected on endpoints indicating potential protection gaps.",
                     `${alerts.length} active endpoint security alerts.`,
-                    "1. Review Microsoft Defender for Endpoint coverage.\n2. Isolate affected devices immediately."
+                    "1. Review Microsoft Defender for Endpoint coverage.\n2. Isolate affected devices immediately.",
+                    "Microsoft Graph security alerts",
+                    alerts.slice(0, 50).map(alertBrief)
                 );
             }
         } catch (e) { console.error('Operations: Device Error', e); }

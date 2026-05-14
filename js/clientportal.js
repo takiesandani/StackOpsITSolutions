@@ -11753,62 +11753,9 @@ function initializeGovernanceCard() {
     const client = isSunbirdUser() ? 'sunbird' : 'default';
 
     if (client === 'sunbird') {
-        const governanceFrameworkRows = [
-            { area: 'Access review', activity: 'Review users', source: 'Framework', frequency: 'Quarterly', lastReviewed: '2025-10-05', evidence: 'Quarterly user entitlement review exported and signed off.' },
-            { area: 'Admin review', activity: 'Review roles', source: 'Framework', frequency: 'Quarterly', lastReviewed: '2025-11-10', evidence: 'Privileged role assignment list reviewed against approvals.' },
-            { area: 'Security review', activity: 'Full stack review', source: 'Framework', frequency: 'Annual', lastReviewed: '2025-01-14', evidence: 'Security baseline checklist completed by platform team.' },
-            { area: 'Threat review', activity: 'Threat landscape', source: 'Framework', frequency: 'Annual', lastReviewed: '2024-12-08', evidence: 'Threat model workshop notes and action log captured.' },
-            { area: 'AI review', activity: 'AI policy', source: 'Framework', frequency: 'Ongoing', lastReviewed: null, evidence: 'AI policy updates pending legal and risk approval.' },
-            { area: 'Software review', activity: 'App review', source: 'Framework', frequency: 'Annual', lastReviewed: '2025-03-22', evidence: 'Third-party software inventory and risk review completed.' },
-            { area: 'Incident review', activity: 'Post-incident', source: 'Framework', frequency: 'Triggered', lastReviewed: '2026-02-15', evidence: 'Post-incident RCA shared with governance stakeholders.' },
-            { area: 'MFA audit', activity: 'Identity check', source: 'Checklist', frequency: 'Quarterly', lastReviewed: '2025-08-30', evidence: 'MFA coverage report generated from identity dashboard.' },
-            { area: 'Device audit', activity: 'Device posture', source: 'Checklist', frequency: 'Monthly', lastReviewed: '2026-03-25', evidence: 'Managed device compliance report reviewed and archived.' },
-            { area: 'Log review', activity: 'Sign-in logs', source: 'Checklist', frequency: 'Monthly', lastReviewed: '2026-03-05', evidence: 'Sign-in anomaly summary and analyst notes attached.' },
-            { area: 'Backup review', activity: 'Backup check', source: 'Checklist', frequency: 'Monthly', lastReviewed: '2026-02-03', evidence: 'Backup success rates verified and exceptions documented.' },
-            { area: 'Restore testing', activity: 'Recovery test', source: 'Checklist', frequency: 'Quarterly', lastReviewed: '2025-09-28', evidence: 'Recovery simulation runbook execution record available.' },
-            { area: 'Policy review', activity: 'CA policies', source: 'Checklist', frequency: 'Quarterly', lastReviewed: '2025-10-20', evidence: 'Conditional Access policy matrix reviewed and approved.' },
-            { area: 'Data review', activity: 'SharePoint usage', source: 'Framework', frequency: 'Quarterly', lastReviewed: '2026-01-06', evidence: 'SharePoint activity and exposure controls assessed.' },
-            { area: 'Awareness review', activity: 'Training', source: 'Framework', frequency: 'Annual', lastReviewed: '2025-04-17', evidence: 'Security awareness completion report captured.' }
-        ];
-
-        governanceCard.innerHTML = `
-            <div class="governance-card-header">
-                <i class="fas fa-shield-alt"></i>
-                <h3>Governance</h3>
-            </div>
-            <div class="governance-content sunbird-governance-content">
-                <div class="sunbird-governance-table-wrap">
-                    <table class="sunbird-incidents-table sunbird-governance-table">
-                        <thead>
-                            <tr>
-                                <th>Governance Area</th>
-                                <th>Activity</th>
-                                <th>Source</th>
-                                <th>Frequency</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${governanceFrameworkRows.map((row, index) => `
-                                <tr>
-                                    <td>${row.area}</td>
-                                    <td>
-                                        <div class="sunbird-governance-activity-cell">${row.activity}</div>
-                                        <button class="sunbird-risk-view-btn sunbird-governance-evidence-btn" onclick="window.openSunbirdGovernanceEvidence(${index})">
-                                            View Evidence
-                                        </button>
-                                    </td>
-                                    <td>${row.source}</td>
-                                    <td>${row.frequency}</td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        `;
-
-        window.sunbirdGovernanceRows = governanceFrameworkRows;
+        governanceCard.innerHTML = renderSunbirdPremiumLoader('Loading governance evidence');
         ensureSunbirdGovernanceEvidenceModal();
+        fetchSunbirdGovernanceData(governanceCard);
         return;
     }
 
@@ -11837,7 +11784,91 @@ function initializeGovernanceCard() {
     `;
 }
 
+async function fetchSunbirdGovernanceData(governanceCard) {
+    try {
+        const token = localStorage.getItem('authToken');
+        const response = await fetch('/api/sunbird/governance', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!response.ok) throw new Error('Failed to fetch governance data');
+        const data = await response.json();
+        const rows = Array.isArray(data.rows) ? data.rows : [];
+        window.sunbirdGovernanceRows = rows;
+        window.sunbirdGovernanceSource = {
+            source: data.source || 'unknown',
+            fetchedAt: data.fetchedAt,
+            warning: data.warning
+        };
+
+        const rowsHtml = rows.length ? rows.map((row, index) => `
+            <tr>
+                <td>${escapeIdentityText(row.area || 'Governance')}</td>
+                <td>
+                    <div class="sunbird-governance-activity-cell">${escapeIdentityText(row.activity || 'Review')}</div>
+                    <button class="sunbird-risk-view-btn sunbird-governance-evidence-btn" onclick="window.openSunbirdGovernanceEvidence(${index})">
+                        View Evidence
+                    </button>
+                </td>
+                <td>${escapeIdentityText(getSunbirdGovernanceDisplaySource(row))}</td>
+                <td>${escapeIdentityText(row.frequency || 'As required')}</td>
+            </tr>
+        `).join('') : '<tr><td colspan="4" class="sunbird-empty-row">No governance evidence available</td></tr>';
+
+        governanceCard.innerHTML = `
+            <div class="governance-card-header">
+                <i class="fas fa-shield-alt"></i>
+                <h3>Governance</h3>
+            </div>
+            <div class="governance-content sunbird-governance-content">
+                <div class="sunbird-section-title">${data.source === 'db' ? 'Cached governance evidence' : data.source === 'db-stale' ? 'Stale cached governance evidence' : 'Graph-backed governance evidence'}</div>
+                <div class="sunbird-governance-table-wrap">
+                    <table class="sunbird-incidents-table sunbird-governance-table">
+                        <thead>
+                            <tr>
+                                <th>Governance Area</th>
+                                <th>Activity</th>
+                                <th>Source</th>
+                                <th>Frequency</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rowsHtml}</tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    } catch (error) {
+        console.error('[Governance] Error:', error);
+        window.sunbirdGovernanceRows = [];
+        governanceCard.innerHTML = `
+            <div class="governance-card-header">
+                <i class="fas fa-shield-alt"></i>
+                <h3>Governance</h3>
+            </div>
+            <div class="governance-content sunbird-governance-content">
+                <div style="color: #ef4444; padding: 10px; text-align: center;">Failed to load governance evidence.</div>
+            </div>
+        `;
+    }
+}
+
+function getSunbirdGovernanceDisplaySource(row = {}) {
+    const area = String(row.area || '').toLowerCase();
+    const checklistAreas = ['mfa audit', 'device audit', 'log review', 'backup review', 'restore testing', 'policy review'];
+    const frameworkAreas = ['access review', 'admin review', 'security review', 'threat review', 'ai review', 'software review', 'incident review', 'data review', 'awareness review'];
+
+    if (checklistAreas.includes(area)) return 'Checklist';
+    if (frameworkAreas.includes(area)) return 'Framework';
+
+    const rawSource = String(row.source || '');
+    if (/checklist/i.test(rawSource)) return 'Checklist';
+    if (/framework/i.test(rawSource)) return 'Framework';
+    if (/manual/i.test(rawSource)) return 'Manual Review';
+    return 'Framework';
+}
+
 function deriveGovernanceStatus(row) {
+    if (row?.status) return row.status;
     const mapDays = {
         Monthly: 35,
         Quarterly: 100,
@@ -11912,10 +11943,9 @@ window.openSunbirdGovernanceEvidence = function(index) {
     if (titleEl) titleEl.textContent = row.area;
     if (meta) {
         meta.innerHTML = `
-            <div><strong>Activity:</strong> ${row.activity}</div>
-            <div><strong>Frequency:</strong> ${row.frequency}</div>
-            <div>${reviewedLabel}</div>
-            <div>Related data source connected</div>
+            <div><strong>Activity:</strong> ${escapeIdentityText(row.activity || 'Review')}</div>
+            <div><strong>Frequency:</strong> ${escapeIdentityText(row.frequency || 'As required')}</div>
+            <div>${escapeIdentityText(reviewedLabel)}</div>
         `;
     }
     if (statusEl) {
@@ -11923,11 +11953,68 @@ window.openSunbirdGovernanceEvidence = function(index) {
         statusEl.className = `sunbird-governance-modal-status ${status.toLowerCase()}`;
     }
     if (evidenceEl) {
-        evidenceEl.textContent = row.evidence || (status === 'Completed' ? 'Completed' : 'Pending review');
+        const evidenceData = renderSunbirdEvidenceDetails(row.evidenceData);
+
+        evidenceEl.innerHTML = `
+            <p style="margin-top: 0;">${escapeIdentityText(row.evidence || (status === 'Completed' ? 'Completed' : 'Pending review'))}</p>
+            ${evidenceData ? `<div style="display: grid; gap: 8px; margin-top: 12px;">${evidenceData}</div>` : ''}
+        `;
     }
 
     modal.classList.add('open');
 };
+
+function shouldHideEvidenceKey(key) {
+    return /source|endpoint|cache|graph_api|graph_available|graph_reports|report_sources/i.test(String(key || ''));
+}
+
+function formatEvidenceLabel(key) {
+    return String(key || '')
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, char => char.toUpperCase());
+}
+
+function renderEvidenceRecord(record) {
+    if (!record || typeof record !== 'object') return `<span>${escapeIdentityText(record)}</span>`;
+    const fields = Object.entries(record)
+        .filter(([key]) => !shouldHideEvidenceKey(key))
+        .map(([key, value]) => `<span><strong>${escapeIdentityText(formatEvidenceLabel(key))}:</strong> ${escapeIdentityText(value ?? 'N/A')}</span>`)
+        .join('<br>');
+    return fields || '<span>No details available</span>';
+}
+
+function renderEvidenceArray(label, rows) {
+    const list = Array.isArray(rows) ? rows : [];
+    if (!list.length) return '';
+    return `
+        <div style="padding: 10px; background: rgba(255,255,255,0.04); border-radius: 4px;">
+            <div style="color: #cbd5e1; font-weight: 600; margin-bottom: 8px;">${escapeIdentityText(formatEvidenceLabel(label))}</div>
+            <div style="display: grid; gap: 8px; max-height: 220px; overflow: auto;">
+                ${list.map(item => `
+                    <div style="padding: 8px; background: rgba(15,23,42,0.55); border: 1px solid rgba(148,163,184,0.18); border-radius: 4px; color: #e2e8f0;">
+                        ${renderEvidenceRecord(item)}
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
+}
+
+function renderSunbirdEvidenceDetails(evidenceData) {
+    if (!evidenceData || typeof evidenceData !== 'object') return '';
+    return Object.entries(evidenceData)
+        .filter(([key]) => !shouldHideEvidenceKey(key))
+        .map(([key, value]) => {
+            if (Array.isArray(value)) return renderEvidenceArray(key, value);
+            if (value && typeof value === 'object') return renderEvidenceArray(key, [value]);
+            return `<div style="display: flex; justify-content: space-between; gap: 12px; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                <span style="color: #94a3b8;">${escapeIdentityText(formatEvidenceLabel(key))}</span>
+                <span style="font-weight: 500; color: #e2e8f0; text-align: right;">${escapeIdentityText(value ?? 'N/A')}</span>
+            </div>`;
+        })
+        .filter(Boolean)
+        .join('');
+}
 
 function initializeSupportCard() {
     const supportCard = document.getElementById('support-card');
@@ -11976,6 +12063,11 @@ async function fetchSunbirdComplianceData(supportCard) {
         const data = await response.json();
         
         window.sunbirdComplianceControls = data.controls || [];
+        window.sunbirdComplianceSource = {
+            source: data.source || 'unknown',
+            fetchedAt: data.fetchedAt,
+            warning: data.warning
+        };
 
         const tableRows = window.sunbirdComplianceControls.map((control, index) => {
             const isDanger = control.insight.includes('🔴');
@@ -12047,7 +12139,7 @@ function ensureSunbirdComplianceEvidenceModal() {
             </button>
             <h4 id="sunbird-compliance-modal-title">Control Evidence</h4>
             <div class="sunbird-governance-modal-meta" id="sunbird-compliance-modal-meta"></div>
-            <div class="sunbird-governance-modal-evidence-title" style="margin-top: 15px;">Live Data Proof</div>
+            <div class="sunbird-governance-modal-evidence-title" style="margin-top: 15px;">Evidence Details</div>
             <div class="sunbird-governance-modal-evidence-text" id="sunbird-compliance-modal-evidence"></div>
         </div>
     `;
@@ -12079,28 +12171,15 @@ window.openSunbirdComplianceEvidence = function(index) {
     if (metaEl) {
         metaEl.innerHTML = `
             <div style="margin-bottom: 4px;"><strong>Area:</strong> ${control.area}</div>
-            <div><strong>Live Insight:</strong> ${control.insight}</div>
+            <div style="margin-bottom: 4px;"><strong>Insight:</strong> ${control.insight}</div>
         `;
     }
 
     if (evidenceEl) {
-        let evidenceHtml = '<div style="display: grid; gap: 8px; margin-top: 10px;">';
-        
-        Object.entries(control.evidenceData || {}).forEach(([key, value]) => {
-            const formattedKey = key
-                .replace(/_/g, ' ')
-                .replace(/\b\w/g, l => l.toUpperCase());
-
-            evidenceHtml += `
-                <div style="display: flex; justify-content: space-between; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 4px;">
-                    <span style="color: #94a3b8;">${formattedKey}</span>
-                    <span style="font-weight: 500; color: #e2e8f0;">${value}</span>
-                </div>
-            `;
-        });
-        
-        evidenceHtml += '</div>';
-        evidenceEl.innerHTML = evidenceHtml;
+        const evidenceHtml = renderSunbirdEvidenceDetails(control.evidenceData || {});
+        evidenceEl.innerHTML = evidenceHtml
+            ? `<div style="display: grid; gap: 8px; margin-top: 10px;">${evidenceHtml}</div>`
+            : '<div class="sunbird-empty-row">No detailed evidence is available for this control.</div>';
     }
 
     modal.classList.add('open');
@@ -12390,6 +12469,11 @@ async function renderSunbirdOperationsView() {
         const data = await response.json();
         
         window.sunbirdOperationsTasks = data.tasks || [];
+        window.sunbirdOperationsSource = {
+            source: data.source || 'unknown',
+            fetchedAt: data.fetchedAt,
+            warning: data.warning
+        };
         
         let rowsHtml = '';
         if (window.sunbirdOperationsTasks.length === 0) {
@@ -12415,7 +12499,7 @@ async function renderSunbirdOperationsView() {
                         <td class="op-insight-text ${insightClass}">${task.insight}</td>
                         <td>
                             <button class="btn-fix-this" onclick="window.openSunbirdOperationsModal(${index})">
-                                Fix this
+                                View Evidence
                             </button>
                         </td>
                     </tr>
@@ -12478,24 +12562,21 @@ function ensureSunbirdOperationsModal() {
             <button class="sunbird-governance-modal-close" type="button" aria-label="Close" onclick="document.getElementById('sunbird-operations-modal').classList.remove('open')">
                 <i class="fas fa-times"></i>
             </button>
-            <h4 id="op-modal-title" style="color: #e2e8f0; font-size: 1.1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; margin-bottom: 15px;">Task Details</h4>
+            <h4 id="op-modal-title" style="color: #e2e8f0; font-size: 1.1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; margin-bottom: 15px;">Operations Evidence</h4>
             
             <div style="display: flex; flex-direction: column; gap: 15px;">
-                <!-- Why it exists -->
                 <div style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px; border-left: 3px solid #fbbf24;">
-                    <div style="font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px;">Why this task exists</div>
+                    <div style="font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px;">Evidence Summary</div>
                     <div id="op-modal-why" style="font-size: 0.9rem; color: #cbd5e1; line-height: 1.5;"></div>
                 </div>
 
-                <!-- Affected Entities -->
                 <div style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px; border-left: 3px solid #f87171;">
-                    <div style="font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px;">Affected Entities</div>
+                    <div style="font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px;">Proof / Affected Records</div>
                     <div id="op-modal-affected" style="font-size: 0.9rem; color: #cbd5e1; font-weight: 500;"></div>
                 </div>
 
-                <!-- Remediation -->
                 <div style="background: rgba(0, 110, 255, 0.05); padding: 12px; border-radius: 8px; border-left: 3px solid #3b82f6;">
-                    <div style="font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 8px;">Suggested Remediation Steps</div>
+                    <div style="font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 8px;">Recommended Next Steps</div>
                     <div id="op-modal-remediation" style="font-size: 0.9rem; color: #e2e8f0; line-height: 1.6; white-space: pre-wrap;"></div>
                 </div>
             </div>
@@ -12513,9 +12594,16 @@ window.openSunbirdOperationsModal = function(index) {
     const task = window.sunbirdOperationsTasks[index];
     if (!task) return;
 
-    document.getElementById('op-modal-title').innerHTML = `<i class="fas fa-wrench" style="color: #3b82f6; margin-right: 8px;"></i> ${task.task}`;
+    document.getElementById('op-modal-title').innerHTML = `<i class="fas fa-clipboard-check" style="color: #3b82f6; margin-right: 8px;"></i> ${escapeIdentityText(task.task)}`;
     document.getElementById('op-modal-why').textContent = task.why;
-    document.getElementById('op-modal-affected').textContent = task.affected;
+    const affectedEl = document.getElementById('op-modal-affected');
+    if (affectedEl) {
+        const evidenceRows = Array.isArray(task.evidenceRows) ? task.evidenceRows : [];
+        affectedEl.innerHTML = `
+            <div style="margin-bottom: ${evidenceRows.length ? '10px' : '0'};">${escapeIdentityText(task.affected || 'No affected entities listed.')}</div>
+            ${evidenceRows.length ? renderEvidenceArray('Affected records', evidenceRows) : ''}
+        `;
+    }
     document.getElementById('op-modal-remediation').textContent = task.remediation;
 
     document.getElementById('sunbird-operations-modal').classList.add('open');
