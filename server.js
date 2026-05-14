@@ -726,6 +726,8 @@ const STACKOPS_LEGAL_SIGNATURE = `StackOps IT Solutions (Pty) Ltd | Reg. No: 201
 const STACKOPS_EMAIL_CLOSING_TEXT = 'Kind regards,\nThe StackOps IT Solutions Team';
 const STACKOPS_EMAIL_SIGNATURE_MARKER = 'CSD Supplier: MAAA164124.';
 const STACKOPS_EMAIL_LOGO_URL = 'https://i.postimg.cc/JzqbDrFn/Removed-Stack-Ops.png';
+const STACKCTRL_EMAIL_LOGO_URL = 'https://i.postimg.cc/NjqZp4bp/Ctrl-big.png';
+const STACKOPS_SUPPORT_EMAIL = 'support@stackopsit.co.za';
 
 function hasStackOpsSignature(content = '') {
   return String(content).includes(STACKOPS_EMAIL_SIGNATURE_MARKER) &&
@@ -770,9 +772,9 @@ function hasStackOpsBrandHeader(content = '') {
     String(content).includes('data-stackops-email-brand');
 }
 
-function buildStackOpsBrandHeader(title = 'StackOps IT Solutions') {
+function buildStackOpsBrandHeader(title = 'StackOps IT Solutions', { protectedNotice = false } = {}) {
   return `
-    <div data-stackops-email-brand="true" style="background:#18212b; padding:24px 28px; border-bottom:4px solid #2563eb;">
+    <div data-stackops-email-brand="true" style="background:#18212b; padding:24px 28px 0 28px;">
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
         <tr>
           <td style="vertical-align:middle;">
@@ -781,6 +783,12 @@ function buildStackOpsBrandHeader(title = 'StackOps IT Solutions') {
           <td style="vertical-align:middle; text-align:right; color:#dbeafe; font-family:Arial, sans-serif; font-size:17px; font-weight:700; line-height:1.4;">
             ${escapeHtml(title)}
           </td>
+        </tr>
+      </table>
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse; margin-top:22px;">
+        <tr>
+          <td style="height:4px; background:#2563eb; line-height:4px; font-size:0;">&nbsp;</td>
+          ${protectedNotice ? '<td width="46" style="height:4px; background:#2563eb; text-align:center; line-height:4px;"><span style="display:inline-block; transform:translateY(-13px); width:28px; height:28px; border:1px solid rgba(255,112,27,0.75); border-radius:50%; color:#ff7a1a; background:#18212b; font-size:14px; line-height:28px;">&#128274;</span></td>' : ''}
         </tr>
       </table>
     </div>
@@ -801,6 +809,17 @@ function applyStackOpsEmailBranding(body = '', subject = '') {
   return headerHtml + content;
 }
 
+function renderStackCtrlPlatformPanel({ title = 'StackCTRL Platform', detail = 'Protected client portal access' } = {}) {
+  return `
+    <div style="position:relative; margin:24px 0; padding:24px 18px; background:#111820; border:1px solid rgba(255,112,27,0.28); border-radius:8px; text-align:center; overflow:hidden;">
+      <div style="font-size:78px; line-height:1; color:rgba(255,112,27,0.16); font-weight:300; margin-bottom:-54px;">&#128274;</div>
+      <img src="${STACKCTRL_EMAIL_LOGO_URL}" alt="StackCTRL" style="position:relative; display:block; max-width:190px; height:auto; margin:0 auto 12px auto; border:0;">
+      <div style="position:relative; color:#f8fafc; font-size:15px; font-weight:700; letter-spacing:0.2px;">${escapeHtml(title)}</div>
+      <div style="position:relative; color:#cbd5e1; font-size:12px; margin-top:4px;">${escapeHtml(detail)}</div>
+    </div>
+  `;
+}
+
 function escapeHtml(value = '') {
   return String(value)
     .replace(/&/g, '&amp;')
@@ -810,7 +829,7 @@ function escapeHtml(value = '') {
     .replace(/'/g, '&#39;');
 }
 
-function renderCorporateEmail({ title, greeting = 'Dear Client,', bodyHtml }) {
+function renderCorporateEmail({ title, greeting = 'Dear Client,', bodyHtml, protectedHeader = false }) {
   return `
     <!DOCTYPE html>
     <html lang="en">
@@ -820,10 +839,14 @@ function renderCorporateEmail({ title, greeting = 'Dear Client,', bodyHtml }) {
       <style>
         body { margin: 0; padding: 0; background: #f2f4f7; color: #1f2937; font-family: Arial, sans-serif; line-height: 1.6; }
         .email-container { max-width: 680px; margin: 24px auto; background: #ffffff; border: 1px solid #d9e2ec; border-radius: 6px; overflow: hidden; }
-        .header { background: #18212b; padding: 24px 28px; border-bottom: 4px solid #2563eb; }
+        .header { background: #18212b; padding: 24px 28px 0 28px; }
         .brand-table { width: 100%; border-collapse: collapse; }
         .brand-logo { display: block; max-width: 190px; height: auto; border: 0; }
         .header h1 { margin: 0; color: #dbeafe; font-size: 18px; font-weight: 700; text-align: right; line-height: 1.4; }
+        .brand-line { width: 100%; border-collapse: collapse; margin-top: 22px; }
+        .brand-line-main { height: 4px; background: #2563eb; line-height: 4px; font-size: 0; }
+        .brand-lock-cell { width: 46px; height: 4px; background: #2563eb; text-align: center; line-height: 4px; }
+        .brand-lock { display: inline-block; transform: translateY(-13px); width: 28px; height: 28px; border: 1px solid rgba(255,112,27,0.75); border-radius: 50%; color: #ff7a1a; background: #18212b; font-size: 14px; line-height: 28px; }
         .content { padding: 28px; }
         .highlight-box { margin: 22px 0; padding: 18px; border: 1px solid #c7d2fe; background: #f8fafc; border-radius: 6px; text-align: center; }
         .code { display: inline-block; font-family: Consolas, Monaco, monospace; font-size: 30px; letter-spacing: 6px; color: #1d4ed8; font-weight: 700; }
@@ -845,6 +868,12 @@ function renderCorporateEmail({ title, greeting = 'Dear Client,', bodyHtml }) {
               </td>
             </tr>
           </table>
+          <table role="presentation" class="brand-line" cellspacing="0" cellpadding="0">
+            <tr>
+              <td class="brand-line-main">&nbsp;</td>
+              ${protectedHeader ? '<td class="brand-lock-cell"><span class="brand-lock">&#128274;</span></td>' : ''}
+            </tr>
+          </table>
         </div>
         <div class="content">
           <p>${escapeHtml(greeting)}</p>
@@ -862,15 +891,20 @@ function buildMfaEmail(user, mfaCode) {
   const firstName = user?.firstname || user?.firstName || '';
   const greeting = firstName ? `Dear ${firstName},` : 'Dear Client,';
   return renderCorporateEmail({
-    title: 'Multi-Factor Authentication Verification',
+    title: 'Protected StackCTRL Sign-In Verification',
     greeting,
+    protectedHeader: true,
     bodyHtml: `
+      ${renderStackCtrlPlatformPanel({
+        title: 'StackCTRL is locked for your protection',
+        detail: 'Use the verification code below to unlock your client portal session.'
+      })}
       <p>We have received your request to sign in to the StackOps IT Solutions Client Portal. To complete your login securely, please use the multi-factor authentication code below.</p>
       <div class="highlight-box">
         <div class="code">${escapeHtml(mfaCode)}</div>
       </div>
       <p>Please copy and paste this code into the verification screen to continue signing in.</p>
-      <div class="security-note">This MFA code will expire after 10 minutes. If you did not request this login code, please do not share it with anyone and contact StackOps IT Solutions immediately.</div>
+      <div class="security-note">This MFA code will expire after 10 minutes. If you did not request this login code, please do not share it with anyone and contact us immediately at <a href="mailto:${STACKOPS_SUPPORT_EMAIL}" style="color:#1d4ed8; font-weight:700;">${STACKOPS_SUPPORT_EMAIL}</a>.</div>
     `
   });
 }
@@ -887,7 +921,7 @@ function buildPasswordResetEmail(user, resetLink) {
       <p><a href="${escapeHtml(resetLink)}" class="button">Reset Password</a></p>
       <p>If the button does not open, copy and paste this link into your browser:</p>
       <p><a href="${escapeHtml(resetLink)}">${escapeHtml(resetLink)}</a></p>
-      <div class="security-note">If you did not request a password reset, you can safely ignore this email. Your existing password will remain unchanged.</div>
+      <div class="security-note">If you did not request a password reset, you can safely ignore this email. Your existing password will remain unchanged. If you are concerned about account security, contact <a href="mailto:${STACKOPS_SUPPORT_EMAIL}" style="color:#1d4ed8; font-weight:700;">${STACKOPS_SUPPORT_EMAIL}</a>.</div>
     `
   });
 }
@@ -898,6 +932,10 @@ function buildClientCredentialsEmail({ firstName, lastName, email, password, log
     title: 'StackOps IT Solutions Client Portal Access',
     greeting: fullName ? `Dear ${fullName},` : 'Dear Client,',
     bodyHtml: `
+      ${renderStackCtrlPlatformPanel({
+        title: 'Welcome to StackCTRL',
+        detail: 'Your secure client portal access has been provisioned inside the StackOps IT Solutions platform.'
+      })}
       <p>Your StackOps IT Solutions Client Portal account has been created. This portal provides secure access to your account information and client services.</p>
       <p>Please use the credentials below to sign in for the first time:</p>
       <div class="highlight-box" style="text-align: left;">
@@ -907,7 +945,7 @@ function buildClientCredentialsEmail({ firstName, lastName, email, password, log
       <p><a href="${escapeHtml(loginLink)}" class="button">Open Client Portal</a></p>
       <div class="security-note">For your protection, please reset your temporary password after your first login. You can use the password reset page at any time if you need to update your password.</div>
       <p>Password reset page: <a href="${escapeHtml(forgotPasswordLink)}">${escapeHtml(forgotPasswordLink)}</a></p>
-      <p>If you have any questions or if this account was not expected, please contact StackOps IT Solutions for assistance.</p>
+      <p>If you have any questions or if this account was not expected, please contact <a href="mailto:${STACKOPS_SUPPORT_EMAIL}" style="color:#1d4ed8; font-weight:700;">${STACKOPS_SUPPORT_EMAIL}</a> for assistance.</p>
     `
   });
 }
