@@ -11238,10 +11238,19 @@ window.switchBillingMenu = async function(menuItem) {
 function ensureSunbirdBillingCardDimensions() {
     if (!isSunbirdUser()) return;
     const billingCard = document.getElementById('billing-card');
+    const stackedCards = document.querySelector('.dashboard-card-vertical-container');
+    const governanceCard = document.getElementById('governance-card');
+    const supportCard = document.getElementById('support-card');
     if (!billingCard) return;
 
     if (window.matchMedia('(max-width: 768px)').matches) {
         billingCard.style.height = '';
+        if (stackedCards) {
+            stackedCards.style.height = '';
+            stackedCards.style.gridTemplateRows = '';
+        }
+        if (governanceCard) governanceCard.style.height = '';
+        if (supportCard) supportCard.style.height = '';
         return;
     }
 
@@ -11250,7 +11259,18 @@ function ensureSunbirdBillingCardDimensions() {
     }
 
     if (sunbirdBillingCardLockedHeight) {
-        billingCard.style.height = `${sunbirdBillingCardLockedHeight}px`;
+        const targetHeight = Math.max(360, sunbirdBillingCardLockedHeight);
+        const stackGap = 11.2;
+        const rightCardHeight = Math.max(160, (targetHeight - stackGap) / 2);
+
+        billingCard.style.height = `${targetHeight}px`;
+
+        if (stackedCards && governanceCard && supportCard) {
+            stackedCards.style.height = `${targetHeight}px`;
+            stackedCards.style.gridTemplateRows = `${rightCardHeight}px ${stackGap}px ${rightCardHeight}px`;
+            governanceCard.style.height = `${rightCardHeight}px`;
+            supportCard.style.height = `${rightCardHeight}px`;
+        }
     }
 }
 
@@ -11821,7 +11841,6 @@ async function fetchSunbirdGovernanceData(governanceCard) {
                 <h3>Governance</h3>
             </div>
             <div class="governance-content sunbird-governance-content">
-                <div class="sunbird-section-title">${data.source === 'db' ? 'Cached governance evidence' : data.source === 'db-stale' ? 'Stale cached governance evidence' : 'Graph-backed governance evidence'}</div>
                 <div class="sunbird-governance-table-wrap">
                     <table class="sunbird-incidents-table sunbird-governance-table">
                         <thead>
@@ -11837,6 +11856,8 @@ async function fetchSunbirdGovernanceData(governanceCard) {
                 </div>
             </div>
         `;
+        ensureSunbirdBillingCardDimensions();
+        syncSunbirdLeftMenuHeight();
     } catch (error) {
         console.error('[Governance] Error:', error);
         window.sunbirdGovernanceRows = [];
@@ -11849,6 +11870,8 @@ async function fetchSunbirdGovernanceData(governanceCard) {
                 <div style="color: #ef4444; padding: 10px; text-align: center;">Failed to load governance evidence.</div>
             </div>
         `;
+        ensureSunbirdBillingCardDimensions();
+        syncSunbirdLeftMenuHeight();
     }
 }
 
@@ -12123,6 +12146,9 @@ async function fetchSunbirdComplianceData(supportCard) {
                 <div style="color: #ef4444; padding: 10px; text-align: center;">Failed to load compliance validation.</div>
             </div>
         `;
+    } finally {
+        ensureSunbirdBillingCardDimensions();
+        syncSunbirdLeftMenuHeight();
     }
 }
 
@@ -12498,7 +12524,7 @@ async function renderSunbirdOperationsView() {
                         </td>
                         <td class="op-insight-text ${insightClass}">${task.insight}</td>
                         <td>
-                            <button class="btn-fix-this" onclick="window.openSunbirdOperationsModal(${index})">
+                            <button class="sunbird-risk-view-btn" onclick="window.openSunbirdOperationsModal(${index})">
                                 View Evidence
                             </button>
                         </td>
