@@ -731,12 +731,13 @@ const STACKOPS_SUPPORT_EMAIL = 'support@stackopsit.co.za';
 
 function renderStackCtrlLockOutline() {
   return `
-    <svg width="128" height="118" viewBox="0 0 128 118" role="img" aria-label="Protected padlock" style="display:block; width:128px; height:118px; margin:0 auto; border:0;">
-      <path d="M36 52V36C36 17 48 6 64 6C80 6 92 17 92 36V52" fill="none" stroke="#ff6b00" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-      <rect x="22" y="50" width="84" height="60" rx="12" ry="12" fill="none" stroke="#ff6b00" stroke-width="4"/>
-      <circle cx="64" cy="76" r="6" fill="none" stroke="#ff6b00" stroke-width="4"/>
-      <path d="M64 83V96" fill="none" stroke="#ff6b00" stroke-width="4" stroke-linecap="round"/>
-    </svg>
+    <div role="img" aria-label="Protected padlock" style="width:116px; height:112px; margin:0 auto; text-align:center;">
+      <div style="width:52px; height:38px; margin:0 auto; border:4px solid #ff6b00; border-bottom:0; border-radius:32px 32px 0 0; line-height:0; font-size:0;">&nbsp;</div>
+      <div style="width:84px; height:58px; margin:-1px auto 0 auto; border:4px solid #ff6b00; border-radius:12px; line-height:0; font-size:0;">
+        <div style="width:10px; height:10px; margin:15px auto 0 auto; border:4px solid #ff6b00; border-radius:50%; line-height:0; font-size:0;">&nbsp;</div>
+        <div style="width:4px; height:15px; margin:0 auto; background:#ff6b00; border-radius:3px; line-height:0; font-size:0;">&nbsp;</div>
+      </div>
+    </div>
   `;
 }
 
