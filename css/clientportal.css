@@ -6501,6 +6501,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: 18px;
     opacity: 0;
     visibility: hidden;
     transition: opacity 0.3s ease, visibility 0.3s ease;
@@ -6517,12 +6518,16 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
     border-radius: 12px;
     width: 90%;
     max-width: 500px;
+    max-height: min(86vh, 760px);
     padding: 24px;
     box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.1);
     position: relative;
     transform: translateY(20px);
     transition: transform 0.3s ease;
     color: #e2e8f0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 .sunbird-governance-evidence-modal.open .sunbird-governance-modal-dialog {
@@ -6609,6 +6614,57 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
     font-size: 0.95rem;
     color: #f8fafc;
     min-height: 60px;
+    overflow: auto;
+    max-height: min(48vh, 430px);
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.45) rgba(255, 255, 255, 0.05);
+}
+
+.sunbird-governance-modal-dialog,
+.sunbird-governance-modal-evidence-text,
+.sunbird-evidence-record-list,
+.sunbird-governance-table-wrap,
+.sunbird-incidents-table-wrap {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.45) rgba(255, 255, 255, 0.05);
+}
+
+.sunbird-governance-modal-dialog::-webkit-scrollbar,
+.sunbird-governance-modal-evidence-text::-webkit-scrollbar,
+.sunbird-evidence-record-list::-webkit-scrollbar,
+.sunbird-governance-table-wrap::-webkit-scrollbar,
+.sunbird-incidents-table-wrap::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.sunbird-governance-modal-dialog::-webkit-scrollbar-track,
+.sunbird-governance-modal-evidence-text::-webkit-scrollbar-track,
+.sunbird-evidence-record-list::-webkit-scrollbar-track,
+.sunbird-governance-table-wrap::-webkit-scrollbar-track,
+.sunbird-incidents-table-wrap::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 999px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+.sunbird-governance-modal-dialog::-webkit-scrollbar-thumb,
+.sunbird-governance-modal-evidence-text::-webkit-scrollbar-thumb,
+.sunbird-evidence-record-list::-webkit-scrollbar-thumb,
+.sunbird-governance-table-wrap::-webkit-scrollbar-thumb,
+.sunbird-incidents-table-wrap::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.38), rgba(96, 165, 250, 0.35));
+    border: 2px solid rgba(15, 23, 42, 0.45);
+    border-radius: 999px;
+}
+
+.sunbird-governance-modal-dialog::-webkit-scrollbar-thumb:hover,
+.sunbird-governance-modal-evidence-text::-webkit-scrollbar-thumb:hover,
+.sunbird-evidence-record-list::-webkit-scrollbar-thumb:hover,
+.sunbird-governance-table-wrap::-webkit-scrollbar-thumb:hover,
+.sunbird-incidents-table-wrap::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(96, 165, 250, 0.55));
 }
 
 /* ============================================================== */
@@ -6620,7 +6676,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
     max-height: 100%;
     flex: 1 1 auto;
     min-height: 0;
-    min-height: 180px;
+    min-height: 160px;
     overflow-y: auto;
     overflow-x: auto;
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -6628,7 +6684,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
     background: rgba(0, 0, 0, 0.);
     margin-top: 10px;
     scrollbar-width: thin;
-    scrollbar-color: gray transparent;
+    scrollbar-color: rgba(148, 163, 184, 0.45) rgba(255, 255, 255, 0.05);
 }
 
 .sunbird-governance-table-wrap::-webkit-scrollbar {
@@ -6637,12 +6693,12 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 .sunbird-governance-table-wrap::-webkit-scrollbar-track {
-    background: transparent;
+    background: rgba(255, 255, 255, 0.04);
 }
 
 .sunbird-governance-table-wrap::-webkit-scrollbar-thumb {
-    background: gray;
-    border-radius: 4px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.38), rgba(96, 165, 250, 0.35));
+    border-radius: 999px;
 }
 
 .sunbird-governance-table {

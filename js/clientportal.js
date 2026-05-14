@@ -12016,7 +12016,7 @@ function renderEvidenceArray(label, rows) {
     return `
         <div style="padding: 10px; background: rgba(255,255,255,0.04); border-radius: 4px;">
             <div style="color: #cbd5e1; font-weight: 600; margin-bottom: 8px;">${escapeIdentityText(formatEvidenceLabel(label))}</div>
-            <div style="display: grid; gap: 8px; max-height: 220px; overflow: auto;">
+            <div class="sunbird-evidence-record-list" style="display: grid; gap: 8px; max-height: 180px; overflow: auto; padding-right: 4px;">
                 ${list.map(item => `
                     <div style="padding: 8px; background: rgba(15,23,42,0.55); border: 1px solid rgba(148,163,184,0.18); border-radius: 4px; color: #e2e8f0;">
                         ${renderEvidenceRecord(item)}
