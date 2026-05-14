@@ -836,15 +836,24 @@ function renderStackCtrlPlatformPanel({ title = 'StackCTRL Platform', detail = '
 
 function renderMfaStackCtrlHeaderBanner() {
   return `
-<div class="mfa-stackctrl-banner" style="position:relative; margin:18px 0 0 0; padding:28px 12px 20px 12px; min-height:74px; background:#111820; border:1px solid #4b2c1e; border-radius:8px; text-align:center; overflow:hidden; font-family:Arial, Helvetica, sans-serif;">
-  <div class="mfa-lock-wrap" style="position:absolute; right:14px; top:10px; width:54px; height:54px; text-align:center; line-height:0; font-size:0;">
-    <div class="mfa-lock-shackle" style="width:22px; height:18px; margin:0 0 0 15px; border:1px solid #dbdbdb; border-bottom:0; border-radius:14px 14px 0 0; line-height:0; font-size:0;">&nbsp;</div>
-    <div class="mfa-lock-body" style="position:relative; width:38px; height:27px; margin:-1px 0 0 auto; border:1px solid #dbdbdb; border-radius:6px; line-height:0; font-size:0;">
-      <div class="mfa-keyhole-dot" style="width:4px; height:4px; margin:8px auto 0 auto; border:1px solid #dbdbdb; border-radius:50%; line-height:0; font-size:0;">&nbsp;</div>
-      <div class="mfa-keyhole-stem" style="width:1px; height:8px; margin:0 auto; background:#dbdbdb; border-radius:1px; line-height:0; font-size:0;">&nbsp;</div>
-    </div>
-  </div>
-  <img class="mfa-stackctrl-logo" src="https://i.postimg.cc/NjqZp4bp/Ctrl-big.png" alt="StackCTRL" style="display:block; width:125px; max-width:125px; height:auto; margin:0 auto; border:0;">
+<div class="mfa-stackctrl-banner" style="margin:18px 0 0 0; padding:12px; background:#111820; border:1px solid #4b2c1e; border-radius:8px; text-align:center; overflow:hidden; font-family:Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%; height:94px; border-collapse:collapse; margin:0;">
+    <tr>
+      <td style="width:54px; vertical-align:top; line-height:0; font-size:0;">&nbsp;</td>
+      <td style="vertical-align:middle; text-align:center;">
+        <img class="mfa-stackctrl-logo" src="https://i.postimg.cc/NjqZp4bp/Ctrl-big.png" alt="StackCTRL" style="display:block; width:125px; max-width:125px; height:auto; margin:0 auto; border:0;">
+      </td>
+      <td style="width:54px; vertical-align:top; text-align:right; line-height:0; font-size:0;">
+        <div class="mfa-lock-wrap" style="display:inline-block; width:54px; height:54px; text-align:center; line-height:0; font-size:0;">
+          <div class="mfa-lock-shackle" style="width:22px; height:18px; margin:0 0 0 15px; border:1px solid #dbdbdb; border-bottom:0; border-radius:14px 14px 0 0; line-height:0; font-size:0;">&nbsp;</div>
+          <div class="mfa-lock-body" style="position:relative; width:38px; height:27px; margin:-1px 0 0 auto; border:1px solid #dbdbdb; border-radius:6px; line-height:0; font-size:0;">
+            <div class="mfa-keyhole-dot" style="width:4px; height:4px; margin:8px auto 0 auto; border:1px solid #dbdbdb; border-radius:50%; line-height:0; font-size:0;">&nbsp;</div>
+            <div class="mfa-keyhole-stem" style="width:1px; height:8px; margin:0 auto; background:#dbdbdb; border-radius:1px; line-height:0; font-size:0;">&nbsp;</div>
+          </div>
+        </div>
+      </td>
+    </tr>
+  </table>
 </div>
   `;
 }
@@ -884,9 +893,9 @@ function renderCorporateEmail({ title, greeting = 'Dear Client,', bodyHtml, head
           .brand-table, .brand-table tbody, .brand-table tr, .brand-table td { display: block !important; width: 100% !important; text-align: center !important; }
           .brand-logo { max-width: 108px !important; margin: 0 auto 8px auto !important; }
           .header h1 { text-align: center !important; font-size: 13px !important; line-height: 1.25 !important; margin: 0 auto !important; max-width: 230px !important; }
-          .mfa-stackctrl-banner { margin: 12px 0 0 0 !important; padding: 22px 8px 14px 8px !important; min-height: 56px !important; border-radius: 6px !important; }
+          .mfa-stackctrl-banner { margin: 12px 0 0 0 !important; padding: 8px !important; border-radius: 6px !important; }
           .mfa-stackctrl-logo { width: 92px !important; max-width: 92px !important; margin: 0 auto !important; }
-          .mfa-lock-wrap { position: absolute !important; right: 8px !important; top: 8px !important; width: 42px !important; height: 42px !important; }
+          .mfa-lock-wrap { width: 42px !important; height: 42px !important; }
           .mfa-lock-shackle { width: 18px !important; height: 14px !important; margin: 0 0 0 12px !important; border-width: 1px !important; border-radius: 12px 12px 0 0 !important; }
           .mfa-lock-body { width: 30px !important; height: 22px !important; border-width: 1px !important; border-radius: 5px !important; }
           .mfa-keyhole-dot { width: 3px !important; height: 3px !important; margin: 6px auto 0 auto !important; border-width: 1px !important; }
