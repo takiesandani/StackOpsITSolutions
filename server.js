@@ -731,11 +731,10 @@ const STACKOPS_SUPPORT_EMAIL = 'support@stackopsit.co.za';
 
 function renderStackCtrlLockOutline() {
   return `
-    <div role="img" aria-label="Protected padlock" style="width:116px; height:112px; margin:0 auto; text-align:center;">
-      <div style="width:52px; height:38px; margin:0 auto; border:4px solid #ff6b00; border-bottom:0; border-radius:32px 32px 0 0; line-height:0; font-size:0;">&nbsp;</div>
-      <div style="width:84px; height:58px; margin:-1px auto 0 auto; border:4px solid #ff6b00; border-radius:12px; line-height:0; font-size:0;">
-        <div style="width:10px; height:10px; margin:15px auto 0 auto; border:4px solid #ff6b00; border-radius:50%; line-height:0; font-size:0;">&nbsp;</div>
-        <div style="width:4px; height:15px; margin:0 auto; background:#ff6b00; border-radius:3px; line-height:0; font-size:0;">&nbsp;</div>
+    <div role="img" aria-label="Protected padlock" style="width:150px; height:150px; margin:0 auto; text-align:center; line-height:0; font-size:0;">
+      <div style="width:68px; height:51px; margin:0 auto; border:2px solid #a3a3a3; border-bottom:0; border-radius:34px 34px 0 0; line-height:0; font-size:0;">&nbsp;</div>
+      <div style="position:relative; width:108px; height:75px; margin:-1px auto 0 auto; border:2px solid #a3a3a3; border-radius:11px; line-height:0; font-size:0;">
+        <div style="position:absolute; left:-4px; top:2px; width:8px; height:64px; background:#111820; line-height:0; font-size:0;">&nbsp;</div>
       </div>
     </div>
   `;
@@ -817,18 +816,18 @@ function applyStackOpsEmailBranding(body = '', subject = '') {
 
 function renderStackCtrlPlatformPanel({ title = 'StackCTRL Platform', detail = 'Protected client portal access' } = {}) {
   return `
-    <div style="margin:24px 0; padding:28px 20px 26px 20px; background:#111820; border:1px solid rgba(255,112,27,0.28); border-radius:8px; text-align:center; overflow:hidden;">
+    <div style="margin:18px 0 0 0; padding:18px 20px 0 20px; background:#111820; border:0; border-radius:0; text-align:center; overflow:hidden;">
       <table role="presentation" align="center" cellspacing="0" cellpadding="0" style="border-collapse:collapse; margin:0 auto 14px auto;">
         <tr>
           <td style="vertical-align:middle; text-align:right; padding:0 0 0 0;">
-            <img src="${STACKCTRL_EMAIL_LOGO_URL}" alt="StackCTRL" style="display:block; width:210px; max-width:210px; height:auto; border:0;">
+            <img src="${STACKCTRL_EMAIL_LOGO_URL}" alt="StackCTRL" style="position:relative; left:28px; top:21px; display:block; width:150px; max-width:150px; height:auto; border:0;">
           </td>
-          <td style="vertical-align:middle; width:132px; padding:0 0 0 12px;">
-            ${renderStackCtrlLockOutline()}
+          <td style="vertical-align:middle; width:150px; padding:0 0 0 0;">
+            <div style="position:relative; left:-43px; top:14px;">${renderStackCtrlLockOutline()}</div>
           </td>
         </tr>
       </table>
-      <div style="color:#f8fafc; font-size:15px; font-weight:700; letter-spacing:0.2px; margin-top:8px;">${escapeHtml(title)}</div>
+      <div style="color:#f8fafc; font-size:15px; font-weight:700; letter-spacing:0; margin-top:8px;">${escapeHtml(title)}</div>
       <div style="color:#cbd5e1; font-size:12px; margin-top:4px;">${escapeHtml(detail)}</div>
     </div>
   `;
@@ -843,7 +842,7 @@ function escapeHtml(value = '') {
     .replace(/'/g, '&#39;');
 }
 
-function renderCorporateEmail({ title, greeting = 'Dear Client,', bodyHtml, protectedHeader = false }) {
+function renderCorporateEmail({ title, greeting = 'Dear Client,', bodyHtml, headerFeatureHtml = '' }) {
   return `
     <!DOCTYPE html>
     <html lang="en">
@@ -853,7 +852,7 @@ function renderCorporateEmail({ title, greeting = 'Dear Client,', bodyHtml, prot
       <style>
         body { margin: 0; padding: 0; background: #f2f4f7; color: #1f2937; font-family: Arial, sans-serif; line-height: 1.6; }
         .email-container { max-width: 680px; margin: 24px auto; background: #ffffff; border: 1px solid #d9e2ec; border-radius: 6px; overflow: hidden; }
-        .header { background: #18212b; padding: 24px 28px 0 28px; }
+        .header { background: #111820; padding: 24px 28px 26px 28px; }
         .brand-table { width: 100%; border-collapse: collapse; }
         .brand-logo { display: block; max-width: 190px; height: auto; border: 0; }
         .header h1 { margin: 0; color: #dbeafe; font-size: 18px; font-weight: 700; text-align: right; line-height: 1.4; }
@@ -878,6 +877,7 @@ function renderCorporateEmail({ title, greeting = 'Dear Client,', bodyHtml, prot
               </td>
             </tr>
           </table>
+          ${headerFeatureHtml}
         </div>
         <div class="content">
           <p>${escapeHtml(greeting)}</p>
@@ -897,12 +897,11 @@ function buildMfaEmail(user, mfaCode) {
   return renderCorporateEmail({
     title: 'Multi-Factor Authentication Verification',
     greeting,
-    protectedHeader: true,
-    bodyHtml: `
-      ${renderStackCtrlPlatformPanel({
+    headerFeatureHtml: renderStackCtrlPlatformPanel({
         title: 'StackCTRL is locked for your protection',
         detail: 'Use the verification code below to unlock your client portal session.'
-      })}
+    }),
+    bodyHtml: `
       <p>We have received your request to sign in to the StackOps IT Solutions Client Portal. To complete your login securely, please use the multi-factor authentication code below.</p>
       <div class="highlight-box">
         <div class="code">${escapeHtml(mfaCode)}</div>
@@ -935,11 +934,11 @@ function buildClientCredentialsEmail({ firstName, lastName, email, password, log
   return renderCorporateEmail({
     title: 'StackOps IT Solutions Client Portal Access',
     greeting: fullName ? `Dear ${fullName},` : 'Dear Client,',
-    bodyHtml: `
-      ${renderStackCtrlPlatformPanel({
+    headerFeatureHtml: renderStackCtrlPlatformPanel({
         title: 'Welcome to StackCTRL',
         detail: 'Your secure client portal access has been provisioned inside the StackOps IT Solutions platform.'
-      })}
+    }),
+    bodyHtml: `
       <p>Your StackOps IT Solutions Client Portal account has been created. This portal provides secure access to your account information and client services.</p>
       <p>Please use the credentials below to sign in for the first time:</p>
       <div class="highlight-box" style="text-align: left;">
