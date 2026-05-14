@@ -606,7 +606,9 @@ async function sendGraphEmail(to, subject, body, isHtml = true, fromAddress = 'n
       
       const token = await getGraphAccessToken();
       
-      const finalizedBody = applyStackOpsEmailEnding(body, isHtml);
+      const finalizedBody = isHtml
+        ? applyStackOpsEmailEnding(applyStackOpsEmailBranding(body, subject), true)
+        : applyStackOpsEmailEnding(body, false);
       const emailPayload = {
         message: {
           subject: subject,
@@ -723,6 +725,7 @@ const sendInfoEmail = async (to, subject, body, isHtml = false, attachments = []
 const STACKOPS_LEGAL_SIGNATURE = `StackOps IT Solutions (Pty) Ltd | Reg. No: 2016/120370/07 | B-BBEE Level: 1 Contributor: 135% | CSD Supplier: MAAA164124. Legally registered in South Africa, providing IT support, cybersecurity, governance, infrastructure, consulting services, and procurement of IT hardware in compliance with all applicable laws and regulations. All client information is protected in accordance with the Protection of Personal Information Act (POPIA) and our internal privacy and security policies. We are committed to safeguarding your data and ensuring confidentiality, integrity, and lawful processing at all times. All information, proposals, and pricing are accurate at the time of sending and governed by our Master Service Agreement (MSA) or client-specific contracts. Prices may be subject to change due to economic, regulatory, or supplier factors, with clients notified in advance. This email and attachments are confidential and intended solely for the named recipient(s). If received in error, please notify the sender immediately, delete the message, and do not disclose, copy, or distribute its contents. Unauthorized use of this communication is strictly prohibited. Emails are not guaranteed virus-free; StackOps IT Solutions accepts no liability for any damage, loss, or unauthorized access arising from this communication. StackOps IT Solutions is committed to business continuity, data security, and reliable technology operations. Our team provides professional, ethical, and transparent IT services, ensuring measurable value, operational efficiency, and compliance with industry best practices. View our Privacy Policy and Terms of Service here: StackOps IT Solutions | Your Complete IT Force`;
 const STACKOPS_EMAIL_CLOSING_TEXT = 'Kind regards,\nThe StackOps IT Solutions Team';
 const STACKOPS_EMAIL_SIGNATURE_MARKER = 'CSD Supplier: MAAA164124.';
+const STACKOPS_EMAIL_LOGO_URL = 'https://i.postimg.cc/JzqbDrFn/Removed-Stack-Ops.png';
 
 function hasStackOpsSignature(content = '') {
   return String(content).includes(STACKOPS_EMAIL_SIGNATURE_MARKER) &&
@@ -762,6 +765,42 @@ function applyStackOpsEmailEnding(body = '', isHtml = false) {
   return `${content}${footerHtml}`;
 }
 
+function hasStackOpsBrandHeader(content = '') {
+  return String(content).includes(STACKOPS_EMAIL_LOGO_URL) ||
+    String(content).includes('data-stackops-email-brand');
+}
+
+function buildStackOpsBrandHeader(title = 'StackOps IT Solutions') {
+  return `
+    <div data-stackops-email-brand="true" style="background:#18212b; padding:24px 28px; border-bottom:4px solid #2563eb;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
+        <tr>
+          <td style="vertical-align:middle;">
+            <img src="${STACKOPS_EMAIL_LOGO_URL}" alt="StackOps IT Solutions" style="display:block; max-width:190px; height:auto; border:0;">
+          </td>
+          <td style="vertical-align:middle; text-align:right; color:#dbeafe; font-family:Arial, sans-serif; font-size:17px; font-weight:700; line-height:1.4;">
+            ${escapeHtml(title)}
+          </td>
+        </tr>
+      </table>
+    </div>
+  `;
+}
+
+function applyStackOpsEmailBranding(body = '', subject = '') {
+  const content = String(body || '');
+  if (!/<\/body>/i.test(content) || hasStackOpsBrandHeader(content)) return content;
+
+  const title = subject || 'StackOps IT Solutions';
+  const headerHtml = buildStackOpsBrandHeader(title);
+
+  if (/<body[^>]*>/i.test(content)) {
+    return content.replace(/<body[^>]*>/i, match => `${match}${headerHtml}`);
+  }
+
+  return headerHtml + content;
+}
+
 function escapeHtml(value = '') {
   return String(value)
     .replace(/&/g, '&amp;')
@@ -779,22 +818,33 @@ function renderCorporateEmail({ title, greeting = 'Dear Client,', bodyHtml }) {
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <style>
-        body { margin: 0; padding: 0; background: #f5f7fb; color: #1f2937; font-family: Arial, sans-serif; line-height: 1.6; }
+        body { margin: 0; padding: 0; background: #f2f4f7; color: #1f2937; font-family: Arial, sans-serif; line-height: 1.6; }
         .email-container { max-width: 680px; margin: 24px auto; background: #ffffff; border: 1px solid #d9e2ec; border-radius: 6px; overflow: hidden; }
-        .header { padding: 20px 28px; background: #0f2742; color: #ffffff; }
-        .header h1 { margin: 0; font-size: 20px; font-weight: 700; }
+        .header { background: #18212b; padding: 24px 28px; border-bottom: 4px solid #2563eb; }
+        .brand-table { width: 100%; border-collapse: collapse; }
+        .brand-logo { display: block; max-width: 190px; height: auto; border: 0; }
+        .header h1 { margin: 0; color: #dbeafe; font-size: 18px; font-weight: 700; text-align: right; line-height: 1.4; }
         .content { padding: 28px; }
         .highlight-box { margin: 22px 0; padding: 18px; border: 1px solid #c7d2fe; background: #f8fafc; border-radius: 6px; text-align: center; }
-        .code { display: inline-block; font-family: Consolas, Monaco, monospace; font-size: 30px; letter-spacing: 6px; color: #0f2742; font-weight: 700; }
-        .button { display: inline-block; padding: 11px 18px; background: #0f2742; color: #ffffff !important; text-decoration: none; border-radius: 4px; font-weight: 700; }
+        .code { display: inline-block; font-family: Consolas, Monaco, monospace; font-size: 30px; letter-spacing: 6px; color: #1d4ed8; font-weight: 700; }
+        .button { display: inline-block; padding: 11px 18px; background: #1d4ed8; color: #ffffff !important; text-decoration: none; border-radius: 4px; font-weight: 700; }
         .security-note { margin: 18px 0; padding: 14px; background: #fff7ed; border-left: 4px solid #f59e0b; color: #5f370e; }
         .signature { padding: 20px 28px; background: #f8fafc; border-top: 1px solid #e5e7eb; font-size: 11px; color: #4b5563; line-height: 1.5; }
       </style>
     </head>
     <body>
       <div class="email-container">
-        <div class="header">
-          <h1>${escapeHtml(title)}</h1>
+        <div class="header" data-stackops-email-brand="true">
+          <table role="presentation" class="brand-table" cellspacing="0" cellpadding="0">
+            <tr>
+              <td style="vertical-align:middle;">
+                <img src="${STACKOPS_EMAIL_LOGO_URL}" alt="StackOps IT Solutions" class="brand-logo">
+              </td>
+              <td style="vertical-align:middle;">
+                <h1>${escapeHtml(title)}</h1>
+              </td>
+            </tr>
+          </table>
         </div>
         <div class="content">
           <p>${escapeHtml(greeting)}</p>
