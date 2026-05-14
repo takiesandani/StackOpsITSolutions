@@ -11260,7 +11260,7 @@ function ensureSunbirdBillingCardDimensions() {
 
     if (sunbirdBillingCardLockedHeight) {
         const stackGap = 11.2;
-        const minimumRightCardHeight = 220;
+        const minimumRightCardHeight = 290;
         const minimumStackHeight = (minimumRightCardHeight * 2) + stackGap;
         const targetHeight = Math.max(360, sunbirdBillingCardLockedHeight, minimumStackHeight);
         const availableStackHeight = targetHeight - stackGap;
