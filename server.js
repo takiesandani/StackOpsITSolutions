@@ -901,9 +901,9 @@ function renderCorporateEmail({ title, greeting = 'Dear Client,', bodyHtml, head
           .mfa-stackctrl-logo { left: 30px !important; top: 15px !important; width: 88px !important; max-width: 88px !important; }
           .mfa-lock-wrap { left: -6px !important; top: 8px !important; }
           .mfa-padlock { width: 86px !important; height: 86px !important; }
-          .mfa-lock-shackle { width: 34px !important; height: 27px !important; margin: 0 0 0 15px !important; border-width: 2px !important; border-radius: 20px 20px 0 0 !important; }
-          .mfa-lock-body { width: 62px !important; height: 43px !important; border-width: 2px !important; border-radius: 8px !important; }
-          .mfa-keyhole-dot { width: 6px !important; height: 6px !important; margin: 12px auto 0 auto !important; border-width: 2px !important; }
+          .mfa-lock-shackle { width: 34px !important; height: 27px !important; margin: 0 0 0 15px !important; border-width: 1px !important; border-radius: 20px 20px 0 0 !important; }
+          .mfa-lock-body { width: 62px !important; height: 43px !important; border-width: 1px !important; border-radius: 8px !important; }
+          .mfa-keyhole-dot { width: 6px !important; height: 6px !important; margin: 12px auto 0 auto !important; border-width: 1px !important; }
           .mfa-keyhole-stem { width: 2px !important; height: 10px !important; }
           .mfa-stackctrl-heading { font-size: 12px !important; line-height: 1.25 !important; margin-top: 6px !important; }
           .mfa-stackctrl-detail { font-size: 10px !important; line-height: 1.35 !important; max-width: 220px !important; margin: 4px auto 0 auto !important; }
