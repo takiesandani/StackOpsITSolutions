@@ -844,7 +844,7 @@ function renderMfaStackCtrlHeaderBanner() {
       </td>
       <td class="mfa-stackctrl-lock-cell" style="vertical-align:middle; width:150px; padding:0 0 0 0px;">
         <div class="mfa-lock-wrap" style="position:relative; left:-18px; top:18px;"><div class="mfa-padlock" role="img" aria-label="Protected padlock" style="width:150px; height:150px; margin:0 auto; text-align:center; line-height:0; font-size:0;">
-          <div class="mfa-lock-shackle" style="width:64px; height:51px; margin:0 0 0 23px; border:2px solid #dbdbdb; border-bottom:0; border-radius:34px 34px 0 0; line-height:0; font-size:0;">&nbsp;</div>
+          <div class="mfa-lock-shackle" style="width:64px; height:51px; margin:0 0 0 22px; border:2px solid #dbdbdb; border-bottom:0; border-radius:34px 34px 0 0; line-height:0; font-size:0;">&nbsp;</div>
           <div class="mfa-lock-body" style="position:relative; width:108px; height:75px; margin:-1px auto 0 auto; border:2px solid #dbdbdb; border-radius:12px; line-height:0; font-size:0;">
             <div class="mfa-keyhole-dot" style="width:10px; height:10px; margin:25px auto 0 auto; border:2px solid #dbdbdb; border-radius:50%; line-height:0; font-size:0;">&nbsp;</div>
             <div class="mfa-keyhole-stem" style="width:2px; height:18px; margin:0 auto; background:#dbdbdb; border-radius:2px; line-height:0; font-size:0;">&nbsp;</div>
@@ -901,7 +901,7 @@ function renderCorporateEmail({ title, greeting = 'Dear Client,', bodyHtml, head
           .mfa-stackctrl-logo { left: 30px !important; top: 15px !important; width: 88px !important; max-width: 88px !important; }
           .mfa-lock-wrap { left: -6px !important; top: 8px !important; }
           .mfa-padlock { width: 86px !important; height: 86px !important; }
-          .mfa-lock-shackle { width: 34px !important; height: 27px !important; margin: 0 0 0 24px !important; border-width: 2px !important; border-radius: 20px 20px 0 0 !important; }
+          .mfa-lock-shackle { width: 34px !important; height: 27px !important; margin: 0 0 0 17px !important; border-width: 2px !important; border-radius: 20px 20px 0 0 !important; }
           .mfa-lock-body { width: 62px !important; height: 43px !important; border-width: 2px !important; border-radius: 8px !important; }
           .mfa-keyhole-dot { width: 6px !important; height: 6px !important; margin: 12px auto 0 auto !important; border-width: 2px !important; }
           .mfa-keyhole-stem { width: 2px !important; height: 10px !important; }
