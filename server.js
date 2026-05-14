@@ -729,6 +729,19 @@ const STACKOPS_EMAIL_LOGO_URL = 'https://i.postimg.cc/JzqbDrFn/Removed-Stack-Ops
 const STACKCTRL_EMAIL_LOGO_URL = 'https://i.postimg.cc/NjqZp4bp/Ctrl-big.png';
 const STACKOPS_SUPPORT_EMAIL = 'support@stackopsit.co.za';
 
+function renderStackCtrlLockOutline() {
+  return `
+    <svg viewBox="0 0 320 180" role="img" aria-label="Protected StackCTRL access" style="position:absolute; top:14px; right:18px; width:245px; max-width:72%; height:auto; opacity:0.62; z-index:1;">
+      <path d="M162 75V58C162 31 182 16 206 16C230 16 250 31 250 58V75" fill="none" stroke="#ff6b00" stroke-width="4" stroke-linecap="round"/>
+      <path d="M146 77H277C292 77 302 87 302 102V149C302 164 292 174 277 174H146" fill="none" stroke="#ff6b00" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M107 100V96C107 84 117 77 129 77H136" fill="none" stroke="#ff6b00" stroke-width="4" stroke-linecap="round"/>
+      <path d="M107 139V149C107 164 117 174 132 174H136" fill="none" stroke="#ff6b00" stroke-width="4" stroke-linecap="round"/>
+      <path d="M206 117V135" fill="none" stroke="#ff6b00" stroke-width="4" stroke-linecap="round"/>
+      <circle cx="206" cy="109" r="5" fill="none" stroke="#ff6b00" stroke-width="4"/>
+    </svg>
+  `;
+}
+
 function hasStackOpsSignature(content = '') {
   return String(content).includes(STACKOPS_EMAIL_SIGNATURE_MARKER) &&
     String(content).includes('Your Complete IT Force');
@@ -772,7 +785,7 @@ function hasStackOpsBrandHeader(content = '') {
     String(content).includes('data-stackops-email-brand');
 }
 
-function buildStackOpsBrandHeader(title = 'StackOps IT Solutions', { protectedNotice = false } = {}) {
+function buildStackOpsBrandHeader(title = 'StackOps IT Solutions') {
   return `
     <div data-stackops-email-brand="true" style="background:#18212b; padding:24px 28px 0 28px;">
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
@@ -783,12 +796,6 @@ function buildStackOpsBrandHeader(title = 'StackOps IT Solutions', { protectedNo
           <td style="vertical-align:middle; text-align:right; color:#dbeafe; font-family:Arial, sans-serif; font-size:17px; font-weight:700; line-height:1.4;">
             ${escapeHtml(title)}
           </td>
-        </tr>
-      </table>
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse; margin-top:22px;">
-        <tr>
-          <td style="height:4px; background:#2563eb; line-height:4px; font-size:0;">&nbsp;</td>
-          ${protectedNotice ? '<td width="46" style="height:4px; background:#2563eb; text-align:center; line-height:4px;"><span style="display:inline-block; transform:translateY(-13px); width:28px; height:28px; border:1px solid rgba(255,112,27,0.75); border-radius:50%; color:#ff7a1a; background:#18212b; font-size:14px; line-height:28px;">&#128274;</span></td>' : ''}
         </tr>
       </table>
     </div>
@@ -811,11 +818,13 @@ function applyStackOpsEmailBranding(body = '', subject = '') {
 
 function renderStackCtrlPlatformPanel({ title = 'StackCTRL Platform', detail = 'Protected client portal access' } = {}) {
   return `
-    <div style="position:relative; margin:24px 0; padding:24px 18px; background:#111820; border:1px solid rgba(255,112,27,0.28); border-radius:8px; text-align:center; overflow:hidden;">
-      <div style="font-size:78px; line-height:1; color:rgba(255,112,27,0.16); font-weight:300; margin-bottom:-54px;">&#128274;</div>
-      <img src="${STACKCTRL_EMAIL_LOGO_URL}" alt="StackCTRL" style="position:relative; display:block; max-width:190px; height:auto; margin:0 auto 12px auto; border:0;">
-      <div style="position:relative; color:#f8fafc; font-size:15px; font-weight:700; letter-spacing:0.2px;">${escapeHtml(title)}</div>
-      <div style="position:relative; color:#cbd5e1; font-size:12px; margin-top:4px;">${escapeHtml(detail)}</div>
+    <div style="position:relative; margin:24px 0; padding:34px 20px 28px 20px; background:#111820; border:1px solid rgba(255,112,27,0.28); border-radius:8px; text-align:center; overflow:hidden;">
+      ${renderStackCtrlLockOutline()}
+      <div style="position:relative; z-index:2; display:inline-block; padding:6px 14px; background:rgba(17,24,32,0.84); border-radius:4px;">
+        <img src="${STACKCTRL_EMAIL_LOGO_URL}" alt="StackCTRL" style="display:block; max-width:210px; height:auto; margin:0 auto; border:0;">
+      </div>
+      <div style="position:relative; z-index:2; color:#f8fafc; font-size:15px; font-weight:700; letter-spacing:0.2px; margin-top:14px;">${escapeHtml(title)}</div>
+      <div style="position:relative; z-index:2; color:#cbd5e1; font-size:12px; margin-top:4px;">${escapeHtml(detail)}</div>
     </div>
   `;
 }
@@ -843,10 +852,6 @@ function renderCorporateEmail({ title, greeting = 'Dear Client,', bodyHtml, prot
         .brand-table { width: 100%; border-collapse: collapse; }
         .brand-logo { display: block; max-width: 190px; height: auto; border: 0; }
         .header h1 { margin: 0; color: #dbeafe; font-size: 18px; font-weight: 700; text-align: right; line-height: 1.4; }
-        .brand-line { width: 100%; border-collapse: collapse; margin-top: 22px; }
-        .brand-line-main { height: 4px; background: #2563eb; line-height: 4px; font-size: 0; }
-        .brand-lock-cell { width: 46px; height: 4px; background: #2563eb; text-align: center; line-height: 4px; }
-        .brand-lock { display: inline-block; transform: translateY(-13px); width: 28px; height: 28px; border: 1px solid rgba(255,112,27,0.75); border-radius: 50%; color: #ff7a1a; background: #18212b; font-size: 14px; line-height: 28px; }
         .content { padding: 28px; }
         .highlight-box { margin: 22px 0; padding: 18px; border: 1px solid #c7d2fe; background: #f8fafc; border-radius: 6px; text-align: center; }
         .code { display: inline-block; font-family: Consolas, Monaco, monospace; font-size: 30px; letter-spacing: 6px; color: #1d4ed8; font-weight: 700; }
@@ -868,12 +873,6 @@ function renderCorporateEmail({ title, greeting = 'Dear Client,', bodyHtml, prot
               </td>
             </tr>
           </table>
-          <table role="presentation" class="brand-line" cellspacing="0" cellpadding="0">
-            <tr>
-              <td class="brand-line-main">&nbsp;</td>
-              ${protectedHeader ? '<td class="brand-lock-cell"><span class="brand-lock">&#128274;</span></td>' : ''}
-            </tr>
-          </table>
         </div>
         <div class="content">
           <p>${escapeHtml(greeting)}</p>
@@ -891,7 +890,7 @@ function buildMfaEmail(user, mfaCode) {
   const firstName = user?.firstname || user?.firstName || '';
   const greeting = firstName ? `Dear ${firstName},` : 'Dear Client,';
   return renderCorporateEmail({
-    title: 'Protected StackCTRL Sign-In Verification',
+    title: 'Multi-Factor Authentication Verification',
     greeting,
     protectedHeader: true,
     bodyHtml: `
