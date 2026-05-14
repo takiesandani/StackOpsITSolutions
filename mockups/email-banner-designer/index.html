@@ -314,6 +314,10 @@
             </label>
           </div>
           <label>
+            Ring X
+            <input id="shackleX" type="range" min="-24" max="24" value="8">
+          </label>
+          <label>
             Orange
             <input id="accentColor" type="color" value="#ff6b00">
           </label>
@@ -357,6 +361,7 @@
       lockRadius: document.getElementById('lockRadius'),
       openingTop: document.getElementById('openingTop'),
       openingHeight: document.getElementById('openingHeight'),
+      shackleX: document.getElementById('shackleX'),
       accentColor: document.getElementById('accentColor'),
       backgroundColor: document.getElementById('backgroundColor'),
       borderColor: document.getElementById('borderColor'),
@@ -380,13 +385,14 @@
       return `${Number(value)}px`;
     }
 
-    function buildPadlock({ size, stroke, radius, accent, background, openingTop, openingHeight }) {
+    function buildPadlock({ size, stroke, radius, accent, background, openingTop, openingHeight, shackleX }) {
       const bodyWidth = Math.round(size * 0.72);
       const bodyHeight = Math.round(size * 0.5);
       const shackleWidth = Math.round(size * 0.45);
       const shackleHeight = Math.round(size * 0.34);
       const keyDot = Math.max(8, Math.round(size * 0.09));
       const keyStem = Math.max(12, Math.round(size * 0.14));
+      const shackleOffset = Math.round(((size - shackleWidth) / 2) + Number(shackleX));
       const openTop = Math.max(stroke, Math.min(Number(openingTop), bodyHeight - stroke));
       const openHeight = Math.max(0, Math.min(Number(openingHeight), bodyHeight - openTop));
       const coverWidth = stroke + 6;
@@ -396,7 +402,7 @@
 
       return `
         <div role="img" aria-label="Protected padlock" style="width:${px(size)}; height:${px(size)}; margin:0 auto; text-align:center; line-height:0; font-size:0;">
-          <div style="width:${px(shackleWidth)}; height:${px(shackleHeight)}; margin:0 auto; border:${px(stroke)} solid ${accent}; border-bottom:0; border-radius:${px(Math.round(shackleWidth / 2))} ${px(Math.round(shackleWidth / 2))} 0 0; line-height:0; font-size:0;">&nbsp;</div>
+          <div style="width:${px(shackleWidth)}; height:${px(shackleHeight)}; margin:0 0 0 ${px(shackleOffset)}; border:${px(stroke)} solid ${accent}; border-bottom:0; border-radius:${px(Math.round(shackleWidth / 2))} ${px(Math.round(shackleWidth / 2))} 0 0; line-height:0; font-size:0;">&nbsp;</div>
           <div style="position:relative; width:${px(bodyWidth)}; height:${px(bodyHeight)}; margin:-1px auto 0 auto; border:${px(stroke)} solid ${accent}; border-radius:${px(radius)}; line-height:0; font-size:0;">
             ${entryCover}
             <div style="width:${px(keyDot)}; height:${px(keyDot)}; margin:${px(Math.round(bodyHeight * 0.24))} auto 0 auto; border:${px(stroke)} solid ${accent}; border-radius:50%; line-height:0; font-size:0;">&nbsp;</div>
@@ -426,7 +432,8 @@
         accent: values.accentColor,
         background: values.backgroundColor,
         openingTop: Number(values.openingTop),
-        openingHeight: Number(values.openingHeight)
+        openingHeight: Number(values.openingHeight),
+        shackleX: Number(values.shackleX)
       });
 
       return `
