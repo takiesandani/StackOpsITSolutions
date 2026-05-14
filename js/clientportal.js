@@ -11259,17 +11259,21 @@ function ensureSunbirdBillingCardDimensions() {
     }
 
     if (sunbirdBillingCardLockedHeight) {
-        const targetHeight = Math.max(360, sunbirdBillingCardLockedHeight);
         const stackGap = 11.2;
-        const rightCardHeight = Math.max(160, (targetHeight - stackGap) / 2);
+        const minimumRightCardHeight = 220;
+        const minimumStackHeight = (minimumRightCardHeight * 2) + stackGap;
+        const targetHeight = Math.max(360, sunbirdBillingCardLockedHeight, minimumStackHeight);
+        const availableStackHeight = targetHeight - stackGap;
+        const governanceHeight = Math.max(minimumRightCardHeight, Math.floor(availableStackHeight / 2));
+        const supportHeight = Math.max(minimumRightCardHeight, availableStackHeight - governanceHeight);
 
         billingCard.style.height = `${targetHeight}px`;
 
         if (stackedCards && governanceCard && supportCard) {
             stackedCards.style.height = `${targetHeight}px`;
-            stackedCards.style.gridTemplateRows = `${rightCardHeight}px ${stackGap}px ${rightCardHeight}px`;
-            governanceCard.style.height = `${rightCardHeight}px`;
-            supportCard.style.height = `${rightCardHeight}px`;
+            stackedCards.style.gridTemplateRows = `${governanceHeight}px ${stackGap}px ${supportHeight}px`;
+            governanceCard.style.height = `${governanceHeight}px`;
+            supportCard.style.height = `${supportHeight}px`;
         }
     }
 }
