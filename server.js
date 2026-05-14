@@ -836,25 +836,25 @@ function renderStackCtrlPlatformPanel({ title = 'StackCTRL Platform', detail = '
 
 function renderMfaStackCtrlHeaderBanner() {
   return `
-<div style="margin:24px 0; padding:18px 20px 22px 20px; background:#111820; border:1px solid #4b2c1e; border-radius:8px; text-align:center; overflow:hidden; font-family:Arial, Helvetica, sans-serif;">
-  <table role="presentation" align="center" cellspacing="0" cellpadding="0" style="border-collapse:collapse; margin:0 auto 14px auto;">
+<div class="mfa-stackctrl-banner" style="margin:24px 0; padding:18px 20px 22px 20px; background:#111820; border:1px solid #4b2c1e; border-radius:8px; text-align:center; overflow:hidden; font-family:Arial, Helvetica, sans-serif;">
+  <table role="presentation" class="mfa-stackctrl-table" align="center" cellspacing="0" cellpadding="0" style="border-collapse:collapse; margin:0 auto 14px auto;">
     <tr>
-      <td style="vertical-align:middle; text-align:right; padding:0;">
-        <img src="https://i.postimg.cc/NjqZp4bp/Ctrl-big.png" alt="StackCTRL" style="position:relative; left:54px; top:28px; display:block; width:150px; max-width:150px; height:auto; border:0;">
+      <td class="mfa-stackctrl-logo-cell" style="vertical-align:middle; text-align:right; padding:0;">
+        <img class="mfa-stackctrl-logo" src="https://i.postimg.cc/NjqZp4bp/Ctrl-big.png" alt="StackCTRL" style="position:relative; left:54px; top:28px; display:block; width:150px; max-width:150px; height:auto; border:0;">
       </td>
-      <td style="vertical-align:middle; width:150px; padding:0 0 0 0px;">
-        <div style="position:relative; left:-18px; top:18px;"><div role="img" aria-label="Protected padlock" style="width:150px; height:150px; margin:0 auto; text-align:center; line-height:0; font-size:0;">
-          <div style="width:64px; height:51px; margin:0 0 0 25px; border:2px solid #dbdbdb; border-bottom:0; border-radius:34px 34px 0 0; line-height:0; font-size:0;">&nbsp;</div>
-          <div style="position:relative; width:108px; height:75px; margin:-1px auto 0 auto; border:2px solid #dbdbdb; border-radius:12px; line-height:0; font-size:0;">
-            <div style="width:10px; height:10px; margin:25px auto 0 auto; border:2px solid #dbdbdb; border-radius:50%; line-height:0; font-size:0;">&nbsp;</div>
-            <div style="width:2px; height:18px; margin:0 auto; background:#dbdbdb; border-radius:2px; line-height:0; font-size:0;">&nbsp;</div>
+      <td class="mfa-stackctrl-lock-cell" style="vertical-align:middle; width:150px; padding:0 0 0 0px;">
+        <div class="mfa-lock-wrap" style="position:relative; left:-18px; top:18px;"><div class="mfa-padlock" role="img" aria-label="Protected padlock" style="width:150px; height:150px; margin:0 auto; text-align:center; line-height:0; font-size:0;">
+          <div class="mfa-lock-shackle" style="width:64px; height:51px; margin:0 0 0 23px; border:2px solid #dbdbdb; border-bottom:0; border-radius:34px 34px 0 0; line-height:0; font-size:0;">&nbsp;</div>
+          <div class="mfa-lock-body" style="position:relative; width:108px; height:75px; margin:-1px auto 0 auto; border:2px solid #dbdbdb; border-radius:12px; line-height:0; font-size:0;">
+            <div class="mfa-keyhole-dot" style="width:10px; height:10px; margin:25px auto 0 auto; border:2px solid #dbdbdb; border-radius:50%; line-height:0; font-size:0;">&nbsp;</div>
+            <div class="mfa-keyhole-stem" style="width:2px; height:18px; margin:0 auto; background:#dbdbdb; border-radius:2px; line-height:0; font-size:0;">&nbsp;</div>
           </div>
         </div></div>
       </td>
     </tr>
   </table>
-  <div style="color:#f8fafc; font-size:15px; font-weight:700; letter-spacing:0; margin-top:8px;">StackCTRL is locked for your protection</div>
-  <div style="color:#cbd5e1; font-size:12px; margin-top:4px;">Use the verification code below to unlock your client portal session.</div>
+  <div class="mfa-stackctrl-heading" style="color:#f8fafc; font-size:15px; font-weight:700; letter-spacing:0; margin-top:8px;">StackCTRL is locked for your protection</div>
+  <div class="mfa-stackctrl-detail" style="color:#cbd5e1; font-size:12px; margin-top:4px;">Use the verification code below to unlock your client portal session.</div>
 </div>
   `;
 }
@@ -888,6 +888,28 @@ function renderCorporateEmail({ title, greeting = 'Dear Client,', bodyHtml, head
         .button { display: inline-block; padding: 11px 18px; background: #1d4ed8; color: #ffffff !important; text-decoration: none; border-radius: 4px; font-weight: 700; }
         .security-note { margin: 18px 0; padding: 14px; background: #fff7ed; border-left: 4px solid #f59e0b; color: #5f370e; }
         .signature { padding: 20px 28px; background: #f8fafc; border-top: 1px solid #e5e7eb; font-size: 11px; color: #4b5563; line-height: 1.5; }
+        @media only screen and (max-width: 520px) {
+          .email-container { width: 100% !important; max-width: 100% !important; margin: 0 auto !important; border-radius: 0 !important; }
+          .header { padding: 16px 12px 18px 12px !important; }
+          .brand-table, .brand-table tbody, .brand-table tr, .brand-table td { display: block !important; width: 100% !important; text-align: center !important; }
+          .brand-logo { max-width: 128px !important; margin: 0 auto 8px auto !important; }
+          .header h1 { text-align: center !important; font-size: 13px !important; line-height: 1.25 !important; margin: 0 auto !important; max-width: 230px !important; }
+          .mfa-stackctrl-banner { margin: 14px 0 0 0 !important; padding: 12px 8px 16px 8px !important; border-radius: 6px !important; }
+          .mfa-stackctrl-table { margin: 0 auto 8px auto !important; }
+          .mfa-stackctrl-logo-cell { width: 86px !important; max-width: 86px !important; text-align: right !important; }
+          .mfa-stackctrl-lock-cell { width: 86px !important; max-width: 86px !important; }
+          .mfa-stackctrl-logo { left: 30px !important; top: 15px !important; width: 88px !important; max-width: 88px !important; }
+          .mfa-lock-wrap { left: -6px !important; top: 8px !important; }
+          .mfa-padlock { width: 86px !important; height: 86px !important; }
+          .mfa-lock-shackle { width: 34px !important; height: 27px !important; margin: 0 0 0 24px !important; border-width: 2px !important; border-radius: 20px 20px 0 0 !important; }
+          .mfa-lock-body { width: 62px !important; height: 43px !important; border-width: 2px !important; border-radius: 8px !important; }
+          .mfa-keyhole-dot { width: 6px !important; height: 6px !important; margin: 12px auto 0 auto !important; border-width: 2px !important; }
+          .mfa-keyhole-stem { width: 2px !important; height: 10px !important; }
+          .mfa-stackctrl-heading { font-size: 12px !important; line-height: 1.25 !important; margin-top: 6px !important; }
+          .mfa-stackctrl-detail { font-size: 10px !important; line-height: 1.35 !important; max-width: 220px !important; margin: 4px auto 0 auto !important; }
+          .content { padding: 20px 16px !important; }
+          .code { font-size: 24px !important; letter-spacing: 4px !important; }
+        }
       </style>
     </head>
     <body>
