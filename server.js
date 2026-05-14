@@ -896,7 +896,7 @@ function renderCorporateEmail({ title, greeting = 'Dear Client,', bodyHtml, head
           .mfa-stackctrl-banner { margin: 12px 0 0 0 !important; padding: 8px !important; border-radius: 6px !important; }
           .mfa-stackctrl-logo { width: 92px !important; max-width: 92px !important; margin: 0 auto !important; }
           .mfa-lock-wrap { width: 42px !important; height: 42px !important; }
-          .mfa-lock-shackle { width: 18px !important; height: 14px !important; margin: 0 0 0 12px !important; border-width: 1px !important; border-radius: 12px 12px 0 0 !important; }
+          .mfa-lock-shackle { width: 18px !important; height: 14px !important; margin: 0 0 0 8px !important; border-width: 1px !important; border-radius: 12px 12px 0 0 !important; }
           .mfa-lock-body { width: 30px !important; height: 22px !important; border-width: 1px !important; border-radius: 5px !important; }
           .mfa-keyhole-dot { width: 3px !important; height: 3px !important; margin: 6px auto 0 auto !important; border-width: 1px !important; }
           .mfa-keyhole-stem { width: 1px !important; height: 6px !important; }
