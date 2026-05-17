@@ -315,7 +315,7 @@
           </div>
           <label>
             Ring X
-            <input id="shackleX" type="range" min="-24" max="24" value="8">
+            <input id="shackleX" type="range" min="-24" max="24" value="0">
           </label>
           <label>
             Orange
@@ -392,7 +392,7 @@
       const shackleHeight = Math.round(size * 0.34);
       const keyDot = Math.max(8, Math.round(size * 0.09));
       const keyStem = Math.max(12, Math.round(size * 0.14));
-      const shackleOffset = Math.round(((size - shackleWidth) / 2) + Number(shackleX));
+      const shackleOffset = Math.round(((size - shackleWidth - (stroke * 2)) / 2) + Number(shackleX));
       const openTop = Math.max(stroke, Math.min(Number(openingTop), bodyHeight - stroke));
       const openHeight = Math.max(0, Math.min(Number(openingHeight), bodyHeight - openTop));
       const coverWidth = stroke + 6;
