@@ -2416,6 +2416,39 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   width: 100%;
 }
 
+@media (min-width: 769px) and (max-width: 1680px) {
+  body.sunbird-client-portal .projects-view {
+    width: 125%;
+    zoom: 0.8;
+    overflow-x: clip;
+  }
+
+  body.sunbird-client-portal .governance-card,
+  body.sunbird-client-portal .secondary-card {
+    justify-content: flex-start;
+  }
+
+  body.sunbird-client-portal .governance-card .governance-card-header,
+  body.sunbird-client-portal .secondary-card .secondary-card-header {
+    margin-bottom: 8px;
+  }
+
+  body.sunbird-client-portal .sunbird-governance-content {
+    gap: 0;
+  }
+
+  body.sunbird-client-portal .sunbird-governance-table-wrap {
+    margin-top: 0;
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1440px) {
+  body.sunbird-client-portal .projects-view {
+    width: 138.8889%;
+    zoom: 0.72;
+  }
+}
+
 @media (max-width: 768px) {
   .dashboard-with-menu {
     display: flex;
