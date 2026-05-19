@@ -3886,250 +3886,6 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   font-size: 0.9rem;
 }
 
-/* Sunbird laptop optimization: match the clean 80% browser feel at 100% zoom */
-@media (min-width: 769px) and (max-width: 1920px) {
-  body.sunbird-client-portal {
-    --sunbird-laptop-menu-width: clamp(230px, 15.7vw, 300px);
-    --sunbird-laptop-menu-gap: clamp(16px, 1.25vw, 24px);
-    --sunbird-laptop-edge: clamp(16px, 1.8vw, 34px);
-    --sunbird-laptop-workspace: min(
-      clamp(900px, 60.5vw, 1160px),
-      calc(
-        100vw -
-        var(--sunbird-laptop-menu-width) -
-        var(--sunbird-laptop-menu-gap) -
-        (var(--sunbird-laptop-edge) * 2)
-      )
-    );
-  }
-
-  body.sunbird-client-portal .site-header {
-    padding: clamp(10px, 0.78vw, 15px) clamp(24px, 2.1vw, 40px);
-    gap: clamp(18px, 1.6vw, 30px);
-  }
-
-  body.sunbird-client-portal .site-header .logo img {
-    width: clamp(112px, 7vw, 130px);
-  }
-
-  body.sunbird-client-portal .sunbird-logo-img {
-    height: clamp(24px, 1.7vw, 32px);
-  }
-
-  body.sunbird-client-portal .user-name {
-    font-size: 0.86rem;
-  }
-
-  body.sunbird-client-portal .btn-logout {
-    padding: clamp(6px, 0.5vw, 8px) clamp(10px, 0.85vw, 16px);
-  }
-
-  body.sunbird-client-portal .projects-view {
-    padding: clamp(8px, 0.8vw, 12px) var(--sunbird-laptop-edge) 24px;
-    margin-top: 10px;
-  }
-
-  body.sunbird-client-portal .projects-view > .container {
-    width: var(--sunbird-laptop-workspace);
-    max-width: var(--sunbird-laptop-workspace);
-    margin-left: calc(
-      var(--sunbird-laptop-menu-width) +
-      var(--sunbird-laptop-menu-gap) +
-      var(--sunbird-laptop-edge)
-    );
-    margin-right: var(--sunbird-laptop-edge);
-    padding: 0;
-  }
-
-  body.sunbird-client-portal .projects-nav {
-    justify-content: center;
-    margin-left: 0;
-    margin-bottom: clamp(8px, 0.65vw, 12px);
-    padding: 4px 0;
-  }
-
-  body.sunbird-client-portal .projects-carousel-shell {
-    --side-peek-card-width: clamp(150px, 12vw, 230px);
-    --side-peek-max-width: 230px;
-  }
-
-  body.sunbird-client-portal .side-peek-nav-left {
-    left: calc(-1 * (min(var(--side-peek-card-width), var(--side-peek-max-width)) + clamp(12px, 1vw, 18px)));
-  }
-
-  body.sunbird-client-portal .side-peek-nav-right {
-    right: calc(-1 * (min(var(--side-peek-card-width), var(--side-peek-max-width)) + clamp(12px, 1vw, 18px)));
-  }
-
-  body.sunbird-client-portal .projects-grid,
-  body.sunbird-client-portal .dashboard-cards-section {
-    gap: clamp(8px, 0.72vw, 11.2px);
-  }
-
-  body.sunbird-client-portal .dashboard-cards-section {
-    margin-top: clamp(14px, 1.1vw, 20px);
-  }
-
-  body.sunbird-client-portal .dashboard-with-menu {
-    --sunbird-menu-width: var(--sunbird-laptop-menu-width);
-    --sunbird-menu-left-gap: var(--sunbird-laptop-menu-gap);
-  }
-
-  body.sunbird-client-portal .sunbird-left-menu {
-    width: var(--sunbird-laptop-menu-width);
-    left: calc(-1 * (var(--sunbird-laptop-menu-width) + var(--sunbird-laptop-menu-gap)));
-    gap: clamp(5px, 0.46vw, 6px);
-    padding: clamp(8px, 0.65vw, 10px) clamp(8px, 0.7vw, 10px) clamp(12px, 0.9vw, 16px);
-    border-radius: clamp(14px, 1.05vw, 18px);
-  }
-
-  body.sunbird-client-portal .sunbird-menu-heading {
-    padding: clamp(14px, 1.05vw, 20px) clamp(12px, 0.9vw, 16px) 7px;
-    margin-bottom: clamp(6px, 0.55vw, 10px);
-    font-size: 1.18rem;
-  }
-
-  body.sunbird-client-portal .sunbird-menu-heading::after {
-    left: clamp(14px, 1vw, 20px);
-    width: calc(100% - clamp(28px, 2vw, 40px));
-  }
-
-  body.sunbird-client-portal .sunbird-menu-item {
-    min-height: clamp(29px, 2.2vw, 34px);
-    max-width: 90%;
-    left: clamp(12px, 1.05vw, 23px);
-    padding: clamp(6px, 0.55vw, 8px) 9px clamp(6px, 0.55vw, 8px) clamp(11px, 0.85vw, 14px);
-    gap: clamp(8px, 0.78vw, 13px);
-    font-size: 0.72rem;
-  }
-
-  body.sunbird-client-portal .sunbird-menu-item i {
-    width: clamp(14px, 1vw, 18px);
-    font-size: 0.78rem;
-  }
-
-  body.sunbird-client-portal .project-card,
-  body.sunbird-client-portal .dashboard-card {
-    padding: clamp(10px, 0.82vw, 14px);
-    border-radius: 10px;
-  }
-
-  body.sunbird-client-portal .project-card-header {
-    gap: clamp(9px, 0.7vw, 13.3px);
-  }
-
-  body.sunbird-client-portal .project-icon {
-    width: clamp(40px, 2.7vw, 50px);
-    height: clamp(40px, 2.7vw, 50px);
-    font-size: 21px;
-  }
-
-  body.sunbird-client-portal .project-title h3 {
-    font-size: 0.94rem;
-  }
-
-  body.sunbird-client-portal .project-type,
-  body.sunbird-client-portal .metric-label-text {
-    font-size: 0.68rem;
-  }
-
-  body.sunbird-client-portal .metric-value-text {
-    font-size: 0.86rem;
-  }
-
-  body.sunbird-client-portal .project-status-badge {
-    padding: 3px clamp(7px, 0.58vw, 11px);
-    font-size: 0.64rem;
-  }
-
-  body.sunbird-client-portal .project-info {
-    gap: clamp(6px, 0.55vw, 9.2px);
-  }
-
-  body.sunbird-client-portal .project-info-item {
-    padding: clamp(4px, 0.42vw, 6px);
-    gap: clamp(5px, 0.5vw, 7px);
-  }
-
-  body.sunbird-client-portal .project-risks {
-    padding-top: clamp(9px, 0.7vw, 13.3px);
-  }
-
-  body.sunbird-client-portal .project-risks span {
-    font-size: 0.78rem;
-  }
-
-  body.sunbird-client-portal .governance-card-header,
-  body.sunbird-client-portal .secondary-card-header {
-    gap: clamp(8px, 0.65vw, 11.2px);
-    margin-bottom: clamp(10px, 0.8vw, 13.3px);
-  }
-
-  body.sunbird-client-portal .governance-card-header i,
-  body.sunbird-client-portal .secondary-card-header i {
-    font-size: 17px;
-  }
-
-  body.sunbird-client-portal .governance-card-header h3,
-  body.sunbird-client-portal .secondary-card-header h3 {
-    font-size: 1rem;
-  }
-
-  body.sunbird-client-portal .governance-content,
-  body.sunbird-client-portal .sunbird-panel-view {
-    gap: clamp(8px, 0.62vw, 10.2px);
-  }
-
-  body.sunbird-client-portal .sunbird-section-heading {
-    margin-bottom: clamp(8px, 0.7vw, 12px);
-    font-size: 0.84rem;
-  }
-
-  body.sunbird-client-portal .sunbird-mini-stats {
-    gap: clamp(6px, 0.5vw, 10px);
-  }
-
-  body.sunbird-client-portal .sunbird-mini-stat {
-    padding: clamp(8px, 0.62vw, 12px);
-  }
-
-  body.sunbird-client-portal .sunbird-incidents-table th,
-  body.sunbird-client-portal .sunbird-incidents-table td,
-  body.sunbird-client-portal .sunbird-governance-table th,
-  body.sunbird-client-portal .sunbird-governance-table td {
-    padding: clamp(6px, 0.5vw, 8px) clamp(7px, 0.58vw, 10px);
-  }
-
-  body.sunbird-client-portal .sunbird-governance-table th {
-    font-size: 0.64rem;
-  }
-
-  body.sunbird-client-portal .sunbird-governance-table td {
-    font-size: 0.73rem;
-  }
-
-  body.sunbird-client-portal .sunbird-governance-evidence-btn,
-  body.sunbird-client-portal .sunbird-risk-view-btn {
-    padding: 3px clamp(7px, 0.55vw, 10px);
-    font-size: 0.58rem;
-  }
-}
-
-@media (min-width: 769px) and (max-width: 1280px) {
-  body.sunbird-client-portal .side-peek-nav {
-    display: none;
-  }
-
-  body.sunbird-client-portal {
-    --sunbird-laptop-workspace: calc(
-      100vw -
-      var(--sunbird-laptop-menu-width) -
-      var(--sunbird-laptop-menu-gap) -
-      (var(--sunbird-laptop-edge) * 2)
-    );
-  }
-}
-
 /* RESPONSIVE DESIGN */
 @media (max-width: 1024px) {
   .charts-section {
@@ -4151,21 +3907,6 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
   .projects-header h2 {
     font-size: 2.5rem;
-  }
-}
-
-@media (min-width: 769px) and (max-width: 1024px) {
-  body.sunbird-client-portal .projects-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
-  }
-
-  body.sunbird-client-portal .projects-header h2 {
-    font-size: 1.33rem;
-  }
-
-  body.sunbird-client-portal .project-card {
-    min-height: auto;
   }
 }
 
@@ -6940,7 +6681,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
     overflow-x: auto;
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
-    background: rgba(7, 7, 8, 0.72);
+    background: rgba(0, 0, 0, 0.);
     margin-top: 10px;
     scrollbar-width: thin;
     scrollbar-color: rgba(148, 163, 184, 0.45) rgba(255, 255, 255, 0.05);
@@ -6963,22 +6704,21 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 .sunbird-governance-table {
     width: 100%;
     min-width: 450px; 
-    border-collapse: separate;
-    border-spacing: 0;
+    border-collapse: collapse;
 }
 
+/* Made header transparent and reduced padding */
 .sunbird-governance-table th {
     position: sticky;
     top: 0;
-    background: linear-gradient(180deg, rgba(20, 20, 22, 0.98), rgba(10, 10, 12, 0.96));
-    z-index: 5;
+    background: transparent; /* Removed the background completely */
+    z-index: 2;
     padding: 8px 10px; /* Tighter padding to shrink the table size */
     font-size: 0.7rem;
     text-transform: uppercase;
     color: #94a3b8;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     text-align: left;
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 /* Reduced padding on table rows */
@@ -6988,25 +6728,6 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
     color: #cbd5e1;
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     vertical-align: middle;
-    background: rgba(8, 8, 10, 0.78);
-}
-
-.sunbird-governance-table th:first-child,
-.sunbird-governance-table td:first-child {
-    position: sticky;
-    left: 0;
-    min-width: 130px;
-    max-width: 170px;
-    background: linear-gradient(90deg, rgba(18, 18, 20, 0.99), rgba(12, 12, 14, 0.98));
-    box-shadow: 10px 0 14px -12px rgba(0, 0, 0, 0.95);
-}
-
-.sunbird-governance-table th:first-child {
-    z-index: 7;
-}
-
-.sunbird-governance-table td:first-child {
-    z-index: 3;
 }
 
 .sunbird-governance-table tr:last-child td {
@@ -7015,10 +6736,6 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
 .sunbird-governance-table tr:hover td {
     background: rgba(255, 255, 255, 0.03);
-}
-
-.sunbird-governance-table tr:hover td:first-child {
-    background: linear-gradient(90deg, rgba(28, 24, 22, 0.99), rgba(16, 15, 15, 0.98));
 }
 
 .sunbird-governance-activity-cell {
