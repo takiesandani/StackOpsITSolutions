@@ -870,8 +870,6 @@ let cachedSunbirdBackupData = null;
 const BILLING_CACHE_KEY = 'billingInvoiceCache_v1';
 const BILLING_CACHE_TTL_MS = 5 * 60 * 1000;
 let billingAuthRetryCount = 0;
-let sunbirdBillingCardLockedHeight = null;
-let sunbirdBillingCardLockedWidthBucket = null;
 let identityRiskFocus = 'all';
 let pendingIdentityRiskFocus = 'all';
 let identityFetchRequestId = 0;
@@ -11248,10 +11246,7 @@ function ensureSunbirdBillingCardDimensions() {
     if (!billingCard) return;
 
     const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
-    const widthBucket = Math.round(viewportWidth / 20) * 20;
-    if (sunbirdBillingCardLockedWidthBucket !== widthBucket) {
-        sunbirdBillingCardLockedWidthBucket = widthBucket;
-        sunbirdBillingCardLockedHeight = null;
+    const clearLockedHeights = () => {
         billingCard.style.height = '';
         if (stackedCards) {
             stackedCards.style.height = '';
@@ -11259,43 +11254,35 @@ function ensureSunbirdBillingCardDimensions() {
         }
         if (governanceCard) governanceCard.style.height = '';
         if (supportCard) supportCard.style.height = '';
-    }
+    };
+
+    clearLockedHeights();
 
     if (window.matchMedia('(max-width: 768px)').matches) {
-        billingCard.style.height = '';
-        if (stackedCards) {
-            stackedCards.style.height = '';
-            stackedCards.style.gridTemplateRows = '';
-        }
-        if (governanceCard) governanceCard.style.height = '';
-        if (supportCard) supportCard.style.height = '';
         return;
     }
 
-    if (!sunbirdBillingCardLockedHeight && billingCard.offsetHeight > 0) {
-        sunbirdBillingCardLockedHeight = billingCard.offsetHeight;
-    }
+    const measuredBillingHeight = billingCard.offsetHeight;
+    if (measuredBillingHeight <= 0) return;
 
-    if (sunbirdBillingCardLockedHeight) {
-        const isCompactLaptop = viewportWidth <= 1680;
-        const isSmallLaptop = viewportWidth <= 1440;
-        const stackGap = isCompactLaptop ? 10 : 11.2;
-        const minimumRightCardHeight = isSmallLaptop ? 220 : (isCompactLaptop ? 235 : 260);
-        const minimumStackHeight = (minimumRightCardHeight * 2) + stackGap;
-        const minimumBillingHeight = isSmallLaptop ? 330 : 360;
-        const targetHeight = Math.max(minimumBillingHeight, sunbirdBillingCardLockedHeight, minimumStackHeight);
-        const availableStackHeight = targetHeight - stackGap;
-        const governanceHeight = Math.max(minimumRightCardHeight, Math.floor(availableStackHeight / 2));
-        const supportHeight = Math.max(minimumRightCardHeight, availableStackHeight - governanceHeight);
+    const isCompactLaptop = viewportWidth <= 1680;
+    const isSmallLaptop = viewportWidth <= 1440;
+    const stackGap = isCompactLaptop ? 10 : 11.2;
+    const minimumRightCardHeight = isSmallLaptop ? 220 : (isCompactLaptop ? 235 : 260);
+    const minimumStackHeight = (minimumRightCardHeight * 2) + stackGap;
+    const minimumBillingHeight = isSmallLaptop ? 330 : 360;
+    const targetHeight = Math.max(minimumBillingHeight, measuredBillingHeight, minimumStackHeight);
+    const availableStackHeight = targetHeight - stackGap;
+    const governanceHeight = Math.max(minimumRightCardHeight, Math.floor(availableStackHeight / 2));
+    const supportHeight = Math.max(minimumRightCardHeight, availableStackHeight - governanceHeight);
 
-        billingCard.style.height = `${targetHeight}px`;
+    billingCard.style.height = `${targetHeight}px`;
 
-        if (stackedCards && governanceCard && supportCard) {
-            stackedCards.style.height = `${targetHeight}px`;
-            stackedCards.style.gridTemplateRows = `${governanceHeight}px ${stackGap}px ${supportHeight}px`;
-            governanceCard.style.height = `${governanceHeight}px`;
-            supportCard.style.height = `${supportHeight}px`;
-        }
+    if (stackedCards && governanceCard && supportCard) {
+        stackedCards.style.height = `${targetHeight}px`;
+        stackedCards.style.gridTemplateRows = `${governanceHeight}px ${stackGap}px ${supportHeight}px`;
+        governanceCard.style.height = `${governanceHeight}px`;
+        supportCard.style.height = `${supportHeight}px`;
     }
 }
 

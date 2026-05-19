@@ -2423,22 +2423,9 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
     overflow-x: clip;
   }
 
-  body.sunbird-client-portal .governance-card,
-  body.sunbird-client-portal .secondary-card {
-    justify-content: flex-start;
-  }
-
   body.sunbird-client-portal .governance-card .governance-card-header,
   body.sunbird-client-portal .secondary-card .secondary-card-header {
     margin-bottom: 8px;
-  }
-
-  body.sunbird-client-portal .sunbird-governance-content {
-    gap: 0;
-  }
-
-  body.sunbird-client-portal .sunbird-governance-table-wrap {
-    margin-top: 0;
   }
 }
 
@@ -2626,6 +2613,11 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 .secondary-card {
   grid-row: 3;
   min-height: 0;
+}
+
+.governance-card,
+.secondary-card {
+  justify-content: flex-start;
 }
 
 .dashboard-card {
@@ -2889,6 +2881,10 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   gap: 10.2px;
   min-height: 0;
   overflow: hidden;
+}
+
+.sunbird-governance-content {
+  gap: 0;
 }
 
 .governance-item {
@@ -6714,7 +6710,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
     background: rgba(0, 0, 0, 0.);
-    margin-top: 10px;
+    margin-top: 0;
     scrollbar-width: thin;
     scrollbar-color: rgba(148, 163, 184, 0.45) rgba(255, 255, 255, 0.05);
 }
