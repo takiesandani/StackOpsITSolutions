@@ -2464,6 +2464,11 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
     min-height: var(--side-peek-card-height, 130px);
   }
 
+  body.sunbird-client-portal .side-peek-card.expanded {
+    height: var(--side-peek-expanded-height, 560px) !important;
+    max-height: var(--side-peek-expanded-height, 560px);
+  }
+
   body.sunbird-client-portal .governance-card .governance-card-header,
   body.sunbird-client-portal .secondary-card .secondary-card-header {
     margin-bottom: 8px;

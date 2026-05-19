@@ -10405,6 +10405,17 @@ function syncSidePeekCardSizing() {
     // Match side cards to main project card size.
     shell.style.setProperty('--side-peek-card-width', `${Math.round(mainCardWidth)}px`);
     shell.style.setProperty('--side-peek-card-height', `${Math.round(mainCardHeight)}px`);
+
+    const supportCard = document.getElementById('support-card');
+    if (supportCard) {
+        const shellRect = shell.getBoundingClientRect();
+        const supportRect = supportCard.getBoundingClientRect();
+        const scale = shell.offsetWidth ? shellRect.width / shell.offsetWidth : 1;
+        const expandedHeight = scale > 0 ? (supportRect.bottom - shellRect.top) / scale : 0;
+        if (expandedHeight > mainCardHeight) {
+            shell.style.setProperty('--side-peek-expanded-height', `${Math.round(expandedHeight)}px`);
+        }
+    }
 }
 
 function goToPreviousProject() {
