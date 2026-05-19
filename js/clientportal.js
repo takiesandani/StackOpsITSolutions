@@ -10397,8 +10397,9 @@ function syncSidePeekCardSizing() {
     const mainCard = document.querySelector('#projects-grid .project-card');
     if (!shell || !mainCard) return;
 
-    const mainCardWidth = mainCard.getBoundingClientRect().width;
-    const mainCardHeight = mainCard.getBoundingClientRect().height;
+    const mainCardRect = mainCard.getBoundingClientRect();
+    const mainCardWidth = mainCard.offsetWidth || mainCardRect.width;
+    const mainCardHeight = mainCard.offsetHeight || mainCardRect.height;
     if (mainCardHeight <= 0 || mainCardWidth <= 0) return;
 
     // Match side cards to main project card size.
