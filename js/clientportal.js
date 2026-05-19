@@ -588,9 +588,12 @@ function isSedfaUser() {
 
 // Update Sunbird logo visibility based on user type
 function updateSunbirdLogoVisibility() {
+    const isSunbird = isSunbirdUser();
+    document.body?.classList.toggle('sunbird-client-portal', isSunbird);
+
     const logoImg = document.querySelector('.sunbird-logo-img');
     if (logoImg) {
-        if (isSunbirdUser()) {
+        if (isSunbird) {
             logoImg.style.display = 'block';
         } else {
             logoImg.style.display = 'none';
@@ -868,6 +871,7 @@ const BILLING_CACHE_KEY = 'billingInvoiceCache_v1';
 const BILLING_CACHE_TTL_MS = 5 * 60 * 1000;
 let billingAuthRetryCount = 0;
 let sunbirdBillingCardLockedHeight = null;
+let sunbirdBillingCardLockedWidthBucket = null;
 let identityRiskFocus = 'all';
 let pendingIdentityRiskFocus = 'all';
 let identityFetchRequestId = 0;
@@ -8938,8 +8942,8 @@ function handleLogout() {
         chatWidget.style.display = 'none';
     }
 
-    // Redirect to public home page so protected views aren't visible
-    window.location.href = 'Home.html';
+    // Redirect to the public client dashboard promo page so protected views aren't visible
+    window.location.href = 'ClientDashboardPromo.html';
 }
 
 function setupSessionManagement() {
@@ -11243,6 +11247,20 @@ function ensureSunbirdBillingCardDimensions() {
     const supportCard = document.getElementById('support-card');
     if (!billingCard) return;
 
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+    const widthBucket = Math.round(viewportWidth / 20) * 20;
+    if (sunbirdBillingCardLockedWidthBucket !== widthBucket) {
+        sunbirdBillingCardLockedWidthBucket = widthBucket;
+        sunbirdBillingCardLockedHeight = null;
+        billingCard.style.height = '';
+        if (stackedCards) {
+            stackedCards.style.height = '';
+            stackedCards.style.gridTemplateRows = '';
+        }
+        if (governanceCard) governanceCard.style.height = '';
+        if (supportCard) supportCard.style.height = '';
+    }
+
     if (window.matchMedia('(max-width: 768px)').matches) {
         billingCard.style.height = '';
         if (stackedCards) {
@@ -11259,10 +11277,13 @@ function ensureSunbirdBillingCardDimensions() {
     }
 
     if (sunbirdBillingCardLockedHeight) {
-        const stackGap = 11.2;
-        const minimumRightCardHeight = 260;
+        const isCompactLaptop = viewportWidth <= 1680;
+        const isSmallLaptop = viewportWidth <= 1440;
+        const stackGap = isCompactLaptop ? 10 : 11.2;
+        const minimumRightCardHeight = isSmallLaptop ? 220 : (isCompactLaptop ? 235 : 260);
         const minimumStackHeight = (minimumRightCardHeight * 2) + stackGap;
-        const targetHeight = Math.max(360, sunbirdBillingCardLockedHeight, minimumStackHeight);
+        const minimumBillingHeight = isSmallLaptop ? 330 : 360;
+        const targetHeight = Math.max(minimumBillingHeight, sunbirdBillingCardLockedHeight, minimumStackHeight);
         const availableStackHeight = targetHeight - stackGap;
         const governanceHeight = Math.max(minimumRightCardHeight, Math.floor(availableStackHeight / 2));
         const supportHeight = Math.max(minimumRightCardHeight, availableStackHeight - governanceHeight);
@@ -12217,6 +12238,7 @@ window.openSunbirdComplianceEvidence = function(index) {
 
 /* RESIZE HANDLER */
 window.addEventListener('resize', () => {
+    ensureSunbirdBillingCardDimensions();
     syncSunbirdLeftMenuHeight();
     syncSidePeekCardSizing();
     if (currentProject && charts.risk) {
