@@ -2449,6 +2449,10 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
     overflow-x: clip;
   }
 
+  body.sunbird-client-portal .dashboard-with-menu {
+    transform: translateX(clamp(-70px, -4vw, -42px));
+  }
+
   body.sunbird-client-portal .governance-card .governance-card-header,
   body.sunbird-client-portal .secondary-card .secondary-card-header {
     margin-bottom: 8px;
