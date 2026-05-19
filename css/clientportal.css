@@ -2444,13 +2444,14 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
 @media (min-width: 769px) and (max-width: 1680px) {
   body.sunbird-client-portal .projects-view {
-    width: 125%;
-    zoom: 0.8;
+    --sunbird-dashboard-scale: 0.8;
+    width: 100%;
+    zoom: 1;
     overflow-x: clip;
   }
 
   body.sunbird-client-portal .projects-view > .container {
-    transform: translateX(clamp(-190px, -11vw, -145px));
+    transform: scale(var(--sunbird-dashboard-scale));
     transform-origin: top center;
   }
 
@@ -2462,8 +2463,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
 @media (min-width: 769px) and (max-width: 1440px) {
   body.sunbird-client-portal .projects-view {
-    width: 138.8889%;
-    zoom: 0.72;
+    --sunbird-dashboard-scale: 0.72;
   }
 }
 
