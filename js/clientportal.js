@@ -11265,16 +11265,13 @@ function ensureSunbirdBillingCardDimensions() {
         return;
     }
 
-    const measuredBillingHeight = billingCard.offsetHeight;
-    if (measuredBillingHeight <= 0) return;
-
     const isCompactLaptop = viewportWidth <= 1680;
     const isSmallLaptop = viewportWidth <= 1440;
     const stackGap = isCompactLaptop ? 10 : 11.2;
     const minimumRightCardHeight = isSmallLaptop ? 220 : (isCompactLaptop ? 235 : 260);
     const minimumStackHeight = (minimumRightCardHeight * 2) + stackGap;
     const minimumBillingHeight = isSmallLaptop ? 330 : 360;
-    const targetHeight = Math.max(minimumBillingHeight, measuredBillingHeight, minimumStackHeight);
+    const targetHeight = Math.max(minimumBillingHeight, minimumStackHeight);
     const availableStackHeight = targetHeight - stackGap;
     const governanceHeight = Math.max(minimumRightCardHeight, Math.floor(availableStackHeight / 2));
     const supportHeight = Math.max(minimumRightCardHeight, availableStackHeight - governanceHeight);

@@ -1616,6 +1616,13 @@
     inset 0 -1px 2px rgba(0, 0, 0, 0.15);
 
   transition: all 0.4s ease;
+  min-height: 0;
+}
+
+.billing-card > .sunbird-panel-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 100%;
 }
 
 /* SAME reflection layer */
@@ -2100,6 +2107,25 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   max-height: 220px; /* Increased height for activity feed */
   display: flex;
   flex-direction: column;
+}
+
+@media (min-width: 769px) {
+  .billing-card[data-sunbird-view="security"] .sunbird-section-container {
+    margin-bottom: 10px;
+    gap: 6px;
+  }
+
+  .billing-card[data-sunbird-view="security"] .sunbird-incidents-table-wrap {
+    max-height: 112px;
+  }
+
+  .billing-card[data-sunbird-view="security"] .sunbird-activity-feed {
+    max-height: 150px;
+  }
+
+  .billing-card[data-sunbird-view="applications"] .sunbird-app-preview-scroll {
+    max-height: 240px;
+  }
 }
 
 .sunbird-activity-item {
