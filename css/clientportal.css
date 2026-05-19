@@ -2450,7 +2450,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   }
 
   body.sunbird-client-portal .projects-view > .container {
-    transform: translateX(clamp(-70px, -4vw, -42px));
+    transform: translateX(clamp(-135px, -8vw, -92px));
     transform-origin: top center;
   }
 
