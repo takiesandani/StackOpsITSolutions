@@ -762,6 +762,10 @@
   font-weight: 200;
 }
 
+.projects-nav .nav-counter {
+  visibility: hidden;
+}
+
 .nav-buttons {
   display: flex;
 
