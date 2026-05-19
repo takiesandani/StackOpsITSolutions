@@ -11828,12 +11828,13 @@ function initializeGovernanceCard() {
     `;
 }
 
-function getSunbirdCachedCardData(cacheKey) {
+function getSunbirdCachedCardData(cacheKey, options = {}) {
     try {
         const raw = localStorage.getItem(getSunbirdScopedCardCacheKey(cacheKey));
         if (!raw) return null;
         const cached = JSON.parse(raw);
-        if (!cached?.savedAt || Date.now() - cached.savedAt > SUNBIRD_CARD_CACHE_TTL_MS) return null;
+        if (!cached?.savedAt) return null;
+        if (!options.allowStale && Date.now() - cached.savedAt > SUNBIRD_CARD_CACHE_TTL_MS) return null;
         return cached.payload || null;
     } catch (error) {
         return null;
@@ -11900,7 +11901,7 @@ function renderSunbirdGovernanceCard(governanceCard, rows) {
 async function fetchSunbirdGovernanceData(governanceCard) {
     let renderedCached = false;
     try {
-        const cached = getSunbirdCachedCardData(SUNBIRD_GOVERNANCE_CACHE_KEY);
+        const cached = getSunbirdCachedCardData(SUNBIRD_GOVERNANCE_CACHE_KEY, { allowStale: true });
         if (cached?.rows) {
             renderSunbirdGovernanceCard(governanceCard, cached.rows);
             window.sunbirdGovernanceSource = cached.source || {};
@@ -12197,7 +12198,7 @@ function renderSunbirdComplianceCard(supportCard, controls) {
 async function fetchSunbirdComplianceData(supportCard) {
     let renderedCached = false;
     try {
-        const cached = getSunbirdCachedCardData(SUNBIRD_COMPLIANCE_CACHE_KEY);
+        const cached = getSunbirdCachedCardData(SUNBIRD_COMPLIANCE_CACHE_KEY, { allowStale: true });
         if (cached?.controls) {
             renderSunbirdComplianceCard(supportCard, cached.controls);
             window.sunbirdComplianceSource = cached.source || {};
