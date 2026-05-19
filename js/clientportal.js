@@ -11268,11 +11268,25 @@ function ensureSunbirdBillingCardDimensions() {
     const measuredBillingHeight = billingCard.offsetHeight;
     if (measuredBillingHeight <= 0) return;
 
+    const isCompactLaptop = viewportWidth <= 1680;
     const isSmallLaptop = viewportWidth <= 1440;
+    const stackGap = isCompactLaptop ? 10 : 11.2;
+    const minimumRightCardHeight = isSmallLaptop ? 220 : (isCompactLaptop ? 235 : 260);
+    const minimumStackHeight = (minimumRightCardHeight * 2) + stackGap;
     const minimumBillingHeight = isSmallLaptop ? 330 : 360;
-    const targetHeight = Math.max(minimumBillingHeight, measuredBillingHeight);
+    const targetHeight = Math.max(minimumBillingHeight, measuredBillingHeight, minimumStackHeight);
+    const availableStackHeight = targetHeight - stackGap;
+    const governanceHeight = Math.max(minimumRightCardHeight, Math.floor(availableStackHeight / 2));
+    const supportHeight = Math.max(minimumRightCardHeight, availableStackHeight - governanceHeight);
 
     billingCard.style.height = `${targetHeight}px`;
+
+    if (stackedCards && governanceCard && supportCard) {
+        stackedCards.style.height = `${targetHeight}px`;
+        stackedCards.style.gridTemplateRows = `${governanceHeight}px ${stackGap}px ${supportHeight}px`;
+        governanceCard.style.height = `${governanceHeight}px`;
+        supportCard.style.height = `${supportHeight}px`;
+    }
 }
 
 async function fetchSunbirdSecurityEventsData() {
@@ -11875,11 +11889,13 @@ function renderSunbirdGovernanceCard(governanceCard, rows) {
 }
 
 async function fetchSunbirdGovernanceData(governanceCard) {
+    let renderedCached = false;
     try {
         const cached = getSunbirdCachedCardData(SUNBIRD_GOVERNANCE_CACHE_KEY);
         if (cached?.rows) {
             renderSunbirdGovernanceCard(governanceCard, cached.rows);
             window.sunbirdGovernanceSource = cached.source || {};
+            renderedCached = true;
             ensureSunbirdBillingCardDimensions();
             syncSunbirdLeftMenuHeight();
         }
@@ -11904,6 +11920,11 @@ async function fetchSunbirdGovernanceData(governanceCard) {
         syncSunbirdLeftMenuHeight();
     } catch (error) {
         console.error('[Governance] Error:', error);
+        if (renderedCached) {
+            ensureSunbirdBillingCardDimensions();
+            syncSunbirdLeftMenuHeight();
+            return;
+        }
         window.sunbirdGovernanceRows = [];
         governanceCard.innerHTML = `
             <div class="governance-card-header">
@@ -12165,11 +12186,13 @@ function renderSunbirdComplianceCard(supportCard, controls) {
 }
 
 async function fetchSunbirdComplianceData(supportCard) {
+    let renderedCached = false;
     try {
         const cached = getSunbirdCachedCardData(SUNBIRD_COMPLIANCE_CACHE_KEY);
         if (cached?.controls) {
             renderSunbirdComplianceCard(supportCard, cached.controls);
             window.sunbirdComplianceSource = cached.source || {};
+            renderedCached = true;
             ensureSunbirdComplianceEvidenceModal();
             ensureSunbirdBillingCardDimensions();
             syncSunbirdLeftMenuHeight();
@@ -12199,6 +12222,12 @@ async function fetchSunbirdComplianceData(supportCard) {
         ensureSunbirdComplianceEvidenceModal();
     } catch (error) {
         console.error('[Compliance] Error:', error);
+        if (renderedCached) {
+            ensureSunbirdComplianceEvidenceModal();
+            ensureSunbirdBillingCardDimensions();
+            syncSunbirdLeftMenuHeight();
+            return;
+        }
         supportCard.innerHTML = `
             <div class="secondary-card-header">
                 <i class="fas fa-certificate"></i>

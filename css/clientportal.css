@@ -2550,11 +2550,10 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
 .dashboard-card-vertical-container {
   display: grid;
-  grid-template-rows: auto 11.2px auto;
+  grid-template-rows: 1fr 11.2px 1fr;
   gap: 0;
   grid-column: 2;
   grid-row: 1 / 3;
-  align-self: start;
   min-height: 0;
 }
 
