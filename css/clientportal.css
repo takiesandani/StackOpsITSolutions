@@ -6707,12 +6707,10 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
     border-collapse: collapse;
 }
 
-/* Made header transparent and reduced padding */
+/* Keep the transparent header moving with the rows to prevent scroll overlap */
 .sunbird-governance-table th {
-    position: sticky;
-    top: 0;
+    position: static;
     background: transparent; /* Removed the background completely */
-    z-index: 2;
     padding: 8px 10px; /* Tighter padding to shrink the table size */
     font-size: 0.7rem;
     text-transform: uppercase;
