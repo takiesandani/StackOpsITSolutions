@@ -2446,9 +2446,9 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   width: 100%;
 }
 
-@media (min-width: 769px) and (max-width: 1680px) {
+@media (min-width: 769px) and (max-width: 1850px) {
   body.sunbird-client-portal .projects-view {
-    --sunbird-dashboard-scale: 0.8;
+    --sunbird-dashboard-scale: 0.9;
     width: 100%;
     zoom: 1;
     overflow-x: clip;
@@ -2479,9 +2479,21 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   }
 }
 
+@media (min-width: 769px) and (max-width: 1680px) {
+  body.sunbird-client-portal .projects-view {
+    --sunbird-dashboard-scale: 0.8;
+  }
+}
+
 @media (min-width: 769px) and (max-width: 1440px) {
   body.sunbird-client-portal .projects-view {
-    --sunbird-dashboard-scale: 0.72;
+    --sunbird-dashboard-scale: 0.68;
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1320px) {
+  body.sunbird-client-portal .projects-view {
+    --sunbird-dashboard-scale: 0.62;
   }
 }
 
