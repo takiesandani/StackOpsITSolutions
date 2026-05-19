@@ -858,6 +858,9 @@ let microsoftRolesData = [];
 let userRolesMap = {}; // Maps userId to array of role names
 let applicationsData = []; // Applications from Microsoft Graph
 const SUNBIRD_APPLICATIONS_CACHE_KEY = 'sunbirdApplicationsDashboardSnapshot';
+const SUNBIRD_GOVERNANCE_CACHE_KEY = 'sunbirdGovernanceSnapshot_v1';
+const SUNBIRD_COMPLIANCE_CACHE_KEY = 'sunbirdComplianceSnapshot_v1';
+const SUNBIRD_CARD_CACHE_TTL_MS = 5 * 60 * 1000;
 let sunbirdApplicationsPayload = null;
 let sunbirdApplicationsTableState = { search: '', type: 'all', risk: 'all', sort: 'risk' };
 let lockedSunbirdApplicationsInsightEvidenceKey = null;
@@ -11265,25 +11268,11 @@ function ensureSunbirdBillingCardDimensions() {
     const measuredBillingHeight = billingCard.offsetHeight;
     if (measuredBillingHeight <= 0) return;
 
-    const isCompactLaptop = viewportWidth <= 1680;
     const isSmallLaptop = viewportWidth <= 1440;
-    const stackGap = isCompactLaptop ? 10 : 11.2;
-    const minimumRightCardHeight = isSmallLaptop ? 220 : (isCompactLaptop ? 235 : 260);
-    const minimumStackHeight = (minimumRightCardHeight * 2) + stackGap;
     const minimumBillingHeight = isSmallLaptop ? 330 : 360;
-    const targetHeight = Math.max(minimumBillingHeight, measuredBillingHeight, minimumStackHeight);
-    const availableStackHeight = targetHeight - stackGap;
-    const governanceHeight = Math.max(minimumRightCardHeight, Math.floor(availableStackHeight / 2));
-    const supportHeight = Math.max(minimumRightCardHeight, availableStackHeight - governanceHeight);
+    const targetHeight = Math.max(minimumBillingHeight, measuredBillingHeight);
 
     billingCard.style.height = `${targetHeight}px`;
-
-    if (stackedCards && governanceCard && supportCard) {
-        stackedCards.style.height = `${targetHeight}px`;
-        stackedCards.style.gridTemplateRows = `${governanceHeight}px ${stackGap}px ${supportHeight}px`;
-        governanceCard.style.height = `${governanceHeight}px`;
-        supportCard.style.height = `${supportHeight}px`;
-    }
 }
 
 async function fetchSunbirdSecurityEventsData() {
@@ -11816,8 +11805,85 @@ function initializeGovernanceCard() {
     `;
 }
 
+function getSunbirdCachedCardData(cacheKey) {
+    try {
+        const raw = localStorage.getItem(getSunbirdScopedCardCacheKey(cacheKey));
+        if (!raw) return null;
+        const cached = JSON.parse(raw);
+        if (!cached?.savedAt || Date.now() - cached.savedAt > SUNBIRD_CARD_CACHE_TTL_MS) return null;
+        return cached.payload || null;
+    } catch (error) {
+        return null;
+    }
+}
+
+function setSunbirdCachedCardData(cacheKey, payload) {
+    try {
+        localStorage.setItem(getSunbirdScopedCardCacheKey(cacheKey), JSON.stringify({ savedAt: Date.now(), payload }));
+    } catch (error) {
+        // Live API data is still rendered if browser storage is unavailable.
+    }
+}
+
+function getSunbirdScopedCardCacheKey(cacheKey) {
+    try {
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        return `${cacheKey}:${String(user.email || user.id || user.access || 'sunbird').toLowerCase()}`;
+    } catch (error) {
+        return `${cacheKey}:sunbird`;
+    }
+}
+
+function renderSunbirdGovernanceCard(governanceCard, rows) {
+    const safeRows = Array.isArray(rows) ? rows : [];
+    window.sunbirdGovernanceRows = safeRows;
+    const rowsHtml = safeRows.length ? safeRows.map((row, index) => `
+        <tr>
+            <td>${escapeIdentityText(row.area || 'Governance')}</td>
+            <td>
+                <div class="sunbird-governance-activity-cell">${escapeIdentityText(row.activity || 'Review')}</div>
+                <button class="sunbird-risk-view-btn sunbird-governance-evidence-btn" onclick="window.openSunbirdGovernanceEvidence(${index})">
+                    View Evidence
+                </button>
+            </td>
+            <td>${escapeIdentityText(getSunbirdGovernanceDisplaySource(row))}</td>
+            <td>${escapeIdentityText(row.frequency || 'As required')}</td>
+        </tr>
+    `).join('') : '<tr><td colspan="4" class="sunbird-empty-row">No governance evidence available</td></tr>';
+
+    governanceCard.innerHTML = `
+        <div class="governance-card-header">
+            <i class="fas fa-shield-alt"></i>
+            <h3>Governance</h3>
+        </div>
+        <div class="governance-content sunbird-governance-content">
+            <div class="sunbird-governance-table-wrap">
+                <table class="sunbird-incidents-table sunbird-governance-table">
+                    <thead>
+                        <tr>
+                            <th>Governance Area</th>
+                            <th>Activity</th>
+                            <th>Source</th>
+                            <th>Frequency</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rowsHtml}</tbody>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
 async function fetchSunbirdGovernanceData(governanceCard) {
     try {
+        const cached = getSunbirdCachedCardData(SUNBIRD_GOVERNANCE_CACHE_KEY);
+        if (cached?.rows) {
+            renderSunbirdGovernanceCard(governanceCard, cached.rows);
+            window.sunbirdGovernanceSource = cached.source || {};
+            ensureSunbirdBillingCardDimensions();
+            syncSunbirdLeftMenuHeight();
+        }
+
         const token = localStorage.getItem('authToken');
         const response = await fetch('/api/sunbird/governance', {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -11832,42 +11898,8 @@ async function fetchSunbirdGovernanceData(governanceCard) {
             fetchedAt: data.fetchedAt,
             warning: data.warning
         };
-
-        const rowsHtml = rows.length ? rows.map((row, index) => `
-            <tr>
-                <td>${escapeIdentityText(row.area || 'Governance')}</td>
-                <td>
-                    <div class="sunbird-governance-activity-cell">${escapeIdentityText(row.activity || 'Review')}</div>
-                    <button class="sunbird-risk-view-btn sunbird-governance-evidence-btn" onclick="window.openSunbirdGovernanceEvidence(${index})">
-                        View Evidence
-                    </button>
-                </td>
-                <td>${escapeIdentityText(getSunbirdGovernanceDisplaySource(row))}</td>
-                <td>${escapeIdentityText(row.frequency || 'As required')}</td>
-            </tr>
-        `).join('') : '<tr><td colspan="4" class="sunbird-empty-row">No governance evidence available</td></tr>';
-
-        governanceCard.innerHTML = `
-            <div class="governance-card-header">
-                <i class="fas fa-shield-alt"></i>
-                <h3>Governance</h3>
-            </div>
-            <div class="governance-content sunbird-governance-content">
-                <div class="sunbird-governance-table-wrap">
-                    <table class="sunbird-incidents-table sunbird-governance-table">
-                        <thead>
-                            <tr>
-                                <th>Governance Area</th>
-                                <th>Activity</th>
-                                <th>Source</th>
-                                <th>Frequency</th>
-                            </tr>
-                        </thead>
-                        <tbody>${rowsHtml}</tbody>
-                    </table>
-                </div>
-            </div>
-        `;
+        setSunbirdCachedCardData(SUNBIRD_GOVERNANCE_CACHE_KEY, { rows, source: window.sunbirdGovernanceSource });
+        renderSunbirdGovernanceCard(governanceCard, rows);
         ensureSunbirdBillingCardDimensions();
         syncSunbirdLeftMenuHeight();
     } catch (error) {
@@ -12087,8 +12119,62 @@ function initializeSupportCard() {
     fetchSunbirdComplianceData(supportCard);
 }
 
+function renderSunbirdComplianceCard(supportCard, controls) {
+    const safeControls = Array.isArray(controls) ? controls : [];
+    window.sunbirdComplianceControls = safeControls;
+    const tableRows = safeControls.map((control, index) => {
+        const insight = String(control.insight || '');
+        const isDanger = insight.includes('🔴');
+        const isWarning = insight.includes('🟡');
+        const insightClass = isDanger ? 'color: #ef4444;' : (isWarning ? 'color: #f59e0b;' : 'color: #10b981;');
+
+        return `
+            <tr>
+                <td>
+                    <div style="font-weight: 500; margin-bottom: 4px;">${escapeIdentityText(control.name || 'Control')}</div>
+                    <button class="sunbird-risk-view-btn" onclick="window.openSunbirdComplianceEvidence(${index})">
+                        View Evidence
+                    </button>
+                </td>
+                <td style="color: #cbd5e1;">${escapeIdentityText(control.area || 'Identity')}</td>
+                <td style="font-weight: 500; ${insightClass}">${escapeIdentityText(insight || 'No insight available')}</td>
+            </tr>
+        `;
+    }).join('');
+
+    supportCard.innerHTML = `
+        <div class="secondary-card-header">
+            <i class="fas fa-certificate"></i>
+            <h3>Compliance Validation</h3>
+        </div>
+        <div class="governance-content sunbird-governance-content">
+            <div class="sunbird-governance-table-wrap">
+                <table class="sunbird-incidents-table sunbird-governance-table">
+                    <thead>
+                        <tr>
+                            <th>Control Name</th>
+                            <th>Area</th>
+                            <th>Insight</th>
+                        </tr>
+                    </thead>
+                    <tbody>${tableRows || '<tr><td colspan="3" class="sunbird-empty-row">No compliance controls available</td></tr>'}</tbody>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
 async function fetchSunbirdComplianceData(supportCard) {
     try {
+        const cached = getSunbirdCachedCardData(SUNBIRD_COMPLIANCE_CACHE_KEY);
+        if (cached?.controls) {
+            renderSunbirdComplianceCard(supportCard, cached.controls);
+            window.sunbirdComplianceSource = cached.source || {};
+            ensureSunbirdComplianceEvidenceModal();
+            ensureSunbirdBillingCardDimensions();
+            syncSunbirdLeftMenuHeight();
+        }
+
         const token = localStorage.getItem('authToken');
         const response = await fetch('/api/sunbird/compliance-controls', {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -12104,47 +12190,11 @@ async function fetchSunbirdComplianceData(supportCard) {
             warning: data.warning
         };
 
-        const tableRows = window.sunbirdComplianceControls.map((control, index) => {
-            const isDanger = control.insight.includes('🔴');
-            const isWarning = control.insight.includes('🟡');
-            const insightClass = isDanger ? 'color: #ef4444;' : (isWarning ? 'color: #f59e0b;' : 'color: #10b981;');
-
-            return `
-                <tr>
-                    <td>
-                        <div style="font-weight: 500; margin-bottom: 4px;">${control.name}</div>
-                        <button class="sunbird-risk-view-btn" onclick="window.openSunbirdComplianceEvidence(${index})">
-                            View Evidence
-                        </button>
-                    </td>
-                    <td style="color: #cbd5e1;">${control.area}</td>
-                    <td style="font-weight: 500; ${insightClass}">${control.insight}</td>
-                </tr>
-            `;
-        }).join('');
-
-        supportCard.innerHTML = `
-            <div class="secondary-card-header">
-                <i class="fas fa-certificate"></i>
-                <h3>Compliance Validation</h3>
-            </div>
-            <div class="governance-content sunbird-governance-content">
-                <div class="sunbird-governance-table-wrap">
-                    <table class="sunbird-incidents-table sunbird-governance-table">
-                        <thead>
-                            <tr>
-                                <th>Control Name</th>
-                                <th>Area</th>
-                                <th>Insight</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${tableRows}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        `;
+        setSunbirdCachedCardData(SUNBIRD_COMPLIANCE_CACHE_KEY, {
+            controls: window.sunbirdComplianceControls,
+            source: window.sunbirdComplianceSource
+        });
+        renderSunbirdComplianceCard(supportCard, window.sunbirdComplianceControls);
 
         ensureSunbirdComplianceEvidenceModal();
     } catch (error) {
