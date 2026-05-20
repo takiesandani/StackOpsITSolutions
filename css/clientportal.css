@@ -417,10 +417,10 @@
   border-radius: 50%;
   background: conic-gradient(
     from 0deg,
-    #0267ff,
+    #fc7426,
     transparent 30%,
     transparent 60%,
-    #0267ff
+    #fc7426
   );
   animation: spin 3s linear infinite;
   z-index: 0;
