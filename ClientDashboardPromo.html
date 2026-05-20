@@ -1385,7 +1385,7 @@
             <!-- Bottom Footer -->
             <div class="footer-bottom">
                 <p>
-                    &copy; 2026 StackOps IT Solutions. All rights reserved.
+                    &copy; <span class="copyright-year">2026</span> StackOps IT Solutions. All rights reserved.
                 </p>
 
                 <div class="footer-bottom-links">
@@ -1494,6 +1494,10 @@
         // Apply observer to all animated elements
         document.querySelectorAll('.feature-card, .stat-box, .benefit-item, .project-item').forEach(el => {
             observer.observe(el);
+        });
+
+        document.querySelectorAll('#copyright-year, .copyright-year').forEach(yearSpan => {
+            yearSpan.textContent = new Date().getFullYear();
         });
     </script>
 </body>

@@ -559,8 +559,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Update copyright year automatically
 document.addEventListener('DOMContentLoaded', function() {
-    const yearSpan = document.querySelector('#copyright-year');
-    if (yearSpan) {
+    document.querySelectorAll('#copyright-year, .copyright-year').forEach(yearSpan => {
         yearSpan.textContent = new Date().getFullYear();
-    }
+    });
 });

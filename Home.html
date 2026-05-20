@@ -613,5 +613,10 @@
 
   <script src="js/courosel.js"></script>
   <script src="js/cube-slideshow.js"></script>
+  <script>
+    document.querySelectorAll('#copyright-year, .copyright-year').forEach(yearSpan => {
+      yearSpan.textContent = new Date().getFullYear();
+    });
+  </script>
 </body>
 </html>
