@@ -8944,7 +8944,8 @@ function handleLogout() {
     }
 
     // Redirect to the public client dashboard promo page so protected views aren't visible
-    window.location.href = 'ClientDashboardPromo.html';
+    window.location.href = 'ClientDashboardHome.html
+';
 }
 
 function setupSessionManagement() {
