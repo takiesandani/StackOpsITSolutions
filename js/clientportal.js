@@ -602,13 +602,44 @@ function updateSunbirdLogoVisibility() {
 }
 
 // Check if session is still valid
+function decodeAuthTokenPayload(token) {
+    try {
+        const payload = String(token || '').split('.')[1];
+        if (!payload) return null;
+        const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = normalized.padEnd(normalized.length + ((4 - normalized.length % 4) % 4), '=');
+        return JSON.parse(atob(padded));
+    } catch (error) {
+        return null;
+    }
+}
+
+function isAuthTokenExpired(token, skewMs = 30000) {
+    const payload = decodeAuthTokenPayload(token);
+    if (!payload?.exp) return !token;
+    return (payload.exp * 1000) <= (Date.now() + skewMs);
+}
+
+function clearClientPortalAuthState() {
+    ['userEmail', 'userFirstName', 'userLastName', 'isLoggedIn', 'loginTime'].forEach(key => {
+        sessionStorage.removeItem(key);
+    });
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('user');
+}
+
 function isSessionValid() {
     const isLoggedIn = sessionStorage.getItem('isLoggedIn');
     const userEmail = sessionStorage.getItem('userEmail');
     const token = localStorage.getItem('authToken');
-    const localUser = localStorage.getItem('user');
-    
-    return isLoggedIn === 'true' && userEmail && token;
+
+    if (isLoggedIn !== 'true' || !userEmail || !token) return false;
+    if (isAuthTokenExpired(token)) {
+        clearClientPortalAuthState();
+        return false;
+    }
+
+    return true;
 }
 
 // Get filtered projects based on user access level
@@ -860,6 +891,7 @@ let applicationsData = []; // Applications from Microsoft Graph
 const SUNBIRD_APPLICATIONS_CACHE_KEY = 'sunbirdApplicationsDashboardSnapshot';
 const SUNBIRD_GOVERNANCE_CACHE_KEY = 'sunbirdGovernanceSnapshot_v1';
 const SUNBIRD_COMPLIANCE_CACHE_KEY = 'sunbirdComplianceSnapshot_v1';
+const SUNBIRD_OPERATIONS_CACHE_KEY = 'sunbirdOperationsSnapshot_v1';
 const SUNBIRD_CARD_CACHE_TTL_MS = 5 * 60 * 1000;
 let sunbirdApplicationsPayload = null;
 let sunbirdApplicationsTableState = { search: '', type: 'all', risk: 'all', sort: 'risk' };
@@ -978,31 +1010,33 @@ function isSunbirdBillingViewActive(view) {
 async function bootstrapDashboardDataAfterLogin() {
     // Rebuild visible cards for the authenticated user immediately.
     initializeProjectsList();
+    initializeGovernanceCard();
+    initializeSupportCard();
 
-    // Fire all key dashboard data fetches in parallel.
-    await Promise.allSettled([
-        fetchDuoStats(),
-        fetchApplicationsData(),
-        fetchDevicesCardData(),
-        fetchEmailCardData(),
-        fetchBackupCardData(),
-        initializeBillingCard()
-    ]);
-
-    // Retry identity fetch once if Sunbird data is still empty.
-    if (isSunbirdUser() && microsoftUsersData.length === 0) {
-        setTimeout(() => {
-            fetchIdentityAccessData();
-        }, 900);
-    }
-
-    // Ensure Sunbird-specific menu and billing panel are attached immediately after login.
+    // Sunbird structure should be visible before slower API calls finish.
     if (isSunbirdUser()) {
         initializeSunbirdLeftMenu();
         if (typeof window.switchBillingMenu === 'function') {
             window.switchBillingMenu(sunbirdBillingMenuSelection || 'security');
         }
     }
+
+    // Fire all key dashboard data fetches in parallel.
+    Promise.allSettled([
+        fetchDuoStats(),
+        fetchApplicationsData(),
+        fetchDevicesCardData(),
+        fetchEmailCardData(),
+        fetchBackupCardData(),
+        initializeBillingCard()
+    ]).then(() => {
+        // Retry identity fetch once if Sunbird data is still empty.
+        if (isSunbirdUser() && microsoftUsersData.length === 0) {
+            setTimeout(() => {
+                fetchIdentityAccessData();
+            }, 900);
+        }
+    });
 }
 
 // Setup project tabs event listeners
@@ -8890,8 +8924,6 @@ function handleMfaVerification() {
                 
                 // Reload dashboard data now that token/session are set.
                 bootstrapDashboardDataAfterLogin();
-                initializeGovernanceCard();
-                initializeSupportCard();
                 
                 // Initialize chatbot after login
                 if (typeof window.initChatbot === 'function') {
@@ -8919,14 +8951,7 @@ function handleLogout() {
         return;
     }
 
-    // Clear any local session state used by the client portal
-    sessionStorage.removeItem('userEmail');
-    sessionStorage.removeItem('isLoggedIn');
-    sessionStorage.removeItem('loginTime');
-
-    // Clear JWT auth token issued by the backend
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('user');
+    clearClientPortalAuthState();
 
     // Reset UI (for safety if we stay on the page)
     const dashboardSection = document.getElementById('dashboard-section');
@@ -8948,13 +8973,16 @@ function handleLogout() {
 }
 
 function setupSessionManagement() {
-    const isLoggedIn = sessionStorage.getItem('isLoggedIn');
+    if (!isSessionValid()) {
+        updateSunbirdLogoVisibility();
+        return;
+    }
+
     const userEmail = sessionStorage.getItem('userEmail');
     const userFirstName = sessionStorage.getItem('userFirstName');
     const userLastName = sessionStorage.getItem('userLastName');
-    const token = localStorage.getItem('authToken');
     
-    if (isLoggedIn === 'true' && userEmail && token) {
+    if (userEmail) {
         document.getElementById('login-section').classList.remove('active');
         document.getElementById('dashboard-section').classList.add('active');
         
@@ -10964,6 +10992,28 @@ window.openSunbirdFullDashboard = function(target) {
 // for the billing dashboard card
 
 /* BILLING & GOVERNANCE CARDS */
+function renderBillingStatusCard(message = 'Refreshing billing information...') {
+    return `
+        <div class="billing-card-header">
+            <i class="fas fa-credit-card"></i>
+            <h3>Billing Statement</h3>
+        </div>
+        <div class="governance-content">
+            <div class="sunbird-empty-row">${escapeIdentityText(message)}</div>
+        </div>
+    `;
+}
+
+function getBillingCacheKey() {
+    try {
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        const scope = String(user.email || sessionStorage.getItem('userEmail') || user.id || 'anonymous').toLowerCase();
+        return `${BILLING_CACHE_KEY}:${scope}`;
+    } catch (error) {
+        return `${BILLING_CACHE_KEY}:anonymous`;
+    }
+}
+
 async function initializeBillingCard() {
     const billingCard = document.getElementById('billing-card');
     if (!billingCard) return;
@@ -10976,13 +11026,14 @@ async function initializeBillingCard() {
     }
     
     const token = localStorage.getItem('authToken');
+    const localUser = localStorage.getItem('user');
     
     if (!token) {
         const isSessionLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true' || !!localUser;
         if (isSessionLoggedIn) {
             if (isSunbirdUser() && !isSunbirdBillingViewActive('billing') && billingCard.dataset?.sunbirdView) return;
             billingCard.innerHTML = isSunbirdUser()
-                ? renderSunbirdPremiumLoader('Loading billing information')
+                ? renderBillingStatusCard('Refreshing billing information...')
                 : '<p style="color: #bdbdbd; text-align: left; padding: 20px;">Loading billing information...</p>';
             cachedSunbirdBillingHtml = billingCard.innerHTML;
             setTimeout(() => {
@@ -10994,7 +11045,7 @@ async function initializeBillingCard() {
         if (billingAuthRetryCount < 6) {
             billingAuthRetryCount += 1;
             billingCard.innerHTML = isSunbirdUser()
-                ? renderSunbirdPremiumLoader('Preparing billing view')
+                ? renderBillingStatusCard('Preparing billing view...')
                 : '<p style="color: #bdbdbd; text-align: left; padding: 20px;">Preparing your billing view...</p>';
             setTimeout(() => initializeBillingCard(), 350);
             return;
@@ -11009,15 +11060,20 @@ async function initializeBillingCard() {
 
     // Stale-while-revalidate render for instant paint.
     try {
-        const rawCache = localStorage.getItem(BILLING_CACHE_KEY);
+        const rawCache = localStorage.getItem(getBillingCacheKey());
         if (rawCache) {
             const parsed = JSON.parse(rawCache);
-            if (parsed?.html && parsed?.cachedAt && (Date.now() - parsed.cachedAt) < BILLING_CACHE_TTL_MS) {
+            if (parsed?.html) {
                 billingCard.innerHTML = parsed.html;
                 cachedSunbirdBillingHtml = parsed.html;
             }
         }
     } catch (_) {}
+
+    if (!billingCard.innerHTML.trim()) {
+        billingCard.innerHTML = renderBillingStatusCard('Refreshing billing information...');
+        cachedSunbirdBillingHtml = billingCard.innerHTML;
+    }
     
     try {
         const response = await fetch('/api/client/latest-invoice', {
@@ -11029,13 +11085,11 @@ async function initializeBillingCard() {
         
         if (response.status === 401 || response.status === 403) {
             // Token expired or invalid
+            clearClientPortalAuthState();
             if (isSunbirdUser() && !isSunbirdBillingViewActive('billing')) return;
             billingCard.innerHTML = '<p style="color: #bdbdbd; text-align: center; padding: 20px;">Session expired. Please log in again.</p>';
             cachedSunbirdBillingHtml = billingCard.innerHTML;
-            localStorage.setItem(BILLING_CACHE_KEY, JSON.stringify({
-                html: billingCard.innerHTML,
-                cachedAt: Date.now()
-            }));
+            localStorage.removeItem(getBillingCacheKey());
             return;
         }
         
@@ -11128,7 +11182,7 @@ async function initializeBillingCard() {
             </div>
         `;
         cachedSunbirdBillingHtml = billingCard.innerHTML;
-        localStorage.setItem(BILLING_CACHE_KEY, JSON.stringify({
+        localStorage.setItem(getBillingCacheKey(), JSON.stringify({
             html: billingCard.innerHTML,
             cachedAt: Date.now()
         }));
@@ -11356,7 +11410,55 @@ async function renderSunbirdSecurityAlertsView(forceRefresh = false) {
 
     try {
         if (!isSunbirdBillingViewActive('security')) return;
-        billingCard.innerHTML = renderSunbirdPremiumLoader('Loading security alerts');
+        if (!cachedSunbirdSecurityData) {
+            billingCard.innerHTML = `
+                <div class="sunbird-panel-view">
+                    <div class="billing-card-header">
+                        <i class="fas fa-shield-alt"></i>
+                        <h3>Security Alerts</h3>
+                    </div>
+                    <div class="sunbird-mini-stats">
+                        <div class="sunbird-mini-stat">
+                            <span>High Severity Alerts</span>
+                            <strong>0</strong>
+                        </div>
+                        <div class="sunbird-mini-stat">
+                            <span>Security Incidents</span>
+                            <strong>0</strong>
+                        </div>
+                    </div>
+                    <div class="sunbird-section-container">
+                        <h4 class="sunbird-section-heading">
+                            <i class="fas fa-exclamation-triangle"></i> Security Incidents
+                        </h4>
+                        <div class="sunbird-incidents-table-wrap">
+                            <table class="sunbird-incidents-table">
+                                <thead>
+                                    <tr>
+                                        <th>Incident Name</th>
+                                        <th>Severity</th>
+                                        <th>Status</th>
+                                        <th>Assigned To</th>
+                                    </tr>
+                                </thead>
+                                <tbody><tr><td colspan="4" class="sunbird-empty-row">Refreshing latest security evidence...</td></tr></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="sunbird-section-container">
+                        <h4 class="sunbird-section-heading">
+                            <i class="fas fa-stream"></i> Real-Time Activity Feed
+                        </h4>
+                        <div class="sunbird-activity-feed">
+                            <div class="sunbird-activity-empty">Refreshing latest activity</div>
+                        </div>
+                    </div>
+                    ${renderSunbirdFullDashboardButton('security')}
+                </div>
+            `;
+            ensureSunbirdBillingCardDimensions();
+            syncSunbirdLeftMenuHeight();
+        }
 
         if (forceRefresh || !cachedSunbirdSecurityData) {
             cachedSunbirdSecurityData = await fetchSunbirdSecurityEventsData();
@@ -11456,6 +11558,11 @@ async function renderSunbirdSecurityAlertsView(forceRefresh = false) {
     } catch (error) {
         console.error('[Sunbird Security Alerts] Error:', error);
         if (!isSunbirdBillingViewActive('security')) return;
+        if (billingCard.querySelector('.sunbird-panel-view')) {
+            ensureSunbirdBillingCardDimensions();
+            syncSunbirdLeftMenuHeight();
+            return;
+        }
         billingCard.innerHTML = `
             <div class="sunbird-panel-view">
                 <div class="billing-card-header">
@@ -11797,8 +11904,16 @@ function initializeGovernanceCard() {
     const client = isSunbirdUser() ? 'sunbird' : 'default';
 
     if (client === 'sunbird') {
-        governanceCard.innerHTML = renderSunbirdPremiumLoader('Loading governance evidence');
         ensureSunbirdGovernanceEvidenceModal();
+        const cached = getSunbirdCachedCardData(SUNBIRD_GOVERNANCE_CACHE_KEY, { allowStale: true });
+        if (cached?.rows) {
+            window.sunbirdGovernanceSource = cached.source || {};
+            renderSunbirdGovernanceCard(governanceCard, cached.rows);
+        } else {
+            renderSunbirdGovernanceCard(governanceCard, getSunbirdGovernanceInstantRows());
+        }
+        ensureSunbirdBillingCardDimensions();
+        syncSunbirdLeftMenuHeight();
         fetchSunbirdGovernanceData(governanceCard);
         return;
     }
@@ -11856,6 +11971,44 @@ function getSunbirdScopedCardCacheKey(cacheKey) {
     } catch (error) {
         return `${cacheKey}:sunbird`;
     }
+}
+
+function getSunbirdGovernanceInstantRows() {
+    return [
+        {
+            area: 'Access review',
+            activity: 'Review users',
+            source: 'Framework',
+            frequency: 'Quarterly',
+            evidence: 'Latest governance evidence is refreshing in the background.',
+            status: 'Pending'
+        },
+        {
+            area: 'Admin review',
+            activity: 'Review roles',
+            source: 'Framework',
+            frequency: 'Quarterly',
+            evidence: 'Latest privileged role evidence is refreshing in the background.',
+            status: 'Pending'
+        }
+    ];
+}
+
+function getSunbirdComplianceInstantControls() {
+    return [
+        {
+            name: 'MFA on all accounts',
+            area: 'Identity',
+            insight: 'Live evidence refreshing',
+            evidenceData: { status: 'Latest MFA evidence is refreshing in the background.' }
+        },
+        {
+            name: 'Admin accounts limited',
+            area: 'Identity',
+            insight: 'Live evidence refreshing',
+            evidenceData: { status: 'Latest privileged account evidence is refreshing in the background.' }
+        }
+    ];
 }
 
 function renderSunbirdGovernanceCard(governanceCard, rows) {
@@ -11930,7 +12083,7 @@ async function fetchSunbirdGovernanceData(governanceCard) {
         syncSunbirdLeftMenuHeight();
     } catch (error) {
         console.error('[Governance] Error:', error);
-        if (renderedCached) {
+        if (renderedCached || governanceCard.querySelector('.sunbird-governance-table')) {
             ensureSunbirdBillingCardDimensions();
             syncSunbirdLeftMenuHeight();
             return;
@@ -12144,7 +12297,16 @@ function initializeSupportCard() {
     }
 
     // 🚨 SUNBIRD ONLY LOGIC: Live Compliance Validation
-    supportCard.innerHTML = renderSunbirdPremiumLoader('Validating compliance controls');
+    const cached = getSunbirdCachedCardData(SUNBIRD_COMPLIANCE_CACHE_KEY, { allowStale: true });
+    if (cached?.controls) {
+        window.sunbirdComplianceSource = cached.source || {};
+        renderSunbirdComplianceCard(supportCard, cached.controls);
+    } else {
+        renderSunbirdComplianceCard(supportCard, getSunbirdComplianceInstantControls());
+    }
+    ensureSunbirdComplianceEvidenceModal();
+    ensureSunbirdBillingCardDimensions();
+    syncSunbirdLeftMenuHeight();
 
     // Fetch dynamic API data
     fetchSunbirdComplianceData(supportCard);
@@ -12232,7 +12394,7 @@ async function fetchSunbirdComplianceData(supportCard) {
         ensureSunbirdComplianceEvidenceModal();
     } catch (error) {
         console.error('[Compliance] Error:', error);
-        if (renderedCached) {
+        if (renderedCached || supportCard.querySelector('.sunbird-governance-table')) {
             ensureSunbirdComplianceEvidenceModal();
             ensureSunbirdBillingCardDimensions();
             syncSunbirdLeftMenuHeight();
@@ -12576,13 +12738,82 @@ document.addEventListener('DOMContentLoaded', () => {
 // ============================================================================
 // SUNBIRD ONLY: OPERATIONS REMEDIATION ENGINE
 // ============================================================================
+function renderSunbirdOperationsCard(billingCard, tasks, options = {}) {
+    const safeTasks = Array.isArray(tasks) ? tasks : [];
+    window.sunbirdOperationsTasks = safeTasks;
+
+    const rowsHtml = safeTasks.length
+        ? safeTasks.map((task, index) => {
+            const isHigh = task.priority === 'High';
+            const isMed = task.priority === 'Medium';
+            const badgeClass = isHigh ? 'op-priority-high' : (isMed ? 'op-priority-medium' : 'op-priority-low');
+            const dotColor = isHigh ? '#f87171' : (isMed ? '#fbbf24' : '#34d399');
+            const insightClass = isHigh ? 'op-insight-danger' : (isMed ? 'op-insight-warning' : 'op-insight-success');
+
+            return `
+                <tr>
+                    <td style="font-weight: 500; color: #e2e8f0;">${escapeIdentityText(task.task || 'Review task')}</td>
+                    <td style="color: #94a3b8;">${escapeIdentityText(task.area || 'Operations')}</td>
+                    <td>
+                        <span class="op-priority-badge ${badgeClass}">
+                            <span style="width: 6px; height: 6px; border-radius: 50%; background: ${dotColor};"></span>
+                            ${escapeIdentityText(task.priority || 'Low')}
+                        </span>
+                    </td>
+                    <td class="op-insight-text ${insightClass}">${escapeIdentityText(task.insight || 'No insight available')}</td>
+                    <td>
+                        <button class="sunbird-risk-view-btn" onclick="window.openSunbirdOperationsModal(${index})">
+                            View Evidence
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('')
+        : `<tr><td colspan="5" class="sunbird-empty-row">${escapeIdentityText(options.emptyMessage || 'No active tasks required. System is healthy.')}</td></tr>`;
+
+    billingCard.innerHTML = `
+        <div class="sunbird-panel-view">
+            <div class="billing-card-header">
+                <i class="fas fa-tasks"></i>
+                <h3>Operations Action Queue</h3>
+            </div>
+            <div class="sunbird-section-title" style="margin-bottom: 10px;">Live Remediation Required</div>
+            
+            <div class="sunbird-incidents-table-wrap" style="max-height: 400px;">
+                <table class="sunbird-incidents-table">
+                    <thead>
+                        <tr>
+                            <th>Task</th>
+                            <th>Area</th>
+                            <th>Priority</th>
+                            <th>Insight</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="operations-tbody">
+                        ${rowsHtml}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
 async function renderSunbirdOperationsView() {
     const billingCard = document.getElementById('billing-card');
     if (!billingCard) return;
 
-    billingCard.innerHTML = renderSunbirdPremiumLoader('Loading operations action queue');
-
     ensureSunbirdOperationsModal();
+
+    const cached = getSunbirdCachedCardData(SUNBIRD_OPERATIONS_CACHE_KEY, { allowStale: true });
+    if (cached?.tasks) {
+        window.sunbirdOperationsSource = cached.source || {};
+        renderSunbirdOperationsCard(billingCard, cached.tasks);
+    } else {
+        window.sunbirdOperationsSource = {};
+        renderSunbirdOperationsCard(billingCard, [], { emptyMessage: 'Refreshing latest operations queue...' });
+    }
+
     ensureSunbirdBillingCardDimensions();
     syncSunbirdLeftMenuHeight();
 
@@ -12602,68 +12833,22 @@ async function renderSunbirdOperationsView() {
             fetchedAt: data.fetchedAt,
             warning: data.warning
         };
-        
-        let rowsHtml = '';
-        if (window.sunbirdOperationsTasks.length === 0) {
-            rowsHtml = `<tr><td colspan="5" class="sunbird-empty-row">No active tasks required. System is healthy.</td></tr>`;
-        } else {
-            rowsHtml = window.sunbirdOperationsTasks.map((task, index) => {
-                const isHigh = task.priority === 'High';
-                const isMed = task.priority === 'Medium';
-                const badgeClass = isHigh ? 'op-priority-high' : (isMed ? 'op-priority-medium' : 'op-priority-low');
-                const dotColor = isHigh ? '#f87171' : (isMed ? '#fbbf24' : '#34d399');
-                const insightClass = isHigh ? 'op-insight-danger' : (isMed ? 'op-insight-warning' : 'op-insight-success');
 
-                return `
-                    <tr>
-                        <td style="font-weight: 500; color: #e2e8f0;">${task.task}</td>
-                        <td style="color: #94a3b8;">${task.area}</td>
-                        <td>
-                            <span class="op-priority-badge ${badgeClass}">
-                                <span style="width: 6px; height: 6px; border-radius: 50%; background: ${dotColor};"></span>
-                                ${task.priority}
-                            </span>
-                        </td>
-                        <td class="op-insight-text ${insightClass}">${task.insight}</td>
-                        <td>
-                            <button class="sunbird-risk-view-btn" onclick="window.openSunbirdOperationsModal(${index})">
-                                View Evidence
-                            </button>
-                        </td>
-                    </tr>
-                `;
-            }).join('');
-        }
+        setSunbirdCachedCardData(SUNBIRD_OPERATIONS_CACHE_KEY, {
+            tasks: window.sunbirdOperationsTasks,
+            source: window.sunbirdOperationsSource
+        });
 
-        billingCard.innerHTML = `
-            <div class="sunbird-panel-view">
-                <div class="billing-card-header">
-                    <i class="fas fa-tasks"></i>
-                    <h3>Operations Action Queue</h3>
-                </div>
-                <div class="sunbird-section-title" style="margin-bottom: 10px;">Live Remediation Required</div>
-                
-                <div class="sunbird-incidents-table-wrap" style="max-height: 400px;">
-                    <table class="sunbird-incidents-table">
-                        <thead>
-                            <tr>
-                                <th>Task</th>
-                                <th>Area</th>
-                                <th>Priority</th>
-                                <th>Insight</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody id="operations-tbody">
-                            ${rowsHtml}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        `;
+        if (!isSunbirdBillingViewActive('operations')) return;
+        renderSunbirdOperationsCard(billingCard, window.sunbirdOperationsTasks);
 
     } catch (error) {
         console.error('[Operations] Error:', error);
+        if (billingCard.querySelector('.sunbird-panel-view')) {
+            ensureSunbirdBillingCardDimensions();
+            syncSunbirdLeftMenuHeight();
+            return;
+        }
         billingCard.innerHTML = `
             <div class="sunbird-panel-view">
                 <div class="billing-card-header">
