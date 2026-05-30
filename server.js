@@ -2623,12 +2623,126 @@ app.post('/api/auth/verify-mfa', async (req, res) => {
     }
 });
 
-// NEW: Allow unauthenticated access to Client Portal (signin form is built in)
+// Allow unauthenticated access to Client Portal (signin form is built in)
 app.get('/ClientPortal.html', (req, res) => {
     res.sendFile(path.join(__dirname, 'ClientPortal.html'));
 });
 
-// CRITICAL FIX: Wrapped the entire transaction logic for dual-database support (adapted for MySQL-only, from original)
+//=============================================================================================================================================================//
+//                                     SYNTHETIC MONITORING LOGIN ENDPOINT (for New Relic Synthetics) - added from original                                    //
+//=============================================================================================================================================================//
+app.post('/api/auth/synthetic-login', async (req, res) => {
+  try {
+    const providedKey = req.headers['x-synthetic-key'];
+    const expectedKey = await getSecret('SYNTHETIC_MONITOR_KEY');
+
+    if (!providedKey || providedKey !== expectedKey) {
+      return res.status(403).json({
+        success: false,
+        message: 'Forbidden'
+      });
+    }
+
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and password are required'
+      });
+    }
+
+    const user = await getUserByEmail(email);
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid credentials'
+      });
+    }
+
+    const userRole = user.role ? user.role.toLowerCase() : '';
+
+    if (userRole !== 'client' && userRole !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied'
+      });
+    }
+
+    let validPassword = false;
+
+    try {
+      if (user.password && user.password.startsWith('$2')) {
+        validPassword = await bcrypt.compare(password, user.password);
+      } else if (user.password) {
+        const sha1Hash = crypto
+          .createHash('sha1')
+          .update(password)
+          .digest('hex')
+          .slice(0, -2);
+
+        validPassword = sha1Hash === user.password;
+      }
+    } catch (compareErr) {
+      console.error('[Synthetic Login] Password compare error:', compareErr);
+      validPassword = false;
+    }
+
+    if (!validPassword) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid credentials'
+      });
+    }
+
+    const accessContext = await getUserAccessContextByEmail(user.email);
+
+    const jwtPayload = {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      companyId: accessContext?.companyId || user.companyId || null,
+      access: accessContext?.accessType || 'standard',
+      tenantId: accessContext?.tenantId || null
+    };
+
+    const accessToken = jwt.sign(
+      jwtPayload,
+      ACCESS_TOKEN_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    accessContextCache.set(String(user.email || '').toLowerCase(), {
+      accessType: jwtPayload.access,
+      tenantId: jwtPayload.tenantId,
+      companyId: jwtPayload.companyId
+    });
+
+    return res.json({
+      success: true,
+      accessToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName || user.firstname || user.FirstName || '',
+        lastName: user.lastName || user.lastname || user.LastName || '',
+        role: user.role,
+        access: jwtPayload.access,
+        tenantId: jwtPayload.tenantId,
+        companyId: jwtPayload.companyId
+      }
+    });
+  } catch (error) {
+    console.error('[Synthetic Login] Error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Synthetic login failed'
+    });
+  }
+});
+
+// Wrapped the entire transaction logic for dual-database support (adapted for MySQL-only, from original)
 app.post('/api/admin/register-client', async (req, res) => {
     const {
         firstName, lastName, email, contact, password,
