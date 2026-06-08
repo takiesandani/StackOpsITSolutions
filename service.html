@@ -21,6 +21,37 @@
         .background {
             display: none;
         }
+
+        @media (min-width: 1025px) and (max-width: 1600px) {
+            .site-header {
+                padding: 0.78rem 2.6vw;
+                border-radius: 18px;
+                margin: clamp(6px, 0.7vw, 10px) clamp(8px, 1vw, 14px) 0;
+                width: calc(100% - clamp(16px, 2vw, 28px));
+            }
+
+            .site-header .logo img {
+                width: 118px;
+            }
+
+            .nav-links {
+                gap: clamp(1.2rem, 2.2vw, 2.4rem);
+            }
+
+            .nav-links a {
+                font-size: 0.78rem;
+                padding: 7px 13px;
+            }
+
+            .header-actions {
+                gap: 9px;
+            }
+
+            .glass-icon-btn {
+                width: 42px;
+                height: 42px;
+            }
+        }
     </style>
 </head>
 
@@ -36,12 +67,11 @@
 
         <!-- Center Navigation -->
         <ul class="nav-links center-nav" id="nav-links">
-            <li><a href="about.html" class="active">About</a></li>
-            <li><a href="service.html">Solutions</a></li>
+            <li><a href="about.html">About</a></li>
+            <li><a href="service.html" class="active">Solutions</a></li>
             <li><a href="approach.html">Approach</a></li>
             <li><a href="consultation.html">Consultation</a></li>
-            <li><a href="ClientDashboardHome.html
-">Client Portal</a></li>
+            <li><a href="ClientDashboardHome.html">Client Portal</a></li>
         </ul>
 
         <!-- Right Side Icons -->
@@ -55,7 +85,7 @@
                 <i class="fas fa-phone"></i>
             </a>
 
-            <a href="#" id="shop-link" class="glass-icon-btn" aria-label="Shop">
+            <a href="https://proqpilot.com" id="shop-link" class="glass-icon-btn" aria-label="Shop">
                 <i class="fas fa-cart-shopping"></i>
             </a>
 
@@ -89,6 +119,16 @@
                 <div class="solution-button-text">
                     <div class="solution-button-name">StackCTRL</div>
                     <div class="solution-button-category">SOC</div>
+                </div>
+            </button>
+
+            <button class="solution-button" data-solution="proqpilot" data-name="ProQ Pilot" data-category="Procurement">
+                <div class="solution-button-icon">
+                    <img src="Images/Logos/Proq2.png" alt="ProQ Pilot" />
+                </div>
+                <div class="solution-button-text">
+                    <div class="solution-button-name">ProQ Pilot</div>
+                    <div class="solution-button-category">Procurement</div>
                 </div>
             </button>
 
@@ -577,6 +617,154 @@
                                 </div>
                             </div>
 
+                        </div>
+                    </div>
+                </section>
+            </section>
+
+            <section class="solution-content-section" data-solution="proqpilot">
+                <div class="solution-hero">
+                    <h1 class="solution-hero-title">ProQ Pilot: Unified IT Procurement for Growing Businesses</h1>
+                    <h2 class="solution-section-title">Premium hardware, digital services, security, and licensing in one place</h2>
+                    <p class="solution-description">
+                        ProQ Pilot is our precision IT procurement platform for businesses that want one trusted technology partner instead of separate vendors for laptops, mobile devices, software, security, and licensing. We combine curated hardware with enterprise-grade digital services so procurement becomes simple, secure, and strategic.
+                    </p>
+                </div>
+
+                <div class="proq-visual-board" aria-label="ProQ Pilot visual story placeholders">
+                    <div class="proq-picture-frame proq-picture-frame-large">
+                        <div class="proq-browser-bar">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                        </div>
+                        <img class="proq-frame-image" src="Images/StoreFront.png" alt="ProQ Pilot storefront home page" />
+                        <p>Catalog and storefront view</p>
+                    </div>
+
+                    <div class="proq-picture-stack">
+                        <div class="proq-picture-frame">
+                            <i class="fas fa-laptop" aria-hidden="true"></i>
+                            <p>Premium laptop category</p>
+                        </div>
+                        <div class="proq-picture-frame">
+                            <i class="fas fa-mobile-screen-button" aria-hidden="true"></i>
+                            <p>Mobile device ordering</p>
+                        </div>
+                        <div class="proq-picture-frame">
+                            <i class="fas fa-shield-halved" aria-hidden="true"></i>
+                            <p>Security and compliance view</p>
+                        </div>
+                    </div>
+                </div>
+
+                <section class="solution-how-better">
+                    <h2 class="solution-better-title">What ProQ Pilot brings together</h2>
+                    <div class="solution-better-grid">
+                        <div>
+                            <span class="solution-number">01</span>
+                            <h3>Premium Laptop Solutions</h3>
+                            <p>Curated business laptops, ultrabooks, creative workstations, and performance machines selected for reliability and real work.</p>
+                            <ul>
+                                <li>Quality-vetted models for executives, remote teams, creatives, developers, and power users.</li>
+                                <li>Custom configuration, software setup, security baseline, and pre-deployment support.</li>
+                            </ul>
+                        </div>
+
+                        <div>
+                            <span class="solution-number">02</span>
+                            <h3>Mobile & Device Solutions</h3>
+                            <p>Keep teams productive wherever they work with smartphones, tablets, 2-in-1s, wearables, and accessories.</p>
+                            <ul>
+                                <li>Bulk ordering, asset tracking, device enrollment, and lifecycle management.</li>
+                                <li>Mobile device management readiness for secure distributed workforces.</li>
+                            </ul>
+                        </div>
+
+                        <div>
+                            <span class="solution-number">03</span>
+                            <h3>Security & Compliance</h3>
+                            <p>Security is built into the procurement process from day one, instead of being bolted on after devices arrive.</p>
+                            <ul>
+                                <li>MFA, endpoint protection, threat monitoring, audit trails, and policy enforcement.</li>
+                                <li>Reporting support for regulated environments such as finance, healthcare, and retail.</li>
+                            </ul>
+                        </div>
+
+                        <div>
+                            <span class="solution-number">04</span>
+                            <h3>Enterprise Licensing</h3>
+                            <p>Simplify software, cloud, productivity, and specialized application licensing with centralized visibility.</p>
+                            <ul>
+                                <li>Inventory tracking, usage analytics, renewal alerts, and compliance monitoring.</li>
+                                <li>Cost optimization recommendations and multi-year technology planning.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="solution-use-cases">
+                    <div class="solution-use-cases-inner">
+                        <div>
+                            <h3>Why businesses choose it</h3>
+                            <p><strong>One vendor, one platform:</strong><br>
+                            Businesses stop juggling separate vendors for hardware, software, security, and licenses. ProQ Pilot gives them one procurement partner, one ordering path, and clearer ownership.</p>
+                            <p><strong>Curated quality:</strong><br>
+                            We do not try to list everything. We focus on premium, trusted options that match business performance, security, and deployment needs.</p>
+                        </div>
+
+                        <div>
+                            <p><strong>Transparent business buying:</strong><br>
+                            Volume discounts, flexible terms, clear billing, and expert guidance help teams scale without vendor chaos or surprise costs.</p>
+                            <p><strong>Procurement with strategy:</strong><br>
+                            From startups equipping new teams to enterprises standardizing devices across regions, ProQ Pilot turns technology buying into a managed, measurable workflow.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="solution-key-features">
+                    <div class="solution-features-container">
+                        <h2 class="solution-features-title">Where the Platform Shows Value</h2>
+                        <div class="solution-features-list">
+                            <div class="solution-feature-row">
+                                <div class="solution-feature-icon">
+                                    <i class="fas fa-store" style="font-size: 3rem; color: #006eff;"></i>
+                                </div>
+                                <div class="solution-feature-content">
+                                    <h4>Catalog & Product Discovery</h4>
+                                    <p>A focused catalog experience helps teams compare business-ready devices, review category filters, and move from product discovery to confident selection.</p>
+                                </div>
+                            </div>
+
+                            <div class="solution-feature-row">
+                                <div class="solution-feature-icon">
+                                    <i class="fas fa-receipt" style="font-size: 3rem; color: #006eff;"></i>
+                                </div>
+                                <div class="solution-feature-content">
+                                    <h4>Checkout & Ordering</h4>
+                                    <p>Quotes, checkout, invoices, and order history stay connected so procurement teams can manage the journey from request to fulfillment.</p>
+                                </div>
+                            </div>
+
+                            <div class="solution-feature-row">
+                                <div class="solution-feature-icon">
+                                    <i class="fas fa-chart-line" style="font-size: 3rem; color: #006eff;"></i>
+                                </div>
+                                <div class="solution-feature-content">
+                                    <h4>Admin, Licensing & Compliance</h4>
+                                    <p>IT leaders get visibility into license usage, renewal timing, spend patterns, security status, and compliance evidence from one management layer.</p>
+                                </div>
+                            </div>
+
+                            <div class="solution-feature-row">
+                                <div class="solution-feature-icon">
+                                    <i class="fas fa-headset" style="font-size: 3rem; color: #006eff;"></i>
+                                </div>
+                                <div class="solution-feature-content">
+                                    <h4>Expert Support & Deployment</h4>
+                                    <p>Configuration, secure setup, fleet deployment, support, and strategic guidance are handled by IT professionals who understand business environments.</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </section>

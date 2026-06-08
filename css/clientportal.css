@@ -101,9 +101,12 @@
   left: 0;
   width: 100%;
   height: 100vh;
+  height: 100dvh;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
+  padding: clamp(98px, 15vh, 118px) 20px 24px;
+  overflow-y: auto;
   z-index: 1000;
   background: rgba(0, 0, 0, 0.342);
   backdrop-filter: blur(5px);
@@ -121,8 +124,87 @@
 
 .login-container {
   width: 100%;
-  max-width: 450px;
-  padding: 20px;
+  max-width: 402px;
+  padding: 0 14px;
+}
+
+.auth-return-header {
+  position: fixed;
+  top: 8px;
+  left: clamp(14px, 2.75vw, 44px);
+  right: clamp(14px, 2.75vw, 44px);
+  width: auto;
+  z-index: 1001;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 12px clamp(18px, 3vw, 48px);
+  min-height: 72px;
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
+  -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 20px;
+  box-shadow: 0 0 25px rgba(255, 120, 2, 0.682), 0 8px 40px rgba(0, 0, 0, 0.25);
+}
+
+.auth-brand {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.auth-brand img {
+  width: clamp(112px, 10vw, 132px);
+  height: auto;
+  display: block;
+}
+
+.auth-header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.auth-return-header .glass-icon-btn {
+  width: 46px;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  text-decoration: none;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow:
+    0 4px 18px rgba(0, 0, 0, 0.18),
+    0 0 12px rgba(0, 110, 255, 0.08);
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease,
+    background 0.3s ease,
+    border-color 0.3s ease;
+}
+
+.auth-return-header .glass-icon-btn i {
+  font-size: 16px;
+}
+
+.auth-return-header .glass-icon-btn:hover,
+.auth-return-header .glass-icon-btn:focus-visible {
+  transform: translateY(-2px) scale(1.05);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(0, 110, 255, 0.4);
+  box-shadow:
+    0 0 18px rgba(0, 110, 255, 0.22),
+    0 6px 20px rgba(0, 0, 0, 0.25);
+  color: #ffffff;
+  outline: none;
 }
 
 .login-box {
@@ -142,7 +224,7 @@
   border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 15px;
 
-  padding: clamp(30px, 5vw, 50px) clamp(25px, 4vw, 40px);
+  padding: clamp(24px, 3.2vw, 34px) clamp(22px, 3vw, 32px);
 
   box-shadow: 
     0 12px 40px rgba(0, 0, 0, 0.25),
@@ -179,13 +261,13 @@
 
 .login-header {
   text-align: center;
-  margin-bottom: 40px;
+  margin-bottom: 22px;
 }
 
 .login-logo {
-  width: 120px;
+  width: 88px;
   height: auto;
-  margin-bottom: 20px;
+  margin-bottom: 10px;
   filter: drop-shadow(0 0 8px rgba(255, 119, 0, 0.5));
 }
 
@@ -199,17 +281,17 @@
 .login-footer p,
 .login-info p {
   color: var(--text-secondary);
-  font-size: 0.95rem;
+  font-size: 0.88rem;
   margin-bottom: 8px;
 }
 
 .login-form {
-  margin-bottom: 30px;
+  margin-bottom: 18px;
 }
 
 .form-group {
   position: relative;
-  margin-bottom: 25px;
+  margin-bottom: 18px;
 }
 
 .form-group label {
@@ -222,7 +304,7 @@
 
 .form-group input {
   width: 100%;
-  padding: 12px 15px;
+  padding: 10px 14px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 115, 0, 0.767);
   border-radius: 8px;
@@ -241,7 +323,7 @@
 .password-toggle {
   position: absolute;
   right: 15px;
-  top: 45px;
+  top: 39px;
   cursor: pointer;
   color: var(--text-secondary);
   transition: color 0.3s ease;
@@ -263,7 +345,7 @@
   position: relative;
   width: 60%;
   max-width: 100%;
-  height: 50px;
+  height: 46px;
   border-radius: 25px;
   overflow: hidden;
   box-shadow: 0 4px 15px rgba(255, 123, 0, 0.199);
@@ -337,8 +419,13 @@
 }
 
 .login-footer {
-  margin-top: 25px;
+  margin-top: 18px;
   text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  flex-wrap: wrap;
 }
 
 .login-footer a {
@@ -356,14 +443,113 @@
   margin-top: 12px;
 }
 
+@media (max-width: 520px) {
+  .login-section {
+    padding-top: 92px;
+  }
+
+  .auth-return-header {
+    min-height: 76px;
+    padding: 12px 16px;
+    border-radius: 16px;
+  }
+
+  .auth-brand img {
+    width: clamp(92px, 32vw, 120px);
+  }
+
+  .auth-return-header .glass-icon-btn {
+    width: 42px;
+    height: 42px;
+  }
+
+  .login-box {
+    padding: 30px 22px;
+  }
+}
+
 .login-info {
   border-top: 1px solid rgba(255, 255, 255, 0.1);
-  padding-top: 25px;
-  margin-top: 25px;
+  padding-top: 16px;
+  margin-top: 18px;
 }
 
 .login-info i {
   color: var(--primary);
+}
+
+@media (max-height: 820px) and (min-width: 700px) {
+  .login-section {
+    padding-top: 96px;
+    padding-bottom: 18px;
+  }
+
+  .auth-return-header {
+    min-height: 66px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    border-radius: 16px;
+  }
+
+  .auth-brand img {
+    width: 116px;
+  }
+
+  .auth-return-header .glass-icon-btn {
+    width: 42px;
+    height: 42px;
+  }
+
+  .login-container {
+    max-width: 388px;
+  }
+
+  .login-box {
+    padding: 24px 30px;
+  }
+
+  .login-header {
+    margin-bottom: 18px;
+  }
+
+  .login-logo {
+    width: 76px;
+    margin-bottom: 8px;
+  }
+
+  .login-header p {
+    font-size: 0.84rem;
+  }
+
+  .form-group {
+    margin-bottom: 14px;
+  }
+
+  .form-group input {
+    padding: 9px 13px;
+  }
+
+  .password-toggle {
+    top: 36px;
+  }
+
+  .login-form .glow-wrap-face3 {
+    height: 44px;
+  }
+
+  .login-footer {
+    margin-top: 14px;
+  }
+
+  .login-info {
+    margin-top: 14px;
+    padding-top: 14px;
+  }
+
+  .login-info p {
+    font-size: 0.82rem;
+    margin-bottom: 6px;
+  }
 }
 
 /* MFA SECTION (same as signin.html) */
