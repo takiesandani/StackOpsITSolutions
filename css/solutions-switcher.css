@@ -418,7 +418,7 @@
     width: 100%;
     min-height: 0;
     flex: 1;
-    object-fit: cover;
+    object-fit: contain;
     border-radius: 12px;
     border: 1px solid rgba(255, 255, 255, 0.12);
     box-shadow: 0 16px 32px rgba(0, 0, 0, 0.24);
