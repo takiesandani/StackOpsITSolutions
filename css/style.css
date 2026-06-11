@@ -3837,3 +3837,270 @@ form .glow-wrap .link-content:hover {
 .testimonial-orb.active {
     animation-fill-mode: both;
 }
+.logo-item-mm-productions {
+    background: #000000;
+}
+
+/* ================================================================
+   Site-wide liquid glass cards - copied from the client dashboard
+   project card treatment
+================================================================ */
+
+@keyframes liquid-glass-live-glow {
+    0% {
+        box-shadow:
+            0 0 10px rgba(30, 144, 255, 0.5),
+            0 10px 24px rgba(5, 36, 105, 0.35),
+            inset 0 1px 2px rgba(255, 255, 255, 0.5);
+    }
+
+    100% {
+        box-shadow:
+            0 0 24px rgba(30, 144, 255, 0.8),
+            0 0 52px rgba(30, 144, 255, 0.4),
+            0 16px 34px rgba(5, 36, 105, 0.42),
+            inset 0 1px 2px rgba(255, 255, 255, 0.55);
+    }
+}
+
+:where(
+    .approach-card,
+    .cta .container,
+    .team-member,
+    .testimonials-title
+) {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04)) !important;
+    backdrop-filter: blur(28px) saturate(200%) brightness(1.15) !important;
+    -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.15) !important;
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+    border-radius: 15px;
+    box-shadow:
+        0 0 18px rgba(30, 144, 255, 0.46),
+        0 12px 40px rgba(0, 0, 0, 0.25),
+        inset 0 1px 2px rgba(255, 255, 255, 0.5),
+        inset 0 -1px 2px rgba(0, 0, 0, 0.15) !important;
+    transition: transform 0.4s ease, background 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease;
+}
+
+:where(
+    .approach-card,
+    .cta .container,
+    .team-member,
+    .testimonials-title
+)::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.055) 0%, rgb(0, 0, 0) 50%, rgba(255, 255, 255, 0) 100%);
+    opacity: 0.6;
+    pointer-events: none;
+    z-index: 1;
+    transition: opacity 0.4s ease;
+}
+
+:where(
+    .approach-card,
+    .cta .container,
+    .team-member,
+    .testimonials-title
+) > * {
+    position: relative;
+    z-index: 2;
+}
+
+:where(
+    .approach-card,
+    .team-member
+):hover {
+    transform: translateY(-8px) scale(1.02);
+    background: rgba(255, 255, 255, 0.18) !important;
+    border-color: rgba(255, 255, 255, 0.6) !important;
+    box-shadow:
+        0 0 24px rgba(30, 144, 255, 0.78),
+        0 0 50px rgba(30, 144, 255, 0.38),
+        0 0 0 1px rgba(30, 144, 255, 0.45) inset,
+        0 12px 40px rgba(0, 0, 0, 0.3) !important;
+    animation: liquid-glass-live-glow 2s ease-in-out infinite alternate;
+}
+
+:where(
+    .approach-card,
+    .team-member
+):hover::before {
+    opacity: 1;
+}
+
+/* 80% webview feel for requested page regions */
+@media (min-width: 769px) {
+    body:has(.our-story-header-image) .values > .container,
+    body:has(.our-story-header-image) .brands-logo-showcase > .section-title-full-width,
+    body:has(.our-story-header-image) .brands-logo-showcase > .container,
+    body:has(.our-story-header-image) .testimonials-hero > .container,
+    body:has(.our-story-header-image) .team > .container,
+    body:has(.our-story-header-image) .cta > .container {
+        zoom: 0.8;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    body:has(.solutions-wrapper) .solutions-wrapper {
+        zoom: 0.8;
+        margin-left: clamp(1rem, 12vw, 14rem);
+        margin-right: auto;
+    }
+
+    body:has(.consultation-container) :is(.consultation-container, .info-section) {
+        zoom: 0.8;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    body:has(.contact-grid) .contact .containers {
+        zoom: 0.8;
+        margin-left: auto;
+        margin-right: auto;
+    }
+}
+
+body:has(.solutions-wrapper) :is(
+    .solution-hero-title,
+    .solution-section-title,
+    .solution-description,
+    .solution-better-title,
+    .solution-better-grid h3,
+    .solution-better-grid p,
+    .solution-better-grid li,
+    .solution-use-cases-inner h3,
+    .solution-use-cases-inner p,
+    .solution-features-title,
+    .solution-feature-content h4,
+    .solution-feature-content p,
+    .solution-sub-item strong,
+    .solution-sub-item div,
+    .solution-button-name,
+    .solution-button-category
+) {
+    font-size: 125%;
+}
+
+body:has(.solutions-wrapper) .solution-image-full {
+    max-width: 100%;
+}
+
+body:has(.solutions-wrapper) .solution-description {
+    max-width: min(100%, 980px) !important;
+}
+
+.value-item {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04)) !important;
+    backdrop-filter: blur(28px) saturate(200%) brightness(1.15) !important;
+    -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.15) !important;
+    border-color: transparent !important;
+    box-shadow:
+        inset 0 0.5px 10px rgba(255, 255, 255, 0.08),
+        inset 0 -10px 20px rgba(0, 0, 0, 0.25),
+        0 0 10px rgba(30, 144, 255, 0.7),
+        0 0 6px rgba(120, 180, 255, 0.45),
+        0 15px 40px rgba(0, 0, 0, 0.45);
+}
+
+.value-item:hover {
+    border-color: transparent !important;
+    animation: live-glow 1.6s ease-in-out infinite;
+}
+
+.cta > .container {
+    border-color: transparent !important;
+}
+
+body:has(.solutions-wrapper) .cta > .container {
+    border-color: transparent !important;
+}
+
+.testimonials-title {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    overflow: visible;
+}
+
+.testimonials-title::before {
+    display: none !important;
+}
+
+body:has(.consultation-container) .info-section {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04)) !important;
+    backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
+    -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
+    border: none !important;
+    box-shadow:
+        0 0 18px rgba(30, 144, 255, 0.35),
+        0 12px 40px rgba(0, 0, 0, 0.25),
+        inset 0 1px 2px rgba(255, 255, 255, 0.5),
+        inset 0 -1px 2px rgba(0, 0, 0, 0.15) !important;
+}
+
+body:has(.consultation-container) .info-section::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.055) 0%, rgba(0, 0, 0, 0.82) 50%, rgba(255, 255, 255, 0) 100%);
+    opacity: 0.6;
+    pointer-events: none;
+    z-index: 1;
+}
+
+body:has(.consultation-container) .info-section > * {
+    position: relative;
+    z-index: 2;
+}
+
+body:has(.consultation-container) .info-card {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+body:has(.consultation-container) footer {
+    margin-top: clamp(2.5rem, 6vw, 5rem);
+    border-top: none !important;
+    box-shadow: none !important;
+}
+
+/* Unified liquid glass header */
+.site-header {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04)) !important;
+    backdrop-filter: blur(28px) saturate(200%) brightness(1.15) !important;
+    -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.15) !important;
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+    box-shadow:
+        0 0 18px rgba(30, 144, 255, 0.35),
+        0 12px 40px rgba(0, 0, 0, 0.25),
+        inset 0 1px 2px rgba(255, 255, 255, 0.5),
+        inset 0 -1px 2px rgba(0, 0, 0, 0.15) !important;
+}
+
+.site-header::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.055) 0%, rgba(0, 0, 0, 0.82) 50%, rgba(255, 255, 255, 0) 100%);
+    opacity: 0.6;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.site-header > * {
+    position: relative;
+    z-index: 2;
+}
