@@ -7141,3 +7141,61 @@ footer a:hover {
   position: relative;
   z-index: 2;
 }
+
+/* Home typography consistency layer */
+:root {
+  --stack-section-heading-size: clamp(1.55rem, 2.1vw, 2rem);
+  --stack-section-copy-size: clamp(0.82rem, 1vw, 0.95rem);
+  --stack-card-heading-size: clamp(0.95rem, 1.15vw, 1.08rem);
+  --stack-card-copy-size: clamp(0.72rem, 0.86vw, 0.84rem);
+  --stack-card-line-height: 1.5;
+}
+
+@media (max-width: 768px) {
+  :root {
+    --stack-section-heading-size: clamp(1.35rem, 5vw, 1.65rem);
+    --stack-section-copy-size: 0.88rem;
+    --stack-card-heading-size: 0.98rem;
+    --stack-card-copy-size: 0.84rem;
+  }
+}
+
+.section-title h2,
+.services-grid-section h2,
+.partners h2,
+.testimonials-title h1,
+.cta h2 {
+  font-size: var(--stack-section-heading-size) !important;
+  line-height: 1.18;
+}
+
+.section-title p,
+.partners p,
+.testimonials-title p,
+.cta p {
+  font-size: var(--stack-section-copy-size) !important;
+  line-height: 1.55;
+}
+
+.service-item h2,
+.service-item h3,
+.service-content h2,
+.value-item h3,
+.approach-card h3,
+.info-card h3,
+.footer-section h3 {
+  font-size: var(--stack-card-heading-size) !important;
+  line-height: 1.25;
+}
+
+.service-item p,
+.service-content p,
+.value-item p,
+.approach-card p,
+.info-card p,
+.footer-logo p,
+.footer-section p,
+.footer-section li {
+  font-size: var(--stack-card-copy-size) !important;
+  line-height: var(--stack-card-line-height);
+}

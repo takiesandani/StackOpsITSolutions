@@ -1178,3 +1178,131 @@
 .solution-description {
     max-width: min(100%, 980px);
 }
+
+/* Stable laptop/desktop solution selector sizing */
+@media (min-width: 901px) {
+    .solutions-sidebar {
+        flex: 0 0 clamp(260px, 17vw, 300px);
+        width: clamp(260px, 17vw, 300px);
+        padding-inline: 8px;
+        align-items: stretch;
+    }
+
+    .solution-button {
+        width: 100%;
+        min-width: 0;
+        height: 64px;
+        min-height: 64px;
+        display: grid;
+        grid-template-columns: 52px minmax(0, 1fr);
+        align-items: center;
+        gap: 12px;
+        padding: 8px 16px;
+        border-radius: 26px;
+        overflow: hidden;
+    }
+
+    .solution-button:hover {
+        transform: translateX(8px);
+    }
+
+    .solution-button.active {
+        transform: translateX(10px);
+    }
+
+    .solution-button-icon,
+    .solution-button[data-solution="proqpilot"] .solution-button-icon {
+        width: 44px;
+        min-width: 44px;
+        height: 44px;
+        flex: 0 0 44px;
+        padding: 3px;
+    }
+
+    .solution-button-icon img,
+    .solution-button[data-solution="proqpilot"] .solution-button-icon img {
+        width: 100% !important;
+        height: 100% !important;
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+    }
+
+    .solution-button-text {
+        left: 0;
+        min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
+        gap: 3px;
+    }
+
+    .solution-button-name,
+    .solution-button-category {
+        max-width: 100%;
+        line-height: 1.2;
+        white-space: normal;
+        overflow-wrap: normal;
+        word-break: normal;
+        hyphens: none;
+    }
+
+    .solution-button-name {
+        font-size: clamp(0.72rem, 0.8vw, 0.86rem);
+    }
+
+    .solution-button-category {
+        font-size: clamp(0.66rem, 0.78vw, 0.82rem);
+        letter-spacing: 0.4px;
+    }
+}
+
+@media (min-width: 901px) and (max-width: 1320px) {
+    .solutions-sidebar {
+        flex-basis: 284px;
+        width: 284px;
+    }
+
+    .solution-button {
+        height: 66px;
+        min-height: 66px;
+        grid-template-columns: 48px minmax(0, 1fr);
+        padding-inline: 14px;
+    }
+
+    .solution-button-name {
+        font-size: 0.78rem;
+    }
+
+    .solution-button-category {
+        font-size: 0.74rem;
+    }
+}
+
+/* Keep Solutions typography aligned with the site consistency scale */
+.solution-hero-title,
+.solution-better-title,
+.solution-capabilities-title {
+    font-size: var(--stack-section-heading-size, clamp(1.55rem, 2.1vw, 2rem)) !important;
+    line-height: 1.18;
+}
+
+.solution-section-title,
+.solution-better-grid h3,
+.solution-use-cases-inner h3,
+.solution-feature-content h3,
+.solution-feature-content h4 {
+    font-size: var(--stack-card-heading-size, clamp(0.95rem, 1.15vw, 1.08rem)) !important;
+    line-height: 1.25;
+}
+
+.solution-description,
+.solution-better-grid p,
+.solution-better-grid li,
+.solution-use-cases-inner p,
+.solution-feature-content p,
+.solution-sub-item div,
+.solution-doc-link a,
+.proq-picture-frame p {
+    font-size: var(--stack-card-copy-size, clamp(0.72rem, 0.86vw, 0.84rem)) !important;
+    line-height: var(--stack-card-line-height, 1.5);
+}
