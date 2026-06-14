@@ -2499,9 +2499,13 @@ async function loadSunbirdIdentityDashboardData() {
 
         const response = await fetch('/api/sunbird/identity-dashboard-cached', {
             method: 'GET',
+            cache: 'no-store',
             headers: {
                 'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
             }
         });
         const data = await response.json();
