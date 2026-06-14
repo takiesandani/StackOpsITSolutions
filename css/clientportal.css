@@ -764,31 +764,44 @@ body.client-portal-page {
   display: block;
 }
 
-/* ===== HEADER OVERRIDES - LIQUID GLASS DESIGN ===== */
-.site-headers {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
-    backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
-    -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.15) !important;
-    border: 1px solid rgba(255, 255, 255, 0) !important;
-    box-shadow: 0 12px 40px rgba(255, 115, 0, 0.158), inset 0 1px 2px rgba(255, 255, 255, 0.5), 0 0 20px rgba(255, 120, 2, 0.2) !important;
-    border-radius: 25px;
-    margin: 5px auto;
-    align-items: center;
-    width: 98.5%;
-    padding: 15px clamp(18px, 2.1vw, 40px);
-    top: 0;
+/* Site Header - Desktop Layout */
+.site-header {
+  background: rgba(28, 28, 28, 0.55);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+
+  border: 0;
+  border-bottom: 1px solid rgba(255, 102, 0, 0.18);
+  border-radius: 0;
+  box-shadow: 0 0 25px rgba(252, 116, 38, 0.85);
+
+  margin: 0;
+  padding: 15px clamp(18px, 2.1vw, 40px);
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  max-width: 100%;
+  z-index: 100;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 30px;
+
+  box-sizing: border-box;
+  transition: transform 0.3s ease, opacity 0.3s ease;
 }
 
-
-
 /* Site header visibility states */
-.site-headers.header-hidden {
+.site-header.header-hidden {
   transform: translateY(-100%);
   opacity: 0;
   pointer-events: none;
 }
 
-.site-headers.header-visible {
+.site-header.header-visible {
   transform: translateY(0);
   opacity: 1;
   pointer-events: auto;
@@ -796,46 +809,46 @@ body.client-portal-page {
 
 /* Compact header on small phones */
 @media (max-width: 600px) {
-  .site-headers {
+  .site-header {
     padding: 8px 16px;
     gap: 16px;
   }
 }
 
-.site-headers .logo {
+.site-header .logo {
   display: flex;
   align-items: center;
   flex-shrink: 0;
 }
 
-.site-headers .logo img {
+.site-header .logo img {
   width: 130px;
   height: auto;
 }
 
 /* Match Home page logo sizing on small phones */
 @media (max-width: 600px) {
-  .site-headers .logo img {
+  .site-header .logo img {
     width: clamp(96px, 28vw, 132px);
     max-width: 48vw;
   }
 }
 
-.site-headers .header-info {
+.site-header .header-info {
   flex: 1;
   display: flex;
   justify-content: center;
   text-align: center;
 }
 
-.site-headers .header-info h1 {
+.site-header .header-info h1 {
   color: var(--light);
   font-size: 1.5rem;
   margin: 0;
   font-weight: 200;
 }
 
-.site-headers .header-user {
+.site-header .header-user {
   display: flex;
   align-items: center;
   gap: 20px;
@@ -4605,7 +4618,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 /* Mobile Header with Hamburger Menu */
 @media (max-width: 430px) {
   /* Site Header - Mobile Layout */
-  .site-headers {
+  .site-header {
     padding: 10px 15px;
     display: flex;
     justify-content: space-between;
@@ -4622,18 +4635,18 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   }
 
   /* Logo - Shrink for mobile */
-  .site-headers .logo {
+  .site-header .logo {
     flex-shrink: 0;
   }
 
-  .site-headers .logo img {
+  .site-header .logo img {
     width: 80px;
     height: auto;
   }
 
   /* Hide desktop header elements on mobile */
-  .site-headers .header-info,
-  .site-headers .header-user {
+  .site-header .header-info,
+  .site-header .header-user {
     display: none;
   }
 
@@ -5346,12 +5359,12 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
 /* Additional Mobile Optimizations for Very Small Screens (320px - 375px) */
 @media (max-width: 375px) {
-  .site-headers {
+  .site-header {
     padding: 8px 12px;
     min-height: 55px;
   }
 
-  .site-headers .logo img {
+  .site-header .logo img {
     width: 70px;
   }
 
