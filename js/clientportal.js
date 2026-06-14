@@ -1689,7 +1689,7 @@ function openApplicationsDashboard() {
     if (projectStatus) projectStatus.textContent = 'Active';
     
     // Hide site header initially
-    const siteHeader = document.querySelector('.site-header');
+    const siteHeader = document.querySelector('.site-headers');
     if (siteHeader) {
         siteHeader.classList.add('header-hidden');
         siteHeader.classList.remove('header-visible');
@@ -2157,7 +2157,7 @@ function openIdentityDashboard() {
     if (projectStatus) projectStatus.textContent = 'Active';
     
     // Hide site header initially for full dashboard view
-    const siteHeader = document.querySelector('.site-header');
+    const siteHeader = document.querySelector('.site-headers');
     if (siteHeader) {
         siteHeader.classList.add('header-hidden');
         siteHeader.classList.remove('header-visible');
