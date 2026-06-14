@@ -809,10 +809,64 @@
   flex-shrink: 0;
 }
 
+/* Projects View - Account for fixed header */
+.projects-view {
+  margin-top: 15px;
+}
+
+/* Dashboard View - Account for fixed header */
+.dashboard-view {
+  margin-top: 70px;
+}
+
+.dashboard-header {
+  background: rgba(28, 28, 28, 0.95);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(0, 110, 255, 0.2);
+  padding: 20px 0;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  margin-top: 80px;
+}
+
+.header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 40px;
+  gap: 30px;
+}
+
+.portal-logo img {
+  width: 130px;
+  height: auto;
+}
+
+.header-info h1 {
+  color: var(--light);
+  font-size: 0.5rem;
+}
+
+.header-user {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
 .sunbird-logo-header {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.sunbird-logo-img {
+  height: 32px;
+  width: auto;
+  object-fit: contain;
+  display: none;
 }
 
 .user-name {
@@ -4519,11 +4573,11 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
     top: 0;
     left: 0;
     right: 0;
+    width: 100%;
     min-height: 60px;
     margin-top: 0;
     box-sizing: border-box;
     z-index: 1000;
-    overflow: hidden;
   }
 
   /* Logo - Shrink for mobile */
