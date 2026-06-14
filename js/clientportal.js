@@ -990,6 +990,7 @@ function normalizeSummaryMetrics(project) {
 document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
     setupSessionManagement();
+    startSessionMonitoring();
     initializeProjectsList();
     initializeBillingCard();
     initializeGovernanceCard();
@@ -2494,11 +2495,15 @@ async function loadSunbirdIdentityDashboardData() {
         const token = localStorage.getItem('authToken');
         if (!token) return;
 
-        const response = await fetch('/api/sunbird/identity-dashboard-cached', {
+        // Add cache-busting parameter to ensure fresh data
+        const timestamp = new Date().getTime();
+        const response = await fetch(`/api/sunbird/identity-dashboard-cached?_t=${timestamp}`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache'
             }
         });
         const data = await response.json();
@@ -4961,9 +4966,16 @@ async function loadSunbirdSecurityDashboardData() {
     const token = localStorage.getItem('authToken');
     if (!token) return;
     try {
-        const cachedResponse = await fetch('/api/db/security-events', {
+        // Add cache-busting parameter to ensure fresh data
+        const timestamp = new Date().getTime();
+        const cachedResponse = await fetch(`/api/db/security-events?_t=${timestamp}`, {
             method: 'GET',
-            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+            headers: { 
+                'Authorization': `Bearer ${token}`, 
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache'
+            }
         });
         const cachedData = await cachedResponse.json();
         if (!cachedResponse.ok || !cachedData.success) throw new Error(cachedData.message || 'Cached security events unavailable');
@@ -4972,9 +4984,15 @@ async function loadSunbirdSecurityDashboardData() {
         renderSunbirdSecurityDashboard();
     } catch (cachedError) {
         try {
-            const liveResponse = await fetch('/api/security-events', {
+            const timestamp = new Date().getTime();
+            const liveResponse = await fetch(`/api/security-events?_t=${timestamp}`, {
                 method: 'GET',
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+                headers: { 
+                    'Authorization': `Bearer ${token}`, 
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache'
+                }
             });
             const liveData = await liveResponse.json();
             if (!liveResponse.ok || !liveData.success) throw new Error(liveData.message || 'Security events unavailable');
@@ -8970,6 +8988,51 @@ function handleLogout() {
 
     // Redirect to the public client dashboard promo page so protected views aren't visible
     window.location.href = 'ClientDashboardHome.html';
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// SESSION MONITORING - Detects expired sessions and logs out automatically
+// ════════════════════════════════════════════════════════════════════════════════
+function autoLogoutOnSessionExpired() {
+    if (!isSessionValid()) {
+        clearClientPortalAuthState();
+        
+        const dashboardSection = document.getElementById('dashboard-section');
+        const loginSection = document.getElementById('login-section');
+        if (dashboardSection && loginSection) {
+            dashboardSection.classList.remove('active');
+            loginSection.classList.add('active');
+            resetDashboard();
+        }
+        
+        const chatWidget = document.getElementById('chatbot-widget');
+        if (chatWidget) {
+            chatWidget.style.display = 'none';
+        }
+        
+        // Show session expired notification
+        showNotification('Your session has ended. Please sign in again.', false);
+        
+        // Redirect to login after a short delay
+        setTimeout(() => {
+            window.location.href = 'ClientPortal.html';
+        }, 2000);
+    }
+}
+
+// Start monitoring session every 30 seconds
+function startSessionMonitoring() {
+    // Check session validity every 30 seconds
+    setInterval(() => {
+        autoLogoutOnSessionExpired();
+    }, 30000); // 30 seconds
+    
+    // Also check on user activity (mouse move, key press)
+    ['mousedown', 'keydown', 'scroll'].forEach(event => {
+        document.addEventListener(event, () => {
+            autoLogoutOnSessionExpired();
+        }, { passive: true });
+    });
 }
 
 function setupSessionManagement() {
