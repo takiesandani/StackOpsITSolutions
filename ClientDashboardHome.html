@@ -534,15 +534,53 @@
             border: 1px solid rgba(255, 255, 255, 0);
         }
 
-        /* ===== HEADER OVERRIDES ===== */
+        /* ===== HEADER OVERRIDES - LIQUID GLASS DESIGN ===== */
         .site-header {
-            background: rgba(255, 255, 255, 0.05);
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
             backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            box-shadow: 0 0 25px rgba(255, 120, 2, 0.682), 0 8px 40px rgba(0, 0, 0, 0.25);
-            border-radius: 20px;
-            margin: 1px 2px;
-            width: auto;
+            -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.15) !important;
+            border: 1px solid rgba(255, 255, 255, 0) !important;
+            box-shadow: 0 12px 40px rgba(255, 115, 0, 0.158), inset 0 1px 2px rgba(255, 255, 255, 0.5), 0 0 20px rgba(255, 120, 2, 0.2) !important;
+            border-radius: 25px;
+            margin: 5px auto;
+            align-items: center;
+            width: 98.5%;
+        }
+
+        /* Override all nav-links blue styling */
+        .center-nav a {
+            border-color: rgba(255, 255, 255, 0.2) !important;
+        }
+
+        .center-nav a:hover {
+            border-color: rgba(255, 120, 2, 0.5) !important;
+            box-shadow: 0 0 12px rgba(255, 120, 2, 0.3), 0 4px 18px rgba(0, 0, 0, 0.2) !important;
+            background: rgba(255, 120, 2, 0.08) !important;
+        }
+
+        .center-nav a.active {
+            border-color: rgba(255, 120, 2, 0.6) !important;
+            box-shadow: 0 0 12px rgba(255, 120, 2, 0.3), 0 0 30px rgba(255, 120, 2, 0.1) !important;
+            background: rgba(255, 120, 2, 0.12) !important;
+        }
+
+        /* Override glass icon buttons blue styling */
+        .glass-icon-btn {
+            box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18), 0 0 12px rgba(255, 120, 2, 0.15) !important;
+            border: 1px solid rgba(255, 120, 2, 0.2) !important;
+        }
+
+        .glass-icon-btn:hover {
+            border-color: rgba(255, 120, 2, 0.5) !important;
+            box-shadow: 0 0 18px rgba(255, 120, 2, 0.3), 0 6px 20px rgba(0, 0, 0, 0.25) !important;
+            background: rgba(255, 120, 2, 0.12) !important;
+        }
+
+        .glass-icon-btn:focus,
+        .glass-icon-btn:focus-visible {
+            outline: none !important;
+            box-shadow: 0 0 18px rgba(255, 120, 2, 0.4), 0 6px 20px rgba(0, 0, 0, 0.25) !important;
+            border-color: rgba(255, 120, 2, 0.6) !important;
         }
 
         .nav-links a:hover {
