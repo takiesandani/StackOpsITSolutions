@@ -765,15 +765,33 @@ body.client-portal-page {
 }
 
 /* Site Header - Desktop Layout */
-/* ClientPortal Header - Minimal styling, just layout changes */
+/* ClientPortal Header - All base styling with only layout overrides */
 .clientportal-header {
+  background: rgba(28, 28, 28, 0.55);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+
+  border: none;
   border-radius: 10%;
   box-shadow: none;
+
   margin: 10px;
+  padding: 15px clamp(18px, 2.1vw, 40px);
+  position: fixed;
+  top: 0;
   left: 10px;
   right: 10px;
   width: calc(100% - 20px);
   max-width: calc(100% - 20px);
+  z-index: 100;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 30px;
+
+  box-sizing: border-box;
+  transition: transform 0.3s ease, opacity 0.3s ease;
 }
 
 .site-header {
