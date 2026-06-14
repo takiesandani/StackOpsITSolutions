@@ -2271,7 +2271,10 @@ function getIdentityDaysSinceSignIn(user) {
 function formatIdentityDate(user) {
     const time = getIdentityLastSignInTime(user);
     if (!time) return 'Never';
-    return new Date(time).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    const date = new Date(time);
+    const dateStr = date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    const timeStr = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    return `${dateStr} ${timeStr}`;
 }
 
 function getIdentityRiskRank(user) {
@@ -2790,10 +2793,10 @@ function renderSunbirdIdentitySignIns(model) {
     if (!signinsEl) return;
     const latest = model.users
         .sort((a, b) => getIdentityLastSignInTime(b) - getIdentityLastSignInTime(a))
-        .slice(0, 10);
+        .slice(0, 50);
     const failed = model.evidence.failedSignInUsers
         .sort((a, b) => getIdentityLastSignInTime(b) - getIdentityLastSignInTime(a))
-        .slice(0, 10);
+        .slice(0, 50);
 
     signinsEl.innerHTML = `
         ${renderSunbirdSignInList('Latest sign-ins', latest, false)}
