@@ -765,7 +765,7 @@ body.client-portal-page {
 }
 
 /* ===== HEADER OVERRIDES - LIQUID GLASS DESIGN ===== */
-.site-headerss {
+.site-headers {
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
     backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
     -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.15) !important;
@@ -782,7 +782,7 @@ body.client-portal-page {
 
 
 /* Site header visibility states */
-.site-headerss.header-hidden {
+.site-headers.header-hidden {
   transform: translateY(-100%);
   opacity: 0;
   pointer-events: none;
