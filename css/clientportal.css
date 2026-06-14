@@ -748,7 +748,6 @@
 
   box-sizing: border-box;
   transition: transform 0.3s ease, opacity 0.3s ease;
-  overflow: hidden;
 }
 
 /* Site header visibility states */
@@ -808,7 +807,6 @@
   align-items: center;
   gap: 20px;
   flex-shrink: 0;
-  overflow: hidden;
 }
 
 .sunbird-logo-header {
@@ -4521,7 +4519,6 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
     top: 0;
     left: 0;
     right: 0;
-    width: 100%;
     min-height: 60px;
     margin-top: 0;
     box-sizing: border-box;
