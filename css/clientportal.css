@@ -807,28 +807,19 @@
   display: flex;
   align-items: center;
   gap: 20px;
-  flex-shrink: 1;
-  min-width: 0;
-  max-width: calc(100% - 150px);
+  flex-shrink: 0;
   overflow: hidden;
-  white-space: nowrap;
 }
 
 .sunbird-logo-header {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-width: 0;
-  overflow: hidden;
 }
 
 .user-name {
   color: #bdbdbd;
   font-size: 0.95rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
 }
 
 .btn-logout {
@@ -843,8 +834,6 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  flex-shrink: 0;
-  white-space: nowrap;
 }
 
 .btn-logout:hover {
