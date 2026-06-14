@@ -775,6 +775,8 @@ body.client-portal-page {
     margin: 5px auto;
     align-items: center;
     width: 98.5%;
+    padding: 15px clamp(18px, 2.1vw, 40px);
+    top: 0;
 }
 
 
