@@ -73,8 +73,8 @@
 
 .sunbird-report-score-strip {
   display: grid;
-  grid-template-columns: 1.35fr repeat(3, 1fr);
-  gap: 7px;
+  grid-template-columns: 1.25fr repeat(4, minmax(0, 1fr));
+  gap: 6px;
 }
 
 .sunbird-report-score,
@@ -88,6 +88,21 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
+}
+
+.sunbird-report-kpi {
+  appearance: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.sunbird-report-kpi:hover,
+.sunbird-report-kpi:focus-visible {
+  border-color: rgba(255, 255, 255, 0.32);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  outline: none;
 }
 
 .sunbird-report-score {
@@ -116,6 +131,97 @@
   color: #f8fafc;
   font-size: 0.94rem;
   font-weight: 200;
+}
+
+.sunbird-report-kpi small {
+  color: #6f7b86;
+  font-size: 0.52rem;
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
+.sunbird-report-kpi.tone-danger {
+  border-color: rgba(248, 113, 113, 0.22);
+  background: linear-gradient(145deg, rgba(127, 29, 29, 0.3), rgba(2, 10, 20, 0.56));
+}
+
+.sunbird-report-kpi.tone-danger strong { color: #fca5a5; }
+
+.sunbird-report-kpi.tone-success {
+  border-color: rgba(74, 222, 128, 0.22);
+  background: linear-gradient(145deg, rgba(20, 83, 45, 0.3), rgba(2, 10, 20, 0.56));
+}
+
+.sunbird-report-kpi.tone-success strong { color: #86efac; }
+
+.sunbird-report-kpi.tone-recommendation {
+  border-color: rgba(251, 191, 36, 0.24);
+  background: linear-gradient(145deg, rgba(120, 53, 15, 0.25), rgba(2, 10, 20, 0.58));
+}
+
+.sunbird-report-kpi.tone-recommendation strong { color: #fde68a; }
+
+.sunbird-report-kpi.tone-events {
+  border-color: rgba(125, 211, 252, 0.2);
+  background: linear-gradient(145deg, rgba(12, 74, 110, 0.24), rgba(2, 10, 20, 0.58));
+}
+
+.sunbird-report-kpi.tone-events strong { color: #bae6fd; }
+
+.sunbird-report-value-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.sunbird-report-value-pill {
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.sunbird-report-value-pill > span {
+  color: #9fa9b5;
+  font-size: 0.55rem;
+  white-space: nowrap;
+}
+
+.sunbird-report-value-pill > strong {
+  min-width: 0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.sunbird-report-trend-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.055);
+  color: #dbe4ef;
+  font-size: 0.56rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.sunbird-report-trend-badge.tone-good {
+  color: #bbf7d0;
+  border-color: rgba(74, 222, 128, 0.26);
+  background: rgba(22, 101, 52, 0.18);
+}
+
+.sunbird-report-trend-badge.tone-bad {
+  color: #fecaca;
+  border-color: rgba(248, 113, 113, 0.28);
+  background: rgba(127, 29, 29, 0.2);
 }
 
 .sunbird-report-ai-note {
@@ -151,6 +257,102 @@
   color: #b7bec7;
   font-size: 0.65rem;
   line-height: 1.45;
+}
+
+.sunbird-report-recommendations-preview {
+  padding: 8px 9px;
+  border: 1px solid rgba(251, 191, 36, 0.18);
+  border-radius: 9px;
+  background: linear-gradient(145deg, rgba(120, 53, 15, 0.13), rgba(2, 10, 20, 0.32));
+}
+
+.sunbird-report-rec-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.sunbird-report-rec-head span {
+  color: #f8fafc;
+  font-size: 0.66rem;
+  font-weight: 550;
+}
+
+.sunbird-report-rec-head i {
+  color: #fbbf24;
+  margin-right: 4px;
+}
+
+.sunbird-report-rec-head button,
+.sunbird-report-rec-item {
+  appearance: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.sunbird-report-rec-head button {
+  padding: 3px 7px;
+  border: 1px solid rgba(251, 191, 36, 0.24);
+  border-radius: 999px;
+  background: rgba(251, 191, 36, 0.08);
+  color: #fde68a;
+  font-size: 0.55rem;
+}
+
+.sunbird-report-rec-list {
+  display: grid;
+  gap: 4px;
+}
+
+.sunbird-report-rec-item {
+  width: 100%;
+  display: grid;
+  gap: 2px;
+  padding: 6px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 7px;
+  background: rgba(2, 10, 20, 0.36);
+  text-align: left;
+}
+
+.sunbird-report-rec-item:hover,
+.sunbird-report-rec-item:focus-visible {
+  border-color: rgba(251, 191, 36, 0.32);
+  outline: none;
+}
+
+.sunbird-report-rec-item strong {
+  color: #fff7ed;
+  font-size: 0.61rem;
+  font-weight: 200;
+}
+
+.sunbird-report-rec-item small,
+.sunbird-report-rec-empty {
+  color: #a8b2bd;
+  font-size: 0.56rem;
+  line-height: 1.35;
+}
+
+.sunbird-report-rec-item span {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.sunbird-report-rec-item em,
+.sunbird-report-owner-row em,
+.sunbird-report-insight-meta em {
+  padding: 2px 6px;
+  border: 1px solid rgba(251, 191, 36, 0.18);
+  border-radius: 999px;
+  background: rgba(251, 191, 36, 0.07);
+  color: #fde68a;
+  font-size: 0.52rem;
+  font-style: normal;
 }
 
 .sunbird-report-preview-section {
@@ -199,8 +401,8 @@
 }
 
 .sunbird-report-mini-row:hover {
-  border-color: rgba(249, 115, 22, 0.35);
-  background: rgba(249, 115, 22, 0.07);
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(2, 10, 20, 0.42);
 }
 
 .sunbird-report-mini-icon {
@@ -265,6 +467,204 @@
 .sunbird-report-quick-generate:hover {
   border-color: rgba(249, 115, 22, 0.45);
   color: #fff;
+}
+
+.sunbird-report-evidence-modal .sunbird-id-modal-backdrop {
+  background: rgba(0, 0, 0, 0.64);
+}
+
+.sunbird-report-evidence-panel {
+  width: min(760px, calc(100vw - 28px));
+  border-radius: 12px;
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.9), rgba(2, 6, 23, 0.82));
+  backdrop-filter: blur(26px) saturate(180%);
+  -webkit-backdrop-filter: blur(26px) saturate(180%);
+  box-shadow:
+    0 24px 70px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.sunbird-report-evidence-modal.tone-danger .sunbird-report-evidence-panel {
+  border-color: rgba(248, 113, 113, 0.48);
+  background: linear-gradient(145deg, rgba(127, 29, 29, 0.58), rgba(15, 23, 42, 0.86) 46%, rgba(2, 6, 23, 0.84));
+}
+
+.sunbird-report-evidence-modal.tone-success .sunbird-report-evidence-panel {
+  border-color: rgba(74, 222, 128, 0.46);
+  background: linear-gradient(145deg, rgba(20, 83, 45, 0.58), rgba(15, 23, 42, 0.86) 46%, rgba(2, 6, 23, 0.84));
+}
+
+.sunbird-report-evidence-modal.tone-recommendation .sunbird-report-evidence-panel {
+  border-color: rgba(251, 191, 36, 0.42);
+  background: linear-gradient(145deg, rgba(120, 53, 15, 0.52), rgba(15, 23, 42, 0.86) 46%, rgba(2, 6, 23, 0.84));
+}
+
+.sunbird-report-evidence-modal.tone-events .sunbird-report-evidence-panel {
+  border-color: rgba(125, 211, 252, 0.38);
+  background: linear-gradient(145deg, rgba(12, 74, 110, 0.48), rgba(15, 23, 42, 0.86) 46%, rgba(2, 6, 23, 0.84));
+}
+
+.sunbird-report-evidence-header h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #fff;
+}
+
+.sunbird-report-evidence-modal.tone-danger .sunbird-report-evidence-header i { color: #fca5a5; }
+.sunbird-report-evidence-modal.tone-success .sunbird-report-evidence-header i { color: #86efac; }
+.sunbird-report-evidence-modal.tone-recommendation .sunbird-report-evidence-header i { color: #fde68a; }
+.sunbird-report-evidence-modal.tone-events .sunbird-report-evidence-header i { color: #bae6fd; }
+
+.sunbird-report-evidence-summary span {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.sunbird-report-evidence-list {
+  max-height: min(470px, calc(100vh - 250px));
+}
+
+.sunbird-report-evidence-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 8px;
+  background: rgba(2, 10, 20, 0.44);
+}
+
+.sunbird-report-evidence-main {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.sunbird-report-evidence-main strong {
+  color: #f8fafc;
+  font-size: 0.78rem;
+  font-weight: 550;
+}
+
+.sunbird-report-evidence-main span {
+  color: #a8b2bd;
+  font-size: 0.7rem;
+  line-height: 1.45;
+}
+
+.sunbird-report-evidence-main p,
+.sunbird-report-insight-impact {
+  margin: 2px 0 0;
+  color: #d6dee8;
+  font-size: 0.65rem;
+  line-height: 1.45;
+}
+
+.sunbird-report-owner-row,
+.sunbird-report-insight-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 4px;
+}
+
+.sunbird-report-evidence-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-content: flex-start;
+  gap: 5px;
+  max-width: 210px;
+}
+
+.sunbird-report-evidence-meta em,
+.sunbird-report-evidence-meta small,
+.sunbird-report-evidence-meta time {
+  padding: 3px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.055);
+  color: #dbe4ef;
+  font-size: 0.58rem;
+  font-style: normal;
+}
+
+.sunbird-report-evidence-empty {
+  padding: 24px;
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  color: #a8b2bd;
+  text-align: center;
+}
+
+.sunbird-report-value-panel {
+  margin-bottom: 16px;
+  padding: 18px;
+  border: 1px solid var(--report-line);
+  border-radius: 8px;
+  background: var(--report-panel);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+}
+
+.sunbird-report-value-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.sunbird-report-value-grid article {
+  min-width: 0;
+  min-height: 118px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(2, 10, 20, 0.28);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.sunbird-report-value-grid article > span {
+  color: #a8b2bd;
+  font-size: 0.67rem;
+}
+
+.sunbird-report-value-grid article > strong {
+  min-height: 26px;
+  display: flex;
+  align-items: center;
+}
+
+.sunbird-report-value-grid article p {
+  margin: auto 0 0;
+  color: #a8b2bd;
+  font-size: 0.64rem;
+  line-height: 1.45;
+}
+
+.sunbird-report-impact-banner {
+  margin-top: 12px;
+  padding: 11px 12px;
+  border: 1px solid rgba(249, 115, 22, 0.22);
+  border-radius: 8px;
+  background: rgba(249, 115, 22, 0.08);
+  display: grid;
+  gap: 3px;
+}
+
+.sunbird-report-impact-banner span {
+  color: #fdba74;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.sunbird-report-impact-banner strong {
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 200;
 }
 
 .dashboard-view.sunbird-reports-active {
@@ -870,6 +1270,10 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .sunbird-report-value-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .sunbird-report-automation-card {
     grid-column: 1 / -1;
   }
@@ -882,6 +1286,20 @@
 @media (max-width: 768px) {
   .sunbird-report-score-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sunbird-report-value-strip,
+  .sunbird-report-value-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sunbird-report-evidence-row {
+    grid-template-columns: 1fr;
+  }
+
+  .sunbird-report-evidence-meta {
+    justify-content: flex-start;
+    max-width: none;
   }
 
   .sunbird-report-preview-label {

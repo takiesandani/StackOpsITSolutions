@@ -2867,8 +2867,41 @@ async function buildSunbirdReportPayload(companyId, periodStart, periodEnd, incl
         date: new Date(row.PeriodEnd).toISOString(),
         healthScore: clampReportScore(row.HealthScore)
     }));
+    report.dailyReports = await loadSunbirdDailyReportSummaries(companyId, periodStart, periodEnd);
     report.analysis = includeAi ? await generateAiReportAnalysis(report) : buildDeterministicReportAnalysis(report);
     return report;
+}
+
+async function loadSunbirdDailyReportSummaries(companyId, periodStart, periodEnd) {
+    const [rows] = await pool.query(
+        `SELECT ID, PeriodStart, PeriodEnd, HealthScore, ReportStatus, Payload, CreatedAt
+         FROM SunbirdReports
+         WHERE CompanyID = ? AND ReportType = 'daily' AND PeriodEnd BETWEEN ? AND ?
+         ORDER BY PeriodEnd ASC`,
+        [companyId, periodStart, periodEnd]
+    );
+    return rows.map(row => {
+        const payload = parseReportJson(row.Payload, {});
+        const summary = payload.summary || {};
+        const failures = payload.analysis?.failures || payload.failures || [];
+        const successes = payload.analysis?.successes || payload.successes || [];
+        const recommendations = payload.analysis?.recommendations || payload.recommendations || [];
+        return {
+            id: row.ID,
+            date: row.PeriodEnd,
+            periodStart: row.PeriodStart,
+            periodEnd: row.PeriodEnd,
+            createdAt: row.CreatedAt,
+            healthScore: clampReportScore(row.HealthScore ?? summary.healthScore ?? 0),
+            status: row.ReportStatus || summary.status || 'collected',
+            failures: Number(summary.failures || failures.length || 0),
+            successes: Number(summary.successes || successes.length || 0),
+            events: Number(summary.totalEvents || payload.events?.length || 0),
+            topFailure: failures[0]?.title || failures[0] || '',
+            topRecommendation: recommendations[0]?.title || recommendations[0] || '',
+            topSuccess: successes[0]?.title || successes[0] || ''
+        };
+    });
 }
 
 async function saveSunbirdReport(companyId, reportType, periodStart, periodEnd, generatedByUserId = null, includeAi = false) {
@@ -3036,6 +3069,34 @@ function generateSunbirdReportPdf(report, reportId = null) {
 
             sectionTitle('Recommended actions');
             bulletList(report.analysis?.recommendations || report.recommendations, orange);
+
+            sectionTitle('Daily report breakdown');
+            if (!Array.isArray(report.dailyReports) || !report.dailyReports.length) {
+                doc.font('Helvetica').fontSize(9).fillColor(slate).text('No daily snapshots were saved for this period yet.');
+            } else {
+                report.dailyReports.slice(0, 7).forEach(day => {
+                    addPageIfNeeded(58);
+                    const y = doc.y;
+                    const tone = Number(day.healthScore || 0) >= 85 ? '#16a34a' : Number(day.healthScore || 0) >= 70 ? orange : '#dc2626';
+                    doc.roundedRect(40, y, contentWidth, 48, 6).fill('#f8fafc').strokeColor('#e1e6ea').stroke();
+                    doc.font('Helvetica-Bold').fontSize(8.5).fillColor(navy)
+                        .text(formatReportDate(day.periodEnd || day.date), 52, y + 9, { width: 92 });
+                    doc.font('Helvetica-Bold').fontSize(13).fillColor(tone)
+                        .text(`${Number(day.healthScore || 0)}%`, 150, y + 8, { width: 50, align: 'center' });
+                    doc.font('Helvetica').fontSize(7.5).fillColor(slate)
+                        .text('health', 150, y + 25, { width: 50, align: 'center' });
+                    doc.font('Helvetica-Bold').fontSize(8).fillColor(navy)
+                        .text(`${Number(day.failures || 0)} failures`, 220, y + 8, { width: 72 });
+                    doc.font('Helvetica-Bold').fontSize(8).fillColor(navy)
+                        .text(`${Number(day.successes || 0)} successes`, 300, y + 8, { width: 82 });
+                    doc.font('Helvetica-Bold').fontSize(8).fillColor(navy)
+                        .text(`${Number(day.events || 0)} events`, 390, y + 8, { width: 68 });
+                    const daySignal = day.topFailure || day.topRecommendation || day.topSuccess || 'Daily evidence collected.';
+                    doc.font('Helvetica').fontSize(7.5).fillColor(slate)
+                        .text(daySignal, 220, y + 24, { width: 315, height: 18 });
+                    doc.y = y + 57;
+                });
+            }
 
             sectionTitle('Domain health');
             const domains = Object.entries(report.domainScores || {}).filter(([, score]) => score != null);
@@ -3321,6 +3382,32 @@ async function getSunbirdReportCompanyIds() {
     return rows.map(row => row.CompanyID);
 }
 
+function renderWeeklyDailyReportEmailRows(dailyReports = []) {
+    if (!Array.isArray(dailyReports) || !dailyReports.length) {
+        return `
+            <tr>
+                <td colspan="5" style="padding:12px;border:1px solid #d9e1e8;color:#64748b;">
+                    No saved daily report snapshots were available for this weekly period yet.
+                </td>
+            </tr>
+        `;
+    }
+    return dailyReports.slice(0, 7).map(day => {
+        const health = Number(day.healthScore || 0);
+        const tone = health >= 85 ? '#15803d' : health >= 70 ? '#b45309' : '#b91c1c';
+        const signal = day.topFailure || day.topRecommendation || day.topSuccess || 'Daily evidence collected.';
+        return `
+            <tr>
+                <td style="padding:10px;border:1px solid #d9e1e8;color:#334155;">${escapeHtml(formatReportDate(day.periodEnd || day.date))}</td>
+                <td style="padding:10px;border:1px solid #d9e1e8;color:${tone};font-weight:700;text-align:center;">${health}%</td>
+                <td style="padding:10px;border:1px solid #d9e1e8;color:#334155;text-align:center;">${Number(day.failures || 0)}</td>
+                <td style="padding:10px;border:1px solid #d9e1e8;color:#334155;text-align:center;">${Number(day.successes || 0)}</td>
+                <td style="padding:10px;border:1px solid #d9e1e8;color:#475569;">${escapeHtml(signal)}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
 async function sendWeeklySunbirdReport(companyId, settings, reportRecord) {
     const pdf = await generateSunbirdReportPdf(reportRecord.payload, reportRecord.id);
     const recipient = settings.RecipientEmail || await getDefaultReportRecipient(companyId);
@@ -3345,8 +3432,22 @@ async function sendWeeklySunbirdReport(companyId, settings, reportRecord) {
                 <p style="margin:0 0 8px;"><strong>Failures:</strong> ${report.summary.failures}</p>
                 <p style="margin:0;"><strong>Period:</strong> ${formatReportDate(report.period.start)} - ${formatReportDate(report.period.end)}</p>
             </div>
+            <h3 style="margin:20px 0 8px;color:#17212b;font-size:16px;">Daily report summary for the week</h3>
+            <table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;margin:0 0 18px;font-size:13px;">
+                <thead>
+                    <tr>
+                        <th style="padding:9px;border:1px solid #d9e1e8;background:#eef2f6;color:#334155;text-align:left;">Day</th>
+                        <th style="padding:9px;border:1px solid #d9e1e8;background:#eef2f6;color:#334155;text-align:center;">Health</th>
+                        <th style="padding:9px;border:1px solid #d9e1e8;background:#eef2f6;color:#334155;text-align:center;">Problems</th>
+                        <th style="padding:9px;border:1px solid #d9e1e8;background:#eef2f6;color:#334155;text-align:center;">Successes</th>
+                        <th style="padding:9px;border:1px solid #d9e1e8;background:#eef2f6;color:#334155;text-align:left;">Main signal</th>
+                    </tr>
+                </thead>
+                <tbody>${renderWeeklyDailyReportEmailRows(report.dailyReports)}</tbody>
+            </table>
             <p>${escapeHtml(report.analysis?.executiveSummary || '')}</p>
-            <p>Open the Reports tab in StackCTRL to review the complete history and regenerate any time period.</p>
+            <p>The attached PDF includes the weekly executive summary, evidence timeline, recommendations, and the full daily report breakdown for the week.</p>
+            <p>Open the Reports tab in StackCTRL to review the complete history, generate a fresh PDF, or download any saved report.</p>
         `
     });
     await sendEmail(recipient, subject, html, true, [{
