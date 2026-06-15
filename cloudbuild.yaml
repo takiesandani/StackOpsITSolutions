@@ -25,6 +25,9 @@ steps:
       '--image', 'us-central1-docker.pkg.dev/stackops-backend-475222/stackops-repo/stackops-app:$COMMIT_SHA',
       '--region', 'us-central1',
       '--platform', 'managed',
+      '--memory', '2Gi',
+      '--cpu', '2',
+      '--timeout', '3600',
       '--allow-unauthenticated',
       '--quiet'
     ]

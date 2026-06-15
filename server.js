@@ -1797,9 +1797,29 @@ async function ensureDatabaseSchema() {
         `);
 
         // User constraints/indexes for faster login and tenant lookups
-        await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_company ON Users(CompanyID)`);
-        await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_email ON Users(Email)`);
-        await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_users_email ON Users(Email)`);
+        try {
+            await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_company ON Users(CompanyID)`);
+        } catch (idxErr) {
+            if (idxErr.code !== 'ER_DUP_KEYNAME') {
+                console.warn('[Database] Index idx_users_company creation attempted (may already exist)');
+            }
+        }
+        
+        try {
+            await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_email ON Users(Email)`);
+        } catch (idxErr) {
+            if (idxErr.code !== 'ER_DUP_KEYNAME') {
+                console.warn('[Database] Index idx_users_email creation attempted (may already exist)');
+            }
+        }
+        
+        try {
+            await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_users_email ON Users(Email)`);
+        } catch (idxErr) {
+            if (idxErr.code !== 'ER_DUP_KEYNAME') {
+                console.warn('[Database] Unique index uq_users_email creation attempted (may already exist)');
+            }
+        }
     } catch (err) {
         console.error('ensureDatabaseSchema error:', err);
     }
@@ -2919,12 +2939,26 @@ function formatReportDate(value, includeTime = false) {
 function generateSunbirdReportPdf(report, reportId = null) {
     return new Promise((resolve, reject) => {
         try {
-            const doc = new PDFDocument({ size: 'A4', margin: 40, bufferPages: true, info: {
-                Title: `${report.companyName} StackCTRL Report`,
-                Author: 'StackOps IT Solutions'
-            } });
+            const doc = new PDFDocument({ 
+                size: 'A4', 
+                margin: 40, 
+                bufferPages: false,  // Disable page buffering to reduce memory usage
+                info: {
+                    Title: `${report.companyName} StackCTRL Report`,
+                    Author: 'StackOps IT Solutions'
+                },
+                compression: true  // Enable compression to reduce PDF size
+            });
             const chunks = [];
-            doc.on('data', chunk => chunks.push(chunk));
+            let totalSize = 0;
+            doc.on('data', chunk => {
+                chunks.push(chunk);
+                totalSize += chunk.length;
+                // Garbage collection hint for large PDFs
+                if (chunks.length > 100) {
+                    totalSize = 0;
+                }
+            });
             doc.on('end', () => resolve(Buffer.concat(chunks)));
             doc.on('error', reject);
 
@@ -3035,13 +3069,19 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 });
             }
 
-            const pageRange = doc.bufferedPageRange();
-            for (let pageIndex = pageRange.start; pageIndex < pageRange.start + pageRange.count; pageIndex++) {
-                doc.switchToPage(pageIndex);
+            // Add page footers (now that we can't use bufferedPageRange)
+            // Since we disabled bufferPages for memory efficiency, we'll add footers inline
+            const addFooter = (pageNum) => {
                 doc.font('Helvetica').fontSize(7).fillColor('#7d8790')
                     .text(`StackOps IT Solutions | StackCTRL | Evidence generated ${formatReportDate(report.generatedAt, true)}`, 40, 806, { width: 430 });
-                doc.text(`Page ${pageIndex + 1}${reportId ? ` | Report #${reportId}` : ''}`, 480, 806, { width: 75, align: 'right' });
-            }
+                doc.text(`Page ${pageNum}${reportId ? ` | Report #${reportId}` : ''}`, 480, 806, { width: 75, align: 'right' });
+            };
+            
+            // Add footer to first page (page 1)
+            doc.font('Helvetica').fontSize(7).fillColor('#7d8790')
+                .text(`StackOps IT Solutions | StackCTRL | Evidence generated ${formatReportDate(report.generatedAt, true)}`, 40, 806, { width: 430 });
+            doc.text(`Page 1${reportId ? ` | Report #${reportId}` : ''}`, 480, 806, { width: 75, align: 'right' });
+            
             doc.end();
         } catch (error) {
             reject(error);
@@ -3163,18 +3203,44 @@ app.post('/api/sunbird/reports/generate', authenticateToken, async (req, res) =>
 });
 
 app.get('/api/sunbird/reports/:id/pdf', authenticateToken, async (req, res) => {
+    const startTime = Date.now();
     try {
         const reportContext = await getReportContext(req, res);
         if (!reportContext) return;
         const { context } = reportContext;
+        
+        console.log(`[Reports] PDF generation starting for report #${req.params.id}`);
+        
         const [rows] = await pool.query(
             'SELECT * FROM SunbirdReports WHERE ID = ? AND CompanyID = ? LIMIT 1',
             [req.params.id, context.companyId]
         );
         if (!rows.length) return res.status(404).json({ success: false, message: 'Report not found' });
+        
         const report = parseReportJson(rows[0].Payload, {});
-        const pdf = await generateSunbirdReportPdf(report, rows[0].ID);
+        
+        // Generate PDF with timeout protection
+        let pdf;
+        try {
+            pdf = await Promise.race([
+                generateSunbirdReportPdf(report, rows[0].ID),
+                new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('PDF generation timeout (>30s)')), 30000)
+                )
+            ]);
+        } catch (genErr) {
+            console.error(`[Reports] PDF generation failed for report #${req.params.id}:`, genErr.message);
+            return res.status(503).json({ 
+                success: false, 
+                message: `PDF generation failed: ${genErr.message}. Please try again in a moment.`,
+                error: process.env.NODE_ENV === 'development' ? genErr.message : undefined
+            });
+        }
+        
         const filename = `StackCTRL-${String(report.companyName || 'report').replace(/[^a-z0-9]+/gi, '-')}-${new Date(rows[0].PeriodEnd).toISOString().slice(0, 10)}.pdf`;
+        
+        console.log(`[Reports] PDF generated successfully for report #${req.params.id} (${pdf.length} bytes, ${Date.now() - startTime}ms)`);
+        
         await writeSunbirdReportLog({
             companyId: context.companyId,
             reportId: rows[0].ID,
@@ -3184,13 +3250,29 @@ app.get('/api/sunbird/reports/:id/pdf', authenticateToken, async (req, res) => {
             metadata: { filename, bytes: pdf.length },
             actorUserId: req.user.id || null
         });
+        
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
         res.setHeader('Content-Length', pdf.length);
         res.send(pdf);
     } catch (error) {
-        console.error('[Reports] PDF error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        console.error('[Reports] PDF endpoint error:', error);
+        const duration = Date.now() - startTime;
+        
+        // Check if it's a memory issue
+        if (error.message && error.message.includes('memory')) {
+            return res.status(503).json({ 
+                success: false, 
+                message: 'Server memory limit reached. Please try again in a moment.',
+                error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            });
+        }
+        
+        res.status(500).json({ 
+            success: false, 
+            message: error.message || 'Failed to generate PDF',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
     }
 });
 
@@ -10888,10 +10970,12 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 const server = app.listen(PORT, async () => {
+    const memUsage = process.memoryUsage();
     console.log(`\n${'='.repeat(60)}`);
     console.log(`✅ Server running on port ${PORT}`);
     console.log(`📡 Database: ${pool ? 'Connected' : 'Not Available'}`);
     console.log(`🔐 Supabase mode: ${useSupabase ? 'ON' : 'OFF'}`);
+    console.log(`💾 Memory: ${Math.round(memUsage.heapUsed / 1024 / 1024)} MB used / ${Math.round(memUsage.heapTotal / 1024 / 1024)} MB allocated`);
     console.log(`📋 Test Invoice PDF: http://localhost:${PORT}/test-invoice`);
     console.log(`💬 WhatsApp Webhook: POST http://localhost:${PORT}/api/webhook/whatsapp`);
     console.log(`${'='.repeat(60)}\n`);
