@@ -11596,12 +11596,9 @@ function renderSunbirdReportsShell() {
                 <div>
                     <div class="sunbird-report-eyebrow">STACKCTRL INTELLIGENCE</div>
                     <h2>Automated Reports</h2>
-                    <p>Security health, outcomes, failures, and timestamped evidence in one weekly view.</p>
                 </div>
                 <div class="sunbird-report-brand-lockup" aria-label="StackOps and StackCTRL">
-                    <img src="Images/Logos/RemovedStackOps.png" alt="StackOps">
-                    <span></span>
-                    <img src="Images/Logos/Ctrl big.png" alt="StackCTRL">
+
                 </div>
             </div>
 

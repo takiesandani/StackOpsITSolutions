@@ -279,7 +279,7 @@
   --report-panel: #ffffff;
   --report-orange: #f97316;
   max-width: 1480px;
-  margin: 0 auto;
+  margin: 10% auto 0;
   padding-bottom: 45px;
   color: var(--report-ink);
 }

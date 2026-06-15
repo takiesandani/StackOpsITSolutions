@@ -2968,7 +2968,7 @@ function generateSunbirdReportPdf(report, reportId = null) {
             const pale = '#f3f5f7';
             const pageWidth = doc.page.width;
             const contentWidth = pageWidth - 80;
-            const stackOpsLogo = path.join(__dirname, 'Images', 'Logos', 'StackOps Logo - Black.png');
+            const stackOpsLogo = path.join(__dirname, 'Images', 'Sunbird.png');
             const stackCtrlLogo = path.join(__dirname, 'Images', 'Logos', 'Ctrl big.png');
             const addPageIfNeeded = height => {
                 if (doc.y + height > 765) {
