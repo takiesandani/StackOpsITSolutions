@@ -596,7 +596,7 @@ async function getGraphAccessToken() {
 }
 
 // Helper function to send email via Microsoft Graph API
-async function sendGraphEmail(to, subject, body, isHtml = true, fromAddress = 'noreply@stackopsit.co.za') {
+async function sendGraphEmail(to, subject, body, isHtml = true, fromAddress = 'noreply@stackopsit.co.za', attachments = []) {
   const maxRetries = 2;
   let lastError = null;
   
@@ -609,6 +609,17 @@ async function sendGraphEmail(to, subject, body, isHtml = true, fromAddress = 'n
       const finalizedBody = isHtml
         ? applyStackOpsEmailEnding(applyStackOpsEmailBranding(body, subject), true)
         : applyStackOpsEmailEnding(body, false);
+      const graphAttachments = (Array.isArray(attachments) ? attachments : [])
+        .filter(attachment => attachment?.name && (attachment.contentBytes || attachment.content))
+        .map(attachment => ({
+          '@odata.type': '#microsoft.graph.fileAttachment',
+          name: attachment.name,
+          contentType: attachment.contentType || 'application/octet-stream',
+          contentBytes: attachment.contentBytes ||
+            (Buffer.isBuffer(attachment.content)
+              ? attachment.content.toString('base64')
+              : Buffer.from(String(attachment.content)).toString('base64'))
+        }));
       const emailPayload = {
         message: {
           subject: subject,
@@ -622,7 +633,8 @@ async function sendGraphEmail(to, subject, body, isHtml = true, fromAddress = 'n
                 address: to
               }
             }
-          ]
+          ],
+          ...(graphAttachments.length ? { attachments: graphAttachments } : {})
         }
       };
       
@@ -670,12 +682,7 @@ async function sendGraphEmail(to, subject, body, isHtml = true, fromAddress = 'n
 // function to send email from noreply@stackopsit.co.za
 const sendEmail = async (to, subject, body, isHtml = false, attachments = []) => {
   try {
-    // Note: Graph API doesn't handle attachments the same way - for now, send without
-    if (attachments.length > 0) {
-      console.warn('[Graph Email] Attachments are not yet supported via Graph API');
-    }
-    
-    await sendGraphEmail(to, subject, body, isHtml, 'noreply@stackopsit.co.za');
+    await sendGraphEmail(to, subject, body, isHtml, 'noreply@stackopsit.co.za', attachments);
   } catch (error) {
     console.error('[sendEmail] Error:', error.message);
     // Check if it's a credential error
@@ -689,12 +696,7 @@ const sendEmail = async (to, subject, body, isHtml = false, attachments = []) =>
 // function to send email from billing@stackopsit.co.za
 const sendBillingEmail = async (to, subject, body, isHtml = false, attachments = []) => {
   try {
-    // Note: Graph API doesn't handle attachments the same way - for now, send without
-    if (attachments.length > 0) {
-      console.warn('[Graph Email] Attachments are not yet supported via Graph API');
-    }
-    
-    await sendGraphEmail(to, subject, body, isHtml, 'billing@stackopsit.co.za');
+    await sendGraphEmail(to, subject, body, isHtml, 'billing@stackopsit.co.za', attachments);
   } catch (error) {
     console.error('[sendBillingEmail] Error:', error.message);
     // Check if it's a credential error
@@ -708,11 +710,7 @@ const sendBillingEmail = async (to, subject, body, isHtml = false, attachments =
 // function to send email from info@stackopsit.co.za
 const sendInfoEmail = async (to, subject, body, isHtml = false, attachments = []) => {
   try {
-    if (attachments.length > 0) {
-      console.warn('[Graph Email] Attachments are not yet supported via Graph API');
-    }
-
-    await sendGraphEmail(to, subject, body, isHtml, 'info@stackopsit.co.za');
+    await sendGraphEmail(to, subject, body, isHtml, 'info@stackopsit.co.za', attachments);
   } catch (error) {
     console.error('[sendInfoEmail] Error:', error.message);
     if (error.message && error.message.includes('Missing Azure credentials')) {
@@ -1719,6 +1717,42 @@ async function ensureDatabaseSchema() {
             )
         `);
 
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS SunbirdReportSettings (
+                CompanyID INT PRIMARY KEY,
+                WeeklyEnabled TINYINT DEFAULT 1,
+                RecipientEmail VARCHAR(255),
+                DeliveryDay TINYINT DEFAULT 5,
+                DeliveryHour TINYINT DEFAULT 8,
+                ActiveSince DATETIME DEFAULT CURRENT_TIMESTAMP,
+                LastDailyCollectionDate DATE DEFAULT NULL,
+                LastWeeklyReportDate DATE DEFAULT NULL,
+                UpdatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (CompanyID) REFERENCES Companies(ID)
+            )
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS SunbirdReports (
+                ID BIGINT AUTO_INCREMENT PRIMARY KEY,
+                CompanyID INT NOT NULL,
+                ReportType VARCHAR(20) NOT NULL,
+                PeriodStart DATETIME NOT NULL,
+                PeriodEnd DATETIME NOT NULL,
+                HealthScore INT DEFAULT 0,
+                ReportStatus VARCHAR(30) DEFAULT 'ready',
+                Payload LONGTEXT NOT NULL,
+                GeneratedByUserID INT DEFAULT NULL,
+                EmailStatus VARCHAR(30) DEFAULT 'not-sent',
+                SentAt DATETIME DEFAULT NULL,
+                CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_sunbird_reports_company_created (CompanyID, CreatedAt),
+                INDEX idx_sunbird_reports_company_type (CompanyID, ReportType),
+                FOREIGN KEY (CompanyID) REFERENCES Companies(ID),
+                FOREIGN KEY (GeneratedByUserID) REFERENCES Users(ID)
+            )
+        `);
+
         // User constraints/indexes for faster login and tenant lookups
         await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_company ON Users(CompanyID)`);
         await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_email ON Users(Email)`);
@@ -2113,6 +2147,13 @@ setTimeout(() => {
     });
 }, 8000);
 
+setInterval(runSunbirdReportAutomation, 60 * 60 * 1000);
+setTimeout(() => {
+    runSunbirdReportAutomation().catch(error => {
+        console.error('[Reports Automation] Startup run failed:', error.message);
+    });
+}, 30000);
+
 // --- END INVOICE AUTOMATION ---
 
 // Serve static files from the root directory (for CSS, JS, images)
@@ -2345,6 +2386,757 @@ const authenticateToken = (req, res, next) => {
         next();
     });
 };
+
+const SUNBIRD_REPORT_TIME_ZONE = 'Africa/Johannesburg';
+const SUNBIRD_REPORT_AUTOMATION_INTERVAL_MS = 60 * 60 * 1000;
+
+function parseReportJson(value, fallback = {}) {
+    if (!value) return fallback;
+    if (typeof value === 'object') return value;
+    try {
+        return JSON.parse(value);
+    } catch (_) {
+        return fallback;
+    }
+}
+
+function clampReportScore(value) {
+    return Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
+}
+
+function getJohannesburgDateParts(date = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: SUNBIRD_REPORT_TIME_ZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        hourCycle: 'h23',
+        weekday: 'short'
+    }).formatToParts(date);
+    return Object.fromEntries(parts.map(part => [part.type, part.value]));
+}
+
+function getReportRange(query = {}, activeSince = null) {
+    const end = query.to ? new Date(`${query.to}T23:59:59.999Z`) : new Date();
+    let start;
+    if (query.from) {
+        start = new Date(`${query.from}T00:00:00.000Z`);
+    } else if (query.range === 'since' && activeSince) {
+        start = new Date(activeSince);
+    } else {
+        const days = query.range === '7d' ? 7 : query.range === '90d' ? 90 : 30;
+        start = new Date(end);
+        start.setUTCDate(start.getUTCDate() - days);
+        start.setUTCHours(0, 0, 0, 0);
+    }
+    if (Number.isNaN(start.getTime())) start = new Date(Date.now() - (30 * 86400000));
+    if (Number.isNaN(end.getTime())) return { start, end: new Date() };
+    return start <= end ? { start, end } : { start: end, end: start };
+}
+
+function normalizeReportEvent(event = {}, source = 'Dashboard') {
+    const timestamp = event.timestamp || event.createdDateTime || event.lastModifiedDateTime ||
+        event.activityDateTime || event.time || event.date || null;
+    const parsedTimestamp = timestamp ? new Date(timestamp) : null;
+    const severity = String(event.severity || event.riskLevel || event.priority || 'info').toLowerCase();
+    const status = String(event.status || event.state || event.result || 'observed').toLowerCase();
+    return {
+        timestamp: parsedTimestamp && Number.isFinite(parsedTimestamp.getTime()) ? parsedTimestamp.toISOString() : null,
+        severity,
+        status,
+        source,
+        title: event.title || event.displayName || event.name || event.message || 'Dashboard event',
+        detail: event.detail || event.description || event.subtitle || event.category || event.type || source,
+        asset: event.user || event.userPrincipalName || event.assignedTo || event.asset || event.location || ''
+    };
+}
+
+function isReportEventWithinRange(event, start, end) {
+    if (!event.timestamp) return true;
+    const time = new Date(event.timestamp).getTime();
+    return Number.isFinite(time) && time >= start.getTime() && time <= end.getTime();
+}
+
+function buildDeterministicReportAnalysis(report) {
+    const critical = report.failures.filter(item => item.severity === 'critical').length;
+    const high = report.failures.filter(item => item.severity === 'high').length;
+    const score = report.summary.healthScore;
+    const posture = score >= 85 ? 'strong' : score >= 70 ? 'stable with attention areas' : 'at risk';
+    const issueText = critical || high
+        ? `${critical} critical and ${high} high-priority signal${critical + high === 1 ? '' : 's'} require attention.`
+        : 'No critical or high-priority failures were recorded in the selected period.';
+    return {
+        executiveSummary: `Overall dashboard health is ${posture} at ${score}%. ${issueText}`,
+        successes: report.successes.slice(0, 6),
+        failures: report.failures.slice(0, 8),
+        recommendations: report.recommendations.slice(0, 6),
+        generatedBy: 'StackCTRL evidence engine'
+    };
+}
+
+async function generateAiReportAnalysis(report) {
+    const fallback = buildDeterministicReportAnalysis(report);
+    try {
+        const client = openai || await initializeOpenAI();
+        if (!client) return fallback;
+        const evidence = {
+            period: report.period,
+            summary: report.summary,
+            successes: report.successes.slice(0, 8),
+            failures: report.failures.slice(0, 12),
+            recommendations: report.recommendations.slice(0, 8),
+            recentEvents: report.events.slice(0, 20)
+        };
+        const completion = await client.chat.completions.create({
+            model: 'gpt-4o-mini',
+            temperature: 0.1,
+            max_tokens: 700,
+            response_format: { type: 'json_object' },
+            messages: [
+                {
+                    role: 'system',
+                    content: 'You are a cybersecurity reporting analyst. Use only supplied evidence. Return JSON with executiveSummary, successes, failures, recommendations. Keep each list concise and actionable. Never invent facts, dates, people, or incidents.'
+                },
+                { role: 'user', content: JSON.stringify(evidence) }
+            ]
+        });
+        const parsed = parseReportJson(completion.choices?.[0]?.message?.content, {});
+        return {
+            executiveSummary: String(parsed.executiveSummary || fallback.executiveSummary),
+            successes: Array.isArray(parsed.successes) ? parsed.successes.slice(0, 6) : fallback.successes,
+            failures: Array.isArray(parsed.failures) ? parsed.failures.slice(0, 8) : fallback.failures,
+            recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations.slice(0, 6) : fallback.recommendations,
+            generatedBy: 'StackCTRL AI, grounded in dashboard evidence'
+        };
+    } catch (error) {
+        console.warn('[Reports] AI analysis fallback:', error.message);
+        return fallback;
+    }
+}
+
+async function ensureSunbirdReportSettings(companyId, recipientEmail = null) {
+    await pool.query(
+        `INSERT INTO SunbirdReportSettings (CompanyID, RecipientEmail)
+         VALUES (?, ?)
+         ON DUPLICATE KEY UPDATE RecipientEmail = COALESCE(RecipientEmail, VALUES(RecipientEmail))`,
+        [companyId, recipientEmail]
+    );
+    const [rows] = await pool.query('SELECT * FROM SunbirdReportSettings WHERE CompanyID = ? LIMIT 1', [companyId]);
+    return rows[0] || null;
+}
+
+async function getDefaultReportRecipient(companyId) {
+    const [rows] = await pool.query(
+        `SELECT Email
+         FROM Users
+         WHERE CompanyID = ? AND isActive = 1 AND Email IS NOT NULL
+         ORDER BY CASE WHEN LOWER(Role) IN ('admin', 'companyadmin') THEN 0 ELSE 1 END, ID
+         LIMIT 1`,
+        [companyId]
+    );
+    return rows[0]?.Email || null;
+}
+
+async function loadSunbirdReportEvidence(companyId) {
+    const [
+        companyRows,
+        identityRows,
+        deviceRows,
+        emailRows,
+        emailPayloadRows,
+        securityRows,
+        backupRows,
+        applicationRows,
+        applicationPayloadRows,
+        operationsRows,
+        governanceRows,
+        complianceRows
+    ] = await Promise.all([
+        pool.query('SELECT CompanyName FROM Companies WHERE ID = ? LIMIT 1', [companyId]),
+        pool.query('SELECT * FROM IdentityMetricsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
+        pool.query('SELECT * FROM DeviceMetricsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
+        pool.query('SELECT * FROM EmailMetricsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
+        pool.query('SELECT Payload, LastUpdated FROM EmailSecurityPayloadCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
+        pool.query('SELECT Payload, LastUpdated FROM SecurityEventsPayloadCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
+        pool.query('SELECT Payload, LastUpdated FROM BackupRecoveryPayloadCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
+        pool.query('SELECT * FROM ApplicationMetricsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
+        pool.query('SELECT Payload, LastUpdated FROM ApplicationPayloadCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
+        pool.query('SELECT Payload, LastUpdated FROM SunbirdOperationsPayloadCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
+        pool.query('SELECT Payload, LastUpdated FROM SunbirdGovernancePayloadCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
+        pool.query('SELECT Payload, LastUpdated FROM SunbirdComplianceControlsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId])
+    ]);
+    return {
+        companyName: companyRows[0][0]?.CompanyName || 'Client',
+        identity: identityRows[0][0] || {},
+        devices: deviceRows[0][0] || {},
+        emailMetrics: emailRows[0][0] || {},
+        email: parseReportJson(emailPayloadRows[0][0]?.Payload, {}),
+        security: parseReportJson(securityRows[0][0]?.Payload, {}),
+        backup: parseReportJson(backupRows[0][0]?.Payload, {}),
+        applicationsMetrics: applicationRows[0][0] || {},
+        applications: parseReportJson(applicationPayloadRows[0][0]?.Payload, {}),
+        operations: parseReportJson(operationsRows[0][0]?.Payload, {}),
+        governance: parseReportJson(governanceRows[0][0]?.Payload, {}),
+        compliance: parseReportJson(complianceRows[0][0]?.Payload, {}),
+        sourceUpdatedAt: [
+            identityRows[0][0]?.LastUpdated,
+            deviceRows[0][0]?.LastUpdated,
+            emailRows[0][0]?.LastUpdated,
+            emailPayloadRows[0][0]?.LastUpdated,
+            securityRows[0][0]?.LastUpdated,
+            backupRows[0][0]?.LastUpdated,
+            applicationRows[0][0]?.LastUpdated,
+            applicationPayloadRows[0][0]?.LastUpdated,
+            operationsRows[0][0]?.LastUpdated,
+            governanceRows[0][0]?.LastUpdated,
+            complianceRows[0][0]?.LastUpdated
+        ].filter(Boolean)
+    };
+}
+
+async function buildSunbirdReportPayload(companyId, periodStart, periodEnd, includeAi = false) {
+    const evidence = await loadSunbirdReportEvidence(companyId);
+    const securitySummary = evidence.security.summary || {};
+    const emailSummary = evidence.email.summary || {};
+    const backupSummary = evidence.backup.summary || {};
+    const deviceTotal = Number(evidence.devices.TotalDevices || 0);
+    const deviceIssues = Number(evidence.devices.NonCompliant || 0) +
+        Number(evidence.devices.NotEncrypted || 0) +
+        Number(evidence.devices.StaleDevices || 0);
+    const deviceScore = deviceTotal
+        ? clampReportScore(100 - ((deviceIssues / Math.max(1, deviceTotal * 3)) * 100))
+        : null;
+    const appTotal = Number(evidence.applicationsMetrics.TotalApps || evidence.applications.summary?.totalApplications || 0);
+    const riskyApps = Number(evidence.applicationsMetrics.HighRiskApps || evidence.applications.summary?.highRiskApps || 0);
+    const appScore = appTotal ? clampReportScore(100 - ((riskyApps / appTotal) * 100)) : null;
+    const emailRiskSignals = Number(emailSummary.highSeverityAlerts || evidence.emailMetrics.HighSeverity || 0) +
+        Number(emailSummary.activeIncidents || evidence.emailMetrics.OpenIncidents || 0);
+    const emailScore = emailSummary.securityScore != null
+        ? clampReportScore(emailSummary.securityScore)
+        : clampReportScore(100 - (emailRiskSignals * 12));
+    const scores = [
+        securitySummary.securityScore,
+        evidence.identity.SecurityScore,
+        deviceScore,
+        appScore,
+        emailScore,
+        evidence.operations.summary?.healthScore,
+        evidence.governance.summary?.score,
+        evidence.compliance.summary?.score
+    ].filter(value => value != null && Number.isFinite(Number(value))).map(clampReportScore);
+    const healthScore = scores.length
+        ? clampReportScore(scores.reduce((sum, value) => sum + value, 0) / scores.length)
+        : 0;
+
+    const events = [];
+    (evidence.security.activityFeed || []).forEach(item => events.push(normalizeReportEvent(item, 'Security')));
+    (evidence.security.incidents || []).forEach(item => events.push(normalizeReportEvent(item, 'Security incident')));
+    (evidence.security.alerts || []).forEach(item => events.push(normalizeReportEvent(item, 'Security alert')));
+    (evidence.security.signIns?.suspicious || []).forEach(item => events.push(normalizeReportEvent(item, 'Identity sign-in')));
+    (evidence.email.alerts || []).forEach(item => events.push(normalizeReportEvent(item, 'Email security')));
+    (evidence.email.incidents || []).forEach(item => events.push(normalizeReportEvent(item, 'Email incident')));
+    (evidence.operations.events || evidence.operations.activity || []).forEach(item => events.push(normalizeReportEvent(item, 'Operations')));
+    const filteredEvents = events
+        .filter(event => isReportEventWithinRange(event, periodStart, periodEnd))
+        .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))
+        .slice(0, 120);
+    const failureEvents = filteredEvents.filter(event =>
+        ['critical', 'high'].includes(event.severity) ||
+        ['failed', 'failure', 'active', 'open', 'newalert'].includes(event.status)
+    );
+    const resolvedEvents = filteredEvents.filter(event =>
+        ['resolved', 'closed', 'success', 'succeeded', 'healthy'].includes(event.status)
+    );
+    const successes = [
+        ...(resolvedEvents.length ? [{
+            title: `${resolvedEvents.length} event${resolvedEvents.length === 1 ? '' : 's'} resolved or completed`,
+            detail: 'Recorded dashboard evidence shows successful closure during the selected period.'
+        }] : []),
+        ...(!failureEvents.some(event => event.severity === 'critical') ? [{
+            title: 'No critical failures recorded',
+            detail: 'No critical-severity event was present in the collected dashboard evidence.'
+        }] : []),
+        ...(Number(backupSummary.activeUsersCount || 0) > 0 ? [{
+            title: 'Backup coverage active',
+            detail: `${Number(backupSummary.activeUsersCount || 0)} active user${Number(backupSummary.activeUsersCount || 0) === 1 ? '' : 's'} included in backup evidence.`
+        }] : []),
+        ...(deviceTotal && !Number(evidence.devices.NonCompliant || 0) ? [{
+            title: 'Device compliance clear',
+            detail: `${deviceTotal} managed device${deviceTotal === 1 ? '' : 's'} with no non-compliant devices reported.`
+        }] : [])
+    ].slice(0, 8);
+    const failures = failureEvents.slice(0, 12).map(event => ({
+        title: event.title,
+        detail: event.detail,
+        severity: event.severity,
+        status: event.status,
+        timestamp: event.timestamp,
+        source: event.source,
+        asset: event.asset
+    }));
+    const recommendations = [
+        ...(failureEvents.some(event => event.severity === 'critical') ? [{
+            priority: 'critical',
+            title: 'Triage critical evidence immediately',
+            detail: 'Validate ownership, containment, and closure evidence for every critical event.'
+        }] : []),
+        ...(Number(securitySummary.activeIncidents || 0) > 0 ? [{
+            priority: 'high',
+            title: 'Close active security incidents',
+            detail: `${Number(securitySummary.activeIncidents || 0)} active incident${Number(securitySummary.activeIncidents || 0) === 1 ? '' : 's'} remain in the security feed.`
+        }] : []),
+        ...(Number(evidence.devices.NonCompliant || 0) > 0 ? [{
+            priority: 'high',
+            title: 'Remediate non-compliant devices',
+            detail: `${Number(evidence.devices.NonCompliant || 0)} device${Number(evidence.devices.NonCompliant || 0) === 1 ? '' : 's'} require compliance remediation.`
+        }] : []),
+        ...(riskyApps > 0 ? [{
+            priority: 'medium',
+            title: 'Review high-risk application access',
+            detail: `${riskyApps} application${riskyApps === 1 ? '' : 's'} are marked high risk.`
+        }] : []),
+        {
+            priority: healthScore >= 85 ? 'low' : 'medium',
+            title: 'Maintain daily evidence collection',
+            detail: 'Use the report history to confirm that health scores and open failures improve week over week.'
+        }
+    ].slice(0, 8);
+    const sourceFreshness = evidence.sourceUpdatedAt.length
+        ? new Date(Math.max(...evidence.sourceUpdatedAt.map(value => new Date(value).getTime()).filter(Number.isFinite))).toISOString()
+        : null;
+    const report = {
+        version: 1,
+        companyName: evidence.companyName,
+        period: { start: periodStart.toISOString(), end: periodEnd.toISOString() },
+        generatedAt: new Date().toISOString(),
+        summary: {
+            healthScore,
+            status: failures.some(item => item.severity === 'critical') ? 'critical' :
+                failures.some(item => item.severity === 'high') ? 'attention' : 'healthy',
+            totalEvents: filteredEvents.length,
+            failures: failures.length,
+            successes: successes.length,
+            activeIncidents: Number(securitySummary.activeIncidents || 0),
+            highSeverityAlerts: Number(securitySummary.highSeverityAlerts || 0),
+            sourceFreshness
+        },
+        domainScores: {
+            security: securitySummary.securityScore != null ? clampReportScore(securitySummary.securityScore) : null,
+            identity: evidence.identity.SecurityScore != null ? clampReportScore(evidence.identity.SecurityScore) : null,
+            devices: deviceScore,
+            email: emailScore,
+            applications: appScore,
+            backup: evidence.backup.success ? 100 : null
+        },
+        successes,
+        failures,
+        recommendations,
+        events: filteredEvents,
+        collection: {
+            sources: ['Identity', 'Devices', 'Email', 'Security', 'Backup', 'Applications', 'Operations', 'Governance'],
+            evidenceUpdatedAt: sourceFreshness
+        }
+    };
+
+    const [trendRows] = await pool.query(
+        `SELECT HealthScore, PeriodEnd
+         FROM SunbirdReports
+         WHERE CompanyID = ? AND ReportType = 'daily' AND PeriodEnd BETWEEN ? AND ?
+         ORDER BY PeriodEnd ASC`,
+        [companyId, periodStart, periodEnd]
+    );
+    report.trend = trendRows.map(row => ({
+        date: new Date(row.PeriodEnd).toISOString(),
+        healthScore: clampReportScore(row.HealthScore)
+    }));
+    report.analysis = includeAi ? await generateAiReportAnalysis(report) : buildDeterministicReportAnalysis(report);
+    return report;
+}
+
+async function saveSunbirdReport(companyId, reportType, periodStart, periodEnd, generatedByUserId = null, includeAi = false) {
+    const payload = await buildSunbirdReportPayload(companyId, periodStart, periodEnd, includeAi);
+    const [result] = await pool.query(
+        `INSERT INTO SunbirdReports
+         (CompanyID, ReportType, PeriodStart, PeriodEnd, HealthScore, ReportStatus, Payload, GeneratedByUserID)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+            companyId,
+            reportType,
+            periodStart,
+            periodEnd,
+            payload.summary.healthScore,
+            payload.summary.status,
+            JSON.stringify(payload),
+            generatedByUserId
+        ]
+    );
+    return { id: result.insertId, payload };
+}
+
+function formatReportDate(value, includeTime = false) {
+    if (!value) return 'Not available';
+    return new Intl.DateTimeFormat('en-ZA', {
+        timeZone: SUNBIRD_REPORT_TIME_ZONE,
+        dateStyle: 'medium',
+        ...(includeTime ? { timeStyle: 'short' } : {})
+    }).format(new Date(value));
+}
+
+function generateSunbirdReportPdf(report, reportId = null) {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ size: 'A4', margin: 40, bufferPages: true, info: {
+                Title: `${report.companyName} StackCTRL Report`,
+                Author: 'StackOps IT Solutions'
+            } });
+            const chunks = [];
+            doc.on('data', chunk => chunks.push(chunk));
+            doc.on('end', () => resolve(Buffer.concat(chunks)));
+            doc.on('error', reject);
+
+            const orange = '#f97316';
+            const navy = '#17212b';
+            const slate = '#52606d';
+            const pale = '#f3f5f7';
+            const pageWidth = doc.page.width;
+            const contentWidth = pageWidth - 80;
+            const stackOpsLogo = path.join(__dirname, 'Images', 'Logos', 'StackOps Logo - Black.png');
+            const stackCtrlLogo = path.join(__dirname, 'Images', 'Logos', 'Ctrl big.png');
+            const addPageIfNeeded = height => {
+                if (doc.y + height > 765) {
+                    doc.addPage();
+                    doc.y = 42;
+                }
+            };
+            const sectionTitle = title => {
+                addPageIfNeeded(38);
+                doc.moveDown(0.5);
+                doc.font('Helvetica-Bold').fontSize(11).fillColor(navy).text(title.toUpperCase());
+                doc.moveTo(40, doc.y + 4).lineTo(pageWidth - 40, doc.y + 4).strokeColor('#d9dee3').stroke();
+                doc.moveDown(0.7);
+            };
+            const bulletList = (items, tone = navy) => {
+                if (!items.length) {
+                    doc.font('Helvetica').fontSize(9).fillColor(slate).text('No items recorded.');
+                    return;
+                }
+                items.forEach(item => {
+                    const title = typeof item === 'string' ? item : item.title;
+                    const detail = typeof item === 'string' ? '' : item.detail;
+                    addPageIfNeeded(42);
+                    doc.circle(47, doc.y + 5, 2.2).fillColor(tone).fill();
+                    doc.font('Helvetica-Bold').fontSize(9).fillColor(navy).text(title || 'Report item', 56, doc.y, { width: contentWidth - 16 });
+                    if (detail) doc.font('Helvetica').fontSize(8.5).fillColor(slate).text(detail, 56, doc.y + 2, { width: contentWidth - 16, lineGap: 1 });
+                    doc.moveDown(0.45);
+                });
+            };
+
+            doc.rect(0, 0, pageWidth, 126).fill(navy);
+            if (fs.existsSync(stackOpsLogo)) doc.image(stackOpsLogo, 40, 28, { fit: [150, 42] });
+            if (fs.existsSync(stackCtrlLogo)) doc.image(stackCtrlLogo, pageWidth - 174, 26, { fit: [134, 44], align: 'right' });
+            doc.font('Helvetica').fontSize(8).fillColor('#c8d0d8')
+                .text('AUTOMATED INTELLIGENCE REPORT', 40, 82, { characterSpacing: 1.1 });
+            doc.font('Helvetica-Bold').fontSize(18).fillColor('#ffffff')
+                .text(report.companyName || 'Client', 40, 96, { width: 330 });
+            doc.font('Helvetica').fontSize(8).fillColor('#d9dee3')
+                .text(`${formatReportDate(report.period.start)} - ${formatReportDate(report.period.end)}`, pageWidth - 220, 100, { width: 180, align: 'right' });
+
+            doc.y = 148;
+            doc.roundedRect(40, 144, contentWidth, 76, 8).fill(pale);
+            doc.font('Helvetica-Bold').fontSize(28).fillColor(orange).text(`${report.summary.healthScore}%`, 56, 160, { width: 90 });
+            doc.font('Helvetica-Bold').fontSize(9).fillColor(navy).text('SECURITY HEALTH', 56, 194);
+            const statX = [176, 286, 396];
+            [
+                ['Failures', report.summary.failures],
+                ['Successes', report.summary.successes],
+                ['Events reviewed', report.summary.totalEvents]
+            ].forEach((item, index) => {
+                doc.font('Helvetica-Bold').fontSize(16).fillColor(navy).text(String(item[1]), statX[index], 162, { width: 95, align: 'center' });
+                doc.font('Helvetica').fontSize(8).fillColor(slate).text(item[0], statX[index], 190, { width: 95, align: 'center' });
+            });
+            doc.y = 232;
+
+            sectionTitle('Executive summary');
+            doc.font('Helvetica').fontSize(10).fillColor(navy)
+                .text(report.analysis?.executiveSummary || buildDeterministicReportAnalysis(report).executiveSummary, { lineGap: 3 });
+
+            sectionTitle('What went well');
+            bulletList(report.analysis?.successes || report.successes, '#16a34a');
+
+            sectionTitle('Failures and attention items');
+            bulletList(report.analysis?.failures || report.failures, '#dc2626');
+
+            sectionTitle('Recommended actions');
+            bulletList(report.analysis?.recommendations || report.recommendations, orange);
+
+            sectionTitle('Domain health');
+            const domains = Object.entries(report.domainScores || {}).filter(([, score]) => score != null);
+            domains.forEach(([domain, score]) => {
+                addPageIfNeeded(25);
+                const y = doc.y;
+                doc.font('Helvetica').fontSize(8.5).fillColor(navy).text(domain.replace(/^./, char => char.toUpperCase()), 40, y, { width: 90 });
+                doc.roundedRect(136, y + 1, 350, 8, 4).fill('#e1e6ea');
+                doc.roundedRect(136, y + 1, 3.5 * clampReportScore(score), 8, 4).fill(score >= 80 ? '#16a34a' : score >= 60 ? orange : '#dc2626');
+                doc.font('Helvetica-Bold').fontSize(8).fillColor(navy).text(`${clampReportScore(score)}%`, 495, y - 1, { width: 48, align: 'right' });
+                doc.y = y + 20;
+            });
+
+            sectionTitle('Event timeline');
+            if (!report.events.length) {
+                doc.font('Helvetica').fontSize(9).fillColor(slate).text('No timestamped events were recorded in this period.');
+            } else {
+                report.events.slice(0, 45).forEach(event => {
+                    addPageIfNeeded(42);
+                    const y = doc.y;
+                    doc.font('Helvetica').fontSize(7.5).fillColor(slate).text(formatReportDate(event.timestamp, true), 40, y, { width: 92 });
+                    doc.font('Helvetica-Bold').fontSize(8).fillColor(
+                        ['critical', 'high'].includes(event.severity) ? '#dc2626' :
+                        event.severity === 'medium' ? orange : navy
+                    ).text(String(event.severity || 'info').toUpperCase(), 136, y, { width: 58 });
+                    doc.font('Helvetica-Bold').fontSize(8).fillColor(navy).text(event.title || 'Event', 198, y, { width: 190 });
+                    doc.font('Helvetica').fontSize(8).fillColor(slate).text(event.source || 'Dashboard', 394, y, { width: 109 });
+                    doc.font('Helvetica').fontSize(8).fillColor(slate).text(event.status || 'observed', 505, y, { width: 50, align: 'right' });
+                    doc.moveTo(40, y + 24).lineTo(pageWidth - 40, y + 24).strokeColor('#e7eaed').stroke();
+                    doc.y = y + 31;
+                });
+            }
+
+            const pageRange = doc.bufferedPageRange();
+            for (let pageIndex = pageRange.start; pageIndex < pageRange.start + pageRange.count; pageIndex++) {
+                doc.switchToPage(pageIndex);
+                doc.font('Helvetica').fontSize(7).fillColor('#7d8790')
+                    .text(`StackOps IT Solutions | StackCTRL | Evidence generated ${formatReportDate(report.generatedAt, true)}`, 40, 806, { width: 430 });
+                doc.text(`Page ${pageIndex + 1}${reportId ? ` | Report #${reportId}` : ''}`, 480, 806, { width: 75, align: 'right' });
+            }
+            doc.end();
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+function serializeReportRow(row) {
+    const payload = parseReportJson(row.Payload, {});
+    return {
+        id: row.ID,
+        type: row.ReportType,
+        periodStart: row.PeriodStart,
+        periodEnd: row.PeriodEnd,
+        healthScore: row.HealthScore,
+        status: row.ReportStatus,
+        emailStatus: row.EmailStatus,
+        sentAt: row.SentAt,
+        createdAt: row.CreatedAt,
+        summary: payload.summary || {},
+        analysis: payload.analysis || {}
+    };
+}
+
+async function getReportContext(req, res) {
+    const context = await getAccessContextByUser(req.user);
+    if (!context?.companyId) {
+        res.status(403).json({ success: false, message: 'Access mapping not configured' });
+        return null;
+    }
+    const recipient = await getDefaultReportRecipient(context.companyId);
+    const settings = await ensureSunbirdReportSettings(context.companyId, recipient);
+    return { context, settings };
+}
+
+app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
+    try {
+        const reportContext = await getReportContext(req, res);
+        if (!reportContext) return;
+        const { context, settings } = reportContext;
+        const range = getReportRange(req.query, settings.ActiveSince);
+        const limit = Math.max(1, Math.min(50, Number(req.query.limit) || 12));
+        const [rows] = await pool.query(
+            `SELECT *
+             FROM SunbirdReports
+             WHERE CompanyID = ? AND ReportType <> 'daily'
+             ORDER BY CreatedAt DESC
+             LIMIT ?`,
+            [context.companyId, limit]
+        );
+        const overview = await buildSunbirdReportPayload(context.companyId, range.start, range.end, false);
+        res.json({
+            success: true,
+            settings: {
+                weeklyEnabled: Boolean(settings.WeeklyEnabled),
+                recipientEmail: settings.RecipientEmail || req.user.email,
+                deliveryDay: settings.DeliveryDay,
+                deliveryHour: settings.DeliveryHour,
+                activeSince: settings.ActiveSince,
+                lastDailyCollectionDate: settings.LastDailyCollectionDate,
+                lastWeeklyReportDate: settings.LastWeeklyReportDate,
+                timeZone: SUNBIRD_REPORT_TIME_ZONE
+            },
+            range: { start: range.start, end: range.end },
+            overview,
+            reports: rows.map(serializeReportRow)
+        });
+    } catch (error) {
+        console.error('[Reports] List error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.post('/api/sunbird/reports/generate', authenticateToken, async (req, res) => {
+    try {
+        const reportContext = await getReportContext(req, res);
+        if (!reportContext) return;
+        const { context, settings } = reportContext;
+        const range = getReportRange(req.body || {}, settings.ActiveSince);
+        const report = await saveSunbirdReport(context.companyId, 'manual', range.start, range.end, req.user.id || null, true);
+        res.status(201).json({ success: true, report: { id: report.id, ...report.payload } });
+    } catch (error) {
+        console.error('[Reports] Generate error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.get('/api/sunbird/reports/:id/pdf', authenticateToken, async (req, res) => {
+    try {
+        const context = await getAccessContextByUser(req.user);
+        if (!context?.companyId) return res.status(403).json({ success: false, message: 'Access mapping not configured' });
+        const [rows] = await pool.query(
+            'SELECT * FROM SunbirdReports WHERE ID = ? AND CompanyID = ? LIMIT 1',
+            [req.params.id, context.companyId]
+        );
+        if (!rows.length) return res.status(404).json({ success: false, message: 'Report not found' });
+        const report = parseReportJson(rows[0].Payload, {});
+        const pdf = await generateSunbirdReportPdf(report, rows[0].ID);
+        const filename = `StackCTRL-${String(report.companyName || 'report').replace(/[^a-z0-9]+/gi, '-')}-${new Date(rows[0].PeriodEnd).toISOString().slice(0, 10)}.pdf`;
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Content-Length', pdf.length);
+        res.send(pdf);
+    } catch (error) {
+        console.error('[Reports] PDF error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.put('/api/sunbird/reports/settings', authenticateToken, async (req, res) => {
+    try {
+        const reportContext = await getReportContext(req, res);
+        if (!reportContext) return;
+        const { context } = reportContext;
+        const weeklyEnabled = req.body?.weeklyEnabled === false ? 0 : 1;
+        const recipientEmail = String(req.body?.recipientEmail || req.user.email || '').trim();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail)) {
+            return res.status(400).json({ success: false, message: 'A valid report recipient email is required' });
+        }
+        await pool.query(
+            `UPDATE SunbirdReportSettings
+             SET WeeklyEnabled = ?, RecipientEmail = ?
+             WHERE CompanyID = ?`,
+            [weeklyEnabled, recipientEmail, context.companyId]
+        );
+        res.json({ success: true, weeklyEnabled: Boolean(weeklyEnabled), recipientEmail });
+    } catch (error) {
+        console.error('[Reports] Settings error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+async function getSunbirdReportCompanyIds() {
+    const [rows] = await pool.query(`
+        SELECT DISTINCT CompanyID FROM (
+            SELECT CompanyID FROM SecurityEventsPayloadCache
+            UNION SELECT CompanyID FROM IdentityMetricsCache
+            UNION SELECT CompanyID FROM BackupRecoveryPayloadCache
+            UNION SELECT CompanyID FROM ApplicationMetricsCache
+            UNION SELECT CompanyID FROM SunbirdReportSettings
+        ) report_companies
+        WHERE CompanyID IS NOT NULL
+    `);
+    return rows.map(row => row.CompanyID);
+}
+
+async function sendWeeklySunbirdReport(companyId, settings, reportRecord) {
+    const pdf = await generateSunbirdReportPdf(reportRecord.payload, reportRecord.id);
+    const recipient = settings.RecipientEmail || await getDefaultReportRecipient(companyId);
+    if (!recipient) throw new Error('No report recipient is configured');
+    const report = reportRecord.payload;
+    const subject = `Weekly StackCTRL Report | ${report.companyName} | ${formatReportDate(report.period.end)}`;
+    const html = renderCorporateEmail({
+        title: 'Your weekly StackCTRL report',
+        greeting: `Dear ${report.companyName} Team,`,
+        bodyHtml: `
+            <p>Your automated weekly dashboard report is attached.</p>
+            <div style="margin:18px 0;padding:16px;border:1px solid #d9e1e8;border-left:4px solid #f97316;background:#f7f9fb;">
+                <p style="margin:0 0 8px;"><strong>Security health:</strong> ${report.summary.healthScore}%</p>
+                <p style="margin:0 0 8px;"><strong>Failures:</strong> ${report.summary.failures}</p>
+                <p style="margin:0;"><strong>Period:</strong> ${formatReportDate(report.period.start)} - ${formatReportDate(report.period.end)}</p>
+            </div>
+            <p>${escapeHtml(report.analysis?.executiveSummary || '')}</p>
+            <p>Open the Reports tab in StackCTRL to review the complete history and regenerate any time period.</p>
+        `
+    });
+    await sendEmail(recipient, subject, html, true, [{
+        name: `StackCTRL-Weekly-Report-${new Date(report.period.end).toISOString().slice(0, 10)}.pdf`,
+        contentType: 'application/pdf',
+        content: pdf
+    }]);
+    await pool.query(
+        `UPDATE SunbirdReports SET EmailStatus = 'sent', SentAt = NOW() WHERE ID = ?`,
+        [reportRecord.id]
+    );
+}
+
+async function runSunbirdReportAutomation() {
+    if (!pool) return;
+    const now = new Date();
+    const local = getJohannesburgDateParts(now);
+    const localDate = `${local.year}-${local.month}-${local.day}`;
+    const localHour = Number(local.hour || 0);
+    const isFriday = local.weekday === 'Fri';
+    try {
+        const companyIds = await getSunbirdReportCompanyIds();
+        for (const companyId of companyIds) {
+            const recipient = await getDefaultReportRecipient(companyId);
+            const settings = await ensureSunbirdReportSettings(companyId, recipient);
+            const lastDaily = settings.LastDailyCollectionDate
+                ? new Date(settings.LastDailyCollectionDate).toISOString().slice(0, 10)
+                : null;
+            if (lastDaily !== localDate) {
+                const dayStart = new Date(now);
+                dayStart.setUTCDate(dayStart.getUTCDate() - 1);
+                await saveSunbirdReport(companyId, 'daily', dayStart, now, null, false);
+                await pool.query(
+                    'UPDATE SunbirdReportSettings SET LastDailyCollectionDate = ? WHERE CompanyID = ?',
+                    [localDate, companyId]
+                );
+            }
+            const lastWeekly = settings.LastWeeklyReportDate
+                ? new Date(settings.LastWeeklyReportDate).toISOString().slice(0, 10)
+                : null;
+            if (settings.WeeklyEnabled && isFriday && localHour >= Number(settings.DeliveryHour || 8) && lastWeekly !== localDate) {
+                const weekStart = new Date(now);
+                weekStart.setUTCDate(weekStart.getUTCDate() - 7);
+                const reportRecord = await saveSunbirdReport(companyId, 'weekly', weekStart, now, null, true);
+                try {
+                    await sendWeeklySunbirdReport(companyId, settings, reportRecord);
+                } catch (emailError) {
+                    await pool.query(
+                        `UPDATE SunbirdReports SET EmailStatus = 'failed' WHERE ID = ?`,
+                        [reportRecord.id]
+                    );
+                    throw emailError;
+                } finally {
+                    await pool.query(
+                        'UPDATE SunbirdReportSettings SET LastWeeklyReportDate = ? WHERE CompanyID = ?',
+                        [localDate, companyId]
+                    );
+                }
+            }
+        }
+    } catch (error) {
+        console.error('[Reports Automation] Error:', error.message);
+    }
+}
 
 // API endpoint for admin to get all bookings (updated from original)
 app.get('/api/admin/bookings', authenticateToken, async (req, res) => {

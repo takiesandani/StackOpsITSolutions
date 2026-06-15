@@ -159,7 +159,8 @@ function restoreDashboardViewHTML() {
             dashboardView.querySelector('#sunbird-email-dashboard') ||
             dashboardView.querySelector('#sunbird-security-dashboard') ||
             dashboardView.querySelector('#sunbird-backup-dashboard') ||
-            dashboardView.querySelector('#sunbird-applications-dashboard')
+            dashboardView.querySelector('#sunbird-applications-dashboard') ||
+            dashboardView.querySelector('#sunbird-reports-dashboard')
         )
     ) {
         dashboardView.innerHTML = originalDashboardViewHTML;
@@ -531,6 +532,7 @@ function goBackToProjects() {
         dashboardView.classList.remove('sunbird-security-active');
         dashboardView.classList.remove('sunbird-backup-active');
         dashboardView.classList.remove('sunbird-applications-active');
+        dashboardView.classList.remove('sunbird-reports-active');
     }
     
     // Destroy charts
@@ -902,6 +904,9 @@ let sunbirdBillingMenuSelection = 'security';
 let cachedSunbirdBillingHtml = '';
 let cachedSunbirdSecurityData = null;
 let cachedSunbirdBackupData = null;
+let cachedSunbirdReportsData = null;
+let sunbirdReportsRange = '30d';
+let sunbirdReportsRequestId = 0;
 const BILLING_CACHE_KEY = 'billingInvoiceCache_v1';
 const BILLING_CACHE_TTL_MS = 5 * 60 * 1000;
 let billingAuthRetryCount = 0;
@@ -11279,7 +11284,6 @@ window.switchBillingMenu = async function(menuItem) {
     billingCard.dataset.sunbirdView = menuItem;
 
     const placeholderViews = {
-        reports: { title: 'Reports', icon: 'fa-chart-line' },
         architecture: { title: 'Architecture', icon: 'fa-sitemap' },
         sla: { title: 'SLA', icon: 'fa-handshake' }
     };
@@ -11312,6 +11316,11 @@ window.switchBillingMenu = async function(menuItem) {
 
     if (menuItem === 'backup') {
         await renderSunbirdBackupRecoveryView(false);
+        return;
+    }
+
+    if (menuItem === 'reports') {
+        await renderSunbirdReportsView(false);
         return;
     }
 
@@ -11410,6 +11419,492 @@ async function fetchSunbirdBackupRecoveryData() {
     }
     return data;
 }
+
+function getSunbirdReportHeaders() {
+    const token = localStorage.getItem('authToken');
+    if (!token) throw new Error('Authentication required');
+    return {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+    };
+}
+
+async function fetchSunbirdReportsData(range = sunbirdReportsRange, forceRefresh = false) {
+    if (!forceRefresh && cachedSunbirdReportsData?.selectedRange === range) {
+        return cachedSunbirdReportsData;
+    }
+    const response = await fetch(`/api/sunbird/reports?range=${encodeURIComponent(range)}&limit=30`, {
+        cache: 'no-store',
+        headers: getSunbirdReportHeaders()
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.message || 'Reports are unavailable');
+    cachedSunbirdReportsData = { ...data, selectedRange: range };
+    return cachedSunbirdReportsData;
+}
+
+function formatSunbirdReportDate(value, includeTime = false) {
+    if (!value) return 'Not yet';
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return 'Not yet';
+    return new Intl.DateTimeFormat('en-ZA', {
+        dateStyle: 'medium',
+        ...(includeTime ? { timeStyle: 'short' } : {})
+    }).format(date);
+}
+
+function getSunbirdReportScoreTone(score) {
+    const value = Number(score || 0);
+    return value >= 85 ? 'good' : value >= 70 ? 'warn' : 'bad';
+}
+
+function getSunbirdReportItemTitle(item) {
+    return typeof item === 'string' ? item : item?.title || 'Report insight';
+}
+
+function getSunbirdReportItemDetail(item) {
+    return typeof item === 'string' ? '' : item?.detail || '';
+}
+
+function renderSunbirdReportMiniHistory(reports = []) {
+    if (!reports.length) {
+        return '<div class="sunbird-report-empty">No generated reports yet. Daily evidence collection is ready.</div>';
+    }
+    return reports.slice(0, 3).map(report => `
+        <button type="button" class="sunbird-report-mini-row" onclick="window.downloadSunbirdReportPdf(${Number(report.id)})">
+            <span class="sunbird-report-mini-icon"><i class="fas fa-file-pdf"></i></span>
+            <span class="sunbird-report-mini-copy">
+                <strong>${escapeIdentityText(report.type === 'weekly' ? 'Weekly report' : 'Generated report')}</strong>
+                <small>${escapeIdentityText(formatSunbirdReportDate(report.periodEnd))}</small>
+            </span>
+            <span class="sunbird-report-mini-score tone-${getSunbirdReportScoreTone(report.healthScore)}">${Number(report.healthScore || 0)}%</span>
+            <i class="fas fa-download" aria-hidden="true"></i>
+        </button>
+    `).join('');
+}
+
+async function renderSunbirdReportsView(forceRefresh = false) {
+    const billingCard = document.getElementById('billing-card');
+    if (!billingCard || !isSunbirdBillingViewActive('reports')) return;
+    try {
+        if (forceRefresh || !cachedSunbirdReportsData) {
+            billingCard.innerHTML = renderSunbirdPremiumLoader('Building intelligent report summary');
+        }
+        const data = await fetchSunbirdReportsData('30d', forceRefresh);
+        if (!isSunbirdBillingViewActive('reports')) return;
+        const overview = data.overview || {};
+        const summary = overview.summary || {};
+        const analysis = overview.analysis || {};
+        const lastReport = data.reports?.[0];
+        billingCard.innerHTML = `
+            <div class="sunbird-panel-view sunbird-report-preview">
+                <div class="billing-card-header sunbird-report-preview-header">
+                    <i class="fas fa-chart-line"></i>
+                    <div>
+                        <h3>Automated Reports</h3>
+                        <span>Daily evidence, Friday delivery</span>
+                    </div>
+                    <span class="sunbird-report-live-pill"><i></i> Active</span>
+                </div>
+
+                <div class="sunbird-report-score-strip">
+                    <div class="sunbird-report-score tone-${getSunbirdReportScoreTone(summary.healthScore)}">
+                        <strong>${Number(summary.healthScore || 0)}%</strong>
+                        <span>Security health</span>
+                    </div>
+                    <div class="sunbird-report-kpi">
+                        <strong>${Number(summary.failures || 0)}</strong>
+                        <span>Problems</span>
+                    </div>
+                    <div class="sunbird-report-kpi">
+                        <strong>${Number(summary.successes || 0)}</strong>
+                        <span>Successes</span>
+                    </div>
+                    <div class="sunbird-report-kpi">
+                        <strong>${Number(summary.totalEvents || 0)}</strong>
+                        <span>Events</span>
+                    </div>
+                </div>
+
+                <div class="sunbird-report-ai-note">
+                    <span class="sunbird-report-ai-mark"><i class="fas fa-sparkles"></i></span>
+                    <div>
+                        <strong>StackCTRL intelligence</strong>
+                        <p>${escapeIdentityText(analysis.executiveSummary || 'Dashboard evidence is being summarized into a focused operational report.')}</p>
+                    </div>
+                </div>
+
+                <div class="sunbird-report-preview-section">
+                    <div class="sunbird-report-preview-label">
+                        <span>Recent reports</span>
+                        <small>${lastReport ? `Last generated ${escapeIdentityText(formatSunbirdReportDate(lastReport.createdAt, true))}` : 'History starts from activation'}</small>
+                    </div>
+                    <div class="sunbird-report-mini-history">
+                        ${renderSunbirdReportMiniHistory(data.reports || [])}
+                    </div>
+                </div>
+
+                <div class="sunbird-dashboard-btn-wrap sunbird-report-actions">
+                    <button class="sunbird-dashboard-btn" onclick="window.openSunbirdReportsDashboard()">
+                        <i class="fas fa-arrow-up-right-from-square"></i> Open Report Center
+                    </button>
+                    <button class="sunbird-report-quick-generate" onclick="window.generateSunbirdReport('30d', true)">
+                        <i class="fas fa-file-circle-plus"></i> Generate 30-day PDF
+                    </button>
+                </div>
+            </div>
+        `;
+    } catch (error) {
+        console.error('[Sunbird Reports] Error:', error);
+        if (!isSunbirdBillingViewActive('reports')) return;
+        billingCard.innerHTML = `
+            <div class="sunbird-panel-view">
+                <div class="billing-card-header"><i class="fas fa-chart-line"></i><h3>Automated Reports</h3></div>
+                <p class="sunbird-panel-error">Unable to load report evidence right now.</p>
+                <div class="sunbird-dashboard-btn-wrap">
+                    <button class="sunbird-dashboard-btn" onclick="window.renderSunbirdReportsView(true)">
+                        <i class="fas fa-rotate"></i> Try again
+                    </button>
+                </div>
+            </div>
+        `;
+    } finally {
+        ensureSunbirdBillingCardDimensions();
+        syncSunbirdLeftMenuHeight();
+    }
+}
+
+function renderSunbirdReportsShell() {
+    return `
+        <section class="sunbird-identity-dashboard sunbird-reports-dashboard" id="sunbird-reports-dashboard">
+            <div class="sunbird-id-header sunbird-report-center-header">
+                <button id="sunbird-reports-back" class="sunbird-id-back-btn" type="button">
+                    <span class="sunbird-id-back-icon" aria-hidden="true">&larr;</span>
+                    <span>Back</span>
+                </button>
+                <div>
+                    <div class="sunbird-report-eyebrow">STACKCTRL INTELLIGENCE</div>
+                    <h2>Automated Reports</h2>
+                    <p>Security health, outcomes, failures, and timestamped evidence in one weekly view.</p>
+                </div>
+                <div class="sunbird-report-brand-lockup" aria-label="StackOps and StackCTRL">
+                    <img src="Images/Logos/RemovedStackOps.png" alt="StackOps">
+                    <span></span>
+                    <img src="Images/Logos/Ctrl big.png" alt="StackCTRL">
+                </div>
+            </div>
+
+            <div class="sunbird-report-toolbar">
+                <div class="sunbird-report-range-group" role="group" aria-label="Report time frame">
+                    <button type="button" data-report-range="7d">7 days</button>
+                    <button type="button" data-report-range="30d" class="active">30 days</button>
+                    <button type="button" data-report-range="90d">90 days</button>
+                    <button type="button" data-report-range="since">Since activation</button>
+                </div>
+                <button id="sunbird-report-generate-btn" class="sunbird-report-primary-btn" type="button">
+                    <i class="fas fa-file-pdf"></i>
+                    Generate PDF
+                </button>
+            </div>
+
+            <div id="sunbird-report-center-content">
+                ${renderSunbirdPremiumLoader('Loading report history')}
+            </div>
+        </section>
+    `;
+}
+
+function renderSunbirdReportDomainScores(scores = {}) {
+    const labels = {
+        security: 'Security',
+        identity: 'Identity',
+        devices: 'Devices',
+        email: 'Email',
+        applications: 'Applications',
+        backup: 'Backup'
+    };
+    return Object.entries(labels).map(([key, label]) => {
+        const score = scores[key];
+        const displayScore = score == null ? 0 : Number(score);
+        return `
+            <div class="sunbird-report-domain">
+                <div><span>${label}</span><strong>${score == null ? 'No data' : `${displayScore}%`}</strong></div>
+                <div class="sunbird-report-domain-track"><i class="tone-${getSunbirdReportScoreTone(displayScore)}" style="width:${Math.max(0, Math.min(100, displayScore))}%"></i></div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderSunbirdReportInsightList(items = [], tone = 'neutral', emptyText = 'Nothing recorded') {
+    if (!items.length) return `<div class="sunbird-report-empty">${escapeIdentityText(emptyText)}</div>`;
+    return items.slice(0, 6).map(item => `
+        <article class="sunbird-report-insight tone-${tone}">
+            <i class="fas ${tone === 'success' ? 'fa-check' : tone === 'failure' ? 'fa-exclamation' : 'fa-arrow-right'}"></i>
+            <div>
+                <strong>${escapeIdentityText(getSunbirdReportItemTitle(item))}</strong>
+                ${getSunbirdReportItemDetail(item) ? `<p>${escapeIdentityText(getSunbirdReportItemDetail(item))}</p>` : ''}
+            </div>
+        </article>
+    `).join('');
+}
+
+function renderSunbirdReportHistoryRows(reports = []) {
+    if (!reports.length) return '<tr><td colspan="7" class="sunbird-id-empty">No generated reports yet.</td></tr>';
+    return reports.map(report => `
+        <tr>
+            <td><span class="sunbird-report-type">${escapeIdentityText(report.type || 'manual')}</span></td>
+            <td>${escapeIdentityText(formatSunbirdReportDate(report.periodStart))}</td>
+            <td>${escapeIdentityText(formatSunbirdReportDate(report.periodEnd))}</td>
+            <td><span class="sunbird-report-table-score tone-${getSunbirdReportScoreTone(report.healthScore)}">${Number(report.healthScore || 0)}%</span></td>
+            <td>${Number(report.summary?.failures || 0)}</td>
+            <td><span class="sunbird-report-delivery ${report.emailStatus === 'sent' ? 'sent' : ''}">${escapeIdentityText(report.emailStatus || 'not-sent')}</span></td>
+            <td><button type="button" class="sunbird-id-evidence-btn" onclick="window.downloadSunbirdReportPdf(${Number(report.id)})"><i class="fas fa-download"></i> PDF</button></td>
+        </tr>
+    `).join('');
+}
+
+function renderSunbirdReportEventRows(events = []) {
+    if (!events.length) return '<tr><td colspan="6" class="sunbird-id-empty">No timestamped problems or activity were recorded.</td></tr>';
+    return events.slice(0, 40).map(event => `
+        <tr>
+            <td>${escapeIdentityText(formatSunbirdReportDate(event.timestamp, true))}</td>
+            <td><span class="sunbird-severity-pill ${escapeIdentityText(event.severity || 'low')}">${escapeIdentityText(event.severity || 'info')}</span></td>
+            <td>${escapeIdentityText(event.title || 'Event')}</td>
+            <td>${escapeIdentityText(event.source || 'Dashboard')}</td>
+            <td>${escapeIdentityText(event.status || 'observed')}</td>
+            <td>${escapeIdentityText(event.asset || event.detail || '-')}</td>
+        </tr>
+    `).join('');
+}
+
+function renderSunbirdReportsCenter(data) {
+    const content = document.getElementById('sunbird-report-center-content');
+    if (!content) return;
+    const overview = data.overview || {};
+    const summary = overview.summary || {};
+    const analysis = overview.analysis || {};
+    const settings = data.settings || {};
+    content.innerHTML = `
+        <div class="sunbird-report-hero-grid">
+            <article class="sunbird-report-health-card tone-${getSunbirdReportScoreTone(summary.healthScore)}">
+                <div class="sunbird-report-health-copy">
+                    <span>Security health score</span>
+                    <strong>${Number(summary.healthScore || 0)}<small>%</small></strong>
+                    <p>${escapeIdentityText(summary.status || 'Collecting evidence')}</p>
+                </div>
+                <div class="sunbird-report-health-ring" style="--report-score:${Math.max(0, Math.min(100, Number(summary.healthScore || 0)))}">
+                    <i></i>
+                </div>
+            </article>
+
+            <article class="sunbird-report-ai-card">
+                <div class="sunbird-report-card-title"><span><i class="fas fa-sparkles"></i> AI executive brief</span><small>${escapeIdentityText(analysis.generatedBy || 'Evidence grounded')}</small></div>
+                <p>${escapeIdentityText(analysis.executiveSummary || 'No executive summary is available.')}</p>
+                <div class="sunbird-report-ai-stats">
+                    <span><strong>${Number(summary.failures || 0)}</strong> failures</span>
+                    <span><strong>${Number(summary.successes || 0)}</strong> successes</span>
+                    <span><strong>${Number(summary.totalEvents || 0)}</strong> events</span>
+                </div>
+            </article>
+
+            <article class="sunbird-report-automation-card">
+                <div class="sunbird-report-card-title"><span><i class="fas fa-clock-rotate-left"></i> Automation</span><b class="${settings.weeklyEnabled ? 'active' : ''}">${settings.weeklyEnabled ? 'Active' : 'Paused'}</b></div>
+                <div class="sunbird-report-schedule-row"><span>Collection</span><strong>Every day</strong></div>
+                <div class="sunbird-report-schedule-row"><span>Delivery</span><strong>Friday, ${String(settings.deliveryHour || 8).padStart(2, '0')}:00 SAST</strong></div>
+                <label class="sunbird-report-email-field">
+                    <span>PDF recipient</span>
+                    <input id="sunbird-report-recipient" type="email" value="${escapeIdentityText(settings.recipientEmail || '')}">
+                </label>
+                <div class="sunbird-report-setting-actions">
+                    <label><input id="sunbird-report-weekly-enabled" type="checkbox" ${settings.weeklyEnabled ? 'checked' : ''}> Weekly email</label>
+                    <button type="button" onclick="window.saveSunbirdReportSettings()">Save</button>
+                </div>
+            </article>
+        </div>
+
+        <div class="sunbird-report-main-grid">
+            <article class="sunbird-report-section-card">
+                <div class="sunbird-report-card-title"><span>What went well</span><small>${(overview.successes || []).length} outcomes</small></div>
+                <div class="sunbird-report-insight-list">
+                    ${renderSunbirdReportInsightList(analysis.successes || overview.successes || [], 'success', 'No confirmed successes yet.')}
+                </div>
+            </article>
+            <article class="sunbird-report-section-card">
+                <div class="sunbird-report-card-title"><span>Failures and attention</span><small>${(overview.failures || []).length} items</small></div>
+                <div class="sunbird-report-insight-list">
+                    ${renderSunbirdReportInsightList(analysis.failures || overview.failures || [], 'failure', 'No failures were recorded.')}
+                </div>
+            </article>
+            <article class="sunbird-report-section-card">
+                <div class="sunbird-report-card-title"><span>Recommended next actions</span><small>Prioritized</small></div>
+                <div class="sunbird-report-insight-list">
+                    ${renderSunbirdReportInsightList(analysis.recommendations || overview.recommendations || [], 'neutral', 'No actions are required.')}
+                </div>
+            </article>
+            <article class="sunbird-report-section-card">
+                <div class="sunbird-report-card-title"><span>Domain health</span><small>Latest evidence</small></div>
+                <div class="sunbird-report-domains">${renderSunbirdReportDomainScores(overview.domainScores || {})}</div>
+            </article>
+        </div>
+
+        <section class="sunbird-id-table-section sunbird-report-table-section">
+            <div class="sunbird-report-table-heading">
+                <div><h3>Report history</h3><p>Every generated weekly and on-demand PDF since activation.</p></div>
+                <span>Active since ${escapeIdentityText(formatSunbirdReportDate(settings.activeSince))}</span>
+            </div>
+            <div class="sunbird-id-table-wrap">
+                <table class="sunbird-id-table sunbird-report-history-table">
+                    <thead><tr><th>Type</th><th>From</th><th>To</th><th>Health</th><th>Failures</th><th>Delivery</th><th>File</th></tr></thead>
+                    <tbody>${renderSunbirdReportHistoryRows(data.reports || [])}</tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="sunbird-id-table-section sunbird-report-table-section">
+            <div class="sunbird-report-table-heading">
+                <div><h3>Evidence timeline</h3><p>What happened, when it happened, and where it came from.</p></div>
+                <span>${escapeIdentityText(formatSunbirdReportDate(data.range?.start))} - ${escapeIdentityText(formatSunbirdReportDate(data.range?.end))}</span>
+            </div>
+            <div class="sunbird-id-table-wrap">
+                <table class="sunbird-id-table sunbird-report-events-table">
+                    <thead><tr><th>Time</th><th>Severity</th><th>Event</th><th>Source</th><th>Status</th><th>User / asset</th></tr></thead>
+                    <tbody>${renderSunbirdReportEventRows(overview.events || [])}</tbody>
+                </table>
+            </div>
+        </section>
+    `;
+}
+
+function setupSunbirdReportsDashboard() {
+    document.getElementById('sunbird-reports-back')?.addEventListener('click', goBackToProjects);
+    document.querySelectorAll('[data-report-range]').forEach(button => {
+        button.addEventListener('click', async () => {
+            document.querySelectorAll('[data-report-range]').forEach(item => item.classList.remove('active'));
+            button.classList.add('active');
+            sunbirdReportsRange = button.dataset.reportRange || '30d';
+            await loadSunbirdReportsDashboardData(true);
+        });
+    });
+    document.getElementById('sunbird-report-generate-btn')?.addEventListener('click', () => {
+        window.generateSunbirdReport(sunbirdReportsRange, true);
+    });
+}
+
+async function loadSunbirdReportsDashboardData(forceRefresh = false) {
+    const requestId = ++sunbirdReportsRequestId;
+    const content = document.getElementById('sunbird-report-center-content');
+    if (content && forceRefresh) content.innerHTML = renderSunbirdPremiumLoader('Refreshing report evidence');
+    try {
+        const data = await fetchSunbirdReportsData(sunbirdReportsRange, forceRefresh);
+        if (requestId !== sunbirdReportsRequestId) return;
+        renderSunbirdReportsCenter(data);
+    } catch (error) {
+        if (requestId !== sunbirdReportsRequestId || !content) return;
+        content.innerHTML = `<div class="sunbird-report-load-error"><i class="fas fa-circle-exclamation"></i><p>${escapeIdentityText(error.message)}</p><button type="button" onclick="window.loadSunbirdReportsDashboardData(true)">Try again</button></div>`;
+    }
+}
+
+function openSunbirdReportsDashboard() {
+    const dashboardView = document.getElementById('dashboard-view');
+    const projectsView = document.getElementById('projects-view');
+    if (!dashboardView) return;
+    if (projectsView) projectsView.style.display = 'none';
+    dashboardView.style.display = 'block';
+    dashboardView.style.visibility = 'visible';
+    dashboardView.style.opacity = '1';
+    [
+        'sunbird-identity-active',
+        'sunbird-device-active',
+        'sunbird-email-active',
+        'sunbird-security-active',
+        'sunbird-backup-active',
+        'sunbird-applications-active'
+    ].forEach(className => dashboardView.classList.remove(className));
+    dashboardView.classList.add('sunbird-reports-active');
+    captureDashboardViewHTML();
+    dashboardView.innerHTML = renderSunbirdReportsShell();
+    setupSunbirdReportsDashboard();
+    loadSunbirdReportsDashboardData(false);
+}
+
+window.generateSunbirdReport = async function(range = sunbirdReportsRange, downloadWhenReady = true) {
+    const button = document.getElementById('sunbird-report-generate-btn');
+    const original = button?.innerHTML;
+    if (button) {
+        button.disabled = true;
+        button.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Building report';
+    }
+    try {
+        const response = await fetch('/api/sunbird/reports/generate', {
+            method: 'POST',
+            headers: getSunbirdReportHeaders(),
+            body: JSON.stringify({ range })
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.message || 'Report generation failed');
+        cachedSunbirdReportsData = null;
+        showNotification('Intelligent PDF report generated', true);
+        if (downloadWhenReady) await window.downloadSunbirdReportPdf(data.report.id);
+        if (document.getElementById('sunbird-reports-dashboard')) await loadSunbirdReportsDashboardData(true);
+        if (isSunbirdBillingViewActive('reports')) await renderSunbirdReportsView(true);
+    } catch (error) {
+        showNotification(error.message || 'Report generation failed', false);
+    } finally {
+        if (button) {
+            button.disabled = false;
+            button.innerHTML = original;
+        }
+    }
+};
+
+window.downloadSunbirdReportPdf = async function(reportId) {
+    try {
+        const response = await fetch(`/api/sunbird/reports/${encodeURIComponent(reportId)}/pdf`, {
+            headers: getSunbirdReportHeaders()
+        });
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.message || 'PDF download failed');
+        }
+        const blob = await response.blob();
+        const disposition = response.headers.get('Content-Disposition') || '';
+        const filenameMatch = disposition.match(/filename="([^"]+)"/i);
+        const filename = filenameMatch?.[1] || `StackCTRL-Report-${reportId}.pdf`;
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+    } catch (error) {
+        showNotification(error.message || 'PDF download failed', false);
+    }
+};
+
+window.saveSunbirdReportSettings = async function() {
+    const recipient = document.getElementById('sunbird-report-recipient')?.value || '';
+    const weeklyEnabled = Boolean(document.getElementById('sunbird-report-weekly-enabled')?.checked);
+    try {
+        const response = await fetch('/api/sunbird/reports/settings', {
+            method: 'PUT',
+            headers: getSunbirdReportHeaders(),
+            body: JSON.stringify({ recipientEmail: recipient, weeklyEnabled })
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.message || 'Settings could not be saved');
+        cachedSunbirdReportsData = null;
+        showNotification('Report automation settings saved', true);
+        await loadSunbirdReportsDashboardData(true);
+    } catch (error) {
+        showNotification(error.message || 'Settings could not be saved', false);
+    }
+};
+
+window.openSunbirdReportsDashboard = openSunbirdReportsDashboard;
+window.renderSunbirdReportsView = renderSunbirdReportsView;
+window.loadSunbirdReportsDashboardData = loadSunbirdReportsDashboardData;
 
 async function fetchBackupCardData() {
     const project = mockProjects.find(p => p.isBackupRecoveryCard);

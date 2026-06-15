@@ -18,6 +18,909 @@
   --text-muted: rgba(189, 189, 189, 0.8);
 }
 
+/* ============================================
+   SUNBIRD AUTOMATED REPORTS
+   ============================================ */
+
+.sunbird-report-preview {
+  gap: 9px;
+}
+
+.sunbird-report-preview-header {
+  align-items: center;
+  margin-bottom: 0;
+}
+
+.sunbird-report-preview-header > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.sunbird-report-preview-header h3 {
+  margin: 0;
+}
+
+.sunbird-report-preview-header span {
+  display: block;
+  color: #aaafb6;
+  font-size: 0.66rem;
+  margin-top: 2px;
+}
+
+.sunbird-report-live-pill {
+  flex: 0 0 auto;
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  margin: 0 !important;
+  padding: 4px 8px;
+  border: 1px solid rgba(34, 197, 94, 0.28);
+  border-radius: 999px;
+  color: #bbf7d0 !important;
+  background: rgba(34, 197, 94, 0.09);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.57rem !important;
+}
+
+.sunbird-report-live-pill i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 9px rgba(34, 197, 94, 0.75);
+}
+
+.sunbird-report-score-strip {
+  display: grid;
+  grid-template-columns: 1.35fr repeat(3, 1fr);
+  gap: 7px;
+}
+
+.sunbird-report-score,
+.sunbird-report-kpi {
+  min-width: 0;
+  min-height: 58px;
+  padding: 8px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  background: rgba(2, 10, 20, 0.55);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.sunbird-report-score {
+  border-color: rgba(249, 115, 22, 0.28);
+  background: linear-gradient(145deg, rgba(249, 115, 22, 0.12), rgba(2, 10, 20, 0.64));
+}
+
+.sunbird-report-score strong {
+  font-size: 1.2rem;
+  font-weight: 650;
+  color: #fff;
+}
+
+.sunbird-report-score.tone-good strong { color: #86efac; }
+.sunbird-report-score.tone-warn strong { color: #fdba74; }
+.sunbird-report-score.tone-bad strong { color: #fca5a5; }
+
+.sunbird-report-score span,
+.sunbird-report-kpi span {
+  color: #9fa9b5;
+  font-size: 0.59rem;
+  white-space: nowrap;
+}
+
+.sunbird-report-kpi strong {
+  color: #f8fafc;
+  font-size: 0.94rem;
+  font-weight: 600;
+}
+
+.sunbird-report-ai-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 9px 10px;
+  border: 1px solid rgba(249, 115, 22, 0.2);
+  border-radius: 9px;
+  background: rgba(249, 115, 22, 0.055);
+}
+
+.sunbird-report-ai-mark {
+  flex: 0 0 auto;
+  width: 25px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: #fdba74;
+  background: rgba(249, 115, 22, 0.14);
+}
+
+.sunbird-report-ai-note strong {
+  display: block;
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.sunbird-report-ai-note p {
+  margin: 2px 0 0;
+  color: #b7bec7;
+  font-size: 0.65rem;
+  line-height: 1.45;
+}
+
+.sunbird-report-preview-section {
+  min-height: 0;
+}
+
+.sunbird-report-preview-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+
+.sunbird-report-preview-label span {
+  color: #e5e7eb;
+  font-size: 0.68rem;
+  font-weight: 550;
+}
+
+.sunbird-report-preview-label small {
+  color: #7f8a96;
+  font-size: 0.57rem;
+}
+
+.sunbird-report-mini-history {
+  display: grid;
+  gap: 4px;
+}
+
+.sunbird-report-mini-row {
+  width: 100%;
+  min-height: 38px;
+  padding: 5px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(2, 10, 20, 0.42);
+  color: #d7dde4;
+  display: grid;
+  grid-template-columns: 24px 1fr auto 15px;
+  align-items: center;
+  gap: 7px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.sunbird-report-mini-row:hover {
+  border-color: rgba(249, 115, 22, 0.35);
+  background: rgba(249, 115, 22, 0.07);
+}
+
+.sunbird-report-mini-icon {
+  color: #fb923c;
+  text-align: center;
+}
+
+.sunbird-report-mini-copy {
+  min-width: 0;
+}
+
+.sunbird-report-mini-copy strong,
+.sunbird-report-mini-copy small {
+  display: block;
+}
+
+.sunbird-report-mini-copy strong {
+  color: #f4f6f8;
+  font-size: 0.64rem;
+  font-weight: 500;
+}
+
+.sunbird-report-mini-copy small {
+  color: #87919c;
+  font-size: 0.56rem;
+}
+
+.sunbird-report-mini-score {
+  font-size: 0.62rem;
+  font-weight: 650;
+}
+
+.sunbird-report-mini-score.tone-good { color: #86efac; }
+.sunbird-report-mini-score.tone-warn { color: #fdba74; }
+.sunbird-report-mini-score.tone-bad { color: #fca5a5; }
+
+.sunbird-report-empty {
+  padding: 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  color: #8e99a5;
+  font-size: 0.68rem;
+  text-align: center;
+}
+
+.sunbird-report-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.sunbird-report-quick-generate {
+  padding: 6px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 23px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #d8dee5;
+  font-size: 0.67rem;
+  cursor: pointer;
+}
+
+.sunbird-report-quick-generate:hover {
+  border-color: rgba(249, 115, 22, 0.45);
+  color: #fff;
+}
+
+.dashboard-view.sunbird-reports-active {
+  background: #f3f5f7;
+  color: #17212b;
+}
+
+.sunbird-reports-dashboard {
+  --report-ink: #17212b;
+  --report-muted: #68737d;
+  --report-line: #dde2e6;
+  --report-panel: #ffffff;
+  --report-orange: #f97316;
+  max-width: 1480px;
+  margin: 0 auto;
+  padding-bottom: 45px;
+  color: var(--report-ink);
+}
+
+.sunbird-report-center-header {
+  border: 0;
+  border-bottom: 1px solid var(--report-line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  align-items: center;
+  padding: 22px 0 24px;
+}
+
+.sunbird-report-center-header h2 {
+  color: var(--report-ink);
+  font-size: clamp(1.55rem, 2.4vw, 2.35rem);
+  font-weight: 650;
+  letter-spacing: -0.035em;
+}
+
+.sunbird-report-center-header p {
+  color: var(--report-muted);
+  max-width: 690px;
+}
+
+.sunbird-report-eyebrow {
+  margin-bottom: 4px;
+  color: var(--report-orange);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+}
+
+.sunbird-report-brand-lockup {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding-left: 25px;
+}
+
+.sunbird-report-brand-lockup img:first-child {
+  width: 112px;
+  max-height: 38px;
+  object-fit: contain;
+}
+
+.sunbird-report-brand-lockup img:last-child {
+  width: 98px;
+  max-height: 38px;
+  object-fit: contain;
+  filter: brightness(0.18);
+}
+
+.sunbird-report-brand-lockup span {
+  width: 1px;
+  height: 28px;
+  background: var(--report-line);
+}
+
+.sunbird-reports-dashboard .sunbird-id-back-btn {
+  color: var(--report-ink);
+  border-color: #ccd3d9;
+  background: #fff;
+}
+
+.sunbird-reports-dashboard .sunbird-id-back-btn:hover {
+  color: var(--report-orange);
+  border-color: rgba(249, 115, 22, 0.5);
+  background: #fff8f3;
+}
+
+.sunbird-report-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  margin: 0 -10px 24px;
+  padding: 14px 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  background: rgba(243, 245, 247, 0.93);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(221, 226, 230, 0.8);
+}
+
+.sunbird-report-range-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid #d9dee3;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.sunbird-report-range-group button {
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #68737d;
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.sunbird-report-range-group button:hover,
+.sunbird-report-range-group button.active {
+  color: #17212b;
+  background: #edf0f2;
+}
+
+.sunbird-report-primary-btn {
+  padding: 10px 15px;
+  border: 1px solid #e96810;
+  border-radius: 8px;
+  background: var(--report-orange);
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 5px 14px rgba(249, 115, 22, 0.18);
+}
+
+.sunbird-report-primary-btn:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.sunbird-report-primary-btn i {
+  margin-right: 7px;
+}
+
+.sunbird-report-hero-grid {
+  display: grid;
+  grid-template-columns: 0.8fr 1.55fr 1.05fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.sunbird-report-health-card,
+.sunbird-report-ai-card,
+.sunbird-report-automation-card,
+.sunbird-report-section-card,
+.sunbird-report-table-section {
+  border: 1px solid var(--report-line);
+  border-radius: 11px;
+  background: var(--report-panel);
+  box-shadow: 0 3px 12px rgba(23, 33, 43, 0.035);
+}
+
+.sunbird-report-health-card,
+.sunbird-report-ai-card,
+.sunbird-report-automation-card {
+  min-height: 205px;
+  padding: 20px;
+}
+
+.sunbird-report-health-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  overflow: hidden;
+  position: relative;
+}
+
+.sunbird-report-health-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--report-orange);
+}
+
+.sunbird-report-health-card.tone-good::before { background: #16a34a; }
+.sunbird-report-health-card.tone-bad::before { background: #dc2626; }
+
+.sunbird-report-health-copy span {
+  color: var(--report-muted);
+  font-size: 0.73rem;
+}
+
+.sunbird-report-health-copy > strong {
+  display: block;
+  margin: 8px 0 3px;
+  color: var(--report-ink);
+  font-size: clamp(2.3rem, 4vw, 3.6rem);
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: -0.06em;
+}
+
+.sunbird-report-health-copy strong small {
+  font-size: 0.4em;
+  color: var(--report-muted);
+}
+
+.sunbird-report-health-copy p {
+  margin: 0;
+  color: var(--report-muted);
+  font-size: 0.72rem;
+  text-transform: capitalize;
+}
+
+.sunbird-report-health-ring {
+  --ring-color: #f97316;
+  width: 86px;
+  height: 86px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: conic-gradient(var(--ring-color) calc(var(--report-score) * 1%), #e8ecef 0);
+}
+
+.sunbird-report-health-card.tone-good .sunbird-report-health-ring { --ring-color: #16a34a; }
+.sunbird-report-health-card.tone-bad .sunbird-report-health-ring { --ring-color: #dc2626; }
+
+.sunbird-report-health-ring i {
+  width: 67px;
+  height: 67px;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.sunbird-report-card-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.sunbird-report-card-title > span {
+  color: var(--report-ink);
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+.sunbird-report-card-title > span i {
+  margin-right: 7px;
+  color: var(--report-orange);
+}
+
+.sunbird-report-card-title small {
+  color: #8a949d;
+  font-size: 0.64rem;
+}
+
+.sunbird-report-card-title b {
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #eef0f2;
+  color: #7b858e;
+  font-size: 0.58rem;
+  text-transform: uppercase;
+}
+
+.sunbird-report-card-title b.active {
+  color: #15803d;
+  background: #eaf8ef;
+}
+
+.sunbird-report-ai-card > p {
+  margin: 0;
+  color: #3f4b55;
+  font-size: 0.84rem;
+  line-height: 1.65;
+}
+
+.sunbird-report-ai-stats {
+  display: flex;
+  gap: 8px;
+  margin-top: 19px;
+}
+
+.sunbird-report-ai-stats span {
+  flex: 1;
+  padding: 8px;
+  border-radius: 7px;
+  background: #f4f6f7;
+  color: #77818a;
+  font-size: 0.64rem;
+  text-align: center;
+}
+
+.sunbird-report-ai-stats strong {
+  display: block;
+  color: var(--report-ink);
+  font-size: 0.9rem;
+}
+
+.sunbird-report-schedule-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 0;
+  color: #78828b;
+  font-size: 0.69rem;
+}
+
+.sunbird-report-schedule-row strong {
+  color: var(--report-ink);
+  font-weight: 550;
+}
+
+.sunbird-report-email-field {
+  display: block;
+  margin-top: 8px;
+}
+
+.sunbird-report-email-field span {
+  display: block;
+  margin-bottom: 4px;
+  color: #78828b;
+  font-size: 0.63rem;
+}
+
+.sunbird-report-email-field input {
+  width: 100%;
+  padding: 8px 9px;
+  border: 1px solid #d7dde2;
+  border-radius: 7px;
+  background: #fbfcfd;
+  color: var(--report-ink);
+  font-size: 0.71rem;
+}
+
+.sunbird-report-setting-actions {
+  margin-top: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #5e6972;
+  font-size: 0.66rem;
+}
+
+.sunbird-report-setting-actions label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.sunbird-report-setting-actions button {
+  padding: 6px 10px;
+  border: 1px solid #d7dde2;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--report-ink);
+  cursor: pointer;
+}
+
+.sunbird-report-main-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.sunbird-report-section-card {
+  min-height: 260px;
+  padding: 19px;
+}
+
+.sunbird-report-insight-list {
+  display: grid;
+  gap: 8px;
+}
+
+.sunbird-report-insight {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid #e6eaed;
+  border-radius: 8px;
+  background: #fbfcfc;
+}
+
+.sunbird-report-insight > i {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #5f6a73;
+  background: #eceff1;
+  font-size: 0.57rem;
+}
+
+.sunbird-report-insight.tone-success > i {
+  color: #15803d;
+  background: #e7f7ed;
+}
+
+.sunbird-report-insight.tone-failure > i {
+  color: #b91c1c;
+  background: #fdecec;
+}
+
+.sunbird-report-insight strong {
+  display: block;
+  color: var(--report-ink);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.sunbird-report-insight p {
+  margin: 2px 0 0;
+  color: #76818a;
+  font-size: 0.65rem;
+  line-height: 1.45;
+}
+
+.sunbird-report-domains {
+  display: grid;
+  gap: 13px;
+}
+
+.sunbird-report-domain > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 5px;
+  color: #66717a;
+  font-size: 0.68rem;
+}
+
+.sunbird-report-domain strong {
+  color: var(--report-ink);
+  font-weight: 600;
+}
+
+.sunbird-report-domain-track {
+  height: 7px;
+  border-radius: 999px;
+  background: #e9edf0;
+  overflow: hidden;
+}
+
+.sunbird-report-domain-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--report-orange);
+}
+
+.sunbird-report-domain-track i.tone-good { background: #16a34a; }
+.sunbird-report-domain-track i.tone-bad { background: #dc2626; }
+
+.sunbird-report-table-section {
+  margin-top: 16px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.sunbird-report-table-heading {
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border-bottom: 1px solid var(--report-line);
+}
+
+.sunbird-report-table-heading h3 {
+  margin: 0;
+  color: var(--report-ink);
+  font-size: 0.86rem;
+  font-weight: 650;
+}
+
+.sunbird-report-table-heading p {
+  margin: 3px 0 0;
+  color: #7a858e;
+  font-size: 0.65rem;
+}
+
+.sunbird-report-table-heading > span {
+  color: #7a858e;
+  font-size: 0.65rem;
+}
+
+.sunbird-reports-dashboard .sunbird-id-table-wrap {
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+}
+
+.sunbird-reports-dashboard .sunbird-id-table th {
+  color: #68737d;
+  background: #f7f8f9;
+}
+
+.sunbird-reports-dashboard .sunbird-id-table td {
+  color: #33404a;
+  border-color: #eaedef;
+}
+
+.sunbird-report-type,
+.sunbird-report-delivery,
+.sunbird-report-table-score {
+  display: inline-flex;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #edf0f2;
+  color: #5f6972;
+  font-size: 0.61rem;
+  text-transform: capitalize;
+}
+
+.sunbird-report-delivery.sent {
+  color: #15803d;
+  background: #e9f7ee;
+}
+
+.sunbird-report-table-score.tone-good {
+  color: #15803d;
+  background: #e9f7ee;
+}
+
+.sunbird-report-table-score.tone-warn {
+  color: #b45309;
+  background: #fff4e6;
+}
+
+.sunbird-report-table-score.tone-bad {
+  color: #b91c1c;
+  background: #fdecec;
+}
+
+.sunbird-report-load-error {
+  min-height: 280px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  color: #68737d;
+}
+
+.sunbird-report-load-error i {
+  color: #dc2626;
+  font-size: 1.5rem;
+}
+
+.sunbird-report-load-error p {
+  margin: 0;
+}
+
+.sunbird-report-load-error button {
+  padding: 8px 13px;
+  border: 1px solid #d7dde2;
+  border-radius: 7px;
+  background: #fff;
+  cursor: pointer;
+}
+
+@media (max-width: 1100px) {
+  .sunbird-report-hero-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sunbird-report-automation-card {
+    grid-column: 1 / -1;
+  }
+
+  .sunbird-report-brand-lockup {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .sunbird-report-score-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sunbird-report-preview-label {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .sunbird-report-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .sunbird-report-actions button {
+    width: 100%;
+  }
+
+  .dashboard-view.sunbird-reports-active {
+    padding: 12px;
+  }
+
+  .sunbird-report-center-header {
+    align-items: flex-start;
+  }
+
+  .sunbird-report-toolbar {
+    position: static;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .sunbird-report-range-group {
+    overflow-x: auto;
+  }
+
+  .sunbird-report-range-group button {
+    flex: 0 0 auto;
+  }
+
+  .sunbird-report-primary-btn {
+    width: 100%;
+  }
+
+  .sunbird-report-hero-grid,
+  .sunbird-report-main-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sunbird-report-automation-card {
+    grid-column: auto;
+  }
+
+  .sunbird-report-health-card,
+  .sunbird-report-ai-card,
+  .sunbird-report-automation-card {
+    min-height: 0;
+  }
+
+  .sunbird-report-table-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 .client-portal-page,
 .client-portal-page * {
   box-sizing: border-box;
