@@ -7060,7 +7060,7 @@ function setupIdentitySearch() {
     // Back button functionality
     if (backBtn) {
         backBtn.addEventListener('click', () => {
-            resetDashboard();
+            goBackToProjects();
         });
     }
 
@@ -8984,7 +8984,7 @@ function handleLogout() {
     if (dashboardSection && loginSection) {
         dashboardSection.classList.remove('active');
         loginSection.classList.add('active');
-        resetDashboard();
+        goBackToProjects();
     }
 
     // Hide chatbot
@@ -11431,14 +11431,25 @@ function getSunbirdReportHeaders() {
 
 async function fetchSunbirdReportsData(range = sunbirdReportsRange, forceRefresh = false) {
     if (!forceRefresh && cachedSunbirdReportsData?.selectedRange === range) {
+        console.log(`[Reports] Using cached ${range} report data.`);
         return cachedSunbirdReportsData;
     }
+    console.log(`[Reports] Loading report history, daily snapshots, and audit logs for ${range}.`);
     const response = await fetch(`/api/sunbird/reports?range=${encodeURIComponent(range)}&limit=30`, {
         cache: 'no-store',
         headers: getSunbirdReportHeaders()
     });
     const data = await response.json();
-    if (!response.ok || !data.success) throw new Error(data.message || 'Reports are unavailable');
+    if (!response.ok || !data.success) {
+        console.error('[Reports] Load failed:', response.status, data);
+        throw new Error(data.message || `Reports are unavailable (${response.status})`);
+    }
+    console.log('[Reports] Loaded:', {
+        reports: data.reports?.length || 0,
+        dailySnapshots: (data.reports || []).filter(report => report.type === 'daily').length,
+        auditLogs: data.logs?.length || 0,
+        events: data.overview?.events?.length || 0
+    });
     cachedSunbirdReportsData = { ...data, selectedRange: range };
     return cachedSunbirdReportsData;
 }
@@ -11663,6 +11674,26 @@ function renderSunbirdReportHistoryRows(reports = []) {
     `).join('');
 }
 
+function renderSunbirdReportAuditRows(logs = []) {
+    if (!logs.length) return '<div class="sunbird-report-empty">No report automation logs are available for this period.</div>';
+    const iconByStatus = {
+        success: 'fa-check',
+        failed: 'fa-xmark',
+        started: 'fa-ellipsis',
+        info: 'fa-circle-info'
+    };
+    return logs.slice(0, 80).map(log => `
+        <article class="sunbird-report-log-row tone-${escapeIdentityText(log.status || 'info')}">
+            <span class="sunbird-report-log-icon"><i class="fas ${iconByStatus[log.status] || 'fa-circle-info'}"></i></span>
+            <div>
+                <strong>${escapeIdentityText(log.message || log.eventType || 'Report activity')}</strong>
+                <small>${escapeIdentityText(String(log.eventType || '').replaceAll('_', ' '))}</small>
+            </div>
+            <time>${escapeIdentityText(formatSunbirdReportDate(log.createdAt, true))}</time>
+        </article>
+    `).join('');
+}
+
 function renderSunbirdReportEventRows(events = []) {
     if (!events.length) return '<tr><td colspan="6" class="sunbird-id-empty">No timestamped problems or activity were recorded.</td></tr>';
     return events.slice(0, 40).map(event => `
@@ -11711,6 +11742,7 @@ function renderSunbirdReportsCenter(data) {
                 <div class="sunbird-report-card-title"><span><i class="fas fa-clock-rotate-left"></i> Automation</span><b class="${settings.weeklyEnabled ? 'active' : ''}">${settings.weeklyEnabled ? 'Active' : 'Paused'}</b></div>
                 <div class="sunbird-report-schedule-row"><span>Collection</span><strong>Every day</strong></div>
                 <div class="sunbird-report-schedule-row"><span>Delivery</span><strong>Friday, ${String(settings.deliveryHour || 8).padStart(2, '0')}:00 SAST</strong></div>
+                <p class="sunbird-report-delivery-note">On-demand generation downloads the PDF. Friday automation emails the PDF attachment.</p>
                 <label class="sunbird-report-email-field">
                     <span>PDF recipient</span>
                     <input id="sunbird-report-recipient" type="email" value="${escapeIdentityText(settings.recipientEmail || '')}">
@@ -11749,7 +11781,7 @@ function renderSunbirdReportsCenter(data) {
 
         <section class="sunbird-id-table-section sunbird-report-table-section">
             <div class="sunbird-report-table-heading">
-                <div><h3>Report history</h3><p>Every generated weekly and on-demand PDF since activation.</p></div>
+                <div><h3>Report history</h3><p>Daily evidence snapshots, weekly reports, and on-demand PDFs since activation.</p></div>
                 <span>Active since ${escapeIdentityText(formatSunbirdReportDate(settings.activeSince))}</span>
             </div>
             <div class="sunbird-id-table-wrap">
@@ -11758,6 +11790,14 @@ function renderSunbirdReportsCenter(data) {
                     <tbody>${renderSunbirdReportHistoryRows(data.reports || [])}</tbody>
                 </table>
             </div>
+        </section>
+
+        <section class="sunbird-report-log-section">
+            <div class="sunbird-report-table-heading">
+                <div><h3>Report automation log</h3><p>Collection, generation, downloads, settings, and email delivery activity.</p></div>
+                <span>${Number(data.logs?.length || 0)} log entries</span>
+            </div>
+            <div class="sunbird-report-log-list">${renderSunbirdReportAuditRows(data.logs || [])}</div>
         </section>
 
         <section class="sunbird-id-table-section sunbird-report-table-section">
@@ -11835,15 +11875,20 @@ window.generateSunbirdReport = async function(range = sunbirdReportsRange, downl
         button.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Building report';
     }
     try {
+        console.log(`[Reports] Starting on-demand ${range} report generation.`);
         const response = await fetch('/api/sunbird/reports/generate', {
             method: 'POST',
             headers: getSunbirdReportHeaders(),
             body: JSON.stringify({ range })
         });
         const data = await response.json();
-        if (!response.ok || !data.success) throw new Error(data.message || 'Report generation failed');
+        if (!response.ok || !data.success) {
+            console.error('[Reports] Generation failed:', response.status, data);
+            throw new Error(data.message || `Report generation failed (${response.status})`);
+        }
+        console.log(`[Reports] Report #${data.report.id} generated and saved to history.`);
         cachedSunbirdReportsData = null;
-        showNotification('Intelligent PDF report generated', true);
+        showNotification(downloadWhenReady ? 'Report generated and downloading' : 'Report generated and saved', true);
         if (downloadWhenReady) await window.downloadSunbirdReportPdf(data.report.id);
         if (document.getElementById('sunbird-reports-dashboard')) await loadSunbirdReportsDashboardData(true);
         if (isSunbirdBillingViewActive('reports')) await renderSunbirdReportsView(true);
@@ -11859,6 +11904,7 @@ window.generateSunbirdReport = async function(range = sunbirdReportsRange, downl
 
 window.downloadSunbirdReportPdf = async function(reportId) {
     try {
+        console.log(`[Reports] Requesting PDF download for report #${reportId}.`);
         const response = await fetch(`/api/sunbird/reports/${encodeURIComponent(reportId)}/pdf`, {
             headers: getSunbirdReportHeaders()
         });
@@ -11878,7 +11924,9 @@ window.downloadSunbirdReportPdf = async function(reportId) {
         link.click();
         link.remove();
         URL.revokeObjectURL(url);
+        console.log(`[Reports] Download started: ${filename}`);
     } catch (error) {
+        console.error('[Reports] PDF download failed:', error);
         showNotification(error.message || 'PDF download failed', false);
     }
 };
@@ -11887,13 +11935,17 @@ window.saveSunbirdReportSettings = async function() {
     const recipient = document.getElementById('sunbird-report-recipient')?.value || '';
     const weeklyEnabled = Boolean(document.getElementById('sunbird-report-weekly-enabled')?.checked);
     try {
+        console.log('[Reports] Saving automation settings:', { recipient, weeklyEnabled });
         const response = await fetch('/api/sunbird/reports/settings', {
             method: 'PUT',
             headers: getSunbirdReportHeaders(),
             body: JSON.stringify({ recipientEmail: recipient, weeklyEnabled })
         });
         const data = await response.json();
-        if (!response.ok || !data.success) throw new Error(data.message || 'Settings could not be saved');
+        if (!response.ok || !data.success) {
+            console.error('[Reports] Settings update failed:', response.status, data);
+            throw new Error(data.message || `Settings could not be saved (${response.status})`);
+        }
         cachedSunbirdReportsData = null;
         showNotification('Report automation settings saved', true);
         await loadSunbirdReportsDashboardData(true);

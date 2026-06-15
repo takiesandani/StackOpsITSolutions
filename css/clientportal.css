@@ -6619,6 +6619,240 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   }
 }
 
+/* Reports use the existing StackCTRL dark glass language.
+   The exported PDF intentionally remains white for readability and printing. */
+.dashboard-view.sunbird-reports-active {
+  background: transparent;
+  color: #f8fafc;
+}
+
+.sunbird-reports-dashboard {
+  --report-ink: #f8fafc;
+  --report-muted: #a8b2bd;
+  --report-line: rgba(255, 255, 255, 0.14);
+  --report-panel: linear-gradient(135deg, rgba(255, 255, 255, 0.105), rgba(255, 255, 255, 0.035));
+  color: var(--report-ink);
+}
+
+.sunbird-report-center-header {
+  border-bottom-color: rgba(255, 255, 255, 0.13);
+}
+
+.sunbird-report-center-header h2,
+.sunbird-report-health-copy > strong,
+.sunbird-report-card-title > span,
+.sunbird-report-schedule-row strong,
+.sunbird-report-insight strong,
+.sunbird-report-domain strong,
+.sunbird-report-table-heading h3 {
+  color: #ffffff;
+}
+
+.sunbird-report-center-header p,
+.sunbird-report-health-copy span,
+.sunbird-report-health-copy p,
+.sunbird-report-card-title small,
+.sunbird-report-ai-card > p,
+.sunbird-report-schedule-row,
+.sunbird-report-email-field span,
+.sunbird-report-setting-actions,
+.sunbird-report-insight p,
+.sunbird-report-domain > div:first-child,
+.sunbird-report-table-heading p,
+.sunbird-report-table-heading > span {
+  color: #a8b2bd;
+}
+
+.sunbird-report-brand-lockup img:last-child {
+  filter: none;
+}
+
+.sunbird-reports-dashboard .sunbird-id-back-btn,
+.sunbird-report-range-group,
+.sunbird-report-setting-actions button,
+.sunbird-report-load-error button {
+  color: #f8fafc;
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.sunbird-reports-dashboard .sunbird-id-back-btn:hover,
+.sunbird-report-setting-actions button:hover {
+  color: #fdba74;
+  border-color: rgba(249, 115, 22, 0.55);
+  background: rgba(249, 115, 22, 0.1);
+}
+
+.sunbird-report-toolbar {
+  background: rgba(4, 10, 18, 0.88);
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.sunbird-report-range-group button {
+  color: #aeb7c1;
+}
+
+.sunbird-report-range-group button:hover,
+.sunbird-report-range-group button.active {
+  color: #ffffff;
+  background: rgba(249, 115, 22, 0.14);
+}
+
+.sunbird-report-health-card,
+.sunbird-report-ai-card,
+.sunbird-report-automation-card,
+.sunbird-report-section-card,
+.sunbird-report-table-section,
+.sunbird-report-log-section {
+  position: relative;
+  overflow: hidden;
+  border-color: rgba(255, 255, 255, 0.18);
+  background: var(--report-panel);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  box-shadow:
+    0 14px 38px rgba(0, 0, 0, 0.26),
+    inset 0 1px 1px rgba(255, 255, 255, 0.18);
+}
+
+.sunbird-report-health-ring i {
+  background: #101820;
+}
+
+.sunbird-report-ai-stats span,
+.sunbird-report-insight {
+  color: #a8b2bd;
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(3, 10, 18, 0.42);
+}
+
+.sunbird-report-ai-stats strong {
+  color: #ffffff;
+}
+
+.sunbird-report-email-field input {
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(2, 9, 16, 0.58);
+}
+
+.sunbird-report-delivery-note {
+  margin: 7px 0 2px;
+  padding: 7px 8px;
+  border-left: 2px solid #f97316;
+  color: #aeb7c1;
+  background: rgba(249, 115, 22, 0.07);
+  font-size: 0.63rem;
+  line-height: 1.45;
+}
+
+.sunbird-report-domain-track {
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.sunbird-reports-dashboard .sunbird-id-table-wrap {
+  background: rgba(2, 9, 16, 0.38);
+}
+
+.sunbird-reports-dashboard .sunbird-id-table th {
+  color: #c4ccd4;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.sunbird-reports-dashboard .sunbird-id-table td {
+  color: #e1e6eb;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.sunbird-report-type,
+.sunbird-report-delivery,
+.sunbird-report-table-score {
+  color: #c8d0d8;
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.sunbird-report-log-section {
+  margin-top: 16px;
+}
+
+.sunbird-report-log-list {
+  max-height: 430px;
+  padding: 8px 16px 16px;
+  display: grid;
+  gap: 6px;
+  overflow-y: auto;
+}
+
+.sunbird-report-log-row {
+  min-height: 52px;
+  padding: 8px 10px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  background: rgba(2, 9, 16, 0.42);
+}
+
+.sunbird-report-log-icon {
+  width: 25px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #c6d0da;
+  background: rgba(255, 255, 255, 0.09);
+  font-size: 0.62rem;
+}
+
+.sunbird-report-log-row.tone-success .sunbird-report-log-icon {
+  color: #86efac;
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.sunbird-report-log-row.tone-failed .sunbird-report-log-icon {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.13);
+}
+
+.sunbird-report-log-row.tone-started .sunbird-report-log-icon {
+  color: #fdba74;
+  background: rgba(249, 115, 22, 0.13);
+}
+
+.sunbird-report-log-row strong,
+.sunbird-report-log-row small {
+  display: block;
+}
+
+.sunbird-report-log-row strong {
+  color: #edf2f7;
+  font-size: 0.7rem;
+  font-weight: 550;
+}
+
+.sunbird-report-log-row small,
+.sunbird-report-log-row time {
+  color: #8995a1;
+  font-size: 0.59rem;
+}
+
+.sunbird-report-log-row small {
+  margin-top: 2px;
+  text-transform: capitalize;
+}
+
+@media (max-width: 600px) {
+  .sunbird-report-log-row {
+    grid-template-columns: 26px minmax(0, 1fr);
+  }
+
+  .sunbird-report-log-row time {
+    grid-column: 2;
+  }
+}
+
 /* ============================================
     Identity Protection DASHBOARD STYLES
    ============================================ */

@@ -1385,7 +1385,31 @@ async function getUserAccessContextByEmail(email) {
 
 async function getAccessContextByUser(reqUser) {
     if (!reqUser || !reqUser.email) return null;
-    return getUserAccessContextByEmail(reqUser.email);
+    try {
+        const databaseContext = await getUserAccessContextByEmail(reqUser.email);
+        if (databaseContext?.companyId) return databaseContext;
+        if (databaseContext) {
+            return {
+                ...databaseContext,
+                companyId: reqUser.companyId || databaseContext.companyId || null,
+                accessType: databaseContext.accessType || reqUser.access || 'standard',
+                tenantId: databaseContext.tenantId || reqUser.tenantId || null
+            };
+        }
+    } catch (error) {
+        console.warn('[Access Context] Database lookup failed, using verified token context:', error.message);
+    }
+
+    const cached = accessContextCache.get(String(reqUser.email || '').toLowerCase()) || {};
+    const companyId = reqUser.companyId || cached.companyId || null;
+    if (!companyId) return null;
+    return {
+        userId: reqUser.id || reqUser.userId || null,
+        email: reqUser.email,
+        companyId,
+        accessType: reqUser.access || cached.accessType || 'standard',
+        tenantId: reqUser.tenantId || cached.tenantId || null
+    };
 }
 
 async function checkMfaCode(user_id, code) {
@@ -1750,6 +1774,25 @@ async function ensureDatabaseSchema() {
                 INDEX idx_sunbird_reports_company_type (CompanyID, ReportType),
                 FOREIGN KEY (CompanyID) REFERENCES Companies(ID),
                 FOREIGN KEY (GeneratedByUserID) REFERENCES Users(ID)
+            )
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS SunbirdReportAuditLogs (
+                ID BIGINT AUTO_INCREMENT PRIMARY KEY,
+                CompanyID INT NOT NULL,
+                ReportID BIGINT DEFAULT NULL,
+                EventType VARCHAR(60) NOT NULL,
+                EventStatus VARCHAR(30) NOT NULL,
+                Message VARCHAR(500) NOT NULL,
+                Metadata LONGTEXT,
+                ActorUserID INT DEFAULT NULL,
+                CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_sunbird_report_logs_company_created (CompanyID, CreatedAt),
+                INDEX idx_sunbird_report_logs_report (ReportID),
+                FOREIGN KEY (CompanyID) REFERENCES Companies(ID),
+                FOREIGN KEY (ReportID) REFERENCES SunbirdReports(ID) ON DELETE SET NULL,
+                FOREIGN KEY (ActorUserID) REFERENCES Users(ID) ON DELETE SET NULL
             )
         `);
 
@@ -2404,6 +2447,60 @@ function clampReportScore(value) {
     return Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
 }
 
+async function writeSunbirdReportLog({
+    companyId,
+    reportId = null,
+    eventType,
+    status = 'info',
+    message,
+    metadata = null,
+    actorUserId = null
+}) {
+    const entry = {
+        companyId,
+        reportId,
+        eventType,
+        status,
+        message,
+        metadata,
+        actorUserId,
+        timestamp: new Date().toISOString()
+    };
+    console.log('[Reports Audit]', JSON.stringify(entry));
+    if (!pool || !companyId) return;
+    try {
+        await pool.query(
+            `INSERT INTO SunbirdReportAuditLogs
+             (CompanyID, ReportID, EventType, EventStatus, Message, Metadata, ActorUserID)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [
+                companyId,
+                reportId,
+                eventType,
+                status,
+                String(message || '').slice(0, 500),
+                metadata ? JSON.stringify(metadata) : null,
+                actorUserId
+            ]
+        );
+    } catch (error) {
+        console.warn('[Reports Audit] Could not persist log:', error.message);
+    }
+}
+
+function serializeReportAuditLog(row) {
+    return {
+        id: row.ID,
+        reportId: row.ReportID,
+        eventType: row.EventType,
+        status: row.EventStatus,
+        message: row.Message,
+        metadata: parseReportJson(row.Metadata, null),
+        actorUserId: row.ActorUserID,
+        createdAt: row.CreatedAt
+    };
+}
+
 function getJohannesburgDateParts(date = new Date()) {
     const parts = new Intl.DateTimeFormat('en-CA', {
         timeZone: SUNBIRD_REPORT_TIME_ZONE,
@@ -2755,23 +2852,59 @@ async function buildSunbirdReportPayload(companyId, periodStart, periodEnd, incl
 }
 
 async function saveSunbirdReport(companyId, reportType, periodStart, periodEnd, generatedByUserId = null, includeAi = false) {
-    const payload = await buildSunbirdReportPayload(companyId, periodStart, periodEnd, includeAi);
-    const [result] = await pool.query(
-        `INSERT INTO SunbirdReports
-         (CompanyID, ReportType, PeriodStart, PeriodEnd, HealthScore, ReportStatus, Payload, GeneratedByUserID)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
+    await writeSunbirdReportLog({
+        companyId,
+        eventType: `${reportType}_report_generation_started`,
+        status: 'started',
+        message: `${reportType === 'daily' ? 'Daily evidence collection' : `${reportType} report generation`} started.`,
+        metadata: { periodStart, periodEnd, includeAi },
+        actorUserId: generatedByUserId
+    });
+    try {
+        const payload = await buildSunbirdReportPayload(companyId, periodStart, periodEnd, includeAi);
+        const [result] = await pool.query(
+            `INSERT INTO SunbirdReports
+             (CompanyID, ReportType, PeriodStart, PeriodEnd, HealthScore, ReportStatus, Payload, GeneratedByUserID)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                companyId,
+                reportType,
+                periodStart,
+                periodEnd,
+                payload.summary.healthScore,
+                payload.summary.status,
+                JSON.stringify(payload),
+                generatedByUserId
+            ]
+        );
+        await writeSunbirdReportLog({
             companyId,
-            reportType,
-            periodStart,
-            periodEnd,
-            payload.summary.healthScore,
-            payload.summary.status,
-            JSON.stringify(payload),
-            generatedByUserId
-        ]
-    );
-    return { id: result.insertId, payload };
+            reportId: result.insertId,
+            eventType: `${reportType}_report_generated`,
+            status: 'success',
+            message: `${reportType === 'daily' ? 'Daily evidence snapshot' : `${reportType} report`} completed with a ${payload.summary.healthScore}% health score.`,
+            metadata: {
+                periodStart,
+                periodEnd,
+                healthScore: payload.summary.healthScore,
+                events: payload.summary.totalEvents,
+                failures: payload.summary.failures,
+                successes: payload.summary.successes
+            },
+            actorUserId: generatedByUserId
+        });
+        return { id: result.insertId, payload };
+    } catch (error) {
+        await writeSunbirdReportLog({
+            companyId,
+            eventType: `${reportType}_report_generation_failed`,
+            status: 'failed',
+            message: `${reportType} report generation failed: ${error.message}`,
+            metadata: { periodStart, periodEnd },
+            actorUserId: generatedByUserId
+        });
+        throw error;
+    }
 }
 
 function formatReportDate(value, includeTime = false) {
@@ -2934,9 +3067,17 @@ function serializeReportRow(row) {
 }
 
 async function getReportContext(req, res) {
+    if (!pool) {
+        res.status(503).json({ success: false, message: 'Report database is temporarily unavailable' });
+        return null;
+    }
     const context = await getAccessContextByUser(req.user);
     if (!context?.companyId) {
-        res.status(403).json({ success: false, message: 'Access mapping not configured' });
+        console.warn('[Reports] Company context missing for verified user:', req.user?.email);
+        res.status(403).json({
+            success: false,
+            message: 'Your signed-in account does not include a company ID. Please sign out and sign in again.'
+        });
         return null;
     }
     const recipient = await getDefaultReportRecipient(context.companyId);
@@ -2954,12 +3095,28 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
         const [rows] = await pool.query(
             `SELECT *
              FROM SunbirdReports
-             WHERE CompanyID = ? AND ReportType <> 'daily'
+             WHERE CompanyID = ?
              ORDER BY CreatedAt DESC
              LIMIT ?`,
             [context.companyId, limit]
         );
+        const [logRows] = await pool.query(
+            `SELECT *
+             FROM SunbirdReportAuditLogs
+             WHERE CompanyID = ? AND CreatedAt BETWEEN ? AND ?
+             ORDER BY CreatedAt DESC
+             LIMIT 120`,
+            [context.companyId, range.start, range.end]
+        );
         const overview = await buildSunbirdReportPayload(context.companyId, range.start, range.end, false);
+        await writeSunbirdReportLog({
+            companyId: context.companyId,
+            eventType: 'report_center_viewed',
+            status: 'success',
+            message: `Report center loaded for ${req.query.range || '30d'}.`,
+            metadata: { rangeStart: range.start, rangeEnd: range.end },
+            actorUserId: req.user.id || null
+        });
         res.json({
             success: true,
             settings: {
@@ -2974,7 +3131,8 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
             },
             range: { start: range.start, end: range.end },
             overview,
-            reports: rows.map(serializeReportRow)
+            reports: rows.map(serializeReportRow),
+            logs: logRows.map(serializeReportAuditLog)
         });
     } catch (error) {
         console.error('[Reports] List error:', error);
@@ -2988,6 +3146,14 @@ app.post('/api/sunbird/reports/generate', authenticateToken, async (req, res) =>
         if (!reportContext) return;
         const { context, settings } = reportContext;
         const range = getReportRange(req.body || {}, settings.ActiveSince);
+        await writeSunbirdReportLog({
+            companyId: context.companyId,
+            eventType: 'manual_report_requested',
+            status: 'started',
+            message: `On-demand ${req.body?.range || '30d'} report requested.`,
+            metadata: { rangeStart: range.start, rangeEnd: range.end },
+            actorUserId: req.user.id || null
+        });
         const report = await saveSunbirdReport(context.companyId, 'manual', range.start, range.end, req.user.id || null, true);
         res.status(201).json({ success: true, report: { id: report.id, ...report.payload } });
     } catch (error) {
@@ -2998,8 +3164,9 @@ app.post('/api/sunbird/reports/generate', authenticateToken, async (req, res) =>
 
 app.get('/api/sunbird/reports/:id/pdf', authenticateToken, async (req, res) => {
     try {
-        const context = await getAccessContextByUser(req.user);
-        if (!context?.companyId) return res.status(403).json({ success: false, message: 'Access mapping not configured' });
+        const reportContext = await getReportContext(req, res);
+        if (!reportContext) return;
+        const { context } = reportContext;
         const [rows] = await pool.query(
             'SELECT * FROM SunbirdReports WHERE ID = ? AND CompanyID = ? LIMIT 1',
             [req.params.id, context.companyId]
@@ -3008,6 +3175,15 @@ app.get('/api/sunbird/reports/:id/pdf', authenticateToken, async (req, res) => {
         const report = parseReportJson(rows[0].Payload, {});
         const pdf = await generateSunbirdReportPdf(report, rows[0].ID);
         const filename = `StackCTRL-${String(report.companyName || 'report').replace(/[^a-z0-9]+/gi, '-')}-${new Date(rows[0].PeriodEnd).toISOString().slice(0, 10)}.pdf`;
+        await writeSunbirdReportLog({
+            companyId: context.companyId,
+            reportId: rows[0].ID,
+            eventType: 'pdf_downloaded',
+            status: 'success',
+            message: `${filename} downloaded from the report center.`,
+            metadata: { filename, bytes: pdf.length },
+            actorUserId: req.user.id || null
+        });
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
         res.setHeader('Content-Length', pdf.length);
@@ -3034,6 +3210,14 @@ app.put('/api/sunbird/reports/settings', authenticateToken, async (req, res) => 
              WHERE CompanyID = ?`,
             [weeklyEnabled, recipientEmail, context.companyId]
         );
+        await writeSunbirdReportLog({
+            companyId: context.companyId,
+            eventType: 'automation_settings_updated',
+            status: 'success',
+            message: `Weekly report email ${weeklyEnabled ? 'enabled' : 'paused'} for ${recipientEmail}.`,
+            metadata: { weeklyEnabled: Boolean(weeklyEnabled), recipientEmail },
+            actorUserId: req.user.id || null
+        });
         res.json({ success: true, weeklyEnabled: Boolean(weeklyEnabled), recipientEmail });
     } catch (error) {
         console.error('[Reports] Settings error:', error);
@@ -3059,6 +3243,14 @@ async function sendWeeklySunbirdReport(companyId, settings, reportRecord) {
     const pdf = await generateSunbirdReportPdf(reportRecord.payload, reportRecord.id);
     const recipient = settings.RecipientEmail || await getDefaultReportRecipient(companyId);
     if (!recipient) throw new Error('No report recipient is configured');
+    await writeSunbirdReportLog({
+        companyId,
+        reportId: reportRecord.id,
+        eventType: 'weekly_email_sending',
+        status: 'started',
+        message: `Weekly PDF email is being sent to ${recipient}.`,
+        metadata: { recipient }
+    });
     const report = reportRecord.payload;
     const subject = `Weekly StackCTRL Report | ${report.companyName} | ${formatReportDate(report.period.end)}`;
     const html = renderCorporateEmail({
@@ -3084,6 +3276,14 @@ async function sendWeeklySunbirdReport(companyId, settings, reportRecord) {
         `UPDATE SunbirdReports SET EmailStatus = 'sent', SentAt = NOW() WHERE ID = ?`,
         [reportRecord.id]
     );
+    await writeSunbirdReportLog({
+        companyId,
+        reportId: reportRecord.id,
+        eventType: 'weekly_email_sent',
+        status: 'success',
+        message: `Weekly PDF report emailed to ${recipient}.`,
+        metadata: { recipient, bytes: pdf.length }
+    });
 }
 
 async function runSunbirdReportAutomation() {
@@ -3119,17 +3319,24 @@ async function runSunbirdReportAutomation() {
                 const reportRecord = await saveSunbirdReport(companyId, 'weekly', weekStart, now, null, true);
                 try {
                     await sendWeeklySunbirdReport(companyId, settings, reportRecord);
+                    await pool.query(
+                        'UPDATE SunbirdReportSettings SET LastWeeklyReportDate = ? WHERE CompanyID = ?',
+                        [localDate, companyId]
+                    );
                 } catch (emailError) {
                     await pool.query(
                         `UPDATE SunbirdReports SET EmailStatus = 'failed' WHERE ID = ?`,
                         [reportRecord.id]
                     );
+                    await writeSunbirdReportLog({
+                        companyId,
+                        reportId: reportRecord.id,
+                        eventType: 'weekly_email_failed',
+                        status: 'failed',
+                        message: `Weekly report email failed: ${emailError.message}`,
+                        metadata: { recipient: settings.RecipientEmail || null }
+                    });
                     throw emailError;
-                } finally {
-                    await pool.query(
-                        'UPDATE SunbirdReportSettings SET LastWeeklyReportDate = ? WHERE CompanyID = ?',
-                        [localDate, companyId]
-                    );
                 }
             }
         }
