@@ -279,7 +279,7 @@
   --report-panel: #ffffff;
   --report-orange: #f97316;
   max-width: 1480px;
-  margin: 2% auto 0;
+  margin: -20px auto 0;
   padding-bottom: 45px;
   color: var(--report-ink);
 }
@@ -8259,7 +8259,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   max-width: 1500px;
   min-height: 100vh;
   margin: 0 auto;
-  padding: 4px 0 24px;
+  padding: 0 0 24px;
   color: #f8fafc;
   background: transparent;
 }
