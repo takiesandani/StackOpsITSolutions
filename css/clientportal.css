@@ -115,7 +115,7 @@
 .sunbird-report-kpi strong {
   color: #f8fafc;
   font-size: 0.94rem;
-  font-weight: 600;
+  font-weight: 200;
 }
 
 .sunbird-report-ai-note {
@@ -143,7 +143,7 @@
   display: block;
   color: #fff;
   font-size: 0.68rem;
-  font-weight: 600;
+  font-weight: 200;
 }
 
 .sunbird-report-ai-note p {
@@ -220,7 +220,7 @@
 .sunbird-report-mini-copy strong {
   color: #f4f6f8;
   font-size: 0.64rem;
-  font-weight: 500;
+  font-weight: 200;
 }
 
 .sunbird-report-mini-copy small {
@@ -279,7 +279,7 @@
   --report-panel: #ffffff;
   --report-orange: #f97316;
   max-width: 1480px;
-  margin: 10% auto 0;
+  margin: 2% auto 0;
   padding-bottom: 45px;
   color: var(--report-ink);
 }
@@ -310,7 +310,7 @@
   margin-bottom: 4px;
   color: var(--report-orange);
   font-size: 0.66rem;
-  font-weight: 700;
+  font-weight: 200;
   letter-spacing: 0.13em;
 }
 
@@ -401,7 +401,7 @@
   background: var(--report-orange);
   color: #fff;
   font-size: 0.78rem;
-  font-weight: 600;
+  font-weight: 200;
   cursor: pointer;
   box-shadow: 0 5px 14px rgba(249, 115, 22, 0.18);
 }
@@ -689,7 +689,7 @@
   display: block;
   color: var(--report-ink);
   font-size: 0.72rem;
-  font-weight: 600;
+  font-weight: 200;
 }
 
 .sunbird-report-insight p {
@@ -714,7 +714,7 @@
 
 .sunbird-report-domain strong {
   color: var(--report-ink);
-  font-weight: 600;
+  font-weight: 200;
 }
 
 .sunbird-report-domain-track {
@@ -3197,7 +3197,7 @@ body.client-portal-page {
 .sunbird-mini-stat strong {
   font-size: 0.96rem;
   color: #fff5ea;
-  font-weight: 600;
+  font-weight: 200;
 }
 
 .sunbird-section-title {
@@ -3221,7 +3221,7 @@ body.client-portal-page {
   margin: 0;
   padding: 8px 0;
   font-size: 0.85rem;
-  font-weight: 500;
+  font-weight: 200;
   color: #ffffff;
   border-bottom: 1px solid rgba(255, 255, 255, 0.3);
   letter-spacing: 0.01em;
@@ -3443,7 +3443,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
 .sunbird-incidents-table th {
   color: #dab295;
-  font-weight: 600;
+  font-weight: 200;
 }
 
 .sunbird-empty-row {
@@ -3502,7 +3502,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 .sunbird-storage-row strong {
   color: #ffffff;
   font-size: 0.84rem;
-  font-weight: 700;
+  font-weight: 200;
 }
 
 .sunbird-dashboard-btn-wrap {
@@ -3523,7 +3523,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   border-radius: 23px;
   padding: 6px 12px;
   font-size: 0.68rem;
-  font-weight: 500;
+  font-weight: 200;
   letter-spacing: 0.01em;
   cursor: pointer;
   transition: all 0.25s ease;
@@ -8044,7 +8044,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
     padding: 4px 10px;
     border-radius: 20px;
     font-size: 0.8rem;
-    font-weight: 500;
+    font-weight: 200;
 }
 
 .sunbird-governance-modal-status.completed {
@@ -8210,7 +8210,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
 .sunbird-governance-activity-cell {
     margin-bottom: 4px; /* Tighter margin */
-    font-weight: 500;
+    font-weight: 200;
     color: #f1f5f9;
 }
 

@@ -878,11 +878,11 @@ function renderCorporateEmail({ title, greeting = 'Dear Client,', bodyHtml, head
         .header { background: #111820; padding: 24px 28px 26px 28px; }
         .brand-table { width: 100%; border-collapse: collapse; }
         .brand-logo { display: block; max-width: 160px; height: auto; border: 0; }
-        .header h1 { margin: 0; color: #dbeafe; font-size: 18px; font-weight: 700; text-align: right; line-height: 1.4; }
+        .header h1 { margin: 0; color: #dbeafe; font-size: 18px; font-weight: 200; text-align: right; line-height: 1.4; }
         .content { padding: 28px; }
         .highlight-box { margin: 22px 0; padding: 18px; border: 1px solid #c7d2fe; background: #f8fafc; border-radius: 6px; text-align: center; }
-        .code { display: inline-block; font-family: Consolas, Monaco, monospace; font-size: 30px; letter-spacing: 6px; color: #1d4ed8; font-weight: 700; }
-        .button { display: inline-block; padding: 11px 18px; background: #1d4ed8; color: #ffffff !important; text-decoration: none; border-radius: 4px; font-weight: 700; }
+        .code { display: inline-block; font-family: Consolas, Monaco, monospace; font-size: 30px; letter-spacing: 6px; color: #1d4ed8; font-weight: 200; }
+        .button { display: inline-block; padding: 11px 18px; background: #1d4ed8; color: #ffffff !important; text-decoration: none; border-radius: 4px; font-weight: 200; }
         .security-note { margin: 18px 0; padding: 14px; background: #fff7ed; border-left: 4px solid #f59e0b; color: #5f370e; }
         .signature { padding: 20px 28px; background: #f8fafc; border-top: 1px solid #e5e7eb; font-size: 11px; color: #4b5563; line-height: 1.5; }
         @media only screen and (max-width: 520px) {
@@ -978,7 +978,7 @@ function buildClientCredentialsEmail({ firstName, lastName, email, password, log
       <p>Please use the credentials below to sign in for the first time:</p>
       <div class="highlight-box" style="text-align: left;">
         <p><strong>Email:</strong> ${escapeHtml(email)}</p>
-        <p><strong>Temporary password:</strong> <span style="font-family: Consolas, Monaco, monospace; font-weight: 700;">${escapeHtml(password)}</span></p>
+        <p><strong>Temporary password:</strong> <span style="font-family: Consolas, Monaco, monospace; font-weight: 200;">${escapeHtml(password)}</span></p>
       </div>
       <p><a href="${escapeHtml(loginLink)}" class="button">Open Client Portal</a></p>
       <div class="security-note">For your protection, please reset your temporary password after your first login. You can use the password reset page at any time if you need to update your password.</div>

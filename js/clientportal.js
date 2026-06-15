@@ -8788,6 +8788,57 @@ function showNotification(message, isSuccess = true) {
     }, 3000);
 }
 
+function showPdfLoadingOverlay(message = 'Generating PDF...') {
+    let overlay = document.getElementById('pdf-loading-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'pdf-loading-overlay';
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            backdrop-filter: blur(4px);
+        `;
+        
+        const loaderContent = document.createElement('div');
+        loaderContent.style.cssText = `
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        `;
+        
+        loaderContent.innerHTML = `
+            <div class="sunbird-stack-loader-shell" style="position: relative; width: 100px; height: 100px;">
+                <div class="sunbird-stack-loader-ring" style="position: absolute; inset: 0; border: 3px solid rgba(249, 115, 22, 0.2); border-top-color: #f97316; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                <img src="Images/Logos/StackCTRLLoading.png" alt="" style="width: 70%; height: 70%; object-fit: contain; position: absolute; inset: 0; margin: auto;">
+            </div>
+            <p style="color: #ffffff; font-size: 0.95rem; margin: 0; text-align: center;">${message}</p>
+        `;
+        
+        overlay.appendChild(loaderContent);
+        document.body.appendChild(overlay);
+    } else {
+        overlay.style.display = 'flex';
+        const messageEl = overlay.querySelector('p');
+        if (messageEl) messageEl.textContent = message;
+    }
+}
+
+function hidePdfLoadingOverlay() {
+    const overlay = document.getElementById('pdf-loading-overlay');
+    if (overlay) {
+        overlay.style.display = 'none';
+    }
+}
+
 function handleLogin(e) {
     e.preventDefault();
     
@@ -11871,6 +11922,7 @@ window.generateSunbirdReport = async function(range = sunbirdReportsRange, downl
         button.disabled = true;
         button.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Building report';
     }
+    showPdfLoadingOverlay('Building your security report...');
     try {
         console.log(`[Reports] Starting on-demand ${range} report generation.`);
         const response = await fetch('/api/sunbird/reports/generate', {
@@ -11892,6 +11944,7 @@ window.generateSunbirdReport = async function(range = sunbirdReportsRange, downl
     } catch (error) {
         showNotification(error.message || 'Report generation failed', false);
     } finally {
+        hidePdfLoadingOverlay();
         if (button) {
             button.disabled = false;
             button.innerHTML = original;
@@ -11900,6 +11953,7 @@ window.generateSunbirdReport = async function(range = sunbirdReportsRange, downl
 };
 
 window.downloadSunbirdReportPdf = async function(reportId) {
+    showPdfLoadingOverlay('Preparing your PDF for download...');
     try {
         console.log(`[Reports] Requesting PDF download for report #${reportId}.`);
         const response = await fetch(`/api/sunbird/reports/${encodeURIComponent(reportId)}/pdf`, {
@@ -11922,8 +11976,11 @@ window.downloadSunbirdReportPdf = async function(reportId) {
         link.remove();
         URL.revokeObjectURL(url);
         console.log(`[Reports] Download started: ${filename}`);
+        hidePdfLoadingOverlay();
+        showNotification(`Report ${filename} downloading...`, true);
     } catch (error) {
         console.error('[Reports] PDF download failed:', error);
+        hidePdfLoadingOverlay();
         showNotification(error.message || 'PDF download failed', false);
     }
 };
@@ -12803,7 +12860,7 @@ function renderEvidenceArray(label, rows) {
     if (!list.length) return '';
     return `
         <div style="padding: 10px; background: rgba(255,255,255,0.04); border-radius: 4px;">
-            <div style="color: #cbd5e1; font-weight: 600; margin-bottom: 8px;">${escapeIdentityText(formatEvidenceLabel(label))}</div>
+            <div style="color: #cbd5e1; font-weight: 200; margin-bottom: 8px;">${escapeIdentityText(formatEvidenceLabel(label))}</div>
             <div class="sunbird-evidence-record-list" style="display: grid; gap: 8px; max-height: 180px; overflow: auto; padding-right: 4px;">
                 ${list.map(item => `
                     <div style="padding: 8px; background: rgba(15,23,42,0.55); border: 1px solid rgba(148,163,184,0.18); border-radius: 4px; color: #e2e8f0;">
@@ -12824,7 +12881,7 @@ function renderSunbirdEvidenceDetails(evidenceData) {
             if (value && typeof value === 'object') return renderEvidenceArray(key, [value]);
             return `<div style="display: flex; justify-content: space-between; gap: 12px; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 4px;">
                 <span style="color: #94a3b8;">${escapeIdentityText(formatEvidenceLabel(key))}</span>
-                <span style="font-weight: 500; color: #e2e8f0; text-align: right;">${escapeIdentityText(value ?? 'N/A')}</span>
+                <span style="font-weight: 200; color: #e2e8f0; text-align: right;">${escapeIdentityText(value ?? 'N/A')}</span>
             </div>`;
         })
         .filter(Boolean)
@@ -12888,13 +12945,13 @@ function renderSunbirdComplianceCard(supportCard, controls) {
         return `
             <tr>
                 <td>
-                    <div style="font-weight: 500; margin-bottom: 4px;">${escapeIdentityText(control.name || 'Control')}</div>
+                    <div style="font-weight: 200; margin-bottom: 4px;">${escapeIdentityText(control.name || 'Control')}</div>
                     <button class="sunbird-risk-view-btn" onclick="window.openSunbirdComplianceEvidence(${index})">
                         View Evidence
                     </button>
                 </td>
                 <td style="color: #cbd5e1;">${escapeIdentityText(control.area || 'Identity')}</td>
-                <td style="font-weight: 500; ${insightClass}">${escapeIdentityText(insight || 'No insight available')}</td>
+                <td style="font-weight: 200; ${insightClass}">${escapeIdentityText(insight || 'No insight available')}</td>
             </tr>
         `;
     }).join('');
@@ -13316,7 +13373,7 @@ function renderSunbirdOperationsCard(billingCard, tasks, options = {}) {
 
             return `
                 <tr>
-                    <td style="font-weight: 500; color: #e2e8f0;">${escapeIdentityText(task.task || 'Review task')}</td>
+                    <td style="font-weight: 200; color: #e2e8f0;">${escapeIdentityText(task.task || 'Review task')}</td>
                     <td style="color: #94a3b8;">${escapeIdentityText(task.area || 'Operations')}</td>
                     <td>
                         <span class="op-priority-badge ${badgeClass}">
@@ -13449,7 +13506,7 @@ function ensureSunbirdOperationsModal() {
 
                 <div style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px; border-left: 3px solid #f87171;">
                     <div style="font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px;">Proof / Affected Records</div>
-                    <div id="op-modal-affected" style="font-size: 0.9rem; color: #cbd5e1; font-weight: 500;"></div>
+                    <div id="op-modal-affected" style="font-size: 0.9rem; color: #cbd5e1; font-weight: 200;"></div>
                 </div>
 
                 <div style="background: rgba(0, 110, 255, 0.05); padding: 12px; border-radius: 8px; border-left: 3px solid #3b82f6;">
