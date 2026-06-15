@@ -11904,14 +11904,23 @@ async function renderSunbirdReportsView(forceRefresh = false) {
                 </div>
 
                 <div class="sunbird-report-score-strip">
-                    <div class="sunbird-report-score tone-${getSunbirdReportScoreTone(summary.healthScore)}">
-                        <strong>${Number(summary.healthScore || 0)}%</strong>
-                        <span>Security health</span>
+                    <div class="sunbird-report-score tone-${getSunbirdReportScoreTone(summary.healthScore)}" style="--report-score:${Math.max(0, Math.min(100, Number(summary.healthScore || 0)))}">
+                        <div>
+                            <span>Security health</span>
+                            <strong>${Number(summary.healthScore || 0)}%</strong>
+                            <small>${escapeIdentityText(summary.status || 'Evidence live')}</small>
+                        </div>
+                        <div class="sunbird-report-mini-ring" aria-hidden="true">
+                            <i></i>
+                            <b>Live</b>
+                        </div>
                     </div>
-                    ${renderSunbirdReportKpiButton({ key: 'problems', value: summary.failures || evidenceBuckets.problems.length, label: 'Problems', tone: 'danger', meta: 'View evidence' })}
-                    ${renderSunbirdReportKpiButton({ key: 'successes', value: summary.successes || evidenceBuckets.successes.length, label: 'Successes', tone: 'success', meta: 'Client wins' })}
-                    ${renderSunbirdReportKpiButton({ key: 'recommendations', value: evidenceBuckets.recommendations.length, label: 'Actions', tone: 'recommendation', meta: 'Next steps' })}
-                    ${renderSunbirdReportKpiButton({ key: 'events', value: summary.totalEvents || evidenceBuckets.events.length, label: 'Events', tone: 'events', meta: 'Timeline' })}
+                    <div class="sunbird-report-kpi-grid">
+                        ${renderSunbirdReportKpiButton({ key: 'problems', value: summary.failures || evidenceBuckets.problems.length, label: 'Problems', tone: 'danger', meta: 'View evidence' })}
+                        ${renderSunbirdReportKpiButton({ key: 'successes', value: summary.successes || evidenceBuckets.successes.length, label: 'Successes', tone: 'success', meta: 'Client wins' })}
+                        ${renderSunbirdReportKpiButton({ key: 'recommendations', value: evidenceBuckets.recommendations.length, label: 'Actions', tone: 'recommendation', meta: 'Next steps' })}
+                        ${renderSunbirdReportKpiButton({ key: 'events', value: summary.totalEvents || evidenceBuckets.events.length, label: 'Events', tone: 'events', meta: 'Timeline' })}
+                    </div>
                 </div>
 
                 ${renderSunbirdReportValueStrip(data, evidenceBuckets)}
@@ -12117,6 +12126,7 @@ function renderSunbirdReportsCenter(data) {
                 </div>
                 <div class="sunbird-report-health-ring" style="--report-score:${Math.max(0, Math.min(100, Number(summary.healthScore || 0)))}">
                     <i></i>
+                    <span>${Number(summary.healthScore || 0)}%</span>
                 </div>
             </article>
 
