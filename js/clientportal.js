@@ -4994,7 +4994,7 @@ function renderSunbirdSecurityShell() {
             <div class="sunbird-security-whatsapp-test">
                 <button id="sunbird-security-whatsapp-test-btn" class="sunbird-security-whatsapp-btn" type="button">
                     <i class="fab fa-whatsapp" aria-hidden="true"></i>
-                    <span>Send latest alert to WhatsApp</span>
+                    <span>Send WhatsApp test</span>
                 </button>
                 <p id="sunbird-security-whatsapp-test-status" aria-live="polite"></p>
             </div>
@@ -5055,12 +5055,12 @@ async function sendLatestSunbirdSecurityAlertToWhatsApp() {
         button.classList.add('is-loading');
     }
     if (status) {
-        status.textContent = 'Sending latest alert to WhatsApp...';
+        status.textContent = 'Sending WhatsApp test...';
         status.className = '';
     }
 
     try {
-        const response = await fetch('/api/security-events/whatsapp-alerts?limit=1&types=alert&severities=critical,high,medium,low&force=true', {
+        const response = await fetch('/api/whatsapp/test-hello', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -5072,12 +5072,9 @@ async function sendLatestSunbirdSecurityAlertToWhatsApp() {
             throw new Error(data.message || data.error || `Request failed with status ${response.status}`);
         }
 
-        const sentAlert = data.results?.find(item => item.status === 'sent');
         if (status) {
-            status.textContent = sentAlert
-                ? `Meta accepted ${sentAlert.severity} alert for ${data.recipient || sentAlert.recipient}${sentAlert.messageId ? ` (${sentAlert.messageId.slice(0, 18)}...)` : ''}: ${sentAlert.issue}`
-                : data.message || 'No alert was sent.';
-            status.className = data.sent > 0 ? 'success' : 'warning';
+            status.textContent = `Meta accepted message: ${data.messageId || 'No message ID returned'}`;
+            status.className = 'success';
         }
     } catch (error) {
         if (status) {

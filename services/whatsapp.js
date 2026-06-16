@@ -2,7 +2,12 @@ const axios = require('axios');
 
 const DEFAULT_COUNTRY_CODE = '27';
 const DEFAULT_GRAPH_VERSION = process.env.WHATSAPP_GRAPH_VERSION || 'v25.0';
-const DEFAULT_RECIPIENT = '27762609804';
+const DEFAULT_RECIPIENT = process.env.WHATSAPP_SECURITY_ALERT_RECIPIENT || '27762609804';
+const DEFAULT_SECURITY_ALERT_TEMPLATE = process.env.WHATSAPP_SECURITY_ALERT_TEMPLATE || 'security_alert';
+const DEFAULT_TEMPLATE_LANGUAGE =
+  process.env.WHATSAPP_SECURITY_ALERT_TEMPLATE_LANGUAGE ||
+  process.env.WHATSAPP_TEMPLATE_LANGUAGE ||
+  'en_US';
 
 const SEVERITY_LABELS = {
   critical: '[CRITICAL]',
@@ -69,6 +74,13 @@ function buildSecurityAlertMessage(alert = {}, options = {}) {
   ].filter(Boolean).join('\n');
 }
 
+function toTemplateText(value, fallback) {
+  const text = String(value || fallback || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return (text || String(fallback || '')).slice(0, 900);
+}
+
 async function sendWhatsAppText({ token, phoneNumberId, to, text, apiVersion = DEFAULT_GRAPH_VERSION }) {
   if (!token) throw new Error('WHATSAPP_ACCESS_TOKEN is not configured');
   if (!phoneNumberId) throw new Error('WHATSAPP_PHONE_NUMBER_ID is not configured');
@@ -103,21 +115,110 @@ async function sendWhatsAppText({ token, phoneNumberId, to, text, apiVersion = D
   };
 }
 
-async function sendSecurityAlert(alert, config) {
-  const body = buildSecurityAlertMessage(alert, config);
-  return sendWhatsAppText({
-    token: config.token,
+async function sendSecurityAlertTemplate(alert = {}, config = {}) {
+  if (!config.token) throw new Error('WHATSAPP_ACCESS_TOKEN is not configured');
+  if (!config.phoneNumberId) throw new Error('WHATSAPP_PHONE_NUMBER_ID is not configured');
+
+  const severity = normalizeSeverity(alert.severity).toUpperCase();
+  const { dateText, timeText } = formatDateTime(
+    alert.eventTime || alert.timestamp || alert.created || alert.updated,
+    config.timeZone
+  );
+  const recipient = normalizeWhatsAppRecipient(config.recipient || DEFAULT_RECIPIENT);
+  const apiVersion = config.apiVersion || DEFAULT_GRAPH_VERSION;
+  const templateName = config.templateName || DEFAULT_SECURITY_ALERT_TEMPLATE;
+  const templateLanguage = config.templateLanguage || DEFAULT_TEMPLATE_LANGUAGE;
+  const url = `https://graph.facebook.com/${apiVersion}/${config.phoneNumberId}/messages`;
+
+  const response = await axios.post(
+    url,
+    {
+      messaging_product: 'whatsapp',
+      to: recipient,
+      type: 'template',
+      template: {
+        name: templateName,
+        language: { code: templateLanguage },
+        components: [
+          {
+            type: 'body',
+            parameters: [
+              { type: 'text', text: severity },
+              { type: 'text', text: dateText },
+              { type: 'text', text: timeText },
+              { type: 'text', text: toTemplateText(alert.issue || alert.title || alert.displayName || alert.name, 'Security alert') },
+              { type: 'text', text: toTemplateText(alert.assignedTo || alert.owner || alert.assignee, 'Unassigned') },
+              { type: 'text', text: toTemplateText(alert.source || alert.category || alert.vendor, 'StackOps Security') },
+              { type: 'text', text: toTemplateText(alert.status, 'Active') }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${config.token}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 15000
+    }
+  );
+
+  return {
+    ...response.data,
+    recipient,
     phoneNumberId: config.phoneNumberId,
-    to: config.recipient || DEFAULT_RECIPIENT,
-    text: body,
-    apiVersion: config.apiVersion
-  });
+    templateName
+  };
+}
+
+async function sendHelloWorldTest(config = {}) {
+  if (!config.token) throw new Error('WHATSAPP_ACCESS_TOKEN is not configured');
+  if (!config.phoneNumberId) throw new Error('WHATSAPP_PHONE_NUMBER_ID is not configured');
+
+  const recipient = normalizeWhatsAppRecipient(config.recipient || DEFAULT_RECIPIENT);
+  const apiVersion = config.apiVersion || DEFAULT_GRAPH_VERSION;
+  const url = `https://graph.facebook.com/${apiVersion}/${config.phoneNumberId}/messages`;
+
+  const response = await axios.post(
+    url,
+    {
+      messaging_product: 'whatsapp',
+      to: recipient,
+      type: 'template',
+      template: {
+        name: 'hello_world',
+        language: { code: 'en_US' }
+      }
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${config.token}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 15000
+    }
+  );
+
+  return {
+    ...response.data,
+    recipient,
+    phoneNumberId: config.phoneNumberId,
+    templateName: 'hello_world'
+  };
+}
+
+async function sendSecurityAlert(alert, config) {
+  return sendSecurityAlertTemplate(alert, config);
 }
 
 module.exports = {
   buildSecurityAlertMessage,
+  formatDateTime,
   normalizeSeverity,
   normalizeWhatsAppRecipient,
+  sendHelloWorldTest,
   sendSecurityAlert,
+  sendSecurityAlertTemplate,
   sendWhatsAppText
 };

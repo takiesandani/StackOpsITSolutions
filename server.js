@@ -16,6 +16,7 @@ const { ClientSecretCredential } = require('@azure/identity');
 const {
     normalizeSeverity: normalizeWhatsAppSeverity,
     normalizeWhatsAppRecipient,
+    sendHelloWorldTest,
     sendSecurityAlert
 } = require('./services/whatsapp');
 
@@ -9488,23 +9489,42 @@ async function readWhatsAppConfigValue(name, fallback = null) {
     return await getSecret(name) || fallback;
 }
 
+async function readFirstWhatsAppConfigValue(names, fallback = null) {
+    for (const name of names) {
+        const value = await readWhatsAppConfigValue(name);
+        if (value) return value;
+    }
+    return fallback;
+}
+
 async function getWhatsAppSecurityAlertConfig({ requireEnabled = false } = {}) {
-    const enabled = String(process.env.WHATSAPP_SECURITY_ALERTS_ENABLED || 'false').toLowerCase() === 'true';
+    const [
+        enabledValue,
+        token,
+        phoneNumberId,
+        recipientValue,
+        apiVersion,
+        templateName,
+        templateLanguage,
+        limitValue
+    ] = await Promise.all([
+        readWhatsAppConfigValue('WHATSAPP_SECURITY_ALERTS_ENABLED', 'false'),
+        readWhatsAppConfigValue('WHATSAPP_ACCESS_TOKEN'),
+        readWhatsAppConfigValue('WHATSAPP_PHONE_NUMBER_ID'),
+        readFirstWhatsAppConfigValue(['WHATSAPP_SECURITY_ALERT_RECIPIENT', 'WHATSAPP_RECIPIENT'], '27762609804'),
+        readWhatsAppConfigValue('WHATSAPP_GRAPH_VERSION', 'v25.0'),
+        readWhatsAppConfigValue('WHATSAPP_SECURITY_ALERT_TEMPLATE', 'security_alert'),
+        readFirstWhatsAppConfigValue(['WHATSAPP_SECURITY_ALERT_TEMPLATE_LANGUAGE', 'WHATSAPP_TEMPLATE_LANGUAGE'], 'en_US'),
+        readWhatsAppConfigValue('WHATSAPP_SECURITY_ALERT_LIMIT', '20')
+    ]);
+
+    const enabled = String(enabledValue || 'false').toLowerCase() === 'true';
     if (requireEnabled && !enabled) return { enabled: false };
 
-    const [token, phoneNumberId] = await Promise.all([
-        readWhatsAppConfigValue('WHATSAPP_ACCESS_TOKEN'),
-        readWhatsAppConfigValue('WHATSAPP_PHONE_NUMBER_ID')
-    ]);
-    const recipient = normalizeWhatsAppRecipient(
-        process.env.WHATSAPP_SECURITY_ALERT_RECIPIENT ||
-        process.env.WHATSAPP_RECIPIENT ||
-        await readWhatsAppConfigValue('WHATSAPP_SECURITY_ALERT_RECIPIENT', '27762609804')
-    );
-    const apiVersion = process.env.WHATSAPP_GRAPH_VERSION || 'v25.0';
-    const limit = Math.max(1, Number(process.env.WHATSAPP_SECURITY_ALERT_LIMIT || 20));
+    const recipient = normalizeWhatsAppRecipient(recipientValue);
+    const limit = Math.max(1, Number(limitValue || 20));
 
-    return { enabled, token, phoneNumberId, recipient, apiVersion, limit };
+    return { enabled, token, phoneNumberId, recipient, apiVersion, templateName, templateLanguage, limit };
 }
 
 function getWhatsAppSecurityAlertTime(item = {}) {
@@ -9827,14 +9847,16 @@ async function fetchSecurityEventsPayloadFromApi(options = {}) {
         recommendations
     };
 
-    if (!options.skipWhatsAppAuto && String(process.env.WHATSAPP_SECURITY_ALERTS_ENABLED || 'false').toLowerCase() === 'true') {
+    if (!options.skipWhatsAppAuto) {
         try {
             const whatsappResult = await notifySecurityAlertsViaWhatsApp(payload, { requireEnabled: true });
-            console.log('[WhatsApp Security Alerts] Automatic send result:', {
-                sent: whatsappResult.sent,
-                skipped: whatsappResult.skipped,
-                failed: whatsappResult.failed
-            });
+            if (whatsappResult.enabled) {
+                console.log('[WhatsApp Security Alerts] Automatic send result:', {
+                    sent: whatsappResult.sent,
+                    skipped: whatsappResult.skipped,
+                    failed: whatsappResult.failed
+                });
+            }
         } catch (error) {
             console.error('[WhatsApp Security Alerts] Automatic send failed:', error.message);
         }
@@ -9912,6 +9934,44 @@ app.get('/api/security-events', authenticateToken, async (req, res) => {
         res.status(500).json({ 
             error: 'Failed to fetch security events data',
             message: error.message
+        });
+    }
+});
+
+/**
+ * Route: POST /api/whatsapp/test-hello
+ * Sends Meta's approved hello_world template to validate Cloud API delivery.
+ */
+app.post('/api/whatsapp/test-hello', authenticateToken, async (req, res) => {
+    let recipient = null;
+    try {
+        const config = await getWhatsAppSecurityAlertConfig({ requireEnabled: false });
+        if (!config.token || !config.phoneNumberId) {
+            throw new Error('WhatsApp credentials are missing. Configure WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID.');
+        }
+
+        recipient = normalizeWhatsAppRecipient(config.recipient);
+        console.log(`[WhatsApp Test] Sending hello_world to ${recipient}`);
+
+        const response = await sendHelloWorldTest({ ...config, recipient });
+        const messageId = response.messages?.[0]?.id || null;
+        console.log('[WhatsApp Test] Meta accepted message', { messageId, recipient });
+
+        res.json({
+            success: true,
+            recipient,
+            messageId,
+            response
+        });
+    } catch (error) {
+        const detail = error.response?.data || error.message;
+        console.error('[WhatsApp Test] Failed', detail);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to send WhatsApp hello_world test',
+            message: error.response?.data?.error?.message || error.message,
+            details: error.response?.data || null,
+            recipient
         });
     }
 });
