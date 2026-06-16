@@ -13,6 +13,11 @@ const {SecretManagerServiceClient} = require('@google-cloud/secret-manager');
 const { Webhook } = require('svix');
 const SVGtoPDF = require('svg-to-pdfkit');
 const { ClientSecretCredential } = require('@azure/identity');
+const {
+    normalizeSeverity: normalizeWhatsAppSeverity,
+    normalizeWhatsAppRecipient,
+    sendSecurityAlert
+} = require('./services/whatsapp');
 
 // invoice payment endpoints 
 require("dotenv").config();
@@ -9475,7 +9480,119 @@ function countSecurityGroups(rows, getter) {
         .sort((a, b) => b.value - a.value);
 }
 
-async function fetchSecurityEventsPayloadFromApi() {
+const sentWhatsAppSecurityAlertKeys = new Set();
+const MAX_WHATSAPP_SECURITY_ALERT_KEYS = 500;
+
+async function readWhatsAppConfigValue(name, fallback = null) {
+    if (process.env[name]) return process.env[name];
+    return await getSecret(name) || fallback;
+}
+
+async function getWhatsAppSecurityAlertConfig({ requireEnabled = false } = {}) {
+    const enabled = String(process.env.WHATSAPP_SECURITY_ALERTS_ENABLED || 'false').toLowerCase() === 'true';
+    if (requireEnabled && !enabled) return { enabled: false };
+
+    const [token, phoneNumberId] = await Promise.all([
+        readWhatsAppConfigValue('WHATSAPP_ACCESS_TOKEN'),
+        readWhatsAppConfigValue('WHATSAPP_PHONE_NUMBER_ID')
+    ]);
+    const recipient = normalizeWhatsAppRecipient(
+        process.env.WHATSAPP_SECURITY_ALERT_RECIPIENT ||
+        process.env.WHATSAPP_RECIPIENT ||
+        await readWhatsAppConfigValue('WHATSAPP_SECURITY_ALERT_RECIPIENT', '27762609804')
+    );
+    const apiVersion = process.env.WHATSAPP_GRAPH_VERSION || 'v25.0';
+    const limit = Math.max(1, Number(process.env.WHATSAPP_SECURITY_ALERT_LIMIT || 20));
+
+    return { enabled, token, phoneNumberId, recipient, apiVersion, limit };
+}
+
+function getWhatsAppSecurityAlertTime(item = {}) {
+    return item.eventTime || item.timestamp || item.created || item.updated || item.createdDateTime || new Date().toISOString();
+}
+
+function getWhatsAppSecurityAlertKey(item = {}) {
+    const stableId = item.id || item.uid || item.alertId || item.incidentId;
+    if (stableId) return `${item.recordType || item.type || 'security'}:${stableId}`;
+    return `${item.recordType || item.type || 'security'}:${item.title || item.displayName || item.name}:${getWhatsAppSecurityAlertTime(item)}`;
+}
+
+function rememberWhatsAppSecurityAlertKey(key) {
+    sentWhatsAppSecurityAlertKeys.add(key);
+    if (sentWhatsAppSecurityAlertKeys.size <= MAX_WHATSAPP_SECURITY_ALERT_KEYS) return;
+    const firstKey = sentWhatsAppSecurityAlertKeys.values().next().value;
+    sentWhatsAppSecurityAlertKeys.delete(firstKey);
+}
+
+function getWhatsAppSecurityAlertCandidates(payload = {}) {
+    const alerts = (payload.alerts || []).map(alert => ({
+        ...alert,
+        recordType: 'alert',
+        issue: alert.title || alert.name || 'Security alert',
+        assignedTo: alert.assignedTo || alert.owner || 'Unassigned',
+        timestamp: getWhatsAppSecurityAlertTime(alert)
+    }));
+    const incidents = (payload.incidents || []).map(incident => ({
+        ...incident,
+        recordType: 'incident',
+        issue: incident.displayName || incident.title || 'Security incident',
+        assignedTo: incident.assignedTo || 'Unassigned',
+        timestamp: getWhatsAppSecurityAlertTime(incident),
+        source: incident.source || 'Microsoft Security Incident'
+    }));
+
+    return [...alerts, ...incidents]
+        .map(item => ({ ...item, severity: normalizeWhatsAppSeverity(item.severity) }))
+        .sort((a, b) => new Date(getWhatsAppSecurityAlertTime(b)) - new Date(getWhatsAppSecurityAlertTime(a)));
+}
+
+async function notifySecurityAlertsViaWhatsApp(payload, options = {}) {
+    const config = await getWhatsAppSecurityAlertConfig({ requireEnabled: options.requireEnabled });
+    if (options.requireEnabled && !config.enabled) {
+        return { enabled: false, sent: 0, skipped: 0, failed: 0, results: [] };
+    }
+    if (!config.token || !config.phoneNumberId) {
+        throw new Error('WhatsApp credentials are missing. Configure WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID.');
+    }
+
+    const severities = new Set((options.severities || ['critical', 'high', 'medium', 'low']).map(normalizeWhatsAppSeverity));
+    const limit = Math.max(1, Number(options.limit || config.limit || 20));
+    const types = new Set((options.types || ['alert', 'incident']).map(type => String(type || '').toLowerCase()));
+    const candidates = getWhatsAppSecurityAlertCandidates(payload)
+        .filter(item => types.has(String(item.recordType || item.type || '').toLowerCase()))
+        .filter(item => severities.has(normalizeWhatsAppSeverity(item.severity)))
+        .slice(0, limit);
+
+    const results = [];
+    for (const alert of candidates) {
+        const key = getWhatsAppSecurityAlertKey(alert);
+        if (!options.force && sentWhatsAppSecurityAlertKeys.has(key)) {
+            results.push({ key, issue: alert.issue, severity: alert.severity, status: 'skipped-duplicate' });
+            continue;
+        }
+
+        try {
+            const response = await sendSecurityAlert(alert, config);
+            rememberWhatsAppSecurityAlertKey(key);
+            results.push({ key, issue: alert.issue, severity: alert.severity, status: 'sent', response });
+        } catch (error) {
+            const detail = error.response?.data || error.message;
+            console.error('[WhatsApp Security Alerts] Failed to send alert:', detail);
+            results.push({ key, issue: alert.issue, severity: alert.severity, status: 'failed', error: detail });
+        }
+    }
+
+    return {
+        enabled: config.enabled,
+        recipient: config.recipient,
+        sent: results.filter(item => item.status === 'sent').length,
+        skipped: results.filter(item => item.status === 'skipped-duplicate').length,
+        failed: results.filter(item => item.status === 'failed').length,
+        results
+    };
+}
+
+async function fetchSecurityEventsPayloadFromApi(options = {}) {
     const token = await getMicrosoftGraphToken();
     const [alerts, incidents, threatIndicators, signIns] = await Promise.all([
         fetchSecurityAlerts(token),
@@ -9672,7 +9789,7 @@ async function fetchSecurityEventsPayloadFromApi() {
         { priority: highRiskSignals ? 'medium' : 'low', title: 'Keep cached SOC data fresh', detail: 'The dashboard reads cached security evidence first and refreshes through the backend Graph connector.' }
     ].filter(Boolean);
 
-    return {
+    const payload = {
         success: true,
         fetchedAt: new Date().toISOString(),
         summary: {
@@ -9701,6 +9818,21 @@ async function fetchSecurityEventsPayloadFromApi() {
         aiSummary,
         recommendations
     };
+
+    if (!options.skipWhatsAppAuto && String(process.env.WHATSAPP_SECURITY_ALERTS_ENABLED || 'false').toLowerCase() === 'true') {
+        try {
+            const whatsappResult = await notifySecurityAlertsViaWhatsApp(payload, { requireEnabled: true });
+            console.log('[WhatsApp Security Alerts] Automatic send result:', {
+                sent: whatsappResult.sent,
+                skipped: whatsappResult.skipped,
+                failed: whatsappResult.failed
+            });
+        } catch (error) {
+            console.error('[WhatsApp Security Alerts] Automatic send failed:', error.message);
+        }
+    }
+
+    return payload;
 }
 
 app.get('/api/db/security-events', authenticateToken, async (req, res) => {
@@ -9772,6 +9904,57 @@ app.get('/api/security-events', authenticateToken, async (req, res) => {
         res.status(500).json({ 
             error: 'Failed to fetch security events data',
             message: error.message
+        });
+    }
+});
+
+/**
+ * Route: POST /api/security-events/whatsapp-alerts
+ * Sends current Microsoft security alerts/incidents to the configured WhatsApp recipient.
+ * Outbound-only: no WhatsApp webhook or inbound message handling is required.
+ */
+app.post('/api/security-events/whatsapp-alerts', authenticateToken, async (req, res) => {
+    try {
+        const userEmail = req.user.email;
+        const tenant = getTenantByEmail(userEmail);
+        if (!tenant || tenant.clientId !== 'sunbird') {
+            return res.status(403).json({
+                success: false,
+                error: 'Access denied',
+                message: 'This feature is only available for Sunbird client'
+            });
+        }
+
+        const payload = await fetchSecurityEventsPayloadFromApi({ skipWhatsAppAuto: true });
+        const severities = String(req.body?.severities || req.query.severities || 'critical,high,medium,low')
+            .split(',')
+            .map(item => item.trim())
+            .filter(Boolean);
+        const types = String(req.body?.types || req.query.types || 'alert,incident')
+            .split(',')
+            .map(item => item.trim())
+            .filter(Boolean);
+        const limit = Number(req.body?.limit || req.query.limit || process.env.WHATSAPP_SECURITY_ALERT_LIMIT || 20);
+        const force = String(req.body?.force || req.query.force || 'false').toLowerCase() === 'true';
+        const result = await notifySecurityAlertsViaWhatsApp(payload, {
+            force,
+            limit,
+            severities,
+            types
+        });
+
+        res.json({
+            success: true,
+            message: `WhatsApp security alert send complete: ${result.sent} sent, ${result.skipped} skipped, ${result.failed} failed.`,
+            ...result
+        });
+    } catch (error) {
+        console.error('[WhatsApp Security Alerts] Manual send route failed:', error.response?.data || error.message);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to send WhatsApp security alerts',
+            message: error.message,
+            details: error.response?.data || null
         });
     }
 });

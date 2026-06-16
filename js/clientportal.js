@@ -4990,6 +4990,14 @@ function renderSunbirdSecurityShell() {
                     </table>
                 </div>
             </section>
+
+            <div class="sunbird-security-whatsapp-test">
+                <button id="sunbird-security-whatsapp-test-btn" class="sunbird-security-whatsapp-btn" type="button">
+                    <i class="fab fa-whatsapp" aria-hidden="true"></i>
+                    <span>Send latest alert to WhatsApp</span>
+                </button>
+                <p id="sunbird-security-whatsapp-test-status" aria-live="polite"></p>
+            </div>
         </section>
         <div id="sunbird-security-evidence-modal" class="sunbird-id-modal" aria-hidden="true"></div>
     `;
@@ -4997,6 +5005,7 @@ function renderSunbirdSecurityShell() {
 
 function setupSunbirdSecurityDashboard() {
     document.getElementById('sunbird-security-back')?.addEventListener('click', goBackToProjects);
+    document.getElementById('sunbird-security-whatsapp-test-btn')?.addEventListener('click', sendLatestSunbirdSecurityAlertToWhatsApp);
     document.getElementById('sunbird-security-search')?.addEventListener('input', event => {
         sunbirdSecurityTableState.search = event.target.value;
         renderSunbirdSecurityTable();
@@ -5026,6 +5035,61 @@ function setupSunbirdSecurityDashboard() {
         });
         renderSunbirdSecurityTable();
     });
+}
+
+async function sendLatestSunbirdSecurityAlertToWhatsApp() {
+    const button = document.getElementById('sunbird-security-whatsapp-test-btn');
+    const status = document.getElementById('sunbird-security-whatsapp-test-status');
+    const token = localStorage.getItem('authToken');
+
+    if (!token) {
+        if (status) {
+            status.textContent = 'Please sign in again before sending a test alert.';
+            status.className = 'error';
+        }
+        return;
+    }
+
+    if (button) {
+        button.disabled = true;
+        button.classList.add('is-loading');
+    }
+    if (status) {
+        status.textContent = 'Sending latest alert to WhatsApp...';
+        status.className = '';
+    }
+
+    try {
+        const response = await fetch('/api/security-events/whatsapp-alerts?limit=1&types=alert&severities=critical,high,medium,low&force=true', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || data.error || `Request failed with status ${response.status}`);
+        }
+
+        const sentAlert = data.results?.find(item => item.status === 'sent');
+        if (status) {
+            status.textContent = sentAlert
+                ? `Sent latest ${sentAlert.severity} alert: ${sentAlert.issue}`
+                : data.message || 'No alert was sent.';
+            status.className = data.sent > 0 ? 'success' : 'warning';
+        }
+    } catch (error) {
+        if (status) {
+            status.textContent = `WhatsApp test failed: ${error.message}`;
+            status.className = 'error';
+        }
+    } finally {
+        if (button) {
+            button.disabled = false;
+            button.classList.remove('is-loading');
+        }
+    }
 }
 
 function readSunbirdSecuritySnapshot() {

@@ -9477,6 +9477,55 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   min-width: 1180px;
 }
 
+.sunbird-security-whatsapp-test {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 18px 0 4px;
+  padding-bottom: 8px;
+}
+
+.sunbird-security-whatsapp-btn {
+  min-height: 36px;
+  border: 1px solid rgba(34, 197, 94, 0.42);
+  border-radius: 30px;
+  background: rgba(22, 101, 52, 0.24);
+  color: #dcfce7;
+  padding: 8px 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 300;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.sunbird-security-whatsapp-btn:hover:not(:disabled) {
+  background: rgba(22, 163, 74, 0.34);
+  border-color: rgba(74, 222, 128, 0.62);
+  transform: translateY(-1px);
+}
+
+.sunbird-security-whatsapp-btn:disabled {
+  opacity: 0.62;
+  cursor: wait;
+}
+
+.sunbird-security-whatsapp-test p {
+  min-height: 18px;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.64);
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+.sunbird-security-whatsapp-test p.success { color: #86efac; }
+.sunbird-security-whatsapp-test p.warning { color: #fde68a; }
+.sunbird-security-whatsapp-test p.error { color: #fca5a5; }
+
 .sunbird-backup-table {
   min-width: 1120px;
 }
