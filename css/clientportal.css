@@ -9387,6 +9387,17 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   fill: none !important;
 }
 
+.sunbird-security-risk-chart-shell {
+  position: relative;
+  width: 100%;
+  height: 230px;
+}
+
+.sunbird-security-risk-chart-shell canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
 .sunbird-security-chart-heading h3 {
   margin: 0;
 }

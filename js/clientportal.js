@@ -5229,26 +5229,11 @@ function renderSunbirdSecurityCharts(model) {
         ${renderSunbirdDeviceBars('MITRE ATT&CK Mapping', model.mitre.slice(0, 5).map(item => ({ label: item.technique || item.tactic, value: item.count || 0, tone: ['critical', 'high'].includes(String(item.severity || '').toLowerCase()) ? 'bad' : 'warn' })), Math.max(1, ...model.mitre.map(item => item.count || 0)))}
         ${renderSunbirdDeviceBars('Threat source regions', model.regionDistribution.slice(0, 5).map((item, index) => ({ label: item.label, value: item.value, tone: index === 0 ? 'warn' : 'neutral' })), Math.max(1, ...model.regionDistribution.map(item => item.value)))}
     `;
+    renderSunbirdSecurityRiskTrendCanvas(model);
     animateSunbirdIdentityCharts();
 }
 
 function renderSunbirdSecurityRiskTrendChart(model) {
-    const trend = buildSunbirdSecurityRiskTrend(model.allEvents, sunbirdSecurityTrendWindow);
-    const width = 720;
-    const height = 190;
-    const padding = { top: 18, right: 18, bottom: 30, left: 34 };
-    const maxValue = Math.max(1, ...trend.days.flatMap(day => [day.critical, day.high, day.medium]));
-    const point = (value, index) => {
-        const x = padding.left + (index * ((width - padding.left - padding.right) / Math.max(1, trend.days.length - 1)));
-        const y = height - padding.bottom - ((value / maxValue) * (height - padding.top - padding.bottom));
-        return `${x},${y}`;
-    };
-    const polyline = key => trend.days.map((day, index) => point(day[key], index)).join(' ');
-    const circles = (key, className) => trend.days.map((day, index) => {
-        const [x, y] = point(day[key], index).split(',');
-        return `<circle class="${className}" cx="${x}" cy="${y}" r="3" onclick="openSunbirdSecurityTrendEvidence('${trend.days[index].key}', '${key}')"></circle>`;
-    }).join('');
-    const yTicks = Array.from({ length: Math.min(6, maxValue + 1) }, (_, index) => Math.round((maxValue / Math.max(1, Math.min(5, maxValue))) * index));
     return `
         <article class="sunbird-id-chart-card sunbird-email-risk-trend-card sunbird-security-risk-trend-card">
             <div class="sunbird-security-chart-heading">
@@ -5262,24 +5247,111 @@ function renderSunbirdSecurityRiskTrendChart(model) {
                 <span class="high">High</span>
                 <span class="medium">Medium</span>
             </div>
-            <svg class="sunbird-email-risk-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="SOC risk trend">
-                ${yTicks.map(tick => {
-                    const y = height - padding.bottom - ((tick / maxValue) * (height - padding.top - padding.bottom));
-                    return `<g><line x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}"></line><text x="12" y="${y + 4}">${tick}</text></g>`;
-                }).join('')}
-                <polyline class="critical" points="${polyline('critical')}"></polyline>
-                <polyline class="high" points="${polyline('high')}"></polyline>
-                <polyline class="medium" points="${polyline('medium')}"></polyline>
-                ${circles('critical', 'critical')}
-                ${circles('high', 'high')}
-                ${circles('medium', 'medium')}
-                ${trend.days.map((day, index) => {
-                    const x = padding.left + (index * ((width - padding.left - padding.right) / Math.max(1, trend.days.length - 1)));
-                    return `<text class="x-label" x="${x}" y="${height - 8}">${escapeIdentityText(day.label)}</text>`;
-                }).join('')}
-            </svg>
+            <div class="sunbird-security-risk-chart-shell">
+                <canvas id="sunbirdSecurityRiskTrendChart" aria-label="SOC risk trend" role="img"></canvas>
+            </div>
         </article>
     `;
+}
+
+function renderSunbirdSecurityRiskTrendCanvas(model) {
+    const canvas = document.getElementById('sunbirdSecurityRiskTrendChart');
+    if (!canvas || typeof Chart === 'undefined') return;
+
+    if (window.sunbirdSecurityRiskTrendChartInstance) {
+        window.sunbirdSecurityRiskTrendChartInstance.destroy();
+    }
+
+    const trend = buildSunbirdSecurityRiskTrend(model.allEvents, sunbirdSecurityTrendWindow);
+    const maxValue = Math.max(10, ...trend.days.flatMap(day => [day.critical, day.high, day.medium]));
+    const makeDataset = (label, key, color) => ({
+        label,
+        data: trend.days.map(day => day[key]),
+        borderColor: color,
+        backgroundColor: 'transparent',
+        borderWidth: 3,
+        tension: 0.45,
+        cubicInterpolationMode: 'monotone',
+        fill: false,
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        pointBackgroundColor: color,
+        pointBorderColor: color,
+        pointBorderWidth: 1
+    });
+
+    window.sunbirdSecurityRiskTrendChartInstance = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: trend.days.map(day => day.label),
+            datasets: [
+                makeDataset('Critical', 'critical', '#ff3f5f'),
+                makeDataset('High', 'high', '#ffd000'),
+                makeDataset('Medium', 'medium', '#ff9f1c')
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    backgroundColor: 'rgba(2, 6, 23, 0.94)',
+                    borderColor: 'rgba(148, 163, 184, 0.28)',
+                    borderWidth: 1,
+                    titleColor: '#f8fafc',
+                    bodyColor: '#e2e8f0',
+                    displayColors: true,
+                    padding: 12,
+                    callbacks: {
+                        label(context) {
+                            return `${context.dataset.label}: ${context.parsed.y}`;
+                        }
+                    }
+                }
+            },
+            onClick(event, elements) {
+                const point = elements?.[0];
+                if (!point) return;
+                const dataset = this.data.datasets[point.datasetIndex];
+                const day = trend.days[point.index];
+                if (!dataset || !day) return;
+                openSunbirdSecurityTrendEvidence(day.key, String(dataset.label || '').toLowerCase());
+            },
+            scales: {
+                y: {
+                    min: 0,
+                    suggestedMax: maxValue,
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.08)',
+                        drawBorder: false
+                    },
+                    ticks: {
+                        color: 'rgba(255, 255, 255, 0.72)',
+                        stepSize: 1,
+                        callback(value) {
+                            return value === 0 ? '' : value;
+                        }
+                    }
+                },
+                x: {
+                    grid: {
+                        display: false,
+                        drawBorder: false
+                    },
+                    ticks: {
+                        color: 'rgba(255, 255, 255, 0.72)'
+                    }
+                }
+            }
+        }
+    });
 }
 
 function renderSunbirdSecurityRadar(model) {
