@@ -96,7 +96,11 @@ async function sendWhatsAppText({ token, phoneNumberId, to, text, apiVersion = D
     }
   );
 
-  return response.data;
+  return {
+    ...response.data,
+    recipient,
+    phoneNumberId
+  };
 }
 
 async function sendSecurityAlert(alert, config) {

@@ -9574,7 +9574,15 @@ async function notifySecurityAlertsViaWhatsApp(payload, options = {}) {
         try {
             const response = await sendSecurityAlert(alert, config);
             rememberWhatsAppSecurityAlertKey(key);
-            results.push({ key, issue: alert.issue, severity: alert.severity, status: 'sent', response });
+            results.push({
+                key,
+                issue: alert.issue,
+                severity: alert.severity,
+                status: 'sent',
+                recipient: response.recipient || config.recipient,
+                messageId: response.messages?.[0]?.id || null,
+                response
+            });
         } catch (error) {
             const detail = error.response?.data || error.message;
             console.error('[WhatsApp Security Alerts] Failed to send alert:', detail);

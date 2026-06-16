@@ -5075,7 +5075,7 @@ async function sendLatestSunbirdSecurityAlertToWhatsApp() {
         const sentAlert = data.results?.find(item => item.status === 'sent');
         if (status) {
             status.textContent = sentAlert
-                ? `Sent latest ${sentAlert.severity} alert: ${sentAlert.issue}`
+                ? `Meta accepted ${sentAlert.severity} alert for ${data.recipient || sentAlert.recipient}${sentAlert.messageId ? ` (${sentAlert.messageId.slice(0, 18)}...)` : ''}: ${sentAlert.issue}`
                 : data.message || 'No alert was sent.';
             status.className = data.sent > 0 ? 'success' : 'warning';
         }
