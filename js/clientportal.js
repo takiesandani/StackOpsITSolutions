@@ -11903,44 +11903,43 @@ async function renderSunbirdReportsView(forceRefresh = false) {
                     <span class="sunbird-report-live-pill"><i></i> Active</span>
                 </div>
 
-                <div class="sunbird-report-score-strip">
-                    <div class="sunbird-report-score tone-${getSunbirdReportScoreTone(summary.healthScore)}" style="--report-score:${Math.max(0, Math.min(100, Number(summary.healthScore || 0)))}">
+                <div class="sunbird-report-preview-scroll">
+                    <div class="sunbird-report-score-strip">
+                        <div class="sunbird-report-score tone-${getSunbirdReportScoreTone(summary.healthScore)}">
+                            <div>
+                                <span>Security health</span>
+                                <strong>${Number(summary.healthScore || 0)}%</strong>
+                                <small>${escapeIdentityText(summary.status || 'Evidence live')}</small>
+                            </div>
+                        </div>
+                        <div class="sunbird-report-kpi-grid">
+                            ${renderSunbirdReportKpiButton({ key: 'problems', value: summary.failures || evidenceBuckets.problems.length, label: 'Problems', tone: 'danger', meta: 'View evidence' })}
+                            ${renderSunbirdReportKpiButton({ key: 'successes', value: summary.successes || evidenceBuckets.successes.length, label: 'Successes', tone: 'success', meta: 'Client wins' })}
+                            ${renderSunbirdReportKpiButton({ key: 'recommendations', value: evidenceBuckets.recommendations.length, label: 'Actions', tone: 'recommendation', meta: 'Next steps' })}
+                            ${renderSunbirdReportKpiButton({ key: 'events', value: summary.totalEvents || evidenceBuckets.events.length, label: 'Events', tone: 'events', meta: 'Timeline' })}
+                        </div>
+                    </div>
+
+                    ${renderSunbirdReportValueStrip(data, evidenceBuckets)}
+
+                    <div class="sunbird-report-ai-note">
+                        <span class="sunbird-report-ai-mark"><i class="fas fa-sparkles"></i></span>
                         <div>
-                            <span>Security health</span>
-                            <strong>${Number(summary.healthScore || 0)}%</strong>
-                            <small>${escapeIdentityText(summary.status || 'Evidence live')}</small>
-                        </div>
-                        <div class="sunbird-report-mini-ring" aria-hidden="true">
-                            <i></i>
+                            <strong>StackCTRL intelligence</strong>
+                            <p>${escapeIdentityText(analysis.executiveSummary || 'Dashboard evidence is being summarized into a focused operational report.')}</p>
                         </div>
                     </div>
-                    <div class="sunbird-report-kpi-grid">
-                        ${renderSunbirdReportKpiButton({ key: 'problems', value: summary.failures || evidenceBuckets.problems.length, label: 'Problems', tone: 'danger', meta: 'View evidence' })}
-                        ${renderSunbirdReportKpiButton({ key: 'successes', value: summary.successes || evidenceBuckets.successes.length, label: 'Successes', tone: 'success', meta: 'Client wins' })}
-                        ${renderSunbirdReportKpiButton({ key: 'recommendations', value: evidenceBuckets.recommendations.length, label: 'Actions', tone: 'recommendation', meta: 'Next steps' })}
-                        ${renderSunbirdReportKpiButton({ key: 'events', value: summary.totalEvents || evidenceBuckets.events.length, label: 'Events', tone: 'events', meta: 'Timeline' })}
-                    </div>
-                </div>
 
-                ${renderSunbirdReportValueStrip(data, evidenceBuckets)}
+                    ${renderSunbirdReportRecommendationPreview(evidenceBuckets.recommendations)}
 
-                <div class="sunbird-report-ai-note">
-                    <span class="sunbird-report-ai-mark"><i class="fas fa-sparkles"></i></span>
-                    <div>
-                        <strong>StackCTRL intelligence</strong>
-                        <p>${escapeIdentityText(analysis.executiveSummary || 'Dashboard evidence is being summarized into a focused operational report.')}</p>
-                    </div>
-                </div>
-
-                ${renderSunbirdReportRecommendationPreview(evidenceBuckets.recommendations)}
-
-                <div class="sunbird-report-preview-section">
-                    <div class="sunbird-report-preview-label">
-                        <span>Recent reports</span>
-                        <small>${lastReport ? `Last generated ${escapeIdentityText(formatSunbirdReportDate(lastReport.createdAt, true))}` : 'History starts from activation'}</small>
-                    </div>
-                    <div class="sunbird-report-mini-history">
-                        ${renderSunbirdReportMiniHistory(data.reports || [])}
+                    <div class="sunbird-report-preview-section">
+                        <div class="sunbird-report-preview-label">
+                            <span>Recent reports</span>
+                            <small>${lastReport ? `Last generated ${escapeIdentityText(formatSunbirdReportDate(lastReport.createdAt, true))}` : 'History starts from activation'}</small>
+                        </div>
+                        <div class="sunbird-report-mini-history">
+                            ${renderSunbirdReportMiniHistory(data.reports || [])}
+                        </div>
                     </div>
                 </div>
 
