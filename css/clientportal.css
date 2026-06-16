@@ -9316,19 +9316,31 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   transition: stroke-dashoffset 1.2s ease, filter 0.4s ease;
 }
 
-.sunbird-email-risk-chart polyline.critical,
+.sunbird-email-risk-chart polyline.critical {
+  stroke: #ff3f5f;
+  fill: none;
+}
+
 .sunbird-email-risk-chart circle.critical {
   stroke: #ff3f5f;
   fill: #ff3f5f;
 }
 
-.sunbird-email-risk-chart polyline.high,
+.sunbird-email-risk-chart polyline.high {
+  stroke: #ffd000;
+  fill: none;
+}
+
 .sunbird-email-risk-chart circle.high {
   stroke: #ffd000;
   fill: #ffd000;
 }
 
-.sunbird-email-risk-chart polyline.medium,
+.sunbird-email-risk-chart polyline.medium {
+  stroke: #ff9f1c;
+  fill: none;
+}
+
 .sunbird-email-risk-chart circle.medium {
   stroke: #ff9f1c;
   fill: #ff9f1c;
@@ -9357,6 +9369,22 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 8px;
+}
+
+.sunbird-security-risk-trend-card {
+  border: 1px solid rgba(96, 165, 250, 0.34);
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(2, 6, 23, 0.68), rgba(15, 23, 42, 0.32));
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.sunbird-security-risk-trend-card::before {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.045), rgba(0, 0, 0, 0.48) 52%, rgba(255, 255, 255, 0));
+  opacity: 0.72;
+}
+
+.sunbird-security-risk-trend-card .sunbird-email-risk-chart polyline {
+  fill: none !important;
 }
 
 .sunbird-security-chart-heading h3 {
