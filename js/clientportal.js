@@ -320,52 +320,112 @@ function createChart(ctx, chartConfig) {
                         {
                             label: 'Critical',
                             data: [2, 3, 2, 4, 2, 1, 2],
-                            borderColor: '#dc3545',
-                            backgroundColor: 'rgba(220, 53, 69, 0.1)',
-                            tension: 0.4,
-                            fill: true,
-                            pointBackgroundColor: '#dc3545'
+                            borderColor: '#ff3f5f',
+                            backgroundColor: 'rgba(255, 63, 95, 0.08)',
+                            borderWidth: 3,
+                            tension: 0.45,
+                            cubicInterpolationMode: 'monotone',
+                            fill: false,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            pointBackgroundColor: '#ff3f5f',
+                            pointBorderColor: '#ff3f5f',
+                            pointBorderWidth: 1
                         },
                         {
                             label: 'High',
                             data: [5, 6, 4, 7, 5, 3, 3],
-                            borderColor: '#ffc107',
-                            backgroundColor: 'rgba(255, 193, 7, 0.1)',
-                            tension: 0.4,
+                            borderColor: '#ffd000',
+                            backgroundColor: 'rgba(255, 208, 0, 0.08)',
+                            borderWidth: 3,
+                            tension: 0.45,
+                            cubicInterpolationMode: 'monotone',
                             fill: false,
-                            pointBackgroundColor: '#ffc107'
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            pointBackgroundColor: '#ffd000',
+                            pointBorderColor: '#ffd000',
+                            pointBorderWidth: 1
                         },
                         {
                             label: 'Medium',
                             data: [8, 9, 7, 10, 8, 6, 5],
-                            borderColor: '#ff9800',
-                            backgroundColor: 'rgba(255, 152, 0, 0.1)',
-                            tension: 0.4,
+                            borderColor: '#ff9f1c',
+                            backgroundColor: 'rgba(255, 159, 28, 0.08)',
+                            borderWidth: 3,
+                            tension: 0.45,
+                            cubicInterpolationMode: 'monotone',
                             fill: false,
-                            pointBackgroundColor: '#ff9800'
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            pointBackgroundColor: '#ff9f1c',
+                            pointBorderColor: '#ff9f1c',
+                            pointBorderWidth: 1
                         }
                     ]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    elements: {
+                        line: {
+                            capBezierPoints: true
+                        }
+                    },
                     plugins: {
                         legend: {
+                            position: 'top',
+                            align: 'center',
                             labels: {
-                                color: '#bdbdbd',
+                                color: 'rgba(255, 255, 255, 0.78)',
                                 boxWidth: 12,
-                                padding: 15
+                                boxHeight: 12,
+                                padding: 18,
+                                usePointStyle: true,
+                                pointStyle: 'rect',
+                                generateLabels(chart) {
+                                    return Chart.defaults.plugins.legend.labels.generateLabels(chart).map(label => ({
+                                        ...label,
+                                        fillStyle: 'rgba(255, 255, 255, 0.08)',
+                                        strokeStyle: label.strokeStyle || label.fillStyle,
+                                        lineWidth: 2
+                                    }));
+                                }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(2, 6, 23, 0.92)',
+                            borderColor: 'rgba(148, 163, 184, 0.25)',
+                            borderWidth: 1,
+                            titleColor: '#f8fafc',
+                            bodyColor: '#e2e8f0',
+                            displayColors: true,
+                            padding: 12,
+                            callbacks: {
+                                label(context) {
+                                    return `${context.dataset.label}: ${context.parsed.y} findings`;
+                                }
                             }
                         }
                     },
                     scales: {
                         y: {
+                            min: 0,
+                            suggestedMax: 10,
                             grid: {
-                                color: 'rgba(255, 255, 255, 0.05)',
+                                color: 'rgba(255, 255, 255, 0.08)',
                                 drawBorder: false
                             },
                             ticks: {
-                                color: '#bdbdbd'
+                                color: 'rgba(255, 255, 255, 0.72)',
+                                stepSize: 1,
+                                callback(value) {
+                                    return value === 0 ? '' : value;
+                                }
                             }
                         },
                         x: {
@@ -374,7 +434,7 @@ function createChart(ctx, chartConfig) {
                                 drawBorder: false
                             },
                             ticks: {
-                                color: '#bdbdbd'
+                                color: 'rgba(255, 255, 255, 0.72)'
                             }
                         }
                     }
