@@ -23,7 +23,7 @@
    ============================================ */
 
 .sunbird-report-preview {
-  gap: 9px;
+  gap: 8px;
 }
 
 .sunbird-report-preview-header {
@@ -92,7 +92,7 @@
 
 .sunbird-report-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
 }
 
@@ -101,6 +101,8 @@
   font-family: inherit;
   text-align: left;
   cursor: pointer;
+  min-height: 50px;
+  padding: 7px 9px;
   transition: border-color 0.16s ease, box-shadow 0.16s ease;
 }
 
@@ -114,8 +116,8 @@
 .sunbird-report-score {
   --ring-color: #f97316;
   --report-score: 0;
-  min-height: 96px;
-  padding: 13px 14px;
+  min-height: 72px;
+  padding: 10px 12px;
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
@@ -129,8 +131,8 @@
 
 .sunbird-report-score strong {
   display: block;
-  margin-top: 4px;
-  font-size: 2.35rem;
+  margin-top: 2px;
+  font-size: 1.9rem;
   line-height: 0.95;
   font-weight: 650;
   color: #fff;
@@ -149,7 +151,7 @@
 
 .sunbird-report-score small {
   display: block;
-  margin-top: 5px;
+  margin-top: 3px;
   color: #d8dee5;
   font-size: 0.66rem;
   text-transform: capitalize;
@@ -158,8 +160,8 @@
 .sunbird-report-mini-ring {
   position: relative;
   flex: 0 0 auto;
-  width: 64px;
-  height: 64px;
+  width: 48px;
+  height: 48px;
   display: grid;
   place-items: center;
   border-radius: 50%;
@@ -175,13 +177,6 @@
   inset: 8px;
   border-radius: inherit;
   border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.sunbird-report-mini-ring b {
-  color: #f8fafc;
-  font-size: 0.54rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
 }
 
 .sunbird-report-kpi strong {
@@ -546,12 +541,22 @@
   align-items: center;
   gap: 7px;
   flex-wrap: wrap;
-  margin-top: 0;
-  padding-top: 6px;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, transparent, rgba(2, 10, 20, 0.18));
 }
 
 .sunbird-report-actions.sunbird-dashboard-btn-wrap {
-  margin-top: 0;
+  margin-top: auto;
+  justify-content: flex-start;
+}
+
+.sunbird-report-actions .sunbird-dashboard-btn,
+.sunbird-report-actions .sunbird-report-quick-generate {
+  flex: 0 0 auto;
+  min-height: 31px;
+  white-space: nowrap;
 }
 
 .sunbird-report-quick-generate {
@@ -770,6 +775,7 @@
 .dashboard-view.sunbird-reports-active {
   background: #f3f5f7;
   color: #17212b;
+  margin-top: 12px;
 }
 
 .sunbird-reports-dashboard {
@@ -936,15 +942,15 @@
 .sunbird-report-health-card,
 .sunbird-report-ai-card,
 .sunbird-report-automation-card {
-  min-height: 220px;
-  padding: 20px;
+  min-height: 165px;
+  padding: 18px;
 }
 
 .sunbird-report-health-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 22px;
+  gap: 16px;
   overflow: hidden;
   position: relative;
 }
@@ -976,27 +982,15 @@
 }
 
 .sunbird-health-score-display {
-  display: flex;
-  align-items: flex-start;
-  gap: 4px;
-  margin: 10px 0 6px;
+  display: none;
 }
 
 .health-score-value {
-  font-size: 4.75rem;
-  font-weight: 650;
-  color: var(--report-ink);
-  line-height: 0.9;
-  letter-spacing: 0;
+  font-size: 0;
 }
 
 .health-score-percent {
-  font-size: 1.95rem;
-  font-weight: 650;
-  color: var(--report-ink);
-  line-height: 1;
-  letter-spacing: 0;
-  margin-top: 8px;
+  font-size: 0;
 }
 
 .sunbird-report-health-copy strong small {
@@ -1018,8 +1012,8 @@
 
 .sunbird-report-health-ring {
   --ring-color: #f97316;
-  width: 132px;
-  height: 132px;
+  width: 108px;
+  height: 108px;
   flex: 0 0 auto;
   display: grid;
   place-items: center;
@@ -7225,7 +7219,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 .dashboard-view.sunbird-reports-active {
   background: transparent;
   color: #f8fafc;
-  margin-top: 0;
+  margin-top: 12px;
   padding-top: 8px;
 }
 

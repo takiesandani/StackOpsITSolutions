@@ -11912,7 +11912,6 @@ async function renderSunbirdReportsView(forceRefresh = false) {
                         </div>
                         <div class="sunbird-report-mini-ring" aria-hidden="true">
                             <i></i>
-                            <b>Live</b>
                         </div>
                     </div>
                     <div class="sunbird-report-kpi-grid">
@@ -12118,10 +12117,6 @@ function renderSunbirdReportsCenter(data) {
             <article class="sunbird-report-health-card tone-${getSunbirdReportScoreTone(summary.healthScore)}">
                 <div class="sunbird-report-health-copy">
                     <span>Security health score</span>
-                    <div class="sunbird-health-score-display">
-                        <span class="health-score-value">${Number(summary.healthScore || 0)}</span>
-                        <span class="health-score-percent">%</span>
-                    </div>
                     <p>${escapeIdentityText(summary.status || 'Collecting evidence')}</p>
                 </div>
                 <div class="sunbird-report-health-ring" style="--report-score:${Math.max(0, Math.min(100, Number(summary.healthScore || 0)))}">
