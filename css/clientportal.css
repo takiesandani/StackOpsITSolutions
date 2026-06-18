@@ -2609,6 +2609,12 @@ body.client-portal-page {
   filter: saturate(0.82);
 }
 
+.side-peek-nav:hover .side-peek-card.expanded,
+.side-peek-card.expanded {
+  opacity: 1;
+  filter: none;
+}
+
 .side-peek-card .project-card {
   pointer-events: none;
   height: 100%;
@@ -2703,7 +2709,7 @@ body.client-portal-page {
 .side-peek-card.expanded {
   height: 750px !important;
   opacity: 1;
-  filter: saturate(1) blur(0);
+  filter: none;
   background: rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
   border: 1px solid rgba(255, 255, 255, 0.4);
@@ -2719,6 +2725,7 @@ body.client-portal-page {
   background: transparent !important;
   padding: 16px !important;
   gap: 12px !important;
+  pointer-events: auto;
 }
 
 .side-peek-card.expanded .project-icon {
@@ -2781,12 +2788,13 @@ body.client-portal-page {
 }
 
 .side-peek-card.expanded .network-security-signal-list {
-  gap: 8px;
+  gap: 6px;
+  overflow: visible;
 }
 
 .side-peek-card.expanded .network-security-signal {
-  padding: 9px 10px;
-  font-size: 0.76rem;
+  padding: 7px 10px;
+  font-size: 0.72rem;
 }
 
 .side-peek-card.expanded .network-security-card-cta {
@@ -3339,6 +3347,8 @@ body.client-portal-page {
   justify-content: center;
   width: 100%;
   margin-top: 8px;
+  cursor: pointer;
+  pointer-events: auto;
 }
 
 .network-security-card-cta span {
@@ -3355,12 +3365,19 @@ body.client-portal-page {
   font-weight: 200;
   letter-spacing: 0;
   line-height: 1;
+  transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
 }
 
-.project-card:hover .network-security-card-cta span {
+.project-card:hover .network-security-card-cta span,
+.network-security-card-cta:hover span,
+.network-security-card-cta:focus-visible span {
   border-color: rgba(255, 255, 255, 0.28);
   background: rgba(255, 255, 255, 0.07);
   color: #ffffff;
+}
+
+.network-security-card-cta:focus-visible {
+  outline: none;
 }
 
 .network-security-compact-panel {

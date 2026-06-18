@@ -10923,6 +10923,10 @@ function renderNetworkSecurityCardPanel(project) {
     const gatewayTone = overview.gatewayProxyEnabled ? 'good' : 'warn';
     const identityTone = /not configured/i.test(overview.identityProvider) ? 'warn' : 'good';
     const dlpTone = overview.dlpProfiles > 0 ? 'good' : 'neutral';
+    const warpTone = overview.warpProfiles > 0 ? 'good' : 'neutral';
+    const privateNetworkTone = overview.virtualNetworks > 0 ? 'good' : 'warn';
+    const udpTone = overview.udpProxyEnabled ? 'good' : 'warn';
+    const tlsTone = overview.tlsDecryptEnabled ? 'good' : 'neutral';
 
     if (isLoading) {
         return `
@@ -10965,6 +10969,22 @@ function renderNetworkSecurityCardPanel(project) {
                 <div class="network-security-signal">
                     <span><i class="fas fa-fingerprint"></i> DLP Readiness</span>
                     <strong class="${dlpTone}">${overview.dlpProfiles ? `${overview.dlpProfiles} profiles` : 'No profiles'}</strong>
+                </div>
+                <div class="network-security-signal">
+                    <span><i class="fas fa-shield-halved"></i> WARP Profiles</span>
+                    <strong class="${warpTone}">${overview.warpProfiles ? `${overview.warpProfiles} profiles` : 'No profiles'}</strong>
+                </div>
+                <div class="network-security-signal">
+                    <span><i class="fas fa-diagram-project"></i> Private Network</span>
+                    <strong class="${privateNetworkTone}">${overview.virtualNetworks ? `${overview.virtualNetworks} ready` : 'Not ready'}</strong>
+                </div>
+                <div class="network-security-signal">
+                    <span><i class="fas fa-satellite-dish"></i> UDP Proxy</span>
+                    <strong class="${udpTone}">${networkSecurityBoolLabel(overview.udpProxyEnabled)}</strong>
+                </div>
+                <div class="network-security-signal">
+                    <span><i class="fas fa-certificate"></i> TLS Decrypt</span>
+                    <strong class="${tlsTone}">${networkSecurityBoolLabel(overview.tlsDecryptEnabled)}</strong>
                 </div>
             </div>
         </div>
@@ -11318,6 +11338,21 @@ function createProjectCard(project) {
         </div>
         ${networkSecurityCtaHTML}
     `;
+
+    const networkSecurityCta = card.querySelector('[data-network-security-cta]');
+    if (networkSecurityCta) {
+        const openNetworkDashboard = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            openDashboard(project);
+        };
+        networkSecurityCta.addEventListener('click', openNetworkDashboard);
+        networkSecurityCta.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                openNetworkDashboard(event);
+            }
+        });
+    }
     
     return card;
 }
