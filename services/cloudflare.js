@@ -316,9 +316,17 @@ function normalizeCloudflarePayload(raw) {
   };
 }
 
-async function getCloudflareNetworkSecuritySummary() {
-  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
-  const apiToken = process.env.CLOUDFLARE_API_TOKEN;
+async function resolveCloudflareSecret(secretName, getSecret) {
+  if (typeof getSecret === 'function') {
+    const value = await getSecret(secretName);
+    if (value) return value;
+  }
+  return process.env[secretName] || null;
+}
+
+async function getCloudflareNetworkSecuritySummary(options = {}) {
+  const accountId = await resolveCloudflareSecret('CLOUDFLARE_ACCOUNT_ID', options.getSecret);
+  const apiToken = await resolveCloudflareSecret('CLOUDFLARE_API_TOKEN', options.getSecret);
 
   if (!accountId || !apiToken) {
     const missing = [

@@ -2459,7 +2459,7 @@ const authenticateToken = (req, res, next) => {
 
 app.get('/api/cloudflare/network-security/summary', authenticateToken, async (req, res) => {
     try {
-        const summary = await getCloudflareNetworkSecuritySummary();
+        const summary = await getCloudflareNetworkSecuritySummary({ getSecret });
         res.json(summary);
     } catch (error) {
         const statusCode = error.statusCode || 500;
