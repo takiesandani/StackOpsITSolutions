@@ -11014,24 +11014,135 @@ function getNetworkRows(items, columns, emptyText) {
     `).join('');
 }
 
+function getNetworkEvidenceItems(data, key) {
+    const pick = (items, mapper, fallback) => {
+        const safeItems = Array.isArray(items) ? items : [];
+        if (!safeItems.length) return [{ title: fallback, meta: 'Cloudflare returned no records for this signal yet.' }];
+        return safeItems.slice(0, 4).map(mapper);
+    };
+
+    if (key === 'protectedApps') {
+        return pick(data.apps, app => ({
+            title: app.name || app.domain || 'Protected application',
+            meta: [app.type || app.appType || 'Access app', app.domain, Array.isArray(app.policies) ? `${app.policies.length} polic${app.policies.length === 1 ? 'y' : 'ies'}` : null].filter(Boolean).join(' | ')
+        }), 'No protected applications found');
+    }
+
+    if (key === 'enrolledDevices') {
+        return pick(data.devices, device => ({
+            title: device.name || device.userEmail || 'Enrolled device',
+            meta: [device.userEmail, device.os, device.warpVersion ? `WARP ${device.warpVersion}` : null, device.lastSeen ? `Seen ${formatNetworkSecurityDate(device.lastSeen)}` : null].filter(Boolean).join(' | ')
+        }), 'No enrolled devices found');
+    }
+
+    if (key === 'gatewayRules') {
+        return pick(data.gatewayRules, rule => ({
+            title: rule.name || 'Gateway rule',
+            meta: [rule.action || 'Policy action', rule.enabled ? 'Enabled' : 'Disabled', rule.precedence != null ? `Precedence ${rule.precedence}` : null].filter(Boolean).join(' | ')
+        }), 'No Gateway rules found');
+    }
+
+    if (key === 'identityProviders') {
+        return pick(data.identityProviders, provider => ({
+            title: provider.name || 'Identity provider',
+            meta: [provider.type || 'Provider', provider.status || 'Configured'].filter(Boolean).join(' | ')
+        }), 'No identity providers found');
+    }
+
+    if (key === 'accessEvents') {
+        return pick(data.accessLogs, event => ({
+            title: event.userEmail || event.appName || 'Access event',
+            meta: [event.appName, event.action, event.country, event.timestamp ? formatNetworkSecurityDate(event.timestamp) : null].filter(Boolean).join(' | ')
+        }), 'No recent Access events found');
+    }
+
+    return pick(data.dlpProfiles, profile => ({
+        title: profile.name || 'DLP profile',
+        meta: [profile.enabled ? 'Enabled' : 'Configured', `${profile.entries || 0} detector entries`].filter(Boolean).join(' | ')
+    }), 'No DLP profiles found');
+}
+
+function renderNetworkEvidencePopover(metric, data) {
+    const evidenceItems = getNetworkEvidenceItems(data, metric.key);
+    return `
+        <div class="network-evidence-popover" role="dialog" aria-label="${escapeIdentityText(metric.label)} evidence">
+            <div class="network-evidence-header">
+                <span>Evidence</span>
+                <strong>${escapeIdentityText(metric.evidenceLabel)}</strong>
+            </div>
+            <div class="network-evidence-list">
+                ${evidenceItems.map(item => `
+                    <div class="network-evidence-row">
+                        <span>${escapeIdentityText(item.title)}</span>
+                        <small>${escapeIdentityText(item.meta || 'Record returned by Cloudflare')}</small>
+                    </div>
+                `).join('')}
+            </div>
+            <p>Click View Evidence to lock this proof card.</p>
+        </div>
+    `;
+}
+
+function setupNetworkEvidenceInteractions(content) {
+    const cards = Array.from(content.querySelectorAll('[data-network-evidence-card]'));
+    if (!cards.length) return;
+
+    const closeLockedEvidence = () => {
+        cards.forEach(card => card.classList.remove('evidence-locked'));
+    };
+
+    cards.forEach(card => {
+        const trigger = card.querySelector('[data-network-evidence-trigger]');
+        if (!trigger) return;
+        trigger.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            const shouldLock = !card.classList.contains('evidence-locked');
+            closeLockedEvidence();
+            card.classList.toggle('evidence-locked', shouldLock);
+        });
+    });
+
+    if (window.networkEvidenceOutsideHandler) {
+        document.removeEventListener('click', window.networkEvidenceOutsideHandler);
+    }
+    window.networkEvidenceOutsideHandler = event => {
+        if (!event.target.closest('[data-network-evidence-card]')) closeLockedEvidence();
+    };
+    document.addEventListener('click', window.networkEvidenceOutsideHandler);
+
+    if (window.networkEvidenceKeyHandler) {
+        document.removeEventListener('keydown', window.networkEvidenceKeyHandler);
+    }
+    window.networkEvidenceKeyHandler = event => {
+        if (event.key === 'Escape') closeLockedEvidence();
+    };
+    document.addEventListener('keydown', window.networkEvidenceKeyHandler);
+}
+
 function renderNetworkSecurityOverview(data) {
     const overview = data.overview;
     const metrics = [
-        ['Protected Apps', overview.protectedApps, 'fas fa-lock'],
-        ['Enrolled Devices', overview.enrolledDevices, 'fas fa-laptop'],
-        ['Gateway Rules', overview.gatewayPolicies, 'fas fa-filter'],
-        ['Identity Providers', overview.identityProviders, 'fas fa-id-card'],
-        ['Access Events', overview.recentAccessEvents, 'fas fa-clock'],
-        ['DLP Profiles', overview.dlpProfiles, 'fas fa-fingerprint']
+        { key: 'protectedApps', label: 'Protected Apps', value: overview.protectedApps, icon: 'fas fa-lock', evidenceLabel: 'Access applications' },
+        { key: 'enrolledDevices', label: 'Enrolled Devices', value: overview.enrolledDevices, icon: 'fas fa-laptop', evidenceLabel: 'Device posture' },
+        { key: 'gatewayRules', label: 'Gateway Rules', value: overview.gatewayPolicies, icon: 'fas fa-filter', evidenceLabel: 'Gateway policy rules' },
+        { key: 'identityProviders', label: 'Identity Providers', value: overview.identityProviders, icon: 'fas fa-id-card', evidenceLabel: 'SSO providers' },
+        { key: 'accessEvents', label: 'Access Events', value: overview.recentAccessEvents, icon: 'fas fa-clock', evidenceLabel: 'Recent access logs' },
+        { key: 'dlpProfiles', label: 'DLP Profiles', value: overview.dlpProfiles, icon: 'fas fa-fingerprint', evidenceLabel: 'Data protection profiles' }
     ];
 
     return `
         <div class="network-dashboard-kpis">
-            ${metrics.map(([label, value, icon]) => `
-                <article class="network-dashboard-kpi">
-                    <i class="${icon}"></i>
-                    <strong>${escapeIdentityText(value)}</strong>
-                    <span>${escapeIdentityText(label)}</span>
+            ${metrics.map(metric => `
+                <article class="network-dashboard-kpi" data-network-evidence-card>
+                    <i class="${metric.icon}"></i>
+                    <strong>${escapeIdentityText(metric.value)}</strong>
+                    <span>${escapeIdentityText(metric.label)}</span>
+                    <button type="button" class="network-evidence-trigger" data-network-evidence-trigger aria-label="View ${escapeIdentityText(metric.label)} evidence">
+                        <i class="fas fa-magnifying-glass-chart" aria-hidden="true"></i>
+                        <span>View Evidence</span>
+                    </button>
+                    ${renderNetworkEvidencePopover(metric, data)}
                 </article>
             `).join('')}
         </div>
@@ -11130,6 +11241,7 @@ function renderSunbirdNetworkSecurityDashboard(inputData = latestNetworkSecurity
             content.querySelectorAll('[data-network-panel]').forEach(panel => panel.classList.toggle('active', panel.dataset.networkPanel === target));
         });
     });
+    setupNetworkEvidenceInteractions(content);
 }
 
 function openSunbirdNetworkSecurityDashboard() {
@@ -11272,8 +11384,14 @@ function createProjectCard(project) {
     
     const risksCount = project.risks.critical + project.risks.high + project.risks.medium;
     const networkSecurityCtaHTML = project.id === 10
-        ? `<div class="network-security-card-cta" data-network-security-cta="true" role="button" tabindex="0" aria-label="View full Network Security dashboard">
-                <span>View Full Dashboard</span>
+        ? `<div class="network-security-card-footer">
+                <div class="network-security-card-cta" data-network-security-cta="true" role="button" tabindex="0" aria-label="View full Network Security dashboard">
+                    <span>View Full Dashboard</span>
+                </div>
+                <div class="network-security-brand-pill" aria-label="Cloudflare One">
+                    <img src="Images/cloudflare.png" alt="" aria-hidden="true">
+                    <span>Cloudflare One</span>
+                </div>
            </div>`
         : '';
     const networkSecurityPanelHTML = project.id === 10 ? renderNetworkSecurityCardPanel(project) : '';
