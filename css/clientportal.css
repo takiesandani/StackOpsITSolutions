@@ -2694,7 +2694,8 @@ body.client-portal-page {
 
 .side-peek-card .network-security-card-cta span {
   min-height: 18px;
-  padding: 4px 8px;
+  gap: 4px;
+  padding: 4px 7px;
   font-size: 0.52rem;
 }
 
@@ -2807,8 +2808,9 @@ body.client-portal-page {
 
 .side-peek-card.expanded .network-security-card-cta span {
   min-height: 30px;
-  padding: 7px 14px;
-  font-size: 0.877rem;
+  gap: 6px;
+  padding: 7px 11px;
+  font-size: 0.78rem;
 }
 
 .side-peek-card.expanded .network-security-brand-pill {
@@ -3378,17 +3380,22 @@ body.client-portal-page {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   min-height: 30px;
-  padding: 7px 14px;
+  padding: 7px 11px;
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.045);
   color: rgba(255, 255, 255, 0.84);
-  font-size: 0.877rem;
+  font-size: 0.78rem;
   font-weight: 200;
   letter-spacing: 0;
   line-height: 1;
   transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.network-security-card-cta span i {
+  font-size: 0.68rem;
 }
 
 .network-security-card-cta:hover span,
@@ -3880,12 +3887,27 @@ body.client-portal-page {
 }
 
 .network-evidence-row small {
-  display: block;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
   margin-top: 3px;
   color: rgba(255, 255, 255, 0.58);
   font-size: 0.66rem;
   font-weight: 200;
   line-height: 1.35;
+}
+
+.network-evidence-row small b {
+  min-width: 0;
+  max-width: 100%;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.055);
+  color: rgba(255, 255, 255, 0.64);
+  font-size: inherit;
+  font-weight: 200;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .network-evidence-popover p {

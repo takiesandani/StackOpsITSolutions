@@ -11017,48 +11017,48 @@ function getNetworkRows(items, columns, emptyText) {
 function getNetworkEvidenceItems(data, key) {
     const pick = (items, mapper, fallback) => {
         const safeItems = Array.isArray(items) ? items : [];
-        if (!safeItems.length) return [{ title: fallback, meta: 'Cloudflare returned no records for this signal yet.' }];
+        if (!safeItems.length) return [{ title: fallback, metaParts: ['Cloudflare returned no records for this signal yet.'] }];
         return safeItems.slice(0, 4).map(mapper);
     };
 
     if (key === 'protectedApps') {
         return pick(data.apps, app => ({
             title: app.name || app.domain || 'Protected application',
-            meta: [app.type || app.appType || 'Access app', app.domain, Array.isArray(app.policies) ? `${app.policies.length} polic${app.policies.length === 1 ? 'y' : 'ies'}` : null].filter(Boolean).join(' | ')
+            metaParts: [app.type || app.appType || 'Access app', app.domain, Array.isArray(app.policies) ? `${app.policies.length} polic${app.policies.length === 1 ? 'y' : 'ies'}` : null].filter(Boolean)
         }), 'No protected applications found');
     }
 
     if (key === 'enrolledDevices') {
         return pick(data.devices, device => ({
             title: device.name || device.userEmail || 'Enrolled device',
-            meta: [device.userEmail, device.os, device.warpVersion ? `WARP ${device.warpVersion}` : null, device.lastSeen ? `Seen ${formatNetworkSecurityDate(device.lastSeen)}` : null].filter(Boolean).join(' | ')
+            metaParts: [device.userEmail, device.os, device.warpVersion ? `WARP ${device.warpVersion}` : null, device.lastSeen ? `Seen ${formatNetworkSecurityDate(device.lastSeen)}` : null].filter(Boolean)
         }), 'No enrolled devices found');
     }
 
     if (key === 'gatewayRules') {
         return pick(data.gatewayRules, rule => ({
             title: rule.name || 'Gateway rule',
-            meta: [rule.action || 'Policy action', rule.enabled ? 'Enabled' : 'Disabled', rule.precedence != null ? `Precedence ${rule.precedence}` : null].filter(Boolean).join(' | ')
+            metaParts: [rule.action || 'Policy action', rule.enabled ? 'Enabled' : 'Disabled', rule.precedence != null ? `Precedence ${rule.precedence}` : null].filter(Boolean)
         }), 'No Gateway rules found');
     }
 
     if (key === 'identityProviders') {
         return pick(data.identityProviders, provider => ({
             title: provider.name || 'Identity provider',
-            meta: [provider.type || 'Provider', provider.status || 'Configured'].filter(Boolean).join(' | ')
+            metaParts: [provider.type || 'Provider', provider.status || 'Configured'].filter(Boolean)
         }), 'No identity providers found');
     }
 
     if (key === 'accessEvents') {
         return pick(data.accessLogs, event => ({
             title: event.userEmail || event.appName || 'Access event',
-            meta: [event.appName, event.action, event.country, event.timestamp ? formatNetworkSecurityDate(event.timestamp) : null].filter(Boolean).join(' | ')
+            metaParts: [event.appName, event.action, event.country, event.timestamp ? formatNetworkSecurityDate(event.timestamp) : null].filter(Boolean)
         }), 'No recent Access events found');
     }
 
     return pick(data.dlpProfiles, profile => ({
         title: profile.name || 'DLP profile',
-        meta: [profile.enabled ? 'Enabled' : 'Configured', `${profile.entries || 0} detector entries`].filter(Boolean).join(' | ')
+        metaParts: [profile.enabled ? 'Enabled' : 'Configured', `${profile.entries || 0} detector entries`].filter(Boolean)
     }), 'No DLP profiles found');
 }
 
@@ -11074,11 +11074,13 @@ function renderNetworkEvidencePopover(metric, data) {
                 ${evidenceItems.map(item => `
                     <div class="network-evidence-row">
                         <span>${escapeIdentityText(item.title)}</span>
-                        <small>${escapeIdentityText(item.meta || 'Record returned by Cloudflare')}</small>
+                        <small>
+                            ${(Array.isArray(item.metaParts) && item.metaParts.length ? item.metaParts : [item.meta || 'Record returned by Cloudflare']).map(part => `<b>${escapeIdentityText(part)}</b>`).join('')}
+                        </small>
                     </div>
                 `).join('')}
             </div>
-            <p>Click View Evidence to lock this proof card.</p>
+            <p>Click the evidence action to pin this proof card.</p>
         </div>
     `;
 }
@@ -11385,8 +11387,8 @@ function createProjectCard(project) {
     const risksCount = project.risks.critical + project.risks.high + project.risks.medium;
     const networkSecurityCtaHTML = project.id === 10
         ? `<div class="network-security-card-footer">
-                <div class="network-security-card-cta" data-network-security-cta="true" role="button" tabindex="0" aria-label="View full Network Security dashboard">
-                    <span>View Full Dashboard</span>
+                <div class="network-security-card-cta" data-network-security-cta="true" role="button" tabindex="0" aria-label="Open full Network Security dashboard">
+                    <span><i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i>Open</span>
                 </div>
                 <div class="network-security-brand-pill" aria-label="Cloudflare One">
                     <img src="Images/cloudflare.png" alt="" aria-hidden="true">
