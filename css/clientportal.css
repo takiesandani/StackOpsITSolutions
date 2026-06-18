@@ -2776,6 +2776,11 @@ body.client-portal-page {
   font-size: 0.82rem;
 }
 
+.side-peek-card.expanded .network-security-notification-strip {
+  padding: 8px 10px;
+  font-size: 0.72rem;
+}
+
 .side-peek-card.expanded .network-security-mini-grid {
   gap: 8px;
 }
@@ -2814,14 +2819,15 @@ body.client-portal-page {
 }
 
 .side-peek-card.expanded .network-security-brand-pill {
-  min-height: 30px;
-  padding: 6px 10px;
-  font-size: 0.74rem;
+  width: 48px;
+  min-height: 42px;
+  padding: 5px;
+  font-size: 0.54rem;
 }
 
 .side-peek-card.expanded .network-security-brand-pill img {
-  width: 17px;
-  height: 17px;
+  width: 16px;
+  height: 16px;
 }
 
 /* Expanded state for Credential Security (left) card */
@@ -3434,25 +3440,49 @@ body.client-portal-page {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  min-height: 30px;
+  flex-direction: column;
+  gap: 3px;
+  width: 48px;
+  min-height: 42px;
   min-width: 0;
-  padding: 6px 10px;
+  padding: 5px;
   border: 1px solid rgba(37, 99, 235, 0.45);
-  border-radius: 999px;
+  border-radius: 8px;
   background: rgba(7, 15, 32, 0.72);
   color: rgba(255, 255, 255, 0.88);
-  font-size: 0.74rem;
+  font-size: 0.54rem;
   font-weight: 200;
   letter-spacing: 0;
-  line-height: 1;
-  white-space: nowrap;
+  line-height: 1.05;
+  text-align: center;
+  white-space: normal;
 }
 
 .network-security-brand-pill img {
-  width: 17px;
-  height: 17px;
-  flex: 0 0 17px;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  object-fit: contain;
+}
+
+.network-security-brand-square {
+  border-radius: 8px;
+}
+
+.cloudflare-badge.network-security-brand-square {
+  width: 58px;
+  min-height: 50px;
+  flex-direction: column;
+  gap: 4px;
+  padding: 7px;
+  font-size: 0.58rem;
+  line-height: 1.05;
+  text-align: center;
+}
+
+.cloudflare-badge.network-security-brand-square img {
+  width: 18px;
+  height: 18px;
   object-fit: contain;
 }
 
@@ -3488,6 +3518,49 @@ body.client-portal-page {
   color: #ffffff;
   font-size: 0.82rem;
   font-weight: 200;
+}
+
+.network-security-notification-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.7rem;
+  font-weight: 200;
+}
+
+.network-security-notification-strip span {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.network-security-notification-strip strong {
+  flex: 0 0 auto;
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 200;
+}
+
+.network-security-notification-strip.tone-good {
+  border-color: rgba(52, 211, 153, 0.18);
+}
+
+.network-security-notification-strip.tone-warn {
+  border-color: rgba(245, 158, 11, 0.28);
+  background: rgba(120, 53, 15, 0.12);
+}
+
+.network-security-notification-strip.tone-bad {
+  border-color: rgba(248, 113, 113, 0.3);
+  background: rgba(127, 29, 29, 0.13);
 }
 
 .network-security-status-dot {
