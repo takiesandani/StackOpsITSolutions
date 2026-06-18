@@ -2339,6 +2339,33 @@ function getIdentityLastSignInTime(user) {
     return Number.isFinite(time) ? time : 0;
 }
 
+function normalizeSunbirdIdentityUser(user = {}) {
+    const rawSignIn = user.lastSignIn || {};
+    const signInActivity = user.signInActivity || {};
+    const dateTime = rawSignIn.dateTime || signInActivity.lastSignInDateTime || user.lastSignInDateTime || null;
+    const lastSignInTime = dateTime ? new Date(dateTime).getTime() : 0;
+    const daysSince = Number.isFinite(Number(rawSignIn.daysSince))
+        ? Number(rawSignIn.daysSince)
+        : lastSignInTime
+            ? Math.floor((Date.now() - lastSignInTime) / (24 * 60 * 60 * 1000))
+            : 999;
+    return {
+        ...user,
+        signInActivity: {
+            ...signInActivity,
+            lastSignInDateTime: dateTime || signInActivity.lastSignInDateTime || null
+        },
+        lastSignIn: {
+            ...rawSignIn,
+            dateTime,
+            location: rawSignIn.location || user.location || signInActivity.location || 'Unknown',
+            device: rawSignIn.device || user.device || signInActivity.device || 'Unknown Device',
+            status: rawSignIn.status || signInActivity.status || user.signInStatus || 'Success',
+            daysSince
+        }
+    };
+}
+
 function getIdentityDaysSinceSignIn(user) {
     if (Number.isFinite(Number(user?.lastSignIn?.daysSince))) return Number(user.lastSignIn.daysSince);
     const time = getIdentityLastSignInTime(user);
@@ -2461,7 +2488,7 @@ function openSunbirdIdentityDashboard() {
     setupSunbirdIdentityDashboard();
 
     const cached = readSunbirdIdentitySnapshot();
-    if (cached) {
+    if (cached && isFreshSunbirdIdentitySnapshot(cached)) {
         sunbirdDashboardData = normalizeSunbirdDashboardData(cached);
         microsoftUsersData = getSunbirdIdentityUsers(sunbirdDashboardData);
         microsoftRolesData = Array.isArray(sunbirdDashboardData.roleAssignments) ? sunbirdDashboardData.roleAssignments : microsoftRolesData;
@@ -2469,6 +2496,9 @@ function openSunbirdIdentityDashboard() {
         renderSunbirdIdentityDashboard();
     } else if (getSunbirdIdentityUsers().length > 0) {
         renderSunbirdIdentityDashboard();
+    } else {
+        const signinsEl = document.getElementById('sunbird-id-signins');
+        if (signinsEl) signinsEl.innerHTML = renderSunbirdPremiumLoader('Refreshing live sign-ins');
     }
 
     loadSunbirdIdentityDashboardData();
@@ -2562,6 +2592,11 @@ function readSunbirdIdentitySnapshot() {
     }
 }
 
+function isFreshSunbirdIdentitySnapshot(snapshot, maxAgeMs = 60000) {
+    const savedAt = snapshot?.savedAt ? new Date(snapshot.savedAt).getTime() : 0;
+    return savedAt && Number.isFinite(savedAt) && Date.now() - savedAt <= maxAgeMs;
+}
+
 function saveSunbirdIdentitySnapshot(data) {
     if (!data?.users?.length) return;
     localStorage.setItem(SUNBIRD_IDENTITY_CACHE_KEY, JSON.stringify({
@@ -2570,37 +2605,44 @@ function saveSunbirdIdentitySnapshot(data) {
     }));
 }
 
+async function fetchFreshSunbirdIdentityDashboardData() {
+    const token = localStorage.getItem('authToken');
+    if (!token) throw new Error('Authentication required');
+    const endpoints = [
+        '/api/identity-dashboard',
+        '/api/sunbird/identity-dashboard',
+        '/api/sunbird/identity-dashboard-cached',
+        '/api/db/identity-dashboard'
+    ];
+    let lastError = null;
+    for (const endpoint of endpoints) {
+        try {
+            const response = await fetch(endpoint, {
+                method: 'GET',
+                cache: 'no-store',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0'
+                }
+            });
+            const result = await response.json();
+            if (response.ok && result.success) {
+                return { ...result, liveSource: endpoint };
+            }
+            lastError = new Error(result.message || `Identity endpoint failed (${response.status})`);
+        } catch (error) {
+            lastError = error;
+        }
+    }
+    throw lastError || new Error('Identity data unavailable from all endpoints');
+}
+
 async function loadSunbirdIdentityDashboardData() {
     try {
-        const token = localStorage.getItem('authToken');
-        if (!token) return;
-
-        // Use the same fresh endpoint pattern as security alerts
-        let data = null;
-        for (const endpoint of ['/api/db/identity-dashboard', '/api/identity-dashboard', '/api/sunbird/identity-dashboard']) {
-            try {
-                const response = await fetch(endpoint, {
-                    method: 'GET',
-                    cache: 'no-store',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json',
-                        'Cache-Control': 'no-cache, no-store, must-revalidate',
-                        'Pragma': 'no-cache',
-                        'Expires': '0'
-                    }
-                });
-                const result = await response.json();
-                if (response.ok && result.success) {
-                    data = result;
-                    break;
-                }
-            } catch (e) {
-                continue;
-            }
-        }
-        
-        if (!data) throw new Error('Identity data unavailable from all endpoints');
+        const data = await fetchFreshSunbirdIdentityDashboardData();
 
         sunbirdDashboardData = normalizeSunbirdDashboardData(data);
         microsoftUsersData = getSunbirdIdentityUsers(sunbirdDashboardData);
@@ -2886,10 +2928,10 @@ function renderSunbirdSignInTrend(users) {
 function renderSunbirdIdentitySignIns(model) {
     const signinsEl = document.getElementById('sunbird-id-signins');
     if (!signinsEl) return;
-    const latest = model.users
+    const latest = [...model.users]
         .sort((a, b) => getIdentityLastSignInTime(b) - getIdentityLastSignInTime(a))
         .slice(0, 50);
-    const failed = model.evidence.failedSignInUsers
+    const failed = [...model.evidence.failedSignInUsers]
         .sort((a, b) => getIdentityLastSignInTime(b) - getIdentityLastSignInTime(a))
         .slice(0, 50);
 
@@ -9385,7 +9427,7 @@ function applyCachedProjectCards() {
 function normalizeSunbirdDashboardData(data) {
     if (!data) return {};
     
-    const users = data.users || [];
+    const users = Array.isArray(data.users) ? data.users.map(normalizeSunbirdIdentityUser) : [];
     
     // Calculate analytics from users array if not provided by API
     const calculateRiskDistribution = () => {
@@ -9547,49 +9589,13 @@ async function fetchIdentityAccessData() {
             return;
         }
 
-        console.log('[Identity Access] Fetching cached dashboard data from database...');
-        
-        const sunbirdResponse = await fetch('/api/sunbird/identity-dashboard-cached', {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            }
-        });
-
-        // Handle non-ok responses
-        if (!sunbirdResponse.ok) {
-            let errorData = null;
-            const contentType = sunbirdResponse.headers.get('content-type');
-            
-            try {
-                if (contentType && contentType.includes('application/json')) {
-                    errorData = await sunbirdResponse.json();
-                    console.error(`[Identity Access] API error (${sunbirdResponse.status}):`, errorData);
-                } else {
-                    const text = await sunbirdResponse.text();
-                    console.error(`[Identity Access] API error (${sunbirdResponse.status}):`, text);
-                }
-            } catch (parseErr) {
-                console.error(`[Identity Access] Could not parse error response:`, parseErr.message);
-            }
-            
-            throw new Error(`API returned ${sunbirdResponse.status}${errorData?.message ? ': ' + errorData.message : ''}`);
-        }
-
-        // Parse JSON response
-        let sunbirdData;
-        try {
-            sunbirdData = await sunbirdResponse.json();
-        } catch (parseErr) {
-            console.error('[Identity Access] Failed to parse JSON response:', parseErr.message);
-            throw new Error('Invalid JSON response from server');
-        }
+        console.log('[Identity Access] Fetching fresh dashboard data for live sign-ins...');
+        const sunbirdData = await fetchFreshSunbirdIdentityDashboardData();
         
         if (isStaleRequest()) return;
         
         if (sunbirdData.success) {
-            console.log('[Identity Access] Cached dashboard loaded successfully');
+            console.log(`[Identity Access] Dashboard loaded successfully from ${sunbirdData.liveSource || 'identity endpoint'}`);
             isSunbirdDashboard = true;
             // Normalize the API response to ensure all required data structures exist
             sunbirdDashboardData = normalizeSunbirdDashboardData(sunbirdData);
@@ -9612,13 +9618,7 @@ async function fetchIdentityAccessData() {
                 riskLevel: user.riskLevel || 'SAFE',
                 isExternal: user.isExternal,
                 accountEnabled: user.accountEnabled !== false,
-                lastSignIn: {
-                    dateTime: user.lastSignIn?.dateTime || null,
-                    location: user.lastSignIn?.location || 'Unknown',
-                    device: user.lastSignIn?.device || 'Unknown Device',
-                    daysSince: user.lastSignIn?.daysSince || 999
-                },
-                ...user
+                ...normalizeSunbirdIdentityUser(user)
             }));
             microsoftRolesData = Array.isArray(sunbirdDashboardData.roleAssignments) ? sunbirdDashboardData.roleAssignments : [];
             buildUserRolesMap();
@@ -9701,31 +9701,18 @@ function stopIdentityDashboardUpdates() {
 // Fetch updated data silently
 async function fetchUpdatedIdentityData() {
     try {
-        const token = localStorage.getItem('authToken');
-        if (!token) return;
+        const data = await fetchFreshSunbirdIdentityDashboardData();
+        sunbirdDashboardData = normalizeSunbirdDashboardData(data);
+        microsoftUsersData = (sunbirdDashboardData.users || []).map(normalizeSunbirdIdentityUser);
+        microsoftRolesData = Array.isArray(sunbirdDashboardData.roleAssignments) ? sunbirdDashboardData.roleAssignments : microsoftRolesData;
+        buildUserRolesMap();
+        updateIdentityProjectCardFromDashboard(sunbirdDashboardData);
+        saveSunbirdIdentitySnapshot(sunbirdDashboardData);
         
-        const response = await fetch('/api/sunbird/identity-dashboard-cached', {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            }
-        });
-        
-        if (response.ok) {
-            const data = await response.json();
-            if (data.success) {
-                sunbirdDashboardData = normalizeSunbirdDashboardData(data);
-                microsoftUsersData = (sunbirdDashboardData.users || []).map(user => ({...user}));
-                microsoftRolesData = Array.isArray(sunbirdDashboardData.roleAssignments) ? sunbirdDashboardData.roleAssignments : microsoftRolesData;
-                buildUserRolesMap();
-                updateIdentityProjectCardFromDashboard(sunbirdDashboardData);
-                
-                // Smoothly update UI values
-                updateIdentityDashboardValuesSmootly();
-                displayCurrentProject();
-            }
-        }
+        // Smoothly update UI values
+        updateIdentityDashboardValuesSmootly();
+        renderSunbirdIdentitySignIns(buildSunbirdIdentityModel());
+        displayCurrentProject();
     } catch (error) {
         console.error('[Identity Dashboard] Failed to fetch update:', error);
     }
@@ -10546,7 +10533,7 @@ function initializeProjectsList() {
     const isLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
     if (token && isLoggedIn) {
         fetchDuoStats();
-        fetchIdentityData(mockProjects.find(p => p.id === 2));
+        fetchIdentityAccessData();
         fetchApplicationsData(); 
         fetchDevicesCardData();
         fetchEmailCardData();
@@ -11817,9 +11804,16 @@ function buildProjectPreviewModel(project) {
     };
 }
 
+function formatIdentityPreviewSignIn(user) {
+    const time = getIdentityLastSignInTime(user);
+    const freshness = time ? getTimeAgoString(new Date(time)) : 'No live sign-in time';
+    const location = user?.lastSignIn?.location || 'Unknown location';
+    const status = user?.lastSignIn?.status && !/success/i.test(user.lastSignIn.status) ? ` (${user.lastSignIn.status})` : '';
+    return `${user.displayName || 'User'} signed in ${freshness} from ${location}${status}`;
+}
+
 function buildIdentityPreviewModel() {
-    const users = Array.isArray(microsoftUsersData) ? microsoftUsersData : [];
-    const now = Date.now();
+    const users = (Array.isArray(microsoftUsersData) ? microsoftUsersData : []).map(normalizeSunbirdIdentityUser);
     const adminSet = new Set(Object.keys(userRolesMap || {}));
 
     users.forEach(user => {
@@ -11828,30 +11822,23 @@ function buildIdentityPreviewModel() {
 
     const adminCount = adminSet.size;
     const usersWithoutMfa = users.filter(user => !user.mfaEnabled).length;
-    const inactiveUsers = users.filter(user => {
-        const lastSignIn = user?.signInActivity?.lastSignInDateTime;
-
-        if (!lastSignIn) return true;
-
-        const dt = new Date(lastSignIn).getTime();
-        return (now - dt) > (30 * 24 * 60 * 60 * 1000);
-    }).length;
+    const inactiveUsers = users.filter(user => getIdentityDaysSinceSignIn(user) > 30).length;
     const highRiskUsers = users.filter(user => String(user.riskLevel || '').toUpperCase() === 'HIGH').length;
     const adminWithoutMfa = users.filter(user => adminSet.has(user.id) && !user.mfaEnabled).length;
     const mediumRiskUsers = users.filter(user => String(user.riskLevel || '').toUpperCase() === 'MEDIUM').length + Math.max(0, inactiveUsers - highRiskUsers);
     const safeUsers = Math.max(0, users.length - highRiskUsers - mediumRiskUsers);
 
     const recentSignIns = users
-        .filter(user => user?.lastSignIn?.dateTime)
-        .sort((a, b) => new Date(b.lastSignIn.dateTime) - new Date(a.lastSignIn.dateTime))
+        .filter(user => getIdentityLastSignInTime(user) > 0)
+        .sort((a, b) => getIdentityLastSignInTime(b) - getIdentityLastSignInTime(a))
         .slice(0, 3)
         .map(user => ({
             icon: 'fas fa-sign-in-alt',
-            text: `${user.displayName || 'User'} signed in from ${user?.lastSignIn?.location || 'Unknown'}`
+            text: formatIdentityPreviewSignIn(user)
         }));
 
     const keyInsight = recentSignIns.length > 0
-        ? 'Latest sign-ins'
+        ? 'Live latest sign-ins'
         : adminWithoutMfa > 0
         ? `${adminWithoutMfa} admins do not have MFA enabled`
         : inactiveUsers > 0

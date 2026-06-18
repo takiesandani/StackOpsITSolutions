@@ -2822,12 +2822,11 @@ body.client-portal-page {
   width: 48px;
   min-height: 42px;
   padding: 5px;
-  font-size: 0.54rem;
 }
 
 .side-peek-card.expanded .network-security-brand-pill img {
-  width: 16px;
-  height: 16px;
+  width: 25px;
+  height: 25px;
 }
 
 /* Expanded state for Credential Security (left) card */
@@ -3440,8 +3439,6 @@ body.client-portal-page {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex-direction: column;
-  gap: 3px;
   width: 48px;
   min-height: 42px;
   min-width: 0;
@@ -3450,19 +3447,17 @@ body.client-portal-page {
   border-radius: 8px;
   background: rgba(7, 15, 32, 0.72);
   color: rgba(255, 255, 255, 0.88);
-  font-size: 0.54rem;
-  font-weight: 200;
-  letter-spacing: 0;
-  line-height: 1.05;
-  text-align: center;
-  white-space: normal;
 }
 
 .network-security-brand-pill img {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
+  width: 25px;
+  height: 25px;
+  flex: 0 0 25px;
   object-fit: contain;
+}
+
+.network-security-brand-square span {
+  display: none;
 }
 
 .network-security-brand-square {
@@ -3472,17 +3467,12 @@ body.client-portal-page {
 .cloudflare-badge.network-security-brand-square {
   width: 58px;
   min-height: 50px;
-  flex-direction: column;
-  gap: 4px;
   padding: 7px;
-  font-size: 0.58rem;
-  line-height: 1.05;
-  text-align: center;
 }
 
 .cloudflare-badge.network-security-brand-square img {
-  width: 18px;
-  height: 18px;
+  width: 30px;
+  height: 30px;
   object-fit: contain;
 }
 
