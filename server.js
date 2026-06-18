@@ -19,6 +19,7 @@ const {
     sendHelloWorldTest,
     sendSecurityAlert
 } = require('./services/whatsapp');
+const { getCloudflareNetworkSecuritySummary } = require('./services/cloudflare');
 
 // invoice payment endpoints 
 require("dotenv").config();
@@ -2455,6 +2456,34 @@ const authenticateToken = (req, res, next) => {
         next();
     });
 };
+
+app.get('/api/cloudflare/network-security/summary', authenticateToken, async (req, res) => {
+    try {
+        const summary = await getCloudflareNetworkSecuritySummary();
+        res.json(summary);
+    } catch (error) {
+        const statusCode = error.statusCode || 500;
+        console.error('[Cloudflare] Network security summary failed:', error.message);
+        res.status(statusCode).json({
+            success: false,
+            message: statusCode === 503 ? error.message : 'Cloudflare Network Security data is unavailable.',
+            fetchedAt: new Date().toISOString(),
+            overview: {},
+            apps: [],
+            identityProviders: [],
+            policies: [],
+            devices: [],
+            deviceRegistrations: [],
+            gatewayRules: [],
+            gatewayConfig: {},
+            warpProfiles: [],
+            accessLogs: [],
+            virtualNetworks: [],
+            dlpProfiles: [],
+            sections: {}
+        });
+    }
+});
 
 const SUNBIRD_REPORT_TIME_ZONE = 'Africa/Johannesburg';
 const SUNBIRD_REPORT_AUTOMATION_INTERVAL_MS = 60 * 60 * 1000;

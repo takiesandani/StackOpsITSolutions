@@ -160,6 +160,7 @@ function restoreDashboardViewHTML() {
             dashboardView.querySelector('#sunbird-security-dashboard') ||
             dashboardView.querySelector('#sunbird-backup-dashboard') ||
             dashboardView.querySelector('#sunbird-applications-dashboard') ||
+            dashboardView.querySelector('#sunbird-network-security-dashboard') ||
             dashboardView.querySelector('#sunbird-reports-dashboard')
         )
     ) {
@@ -211,6 +212,11 @@ function openDashboard(project) {
         return;
     }
 
+    if ((Number(project.id) === 10 || project.isNetworkSecurityCard === true) && isSunbirdUser()) {
+        openSunbirdNetworkSecurityDashboard();
+        return;
+    }
+
     restoreDashboardViewHTML();
     document.getElementById('dashboard-view')?.classList.remove('sunbird-identity-active');
     document.getElementById('dashboard-view')?.classList.remove('sunbird-device-active');
@@ -218,6 +224,7 @@ function openDashboard(project) {
     document.getElementById('dashboard-view')?.classList.remove('sunbird-security-active');
     document.getElementById('dashboard-view')?.classList.remove('sunbird-backup-active');
     document.getElementById('dashboard-view')?.classList.remove('sunbird-applications-active');
+    document.getElementById('dashboard-view')?.classList.remove('sunbird-network-security-active');
     
     // Get dashboard type with fallback
     const dashboardType = project.dashboardType || "Security"; // RULE 18: Fallback config
@@ -930,18 +937,22 @@ const mockProjects = [
     {
         id: 10,
         name: "Network Security",
-        type: "Network Monitoring & Threat Detection", 
-        status: "inactive",
-        risks: { critical: 1, high: 2, medium: 1 },
-        securityScore: 78,
+        type: "Cloudflare One / Zero Trust", 
+        status: "loading",
+        risks: { critical: 0, high: 0, medium: 0 },
+        securityScore: 0,
         uptime: 97.2,
-        lastUpdate: "1 day ago",
+        lastUpdate: "Loading...",
         icon: "fas fa-network-wired",
         cardMetrics: [
-            { label: "Open Ports", value: ": 5", icon: "fas fa-firewall" },
-            { label: "Unusual Traffic", value: ": 23", icon: "fas fa-chart-line" }
+            { label: "Protected Apps", value: ": ...", icon: "fas fa-lock" },
+            { label: "Devices", value: ": ...", icon: "fas fa-laptop" },
+            { label: "Gateway Rules", value: ": ...", icon: "fas fa-filter" },
+            { label: "Identity", value: ": ...", icon: "fas fa-id-card" }
         ],
-        cardFooter: "Network vulnerabilities found"
+        cardFooter: "Fetching Cloudflare Zero Trust...",
+        isNetworkSecurityCard: true,
+        dashboardType: "Security"
     }
 ];
 
@@ -967,6 +978,7 @@ let cachedSunbirdBackupData = null;
 let cachedSunbirdReportsData = null;
 let sunbirdReportsRange = '30d';
 let sunbirdReportsRequestId = 0;
+const SUNBIRD_NETWORK_SECURITY_CACHE_KEY = 'sunbirdNetworkSecuritySnapshot_v1';
 const BILLING_CACHE_KEY = 'billingInvoiceCache_v1';
 const BILLING_CACHE_TTL_MS = 5 * 60 * 1000;
 let billingAuthRetryCount = 0;
@@ -976,6 +988,7 @@ let identityFetchRequestId = 0;
 let retryCount = 0; // Retry counter for Identity Access API failures
 let latestDevicesCardData = null;
 let latestEmailCardData = null;
+let latestNetworkSecurityData = null;
 let isNetworkSecurityLocked = false;
 let isCredentialSecurityLocked = false;
 let projectGridHasRendered = false;
@@ -10528,6 +10541,7 @@ function initializeProjectsList() {
         fetchApplicationsData(); 
         fetchDevicesCardData();
         fetchEmailCardData();
+        fetchNetworkSecurityCardData();
     }
 }
 
@@ -10558,7 +10572,12 @@ function displayCurrentProject() {
                 }
             });
             
-            projectCard.addEventListener('click', () => {
+            projectCard.addEventListener('click', (event) => {
+                if (event.target.closest('[data-network-security-cta]')) {
+                    openDashboard(project);
+                    return;
+                }
+
                 const isSelected = selectedProjectId === project.id && previewLockedByClick;
                 
                 const allCards = document.querySelectorAll('.project-card');
@@ -10669,6 +10688,10 @@ function renderSidePeekCards() {
             sidePeekNext.onclick = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                if (e.target.closest('[data-network-security-cta]')) {
+                    openDashboard(nextProject);
+                    return;
+                }
                 isNetworkSecurityLocked = !isNetworkSecurityLocked;
                 if (isNetworkSecurityLocked) {
                     handleExpand();
@@ -10713,6 +10736,405 @@ function syncSidePeekCardSizing() {
             shell.style.setProperty('--side-peek-expanded-height', `${Math.round(expandedHeight)}px`);
         }
     }
+}
+
+function readSunbirdNetworkSecuritySnapshot() {
+    try {
+        const snapshot = JSON.parse(localStorage.getItem(SUNBIRD_NETWORK_SECURITY_CACHE_KEY) || 'null');
+        if (!snapshot?.savedAt) return null;
+        const age = Date.now() - new Date(snapshot.savedAt).getTime();
+        return age < SUNBIRD_CARD_CACHE_TTL_MS ? snapshot : null;
+    } catch (_) {
+        return null;
+    }
+}
+
+function saveSunbirdNetworkSecuritySnapshot(data) {
+    try {
+        localStorage.setItem(SUNBIRD_NETWORK_SECURITY_CACHE_KEY, JSON.stringify({
+            ...data,
+            savedAt: new Date().toISOString()
+        }));
+    } catch (_) {}
+}
+
+function normalizeNetworkSecurityData(data = {}) {
+    const overview = data.overview || {};
+    return {
+        success: data.success !== false,
+        fetchedAt: data.fetchedAt || new Date().toISOString(),
+        message: data.message || '',
+        account: data.account || {},
+        overview: {
+            securityStatus: overview.securityStatus || 'No data configured',
+            protectedApps: Number(overview.protectedApps || 0),
+            enrolledDevices: Number(overview.enrolledDevices || 0),
+            registeredWarpDevices: Number(overview.registeredWarpDevices || 0),
+            gatewayPolicies: Number(overview.gatewayPolicies || 0),
+            activeGatewayPolicies: Number(overview.activeGatewayPolicies || overview.gatewayPolicies || 0),
+            identityProviders: Number(overview.identityProviders || 0),
+            identityProvider: overview.identityProvider || 'Not configured',
+            recentAccessEvents: Number(overview.recentAccessEvents || 0),
+            lastAccessEvent: overview.lastAccessEvent || null,
+            dlpProfiles: Number(overview.dlpProfiles || 0),
+            warpProfiles: Number(overview.warpProfiles || 0),
+            virtualNetworks: Number(overview.virtualNetworks || 0),
+            appCategories: Number(overview.appCategories || 0),
+            gatewayProxyEnabled: Boolean(overview.gatewayProxyEnabled),
+            udpProxyEnabled: Boolean(overview.udpProxyEnabled),
+            certificateEnabled: Boolean(overview.certificateEnabled),
+            tlsDecryptEnabled: Boolean(overview.tlsDecryptEnabled),
+            zonesAvailable: Number(overview.zonesAvailable || 0)
+        },
+        apps: Array.isArray(data.apps) ? data.apps : [],
+        identityProviders: Array.isArray(data.identityProviders) ? data.identityProviders : [],
+        policies: Array.isArray(data.policies) ? data.policies : [],
+        devices: Array.isArray(data.devices) ? data.devices : [],
+        deviceRegistrations: Array.isArray(data.deviceRegistrations) ? data.deviceRegistrations : [],
+        devicePosture: Array.isArray(data.devicePosture) ? data.devicePosture : [],
+        gatewayRules: Array.isArray(data.gatewayRules) ? data.gatewayRules : [],
+        gatewayConfig: data.gatewayConfig || {},
+        warpProfiles: Array.isArray(data.warpProfiles) ? data.warpProfiles : [],
+        accessLogs: Array.isArray(data.accessLogs) ? data.accessLogs : [],
+        virtualNetworks: Array.isArray(data.virtualNetworks) ? data.virtualNetworks : [],
+        gatewayAppTypes: Array.isArray(data.gatewayAppTypes) ? data.gatewayAppTypes : [],
+        dlpProfiles: Array.isArray(data.dlpProfiles) ? data.dlpProfiles : [],
+        sections: data.sections || {}
+    };
+}
+
+function formatNetworkSecurityDate(value) {
+    if (!value) return 'No access events';
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return 'No access events';
+    return getTimeAgoString(date);
+}
+
+function networkSecurityBoolLabel(value) {
+    return value ? 'Enabled' : 'Disabled';
+}
+
+function getNetworkSecurityScore(data) {
+    const overview = normalizeNetworkSecurityData(data).overview;
+    let score = 54;
+    if (overview.protectedApps > 0) score += 10;
+    if (overview.enrolledDevices > 0) score += 10;
+    if (overview.activeGatewayPolicies > 0) score += 10;
+    if (/azure/i.test(overview.identityProvider)) score += 7;
+    if (overview.gatewayProxyEnabled) score += 5;
+    if (overview.dlpProfiles > 0) score += 4;
+    return Math.max(0, Math.min(100, score));
+}
+
+function updateNetworkSecurityProjectCard(data) {
+    const project = mockProjects.find(p => p.id === 10);
+    if (!project) return;
+
+    const normalized = normalizeNetworkSecurityData(data);
+    const overview = normalized.overview;
+    const score = getNetworkSecurityScore(normalized);
+    const sectionErrors = Object.values(normalized.sections || {}).filter(section => section.status === 'error').length;
+    const permissionGaps = Object.values(normalized.sections || {}).filter(section => section.status === 'permission_unavailable').length;
+
+    latestNetworkSecurityData = normalized;
+    project.networkSecuritySnapshot = normalized;
+    project.status = normalized.success ? 'active' : 'error';
+    project.securityScore = score;
+    project.risks = {
+        critical: sectionErrors,
+        high: permissionGaps,
+        medium: overview.gatewayProxyEnabled ? 0 : 1
+    };
+    project.cardMetrics = [
+        { label: "Protected Apps", value: `: ${overview.protectedApps}`, icon: "fas fa-lock" },
+        { label: "Devices", value: `: ${overview.enrolledDevices}`, icon: "fas fa-laptop" },
+        { label: "Gateway Rules", value: `: ${overview.gatewayPolicies}`, icon: "fas fa-filter" },
+        { label: "Identity", value: `: ${overview.identityProvider}`, icon: "fas fa-id-card" }
+    ];
+    project.cardFooter = normalized.success
+        ? `${overview.securityStatus} | ${formatNetworkSecurityDate(overview.lastAccessEvent)}`
+        : (normalized.message || 'Cloudflare data unavailable');
+    project.lastUpdate = new Date().toLocaleTimeString();
+    saveProjectCardToCache(project);
+}
+
+async function fetchNetworkSecurityCardData(forceRefresh = false) {
+    const project = mockProjects.find(p => p.id === 10);
+    if (!project || !isSunbirdUser()) return null;
+
+    if (!forceRefresh) {
+        const cached = readSunbirdNetworkSecuritySnapshot();
+        if (cached) {
+            updateNetworkSecurityProjectCard(cached);
+            displayCurrentProject();
+        }
+    }
+
+    try {
+        const token = localStorage.getItem('authToken');
+        if (!token) return null;
+        if (!hasRealProjectMetrics(project)) {
+            project.status = 'loading';
+            displayCurrentProject();
+        }
+
+        const response = await fetch('/api/cloudflare/network-security/summary', {
+            method: 'GET',
+            cache: 'no-store',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        const data = await response.json();
+        if (!response.ok || data.success === false) {
+            throw new Error(data.message || `Cloudflare data unavailable (${response.status})`);
+        }
+
+        const normalized = normalizeNetworkSecurityData(data);
+        saveSunbirdNetworkSecuritySnapshot(normalized);
+        updateNetworkSecurityProjectCard(normalized);
+        displayCurrentProject();
+        if (document.getElementById('sunbird-network-security-dashboard')) {
+            renderSunbirdNetworkSecurityDashboard(normalized);
+        }
+        return normalized;
+    } catch (error) {
+        console.error('[Network Security] Cloudflare fetch failed:', error.message);
+        const fallback = normalizeNetworkSecurityData({
+            success: false,
+            message: error.message,
+            overview: {}
+        });
+        updateNetworkSecurityProjectCard(fallback);
+        displayCurrentProject();
+        if (document.getElementById('sunbird-network-security-dashboard')) {
+            renderSunbirdNetworkSecurityDashboard(fallback);
+        }
+        return fallback;
+    }
+}
+
+function renderNetworkSecurityCardPanel(project) {
+    const data = normalizeNetworkSecurityData(project.networkSecuritySnapshot || latestNetworkSecurityData || {});
+    const overview = data.overview;
+    const isLoading = project.status === 'loading' && !latestNetworkSecurityData;
+    const lastEvent = formatNetworkSecurityDate(overview.lastAccessEvent);
+    const gatewayTone = overview.gatewayProxyEnabled ? 'good' : 'warn';
+    const identityTone = /not configured/i.test(overview.identityProvider) ? 'warn' : 'good';
+    const dlpTone = overview.dlpProfiles > 0 ? 'good' : 'neutral';
+
+    if (isLoading) {
+        return `
+            <div class="network-security-compact-panel is-loading">
+                <div class="network-security-skeleton wide"></div>
+                <div class="network-security-skeleton-grid">
+                    <span></span><span></span><span></span><span></span>
+                </div>
+                <div class="network-security-skeleton tall"></div>
+            </div>
+        `;
+    }
+
+    return `
+        <div class="network-security-compact-panel">
+            <div class="network-security-status-line">
+                <span class="network-security-status-dot ${project.status === 'error' ? 'bad' : 'good'}"></span>
+                <span>${escapeIdentityText(overview.securityStatus)}</span>
+                <strong>${escapeIdentityText(String(getNetworkSecurityScore(data)))}%</strong>
+            </div>
+            <div class="network-security-mini-grid">
+                <div><span>WARP</span><strong>${escapeIdentityText(String(overview.registeredWarpDevices || overview.enrolledDevices))}</strong></div>
+                <div><span>Logs</span><strong>${escapeIdentityText(String(overview.recentAccessEvents))}</strong></div>
+                <div><span>DLP</span><strong>${escapeIdentityText(String(overview.dlpProfiles))}</strong></div>
+                <div><span>Catalog</span><strong>${escapeIdentityText(String(overview.appCategories))}</strong></div>
+            </div>
+            <div class="network-security-signal-list">
+                <div class="network-security-signal">
+                    <span><i class="fas fa-user-shield"></i> Identity</span>
+                    <strong class="${identityTone}">${escapeIdentityText(overview.identityProvider)}</strong>
+                </div>
+                <div class="network-security-signal">
+                    <span><i class="fas fa-route"></i> Gateway Proxy</span>
+                    <strong class="${gatewayTone}">${networkSecurityBoolLabel(overview.gatewayProxyEnabled)}</strong>
+                </div>
+                <div class="network-security-signal">
+                    <span><i class="fas fa-clock"></i> Last Access</span>
+                    <strong>${escapeIdentityText(lastEvent)}</strong>
+                </div>
+                <div class="network-security-signal">
+                    <span><i class="fas fa-fingerprint"></i> DLP Readiness</span>
+                    <strong class="${dlpTone}">${overview.dlpProfiles ? `${overview.dlpProfiles} profiles` : 'No profiles'}</strong>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function renderSunbirdNetworkSecurityShell() {
+    return `
+        <section class="sunbird-network-security-dashboard" id="sunbird-network-security-dashboard">
+            <div class="sunbird-id-header">
+                <button id="sunbird-network-back" class="sunbird-id-back-btn" type="button"><span class="sunbird-id-back-icon" aria-hidden="true">&larr;</span><span>Back</span></button>
+                <div><h2>Network Security</h2><p>Cloudflare One, WARP, Gateway, Access, and DLP posture.</p></div>
+                <div class="sunbird-id-microsoft-badge cloudflare-badge" aria-label="Cloudflare One"><i class="fas fa-cloud"></i><span>Cloudflare One</span></div>
+            </div>
+            <div id="sunbird-network-security-content">${renderSunbirdPremiumLoader('Loading Cloudflare Zero Trust')}</div>
+        </section>
+    `;
+}
+
+function getNetworkRows(items, columns, emptyText) {
+    const safeItems = Array.isArray(items) ? items : [];
+    if (!safeItems.length) return `<tr><td colspan="${columns.length}" class="sunbird-empty-row">${escapeIdentityText(emptyText)}</td></tr>`;
+    return safeItems.map(item => `
+        <tr>
+            ${columns.map(column => `<td>${escapeIdentityText(column.value(item) ?? 'N/A')}</td>`).join('')}
+        </tr>
+    `).join('');
+}
+
+function renderNetworkSecurityOverview(data) {
+    const overview = data.overview;
+    const metrics = [
+        ['Protected Apps', overview.protectedApps, 'fas fa-lock'],
+        ['Enrolled Devices', overview.enrolledDevices, 'fas fa-laptop'],
+        ['Gateway Rules', overview.gatewayPolicies, 'fas fa-filter'],
+        ['Identity Providers', overview.identityProviders, 'fas fa-id-card'],
+        ['Access Events', overview.recentAccessEvents, 'fas fa-clock'],
+        ['DLP Profiles', overview.dlpProfiles, 'fas fa-fingerprint']
+    ];
+
+    return `
+        <div class="network-dashboard-kpis">
+            ${metrics.map(([label, value, icon]) => `
+                <article class="network-dashboard-kpi">
+                    <i class="${icon}"></i>
+                    <strong>${escapeIdentityText(value)}</strong>
+                    <span>${escapeIdentityText(label)}</span>
+                </article>
+            `).join('')}
+        </div>
+        <div class="network-dashboard-panels">
+            <article class="network-dashboard-panel">
+                <h3>Executive Snapshot</h3>
+                <div class="network-dashboard-list">
+                    <div><span>Status</span><strong>${escapeIdentityText(overview.securityStatus)}</strong></div>
+                    <div><span>Identity Provider</span><strong>${escapeIdentityText(overview.identityProvider)}</strong></div>
+                    <div><span>Last Access Event</span><strong>${escapeIdentityText(formatNetworkSecurityDate(overview.lastAccessEvent))}</strong></div>
+                    <div><span>Private Network</span><strong>${escapeIdentityText(`${overview.virtualNetworks} virtual network(s)`)}</strong></div>
+                </div>
+            </article>
+            <article class="network-dashboard-panel">
+                <h3>Gateway Readiness</h3>
+                <div class="network-dashboard-list">
+                    <div><span>Gateway Proxy</span><strong>${networkSecurityBoolLabel(overview.gatewayProxyEnabled)}</strong></div>
+                    <div><span>UDP Proxy</span><strong>${networkSecurityBoolLabel(overview.udpProxyEnabled)}</strong></div>
+                    <div><span>TLS Decrypt</span><strong>${networkSecurityBoolLabel(overview.tlsDecryptEnabled)}</strong></div>
+                    <div><span>Category Catalog</span><strong>${escapeIdentityText(`${overview.appCategories} categories`)}</strong></div>
+                </div>
+            </article>
+        </div>
+    `;
+}
+
+function renderSunbirdNetworkSecurityDashboard(inputData = latestNetworkSecurityData) {
+    const data = normalizeNetworkSecurityData(inputData || {});
+    latestNetworkSecurityData = data;
+    const content = document.getElementById('sunbird-network-security-content');
+    if (!content) return;
+
+    const devicesRows = getNetworkRows(data.devices, [
+        { value: item => item.name },
+        { value: item => item.userEmail },
+        { value: item => item.os },
+        { value: item => item.warpVersion },
+        { value: item => formatNetworkSecurityDate(item.lastSeen) },
+        { value: item => item.status }
+    ], 'No enrolled devices returned');
+    const accessRows = getNetworkRows(data.accessLogs.slice(0, 12), [
+        { value: item => item.userEmail },
+        { value: item => item.appName },
+        { value: item => item.action },
+        { value: item => item.country },
+        { value: item => item.ipAddress },
+        { value: item => formatNetworkSecurityDate(item.timestamp) }
+    ], 'No access log entries returned');
+    const policyRows = getNetworkRows(data.gatewayRules, [
+        { value: item => item.name },
+        { value: item => item.action },
+        { value: item => item.enabled ? 'Enabled' : 'Disabled' },
+        { value: item => item.precedence }
+    ], 'No Gateway rules configured');
+
+    content.innerHTML = `
+        ${data.success ? '' : `<div class="network-dashboard-error"><i class="fas fa-circle-exclamation"></i>${escapeIdentityText(data.message || 'Cloudflare data unavailable')}</div>`}
+        <div class="network-dashboard-tabs" role="tablist">
+            ${['Overview', 'Devices', 'Access Logs', 'Policies', 'Identity', 'WARP / Gateway', 'DLP'].map((tab, index) => `
+                <button type="button" class="network-dashboard-tab ${index === 0 ? 'active' : ''}" data-network-tab="${index}">${tab}</button>
+            `).join('')}
+        </div>
+        <div class="network-dashboard-tab-panel active" data-network-panel="0">${renderNetworkSecurityOverview(data)}</div>
+        <div class="network-dashboard-tab-panel" data-network-panel="1">
+            <div class="network-dashboard-table-wrap"><table class="network-dashboard-table"><thead><tr><th>Device</th><th>User</th><th>OS</th><th>WARP</th><th>Last Seen</th><th>Status</th></tr></thead><tbody>${devicesRows}</tbody></table></div>
+        </div>
+        <div class="network-dashboard-tab-panel" data-network-panel="2">
+            <div class="network-dashboard-table-wrap"><table class="network-dashboard-table"><thead><tr><th>User</th><th>App</th><th>Action</th><th>Country</th><th>IP</th><th>Time</th></tr></thead><tbody>${accessRows}</tbody></table></div>
+        </div>
+        <div class="network-dashboard-tab-panel" data-network-panel="3">
+            <div class="network-dashboard-table-wrap"><table class="network-dashboard-table"><thead><tr><th>Rule</th><th>Action</th><th>Status</th><th>Precedence</th></tr></thead><tbody>${policyRows}</tbody></table></div>
+        </div>
+        <div class="network-dashboard-tab-panel" data-network-panel="4">
+            <div class="network-dashboard-panels">
+                ${data.identityProviders.map(provider => `<article class="network-dashboard-panel"><h3>${escapeIdentityText(provider.name)}</h3><p>${escapeIdentityText(provider.type || 'Identity provider')}</p><strong>${escapeIdentityText(provider.status || 'configured')}</strong></article>`).join('') || '<div class="sunbird-empty-row">No identity providers configured</div>'}
+                ${data.policies.map(policy => `<article class="network-dashboard-panel"><h3>${escapeIdentityText(policy.name)}</h3><p>${escapeIdentityText(policy.decision || 'Access policy')}</p><strong>${escapeIdentityText(policy.sessionDuration || 'Session policy')}</strong></article>`).join('')}
+            </div>
+        </div>
+        <div class="network-dashboard-tab-panel" data-network-panel="5">
+            <div class="network-dashboard-panels">
+                ${data.warpProfiles.map(profile => `<article class="network-dashboard-panel"><h3>${escapeIdentityText(profile.name)}</h3><p>${escapeIdentityText(profile.serviceMode || 'WARP profile')}</p><strong>${profile.enabled ? 'Enabled' : 'Disabled'}</strong></article>`).join('') || '<div class="sunbird-empty-row">No WARP profiles returned</div>'}
+                ${data.virtualNetworks.map(network => `<article class="network-dashboard-panel"><h3>${escapeIdentityText(network.name)}</h3><p>Private network readiness</p><strong>${network.isDefault ? 'Default' : 'Configured'}</strong></article>`).join('')}
+            </div>
+        </div>
+        <div class="network-dashboard-tab-panel" data-network-panel="6">
+            <div class="network-dashboard-panels">
+                ${data.dlpProfiles.map(profile => `<article class="network-dashboard-panel"><h3>${escapeIdentityText(profile.name)}</h3><p>${escapeIdentityText(`${profile.entries || 0} detector entries`)}</p><strong>${profile.enabled ? 'Enabled' : 'Configured'}</strong></article>`).join('') || '<div class="sunbird-empty-row">No DLP profiles returned</div>'}
+            </div>
+        </div>
+    `;
+
+    content.querySelectorAll('[data-network-tab]').forEach(button => {
+        button.addEventListener('click', () => {
+            const target = button.dataset.networkTab;
+            content.querySelectorAll('[data-network-tab]').forEach(tab => tab.classList.toggle('active', tab === button));
+            content.querySelectorAll('[data-network-panel]').forEach(panel => panel.classList.toggle('active', panel.dataset.networkPanel === target));
+        });
+    });
+}
+
+function openSunbirdNetworkSecurityDashboard() {
+    const dashboardView = document.getElementById('dashboard-view');
+    const projectsView = document.getElementById('projects-view');
+    if (!dashboardView) return;
+    if (projectsView) projectsView.style.display = 'none';
+    dashboardView.style.display = 'block';
+    dashboardView.style.visibility = 'visible';
+    dashboardView.style.opacity = '1';
+    [
+        'sunbird-identity-active',
+        'sunbird-device-active',
+        'sunbird-email-active',
+        'sunbird-security-active',
+        'sunbird-backup-active',
+        'sunbird-applications-active',
+        'sunbird-reports-active'
+    ].forEach(className => dashboardView.classList.remove(className));
+    dashboardView.classList.add('sunbird-network-security-active');
+    captureDashboardViewHTML();
+    dashboardView.innerHTML = renderSunbirdNetworkSecurityShell();
+    document.getElementById('sunbird-network-back')?.addEventListener('click', goBackToProjects);
+    renderSunbirdNetworkSecurityDashboard(latestNetworkSecurityData || readSunbirdNetworkSecuritySnapshot() || {});
+    fetchNetworkSecurityCardData(true);
 }
 
 function goToPreviousProject() {
@@ -10829,6 +11251,12 @@ function createProjectCard(project) {
     card.setAttribute('data-project-id', project.id);
     
     const risksCount = project.risks.critical + project.risks.high + project.risks.medium;
+    const networkSecurityCtaHTML = project.id === 10
+        ? `<div class="network-security-card-cta" data-network-security-cta="true" role="button" tabindex="0" aria-label="View full Network Security dashboard">
+                <span>View Full Dashboard</span>
+           </div>`
+        : '';
+    const networkSecurityPanelHTML = project.id === 10 ? renderNetworkSecurityCardPanel(project) : '';
     
     const isSummaryCard = isSummaryProjectCard(project);
     const metrics = isSummaryCard ? normalizeSummaryMetrics(project) : (project.cardMetrics || []);
@@ -10880,6 +11308,7 @@ function createProjectCard(project) {
         <div class="project-info">
             ${metricsHTML}
         </div>
+        ${networkSecurityPanelHTML}
         <div class="project-risks">
             <span>${project.cardFooter || 'Risks: ' + risksCount}</span>
             <div class="risk-indicator">
@@ -10887,6 +11316,7 @@ function createProjectCard(project) {
                      title="${project.risks.critical > 0 ? project.risks.critical + ' Critical' : project.risks.high > 0 ? project.risks.high + ' High' : (project.risks.medium > 0 ? project.risks.medium + ' Medium' : 'No Risks detected')}"></div>
             </div>
         </div>
+        ${networkSecurityCtaHTML}
     `;
     
     return card;
