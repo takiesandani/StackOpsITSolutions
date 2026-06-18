@@ -3442,9 +3442,10 @@ body.client-portal-page {
   width: 48px;
   min-height: 42px;
   min-width: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
+  padding: 5px;
+  border: 1px solid rgba(0, 0, 0, 0.9);
+  border-radius: 8px;
+  background: #000000;
   color: rgba(255, 255, 255, 0.88);
 }
 
@@ -3467,6 +3468,8 @@ body.client-portal-page {
   width: 58px;
   min-height: 50px;
   padding: 7px;
+  border-color: rgba(0, 0, 0, 0.9);
+  background: #000000;
 }
 
 .cloudflare-badge.network-security-brand-square img {
