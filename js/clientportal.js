@@ -863,16 +863,17 @@ const mockProjects = [
         name: "Cloud data services",
         type: "Optomized cloud storage & Database health",
         status: "inactive",
-        risks: { critical: 1, high: 1, medium: 1 },
-        securityScore: 90,
-        uptime: 99.7,
-        lastUpdate: "30 minutes ago",
+        risks: { critical: 0, high: 0, medium: 0 },
+        securityScore: 0,
+        uptime: 0,
+        lastUpdate: "Inactive",
         icon: "fas fa-database",
         cardMetrics: [
-            { label: "Storage Used", value: ": 2.3TB", icon: "fas fa-cloud" },
-            { label: "Data Redundancy", value: ": 3x", icon: "fas fa-copy" }
+            { label: "Storage Used", value: ": 0", icon: "fas fa-cloud" },
+            { label: "Data Redundancy", value: ": 0", icon: "fas fa-copy" }
         ],
-        cardFooter: "Cloud Cost: R4,250/month"
+        cardFooter: "Cloud Cost: R0/month",
+        noDashboard: true
     },
     {
         id: 7,
@@ -920,19 +921,20 @@ const mockProjects = [
         id: 11,
         name: "Infrastructure Monitoring",
         type: "Server Health & Performance Monitoring",
-        status: "active",
-        risks: { critical: 0, high: 1, medium: 2 },
-        securityScore: 92,
-        uptime: 99.5,
-        lastUpdate: "5 minutes ago",
+        status: "inactive",
+        risks: { critical: 0, high: 0, medium: 0 },
+        securityScore: 0,
+        uptime: 0,
+        lastUpdate: "Inactive",
         icon: "fas fa-server",
         cardMetrics: [
-            { label: "Servers Online", value: ": 24", icon: "fas fa-server" },
-            { label: "CPU Avg Load", value: ": 45%", icon: "fas fa-microchip" },
-            { label: "Memory Usage", value: ": 72%", icon: "fas fa-memory" },
-            { label: "Disk Space", value: ": 68%", icon: "fas fa-hdd" }
+            { label: "Servers Online", value: ": 0", icon: "fas fa-server" },
+            { label: "CPU Avg Load", value: ": 0", icon: "fas fa-microchip" },
+            { label: "Memory Usage", value: ": 0", icon: "fas fa-memory" },
+            { label: "Disk Space", value: ": 0", icon: "fas fa-hdd" }
         ],
-        cardFooter: "Infrastructure healthy - monitoring active"
+        cardFooter: "Infrastructure inactive",
+        noDashboard: true
     },
     {
         id: 10,
@@ -11705,6 +11707,13 @@ function createProjectCard(project) {
     const isSummaryCard = isSummaryProjectCard(project);
     const metrics = isSummaryCard ? normalizeSummaryMetrics(project) : (project.cardMetrics || []);
     const statusMeta = getSummaryCardStatusMeta(project);
+    const isInactiveProject = String(project.status || '').toLowerCase() === 'inactive';
+    const riskDotClass = isInactiveProject
+        ? 'critical'
+        : project.risks.critical > 0 ? 'critical' : project.risks.high > 0 ? 'high' : (project.risks.medium > 0 ? 'medium' : 'success');
+    const riskDotTitle = isInactiveProject
+        ? 'Inactive'
+        : project.risks.critical > 0 ? project.risks.critical + ' Critical' : project.risks.high > 0 ? project.risks.high + ' High' : (project.risks.medium > 0 ? project.risks.medium + ' Medium' : 'No Risks detected');
 
     // Build metrics section from cardMetrics array
     let metricsHTML = '';
@@ -11756,8 +11765,7 @@ function createProjectCard(project) {
         <div class="project-risks">
             <span>${project.cardFooter || 'Risks: ' + risksCount}</span>
             <div class="risk-indicator">
-                <div class="risk-dot ${project.risks.critical > 0 ? 'critical' : project.risks.high > 0 ? 'high' : (project.risks.medium > 0 ? 'medium' : 'success')}" 
-                     title="${project.risks.critical > 0 ? project.risks.critical + ' Critical' : project.risks.high > 0 ? project.risks.high + ' High' : (project.risks.medium > 0 ? project.risks.medium + ' Medium' : 'No Risks detected')}"></div>
+                <div class="risk-dot ${riskDotClass}" title="${riskDotTitle}"></div>
             </div>
         </div>
         ${networkSecurityCtaHTML}
