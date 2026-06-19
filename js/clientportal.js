@@ -22,6 +22,8 @@ const HIDDEN_PROJECT_CARD_IDS = [4, 7, 8, 6]; // Security & Events, Backup and R
 
 // SEDFA/Duo user-specific card IDs (Cisco Duo Licenses, Cloud data services, Infrastructure Monitoring)
 const SEDFA_CARD_IDS = [1, 6, 11];
+const NON_SUNBIRD_BLUR_PROJECT_IDS = [6, 11];
+const NON_SUNBIRD_BLUR_PANEL_IDS = ['billing-card', 'governance-card'];
 
 // ════════════════════════════════════════════════════════════════════════════════
 // DASHBOARD CONFIGURATION - UNIVERSAL TEMPLATE FOR ALL DASHBOARDS
@@ -633,10 +635,10 @@ function isSunbirdIdentityClient() {
         const user = rawUser ? JSON.parse(rawUser) : {};
         const email = String(user?.email || sessionStorage.getItem('userEmail') || '').toLowerCase();
         const client = String(user?.access || user?.client || '').toLowerCase();
-        return client === 'sunbird' || email === 'sandanindivhuwo17@gmail.com' || email.includes('@sunbird.eu');
+        return client === 'sunbird' || email.includes('@sunbird.eu') || email.includes('@stackopsit.co.za');
     } catch (error) {
         const email = String(sessionStorage.getItem('userEmail') || '').toLowerCase();
-        return email === 'sandanindivhuwo17@gmail.com' || email.includes('@sunbird.eu');
+        return email.includes('@sunbird.eu') || email.includes('@stackopsit.co.za');
     }
 }
 
@@ -659,6 +661,7 @@ function isSedfaUser() {
 function updateSunbirdLogoVisibility() {
     const isSunbird = isSunbirdUser();
     document.body?.classList.toggle('sunbird-client-portal', isSunbird);
+    syncNonSunbirdBlurGatedPanels();
 
     const logoImg = document.querySelector('.sunbird-logo-img');
     if (logoImg) {
@@ -2592,6 +2595,44 @@ function readSunbirdIdentitySnapshot() {
     } catch (error) {
         return null;
     }
+}
+
+function shouldBlurGateForNonSunbird() {
+    return !isSunbirdUser();
+}
+
+function enableNonSunbirdBlurGate(card) {
+    if (!card || card.dataset.blurGateReady === 'true') return;
+
+    card.dataset.blurGateReady = 'true';
+    if (!card.hasAttribute('tabindex')) card.setAttribute('tabindex', '0');
+
+    card.addEventListener('click', event => {
+        if (isSunbirdUser()) return;
+        if (event.target.closest('button, a, input, select, textarea, [role="button"]')) return;
+        card.classList.toggle('blur-gate-revealed');
+    });
+
+    card.addEventListener('keydown', event => {
+        if (isSunbirdUser()) return;
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        card.classList.toggle('blur-gate-revealed');
+    });
+}
+
+function setNonSunbirdBlurGate(card, enabled) {
+    if (!card) return;
+    card.classList.toggle('non-sunbird-blur-gated', enabled);
+    if (!enabled) card.classList.remove('blur-gate-revealed');
+    if (enabled) enableNonSunbirdBlurGate(card);
+}
+
+function syncNonSunbirdBlurGatedPanels() {
+    const enabled = shouldBlurGateForNonSunbird();
+    NON_SUNBIRD_BLUR_PANEL_IDS.forEach(id => {
+        setNonSunbirdBlurGate(document.getElementById(id), enabled);
+    });
 }
 
 function isFreshSunbirdIdentitySnapshot(snapshot, maxAgeMs = 60000) {
@@ -11689,6 +11730,7 @@ function createProjectCard(project) {
     const card = document.createElement('div');
     card.className = 'project-card' + (project.noDashboard ? ' no-interaction' : '');
     card.setAttribute('data-project-id', project.id);
+    setNonSunbirdBlurGate(card, shouldBlurGateForNonSunbird() && NON_SUNBIRD_BLUR_PROJECT_IDS.includes(Number(project.id)));
     
     const risksCount = project.risks.critical + project.risks.high + project.risks.medium;
     const networkSecurityCtaHTML = project.id === 10
@@ -12183,6 +12225,7 @@ function getBillingCacheKey() {
 async function initializeBillingCard() {
     const billingCard = document.getElementById('billing-card');
     if (!billingCard) return;
+    syncNonSunbirdBlurGatedPanels();
 
     // Prevent async races from overwriting the active Sunbird mini-view.
     // If the user is currently viewing another menu item, don't render billing HTML into the container.
@@ -13233,8 +13276,8 @@ function renderSunbirdReportsCenter(data) {
                 <div class="sunbird-report-schedule-row"><span>Delivery</span><strong>Friday, ${String(settings.deliveryHour || 8).padStart(2, '0')}:00 SAST</strong></div>
                 <p class="sunbird-report-delivery-note">On-demand generation downloads the PDF. Friday automation emails the PDF attachment.</p>
                 <label class="sunbird-report-email-field">
-                    <span>PDF recipient</span>
-                    <input id="sunbird-report-recipient" type="email" value="${escapeIdentityText(settings.recipientEmail || '')}">
+                    <span>Chosen PDF recipient</span>
+                    <input id="sunbird-report-recipient" type="email" multiple placeholder="name@sunbird.eu" value="${escapeIdentityText(settings.recipientEmail || '')}">
                 </label>
                 <div class="sunbird-report-setting-actions">
                     <label><input id="sunbird-report-weekly-enabled" type="checkbox" ${settings.weeklyEnabled ? 'checked' : ''}> Weekly email</label>
@@ -13431,6 +13474,16 @@ window.downloadSunbirdReportPdf = async function(reportId) {
 window.saveSunbirdReportSettings = async function() {
     const recipient = document.getElementById('sunbird-report-recipient')?.value || '';
     const weeklyEnabled = Boolean(document.getElementById('sunbird-report-weekly-enabled')?.checked);
+    const recipients = recipient.split(/[;,]/).map(item => item.trim()).filter(Boolean);
+    const invalidRecipients = recipients.filter(item => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item));
+    if (invalidRecipients.length) {
+        showNotification('Please enter valid report recipient email addresses', false);
+        return;
+    }
+    if (weeklyEnabled && recipients.length === 0) {
+        showNotification('Choose at least one report recipient before enabling weekly email', false);
+        return;
+    }
     try {
         console.log('[Reports] Saving automation settings:', { recipient, weeklyEnabled });
         const response = await fetch('/api/sunbird/reports/settings', {
@@ -13966,6 +14019,7 @@ function initializeSunbirdLeftMenu() {
 function initializeGovernanceCard() {
     const governanceCard = document.getElementById('governance-card');
     if (!governanceCard) return;
+    syncNonSunbirdBlurGatedPanels();
     
     const client = isSunbirdUser() ? 'sunbird' : 'default';
 
@@ -14336,6 +14390,7 @@ function renderSunbirdEvidenceDetails(evidenceData) {
 function initializeSupportCard() {
     const supportCard = document.getElementById('support-card');
     if (!supportCard) return;
+    syncNonSunbirdBlurGatedPanels();
     
     // 🚨 STRICT SCOPE CONTROL: Non-Sunbird clients get the standard Support & SLA card
     if (!isSunbirdUser()) {

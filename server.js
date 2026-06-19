@@ -1753,6 +1753,7 @@ async function ensureDatabaseSchema() {
                 CompanyID INT PRIMARY KEY,
                 WeeklyEnabled TINYINT DEFAULT 1,
                 RecipientEmail VARCHAR(255),
+                RecipientConfirmed TINYINT DEFAULT 0,
                 DeliveryDay TINYINT DEFAULT 5,
                 DeliveryHour TINYINT DEFAULT 8,
                 ActiveSince DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -1762,6 +1763,15 @@ async function ensureDatabaseSchema() {
                 FOREIGN KEY (CompanyID) REFERENCES Companies(ID)
             )
         `);
+
+        try {
+            const [reportSettingsColumns] = await pool.query("SHOW COLUMNS FROM SunbirdReportSettings LIKE 'RecipientConfirmed'");
+            if (reportSettingsColumns.length === 0) {
+                await pool.query("ALTER TABLE SunbirdReportSettings ADD COLUMN RecipientConfirmed TINYINT DEFAULT 0 AFTER RecipientEmail");
+            }
+        } catch (err) {
+            console.warn('[Database] SunbirdReportSettings RecipientConfirmed migration attempted:', err.message);
+        }
 
         await pool.query(`
             CREATE TABLE IF NOT EXISTS SunbirdReports (
@@ -2610,6 +2620,214 @@ function isReportEventWithinRange(event, start, end) {
     return Number.isFinite(time) && time >= start.getTime() && time <= end.getTime();
 }
 
+function normalizeCloudflareReportData(data = {}) {
+    const overview = data.overview || {};
+    return {
+        success: data.success !== false,
+        fetchedAt: data.fetchedAt || new Date().toISOString(),
+        message: data.message || '',
+        overview: {
+            securityStatus: overview.securityStatus || 'No data configured',
+            protectedApps: Number(overview.protectedApps || 0),
+            enrolledDevices: Number(overview.enrolledDevices || 0),
+            registeredWarpDevices: Number(overview.registeredWarpDevices || 0),
+            gatewayPolicies: Number(overview.gatewayPolicies || 0),
+            activeGatewayPolicies: Number(overview.activeGatewayPolicies || overview.gatewayPolicies || 0),
+            identityProviders: Number(overview.identityProviders || 0),
+            recentAccessEvents: Number(overview.recentAccessEvents || 0),
+            lastAccessEvent: overview.lastAccessEvent || null,
+            dlpProfiles: Number(overview.dlpProfiles || 0),
+            warpProfiles: Number(overview.warpProfiles || 0),
+            virtualNetworks: Number(overview.virtualNetworks || 0),
+            gatewayProxyEnabled: Boolean(overview.gatewayProxyEnabled),
+            udpProxyEnabled: Boolean(overview.udpProxyEnabled),
+            tlsDecryptEnabled: Boolean(overview.tlsDecryptEnabled)
+        },
+        apps: Array.isArray(data.apps) ? data.apps : [],
+        identityProviders: Array.isArray(data.identityProviders) ? data.identityProviders : [],
+        gatewayRules: Array.isArray(data.gatewayRules) ? data.gatewayRules : [],
+        accessLogs: Array.isArray(data.accessLogs) ? data.accessLogs : [],
+        dlpProfiles: Array.isArray(data.dlpProfiles) ? data.dlpProfiles : [],
+        sections: data.sections || {}
+    };
+}
+
+function hasCloudflareReportEvidence(data = {}) {
+    if (!data) return false;
+    if (data.success === false && data.message) return true;
+    const overview = data.overview || {};
+    return Object.keys(overview).length > 0 ||
+        ['apps', 'identityProviders', 'gatewayRules', 'accessLogs', 'dlpProfiles'].some(key => Array.isArray(data[key]) && data[key].length > 0) ||
+        Object.keys(data.sections || {}).length > 0;
+}
+
+function getCloudflareReportScore(data = {}) {
+    const overview = normalizeCloudflareReportData(data).overview;
+    let score = 70;
+    if (overview.protectedApps > 0) score += 8;
+    if (overview.identityProviders > 0) score += 8;
+    if (overview.gatewayPolicies > 0) score += 6;
+    if (overview.dlpProfiles > 0) score += 5;
+    if (overview.gatewayProxyEnabled) score += 5;
+    if (overview.tlsDecryptEnabled) score += 4;
+    if (overview.udpProxyEnabled) score += 2;
+    return clampReportScore(score);
+}
+
+function buildCloudflareReportSignals(inputData = null) {
+    if (!hasCloudflareReportEvidence(inputData)) {
+        return {
+            hasReportableEvidence: false,
+            score: null,
+            summary: null,
+            events: [],
+            problems: [],
+            recommendations: []
+        };
+    }
+
+    const data = normalizeCloudflareReportData(inputData);
+    const overview = data.overview;
+    const timestamp = data.fetchedAt || new Date().toISOString();
+    const events = [];
+    const problems = [];
+    const recommendations = [];
+    const addSignal = ({ title, detail, severity = 'medium', status = 'observed', category = 'Cloudflare One', problem = false, recommendation }) => {
+        const event = {
+            title,
+            detail,
+            severity,
+            status,
+            source: 'Cloudflare One',
+            category,
+            timestamp
+        };
+        events.push(event);
+        if (problem) {
+            problems.push({
+                title,
+                detail,
+                severity,
+                status: 'Action required',
+                source: 'Cloudflare One',
+                asset: category
+            });
+        }
+        if (recommendation) {
+            recommendations.push({
+                priority: severity === 'critical' ? 'critical' : severity === 'high' ? 'high' : 'medium',
+                title: recommendation,
+                detail,
+                source: 'Cloudflare One'
+            });
+        }
+    };
+
+    if (data.success === false) {
+        addSignal({
+            title: 'Cloudflare One evidence unavailable',
+            detail: data.message || 'Cloudflare Zero Trust evidence could not be collected.',
+            severity: 'high',
+            status: 'failed',
+            category: 'Cloudflare API',
+            problem: true,
+            recommendation: 'Restore Cloudflare API evidence collection'
+        });
+    }
+
+    [
+        !overview.gatewayProxyEnabled && {
+            title: 'Cloudflare Gateway proxy disabled',
+            detail: 'Gateway traffic inspection is not currently enabled in the Cloudflare One snapshot.',
+            severity: 'high',
+            category: 'Gateway',
+            recommendation: 'Enable Cloudflare Gateway proxy or document the exception'
+        },
+        !overview.tlsDecryptEnabled && {
+            title: 'Cloudflare TLS decrypt disabled',
+            detail: 'TLS inspection is disabled, limiting visibility into encrypted web traffic.',
+            severity: 'medium',
+            category: 'Gateway',
+            recommendation: 'Review TLS decrypt policy readiness'
+        },
+        !overview.udpProxyEnabled && {
+            title: 'Cloudflare UDP proxy disabled',
+            detail: 'UDP proxy support is disabled, which may leave selected traffic outside Gateway inspection.',
+            severity: 'medium',
+            category: 'Gateway',
+            recommendation: 'Validate whether UDP proxy should be enabled'
+        },
+        !overview.dlpProfiles && {
+            title: 'Cloudflare DLP profiles missing',
+            detail: 'No DLP profiles were returned, so sensitive data detection is not evidenced.',
+            severity: 'medium',
+            category: 'DLP',
+            recommendation: 'Create or verify Cloudflare DLP profiles'
+        },
+        !overview.protectedApps && {
+            title: 'No Cloudflare protected apps evidenced',
+            detail: 'Cloudflare Access did not return protected applications for this snapshot.',
+            severity: 'medium',
+            category: 'Access',
+            recommendation: 'Confirm Cloudflare Access app coverage'
+        },
+        !overview.identityProviders && {
+            title: 'Cloudflare identity provider not evidenced',
+            detail: 'No Cloudflare Access identity provider was returned in the latest snapshot.',
+            severity: 'high',
+            category: 'Identity',
+            recommendation: 'Connect or verify the Cloudflare Access identity provider'
+        }
+    ].filter(Boolean).forEach(signal => addSignal({ ...signal, problem: signal.severity === 'high' }));
+
+    data.accessLogs
+        .filter(log => /block|deny|fail/i.test(String(log.action || log.status || '')))
+        .slice(0, 4)
+        .forEach(log => {
+            addSignal({
+                title: `Cloudflare Access ${log.action || 'blocked'} event`,
+                detail: [log.userEmail, log.appName, log.country, log.ipAddress].filter(Boolean).join(' | ') || 'Cloudflare Access returned a denied or blocked request.',
+                severity: 'high',
+                status: 'active',
+                category: 'Access',
+                problem: true,
+                recommendation: 'Review denied Cloudflare Access activity'
+            });
+        });
+
+    Object.entries(data.sections || {}).forEach(([key, section]) => {
+        if (!section || !['error', 'permission_unavailable'].includes(section.status)) return;
+        addSignal({
+            title: `Cloudflare ${section.label || key} evidence needs attention`,
+            detail: section.message || 'Cloudflare returned an incomplete section for this control.',
+            severity: section.status === 'error' ? 'high' : 'medium',
+            status: section.status,
+            category: 'Cloudflare API',
+            problem: section.status === 'error',
+            recommendation: 'Review Cloudflare API permissions for this evidence section'
+        });
+    });
+
+    const score = getCloudflareReportScore(data);
+    return {
+        hasReportableEvidence: true,
+        score: clampReportScore(score - (problems.filter(item => ['critical', 'high'].includes(String(item.severity || '').toLowerCase())).length * 6) - Math.max(0, events.length - problems.length) * 2),
+        summary: {
+            protectedApps: overview.protectedApps,
+            enrolledDevices: overview.enrolledDevices,
+            gatewayPolicies: overview.gatewayPolicies,
+            dlpProfiles: overview.dlpProfiles,
+            recentAccessEvents: overview.recentAccessEvents,
+            lastAccessEvent: overview.lastAccessEvent,
+            problems: problems.length,
+            events: events.length
+        },
+        events,
+        problems,
+        recommendations
+    };
+}
+
 function buildDeterministicReportAnalysis(report) {
     const critical = report.failures.filter(item => item.severity === 'critical').length;
     const high = report.failures.filter(item => item.severity === 'high').length;
@@ -2678,19 +2896,50 @@ async function ensureSunbirdReportSettings(companyId, recipientEmail = null) {
     return rows[0] || null;
 }
 
-async function getDefaultReportRecipient(companyId) {
-    const [rows] = await pool.query(
-        `SELECT Email
-         FROM Users
-         WHERE CompanyID = ? AND isActive = 1 AND Email IS NOT NULL
-         ORDER BY CASE WHEN LOWER(Role) IN ('admin', 'companyadmin') THEN 0 ELSE 1 END, ID
-         LIMIT 1`,
-        [companyId]
-    );
-    return rows[0]?.Email || null;
+function normalizeReportRecipientEmails(value) {
+    const rawRecipients = Array.isArray(value)
+        ? value
+        : String(value || '').split(/[;,]/);
+    const seen = new Set();
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    return rawRecipients
+        .map(item => String(item || '').trim())
+        .filter(Boolean)
+        .filter(email => emailPattern.test(email))
+        .filter(email => {
+            const key = email.toLowerCase();
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+}
+
+function hasInvalidReportRecipients(value) {
+    const rawRecipients = Array.isArray(value)
+        ? value
+        : String(value || '').split(/[;,]/);
+    return rawRecipients
+        .map(item => String(item || '').trim())
+        .filter(Boolean)
+        .some(email => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+}
+
+function formatReportRecipientList(recipients = []) {
+    return normalizeReportRecipientEmails(recipients).join(', ');
+}
+
+function isSunbirdReportAccessContext(context) {
+    const accessType = String(context?.accessType || context?.clientId || '').toLowerCase();
+    const email = String(context?.email || '').toLowerCase();
+    return accessType === 'sunbird' || email.includes('@sunbird.eu') || email.includes('@stackopsit.co.za');
 }
 
 async function loadSunbirdReportEvidence(companyId) {
+    const cloudflarePromise = getCloudflareNetworkSecuritySummary({ getSecret }).catch(error => {
+        console.warn('[Reports] Cloudflare evidence skipped:', error.message);
+        return null;
+    });
     const [
         companyRows,
         identityRows,
@@ -2703,7 +2952,8 @@ async function loadSunbirdReportEvidence(companyId) {
         applicationPayloadRows,
         operationsRows,
         governanceRows,
-        complianceRows
+        complianceRows,
+        cloudflare
     ] = await Promise.all([
         pool.query('SELECT CompanyName FROM Companies WHERE ID = ? LIMIT 1', [companyId]),
         pool.query('SELECT * FROM IdentityMetricsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
@@ -2716,7 +2966,8 @@ async function loadSunbirdReportEvidence(companyId) {
         pool.query('SELECT Payload, LastUpdated FROM ApplicationPayloadCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
         pool.query('SELECT Payload, LastUpdated FROM SunbirdOperationsPayloadCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
         pool.query('SELECT Payload, LastUpdated FROM SunbirdGovernancePayloadCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
-        pool.query('SELECT Payload, LastUpdated FROM SunbirdComplianceControlsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId])
+        pool.query('SELECT Payload, LastUpdated FROM SunbirdComplianceControlsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
+        cloudflarePromise
     ]);
     return {
         companyName: companyRows[0][0]?.CompanyName || 'Client',
@@ -2731,6 +2982,7 @@ async function loadSunbirdReportEvidence(companyId) {
         operations: parseReportJson(operationsRows[0][0]?.Payload, {}),
         governance: parseReportJson(governanceRows[0][0]?.Payload, {}),
         compliance: parseReportJson(complianceRows[0][0]?.Payload, {}),
+        cloudflare,
         sourceUpdatedAt: [
             identityRows[0][0]?.LastUpdated,
             deviceRows[0][0]?.LastUpdated,
@@ -2742,7 +2994,8 @@ async function loadSunbirdReportEvidence(companyId) {
             applicationPayloadRows[0][0]?.LastUpdated,
             operationsRows[0][0]?.LastUpdated,
             governanceRows[0][0]?.LastUpdated,
-            complianceRows[0][0]?.LastUpdated
+            complianceRows[0][0]?.LastUpdated,
+            cloudflare?.fetchedAt
         ].filter(Boolean)
     };
 }
@@ -2767,6 +3020,7 @@ async function buildSunbirdReportPayload(companyId, periodStart, periodEnd, incl
     const emailScore = emailSummary.securityScore != null
         ? clampReportScore(emailSummary.securityScore)
         : clampReportScore(100 - (emailRiskSignals * 12));
+    const cloudflareSignals = buildCloudflareReportSignals(evidence.cloudflare);
     const scores = [
         securitySummary.securityScore,
         evidence.identity.SecurityScore,
@@ -2775,7 +3029,8 @@ async function buildSunbirdReportPayload(companyId, periodStart, periodEnd, incl
         emailScore,
         evidence.operations.summary?.healthScore,
         evidence.governance.summary?.score,
-        evidence.compliance.summary?.score
+        evidence.compliance.summary?.score,
+        cloudflareSignals.score
     ].filter(value => value != null && Number.isFinite(Number(value))).map(clampReportScore);
     const healthScore = scores.length
         ? clampReportScore(scores.reduce((sum, value) => sum + value, 0) / scores.length)
@@ -2789,6 +3044,7 @@ async function buildSunbirdReportPayload(companyId, periodStart, periodEnd, incl
     (evidence.email.alerts || []).forEach(item => events.push(normalizeReportEvent(item, 'Email security')));
     (evidence.email.incidents || []).forEach(item => events.push(normalizeReportEvent(item, 'Email incident')));
     (evidence.operations.events || evidence.operations.activity || []).forEach(item => events.push(normalizeReportEvent(item, 'Operations')));
+    cloudflareSignals.events.forEach(item => events.push(normalizeReportEvent(item, 'Cloudflare One')));
     const filteredEvents = events
         .filter(event => isReportEventWithinRange(event, periodStart, periodEnd))
         .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))
@@ -2816,18 +3072,27 @@ async function buildSunbirdReportPayload(companyId, periodStart, periodEnd, incl
         ...(deviceTotal && !Number(evidence.devices.NonCompliant || 0) ? [{
             title: 'Device compliance clear',
             detail: `${deviceTotal} managed device${deviceTotal === 1 ? '' : 's'} with no non-compliant devices reported.`
+        }] : []),
+        ...(cloudflareSignals.hasReportableEvidence && !cloudflareSignals.problems.length ? [{
+            title: 'Cloudflare One evidence reviewed',
+            detail: `${cloudflareSignals.summary.protectedApps} protected app${cloudflareSignals.summary.protectedApps === 1 ? '' : 's'}, ${cloudflareSignals.summary.gatewayPolicies} Gateway polic${cloudflareSignals.summary.gatewayPolicies === 1 ? 'y' : 'ies'}, and ${cloudflareSignals.summary.dlpProfiles} DLP profile${cloudflareSignals.summary.dlpProfiles === 1 ? '' : 's'} were evidenced.`
         }] : [])
     ].slice(0, 8);
-    const failures = failureEvents.slice(0, 12).map(event => ({
-        title: event.title,
-        detail: event.detail,
-        severity: event.severity,
-        status: event.status,
-        timestamp: event.timestamp,
-        source: event.source,
-        asset: event.asset
-    }));
+    const nonCloudflareFailureEvents = failureEvents.filter(event => event.source !== 'Cloudflare One');
+    const failures = [
+        ...cloudflareSignals.problems,
+        ...nonCloudflareFailureEvents.map(event => ({
+            title: event.title,
+            detail: event.detail,
+            severity: event.severity,
+            status: event.status,
+            timestamp: event.timestamp,
+            source: event.source,
+            asset: event.asset
+        }))
+    ].slice(0, 12);
     const recommendations = [
+        ...cloudflareSignals.recommendations,
         ...(failureEvents.some(event => event.severity === 'critical') ? [{
             priority: 'critical',
             title: 'Triage critical evidence immediately',
@@ -2879,14 +3144,32 @@ async function buildSunbirdReportPayload(companyId, periodStart, periodEnd, incl
             devices: deviceScore,
             email: emailScore,
             applications: appScore,
-            backup: evidence.backup.success ? 100 : null
+            backup: evidence.backup.success ? 100 : null,
+            cloudflare: cloudflareSignals.score
         },
+        cloudflare: cloudflareSignals.hasReportableEvidence ? {
+            score: cloudflareSignals.score,
+            summary: cloudflareSignals.summary,
+            problems: cloudflareSignals.problems,
+            recommendations: cloudflareSignals.recommendations,
+            events: cloudflareSignals.events.slice(0, 10)
+        } : null,
         successes,
         failures,
         recommendations,
         events: filteredEvents,
         collection: {
-            sources: ['Identity', 'Devices', 'Email', 'Security', 'Backup', 'Applications', 'Operations', 'Governance'],
+            sources: [
+                'Identity',
+                'Devices',
+                'Email',
+                'Security',
+                'Backup',
+                'Applications',
+                'Operations',
+                'Governance',
+                ...(cloudflareSignals.hasReportableEvidence ? ['Cloudflare One'] : [])
+            ],
             evidenceUpdatedAt: sourceFreshness
         }
     };
@@ -3216,8 +3499,11 @@ async function getReportContext(req, res) {
         });
         return null;
     }
-    const recipient = await getDefaultReportRecipient(context.companyId);
-    const settings = await ensureSunbirdReportSettings(context.companyId, recipient);
+    if (!isSunbirdReportAccessContext(context)) {
+        res.status(403).json({ success: false, message: 'Sunbird reports are not available for this account' });
+        return null;
+    }
+    const settings = await ensureSunbirdReportSettings(context.companyId, null);
     return { context, settings };
 }
 
@@ -3256,8 +3542,8 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
         res.json({
             success: true,
             settings: {
-                weeklyEnabled: Boolean(settings.WeeklyEnabled),
-                recipientEmail: settings.RecipientEmail || req.user.email,
+                weeklyEnabled: Boolean(settings.WeeklyEnabled && Number(settings.RecipientConfirmed) === 1 && normalizeReportRecipientEmails(settings.RecipientEmail).length),
+                recipientEmail: settings.RecipientEmail || '',
                 deliveryDay: settings.DeliveryDay,
                 deliveryHour: settings.DeliveryHour,
                 activeSince: settings.ActiveSince,
@@ -3377,23 +3663,29 @@ app.put('/api/sunbird/reports/settings', authenticateToken, async (req, res) => 
         const reportContext = await getReportContext(req, res);
         if (!reportContext) return;
         const { context } = reportContext;
+        const requestedRecipientEmail = req.body?.recipientEmail || '';
+        if (hasInvalidReportRecipients(requestedRecipientEmail)) {
+            return res.status(400).json({ success: false, message: 'Only valid report recipient email addresses are allowed' });
+        }
+        const recipientEmail = formatReportRecipientList(requestedRecipientEmail);
         const weeklyEnabled = req.body?.weeklyEnabled === false ? 0 : 1;
-        const recipientEmail = String(req.body?.recipientEmail || req.user.email || '').trim();
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail)) {
-            return res.status(400).json({ success: false, message: 'A valid report recipient email is required' });
+        if (weeklyEnabled && !recipientEmail) {
+            return res.status(400).json({ success: false, message: 'Choose at least one report recipient before enabling weekly email' });
         }
         await pool.query(
             `UPDATE SunbirdReportSettings
-             SET WeeklyEnabled = ?, RecipientEmail = ?
+             SET WeeklyEnabled = ?, RecipientEmail = ?, RecipientConfirmed = ?
              WHERE CompanyID = ?`,
-            [weeklyEnabled, recipientEmail, context.companyId]
+            [weeklyEnabled, recipientEmail || null, recipientEmail ? 1 : 0, context.companyId]
         );
         await writeSunbirdReportLog({
             companyId: context.companyId,
             eventType: 'automation_settings_updated',
             status: 'success',
-            message: `Weekly report email ${weeklyEnabled ? 'enabled' : 'paused'} for ${recipientEmail}.`,
-            metadata: { weeklyEnabled: Boolean(weeklyEnabled), recipientEmail },
+            message: recipientEmail
+                ? `Weekly report email ${weeklyEnabled ? 'enabled' : 'paused'} for ${recipientEmail}.`
+                : 'Weekly report email paused with no chosen recipient.',
+            metadata: { weeklyEnabled: Boolean(weeklyEnabled), recipientEmail: recipientEmail || null },
             actorUserId: req.user.id || null
         });
         res.json({ success: true, weeklyEnabled: Boolean(weeklyEnabled), recipientEmail });
@@ -3405,14 +3697,21 @@ app.put('/api/sunbird/reports/settings', authenticateToken, async (req, res) => 
 
 async function getSunbirdReportCompanyIds() {
     const [rows] = await pool.query(`
-        SELECT DISTINCT CompanyID FROM (
+        SELECT DISTINCT report_companies.CompanyID FROM (
             SELECT CompanyID FROM SecurityEventsPayloadCache
             UNION SELECT CompanyID FROM IdentityMetricsCache
             UNION SELECT CompanyID FROM BackupRecoveryPayloadCache
             UNION SELECT CompanyID FROM ApplicationMetricsCache
             UNION SELECT CompanyID FROM SunbirdReportSettings
         ) report_companies
-        WHERE CompanyID IS NOT NULL
+        JOIN Companies c ON c.ID = report_companies.CompanyID
+        LEFT JOIN Users u ON u.CompanyID = report_companies.CompanyID
+        LEFT JOIN TenantAccessControl ta ON ta.UserID = u.ID
+        WHERE report_companies.CompanyID IS NOT NULL
+          AND (
+            LOWER(COALESCE(ta.AccessType, '')) = 'sunbird'
+            OR LOWER(COALESCE(c.CompanyName, c.companyname, '')) LIKE '%sunbird%'
+          )
     `);
     return rows.map(row => row.CompanyID);
 }
@@ -3443,17 +3742,53 @@ function renderWeeklyDailyReportEmailRows(dailyReports = []) {
     }).join('');
 }
 
+function renderWeeklyCloudflareReportEmailSection(report) {
+    const cloudflare = report?.cloudflare;
+    if (!cloudflare?.summary) return '';
+
+    const summary = cloudflare.summary;
+    const problems = Array.isArray(cloudflare.problems) ? cloudflare.problems.slice(0, 4) : [];
+    const recommendations = Array.isArray(cloudflare.recommendations) ? cloudflare.recommendations.slice(0, 3) : [];
+    const problemRows = problems.length
+        ? problems.map(item => `
+            <li style="margin:0 0 7px;">
+                <strong>${escapeHtml(item.title || 'Cloudflare item')}</strong><br>
+                <span style="color:#475569;">${escapeHtml(item.detail || item.source || 'Review Cloudflare One evidence.')}</span>
+            </li>
+        `).join('')
+        : '<li style="margin:0;color:#475569;">No high-severity Cloudflare problems were recorded for this period.</li>';
+    const recommendationRows = recommendations.length
+        ? `<p style="margin:10px 0 0;color:#334155;"><strong>Recommended:</strong> ${escapeHtml(recommendations.map(item => item.title || item.detail).filter(Boolean).join('; '))}</p>`
+        : '';
+
+    return `
+        <div style="margin:18px 0;padding:16px;border:1px solid #d9e1e8;border-left:4px solid #f97316;background:#fffaf5;">
+            <h3 style="margin:0 0 10px;color:#17212b;font-size:16px;">Cloudflare One / Zero Trust</h3>
+            <p style="margin:0 0 10px;color:#334155;">
+                <strong>Network security score:</strong> ${escapeHtml(String(cloudflare.score ?? 'N/A'))}%
+                &nbsp;|&nbsp; <strong>Protected apps:</strong> ${Number(summary.protectedApps || 0)}
+                &nbsp;|&nbsp; <strong>Gateway policies:</strong> ${Number(summary.gatewayPolicies || 0)}
+                &nbsp;|&nbsp; <strong>DLP profiles:</strong> ${Number(summary.dlpProfiles || 0)}
+            </p>
+            <ul style="margin:0 0 0 18px;padding:0;color:#334155;">${problemRows}</ul>
+            ${recommendationRows}
+        </div>
+    `;
+}
+
 async function sendWeeklySunbirdReport(companyId, settings, reportRecord) {
     const pdf = await generateSunbirdReportPdf(reportRecord.payload, reportRecord.id);
-    const recipient = settings.RecipientEmail || await getDefaultReportRecipient(companyId);
-    if (!recipient) throw new Error('No report recipient is configured');
+    if (Number(settings.RecipientConfirmed) !== 1) throw new Error('Report recipient must be chosen and saved before weekly email can be sent');
+    const recipients = normalizeReportRecipientEmails(settings.RecipientEmail);
+    if (!recipients.length) throw new Error('No explicitly chosen report recipient is configured');
+    const recipientList = recipients.join(', ');
     await writeSunbirdReportLog({
         companyId,
         reportId: reportRecord.id,
         eventType: 'weekly_email_sending',
         status: 'started',
-        message: `Weekly PDF email is being sent to ${recipient}.`,
-        metadata: { recipient }
+        message: `Weekly PDF email is being sent to ${recipientList}.`,
+        metadata: { recipients }
     });
     const report = reportRecord.payload;
     const subject = `Weekly StackCTRL Report | ${report.companyName} | ${formatReportDate(report.period.end)}`;
@@ -3467,6 +3802,7 @@ async function sendWeeklySunbirdReport(companyId, settings, reportRecord) {
                 <p style="margin:0 0 8px;"><strong>Failures:</strong> ${report.summary.failures}</p>
                 <p style="margin:0;"><strong>Period:</strong> ${formatReportDate(report.period.start)} - ${formatReportDate(report.period.end)}</p>
             </div>
+            ${renderWeeklyCloudflareReportEmailSection(report)}
             <h3 style="margin:20px 0 8px;color:#17212b;font-size:16px;">Daily report summary for the week</h3>
             <table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;margin:0 0 18px;font-size:13px;">
                 <thead>
@@ -3485,11 +3821,13 @@ async function sendWeeklySunbirdReport(companyId, settings, reportRecord) {
             <p>Open the Reports tab in StackCTRL to review the complete history, generate a fresh PDF, or download any saved report.</p>
         `
     });
-    await sendEmail(recipient, subject, html, true, [{
-        name: `StackCTRL-Weekly-Report-${new Date(report.period.end).toISOString().slice(0, 10)}.pdf`,
-        contentType: 'application/pdf',
-        content: pdf
-    }]);
+    for (const recipient of recipients) {
+        await sendEmail(recipient, subject, html, true, [{
+            name: `StackCTRL-Weekly-Report-${new Date(report.period.end).toISOString().slice(0, 10)}.pdf`,
+            contentType: 'application/pdf',
+            content: pdf
+        }]);
+    }
     await pool.query(
         `UPDATE SunbirdReports SET EmailStatus = 'sent', SentAt = NOW() WHERE ID = ?`,
         [reportRecord.id]
@@ -3499,8 +3837,8 @@ async function sendWeeklySunbirdReport(companyId, settings, reportRecord) {
         reportId: reportRecord.id,
         eventType: 'weekly_email_sent',
         status: 'success',
-        message: `Weekly PDF report emailed to ${recipient}.`,
-        metadata: { recipient, bytes: pdf.length }
+        message: `Weekly PDF report emailed to ${recipientList}.`,
+        metadata: { recipients, bytes: pdf.length }
     });
 }
 
@@ -3514,8 +3852,9 @@ async function runSunbirdReportAutomation() {
     try {
         const companyIds = await getSunbirdReportCompanyIds();
         for (const companyId of companyIds) {
-            const recipient = await getDefaultReportRecipient(companyId);
-            const settings = await ensureSunbirdReportSettings(companyId, recipient);
+            const settings = await ensureSunbirdReportSettings(companyId, null);
+            const chosenRecipients = normalizeReportRecipientEmails(settings.RecipientEmail);
+            const recipientConfirmed = Number(settings.RecipientConfirmed) === 1;
             const lastDaily = settings.LastDailyCollectionDate
                 ? new Date(settings.LastDailyCollectionDate).toISOString().slice(0, 10)
                 : null;
@@ -3531,7 +3870,7 @@ async function runSunbirdReportAutomation() {
             const lastWeekly = settings.LastWeeklyReportDate
                 ? new Date(settings.LastWeeklyReportDate).toISOString().slice(0, 10)
                 : null;
-            if (settings.WeeklyEnabled && isFriday && localHour >= Number(settings.DeliveryHour || 8) && lastWeekly !== localDate) {
+            if (settings.WeeklyEnabled && recipientConfirmed && chosenRecipients.length && isFriday && localHour >= Number(settings.DeliveryHour || 8) && lastWeekly !== localDate) {
                 const weekStart = new Date(now);
                 weekStart.setUTCDate(weekStart.getUTCDate() - 7);
                 const reportRecord = await saveSunbirdReport(companyId, 'weekly', weekStart, now, null, true);
@@ -3552,7 +3891,7 @@ async function runSunbirdReportAutomation() {
                         eventType: 'weekly_email_failed',
                         status: 'failed',
                         message: `Weekly report email failed: ${emailError.message}`,
-                        metadata: { recipient: settings.RecipientEmail || null }
+                        metadata: { recipients: chosenRecipients }
                     });
                     throw emailError;
                 }
@@ -11201,7 +11540,7 @@ app.get('/test-invoice-pdf', async (req, res) => {
         const testClientData = {
             firstname: 'Sands',
             lastname: 'MusiQ',
-            email: 'sandanindivhuwo17@gmail.com'
+            email: 'support@stackopsit.co.za'
         };
 
         const pdfBuffer = await generateInvoicePDF(testInvoiceData, testItems, testCompanyData, testClientData);
