@@ -28,6 +28,9 @@ steps:
       '--memory', '2Gi',
       '--cpu', '2',
       '--timeout', '3600',
+      # The backend now reads Azure AI secrets directly from Google Secret Manager.
+      # Remove the deleted legacy secret mapping from the Cloud Run revision.
+      '--remove-secrets', 'OPENAI_API_KEY',
       '--allow-unauthenticated',
       '--quiet'
     ]
