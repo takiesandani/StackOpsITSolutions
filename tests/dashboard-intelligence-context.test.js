@@ -23,8 +23,9 @@ function source(overrides = {}) {
 
 test('Cloudflare adapter refreshes the dashboard service when backend evidence is missing', async () => {
     let refreshCalls = 0;
+    const sqlCalls = [];
     const result = await cloudflareNetworkSecurityAdapter({
-        pool: { query: async () => [[], []] },
+        pool: { query: async sql => { sqlCalls.push(sql); return [[], []]; } },
         companyId: 1,
         refresh: false,
         capability: {
@@ -57,6 +58,43 @@ test('Cloudflare adapter refreshes the dashboard service when backend evidence i
     assert.equal(result.evidence.length, 1);
     assert.equal(result.metrics.protectedApps, 4);
     assert.equal(result.metrics.deniedAccessEvents, 1);
+    assert.equal(sqlCalls.some(sql => /ORDER BY|GROUP BY|DISTINCT|\bOVER\s*\(/i.test(sql)), false);
+    assert.equal(sqlCalls.some(sql => /MAX\(latest\.ID\)/i.test(sql)), true);
+});
+
+test('Cloudflare stored-evidence sort failure becomes a warning when live metrics succeed', async () => {
+    const result = await cloudflareNetworkSecurityAdapter({
+        pool: {
+            async query() {
+                const error = new Error('Out of sort memory, consider increasing server sort buffer size');
+                error.code = 'ER_OUT_OF_SORTMEMORY';
+                throw error;
+            }
+        },
+        companyId: 1,
+        refresh: true,
+        capability: {
+            sourceKey: 'cloudflare_network_security',
+            displayName: 'Cloudflare Network Security',
+            isExpected: true,
+            isEnabled: true,
+            refreshMode: 'refresh_if_stale',
+            freshnessThresholdMinutes: 60,
+            configuration: {}
+        },
+        async refreshSource() {
+            return {
+                fetchedAt: new Date().toISOString(),
+                overview: { securityStatus: 'Active', protectedApps: 2 },
+                accessLogs: []
+            };
+        }
+    });
+
+    assert.equal(result.status, 'available');
+    assert.equal(result.metrics.protectedApps, 2);
+    assert.equal(result.errorMessage, null);
+    assert.match(result.warnings.join(' '), /stored evidence could not be loaded.*Out of sort memory/i);
 });
 
 test('dashboard context builders include StackCTRL calculated metrics and evidence lists', () => {

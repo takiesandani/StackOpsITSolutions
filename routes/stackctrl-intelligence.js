@@ -4,7 +4,8 @@ function createStackCTRLIntelligenceRouter({
     authenticateToken,
     getAccessContextByUser,
     intelligenceService,
-    schedulerService = null
+    schedulerService = null,
+    automationService = null
 }) {
     const router = express.Router();
     router.use(authenticateToken);
@@ -173,7 +174,12 @@ function createStackCTRLIntelligenceRouter({
                 return res.status(400).json({ success: false, message: 'companyId must be valid' });
             }
             const status = await schedulerService.getSchedulerStatus(companyId);
-            res.json({ success: true, companyId, ...status });
+            res.json({
+                success: true,
+                companyId,
+                serverAutomation: automationService?.getStatus?.() || null,
+                ...status
+            });
         } catch (error) {
             sendError(res, error, 'Scheduler status lookup failed');
         }

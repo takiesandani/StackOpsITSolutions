@@ -46,10 +46,10 @@ test('08:00 weekday tick collects, freezes a snapshot, and analyses it with hist
             if (sql.includes('SELECT * FROM StackCTRLTenantEvidenceSnapshots') && sql.includes('WHERE ID = ?')) {
                 return [[currentSnapshot], []];
             }
-            if (sql.includes('ORDER BY CreatedAt DESC LIMIT 1') && sql.includes('ID <>')) {
+            if (sql.includes('SELECT MAX(previous.ID)')) {
                 return [[previousSnapshot], []];
             }
-            if (sql.includes('ABS(TIMESTAMPDIFF')) return [[], []];
+            if (sql.includes('MAX(CASE WHEN CreatedAt <= ?')) return [[{ BeforeTarget: null, AfterTarget: null }], []];
             if (sql.includes('SELECT MetricsJson FROM StackCTRLTenantEvidenceSnapshots') && sql.includes('ID < ?')) {
                 return [[{ MetricsJson: previousSnapshot.MetricsJson }], []];
             }
@@ -90,6 +90,13 @@ test('08:00 weekday tick collects, freezes a snapshot, and analyses it with hist
     assert.equal(analysisCalls[0].historicalContext.comparisons.previous.snapshot.snapshotId, 99);
     assert.equal(analysisCalls[0].historicalContext.comparisons['24_hours'].availability, 'unavailable');
     assert.ok(queries.some(call => call.sql.includes('StackCTRLIntelligenceHistoricalComparisons')));
+    assert.equal(queries.some(call => /ORDER BY\s+ABS\s*\(TIMESTAMPDIFF/i.test(call.sql)), false);
+    const historicalAuditWrite = queries.find(call =>
+        call.sql.includes('UPDATE StackCTRLIntelligenceScheduleRuns') && call.params?.[4]
+    );
+    const historicalAudit = JSON.parse(historicalAuditWrite.params[4]);
+    assert.ok(historicalAudit.availability);
+    assert.ok(historicalAudit.intelligence);
 });
 
 test('scheduler tick does no collection outside weekday business hours', async () => {

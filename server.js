@@ -22,8 +22,8 @@ const { getCloudflareNetworkSecuritySummary } = require('./services/cloudflare')
 const { createAzureOpenAIService } = require('./services/azure-openai');
 const { createStackCTRLIntelligenceService } = require('./services/stackctrl-intelligence');
 const { createStackCTRLIntelligenceScheduler } = require('./services/intelligence/scheduler');
+const { createStackCTRLServerAutomation } = require('./services/intelligence/server-automation');
 const { createStackCTRLIntelligenceRouter } = require('./routes/stackctrl-intelligence');
-const { createStackCTRLSchedulerInternalRouter } = require('./routes/stackctrl-scheduler-internal');
 
 // invoice payment endpoints 
 require("dotenv").config();
@@ -10747,16 +10747,19 @@ const stackCTRLIntelligenceScheduler = createStackCTRLIntelligenceScheduler({
     pool,
     intelligenceService: stackCTRLIntelligenceService
 });
+const stackCTRLIntelligenceAutomation = createStackCTRLServerAutomation({
+    schedulerService: stackCTRLIntelligenceScheduler,
+    enabled: !['false', '0', 'no'].includes(String(process.env.STACKCTRL_SERVER_AUTOMATION_ENABLED || 'true').toLowerCase()),
+    intervalMs: process.env.STACKCTRL_SERVER_AUTOMATION_INTERVAL_MS,
+    startupDelayMs: process.env.STACKCTRL_SERVER_AUTOMATION_STARTUP_DELAY_MS
+});
 
 app.use('/api/stackctrl/intelligence', createStackCTRLIntelligenceRouter({
     authenticateToken,
     getAccessContextByUser,
     intelligenceService: stackCTRLIntelligenceService,
-    schedulerService: stackCTRLIntelligenceScheduler
-}));
-app.use('/api/internal/stackctrl/intelligence', createStackCTRLSchedulerInternalRouter({
-    getSecret,
-    schedulerService: stackCTRLIntelligenceScheduler
+    schedulerService: stackCTRLIntelligenceScheduler,
+    automationService: stackCTRLIntelligenceAutomation
 }));
 
 // We freeze currently stored tenant data after deployment so the intelligence history starts immediately.
@@ -11795,6 +11798,8 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 const server = app.listen(PORT, async () => {
+    // StackCTRL automation runs inside this server and uses database deduplication across instances.
+    stackCTRLIntelligenceAutomation.start();
     const memUsage = process.memoryUsage();
     console.log(`\n${'='.repeat(60)}`);
     console.log(`✅ Server running on port ${PORT}`);
@@ -11809,3 +11814,13 @@ server.on('error', (error) => {
     console.error('❌ Server error:', error);
     process.exit(1);
 });
+
+function stopServer(signal) {
+    console.log(`[StackCTRL] ${signal} received. Stopping server automation.`);
+    stackCTRLIntelligenceAutomation.stop();
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(1), 10000).unref();
+}
+
+process.once('SIGTERM', () => stopServer('SIGTERM'));
+process.once('SIGINT', () => stopServer('SIGINT'));

@@ -2,7 +2,9 @@ const { asArray, asObject, buildContext, numberFrom, payloadFromSource } = requi
 
 function buildCloudflareDashboardContext(source) {
     const payload = payloadFromSource(source);
-    const overview = asObject(payload.overview);
+    const overview = Object.keys(asObject(payload.overview)).length
+        ? asObject(payload.overview)
+        : asObject(source.metrics);
     const accessLogs = asArray(payload.accessLogs);
     const deniedAccessEvents = accessLogs.filter(event => /block|deny|fail/i.test(String(event.action || event.status || ''))).length;
     const sections = asObject(payload.sections);

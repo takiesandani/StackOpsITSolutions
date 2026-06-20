@@ -115,14 +115,20 @@ async function collectSource(context, definition) {
     if (notApplicable) return notApplicable;
 
     let loaded;
+    let supplementalLoadWarning = null;
     let refreshWarning = null;
     try {
         loaded = await definition.load(pool, companyId);
     } catch (error) {
-        return statusResult(capability, 'error', {
-            warnings: [`${capability.displayName} could not be read from StackCTRL storage.`],
-            errorMessage: error.message
-        });
+        if (!definition.continueWhenStoredEvidenceFails) {
+            return statusResult(capability, 'error', {
+                warnings: [`${capability.displayName} could not be read from StackCTRL storage.`],
+                errorMessage: error.message
+            });
+        }
+        // Live source metrics remain usable when optional historical evidence cannot be loaded.
+        supplementalLoadWarning = `${capability.displayName} stored evidence could not be loaded: ${error.message}`;
+        loaded = { records: [], metrics: {}, evidence: [], warnings: [] };
     }
 
     let records = loaded.records || [];
@@ -148,7 +154,10 @@ async function collectSource(context, definition) {
             const notConfigured = error.statusCode === 503 || /missing|not configured|credentials/i.test(error.message);
             if (!records.length) {
                 return statusResult(capability, notConfigured ? 'not_configured' : 'error', {
-                    warnings: [`${capability.displayName} refresh failed: ${error.message}`],
+                    warnings: [
+                        ...(supplementalLoadWarning ? [supplementalLoadWarning] : []),
+                        `${capability.displayName} refresh failed: ${error.message}`
+                    ],
                     errorMessage: error.message
                 });
             }
@@ -168,6 +177,7 @@ async function collectSource(context, definition) {
 
     const status = freshness.stale ? 'stale' : 'available';
     const warnings = [...(loaded.warnings || [])];
+    if (supplementalLoadWarning) warnings.push(supplementalLoadWarning);
     if (freshness.stale) warnings.push(`${capability.displayName} evidence is stale.`);
     if (refreshWarning) warnings.push(refreshWarning);
 
@@ -309,35 +319,38 @@ const definitions = {
     cloudflare_network_security: {
         table: 'StackCTRLTenantEvidenceSnapshots',
         refreshWhenMissing: true,
+        continueWhenStoredEvidenceFails: true,
         async load(pool, companyId) {
-            // The browser keeps its own short-lived Cloudflare cache. Intelligence uses the
-            // last frozen backend snapshot and refreshes the live service when no evidence exists.
+            // We read only the latest Cloudflare metrics. Full snapshot JSON is not loaded or sorted.
             const rows = await queryRows(
                 pool,
-                `SELECT ID, CreatedAt, ContextJson
-                 FROM StackCTRLTenantEvidenceSnapshots
-                 WHERE CompanyID = ?
-                 ORDER BY CreatedAt DESC LIMIT 1`,
+                `SELECT snapshot.ID, snapshot.CreatedAt,
+                        JSON_EXTRACT(snapshot.MetricsJson, '$.cloudflare_network_security') AS CloudflareMetricsJson,
+                        JSON_EXTRACT(snapshot.SourceFreshnessJson, '$.cloudflare_network_security') AS CloudflareFreshnessJson
+                 FROM StackCTRLTenantEvidenceSnapshots snapshot
+                 WHERE snapshot.ID = (
+                    SELECT MAX(latest.ID)
+                    FROM StackCTRLTenantEvidenceSnapshots latest
+                    WHERE latest.CompanyID = ?
+                 )
+                 LIMIT 1`,
                 [companyId]
             );
             const snapshot = rows[0];
-            const context = snapshot?.ContextJson || {};
-            const sourceSummary = Array.isArray(context.sources)
-                ? context.sources.find(source => source.sourceKey === 'cloudflare_network_security')
-                : null;
-            const evidence = Array.isArray(sourceSummary?.evidence)
-                ? sourceSummary.evidence
-                : (Array.isArray(context.evidence)
-                    ? context.evidence
-                        .filter(item => item?.sourceKey === 'cloudflare_network_security')
-                        .map(item => item.data)
-                    : []);
-            const payload = evidence.find(item => item && typeof item === 'object' && !item.evidenceType) || null;
-            if (!snapshot || !payload) return { records: [], metrics: {}, evidence: [] };
+            const metrics = snapshot?.CloudflareMetricsJson || {};
+            const freshness = snapshot?.CloudflareFreshnessJson || {};
+            if (!snapshot || !Object.keys(metrics).length) return { records: [], metrics: {}, evidence: [] };
             return {
-                records: [{ ...payload, ID: snapshot.ID, LastUpdated: payload.fetchedAt || snapshot.CreatedAt }],
-                metrics: sourceSummary?.metrics || context.metrics?.cloudflare_network_security || summaryMetrics(payload),
-                evidence: [payload],
+                records: [{
+                    ID: snapshot.ID,
+                    ...metrics,
+                    LastUpdated: freshness.lastUpdated || snapshot.CreatedAt
+                }],
+                metrics,
+                evidence: [{
+                    evidenceType: 'cached_cloudflare_metrics',
+                    data: metrics
+                }],
                 rawReference: { table: this.table, recordId: snapshot.ID }
             };
         },

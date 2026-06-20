@@ -47,6 +47,7 @@ test('buildTenantAIContext uses stored tenant evidence and includes SEDFA licenc
         remainingLicences: 7
     });
     assert.equal(result.context.capabilities.profileKey, 'sedfa');
+    assert.equal(result.context.riskEngine.overallRiskLevel, 'not_scored');
     assert.equal(result.context.sources.find(source => source.sourceKey === 'governance').status, 'not_expected');
     assert.equal(result.dataCompleteness.score, 75);
     assert.equal(calls.some(call => /duo.*admin|admin.*duo|api\.duo/i.test(call.sql)), false);
@@ -110,7 +111,24 @@ test('analyseSnapshot stores outputs and normalized Power BI rows in one transac
     const pool = {
         async query(sql) {
             if (sql.includes('FROM StackCTRLTenantEvidenceSnapshots')) {
-                return [[{ ID: 4, CompanyID: 7, ContextJson: { tenant: { companyId: 7 } } }], []];
+                return [[{
+                    ID: 4,
+                    CompanyID: 7,
+                    ContextJson: {
+                        tenant: { companyId: 7 },
+                        riskEngine: {
+                            overallRiskScore: 42,
+                            overallRiskLevel: 'moderate',
+                            securityMaturityScore: 68,
+                            securityMaturityLevel: 'defined',
+                            domainRiskScores: { identity: 42 },
+                            executiveKPIs: { identityHealth: 58 }
+                        },
+                        metrics: { identity: { mfaCoverage: 97 } },
+                        dataCompleteness: { score: 100 },
+                        sources: [{ sourceKey: 'cloudflare_network_security', status: 'available' }]
+                    }
+                }], []];
             }
             if (sql.includes('FROM StackCTRLIntelligencePrompts')) {
                 return [[{
@@ -190,8 +208,8 @@ test('analyseSnapshot stores outputs and normalized Power BI rows in one transac
     assert.match(azureMessages[1].content, /"companyId":7/);
     assert.match(azureMessages[1].content, /"powerbi_summary"/);
     assert.match(azureMessages[1].content, /"mfa_coverage"/);
-    assert.equal(result.preview.overallRiskScore, 18);
-    assert.equal(result.preview.riskLevel, 'low');
+    assert.equal(result.preview.overallRiskScore, 42);
+    assert.equal(result.preview.riskLevel, 'moderate');
     assert.equal(result.preview.powerbiSummary.cloudflare_status, 'available');
     assert.equal(writes.includes('commit'), true);
     assert.equal(writes.includes('rollback'), false);
@@ -199,7 +217,8 @@ test('analyseSnapshot stores outputs and normalized Power BI rows in one transac
     assert.equal(writes.filter(write => write.sql?.includes('StackCTRLTenantRecommendations')).length, 1);
     assert.equal(writes.filter(write => write.sql?.includes('StackCTRLTenantTrendAnalysis')).length, 1);
     const powerBIWrite = writes.find(write => write.sql?.includes('StackCTRLTenantAIOutputs') && write.params[2] === 'powerbi_summary');
-    assert.equal(JSON.parse(powerBIWrite.params[5]).mfa_coverage, 95);
+    assert.equal(JSON.parse(powerBIWrite.params[5]).risk_score, 42);
+    assert.equal(JSON.parse(powerBIWrite.params[5]).mfa_coverage, 97);
     assert.equal(JSON.parse(powerBIWrite.params[5]).high_severity_alerts, 0);
     assert.equal(
         writes.find(write => write.sql?.includes('StackCTRLTenantAIOutputs')).params[8],

@@ -1,6 +1,7 @@
 const { loadClientCapabilities } = require('./intelligence/capabilities');
 const { SOURCE_ADAPTERS } = require('./intelligence/source-adapters');
 const { buildDashboardIntelligenceContexts } = require('./intelligence/dashboard-context');
+const { buildRiskEngine } = require('./intelligence/risk-engine');
 
 const ALLOWED_OUTPUT_TYPES = new Set([
     'executive_summary',
@@ -81,19 +82,36 @@ function toNullableText(value) {
     return String(value);
 }
 
-function normalizePowerBISummary(value, analysis = {}) {
+function normalizePowerBISummary(value, analysis = {}, stackctrl = {}) {
     const summary = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const risk = stackctrl.riskEngine || {};
+    const metrics = stackctrl.metrics || {};
+    const cloudflareSource = Array.isArray(stackctrl.sources)
+        ? stackctrl.sources.find(source => source.sourceKey === 'cloudflare_network_security')
+        : null;
+    const topRiskDomain = Object.entries(risk.domainRiskScores || {})
+        .filter(([, score]) => Number.isFinite(Number(score)))
+        .sort((left, right) => Number(right[1]) - Number(left[1]))[0]?.[0] || null;
     return {
-        risk_score: toNullableNumber(summary.risk_score ?? analysis.overall_risk_score),
-        risk_level: toNullableText(summary.risk_level ?? analysis.risk_level),
-        maturity_level: toNullableText(summary.maturity_level),
-        top_risk_domain: toNullableText(summary.top_risk_domain),
+        risk_score: toNullableNumber(risk.overallRiskScore ?? summary.risk_score ?? analysis.overall_risk_score),
+        risk_level: toNullableText(risk.overallRiskLevel ?? summary.risk_level ?? analysis.risk_level),
+        maturity_level: toNullableText(risk.securityMaturityLevel ?? summary.maturity_level),
+        security_maturity_score: toNullableNumber(risk.securityMaturityScore ?? summary.security_maturity_score),
+        top_risk_domain: toNullableText(summary.top_risk_domain ?? topRiskDomain),
         top_recommendation: toNullableText(summary.top_recommendation),
-        mfa_coverage: toNullableNumber(summary.mfa_coverage),
-        device_compliance: toNullableNumber(summary.device_compliance),
-        high_severity_alerts: toNullableNumber(summary.high_severity_alerts),
-        cloudflare_status: toNullableText(summary.cloudflare_status),
-        data_completeness_score: toNullableNumber(summary.data_completeness_score)
+        mfa_coverage: toNullableNumber(metrics.identity?.mfaCoverage ?? summary.mfa_coverage),
+        device_compliance: toNullableNumber(metrics.devices?.complianceRate ?? summary.device_compliance),
+        high_severity_alerts: toNullableNumber(metrics.security_alerts?.highSeverityAlerts ?? summary.high_severity_alerts),
+        cloudflare_status: toNullableText(cloudflareSource?.status ?? summary.cloudflare_status),
+        data_completeness_score: toNullableNumber(stackctrl.dataCompleteness?.score ?? summary.data_completeness_score),
+        security_health: toNullableNumber(risk.executiveKPIs?.securityHealth ?? summary.security_health),
+        governance_health: toNullableNumber(risk.executiveKPIs?.governanceHealth ?? summary.governance_health),
+        compliance_health: toNullableNumber(risk.executiveKPIs?.complianceHealth ?? summary.compliance_health),
+        identity_health: toNullableNumber(risk.executiveKPIs?.identityHealth ?? summary.identity_health),
+        device_health: toNullableNumber(risk.executiveKPIs?.deviceHealth ?? summary.device_health),
+        email_health: toNullableNumber(risk.executiveKPIs?.emailHealth ?? summary.email_health),
+        backup_health: toNullableNumber(risk.executiveKPIs?.backupHealth ?? summary.backup_health),
+        domain_risk_scores: risk.domainRiskScores || summary.domain_risk_scores || {}
     };
 }
 
@@ -178,7 +196,20 @@ function createStackCTRLIntelligenceService({ pool, azureOpenAI, refreshSource =
             unavailableSources: unavailableSources.length,
             notExpectedSources: sources.filter(source => source.status === 'not_expected').length
         };
-        const metrics = Object.fromEntries(sources.map(source => [source.sourceKey, source.metrics]));
+        const sourceMetrics = Object.fromEntries(sources.map(source => [source.sourceKey, source.metrics]));
+        // StackCTRL calculates risk before Azure so the frozen snapshot remains the source of truth.
+        const riskEngine = buildRiskEngine({ sources, dataCompleteness });
+        const metrics = {
+            ...sourceMetrics,
+            stackctrl_risk: {
+                overallRiskScore: riskEngine.overallRiskScore,
+                overallRiskLevel: riskEngine.overallRiskLevel,
+                securityMaturityScore: riskEngine.securityMaturityScore,
+                securityMaturityLevel: riskEngine.securityMaturityLevel,
+                domainRiskScores: riskEngine.domainRiskScores
+            },
+            executive_kpis: riskEngine.executiveKPIs
+        };
         const evidence = sources.flatMap(source => source.evidence.map(item => ({
             sourceKey: source.sourceKey,
             displayName: source.displayName,
@@ -242,6 +273,8 @@ function createStackCTRLIntelligenceService({ pool, azureOpenAI, refreshSource =
             evidence,
             warnings,
             dataCompleteness,
+            riskEngine,
+            executiveKPIs: riskEngine.executiveKPIs,
             previousIntelligence: previousOutputs,
             aiInstructions: {
                 useOnlyStackCTRLData: true,
@@ -250,7 +283,7 @@ function createStackCTRLIntelligenceService({ pool, azureOpenAI, refreshSource =
                 doNotInventFacts: true,
                 markMissingDataClearly: true
             },
-            intelligenceSchemaVersion: 2
+            intelligenceSchemaVersion: 3
         };
 
         const sourceFreshness = Object.fromEntries(sources.map(source => [source.sourceKey, {
@@ -270,6 +303,7 @@ function createStackCTRLIntelligenceService({ pool, azureOpenAI, refreshSource =
             sources,
             capabilities,
             dataCompleteness,
+            riskEngine,
             context,
             dataCompletenessScore
         };
@@ -385,6 +419,7 @@ function createStackCTRLIntelligenceService({ pool, azureOpenAI, refreshSource =
             snapshotType,
             dataCompletenessScore: built.dataCompletenessScore,
             dataCompleteness: built.dataCompleteness,
+            riskEngine: built.riskEngine,
             sourceStatuses: built.sources.map(source => ({
                 sourceKey: source.sourceKey,
                 displayName: source.displayName,
@@ -462,6 +497,7 @@ Requested output types: ${outputTypes.join(', ')}
 StackCTRL-calculated tenant evidence is the primary source of truth. Use external/grounding knowledge only to interpret risk, best practices, and recommendations.
 
 Write decision-ready enterprise intelligence. Explain business impact, cite the relevant StackCTRL source/evidence in each material risk, distinguish evidence from interpretation, and do not merely repeat metrics.
+The StackCTRL riskEngine values are authoritative. Explain them, but never replace or recalculate the overall risk score, risk level, domain scores, maturity score, or executive KPIs.
 
 Return this exact top-level structure:
 {
@@ -478,13 +514,22 @@ Return this exact top-level structure:
     "risk_score": 0,
     "risk_level": "low | moderate | high | critical",
     "maturity_level": "initial | developing | defined | managed | optimised",
+    "security_maturity_score": 0,
     "top_risk_domain": "",
     "top_recommendation": "",
     "mfa_coverage": null,
     "device_compliance": null,
     "high_severity_alerts": null,
     "cloudflare_status": "available | stale | missing | not_configured | not_expected | error",
-    "data_completeness_score": null
+    "data_completeness_score": null,
+    "security_health": null,
+    "governance_health": null,
+    "compliance_health": null,
+    "identity_health": null,
+    "device_health": null,
+    "email_health": null,
+    "backup_health": null,
+    "domain_risk_scores": {}
   }
 }
 
@@ -573,9 +618,14 @@ ${JSON.stringify(context)}`;
                 ]
             });
             const analysis = completion.data && typeof completion.data === 'object' ? completion.data : {};
-            analysis.overall_risk_score = toNullableNumber(analysis.overall_risk_score ?? analysis.powerbi_summary?.risk_score);
-            analysis.risk_level = toNullableText(analysis.risk_level ?? analysis.powerbi_summary?.risk_level);
-            analysis.powerbi_summary = normalizePowerBISummary(analysis.powerbi_summary, analysis);
+            const currentStackCTRLContext = analysisContext?.currentSnapshot?.context || analysisContext || {};
+            analysis.overall_risk_score = toNullableNumber(
+                currentStackCTRLContext.riskEngine?.overallRiskScore ?? analysis.overall_risk_score ?? analysis.powerbi_summary?.risk_score
+            );
+            analysis.risk_level = toNullableText(
+                currentStackCTRLContext.riskEngine?.overallRiskLevel ?? analysis.risk_level ?? analysis.powerbi_summary?.risk_level
+            );
+            analysis.powerbi_summary = normalizePowerBISummary(analysis.powerbi_summary, analysis, currentStackCTRLContext);
             const connection = await pool.getConnection();
             const outputIds = {};
 
@@ -758,7 +808,7 @@ ${JSON.stringify(context)}`;
     }
 
     async function getPowerBIData(companyId) {
-        const [outputs, risks, recommendations, trends] = await Promise.all([
+        const [outputs, risks, recommendations, trends, snapshotIntelligence] = await Promise.all([
             pool.query(
                 `SELECT ID, CompanyID, SnapshotID, OutputType, Title, ExecutiveSummary, ContentJson,
                         ModelName, AzureDeployment, PromptVersion, ConfidenceScore, Status, CreatedAt
@@ -767,7 +817,16 @@ ${JSON.stringify(context)}`;
             ),
             pool.query('SELECT * FROM StackCTRLTenantRiskRegister WHERE CompanyID = ? ORDER BY CreatedAt DESC LIMIT 5000', [companyId]),
             pool.query('SELECT * FROM StackCTRLTenantRecommendations WHERE CompanyID = ? ORDER BY CreatedAt DESC LIMIT 5000', [companyId]),
-            pool.query('SELECT * FROM StackCTRLTenantTrendAnalysis WHERE CompanyID = ? ORDER BY CreatedAt DESC LIMIT 5000', [companyId])
+            pool.query('SELECT * FROM StackCTRLTenantTrendAnalysis WHERE CompanyID = ? ORDER BY CreatedAt DESC LIMIT 5000', [companyId]),
+            pool.query(
+                `SELECT ID AS SnapshotID, CompanyID, SnapshotType, DataCompletenessScore, CreatedAt,
+                        JSON_EXTRACT(MetricsJson, '$.stackctrl_risk') AS RiskJson,
+                        JSON_EXTRACT(MetricsJson, '$.executive_kpis') AS ExecutiveKPIsJson
+                 FROM StackCTRLTenantEvidenceSnapshots
+                 WHERE CompanyID = ?
+                 ORDER BY CreatedAt DESC LIMIT 1000`,
+                [companyId]
+            )
         ]);
 
         const normalizedOutputs = outputs[0].map(normalizeStoredRow);
@@ -781,6 +840,18 @@ ${JSON.stringify(context)}`;
                     createdAt: output.CreatedAt,
                     ...(output.ContentJson || {})
                 })),
+            snapshotIntelligence: snapshotIntelligence[0].map(row => {
+                const normalized = normalizeStoredRow(row);
+                return {
+                    snapshotId: normalized.SnapshotID,
+                    companyId: normalized.CompanyID,
+                    snapshotType: normalized.SnapshotType,
+                    createdAt: normalized.CreatedAt,
+                    dataCompletenessScore: toNullableNumber(normalized.DataCompletenessScore),
+                    risk: normalized.RiskJson || {},
+                    executiveKPIs: normalized.ExecutiveKPIsJson || {}
+                };
+            }),
             risks: risks[0].map(normalizeStoredRow),
             recommendations: recommendations[0].map(normalizeStoredRow),
             trends: trends[0].map(normalizeStoredRow)

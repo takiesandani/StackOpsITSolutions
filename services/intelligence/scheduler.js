@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { DateTime } = require('luxon');
+const { buildHistoricalIntelligence } = require('./historical-engine');
 
 const TIME_ZONE = 'Africa/Johannesburg';
 const BUSINESS_START_MINUTE = 8 * 60;
@@ -287,10 +288,15 @@ function createStackCTRLIntelligenceScheduler({ pool, intelligenceService, logge
     async function findNearestSnapshot(companyId, current, target) {
         if (target.key === 'previous') {
             const [rows] = await pool.query(
-                `SELECT * FROM StackCTRLTenantEvidenceSnapshots
-                 WHERE CompanyID = ? AND ID <> ? AND CreatedAt < ?
-                 ORDER BY CreatedAt DESC LIMIT 1`,
-                [companyId, current.ID, current.CreatedAt]
+                `SELECT snapshot.*
+                 FROM StackCTRLTenantEvidenceSnapshots snapshot
+                 WHERE snapshot.ID = (
+                    SELECT MAX(previous.ID)
+                    FROM StackCTRLTenantEvidenceSnapshots previous
+                    WHERE previous.CompanyID = ? AND previous.ID < ?
+                 )
+                 LIMIT 1`,
+                [companyId, current.ID]
             );
             return rows[0] || null;
         }
@@ -298,16 +304,35 @@ function createStackCTRLIntelligenceScheduler({ pool, intelligenceService, logge
         const targetAt = DateTime.fromJSDate(new Date(current.CreatedAt), { zone: 'utc' })
             .minus({ minutes: target.minutes })
             .toJSDate();
-        const [rows] = await pool.query(
-            `SELECT *, ABS(TIMESTAMPDIFF(MINUTE, CreatedAt, ?)) AS DifferenceMinutes
+        const rangeStart = DateTime.fromJSDate(targetAt, { zone: 'utc' }).minus({ minutes: target.toleranceMinutes }).toJSDate();
+        const rangeEnd = DateTime.fromJSDate(targetAt, { zone: 'utc' }).plus({ minutes: target.toleranceMinutes }).toJSDate();
+        const [candidateRows] = await pool.query(
+            `SELECT
+                MAX(CASE WHEN CreatedAt <= ? THEN CreatedAt END) AS BeforeTarget,
+                MIN(CASE WHEN CreatedAt >= ? THEN CreatedAt END) AS AfterTarget
              FROM StackCTRLTenantEvidenceSnapshots
              WHERE CompanyID = ? AND ID <> ? AND CreatedAt < ?
-             ORDER BY ABS(TIMESTAMPDIFF(SECOND, CreatedAt, ?)) ASC
+               AND CreatedAt BETWEEN ? AND ?`,
+            [targetAt, targetAt, companyId, current.ID, current.CreatedAt, rangeStart, rangeEnd]
+        );
+        const timestamps = [candidateRows[0]?.BeforeTarget, candidateRows[0]?.AfterTarget].filter(Boolean);
+        if (!timestamps.length) return null;
+        const candidateAt = timestamps.sort((left, right) =>
+            Math.abs(new Date(left).getTime() - targetAt.getTime()) - Math.abs(new Date(right).getTime() - targetAt.getTime())
+        )[0];
+        const [rows] = await pool.query(
+            `SELECT snapshot.*
+             FROM StackCTRLTenantEvidenceSnapshots snapshot
+             WHERE snapshot.ID = (
+                SELECT MAX(candidate.ID)
+                FROM StackCTRLTenantEvidenceSnapshots candidate
+                WHERE candidate.CompanyID = ? AND candidate.CreatedAt = ? AND candidate.ID <> ?
+             )
              LIMIT 1`,
-            [targetAt, companyId, current.ID, current.CreatedAt, targetAt]
+            [companyId, candidateAt, current.ID]
         );
         const candidate = rows[0] || null;
-        if (!candidate || Number(candidate.DifferenceMinutes) > target.toleranceMinutes) return null;
+        if (!candidate) return null;
         candidate.TargetAt = targetAt;
         return candidate;
     }
@@ -378,9 +403,12 @@ function createStackCTRLIntelligenceScheduler({ pool, intelligenceService, logge
             };
         }
 
+        const currentSnapshot = serializeSnapshot(current);
+        const historicalIntelligence = buildHistoricalIntelligence({ currentSnapshot, comparisons });
         return {
-            currentSnapshot: serializeSnapshot(current),
+            currentSnapshot,
             comparisons,
+            historicalIntelligence,
             instructions: {
                 compareCurrentAgainstAvailableHistory: true,
                 doNotInventMissingPeriods: true
@@ -555,13 +583,13 @@ function createStackCTRLIntelligenceScheduler({ pool, intelligenceService, logge
             runType: 'analysis',
             triggerType: 'critical',
             deduplicationKey: makeDeduplicationKey(companyId, scheduleKey, bucket),
-            outputTypes: ['executive_summary', 'risk_register', 'recommendations'],
+            outputTypes: DEFAULT_OUTPUT_TYPES,
             user
         }, async runId => {
             const analysis = await runScheduledAzureAnalysis(
                 companyId,
                 snapshotId,
-                ['executive_summary', 'risk_register', 'recommendations'],
+                DEFAULT_OUTPUT_TYPES,
                 user
             );
             await markCriticalEventsAnalyzed(events, runId, analysis.runId);
@@ -569,7 +597,7 @@ function createStackCTRLIntelligenceScheduler({ pool, intelligenceService, logge
                 audit: {
                     snapshotId,
                     intelligenceRunId: analysis.runId,
-                    historicalContext: historicalAvailability(analysis.historicalContext)
+                    historicalContext: historicalAuditContext(analysis.historicalContext)
                 },
                 value: { snapshotId, intelligenceRunId: analysis.runId, criticalEvents: events.length }
             };
@@ -583,6 +611,14 @@ function createStackCTRLIntelligenceScheduler({ pool, intelligenceService, logge
             targetAt: value.targetAt,
             differenceMinutes: value.differenceMinutes
         }]));
+    }
+
+    function historicalAuditContext(context) {
+        if (!context) return null;
+        return {
+            availability: historicalAvailability(context),
+            intelligence: context.historicalIntelligence || null
+        };
     }
 
     async function runCompanySchedule(companyId, now = new Date()) {
@@ -691,7 +727,7 @@ function createStackCTRLIntelligenceScheduler({ pool, intelligenceService, logge
                     audit: {
                         snapshotId,
                         intelligenceRunId: analysis.runId,
-                        historicalContext: historicalAvailability(analysis.historicalContext)
+                        historicalContext: historicalAuditContext(analysis.historicalContext)
                     },
                     value: { snapshotId, intelligenceRunId: analysis.runId }
                 };
@@ -754,7 +790,7 @@ function createStackCTRLIntelligenceScheduler({ pool, intelligenceService, logge
                         sourceStatuses: collection.sourceStatuses,
                         context: collection._context
                     },
-                    historicalContext: analysis?.historicalContext ? historicalAvailability(analysis.historicalContext) : null
+                    historicalContext: historicalAuditContext(analysis?.historicalContext)
                 },
                 value: {
                     collection: { collectedAt: collection.collectedAt, dataCompleteness: collection.dataCompleteness, sourceStatuses: collection.sourceStatuses },
@@ -789,14 +825,17 @@ function createStackCTRLIntelligenceScheduler({ pool, intelligenceService, logge
         const [snapshots, comparisons] = await Promise.all([
             pool.query(
                 `SELECT ID, CompanyID, TenantKey, PeriodStart, PeriodEnd, SnapshotType,
-                        DataCompletenessScore, CreatedAt
+                        DataCompletenessScore, CreatedAt,
+                        JSON_EXTRACT(MetricsJson, '$.stackctrl_risk') AS StackCTRLRiskJson,
+                        JSON_EXTRACT(MetricsJson, '$.executive_kpis') AS ExecutiveKPIsJson
                  FROM StackCTRLTenantEvidenceSnapshots
                  WHERE CompanyID = ? ORDER BY CreatedAt DESC LIMIT ?`,
                 [companyId, safeLimit]
             ),
             pool.query(
                 `SELECT CurrentSnapshotID, ComparisonKey, TargetAt, BaselineSnapshotID,
-                        BaselineCreatedAt, DifferenceMinutes, AvailabilityStatus, CreatedAt
+                        BaselineCreatedAt, DifferenceMinutes, AvailabilityStatus,
+                        MetricChangesJson, WarningsJson, CreatedAt
                  FROM StackCTRLIntelligenceHistoricalComparisons
                  WHERE CompanyID = ? ORDER BY CreatedAt DESC LIMIT 500`,
                 [companyId]
@@ -804,13 +843,19 @@ function createStackCTRLIntelligenceScheduler({ pool, intelligenceService, logge
         ]);
         const comparisonBySnapshot = comparisons[0].reduce((map, comparison) => {
             if (!map[comparison.CurrentSnapshotID]) map[comparison.CurrentSnapshotID] = {};
-            map[comparison.CurrentSnapshotID][comparison.ComparisonKey] = comparison;
+            map[comparison.CurrentSnapshotID][comparison.ComparisonKey] = {
+                ...comparison,
+                metricChanges: parseJson(comparison.MetricChangesJson, {}),
+                warnings: parseJson(comparison.WarningsJson, [])
+            };
             return map;
         }, {});
         return {
             companyId: Number(companyId),
             snapshots: snapshots[0].map(snapshot => ({
                 ...snapshot,
+                risk: parseJson(snapshot.StackCTRLRiskJson, {}),
+                executiveKPIs: parseJson(snapshot.ExecutiveKPIsJson, {}),
                 historicalComparisons: comparisonBySnapshot[snapshot.ID] || {}
             }))
         };

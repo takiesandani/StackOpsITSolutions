@@ -99,8 +99,7 @@ async function loadClientCapabilities({ pool, companyId, company, accessType = n
 
     const [rows] = await pool.query(
         `SELECT * FROM StackCTRLClientCapabilities
-         WHERE CompanyID = ?
-         ORDER BY SourceKey`,
+         WHERE CompanyID = ?`,
         [companyId]
     );
     const stored = new Map(rows.map(row => [row.SourceKey, row]));
