@@ -10737,7 +10737,12 @@ async function refreshStackCTRLIntelligenceSource(sourceKey, companyId) {
 // ====================================================================================================//
 
 // Azure configuration is loaded through getSecret(), which already falls back to environment variables.
-const azureOpenAIService = createAzureOpenAIService({ getSecret });
+const azureOpenAIService = createAzureOpenAIService({
+    getSecret,
+    maxRetries: process.env.AZURE_OPENAI_MAX_RETRIES,
+    retryBaseMs: process.env.AZURE_OPENAI_RETRY_BASE_MS,
+    retryMaxMs: process.env.AZURE_OPENAI_RETRY_MAX_MS
+});
 const stackCTRLIntelligenceService = createStackCTRLIntelligenceService({
     pool,
     azureOpenAI: azureOpenAIService,

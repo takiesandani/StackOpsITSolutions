@@ -5,8 +5,17 @@ const axios = require('axios');
 const {
     createAzureOpenAIService,
     extractResponseText,
+    getRetryDelayMs,
     normalizeV1Endpoint
 } = require('../services/azure-openai');
+
+const azureSecrets = {
+    AZURE_OPENAI_API_KEY: 'test-key',
+    AZURE_OPENAI_ENDPOINT: 'https://stackctrl-ai-swe-prod.services.ai.azure.com/',
+    AZURE_OPENAI_DEPLOYMENT: 'gpt-4.1-mini',
+    AZURE_OPENAI_MODEL_VERSION: '2025-04-14',
+    AZURE_OPENAI_REGION: 'swedencentral'
+};
 
 test('normalizes the Azure AI endpoint to openai/v1', () => {
     assert.equal(
@@ -23,13 +32,6 @@ test('uses the Azure v1 Responses API without an api-version parameter', async (
     const originalPost = axios.post;
     const requestedSecrets = [];
     let capturedRequest = null;
-    const secrets = {
-        AZURE_OPENAI_API_KEY: 'test-key',
-        AZURE_OPENAI_ENDPOINT: 'https://stackctrl-ai-swe-prod.services.ai.azure.com/',
-        AZURE_OPENAI_DEPLOYMENT: 'gpt-4.1-mini',
-        AZURE_OPENAI_MODEL_VERSION: '2025-04-14',
-        AZURE_OPENAI_REGION: 'swedencentral'
-    };
     axios.post = async (url, body, options) => {
         capturedRequest = { url, body, options };
         return {
@@ -48,7 +50,7 @@ test('uses the Azure v1 Responses API without an api-version parameter', async (
         const service = createAzureOpenAIService({
             getSecret: async name => {
                 requestedSecrets.push(name);
-                return secrets[name] || null;
+                return azureSecrets[name] || null;
             },
             logger: { error() {} }
         });
@@ -82,4 +84,90 @@ test('extracts text from Responses API output items', () => {
     assert.equal(extractResponseText({
         output: [{ content: [{ type: 'output_text', text: 'first' }, { type: 'output_text', text: 'second' }] }]
     }), 'first\nsecond');
+});
+
+test('waits for Azure Retry-After and retries a throttled request', async () => {
+    const originalPost = axios.post;
+    const delays = [];
+    const warnings = [];
+    let calls = 0;
+    axios.post = async () => {
+        calls += 1;
+        if (calls === 1) {
+            const error = new Error('rate limited');
+            error.response = {
+                status: 429,
+                headers: { 'retry-after-ms': '25', 'x-request-id': 'request-429' },
+                data: { error: { message: 'Rate limit exceeded.' } }
+            };
+            throw error;
+        }
+        return {
+            data: {
+                id: 'resp_retry',
+                output: [{ content: [{ type: 'output_text', text: '{"status":"recovered"}' }] }]
+            }
+        };
+    };
+
+    try {
+        const service = createAzureOpenAIService({
+            getSecret: async name => azureSecrets[name] || null,
+            maxRetries: 2,
+            wait: async milliseconds => { delays.push(milliseconds); },
+            logger: { warn(message, details) { warnings.push({ message, details }); }, error() {} }
+        });
+        const result = await service.createJsonCompletion({ messages: [{ role: 'user', content: 'Analyse.' }] });
+
+        assert.equal(calls, 2);
+        assert.deepEqual(delays, [25]);
+        assert.equal(warnings.length, 1);
+        assert.equal(warnings[0].details.requestId, 'request-429');
+        assert.equal(result.attempts, 2);
+        assert.deepEqual(result.data, { status: 'recovered' });
+    } finally {
+        axios.post = originalPost;
+    }
+});
+
+test('stops retrying after the configured 429 retry budget', async () => {
+    const originalPost = axios.post;
+    const delays = [];
+    let calls = 0;
+    axios.post = async () => {
+        calls += 1;
+        const error = new Error('rate limited');
+        error.response = {
+            status: 429,
+            headers: {},
+            data: { error: { message: 'Capacity is temporarily unavailable.' } }
+        };
+        throw error;
+    };
+
+    try {
+        const service = createAzureOpenAIService({
+            getSecret: async name => azureSecrets[name] || null,
+            maxRetries: 2,
+            retryBaseMs: 100,
+            retryMaxMs: 1000,
+            wait: async milliseconds => { delays.push(milliseconds); },
+            logger: { warn() {}, error() {} }
+        });
+
+        await assert.rejects(
+            service.createJsonCompletion({ messages: [{ role: 'user', content: 'Analyse.' }] }),
+            /429.*after 3 attempt\(s\)/
+        );
+        assert.equal(calls, 3);
+        assert.deepEqual(delays, [100, 200]);
+    } finally {
+        axios.post = originalPost;
+    }
+});
+
+test('parses Azure textual retry delays when headers are unavailable', () => {
+    assert.equal(getRetryDelayMs({
+        response: { data: { error: { message: 'Please retry after 12 seconds.' } } }
+    }, 0), 12000);
 });

@@ -3,6 +3,37 @@ const { ClientSecretCredential } = require('@azure/identity');
 
 const CONFIG_CACHE_MS = 5 * 60 * 1000;
 const AZURE_AI_SCOPE = 'https://ai.azure.com/.default';
+const DEFAULT_MAX_RETRIES = 4;
+const DEFAULT_RETRY_BASE_MS = 2000;
+const DEFAULT_RETRY_MAX_MS = 60000;
+
+function headerValue(headers, name) {
+    if (!headers) return null;
+    if (typeof headers.get === 'function') return headers.get(name);
+    return headers[name] ?? headers[name.toLowerCase()] ?? null;
+}
+
+function getRetryDelayMs(error, attempt, baseDelayMs = DEFAULT_RETRY_BASE_MS, maxDelayMs = DEFAULT_RETRY_MAX_MS) {
+    const headers = error?.response?.headers;
+    const milliseconds = Number(headerValue(headers, 'retry-after-ms') || headerValue(headers, 'x-ms-retry-after-ms'));
+    if (Number.isFinite(milliseconds) && milliseconds > 0) return Math.min(milliseconds, maxDelayMs);
+
+    const retryAfter = headerValue(headers, 'retry-after');
+    if (retryAfter !== null && retryAfter !== undefined && retryAfter !== '') {
+        const seconds = Number(retryAfter);
+        if (Number.isFinite(seconds) && seconds >= 0) return Math.min(seconds * 1000, maxDelayMs);
+        const retryAt = new Date(retryAfter).getTime();
+        if (Number.isFinite(retryAt)) return Math.min(Math.max(0, retryAt - Date.now()), maxDelayMs);
+    }
+
+    const detail = String(error?.response?.data?.error?.message || error?.message || '');
+    const secondsMatch = detail.match(/retry\s+after\s+(\d+(?:\.\d+)?)\s*seconds?/i);
+    if (secondsMatch) return Math.min(Number(secondsMatch[1]) * 1000, maxDelayMs);
+    const millisecondsMatch = detail.match(/retry\s+after\s+(\d+(?:\.\d+)?)\s*(?:ms|milliseconds?)/i);
+    if (millisecondsMatch) return Math.min(Number(millisecondsMatch[1]), maxDelayMs);
+
+    return Math.min(baseDelayMs * (2 ** attempt), maxDelayMs);
+}
 
 function normalizeV1Endpoint(value) {
     const endpoint = String(value || '').trim().replace(/^['"]|['"]$/g, '').replace(/\/+$/, '');
@@ -28,7 +59,14 @@ function extractResponseText(responseData) {
     return textParts.join('\n').trim();
 }
 
-function createAzureOpenAIService({ getSecret, logger = console } = {}) {
+function createAzureOpenAIService({
+    getSecret,
+    logger = console,
+    maxRetries = DEFAULT_MAX_RETRIES,
+    retryBaseMs = DEFAULT_RETRY_BASE_MS,
+    retryMaxMs = DEFAULT_RETRY_MAX_MS,
+    wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
+} = {}) {
     if (typeof getSecret !== 'function') {
         throw new Error('Azure OpenAI requires the StackCTRL secret loader');
     }
@@ -126,42 +164,62 @@ function createAzureOpenAIService({ getSecret, logger = console } = {}) {
 
         if (responseFormat) body.text = { format: responseFormat };
 
-        try {
-            const response = await axios.post(url, body, {
-                headers: {
-                    Authorization: authorization,
-                    'Content-Type': 'application/json'
-                },
-                timeout: 60000
-            });
+        const retryLimit = Math.max(0, Math.min(10, Number(maxRetries) || 0));
+        for (let attempt = 0; attempt <= retryLimit; attempt++) {
+            try {
+                const response = await axios.post(url, body, {
+                    headers: {
+                        Authorization: authorization,
+                        'Content-Type': 'application/json'
+                    },
+                    timeout: 60000
+                });
 
-            const content = extractResponseText(response.data);
-            if (!content) {
-                const refusal = (response.data?.output || [])
-                    .flatMap(item => item?.content || [])
-                    .find(item => item?.type === 'refusal')?.refusal;
-                throw new Error(refusal || 'Azure OpenAI returned an empty response');
+                const content = extractResponseText(response.data);
+                if (!content) {
+                    const refusal = (response.data?.output || [])
+                        .flatMap(item => item?.content || [])
+                        .find(item => item?.type === 'refusal')?.refusal;
+                    throw new Error(refusal || 'Azure OpenAI returned an empty response');
+                }
+
+                return {
+                    content,
+                    deployment: config.deployment,
+                    modelVersion: config.modelVersion,
+                    region: config.region,
+                    responseId: response.data?.id || null,
+                    usage: response.data?.usage || null,
+                    attempts: attempt + 1
+                };
+            } catch (error) {
+                const status = error.response?.status;
+                const requestId = headerValue(error.response?.headers, 'x-request-id') || headerValue(error.response?.headers, 'apim-request-id');
+                const detail = error.response?.data?.error?.message || error.message || 'Unknown Azure OpenAI error';
+                const shouldRetry = status === 429 && attempt < retryLimit;
+                if (shouldRetry) {
+                    const delayMs = getRetryDelayMs(error, attempt, retryBaseMs, retryMaxMs);
+                    logger.warn?.('[Azure OpenAI] Rate limited; retrying request.', {
+                        attempt: attempt + 1,
+                        maxAttempts: retryLimit + 1,
+                        delayMs,
+                        requestId: requestId || null
+                    });
+                    await wait(delayMs);
+                    continue;
+                }
+
+                logger.error('[Azure OpenAI] Request failed:', {
+                    status: status || null,
+                    requestId: requestId || null,
+                    attempts: attempt + 1,
+                    message: detail
+                });
+                throw new Error(`Azure OpenAI request failed${status ? ` (${status})` : ''} after ${attempt + 1} attempt(s): ${detail}`);
             }
-
-            return {
-                content,
-                deployment: config.deployment,
-                modelVersion: config.modelVersion,
-                region: config.region,
-                responseId: response.data?.id || null,
-                usage: response.data?.usage || null
-            };
-        } catch (error) {
-            const status = error.response?.status;
-            const requestId = error.response?.headers?.['x-request-id'] || error.response?.headers?.['apim-request-id'];
-            const detail = error.response?.data?.error?.message || error.message || 'Unknown Azure OpenAI error';
-            logger.error('[Azure OpenAI] Request failed:', {
-                status: status || null,
-                requestId: requestId || null,
-                message: detail
-            });
-            throw new Error(`Azure OpenAI request failed${status ? ` (${status})` : ''}: ${detail}`);
         }
+
+        throw new Error('Azure OpenAI request failed after retry limit was reached');
     }
 
     async function createJsonCompletion(options) {
@@ -187,5 +245,6 @@ function createAzureOpenAIService({ getSecret, logger = console } = {}) {
 module.exports = {
     createAzureOpenAIService,
     extractResponseText,
+    getRetryDelayMs,
     normalizeV1Endpoint
 };
