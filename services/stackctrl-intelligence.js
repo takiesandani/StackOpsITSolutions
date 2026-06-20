@@ -1,5 +1,6 @@
 const { loadClientCapabilities } = require('./intelligence/capabilities');
 const { SOURCE_ADAPTERS } = require('./intelligence/source-adapters');
+const { buildDashboardIntelligenceContexts } = require('./intelligence/dashboard-context');
 
 const ALLOWED_OUTPUT_TYPES = new Set([
     'executive_summary',
@@ -8,7 +9,10 @@ const ALLOWED_OUTPUT_TYPES = new Set([
     'risk_register',
     'recommendations',
     'trend_analysis',
-    'board_report'
+    'board_report',
+    'overall_risk_score',
+    'risk_level',
+    'powerbi_summary'
 ]);
 
 const OUTPUT_TITLES = {
@@ -18,11 +22,17 @@ const OUTPUT_TITLES = {
     risk_register: 'Risk Register',
     recommendations: 'Recommendations',
     trend_analysis: 'Trend Analysis',
-    board_report: 'Board Report'
+    board_report: 'Board Report',
+    overall_risk_score: 'Overall Risk Score',
+    risk_level: 'Risk Level',
+    powerbi_summary: 'Power BI Summary'
 };
 
-const SYSTEM_PROMPT = 'You are StackCTRL Intelligence. You analyse only the StackCTRL-provided tenant context. You must not invent facts. You must clearly mark stale, missing, or incomplete data. Return JSON only.';
-const PROMPT_VERSION = 'stackctrl-intelligence-v1';
+const SYSTEM_PROMPT = `You are StackCTRL Intelligence, an enterprise technology risk and governance analyst.
+StackCTRL-calculated tenant evidence is the primary source of truth. Use external/grounding knowledge only to interpret risk, best practices, and recommendations.
+Analyse only the frozen StackCTRL snapshot supplied in the request. Never call, request, or imply direct access to Microsoft Graph, Cloudflare, Duo, or another vendor API.
+Do not invent tenant facts. Clearly identify stale, missing, partial, or not-expected evidence. Return valid JSON only.`;
+const PROMPT_VERSION = 'stackctrl-intelligence-v2';
 
 function parseJsonValue(value) {
     if (value == null || typeof value !== 'string') return value;
@@ -64,6 +74,27 @@ function toNullableNumber(value) {
 function toNullableDate(value) {
     const date = toDateOrNull(value);
     return date ? date.toISOString().slice(0, 10) : null;
+}
+
+function toNullableText(value) {
+    if (value === null || value === undefined || value === '') return null;
+    return String(value);
+}
+
+function normalizePowerBISummary(value, analysis = {}) {
+    const summary = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    return {
+        risk_score: toNullableNumber(summary.risk_score ?? analysis.overall_risk_score),
+        risk_level: toNullableText(summary.risk_level ?? analysis.risk_level),
+        maturity_level: toNullableText(summary.maturity_level),
+        top_risk_domain: toNullableText(summary.top_risk_domain),
+        top_recommendation: toNullableText(summary.top_recommendation),
+        mfa_coverage: toNullableNumber(summary.mfa_coverage),
+        device_compliance: toNullableNumber(summary.device_compliance),
+        high_severity_alerts: toNullableNumber(summary.high_severity_alerts),
+        cloudflare_status: toNullableText(summary.cloudflare_status),
+        data_completeness_score: toNullableNumber(summary.data_completeness_score)
+    };
 }
 
 function flattenMetrics(value, prefix = '', depth = 0, output = []) {
@@ -109,11 +140,11 @@ function createStackCTRLIntelligenceService({ pool, azureOpenAI, refreshSource =
             accessType: options.accessType || null,
             persistDefaults: options.persistCapabilities !== false
         });
-        const sources = [];
+        const rawSources = [];
         for (const capability of capabilities) {
             const adapter = SOURCE_ADAPTERS[capability.sourceKey];
             if (!adapter) continue;
-            sources.push(await adapter({
+            rawSources.push(await adapter({
                 pool,
                 companyId: numericCompanyId,
                 capability,
@@ -122,6 +153,8 @@ function createStackCTRLIntelligenceService({ pool, azureOpenAI, refreshSource =
                 logger
             }));
         }
+        // Dashboard context builders add the calculations and evidence lists used by StackCTRL cards.
+        const sources = buildDashboardIntelligenceContexts(rawSources);
 
         const identityTenantEvidence = sources
             .find(source => source.sourceKey === 'identity')
@@ -159,8 +192,13 @@ function createStackCTRLIntelligenceService({ pool, azureOpenAI, refreshSource =
             isExpected: source.isExpected,
             freshness: source.freshness,
             metrics: source.metrics,
+            dashboardMetrics: source.dashboardMetrics,
+            calculatedIndicators: source.calculatedIndicators,
+            evidence: source.evidence,
             evidenceCount: source.evidence.length,
+            chartsData: source.chartsData,
             warnings: source.warnings,
+            sourceReferences: source.sourceReferences,
             rawReference: source.rawReference,
             errorMessage: source.errorMessage
         }));
@@ -207,9 +245,12 @@ function createStackCTRLIntelligenceService({ pool, azureOpenAI, refreshSource =
             previousIntelligence: previousOutputs,
             aiInstructions: {
                 useOnlyStackCTRLData: true,
+                stackCTRLCalculatedEvidenceIsPrimary: true,
+                externalKnowledgeForInterpretationOnly: true,
                 doNotInventFacts: true,
                 markMissingDataClearly: true
-            }
+            },
+            intelligenceSchemaVersion: 2
         };
 
         const sourceFreshness = Object.fromEntries(sources.map(source => [source.sourceKey, {
@@ -413,27 +454,50 @@ function createStackCTRLIntelligenceService({ pool, azureOpenAI, refreshSource =
         return unique;
     }
 
-    function buildAnalysisPrompt(context, outputTypes) {
+    function buildRequiredOutputContract(outputTypes) {
         return `Analyse the supplied StackCTRL snapshot and return one JSON object.
 
 Requested output types: ${outputTypes.join(', ')}
 
+StackCTRL-calculated tenant evidence is the primary source of truth. Use external/grounding knowledge only to interpret risk, best practices, and recommendations.
+
+Write decision-ready enterprise intelligence. Explain business impact, cite the relevant StackCTRL source/evidence in each material risk, distinguish evidence from interpretation, and do not merely repeat metrics.
+
 Return this exact top-level structure:
 {
   "executive_summary": {},
+  "overall_risk_score": 0,
+  "risk_level": "low | moderate | high | critical",
   "governance_assessment": {},
   "compliance_review": {},
   "risk_register": [],
   "recommendations": [],
   "trend_analysis": [],
-  "board_report": {}
+  "board_report": {},
+  "powerbi_summary": {
+    "risk_score": 0,
+    "risk_level": "low | moderate | high | critical",
+    "maturity_level": "initial | developing | defined | managed | optimised",
+    "top_risk_domain": "",
+    "top_recommendation": "",
+    "mfa_coverage": null,
+    "device_compliance": null,
+    "high_severity_alerts": null,
+    "cloudflare_status": "available | stale | missing | not_configured | not_expected | error",
+    "data_completeness_score": null
+  }
 }
 
 Risk fields: domain, title, description, severity, likelihood, impact, businessImpact, evidenceSummary, recommendation.
 Recommendation fields: domain, title, detail, priority, businessReason, suggestedOwner, suggestedDueDate.
 Trend fields: metricName, domain, currentValue, previousValue, changePercent, direction, explanation.
 
-Do not add claims that are not supported by the snapshot. Use empty objects or arrays for unrequested output types.
+Overall risk score must be a number from 0 to 100 where a higher score means greater risk. Keep Power BI field names and primitive value types exactly as shown.
+Do not add tenant claims that are not supported by the snapshot. Use empty objects, arrays, or null for unrequested output types.`;
+    }
+
+    function buildAnalysisPrompt(context, outputTypes) {
+        return `${buildRequiredOutputContract(outputTypes)}
 
 STACKCTRL SNAPSHOT:
 ${JSON.stringify(context)}`;
@@ -450,20 +514,29 @@ ${JSON.stringify(context)}`;
             [companyId, companyId]
         );
         const prompt = rows[0] ? normalizeStoredRow(rows[0]) : null;
+        const tenantSystemPrompt = String(prompt?.SystemPrompt || '').trim();
+        const systemPrompt = tenantSystemPrompt
+            ? `${SYSTEM_PROMPT}\n\nTenant-specific analysis instructions:\n${tenantSystemPrompt}`
+            : SYSTEM_PROMPT;
         if (!prompt?.UserPromptTemplate) {
             return {
-                systemPrompt: prompt?.SystemPrompt || SYSTEM_PROMPT,
+                systemPrompt,
                 userPrompt: buildAnalysisPrompt(context, outputTypes),
                 promptVersion: prompt?.PromptVersion || PROMPT_VERSION
             };
         }
 
-        const userPrompt = String(prompt.UserPromptTemplate)
+        const userPromptTemplate = String(prompt.UserPromptTemplate);
+        const userPrompt = userPromptTemplate
             .split('{{outputTypes}}').join(outputTypes.join(', '))
             .split('{{contextJson}}').join(JSON.stringify(context));
+        const snapshotAppendix = userPromptTemplate.includes('{{contextJson}}')
+            ? ''
+            : `\n\nSTACKCTRL SNAPSHOT:\n${JSON.stringify(context)}`;
         return {
-            systemPrompt: prompt.SystemPrompt || SYSTEM_PROMPT,
-            userPrompt,
+            systemPrompt,
+            // Database prompts may add tenant guidance, but the enterprise output contract is always enforced.
+            userPrompt: `${userPrompt}${snapshotAppendix}\n\nMANDATORY STACKCTRL OUTPUT CONTRACT:\n${buildRequiredOutputContract(outputTypes)}`,
             promptVersion: prompt.PromptVersion || PROMPT_VERSION
         };
     }
@@ -499,7 +572,10 @@ ${JSON.stringify(context)}`;
                     { role: 'user', content: prompt.userPrompt }
                 ]
             });
-            const analysis = completion.data;
+            const analysis = completion.data && typeof completion.data === 'object' ? completion.data : {};
+            analysis.overall_risk_score = toNullableNumber(analysis.overall_risk_score ?? analysis.powerbi_summary?.risk_score);
+            analysis.risk_level = toNullableText(analysis.risk_level ?? analysis.powerbi_summary?.risk_level);
+            analysis.powerbi_summary = normalizePowerBISummary(analysis.powerbi_summary, analysis);
             const connection = await pool.getConnection();
             const outputIds = {};
 
@@ -507,7 +583,9 @@ ${JSON.stringify(context)}`;
                 await connection.beginTransaction();
 
                 for (const outputType of requestedTypes) {
-                    const content = analysis[outputType] ?? (outputType.endsWith('_register') || outputType.endsWith('_analysis') || outputType === 'recommendations' ? [] : {});
+                    const arrayOutput = outputType.endsWith('_register') || outputType.endsWith('_analysis') || outputType === 'recommendations';
+                    const scalarOutput = outputType === 'overall_risk_score' || outputType === 'risk_level';
+                    const content = analysis[outputType] ?? (arrayOutput ? [] : scalarOutput ? null : {});
                     const summary = typeof content?.executiveSummary === 'string'
                         ? content.executiveSummary
                         : typeof content?.summary === 'string'
@@ -626,9 +704,12 @@ ${JSON.stringify(context)}`;
                 outputIds,
                 preview: {
                     executiveSummary: analysis.executive_summary?.summary || analysis.executive_summary?.executiveSummary || null,
+                    overallRiskScore: toNullableNumber(analysis.overall_risk_score ?? analysis.powerbi_summary?.risk_score),
+                    riskLevel: analysis.risk_level || analysis.powerbi_summary?.risk_level || null,
                     risks: Array.isArray(analysis.risk_register) ? analysis.risk_register.length : 0,
                     recommendations: Array.isArray(analysis.recommendations) ? analysis.recommendations.length : 0,
-                    trends: Array.isArray(analysis.trend_analysis) ? analysis.trend_analysis.length : 0
+                    trends: Array.isArray(analysis.trend_analysis) ? analysis.trend_analysis.length : 0,
+                    powerbiSummary: analysis.powerbi_summary || null
                 }
             };
         } catch (error) {
@@ -679,7 +760,7 @@ ${JSON.stringify(context)}`;
     async function getPowerBIData(companyId) {
         const [outputs, risks, recommendations, trends] = await Promise.all([
             pool.query(
-                `SELECT ID, CompanyID, SnapshotID, OutputType, Title, ExecutiveSummary,
+                `SELECT ID, CompanyID, SnapshotID, OutputType, Title, ExecutiveSummary, ContentJson,
                         ModelName, AzureDeployment, PromptVersion, ConfidenceScore, Status, CreatedAt
                  FROM StackCTRLTenantAIOutputs WHERE CompanyID = ? ORDER BY CreatedAt DESC LIMIT 1000`,
                 [companyId]
@@ -689,8 +770,17 @@ ${JSON.stringify(context)}`;
             pool.query('SELECT * FROM StackCTRLTenantTrendAnalysis WHERE CompanyID = ? ORDER BY CreatedAt DESC LIMIT 5000', [companyId])
         ]);
 
+        const normalizedOutputs = outputs[0].map(normalizeStoredRow);
         return {
-            outputs: outputs[0].map(normalizeStoredRow),
+            outputs: normalizedOutputs,
+            powerbiSummaries: normalizedOutputs
+                .filter(output => output.OutputType === 'powerbi_summary')
+                .map(output => ({
+                    companyId: output.CompanyID,
+                    snapshotId: output.SnapshotID,
+                    createdAt: output.CreatedAt,
+                    ...(output.ContentJson || {})
+                })),
             risks: risks[0].map(normalizeStoredRow),
             recommendations: recommendations[0].map(normalizeStoredRow),
             trends: trends[0].map(normalizeStoredRow)

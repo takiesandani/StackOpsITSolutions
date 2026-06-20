@@ -12,7 +12,10 @@ const DEFAULT_OUTPUT_TYPES = [
     'risk_register',
     'recommendations',
     'trend_analysis',
-    'board_report'
+    'board_report',
+    'overall_risk_score',
+    'risk_level',
+    'powerbi_summary'
 ];
 
 const DEFAULT_SCHEDULES = [

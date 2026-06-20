@@ -127,8 +127,10 @@ async function collectSource(context, definition) {
 
     let records = loaded.records || [];
     let freshness = getFreshness(records, capability.freshnessThresholdMinutes);
-    const shouldRefresh = refresh && capability.refreshMode !== 'stored_only' &&
-        (!records.length || freshness.stale);
+    const shouldRefresh = capability.refreshMode !== 'stored_only' && (
+        (refresh && (!records.length || freshness.stale)) ||
+        (definition.refreshWhenMissing && !records.length)
+    );
 
     if (shouldRefresh && typeof refreshSource === 'function') {
         try {
@@ -306,8 +308,38 @@ const definitions = {
     operations: payloadDefinition('SunbirdOperationsPayloadCache'),
     cloudflare_network_security: {
         table: 'StackCTRLTenantEvidenceSnapshots',
-        async load() {
-            return { records: [], metrics: {}, evidence: [] };
+        refreshWhenMissing: true,
+        async load(pool, companyId) {
+            // The browser keeps its own short-lived Cloudflare cache. Intelligence uses the
+            // last frozen backend snapshot and refreshes the live service when no evidence exists.
+            const rows = await queryRows(
+                pool,
+                `SELECT ID, CreatedAt, ContextJson
+                 FROM StackCTRLTenantEvidenceSnapshots
+                 WHERE CompanyID = ?
+                 ORDER BY CreatedAt DESC LIMIT 1`,
+                [companyId]
+            );
+            const snapshot = rows[0];
+            const context = snapshot?.ContextJson || {};
+            const sourceSummary = Array.isArray(context.sources)
+                ? context.sources.find(source => source.sourceKey === 'cloudflare_network_security')
+                : null;
+            const evidence = Array.isArray(sourceSummary?.evidence)
+                ? sourceSummary.evidence
+                : (Array.isArray(context.evidence)
+                    ? context.evidence
+                        .filter(item => item?.sourceKey === 'cloudflare_network_security')
+                        .map(item => item.data)
+                    : []);
+            const payload = evidence.find(item => item && typeof item === 'object' && !item.evidenceType) || null;
+            if (!snapshot || !payload) return { records: [], metrics: {}, evidence: [] };
+            return {
+                records: [{ ...payload, ID: snapshot.ID, LastUpdated: payload.fetchedAt || snapshot.CreatedAt }],
+                metrics: sourceSummary?.metrics || context.metrics?.cloudflare_network_security || summaryMetrics(payload),
+                evidence: [payload],
+                rawReference: { table: this.table, recordId: snapshot.ID }
+            };
         },
         fromRefresh(refreshed) {
             const payload = refreshed.payload || refreshed;

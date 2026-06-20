@@ -131,6 +131,21 @@ test('analyseSnapshot stores outputs and normalized Power BI rows in one transac
                 deployment: 'stackctrl-production',
                 data: {
                     executive_summary: { summary: 'Licence capacity remains available.' },
+                    overall_risk_score: 18,
+                    risk_level: 'low',
+                    board_report: { summary: 'Risk is controlled with licence monitoring required.' },
+                    powerbi_summary: {
+                        risk_score: '18',
+                        risk_level: 'low',
+                        maturity_level: 'managed',
+                        top_risk_domain: 'Identity',
+                        top_recommendation: 'Monitor licence use',
+                        mfa_coverage: '95',
+                        device_compliance: '92',
+                        high_severity_alerts: '0',
+                        cloudflare_status: 'available',
+                        data_completeness_score: 100
+                    },
                     risk_register: [{
                         domain: 'Identity',
                         title: 'Licence capacity',
@@ -158,7 +173,10 @@ test('analyseSnapshot stores outputs and normalized Power BI rows in one transac
     const result = await service.analyseSnapshot({
         snapshotId: 4,
         companyId: 7,
-        outputTypes: ['executive_summary', 'risk_register', 'recommendations', 'trend_analysis'],
+        outputTypes: [
+            'executive_summary', 'overall_risk_score', 'risk_level', 'risk_register',
+            'recommendations', 'trend_analysis', 'board_report', 'powerbi_summary'
+        ],
         user: { id: 2, email: 'owner@example.com' }
     });
 
@@ -166,14 +184,23 @@ test('analyseSnapshot stores outputs and normalized Power BI rows in one transac
     assert.equal(result.preview.risks, 1);
     assert.equal(result.preview.recommendations, 1);
     assert.equal(result.preview.trends, 1);
-    assert.equal(azureMessages[0].content, 'Use stored StackCTRL evidence only.');
+    assert.match(azureMessages[0].content, /StackCTRL-calculated tenant evidence is the primary source of truth/);
+    assert.match(azureMessages[0].content, /Use stored StackCTRL evidence only/);
     assert.match(azureMessages[1].content, /executive_summary/);
     assert.match(azureMessages[1].content, /"companyId":7/);
+    assert.match(azureMessages[1].content, /"powerbi_summary"/);
+    assert.match(azureMessages[1].content, /"mfa_coverage"/);
+    assert.equal(result.preview.overallRiskScore, 18);
+    assert.equal(result.preview.riskLevel, 'low');
+    assert.equal(result.preview.powerbiSummary.cloudflare_status, 'available');
     assert.equal(writes.includes('commit'), true);
     assert.equal(writes.includes('rollback'), false);
     assert.equal(writes.filter(write => write.sql?.includes('StackCTRLTenantRiskRegister')).length, 1);
     assert.equal(writes.filter(write => write.sql?.includes('StackCTRLTenantRecommendations')).length, 1);
     assert.equal(writes.filter(write => write.sql?.includes('StackCTRLTenantTrendAnalysis')).length, 1);
+    const powerBIWrite = writes.find(write => write.sql?.includes('StackCTRLTenantAIOutputs') && write.params[2] === 'powerbi_summary');
+    assert.equal(JSON.parse(powerBIWrite.params[5]).mfa_coverage, 95);
+    assert.equal(JSON.parse(powerBIWrite.params[5]).high_severity_alerts, 0);
     assert.equal(
         writes.find(write => write.sql?.includes('StackCTRLTenantAIOutputs')).params[8],
         'tenant-v2'
