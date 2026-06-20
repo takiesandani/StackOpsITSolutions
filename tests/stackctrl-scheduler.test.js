@@ -1,0 +1,175 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+
+const { createStackCTRLIntelligenceScheduler } = require('../services/intelligence/scheduler');
+
+function scheduleRows() {
+    return [
+        { ID: 1, ScheduleKey: 'collection_15m', IsEnabled: 1 },
+        { ID: 2, ScheduleKey: 'snapshot_hourly', IsEnabled: 1 },
+        {
+            ID: 3,
+            ScheduleKey: 'azure_analysis',
+            IsEnabled: 1,
+            OutputTypesJson: JSON.stringify(['executive_summary', 'trend_analysis'])
+        }
+    ];
+}
+
+test('08:00 weekday tick collects, freezes a snapshot, and analyses it with history', async () => {
+    const queries = [];
+    const analysisCalls = [];
+    let scheduleRunId = 10;
+    const currentSnapshot = {
+        ID: 100,
+        CompanyID: 7,
+        SnapshotType: 'scheduled_hourly',
+        CreatedAt: new Date('2026-06-22T06:00:00.000Z'),
+        DataCompletenessScore: 90,
+        MetricsJson: JSON.stringify({ devices: { TotalDevices: 20, NonCompliant: 1 } }),
+        ContextJson: JSON.stringify({ tenant: { companyId: 7 }, metrics: { devices: { TotalDevices: 20 } } })
+    };
+    const previousSnapshot = {
+        ID: 99,
+        CompanyID: 7,
+        SnapshotType: 'scheduled_hourly',
+        CreatedAt: new Date('2026-06-19T15:00:00.000Z'),
+        DataCompletenessScore: 85,
+        MetricsJson: JSON.stringify({ devices: { TotalDevices: 18, NonCompliant: 2 } }),
+        ContextJson: JSON.stringify({ tenant: { companyId: 7 }, metrics: { devices: { TotalDevices: 18 } } })
+    };
+    const pool = {
+        async query(sql, params) {
+            queries.push({ sql, params });
+            if (sql.includes('SELECT * FROM StackCTRLIntelligenceSchedules')) return [scheduleRows(), []];
+            if (sql.includes('INSERT INTO StackCTRLIntelligenceScheduleRuns')) return [{ insertId: scheduleRunId++ }, []];
+            if (sql.includes('SELECT * FROM StackCTRLTenantEvidenceSnapshots') && sql.includes('WHERE ID = ?')) {
+                return [[currentSnapshot], []];
+            }
+            if (sql.includes('ORDER BY CreatedAt DESC LIMIT 1') && sql.includes('ID <>')) {
+                return [[previousSnapshot], []];
+            }
+            if (sql.includes('ABS(TIMESTAMPDIFF')) return [[], []];
+            if (sql.includes('SELECT MetricsJson FROM StackCTRLTenantEvidenceSnapshots') && sql.includes('ID < ?')) {
+                return [[{ MetricsJson: previousSnapshot.MetricsJson }], []];
+            }
+            if (sql.includes('SELECT MetricsJson FROM StackCTRLTenantEvidenceSnapshots') && sql.includes('WHERE ID = ?')) {
+                return [[{ MetricsJson: currentSnapshot.MetricsJson }], []];
+            }
+            return [{ affectedRows: 1 }, []];
+        }
+    };
+    const intelligenceService = {
+        async buildTenantAIContext() {
+            return {
+                dataCompleteness: { score: 90 },
+                sources: [{ sourceKey: 'devices', status: 'available', isExpected: true, freshness: {}, warnings: [] }],
+                context: { metrics: { devices: { TotalDevices: 20, NonCompliant: 1 } } }
+            };
+        },
+        async createSnapshot() {
+            return { snapshotId: 100, dataCompleteness: { score: 90 }, sourceStatuses: [] };
+        },
+        async analyseSnapshot(options) {
+            analysisCalls.push(options);
+            return { runId: 900, snapshotId: options.snapshotId, outputIds: { executive_summary: 1 } };
+        }
+    };
+    const scheduler = createStackCTRLIntelligenceScheduler({ pool, intelligenceService });
+
+    const result = await scheduler.runScheduledTick({
+        companyId: 7,
+        now: new Date('2026-06-22T06:00:00.000Z')
+    });
+
+    assert.equal(result.status, 'completed');
+    assert.equal(result.companies[0].runs.filter(run => run.status === 'completed').length, 3);
+    assert.equal(analysisCalls.length, 1);
+    assert.equal(analysisCalls[0].snapshotId, 100);
+    assert.equal(analysisCalls[0].historicalContext.currentSnapshot.snapshotId, 100);
+    assert.equal(analysisCalls[0].historicalContext.comparisons.previous.snapshot.snapshotId, 99);
+    assert.equal(analysisCalls[0].historicalContext.comparisons['24_hours'].availability, 'unavailable');
+    assert.ok(queries.some(call => call.sql.includes('StackCTRLIntelligenceHistoricalComparisons')));
+});
+
+test('scheduler tick does no collection outside weekday business hours', async () => {
+    let queryCount = 0;
+    const scheduler = createStackCTRLIntelligenceScheduler({
+        pool: {
+            async query() {
+                queryCount++;
+                return [[], []];
+            }
+        },
+        intelligenceService: {}
+    });
+
+    const result = await scheduler.runScheduledTick({
+        now: new Date('2026-06-21T06:00:00.000Z')
+    });
+
+    assert.equal(result.status, 'outside_business_hours');
+    assert.equal(queryCount, 0);
+});
+
+test('15-minute collection tick stores data without calling Azure', async () => {
+    let analysisCalls = 0;
+    let snapshotCalls = 0;
+    const pool = {
+        async query(sql) {
+            if (sql.includes('SELECT * FROM StackCTRLIntelligenceSchedules')) return [scheduleRows(), []];
+            if (sql.includes('INSERT INTO StackCTRLIntelligenceScheduleRuns')) return [{ insertId: 40 }, []];
+            return [{ affectedRows: 1 }, []];
+        }
+    };
+    const scheduler = createStackCTRLIntelligenceScheduler({
+        pool,
+        intelligenceService: {
+            async buildTenantAIContext() {
+                return {
+                    dataCompleteness: { score: 100 },
+                    sources: [],
+                    context: { metrics: {}, evidence: [] },
+                    companyId: 7
+                };
+            },
+            async createSnapshot() { snapshotCalls++; return { snapshotId: 1 }; },
+            async analyseSnapshot() { analysisCalls++; return { runId: 1 }; }
+        }
+    });
+
+    const result = await scheduler.runScheduledTick({
+        companyId: 7,
+        now: new Date('2026-06-22T06:15:00.000Z')
+    });
+
+    assert.equal(result.companies[0].runs.length, 1);
+    assert.equal(result.companies[0].runs[0].status, 'completed');
+    assert.ok(result.companies[0].runs[0].collection);
+    assert.equal(snapshotCalls, 0);
+    assert.equal(analysisCalls, 0);
+});
+
+test('critical trigger detection covers security, Cloudflare, compliance, and devices', () => {
+    const scheduler = createStackCTRLIntelligenceScheduler({
+        pool: { query: async () => [[], []] },
+        intelligenceService: {}
+    });
+    const signals = scheduler.findCriticalSignals({
+        security_alerts: { highSeverityAlerts: 2, activeIncidents: 1 },
+        cloudflare_network_security: { deniedAccessEvents: 25 },
+        compliance: { score: 35 },
+        devices: { TotalDevices: 20, NonCompliant: 8 }
+    }, {
+        cloudflare_network_security: { deniedAccessEvents: 5 },
+        compliance: { score: 80 },
+        devices: { TotalDevices: 20, NonCompliant: 1 }
+    });
+
+    assert.deepEqual(new Set(signals.map(signal => signal.eventType)), new Set([
+        'critical_security_activity',
+        'severe_access_spike',
+        'major_compliance_drop',
+        'major_device_compliance_drop'
+    ]));
+});

@@ -5,7 +5,7 @@
   "main": "./server.js",
   "scripts": {
     "start": "node ./server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test tests/*.test.js"
   },
   "keywords": [
     "Node.js",
@@ -32,7 +32,6 @@
     "jsonwebtoken": "^9.0.2",
     "luxon": "^3.7.2",
     "mysql2": "^3.14.4",
-    "openai": "^4.20.0",
     "pdfkit": "^0.17.2",
     "svg-to-pdfkit": "^0.1.8",
     "svix": "^1.84.1"

@@ -325,8 +325,8 @@ async function resolveCloudflareSecret(secretName, getSecret) {
 }
 
 async function getCloudflareNetworkSecuritySummary(options = {}) {
-  const accountId = await resolveCloudflareSecret('CLOUDFLARE_ACCOUNT_ID', options.getSecret);
-  const apiToken = await resolveCloudflareSecret('CLOUDFLARE_API_TOKEN', options.getSecret);
+  const accountId = options.accountId || await resolveCloudflareSecret('CLOUDFLARE_ACCOUNT_ID', options.getSecret);
+  const apiToken = options.apiToken || await resolveCloudflareSecret('CLOUDFLARE_API_TOKEN', options.getSecret);
 
   if (!accountId || !apiToken) {
     const missing = [

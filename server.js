@@ -8,7 +8,6 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
-const OpenAI = require('openai');
 const {SecretManagerServiceClient} = require('@google-cloud/secret-manager');
 const { Webhook } = require('svix');
 const SVGtoPDF = require('svg-to-pdfkit');
@@ -20,6 +19,11 @@ const {
     sendSecurityAlert
 } = require('./services/whatsapp');
 const { getCloudflareNetworkSecuritySummary } = require('./services/cloudflare');
+const { createAzureOpenAIService } = require('./services/azure-openai');
+const { createStackCTRLIntelligenceService } = require('./services/stackctrl-intelligence');
+const { createStackCTRLIntelligenceScheduler } = require('./services/intelligence/scheduler');
+const { createStackCTRLIntelligenceRouter } = require('./routes/stackctrl-intelligence');
+const { createStackCTRLSchedulerInternalRouter } = require('./routes/stackctrl-scheduler-internal');
 
 // invoice payment endpoints 
 require("dotenv").config();
@@ -2614,6 +2618,35 @@ function normalizeReportEvent(event = {}, source = 'Dashboard') {
     };
 }
 
+async function getMicrosoftGraphTokenForCompany(companyId) {
+  const cacheKey = `microsoft_graph_company_${companyId}`;
+  const cachedToken = microsoftTokenCache.get(cacheKey);
+  if (cachedToken && cachedToken.expiresAt > Date.now()) return cachedToken.token;
+
+  const [rows] = await pool.query(
+    `SELECT mt.TenantID, mt.ClientID, mt.ClientSecret
+     FROM CompanyMicrosoftMapping cm
+     INNER JOIN MicrosoftTenants mt ON mt.ID = cm.MicrosoftTenantID
+     WHERE cm.CompanyID = ? AND cm.IsActive = 1
+     LIMIT 1`,
+    [companyId]
+  );
+  const tenant = rows[0];
+  if (!tenant?.TenantID || !tenant?.ClientID || !tenant?.ClientSecret) {
+    const error = new Error('Microsoft Graph is not configured for this tenant');
+    error.statusCode = 503;
+    throw error;
+  }
+
+  const credential = new ClientSecretCredential(tenant.TenantID, tenant.ClientID, tenant.ClientSecret);
+  const tokenResponse = await credential.getToken('https://graph.microsoft.com/.default');
+  microsoftTokenCache.set(cacheKey, {
+    token: tokenResponse.token,
+    expiresAt: Math.min(tokenResponse.expiresOnTimestamp || Date.now() + (30 * 60 * 1000), Date.now() + (30 * 60 * 1000))
+  });
+  return tokenResponse.token;
+}
+
 function isReportEventWithinRange(event, start, end) {
     if (!event.timestamp) return true;
     const time = new Date(event.timestamp).getTime();
@@ -2848,8 +2881,6 @@ function buildDeterministicReportAnalysis(report) {
 async function generateAiReportAnalysis(report) {
     const fallback = buildDeterministicReportAnalysis(report);
     try {
-        const client = openai || await initializeOpenAI();
-        if (!client) return fallback;
         const evidence = {
             period: report.period,
             summary: report.summary,
@@ -2858,11 +2889,9 @@ async function generateAiReportAnalysis(report) {
             recommendations: report.recommendations.slice(0, 8),
             recentEvents: report.events.slice(0, 20)
         };
-        const completion = await client.chat.completions.create({
-            model: 'gpt-4o-mini',
+        const completion = await azureOpenAIService.createJsonCompletion({
             temperature: 0.1,
-            max_tokens: 700,
-            response_format: { type: 'json_object' },
+            maxTokens: 700,
             messages: [
                 {
                     role: 'system',
@@ -2871,7 +2900,7 @@ async function generateAiReportAnalysis(report) {
                 { role: 'user', content: JSON.stringify(evidence) }
             ]
         });
-        const parsed = parseReportJson(completion.choices?.[0]?.message?.content, {});
+        const parsed = completion.data || {};
         return {
             executiveSummary: String(parsed.executiveSummary || fallback.executiveSummary),
             successes: Array.isArray(parsed.successes) ? parsed.successes.slice(0, 6) : fallback.successes,
@@ -6585,8 +6614,8 @@ setInterval(syncDuoData, 60 * 60 * 1000);
 //                             MICROSOFT GRAPH -  Identity Protection                                  //
 // ====================================================================================================//
 
-async function fetchIdentityMetricsFromApi() {
-    const token = await getMicrosoftGraphToken();
+async function fetchIdentityMetricsFromApi(tokenOverride = null) {
+    const token = tokenOverride || await getMicrosoftGraphToken();
     const [users, roleAssignments, signIns] = await Promise.all([
         fetchMicrosoftUsers(token),
         fetchMicrosoftRoleAssignments(token),
@@ -6702,8 +6731,8 @@ function normalizeMicrosoftUsers(users) {
     }));
 }
 
-async function fetchIdentityDetailsFromApi() {
-    const token = await getMicrosoftGraphToken();
+async function fetchIdentityDetailsFromApi(tokenOverride = null) {
+    const token = tokenOverride || await getMicrosoftGraphToken();
     const [users, rawRoleAssignments] = await Promise.all([
         fetchMicrosoftUsers(token),
         fetchMicrosoftRoleAssignments(token)
@@ -6717,8 +6746,8 @@ async function fetchIdentityDetailsFromApi() {
     };
 }
 
-async function fetchDeviceMetricsFromApi() {
-    const token = await getMicrosoftGraphToken();
+async function fetchDeviceIntelligenceEvidenceFromApi(tokenOverride = null) {
+    const token = tokenOverride || await getMicrosoftGraphToken();
     const devices = await fetchMicrosoftDevices(token);
     const totalDevices = devices.length;
     const normalizeCompliance = value => String(value || 'unknown').toLowerCase().replace(/[_\s-]/g, '');
@@ -6729,11 +6758,21 @@ async function fetchDeviceMetricsFromApi() {
         const daysSinceSync = (Date.now() - new Date(d.lastSyncDateTime).getTime()) / (1000 * 60 * 60 * 24);
         return daysSinceSync > 7;
     }).length;
-    return { totalDevices, nonCompliant, notEncrypted, staleDevices };
+    return { totalDevices, nonCompliant, notEncrypted, staleDevices, devices };
 }
 
-async function fetchApplicationMetricsFromApi() {
-    const token = await getMicrosoftGraphToken();
+async function fetchDeviceMetricsFromApi() {
+    const evidence = await fetchDeviceIntelligenceEvidenceFromApi();
+    return {
+        totalDevices: evidence.totalDevices,
+        nonCompliant: evidence.nonCompliant,
+        notEncrypted: evidence.notEncrypted,
+        staleDevices: evidence.staleDevices
+    };
+}
+
+async function fetchApplicationMetricsFromApi(tokenOverride = null) {
+    const token = tokenOverride || await getMicrosoftGraphToken();
     const servicePrincipals = await fetchMicrosoftServicePrincipals(token);
     const totalApps = servicePrincipals.length;
     const externalApps = servicePrincipals.filter(sp => !(sp.publisherName || '').toLowerCase().includes('microsoft')).length;
@@ -6742,8 +6781,8 @@ async function fetchApplicationMetricsFromApi() {
     return { totalApps, externalApps, highRiskApps, highAccessApps };
 }
 
-async function fetchApplicationsPayloadFromApi() {
-    const token = await getMicrosoftGraphToken();
+async function fetchApplicationsPayloadFromApi(tokenOverride = null) {
+    const token = tokenOverride || await getMicrosoftGraphToken();
     const [servicePrincipalsRaw, users, groups] = await Promise.all([
         fetchMicrosoftServicePrincipals(token),
         fetchMicrosoftUsers(token),
@@ -6871,8 +6910,8 @@ function isEmailSecuritySignal(item = {}) {
     return /(email|mail|exchange|phish|spam|spoof|malware|attachment|safe links|safe attachments|impersonation|business email|quarantine)/.test(text);
 }
 
-async function fetchEmailSecurityPayloadFromApi() {
-    const token = await getMicrosoftGraphToken();
+async function fetchEmailSecurityPayloadFromApi(tokenOverride = null) {
+    const token = tokenOverride || await getMicrosoftGraphToken();
     const [alerts, incidents, mailActivity] = await Promise.all([
         fetchSecurityAlerts(token),
         fetchSecurityIncidents(token),
@@ -6986,8 +7025,8 @@ async function fetchEmailSecurityPayloadFromApi() {
     };
 }
 
-async function fetchBackupRecoveryPayloadFromApi() {
-    const token = await getMicrosoftGraphToken();
+async function fetchBackupRecoveryPayloadFromApi(tokenOverride = null) {
+    const token = tokenOverride || await getMicrosoftGraphToken();
 
     // Fetch OneDrive usage (returns CSV)
     const oneDriveUrl = 'https://graph.microsoft.com/v1.0/reports/getOneDriveUsageAccountDetail(period=\'D7\')';
@@ -9989,7 +10028,7 @@ async function notifySecurityAlertsViaWhatsApp(payload, options = {}) {
 }
 
 async function fetchSecurityEventsPayloadFromApi(options = {}) {
-    const token = await getMicrosoftGraphToken();
+    const token = options.token || await getMicrosoftGraphToken();
     const [alerts, incidents, threatIndicators, signIns] = await Promise.all([
         fetchSecurityAlerts(token),
         fetchSecurityIncidents(token),
@@ -10567,58 +10606,165 @@ async function getSecret(secretName) {
         return process.env[secretName] || null;
     }
 }
+
+async function refreshStackCTRLIntelligenceSource(sourceKey, companyId) {
+    switch (sourceKey) {
+        case 'identity': {
+            const token = await getMicrosoftGraphTokenForCompany(companyId);
+            const [metrics, details] = await Promise.all([
+                fetchIdentityMetricsFromApi(token),
+                fetchIdentityDetailsFromApi(token)
+            ]);
+            await pool.query(
+                `REPLACE INTO IdentityMetricsCache
+                 (CompanyID, TotalUsers, ActiveUsers, AdminRoles, SecurityScore, LastUpdated)
+                 VALUES (?, ?, ?, ?, ?, NOW())`,
+                [companyId, metrics.totalUsers, metrics.activeUsers, metrics.adminRoles, metrics.securityScore]
+            );
+            await pool.query(
+                `REPLACE INTO IdentityUserDetailsCache (CompanyID, UsersPayload, LastUpdated)
+                 VALUES (?, ?, NOW())`,
+                [companyId, JSON.stringify(details.users || [])]
+            );
+            await upsertRoleAssignmentsCache(companyId, details.roleAssignments || []);
+            return null;
+        }
+        case 'devices': {
+            const token = await getMicrosoftGraphTokenForCompany(companyId);
+            const result = await fetchDeviceIntelligenceEvidenceFromApi(token);
+            await pool.query(
+                `REPLACE INTO DeviceMetricsCache
+                 (CompanyID, TotalDevices, NonCompliant, NotEncrypted, StaleDevices, LastUpdated)
+                 VALUES (?, ?, ?, ?, ?, NOW())`,
+                [companyId, result.totalDevices, result.nonCompliant, result.notEncrypted, result.staleDevices]
+            );
+            return {
+                metrics: {
+                    totalDevices: result.totalDevices,
+                    nonCompliant: result.nonCompliant,
+                    notEncrypted: result.notEncrypted,
+                    staleDevices: result.staleDevices
+                },
+                evidence: result.devices || [],
+                lastUpdated: new Date().toISOString()
+            };
+        }
+        case 'email_security': {
+            const token = await getMicrosoftGraphTokenForCompany(companyId);
+            const payload = await fetchEmailSecurityPayloadFromApi(token);
+            const metrics = {
+                activeThreats: payload.summary?.activeThreats || 0,
+                highSeverity: payload.summary?.highSeverityAlerts || 0,
+                usersTargeted: payload.summary?.affectedUsersCount || 0,
+                openIncidents: payload.summary?.activeIncidents || 0
+            };
+            await pool.query(
+                `REPLACE INTO EmailMetricsCache
+                 (CompanyID, ActiveThreats, HighSeverity, UsersTargeted, OpenIncidents, LastUpdated)
+                 VALUES (?, ?, ?, ?, ?, NOW())`,
+                [companyId, metrics.activeThreats, metrics.highSeverity, metrics.usersTargeted, metrics.openIncidents]
+            );
+            await pool.query(
+                `REPLACE INTO EmailSecurityPayloadCache (CompanyID, Payload, LastUpdated)
+                 VALUES (?, ?, NOW())`,
+                [companyId, JSON.stringify(payload)]
+            );
+            return null;
+        }
+        case 'security_alerts': {
+            const token = await getMicrosoftGraphTokenForCompany(companyId);
+            const payload = await fetchSecurityEventsPayloadFromApi({ skipWhatsAppAuto: true, token });
+            await pool.query(
+                `REPLACE INTO SecurityEventsPayloadCache (CompanyID, Payload, LastUpdated)
+                 VALUES (?, ?, NOW())`,
+                [companyId, JSON.stringify(payload)]
+            );
+            return null;
+        }
+        case 'backup': {
+            const token = await getMicrosoftGraphTokenForCompany(companyId);
+            const payload = await fetchBackupRecoveryPayloadFromApi(token);
+            await pool.query(
+                `REPLACE INTO BackupRecoveryPayloadCache (CompanyID, Payload, LastUpdated)
+                 VALUES (?, ?, NOW())`,
+                [companyId, JSON.stringify(payload)]
+            );
+            return null;
+        }
+        case 'applications': {
+            const token = await getMicrosoftGraphTokenForCompany(companyId);
+            const [metrics, payload] = await Promise.all([
+                fetchApplicationMetricsFromApi(token),
+                fetchApplicationsPayloadFromApi(token)
+            ]);
+            await pool.query(
+                `REPLACE INTO ApplicationMetricsCache
+                 (CompanyID, TotalApps, ExternalApps, HighRiskApps, HighAccessApps, LastUpdated)
+                 VALUES (?, ?, ?, ?, ?, NOW())`,
+                [companyId, metrics.totalApps, metrics.externalApps, metrics.highRiskApps, metrics.highAccessApps]
+            );
+            await pool.query(
+                `REPLACE INTO ApplicationPayloadCache (CompanyID, Payload, LastUpdated)
+                 VALUES (?, ?, NOW())`,
+                [companyId, JSON.stringify(payload)]
+            );
+            return null;
+        }
+        case 'cloudflare_network_security': {
+            const [rows] = await pool.query(
+                `SELECT ConfigurationJson FROM StackCTRLClientCapabilities
+                 WHERE CompanyID = ? AND SourceKey = 'cloudflare_network_security'
+                 LIMIT 1`,
+                [companyId]
+            );
+            const configuration = parseReportJson(rows[0]?.ConfigurationJson, {});
+            const accountId = configuration.accountId ||
+                (configuration.accountIdSecret ? await getSecret(configuration.accountIdSecret) : null);
+            const apiToken = configuration.apiTokenSecret
+                ? await getSecret(configuration.apiTokenSecret)
+                : null;
+            return getCloudflareNetworkSecuritySummary({ getSecret, accountId, apiToken });
+        }
+        case 'duo_licences':
+            await syncDuoData();
+            return null;
+        default:
+            return null;
+    }
+}
 // ====================================================================================================//
 //                                       CHATBOT CONFIGURATION                                         //
 // ====================================================================================================//
 
-
-
-// Initialize OpenAI client with secret from Secret Manager
-let openai = null;
-let openaiInitializationAttempted = false;
-let openaiInitializationError = null;
-const OPENAI_INIT_RETRY_DELAY = 60000; // Retry after 1 minute on failure
-
-async function initializeOpenAI() {
-    // Prevent multiple simultaneous initialization attempts
-    if (openaiInitializationAttempted && openai) {
-        return openai;
-    }
-    
-    // If we've already failed recently, don't retry immediately
-    if (openaiInitializationError && Date.now() - openaiInitializationError.timestamp < OPENAI_INIT_RETRY_DELAY) {
-        return null;
-    }
-    
-    try {
-        openaiInitializationAttempted = true;
-        const apiKey = await getSecret('OPENAI_API_KEY');
-        if (!apiKey) {
-            console.error('OpenAI API key not found in Secret Manager or environment variables');
-            openaiInitializationError = { timestamp: Date.now(), error: 'API key not found' };
-            openaiInitializationAttempted = false; // Allow retry
-            return null;
-        }
-        openai = new OpenAI({ 
-            apiKey: apiKey,
-            timeout: 30000, // 30 second timeout
-            maxRetries: 2
-        });
-        openaiInitializationError = null; // Clear any previous errors
-        console.log('OpenAI client initialized successfully');
-        return openai;
-    } catch (error) {
-        console.error('Error initializing OpenAI:', error);
-        openaiInitializationError = { timestamp: Date.now(), error: error.message };
-        openaiInitializationAttempted = false; // Allow retry after delay
-        return null;
-    }
-}
-
-// Initialize OpenAI on startup
-initializeOpenAI().catch(err => {
-    console.error('Failed to initialize OpenAI:', err);
+// Azure configuration is loaded through getSecret(), which already falls back to environment variables.
+const azureOpenAIService = createAzureOpenAIService({ getSecret });
+const stackCTRLIntelligenceService = createStackCTRLIntelligenceService({
+    pool,
+    azureOpenAI: azureOpenAIService,
+    refreshSource: refreshStackCTRLIntelligenceSource
 });
+const stackCTRLIntelligenceScheduler = createStackCTRLIntelligenceScheduler({
+    pool,
+    intelligenceService: stackCTRLIntelligenceService
+});
+
+app.use('/api/stackctrl/intelligence', createStackCTRLIntelligenceRouter({
+    authenticateToken,
+    getAccessContextByUser,
+    intelligenceService: stackCTRLIntelligenceService,
+    schedulerService: stackCTRLIntelligenceScheduler
+}));
+app.use('/api/internal/stackctrl/intelligence', createStackCTRLSchedulerInternalRouter({
+    getSecret,
+    schedulerService: stackCTRLIntelligenceScheduler
+}));
+
+// We freeze currently stored tenant data after deployment so the intelligence history starts immediately.
+setTimeout(() => {
+    stackCTRLIntelligenceService.bootstrapAvailableTenants().catch(error => {
+        console.error('[StackCTRL Intelligence] Deployment bootstrap failed:', error.message);
+    });
+}, 15000);
 
 // ============================================
 // SYSTEM PROMPT
@@ -11454,17 +11600,16 @@ Be friendly, helpful, and professional. Use South African Rand (R) for currency.
 
 IMPORTANT: If they ask about making a payment, tell them you can generate a secure payment link for them instantly.`;
 
-        const completion = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
+        const completion = await azureOpenAIService.createChatCompletion({
             messages: [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: message }
             ],
             temperature: 0.7,
-            max_tokens: 500
+            maxTokens: 500
         });
         
-        const aiResponse = completion.choices[0].message.content;
+        const aiResponse = completion.content;
         
         res.json({
             success: true,
