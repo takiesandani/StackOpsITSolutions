@@ -141,6 +141,76 @@ function flattenMetrics(value, prefix = '', depth = 0, output = []) {
 function createStackCTRLIntelligenceService({ pool, azureOpenAI, refreshSource = null, logger = console } = {}) {
     if (!pool) throw new Error('StackCTRL Intelligence requires a database pool');
     if (!azureOpenAI) throw new Error('StackCTRL Intelligence requires Azure OpenAI');
+    let runMetadataWarningShown = false;
+
+    async function updateIntelligenceRun(executor, runId, runStatus, metadata = {}) {
+        const tokenUsage = metadata.tokenUsage || metadata.usage || null;
+        const inputTokens = toNullableNumber(tokenUsage?.input_tokens ?? tokenUsage?.inputTokens);
+        const outputTokens = toNullableNumber(tokenUsage?.output_tokens ?? tokenUsage?.outputTokens);
+        const totalTokens = toNullableNumber(tokenUsage?.total_tokens ?? tokenUsage?.totalTokens);
+        const errorMessage = metadata.errorMessage
+            ? String(metadata.errorMessage).slice(0, 5000)
+            : null;
+        try {
+            await executor.query(
+                `UPDATE StackCTRLIntelligenceRuns
+                 SET Status = ?,
+                     ModelName = COALESCE(?, ModelName),
+                     AzureDeployment = COALESCE(?, AzureDeployment),
+                     RequestSizeBytes = COALESCE(?, RequestSizeBytes),
+                     ResponseSizeBytes = COALESCE(?, ResponseSizeBytes),
+                     TokenUsageJson = COALESCE(?, TokenUsageJson),
+                     InputTokens = COALESCE(?, InputTokens),
+                     OutputTokens = COALESCE(?, OutputTokens),
+                     TotalTokens = COALESCE(?, TotalTokens),
+                     RetryCount = GREATEST(COALESCE(RetryCount, 0), ?),
+                     LastRetryAt = CASE WHEN ? = 'rate_limited' THEN NOW() ELSE LastRetryAt END,
+                     CompletedAt = CASE WHEN ? IN ('completed', 'failed') THEN NOW() ELSE CompletedAt END,
+                     ErrorMessage = CASE WHEN ? = 'failed' THEN ? ELSE ErrorMessage END
+                 WHERE ID = ?`,
+                [
+                    runStatus,
+                    metadata.model || null,
+                    metadata.deployment || null,
+                    toNullableNumber(metadata.requestSizeBytes),
+                    toNullableNumber(metadata.responseSizeBytes),
+                    tokenUsage ? JSON.stringify(tokenUsage) : null,
+                    inputTokens,
+                    outputTokens,
+                    totalTokens,
+                    Math.max(0, Number(metadata.retryCount) || 0),
+                    runStatus,
+                    runStatus,
+                    runStatus,
+                    errorMessage,
+                    runId
+                ]
+            );
+        } catch (error) {
+            if (error?.code !== 'ER_BAD_FIELD_ERROR') throw error;
+            if (!runMetadataWarningShown) {
+                runMetadataWarningShown = true;
+                logger.warn('[StackCTRL Intelligence] Run metadata columns are not installed yet; storing status only.');
+            }
+            if (runStatus === 'completed') {
+                await executor.query(
+                    `UPDATE StackCTRLIntelligenceRuns
+                     SET Status = 'completed', CompletedAt = NOW()
+                     WHERE ID = ?`,
+                    [runId]
+                );
+            } else if (runStatus === 'failed') {
+                await executor.query(
+                    `UPDATE StackCTRLIntelligenceRuns
+                     SET Status = 'failed', CompletedAt = NOW(), ErrorMessage = ?
+                     WHERE ID = ?`,
+                    [errorMessage, runId]
+                );
+            } else {
+                await executor.query('UPDATE StackCTRLIntelligenceRuns SET Status = ? WHERE ID = ?', [runStatus, runId]);
+            }
+        }
+    }
 
     async function buildTenantAIContext(companyId, options = {}) {
         const numericCompanyId = Number(companyId);
@@ -600,10 +670,11 @@ ${JSON.stringify(context)}`;
         const [runResult] = await pool.query(
             `INSERT INTO StackCTRLIntelligenceRuns
              (CompanyID, SnapshotID, Status, RequestedOutputTypes, CreatedByUserID, CreatedByEmail)
-             VALUES (?, ?, 'started', ?, ?, ?)`,
+             VALUES (?, ?, 'pending', ?, ?, ?)`,
             [companyId, snapshotId, JSON.stringify(requestedTypes), user.id || user.userId || null, user.email || null]
         );
         const runId = runResult.insertId;
+        let completionMetadata = {};
 
         try {
             const analysisContext = historicalContext || snapshot.ContextJson;
@@ -615,8 +686,17 @@ ${JSON.stringify(context)}`;
                 messages: [
                     { role: 'system', content: prompt.systemPrompt },
                     { role: 'user', content: prompt.userPrompt }
-                ]
+                ],
+                onStatusChange: status => updateIntelligenceRun(pool, runId, status.status, status)
             });
+            completionMetadata = {
+                model: completion.model || completion.deployment,
+                deployment: completion.deployment,
+                requestSizeBytes: completion.requestSizeBytes,
+                responseSizeBytes: completion.responseSizeBytes,
+                tokenUsage: completion.usage,
+                retryCount: completion.retryCount
+            };
             const analysis = completion.data && typeof completion.data === 'object' ? completion.data : {};
             const currentStackCTRLContext = analysisContext?.currentSnapshot?.context || analysisContext || {};
             analysis.overall_risk_score = toNullableNumber(
@@ -657,7 +737,7 @@ ${JSON.stringify(context)}`;
                             OUTPUT_TITLES[outputType],
                             summary,
                             JSON.stringify(content),
-                            completion.deployment,
+                            completion.model || completion.deployment,
                             completion.deployment,
                             prompt.promptVersion,
                             confidence,
@@ -733,12 +813,7 @@ ${JSON.stringify(context)}`;
                     }
                 }
 
-                await connection.query(
-                    `UPDATE StackCTRLIntelligenceRuns
-                     SET Status = 'completed', CompletedAt = NOW()
-                     WHERE ID = ?`,
-                    [runId]
-                );
+                await updateIntelligenceRun(connection, runId, 'completed', completionMetadata);
                 await connection.commit();
             } catch (error) {
                 await connection.rollback();
@@ -752,6 +827,8 @@ ${JSON.stringify(context)}`;
                 snapshotId: Number(snapshotId),
                 companyId: Number(companyId),
                 outputIds,
+                runStatus: 'completed',
+                retryCount: completion.retryCount || 0,
                 preview: {
                     executiveSummary: analysis.executive_summary?.summary || analysis.executive_summary?.executiveSummary || null,
                     overallRiskScore: toNullableNumber(analysis.overall_risk_score ?? analysis.powerbi_summary?.risk_score),
@@ -763,12 +840,11 @@ ${JSON.stringify(context)}`;
                 }
             };
         } catch (error) {
-            await pool.query(
-                `UPDATE StackCTRLIntelligenceRuns
-                 SET Status = 'failed', CompletedAt = NOW(), ErrorMessage = ?
-                 WHERE ID = ?`,
-                [String(error.message || 'Analysis failed').slice(0, 5000), runId]
-            ).catch(updateError => logger.error('[StackCTRL Intelligence] Failed to update run status:', updateError.message));
+            await updateIntelligenceRun(pool, runId, 'failed', {
+                ...completionMetadata,
+                ...(error.azureMetadata || {}),
+                errorMessage: error.message || 'Analysis failed'
+            }).catch(updateError => logger.error('[StackCTRL Intelligence] Failed to update run status:', updateError.message));
             throw error;
         }
     }

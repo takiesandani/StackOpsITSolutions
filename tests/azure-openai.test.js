@@ -4,6 +4,8 @@ const axios = require('axios');
 
 const {
     createAzureOpenAIService,
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_RETRY_DELAYS_MS,
     extractResponseText,
     getRetryDelayMs,
     normalizeV1Endpoint
@@ -90,6 +92,7 @@ test('waits for Azure Retry-After and retries a throttled request', async () => 
     const originalPost = axios.post;
     const delays = [];
     const warnings = [];
+    const statuses = [];
     let calls = 0;
     axios.post = async () => {
         calls += 1;
@@ -117,14 +120,22 @@ test('waits for Azure Retry-After and retries a throttled request', async () => 
             wait: async milliseconds => { delays.push(milliseconds); },
             logger: { warn(message, details) { warnings.push({ message, details }); }, error() {} }
         });
-        const result = await service.createJsonCompletion({ messages: [{ role: 'user', content: 'Analyse.' }] });
+        const result = await service.createJsonCompletion({
+            messages: [{ role: 'user', content: 'Analyse.' }],
+            onStatusChange: async status => { statuses.push(status); }
+        });
 
         assert.equal(calls, 2);
         assert.deepEqual(delays, [25]);
         assert.equal(warnings.length, 1);
         assert.equal(warnings[0].details.requestId, 'request-429');
         assert.equal(result.attempts, 2);
+        assert.equal(result.retryCount, 1);
+        assert.ok(result.requestSizeBytes > 0);
+        assert.ok(result.responseSizeBytes > 0);
         assert.deepEqual(result.data, { status: 'recovered' });
+        assert.deepEqual(statuses.map(status => status.status), ['processing', 'rate_limited', 'processing']);
+        assert.equal(statuses[1].retryCount, 1);
     } finally {
         axios.post = originalPost;
     }
@@ -149,7 +160,6 @@ test('stops retrying after the configured 429 retry budget', async () => {
         const service = createAzureOpenAIService({
             getSecret: async name => azureSecrets[name] || null,
             maxRetries: 2,
-            retryBaseMs: 100,
             retryMaxMs: 1000,
             wait: async milliseconds => { delays.push(milliseconds); },
             logger: { warn() {}, error() {} }
@@ -160,7 +170,7 @@ test('stops retrying after the configured 429 retry budget', async () => {
             /429.*after 3 attempt\(s\)/
         );
         assert.equal(calls, 3);
-        assert.deepEqual(delays, [100, 200]);
+        assert.deepEqual(delays, [1000, 1000]);
     } finally {
         axios.post = originalPost;
     }
@@ -170,4 +180,14 @@ test('parses Azure textual retry delays when headers are unavailable', () => {
     assert.equal(getRetryDelayMs({
         response: { data: { error: { message: 'Please retry after 12 seconds.' } } }
     }, 0), 12000);
+});
+
+test('uses the production fallback retry schedule', () => {
+    assert.equal(DEFAULT_MAX_RETRIES, 5);
+    assert.deepEqual(DEFAULT_RETRY_DELAYS_MS, [5000, 15000, 30000, 60000, 120000]);
+    assert.equal(getRetryDelayMs({}, 0), 5000);
+    assert.equal(getRetryDelayMs({}, 1), 15000);
+    assert.equal(getRetryDelayMs({}, 2), 30000);
+    assert.equal(getRetryDelayMs({}, 3), 60000);
+    assert.equal(getRetryDelayMs({}, 4), 120000);
 });

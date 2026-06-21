@@ -109,7 +109,8 @@ test('analyseSnapshot stores outputs and normalized Power BI rows in one transac
         }
     };
     const pool = {
-        async query(sql) {
+        async query(sql, params) {
+            writes.push({ sql, params });
             if (sql.includes('FROM StackCTRLTenantEvidenceSnapshots')) {
                 return [[{
                     ID: 4,
@@ -145,8 +146,25 @@ test('analyseSnapshot stores outputs and normalized Power BI rows in one transac
     const azureOpenAI = {
         async createJsonCompletion(options) {
             azureMessages = options.messages;
+            await options.onStatusChange({
+                status: 'processing', model: 'gpt-4.1-mini', deployment: 'gpt-4.1-mini',
+                requestSizeBytes: 1200, retryCount: 0
+            });
+            await options.onStatusChange({
+                status: 'rate_limited', model: 'gpt-4.1-mini', deployment: 'gpt-4.1-mini',
+                requestSizeBytes: 1200, retryCount: 1
+            });
+            await options.onStatusChange({
+                status: 'processing', model: 'gpt-4.1-mini', deployment: 'gpt-4.1-mini',
+                requestSizeBytes: 1200, retryCount: 1
+            });
             return {
                 deployment: 'stackctrl-production',
+                model: 'gpt-4.1-mini',
+                requestSizeBytes: 1200,
+                responseSizeBytes: 2400,
+                usage: { input_tokens: 900, output_tokens: 300, total_tokens: 1200 },
+                retryCount: 1,
                 data: {
                     executive_summary: { summary: 'Licence capacity remains available.' },
                     overall_risk_score: 18,
@@ -199,6 +217,8 @@ test('analyseSnapshot stores outputs and normalized Power BI rows in one transac
     });
 
     assert.equal(result.runId, 50);
+    assert.equal(result.runStatus, 'completed');
+    assert.equal(result.retryCount, 1);
     assert.equal(result.preview.risks, 1);
     assert.equal(result.preview.recommendations, 1);
     assert.equal(result.preview.trends, 1);
@@ -224,6 +244,19 @@ test('analyseSnapshot stores outputs and normalized Power BI rows in one transac
         writes.find(write => write.sql?.includes('StackCTRLTenantAIOutputs')).params[8],
         'tenant-v2'
     );
+    const runStatuses = writes
+        .filter(write => write.sql?.includes('UPDATE StackCTRLIntelligenceRuns') && typeof write.params?.[0] === 'string')
+        .map(write => write.params[0]);
+    assert.deepEqual(runStatuses, ['processing', 'rate_limited', 'processing', 'completed']);
+    const completedRunUpdate = writes.find(write =>
+        write.sql?.includes('UPDATE StackCTRLIntelligenceRuns') && write.params?.[0] === 'completed'
+    );
+    assert.equal(completedRunUpdate.params[1], 'gpt-4.1-mini');
+    assert.equal(completedRunUpdate.params[2], 'stackctrl-production');
+    assert.equal(completedRunUpdate.params[3], 1200);
+    assert.equal(completedRunUpdate.params[4], 2400);
+    assert.equal(completedRunUpdate.params[8], 1200);
+    assert.equal(completedRunUpdate.params[9], 1);
 });
 
 test('analyseSnapshot keeps the snapshot and marks the run failed when Azure fails', async () => {
@@ -256,8 +289,11 @@ test('analyseSnapshot keeps the snapshot and marks the run failed when Azure fai
         /503/
     );
 
-    const failureUpdate = queries.find(call => call.sql.includes("SET Status = 'failed'"));
+    const failureUpdate = queries.find(call =>
+        call.sql.includes('UPDATE StackCTRLIntelligenceRuns') &&
+        (call.sql.includes("SET Status = 'failed'") || call.params?.[0] === 'failed')
+    );
     assert.ok(failureUpdate);
-    assert.equal(failureUpdate.params[1], 60);
+    assert.equal(failureUpdate.params.at(-1), 60);
     assert.equal(queries.some(call => call.sql.includes('DELETE FROM StackCTRLTenantEvidenceSnapshots')), false);
 });

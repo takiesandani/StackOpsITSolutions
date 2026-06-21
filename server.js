@@ -10740,7 +10740,6 @@ async function refreshStackCTRLIntelligenceSource(sourceKey, companyId) {
 const azureOpenAIService = createAzureOpenAIService({
     getSecret,
     maxRetries: process.env.AZURE_OPENAI_MAX_RETRIES,
-    retryBaseMs: process.env.AZURE_OPENAI_RETRY_BASE_MS,
     retryMaxMs: process.env.AZURE_OPENAI_RETRY_MAX_MS
 });
 const stackCTRLIntelligenceService = createStackCTRLIntelligenceService({
