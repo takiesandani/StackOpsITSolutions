@@ -76,6 +76,32 @@ function createAdminIntelligenceRouter({ authenticateToken, adminIntelligenceSer
         }
     });
 
+    router.post('/tenant/:companyId/compact-context', async (req, res) => {
+        try {
+            const companyId = companyIdFrom(req, res);
+            if (!companyId) return;
+            const result = await adminIntelligenceService.buildCompactContext(companyId, req.body || {}, req.user);
+            res.status(201).json({ success: true, ...result });
+        } catch (error) {
+            sendError(res, error, 'Compact context creation failed');
+        }
+    });
+
+    router.post('/tenant/:companyId/period/:periodType', async (req, res) => {
+        try {
+            const companyId = companyIdFrom(req, res);
+            if (!companyId) return;
+            const periodType = String(req.params.periodType || '').toLowerCase();
+            if (!['daily', 'weekly', 'monthly', 'yearly'].includes(periodType)) {
+                return res.status(400).json({ success: false, message: 'Period type must be daily, weekly, monthly, or yearly' });
+            }
+            const result = await adminIntelligenceService.runPeriod(companyId, periodType, req.body || {}, req.user);
+            res.status(201).json({ success: true, ...result });
+        } catch (error) {
+            sendError(res, error, 'Period intelligence run failed');
+        }
+    });
+
     router.post('/tenant/:companyId/full-test', async (req, res) => {
         try {
             const companyId = companyIdFrom(req, res);

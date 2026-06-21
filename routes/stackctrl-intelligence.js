@@ -111,15 +111,81 @@ function createStackCTRLIntelligenceRouter({
             if (!Number.isInteger(snapshotId) || snapshotId <= 0) {
                 return res.status(400).json({ success: false, message: 'A valid snapshotId is required' });
             }
+            const analysisMode = String(req.body?.analysisMode || 'compact').toLowerCase();
+            if (analysisMode === 'full' && String(req.user?.role || '').toLowerCase() !== 'admin') {
+                return res.status(403).json({ success: false, message: 'Full snapshot analysis requires administrator access' });
+            }
+            const historicalContext = schedulerService
+                ? await schedulerService.getHistoricalSnapshotContext(companyId, snapshotId)
+                : null;
             const result = await intelligenceService.analyseSnapshot({
                 snapshotId,
                 companyId,
+                outputTypes: req.body?.outputTypes,
+                user: req.user,
+                historicalContext,
+                analysisMode
+            });
+            res.status(201).json({ success: true, ...result });
+        } catch (error) {
+            sendError(res, error, 'Analysis failed');
+        }
+    });
+
+    router.post('/compact-context', requireAdmin, async (req, res) => {
+        try {
+            if (!schedulerService) throw new Error('Intelligence scheduler is not configured');
+            const companyId = await resolveCompany(req);
+            const snapshotId = Number(req.body?.snapshotId);
+            if (!Number.isInteger(snapshotId) || snapshotId <= 0) {
+                return res.status(400).json({ success: false, message: 'A valid snapshotId is required' });
+            }
+            const historicalContext = await schedulerService.getHistoricalSnapshotContext(companyId, snapshotId);
+            const result = await intelligenceService.buildCompactContext({
+                companyId,
+                snapshotId,
+                periodType: req.body?.periodType || 'snapshot',
+                historicalContext
+            });
+            res.status(201).json({ success: true, ...result, compactContextJson: undefined });
+        } catch (error) {
+            sendError(res, error, 'Compact context creation failed');
+        }
+    });
+
+    router.post('/period/run-now', requireAdmin, async (req, res) => {
+        try {
+            if (!schedulerService) throw new Error('Intelligence scheduler is not configured');
+            const companyId = await resolveCompany(req);
+            const snapshotId = Number(req.body?.snapshotId);
+            if (!Number.isInteger(snapshotId) || snapshotId <= 0) {
+                return res.status(400).json({ success: false, message: 'A valid snapshotId is required' });
+            }
+            const historicalContext = await schedulerService.getHistoricalSnapshotContext(companyId, snapshotId);
+            const result = await intelligenceService.runPeriodIntelligence({
+                companyId,
+                snapshotId,
+                periodType: req.body?.periodType,
+                historicalContext,
                 outputTypes: req.body?.outputTypes,
                 user: req.user
             });
             res.status(201).json({ success: true, ...result });
         } catch (error) {
-            sendError(res, error, 'Analysis failed');
+            sendError(res, error, 'Period intelligence run failed');
+        }
+    });
+
+    router.get('/periods/:companyId', requireAdmin, async (req, res) => {
+        try {
+            const companyId = Number(req.params.companyId);
+            if (!Number.isInteger(companyId) || companyId <= 0) {
+                return res.status(400).json({ success: false, message: 'A valid companyId is required' });
+            }
+            const periods = await intelligenceService.getIntelligencePeriods(companyId, req.query?.limit);
+            res.json({ success: true, companyId, periods });
+        } catch (error) {
+            sendError(res, error, 'Period intelligence lookup failed');
         }
     });
 

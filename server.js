@@ -131,6 +131,7 @@ async function getMicrosoftGraphToken() {
         grant_type: 'client_credentials'
       }).toString()
     });
+    
 
     if (!response.ok) {
       const errorData = await response.json();

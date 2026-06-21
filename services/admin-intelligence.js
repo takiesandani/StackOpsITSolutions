@@ -14,7 +14,7 @@ function normalizeRow(row) {
     const normalized = { ...row };
     for (const key of [
         'RequestedOutputTypes', 'ContentJson', 'TokenUsageJson', 'ConfigurationJson',
-        'WarningsJson', 'MetricsJson', 'SourceFreshnessJson'
+        'WarningsJson', 'MetricsJson', 'SourceFreshnessJson', 'CompactContextJson'
     ]) {
         if (Object.prototype.hasOwnProperty.call(normalized, key)) {
             normalized[key] = parseJson(normalized[key], normalized[key]);
@@ -193,10 +193,12 @@ function createAdminIntelligenceService({
             'StackCTRLTenantRecommendations',
             'StackCTRLTenantTrendAnalysis',
             'StackCTRLIntelligenceMetrics',
-            'StackCTRLIntelligenceSourceStatus'
+            'StackCTRLIntelligenceSourceStatus',
+            'StackCTRLCompactIntelligenceContexts',
+            'StackCTRLIntelligencePeriods'
         ];
 
-        const [sourceRows, runRows, outputRows, riskRows, recommendationRows, trendRows, capabilityRows, readiness] = await Promise.all([
+        const [sourceRows, runRows, outputRows, riskRows, recommendationRows, trendRows, capabilityRows, compactRows, periodRows, readiness] = await Promise.all([
             snapshotId
                 ? pool.query('SELECT * FROM StackCTRLIntelligenceSourceStatus WHERE SnapshotID = ? ORDER BY SourceKey', [snapshotId])
                 : Promise.resolve([[]]),
@@ -206,6 +208,25 @@ function createAdminIntelligenceService({
             pool.query('SELECT * FROM StackCTRLTenantRecommendations WHERE CompanyID = ? ORDER BY ID DESC LIMIT 20', [numericCompanyId]),
             pool.query('SELECT * FROM StackCTRLTenantTrendAnalysis WHERE CompanyID = ? ORDER BY ID DESC LIMIT 20', [numericCompanyId]),
             pool.query('SELECT * FROM StackCTRLClientCapabilities WHERE CompanyID = ?', [numericCompanyId]),
+            snapshotId
+                ? pool.query(
+                    `SELECT ID, CompanyID, SnapshotID, PeriodType, PeriodStart, PeriodEnd,
+                            CompactContextSizeBytes, EvidenceIncludedCount, EvidenceOmittedCount, CreatedAt,
+                            JSON_UNQUOTE(JSON_EXTRACT(CompactContextJson, '$.historicalComparisons.periods.previous.availability')) AS PreviousAvailability,
+                            JSON_UNQUOTE(JSON_EXTRACT(CompactContextJson, '$.historicalComparisons.periods.24_hours.availability')) AS Hours24Availability,
+                            JSON_UNQUOTE(JSON_EXTRACT(CompactContextJson, '$.historicalComparisons.periods.7_days.availability')) AS Days7Availability,
+                            JSON_UNQUOTE(JSON_EXTRACT(CompactContextJson, '$.historicalComparisons.periods.30_days.availability')) AS Days30Availability,
+                            JSON_UNQUOTE(JSON_EXTRACT(CompactContextJson, '$.historicalComparisons.periods.90_days.availability')) AS Days90Availability
+                     FROM StackCTRLCompactIntelligenceContexts
+                     WHERE CompanyID = ? AND SnapshotID = ? ORDER BY ID DESC LIMIT 20`,
+                    [numericCompanyId, snapshotId]
+                )
+                : Promise.resolve([[]]),
+            pool.query(
+                `SELECT * FROM StackCTRLIntelligencePeriods
+                 WHERE CompanyID = ? ORDER BY PeriodStart DESC, ID DESC LIMIT 100`,
+                [numericCompanyId]
+            ),
             Promise.all(readinessTables.map(table => readinessRow(table, numericCompanyId)))
         ]);
         const sources = sourceRows[0].map(normalizeRow);
@@ -233,6 +254,18 @@ function createAdminIntelligenceService({
             risks: riskRows[0].map(normalizeRow),
             recommendations: recommendationRows[0].map(normalizeRow),
             trends: trendRows[0].map(normalizeRow),
+            compactContexts: compactRows[0].map(row => {
+                const normalized = normalizeRow(row);
+                const fullSize = Number(snapshot?.ContextSizeBytes || 0);
+                return {
+                    ...normalized,
+                    FullContextSizeBytes: fullSize,
+                    ReductionPercentage: fullSize
+                        ? Number((100 - ((Number(normalized.CompactContextSizeBytes || 0) / fullSize) * 100)).toFixed(2))
+                        : null
+                };
+            }),
+            periods: periodRows[0].map(normalizeRow),
             powerBIReadiness: readiness
         };
     }
@@ -242,16 +275,57 @@ function createAdminIntelligenceService({
         return intelligenceService.bootstrap({ companyId: Number(companyId), user });
     }
 
-    async function runAnalysis(companyId, options, user) {
-        auditAction('run_analysis', companyId, user);
-        let snapshotId = Number(options?.snapshotId || 0);
+    async function latestSnapshotId(companyId, requestedSnapshotId = null) {
+        let snapshotId = Number(requestedSnapshotId || 0);
+        if (snapshotId) return snapshotId;
+        const [rows] = await pool.query(
+            'SELECT MAX(ID) AS SnapshotID FROM StackCTRLTenantEvidenceSnapshots WHERE CompanyID = ?',
+            [Number(companyId)]
+        );
+        return Number(rows[0]?.SnapshotID || 0);
+    }
+
+    function summarizeHistoricalContext(context) {
+        return Object.fromEntries(Object.entries(context?.comparisons || {}).map(([key, value]) => [key, {
+            availability: value.availability,
+            snapshotId: value.snapshot?.snapshotId || null,
+            targetAt: value.targetAt,
+            differenceMinutes: value.differenceMinutes
+        }]));
+    }
+
+    async function buildCompactContext(companyId, options, user) {
+        auditAction('build_compact_context', companyId, user);
+        const snapshotId = await latestSnapshotId(companyId, options?.snapshotId);
         if (!snapshotId) {
-            const [rows] = await pool.query(
-                'SELECT MAX(ID) AS SnapshotID FROM StackCTRLTenantEvidenceSnapshots WHERE CompanyID = ?',
-                [Number(companyId)]
-            );
-            snapshotId = Number(rows[0]?.SnapshotID || 0);
+            const error = new Error('Create a snapshot before building a compact context');
+            error.statusCode = 400;
+            throw error;
         }
+        const historicalContext = await schedulerService.getHistoricalSnapshotContext(Number(companyId), snapshotId);
+        const compact = await intelligenceService.buildCompactContext({
+            companyId: Number(companyId),
+            snapshotId,
+            periodType: options?.periodType || 'snapshot',
+            historicalContext
+        });
+        return {
+            compactContextId: compact.compactContextId,
+            snapshotId,
+            periodType: compact.periodType,
+            fullContextSizeBytes: compact.fullContextSizeBytes,
+            compactContextSizeBytes: compact.compactContextSizeBytes,
+            reductionPercentage: compact.reductionPercentage,
+            evidenceIncludedCount: compact.evidenceIncludedCount,
+            evidenceOmittedCount: compact.evidenceOmittedCount,
+            historicalAvailability: compact.historicalAvailability
+        };
+    }
+
+    async function runAnalysis(companyId, options, user) {
+        const analysisMode = String(options?.analysisMode || 'compact').toLowerCase();
+        auditAction(`run_${analysisMode}_analysis`, companyId, user);
+        const snapshotId = await latestSnapshotId(companyId, options?.snapshotId);
         if (!snapshotId) {
             const error = new Error('Create a snapshot before running Azure analysis');
             error.statusCode = 400;
@@ -260,7 +334,32 @@ function createAdminIntelligenceService({
         const outputTypes = Array.isArray(options?.outputTypes) && options.outputTypes.length
             ? options.outputTypes
             : defaultOutputTypes;
-        return schedulerService.runScheduledAzureAnalysis(Number(companyId), snapshotId, outputTypes, user);
+        if (analysisMode === 'compact') {
+            const scheduledResult = await schedulerService.runScheduledAzureAnalysis(
+                Number(companyId),
+                snapshotId,
+                outputTypes,
+                user
+            );
+            const { historicalContext, ...result } = scheduledResult;
+            return {
+                ...result,
+                historicalAvailability: summarizeHistoricalContext(historicalContext)
+            };
+        }
+        const historicalContext = await schedulerService.getHistoricalSnapshotContext(Number(companyId), snapshotId);
+        const result = await intelligenceService.analyseSnapshot({
+            companyId: Number(companyId),
+            snapshotId,
+            outputTypes,
+            user,
+            historicalContext,
+            analysisMode
+        });
+        return {
+            ...result,
+            historicalAvailability: summarizeHistoricalContext(historicalContext)
+        };
     }
 
     async function runFullTest(companyId, options, user) {
@@ -275,7 +374,35 @@ function createAdminIntelligenceService({
         });
     }
 
-    return { getSystemStatus, getTenants, getTenant, createSnapshot, runAnalysis, runFullTest };
+    async function runPeriod(companyId, periodType, options, user) {
+        auditAction(`run_${periodType}_intelligence`, companyId, user);
+        const snapshotId = await latestSnapshotId(companyId, options?.snapshotId);
+        if (!snapshotId) {
+            const error = new Error('Create a snapshot before running period intelligence');
+            error.statusCode = 400;
+            throw error;
+        }
+        const historicalContext = await schedulerService.getHistoricalSnapshotContext(Number(companyId), snapshotId);
+        return intelligenceService.runPeriodIntelligence({
+            companyId: Number(companyId),
+            snapshotId,
+            periodType,
+            historicalContext,
+            outputTypes: options?.outputTypes,
+            user
+        });
+    }
+
+    return {
+        getSystemStatus,
+        getTenants,
+        getTenant,
+        createSnapshot,
+        buildCompactContext,
+        runAnalysis,
+        runFullTest,
+        runPeriod
+    };
 }
 
 module.exports = { createAdminIntelligenceService };

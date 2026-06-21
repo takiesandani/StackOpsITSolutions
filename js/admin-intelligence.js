@@ -5,7 +5,8 @@
         tenants: [],
         tenant: null,
         selectedCompanyId: Number(localStorage.getItem('stackctrlAdminIntelligenceCompanyId') || 0),
-        actionRunning: false
+        actionRunning: false,
+        lastAction: null
     };
 
     const outputTypes = [
@@ -221,6 +222,37 @@
         `).join('');
     }
 
+    function renderPayloadComparison() {
+        const compact = state.tenant?.compactContexts?.[0];
+        const snapshot = state.tenant?.latestSnapshot;
+        const badge = el('payload-mode-badge');
+        if (!compact || !snapshot) {
+            badge.className = 'status-badge status-muted';
+            badge.textContent = 'No compact context';
+            el('payload-comparison').innerHTML = '<div class="empty-state">Build a compact context to compare payload size and historical coverage.</div>';
+            return;
+        }
+        badge.className = 'status-badge status-available';
+        badge.textContent = `${compact.PeriodType || 'snapshot'} compact`;
+        const historical = [
+            ['Previous', compact.PreviousAvailability],
+            ['24h', compact.Hours24Availability],
+            ['7d', compact.Days7Availability],
+            ['30d', compact.Days30Availability],
+            ['90d', compact.Days90Availability]
+        ];
+        const historyHtml = historical.map(([label, availability]) =>
+            `<span class="history-pill ${availability === 'available' ? 'available' : ''}">${escapeHtml(label)} · ${escapeHtml(availability || 'unavailable')}</span>`
+        ).join('');
+        el('payload-comparison').innerHTML = `
+            <div class="payload-stat"><span>Full snapshot</span><strong>${bytes(compact.FullContextSizeBytes)}</strong><small>Retained permanently by StackCTRL</small></div>
+            <div class="payload-stat"><span>Compact Azure package</span><strong>${bytes(compact.CompactContextSizeBytes)}</strong><small>Processed metrics and ranked evidence</small></div>
+            <div class="payload-stat is-reduction"><span>Payload reduction</span><strong>${compact.ReductionPercentage == null ? '—' : `${Number(compact.ReductionPercentage).toFixed(1)}%`}</strong><small>Raw vendor lists remain outside Azure</small></div>
+            <div class="payload-stat"><span>Evidence selection</span><strong>${number(compact.EvidenceIncludedCount)} in</strong><small>${number(compact.EvidenceOmittedCount)} aggregated or omitted</small></div>
+            <div class="payload-stat"><span>Historical coverage</span><div class="history-coverage">${historyHtml}</div><small>Every available horizon is included as compact deltas</small></div>
+        `;
+    }
+
     function renderSources() {
         const sources = state.tenant?.sourceStatuses || [];
         el('source-health-summary').textContent = sources.length ? `${sources.length} source adapters recorded` : '';
@@ -258,6 +290,51 @@
                 <td class="cell-error" title="${escapeHtml(run.ErrorMessage || '')}">${escapeHtml(run.ErrorMessage || '—')}</td>
             </tr>`;
         }).join('') : '<tr><td colspan="14" class="empty-cell">No Azure analysis runs are stored for this tenant.</td></tr>';
+    }
+
+    function renderPeriods() {
+        const periods = state.tenant?.periods || [];
+        el('period-history-body').innerHTML = periods.length ? periods.map(period => `
+            <tr>
+                <td><strong>${escapeHtml(period.PeriodType || '—')}</strong><br><small>#${number(period.ID)}</small></td>
+                <td>${escapeHtml(new Date(period.PeriodStart).toLocaleDateString())}<br><small>to ${escapeHtml(new Date(period.PeriodEnd).toLocaleDateString())}</small></td>
+                <td>${statusBadge(period.Status)}</td>
+                <td>${period.RiskScore == null ? '—' : Number(period.RiskScore).toFixed(1)}<br><small>${escapeHtml(period.RiskLevel || '—')}</small></td>
+                <td>${period.MaturityScore == null ? '—' : Number(period.MaturityScore).toFixed(1)}</td>
+                <td>${period.IdentityHealth == null ? '—' : Number(period.IdentityHealth).toFixed(1)}</td>
+                <td>${period.DeviceHealth == null ? '—' : Number(period.DeviceHealth).toFixed(1)}</td>
+                <td>${period.EmailHealth == null ? '—' : Number(period.EmailHealth).toFixed(1)}</td>
+                <td>${period.GovernanceHealth == null ? '—' : Number(period.GovernanceHealth).toFixed(1)}</td>
+                <td>${period.ComplianceHealth == null ? '—' : Number(period.ComplianceHealth).toFixed(1)}</td>
+                <td>${escapeHtml(period.TopRisk || '—')}</td>
+                <td>${escapeHtml(period.TopRecommendation || '—')}</td>
+            </tr>
+        `).join('') : '<tr><td colspan="12" class="empty-cell">No daily, weekly, monthly, or yearly intelligence rows have been generated.</td></tr>';
+    }
+
+    function summaryText(content) {
+        if (!content) return null;
+        if (typeof content === 'string') return content;
+        return content.summary || content.executiveSummary || content.overview || content.reportSummary || content.narrative || null;
+    }
+
+    function renderLatestSummary() {
+        const outputs = state.tenant?.outputs || [];
+        const latestOf = type => outputs.find(output => output.OutputType === type);
+        const executive = latestOf('executive_summary');
+        const board = latestOf('board_report');
+        const powerbi = latestOf('powerbi_summary')?.ContentJson || {};
+        const period = state.tenant?.periods?.find(item => item.Status === 'completed');
+        if (!executive && !board && !period) {
+            el('latest-intelligence-summary').innerHTML = '<div class="empty-state">Run compact analysis to populate the latest intelligence summary.</div>';
+            return;
+        }
+        el('latest-intelligence-summary').innerHTML = `
+            <article class="intelligence-summary-card"><span>Executive summary</span><p>${escapeHtml(summaryText(executive?.ContentJson) || period?.ExecutiveSummary || 'No executive narrative was returned.')}</p><small>${escapeHtml(shortDateTime(executive?.CreatedAt || period?.CreatedAt))}</small></article>
+            <article class="intelligence-summary-card"><span>Risk posture</span><strong>${escapeHtml(powerbi.risk_score ?? period?.RiskScore ?? '—')}</strong><p>${escapeHtml(powerbi.risk_level || period?.RiskLevel || 'Risk level unavailable')}</p></article>
+            <article class="intelligence-summary-card"><span>Top risk</span><p>${escapeHtml(period?.TopRisk || state.tenant?.risks?.[0]?.RiskTitle || 'No material risk stored.')}</p><small>${escapeHtml(state.tenant?.risks?.[0]?.Domain || 'General')}</small></article>
+            <article class="intelligence-summary-card"><span>Board view</span><p>${escapeHtml(summaryText(board?.ContentJson) || 'Board report summary becomes available after a weekly, yearly, or full output run.')}</p><small>${escapeHtml(shortDateTime(board?.CreatedAt))}</small></article>
+        `;
     }
 
     function renderOutputs() {
@@ -302,11 +379,14 @@
         renderTenantIdentity();
         renderBridge();
         renderSnapshot();
+        renderPayloadComparison();
         renderSources();
         renderRuns();
+        renderPeriods();
         renderOutputs();
         renderReadiness();
         renderPreviews();
+        renderLatestSummary();
     }
 
     async function loadTenant() {
@@ -337,7 +417,10 @@
     async function runAction(button, label, path, body = {}) {
         if (state.actionRunning || !state.selectedCompanyId) return;
         state.actionRunning = true;
-        const buttons = ['create-snapshot', 'run-analysis', 'run-full-test'].map(el).filter(Boolean);
+        const buttons = [
+            'create-snapshot', 'build-compact-context', 'run-analysis',
+            'run-full-snapshot-analysis', 'run-full-test'
+        ].map(el).filter(Boolean).concat(Array.from(document.querySelectorAll('[data-period-run]')));
         buttons.forEach(item => { item.disabled = true; });
         button.querySelector('.control-icon i')?.classList.add('is-spinning');
         const status = el('action-status');
@@ -345,8 +428,11 @@
         status.textContent = `${label} is running. Azure rate-limit retries can keep this request open for several minutes.`;
         try {
             const result = await api(path, { method: 'POST', body: JSON.stringify(body) });
+            state.lastAction = result;
             status.className = 'action-status is-success';
-            status.textContent = `${label} completed successfully${result.snapshotId ? ` · Snapshot #${result.snapshotId}` : ''}.`;
+            const completedSnapshotId = result.snapshotId || result.analysis?.snapshotId || result.period?.SnapshotID;
+            const payload = result.payloadComparison || result.compactContext;
+            status.textContent = `${label} completed successfully${completedSnapshotId ? ` · Snapshot #${completedSnapshotId}` : ''}${payload?.compactContextSizeBytes ? ` · Azure package ${bytes(payload.compactContextSizeBytes)}` : ''}.`;
             toast(`${label} completed.`);
             state.system = (await api('/api/admin/intelligence/status'));
             renderSystem();
@@ -385,11 +471,27 @@
         });
         el('refresh-control-center').addEventListener('click', () => loadAll().catch(error => toast(error.message, 'error')));
         el('create-snapshot').addEventListener('click', event => runAction(event.currentTarget, 'Snapshot creation', `/api/admin/intelligence/tenant/${state.selectedCompanyId}/snapshot`));
-        el('run-analysis').addEventListener('click', event => runAction(event.currentTarget, 'Azure analysis', `/api/admin/intelligence/tenant/${state.selectedCompanyId}/analyze`, {
+        el('build-compact-context').addEventListener('click', event => runAction(event.currentTarget, 'Compact context build', `/api/admin/intelligence/tenant/${state.selectedCompanyId}/compact-context`, {
             snapshotId: state.tenant?.latestSnapshot?.ID,
+            periodType: 'snapshot'
+        }));
+        el('run-analysis').addEventListener('click', event => runAction(event.currentTarget, 'Compact Azure analysis', `/api/admin/intelligence/tenant/${state.selectedCompanyId}/analyze`, {
+            snapshotId: state.tenant?.latestSnapshot?.ID,
+            analysisMode: 'compact',
             outputTypes
         }));
-        el('run-full-test').addEventListener('click', event => runAction(event.currentTarget, 'Full intelligence test', `/api/admin/intelligence/tenant/${state.selectedCompanyId}/full-test`, { includeAnalysis: true, outputTypes }));
+        el('run-full-snapshot-analysis').addEventListener('click', event => runAction(event.currentTarget, 'Full snapshot Azure analysis', `/api/admin/intelligence/tenant/${state.selectedCompanyId}/analyze`, {
+            snapshotId: state.tenant?.latestSnapshot?.ID,
+            analysisMode: 'full',
+            outputTypes
+        }));
+        el('run-full-test').addEventListener('click', event => runAction(event.currentTarget, 'Full bridge test', `/api/admin/intelligence/tenant/${state.selectedCompanyId}/full-test`, { includeAnalysis: true, outputTypes }));
+        document.querySelectorAll('[data-period-run]').forEach(button => button.addEventListener('click', event => {
+            const periodType = event.currentTarget.dataset.periodRun;
+            runAction(event.currentTarget, `${periodType.charAt(0).toUpperCase()}${periodType.slice(1)} intelligence`, `/api/admin/intelligence/tenant/${state.selectedCompanyId}/period/${periodType}`, {
+                snapshotId: state.tenant?.latestSnapshot?.ID
+            });
+        }));
         el('ai-output-list').addEventListener('click', event => {
             const button = event.target.closest('[data-output-index]');
             if (button) openOutput(Number(button.dataset.outputIndex));

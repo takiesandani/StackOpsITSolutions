@@ -89,11 +89,24 @@
                     <div class="panel-heading"><div><span class="section-index">03</span><div><h2>Snapshot controls</h2><p>Actions are logged against your admin account</p></div></div></div>
                     <div class="control-stack">
                         <button class="control-action" id="create-snapshot" type="button"><span class="control-icon"><i class="fas fa-camera"></i></span><span><strong>Create snapshot</strong><small>Refresh sources and freeze evidence</small></span><i class="fas fa-arrow-right"></i></button>
-                        <button class="control-action" id="run-analysis" type="button"><span class="control-icon"><i class="fas fa-wand-magic-sparkles"></i></span><span><strong>Run Azure analysis</strong><small>Analyse the latest frozen snapshot</small></span><i class="fas fa-arrow-right"></i></button>
-                        <button class="control-action primary" id="run-full-test" type="button"><span class="control-icon"><i class="fas fa-flask-vial"></i></span><span><strong>Run full intelligence test</strong><small>Collect → snapshot → analyse → store</small></span><i class="fas fa-play"></i></button>
+                        <button class="control-action" id="build-compact-context" type="button"><span class="control-icon"><i class="fas fa-compress"></i></span><span><strong>Build compact context</strong><small>Rank evidence and preserve historical comparisons</small></span><i class="fas fa-arrow-right"></i></button>
+                        <button class="control-action primary" id="run-analysis" type="button"><span class="control-icon"><i class="fas fa-wand-magic-sparkles"></i></span><span><strong>Run compact Azure test</strong><small>Default 250–500 KB report-ready package</small></span><i class="fas fa-play"></i></button>
+                        <button class="control-action caution" id="run-full-snapshot-analysis" type="button"><span class="control-icon"><i class="fas fa-database"></i></span><span><strong>Run full snapshot Azure test</strong><small>Admin-only diagnostic using full frozen history</small></span><i class="fas fa-arrow-right"></i></button>
+                        <button class="control-action" id="run-full-test" type="button"><span class="control-icon"><i class="fas fa-flask-vial"></i></span><span><strong>Run full bridge test</strong><small>Collect → snapshot → compact analyse → store</small></span><i class="fas fa-arrow-right"></i></button>
+                    </div>
+                    <div class="period-action-grid" aria-label="Period intelligence tests">
+                        <button type="button" data-period-run="daily"><i class="fas fa-sun"></i><span>Daily batch</span></button>
+                        <button type="button" data-period-run="weekly"><i class="fas fa-calendar-week"></i><span>Weekly report</span></button>
+                        <button type="button" data-period-run="monthly"><i class="fas fa-calendar-days"></i><span>Monthly report</span></button>
+                        <button type="button" data-period-run="yearly"><i class="fas fa-chart-line"></i><span>Yearly report</span></button>
                     </div>
                     <div class="action-status" id="action-status" aria-live="polite">Ready for an admin action.</div>
                 </article>
+            </section>
+
+            <section class="glass-panel payload-panel">
+                <div class="panel-heading"><div><span class="section-index">04</span><div><h2>Azure payload preview</h2><p>What stays in StackCTRL and what the selected Azure mode receives</p></div></div><span id="payload-mode-badge" class="status-badge status-muted">No compact context</span></div>
+                <div id="payload-comparison" class="payload-comparison"><div class="empty-state">Build a compact context to compare payload size and historical coverage.</div></div>
             </section>
 
             <section class="metrics-strip" id="azure-usage-metrics" aria-label="Azure usage today"></section>
@@ -111,6 +124,16 @@
             <section class="glass-panel table-panel">
                 <div class="panel-heading"><div><span class="section-index">06</span><div><h2>Azure run history</h2><p>Lifecycle, throttling, payload size, and token telemetry</p></div></div><span class="table-hint">Latest 50 runs</span></div>
                 <div class="responsive-table wide-table"><table><thead><tr><th>Run</th><th>Snapshot</th><th>Status</th><th>Outputs</th><th>Started</th><th>Completed</th><th>Retries</th><th>Request</th><th>Response</th><th>Tokens in</th><th>Tokens out</th><th>Total</th><th>Model / deployment</th><th>Error</th></tr></thead><tbody id="run-history-body"><tr><td colspan="14" class="empty-cell">No run history loaded.</td></tr></tbody></table></div>
+            </section>
+
+            <section class="glass-panel table-panel">
+                <div class="panel-heading"><div><span class="section-index">07</span><div><h2>Period intelligence</h2><p>Clean daily, weekly, monthly, and yearly rows for Power BI</p></div></div><span class="table-hint">Latest 100 periods</span></div>
+                <div class="responsive-table wide-table"><table><thead><tr><th>Period</th><th>Window</th><th>Status</th><th>Risk</th><th>Maturity</th><th>Identity</th><th>Devices</th><th>Email</th><th>Governance</th><th>Compliance</th><th>Top risk</th><th>Top recommendation</th></tr></thead><tbody id="period-history-body"><tr><td colspan="12" class="empty-cell">No period intelligence rows loaded.</td></tr></tbody></table></div>
+            </section>
+
+            <section class="glass-panel intelligence-summary-panel">
+                <div class="panel-heading"><div><span class="section-index">08</span><div><h2>Latest summarized intelligence</h2><p>Executive and board-ready information stored by StackCTRL</p></div></div></div>
+                <div id="latest-intelligence-summary" class="latest-intelligence-summary"><div class="empty-state">Run compact analysis to populate the latest intelligence summary.</div></div>
             </section>
 
             <section class="content-grid">
