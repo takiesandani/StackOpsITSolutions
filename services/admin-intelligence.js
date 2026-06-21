@@ -94,9 +94,9 @@ function createAdminIntelligenceService({
     async function getSystemStatus() {
         const [azure, latestCompleted, latestFailed, latestRun, usage] = await Promise.all([
             azureOpenAI.getSafeConfiguration(),
-            pool.query(`SELECT * FROM StackCTRLIntelligenceRuns WHERE Status = 'completed' ORDER BY ID DESC LIMIT 1`),
-            pool.query(`SELECT * FROM StackCTRLIntelligenceRuns WHERE Status = 'failed' ORDER BY ID DESC LIMIT 1`),
-            pool.query('SELECT * FROM StackCTRLIntelligenceRuns ORDER BY ID DESC LIMIT 1'),
+            pool.query(`SELECT * FROM StackCTRLIntelligenceRuns FORCE INDEX (PRIMARY) WHERE Status = 'completed' ORDER BY ID DESC LIMIT 1`),
+            pool.query(`SELECT * FROM StackCTRLIntelligenceRuns FORCE INDEX (PRIMARY) WHERE Status = 'failed' ORDER BY ID DESC LIMIT 1`),
+            pool.query('SELECT * FROM StackCTRLIntelligenceRuns FORCE INDEX (PRIMARY) ORDER BY ID DESC LIMIT 1'),
             getRunMetrics()
         ]);
         return {
@@ -202,11 +202,11 @@ function createAdminIntelligenceService({
             snapshotId
                 ? pool.query('SELECT * FROM StackCTRLIntelligenceSourceStatus WHERE SnapshotID = ? ORDER BY SourceKey', [snapshotId])
                 : Promise.resolve([[]]),
-            pool.query('SELECT * FROM StackCTRLIntelligenceRuns WHERE CompanyID = ? ORDER BY ID DESC LIMIT 50', [numericCompanyId]),
-            pool.query('SELECT * FROM StackCTRLTenantAIOutputs WHERE CompanyID = ? ORDER BY ID DESC LIMIT 50', [numericCompanyId]),
-            pool.query('SELECT * FROM StackCTRLTenantRiskRegister WHERE CompanyID = ? ORDER BY ID DESC LIMIT 20', [numericCompanyId]),
-            pool.query('SELECT * FROM StackCTRLTenantRecommendations WHERE CompanyID = ? ORDER BY ID DESC LIMIT 20', [numericCompanyId]),
-            pool.query('SELECT * FROM StackCTRLTenantTrendAnalysis WHERE CompanyID = ? ORDER BY ID DESC LIMIT 20', [numericCompanyId]),
+            pool.query('SELECT * FROM StackCTRLIntelligenceRuns FORCE INDEX (PRIMARY) WHERE CompanyID = ? ORDER BY ID DESC LIMIT 50', [numericCompanyId]),
+            pool.query('SELECT * FROM StackCTRLTenantAIOutputs FORCE INDEX (PRIMARY) WHERE CompanyID = ? ORDER BY ID DESC LIMIT 50', [numericCompanyId]),
+            pool.query('SELECT * FROM StackCTRLTenantRiskRegister FORCE INDEX (PRIMARY) WHERE CompanyID = ? ORDER BY ID DESC LIMIT 20', [numericCompanyId]),
+            pool.query('SELECT * FROM StackCTRLTenantRecommendations FORCE INDEX (PRIMARY) WHERE CompanyID = ? ORDER BY ID DESC LIMIT 20', [numericCompanyId]),
+            pool.query('SELECT * FROM StackCTRLTenantTrendAnalysis FORCE INDEX (PRIMARY) WHERE CompanyID = ? ORDER BY ID DESC LIMIT 20', [numericCompanyId]),
             pool.query('SELECT * FROM StackCTRLClientCapabilities WHERE CompanyID = ?', [numericCompanyId]),
             snapshotId
                 ? pool.query(
@@ -217,14 +217,14 @@ function createAdminIntelligenceService({
                             JSON_UNQUOTE(JSON_EXTRACT(CompactContextJson, '$.historicalComparisons.periods.7_days.availability')) AS Days7Availability,
                             JSON_UNQUOTE(JSON_EXTRACT(CompactContextJson, '$.historicalComparisons.periods.30_days.availability')) AS Days30Availability,
                             JSON_UNQUOTE(JSON_EXTRACT(CompactContextJson, '$.historicalComparisons.periods.90_days.availability')) AS Days90Availability
-                     FROM StackCTRLCompactIntelligenceContexts
+                     FROM StackCTRLCompactIntelligenceContexts FORCE INDEX (PRIMARY)
                      WHERE CompanyID = ? AND SnapshotID = ? ORDER BY ID DESC LIMIT 20`,
                     [numericCompanyId, snapshotId]
                 )
                 : Promise.resolve([[]]),
             pool.query(
-                `SELECT * FROM StackCTRLIntelligencePeriods
-                 WHERE CompanyID = ? ORDER BY PeriodStart DESC, ID DESC LIMIT 100`,
+                `SELECT * FROM StackCTRLIntelligencePeriods FORCE INDEX (PRIMARY)
+                 WHERE CompanyID = ? ORDER BY ID DESC LIMIT 100`,
                 [numericCompanyId]
             ),
             Promise.all(readinessTables.map(table => readinessRow(table, numericCompanyId)))

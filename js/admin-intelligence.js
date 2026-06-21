@@ -434,9 +434,14 @@
             const payload = result.payloadComparison || result.compactContext;
             status.textContent = `${label} completed successfully${completedSnapshotId ? ` · Snapshot #${completedSnapshotId}` : ''}${payload?.compactContextSizeBytes ? ` · Azure package ${bytes(payload.compactContextSizeBytes)}` : ''}.`;
             toast(`${label} completed.`);
-            state.system = (await api('/api/admin/intelligence/status'));
-            renderSystem();
-            await loadTenant();
+            try {
+                state.system = (await api('/api/admin/intelligence/status'));
+                renderSystem();
+                await loadTenant();
+            } catch (refreshError) {
+                status.textContent += ` Dashboard refresh warning: ${refreshError.message}`;
+                toast(`Action completed, but dashboard refresh failed: ${refreshError.message}`, 'error');
+            }
         } catch (error) {
             status.className = 'action-status is-error';
             status.textContent = `${label} failed: ${error.message}`;
