@@ -26,6 +26,8 @@ const { createStackCTRLServerAutomation } = require('./services/intelligence/ser
 const { createAdminIntelligenceService } = require('./services/admin-intelligence');
 const { createStackCTRLIntelligenceRouter } = require('./routes/stackctrl-intelligence');
 const { createAdminIntelligenceRouter } = require('./routes/admin-intelligence');
+const { createPowerBIReportingService } = require('./services/powerbi-reporting');
+const { createPowerBIReportingRouter } = require('./routes/powerbi-reporting');
 
 // invoice payment endpoints 
 require("dotenv").config();
@@ -10768,6 +10770,10 @@ const adminIntelligenceService = createAdminIntelligenceService({
     automationService: stackCTRLIntelligenceAutomation,
     defaultOutputTypes: DEFAULT_OUTPUT_TYPES
 });
+const powerBIReportingService = createPowerBIReportingService({
+    pool,
+    getSecret
+});
 
 app.use('/api/stackctrl/intelligence', createStackCTRLIntelligenceRouter({
     authenticateToken,
@@ -10779,6 +10785,9 @@ app.use('/api/stackctrl/intelligence', createStackCTRLIntelligenceRouter({
 app.use('/api/admin/intelligence', createAdminIntelligenceRouter({
     authenticateToken,
     adminIntelligenceService
+}));
+app.use('/api/powerbi', createPowerBIReportingRouter({
+    reportingService: powerBIReportingService
 }));
 app.get('/admin/intelligence', (_req, res) => {
     res.set('Cache-Control', 'no-store');
