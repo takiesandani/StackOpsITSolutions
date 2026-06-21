@@ -45,6 +45,15 @@ function createAdminIntelligenceService({
         });
     }
 
+    async function optionalQuery(label, sql, params = []) {
+        try {
+            return await pool.query(sql, params);
+        } catch (error) {
+            logger.error(`[StackCTRL Admin Intelligence] ${label} is unavailable:`, error.message);
+            return [[]];
+        }
+    }
+
     async function getRunMetrics() {
         try {
             const [[dailyRows], [rateLimitedRows]] = await Promise.all([
@@ -168,6 +177,15 @@ function createAdminIntelligenceService({
         }
     }
 
+    async function safeReadinessRow(tableName, companyId) {
+        try {
+            return await readinessRow(tableName, companyId);
+        } catch (error) {
+            logger.error(`[StackCTRL Admin Intelligence] ${tableName} readiness is unavailable:`, error.message);
+            return { tableName, available: false, RecordCount: 0, LatestUpdatedAt: null, errorMessage: error.message };
+        }
+    }
+
     async function getTenant(companyId) {
         const numericCompanyId = Number(companyId);
         const [companyRows] = await pool.query('SELECT ID, CompanyName FROM Companies WHERE ID = ? LIMIT 1', [numericCompanyId]);
@@ -198,36 +216,41 @@ function createAdminIntelligenceService({
             'StackCTRLIntelligencePeriods'
         ];
 
-        const [sourceRows, runRows, outputRows, riskRows, recommendationRows, trendRows, capabilityRows, compactRows, periodRows, readiness] = await Promise.all([
+        const [sourceRows, runRows, outputRows, riskRows, recommendationRows, trendRows, capabilityRows, compactRows, periodRows, historicalRows, readiness] = await Promise.all([
             snapshotId
-                ? pool.query('SELECT * FROM StackCTRLIntelligenceSourceStatus WHERE SnapshotID = ? ORDER BY SourceKey', [snapshotId])
+                ? optionalQuery('Source status rows', 'SELECT * FROM StackCTRLIntelligenceSourceStatus WHERE SnapshotID = ? ORDER BY SourceKey', [snapshotId])
                 : Promise.resolve([[]]),
-            pool.query('SELECT * FROM StackCTRLIntelligenceRuns FORCE INDEX (PRIMARY) WHERE CompanyID = ? ORDER BY ID DESC LIMIT 50', [numericCompanyId]),
-            pool.query('SELECT * FROM StackCTRLTenantAIOutputs FORCE INDEX (PRIMARY) WHERE CompanyID = ? ORDER BY ID DESC LIMIT 50', [numericCompanyId]),
-            pool.query('SELECT * FROM StackCTRLTenantRiskRegister FORCE INDEX (PRIMARY) WHERE CompanyID = ? ORDER BY ID DESC LIMIT 20', [numericCompanyId]),
-            pool.query('SELECT * FROM StackCTRLTenantRecommendations FORCE INDEX (PRIMARY) WHERE CompanyID = ? ORDER BY ID DESC LIMIT 20', [numericCompanyId]),
-            pool.query('SELECT * FROM StackCTRLTenantTrendAnalysis FORCE INDEX (PRIMARY) WHERE CompanyID = ? ORDER BY ID DESC LIMIT 20', [numericCompanyId]),
-            pool.query('SELECT * FROM StackCTRLClientCapabilities WHERE CompanyID = ?', [numericCompanyId]),
+            optionalQuery('Intelligence run rows', 'SELECT * FROM StackCTRLIntelligenceRuns FORCE INDEX (PRIMARY) WHERE CompanyID = ? ORDER BY ID DESC LIMIT 50', [numericCompanyId]),
+            optionalQuery('AI output rows', 'SELECT * FROM StackCTRLTenantAIOutputs FORCE INDEX (PRIMARY) WHERE CompanyID = ? ORDER BY ID DESC LIMIT 50', [numericCompanyId]),
+            optionalQuery('Risk register rows', 'SELECT * FROM StackCTRLTenantRiskRegister FORCE INDEX (PRIMARY) WHERE CompanyID = ? ORDER BY ID DESC LIMIT 20', [numericCompanyId]),
+            optionalQuery('Recommendation rows', 'SELECT * FROM StackCTRLTenantRecommendations FORCE INDEX (PRIMARY) WHERE CompanyID = ? ORDER BY ID DESC LIMIT 20', [numericCompanyId]),
+            optionalQuery('Trend rows', 'SELECT * FROM StackCTRLTenantTrendAnalysis FORCE INDEX (PRIMARY) WHERE CompanyID = ? ORDER BY ID DESC LIMIT 20', [numericCompanyId]),
+            optionalQuery('Capability rows', 'SELECT * FROM StackCTRLClientCapabilities WHERE CompanyID = ?', [numericCompanyId]),
             snapshotId
-                ? pool.query(
+                ? optionalQuery('Compact context rows',
                     `SELECT ID, CompanyID, SnapshotID, PeriodType, PeriodStart, PeriodEnd,
-                            CompactContextSizeBytes, EvidenceIncludedCount, EvidenceOmittedCount, CreatedAt,
-                            JSON_UNQUOTE(JSON_EXTRACT(CompactContextJson, '$.historicalComparisons.periods.previous.availability')) AS PreviousAvailability,
-                            JSON_UNQUOTE(JSON_EXTRACT(CompactContextJson, '$.historicalComparisons.periods.24_hours.availability')) AS Hours24Availability,
-                            JSON_UNQUOTE(JSON_EXTRACT(CompactContextJson, '$.historicalComparisons.periods.7_days.availability')) AS Days7Availability,
-                            JSON_UNQUOTE(JSON_EXTRACT(CompactContextJson, '$.historicalComparisons.periods.30_days.availability')) AS Days30Availability,
-                            JSON_UNQUOTE(JSON_EXTRACT(CompactContextJson, '$.historicalComparisons.periods.90_days.availability')) AS Days90Availability
+                            CompactContextSizeBytes, EvidenceIncludedCount, EvidenceOmittedCount, CreatedAt
                      FROM StackCTRLCompactIntelligenceContexts FORCE INDEX (PRIMARY)
                      WHERE CompanyID = ? AND SnapshotID = ? ORDER BY ID DESC LIMIT 20`,
                     [numericCompanyId, snapshotId]
                 )
                 : Promise.resolve([[]]),
-            pool.query(
+            optionalQuery('Period intelligence rows',
                 `SELECT * FROM StackCTRLIntelligencePeriods FORCE INDEX (PRIMARY)
                  WHERE CompanyID = ? ORDER BY ID DESC LIMIT 100`,
                 [numericCompanyId]
             ),
-            Promise.all(readinessTables.map(table => readinessRow(table, numericCompanyId)))
+            snapshotId
+                ? optionalQuery('Historical comparison rows',
+                    `SELECT ComparisonKey, AvailabilityStatus, BaselineSnapshotID, BaselineCreatedAt,
+                            TargetAt, DifferenceMinutes
+                     FROM StackCTRLIntelligenceHistoricalComparisons FORCE INDEX (PRIMARY)
+                     WHERE CompanyID = ? AND CurrentSnapshotID = ?
+                     ORDER BY ID DESC LIMIT 20`,
+                    [numericCompanyId, snapshotId]
+                )
+                : Promise.resolve([[]]),
+            Promise.all(readinessTables.map(table => safeReadinessRow(table, numericCompanyId)))
         ]);
         const sources = sourceRows[0].map(normalizeRow);
         const expectedSources = sources.filter(source => Number(source.IsExpected) === 1);
@@ -266,6 +289,13 @@ function createAdminIntelligenceService({
                 };
             }),
             periods: periodRows[0].map(normalizeRow),
+            historicalAvailability: Object.fromEntries(historicalRows[0].map(row => [row.ComparisonKey, {
+                availability: row.AvailabilityStatus,
+                baselineSnapshotId: row.BaselineSnapshotID,
+                baselineCreatedAt: row.BaselineCreatedAt,
+                targetAt: row.TargetAt,
+                differenceMinutes: row.DifferenceMinutes
+            }])),
             powerBIReadiness: readiness
         };
     }
@@ -335,15 +365,19 @@ function createAdminIntelligenceService({
             ? options.outputTypes
             : defaultOutputTypes;
         if (analysisMode === 'compact') {
-            const scheduledResult = await schedulerService.runScheduledAzureAnalysis(
-                Number(companyId),
+            const historicalContext = await schedulerService.getHistoricalSnapshotContext(Number(companyId), snapshotId);
+            const periodResult = await intelligenceService.runPeriodIntelligence({
+                companyId: Number(companyId),
                 snapshotId,
                 outputTypes,
+                periodType: 'daily',
+                historicalContext,
                 user
-            );
-            const { historicalContext, ...result } = scheduledResult;
+            });
             return {
-                ...result,
+                ...periodResult.analysis,
+                period: periodResult.period,
+                compactContext: periodResult.compactContext,
                 historicalAvailability: summarizeHistoricalContext(historicalContext)
             };
         }

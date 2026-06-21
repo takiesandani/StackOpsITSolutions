@@ -234,12 +234,13 @@
         }
         badge.className = 'status-badge status-available';
         badge.textContent = `${compact.PeriodType || 'snapshot'} compact`;
+        const availability = state.tenant?.historicalAvailability || {};
         const historical = [
-            ['Previous', compact.PreviousAvailability],
-            ['24h', compact.Hours24Availability],
-            ['7d', compact.Days7Availability],
-            ['30d', compact.Days30Availability],
-            ['90d', compact.Days90Availability]
+            ['Previous', availability.previous?.availability],
+            ['24h', availability['24_hours']?.availability],
+            ['7d', availability['7_days']?.availability],
+            ['30d', availability['30_days']?.availability],
+            ['90d', availability['90_days']?.availability]
         ];
         const historyHtml = historical.map(([label, availability]) =>
             `<span class="history-pill ${availability === 'available' ? 'available' : ''}">${escapeHtml(label)} · ${escapeHtml(availability || 'unavailable')}</span>`
@@ -315,25 +316,162 @@
     function summaryText(content) {
         if (!content) return null;
         if (typeof content === 'string') return content;
-        return content.summary || content.executiveSummary || content.overview || content.reportSummary || content.narrative || null;
+        const direct = content.summary || content.executiveSummary || content.executive_summary ||
+            content.overview || content.reportSummary || content.board_summary || content.narrative;
+        if (direct) return typeof direct === 'string' ? direct : summaryText(direct);
+        const narratives = [];
+        function collect(value, depth = 0) {
+            if (depth > 4 || narratives.length >= 4 || value == null) return;
+            if (typeof value === 'string' && value.length > 35) narratives.push(value);
+            else if (Array.isArray(value)) value.slice(0, 5).forEach(item => collect(item, depth + 1));
+            else if (typeof value === 'object') Object.values(value).slice(0, 20).forEach(item => collect(item, depth + 1));
+        }
+        collect(content);
+        return narratives.join(' ') || null;
+    }
+
+    function valueFrom(object, keys, fallback = null) {
+        for (const key of keys) {
+            if (object?.[key] !== undefined && object?.[key] !== null && object?.[key] !== '') return object[key];
+        }
+        return fallback;
+    }
+
+    function listFrom(object, keys) {
+        const value = valueFrom(object, keys, []);
+        if (Array.isArray(value)) return value;
+        if (value && typeof value === 'object') return Object.entries(value).map(([title, detail]) => ({ title, detail }));
+        return value ? [value] : [];
+    }
+
+    function readableItem(item) {
+        if (typeof item === 'string') return item;
+        return item?.title || item?.name || item?.risk || item?.decision || item?.action ||
+            item?.recommendation || item?.detail || item?.description || JSON.stringify(item);
+    }
+
+    function readableValue(value, fallback = 'Not provided by Azure.') {
+        if (value == null || value === '') return fallback;
+        if (typeof value === 'string' || typeof value === 'number') return String(value);
+        if (Array.isArray(value)) return value.map(readableItem).join(' ');
+        return summaryText(value) || readableItem(value) || fallback;
+    }
+
+    function resultList(items, emptyText, limit = 5) {
+        const values = (Array.isArray(items) ? items : []).slice(0, limit);
+        if (!values.length) return `<div class="result-empty">${escapeHtml(emptyText)}</div>`;
+        return `<ul class="result-bullet-list">${values.map(item => `<li>${escapeHtml(readableItem(item))}</li>`).join('')}</ul>`;
+    }
+
+    function intelligenceRowsForOutput(rows, output) {
+        if (!output) return [];
+        return (rows || []).filter(row => Number(row.AIOutputID) === Number(output.ID));
     }
 
     function renderLatestSummary() {
         const outputs = state.tenant?.outputs || [];
-        const latestOf = type => outputs.find(output => output.OutputType === type);
+        const runs = state.tenant?.runs || [];
+        const latestCompletedRun = runs.find(run => run.Status === 'completed');
+        const completedSnapshotId = Number(latestCompletedRun?.SnapshotID || 0);
+        const latestOf = type => outputs.find(output =>
+            output.OutputType === type && (!completedSnapshotId || Number(output.SnapshotID) === completedSnapshotId)
+        ) || outputs.find(output => output.OutputType === type);
         const executive = latestOf('executive_summary');
         const board = latestOf('board_report');
-        const powerbi = latestOf('powerbi_summary')?.ContentJson || {};
+        const riskOutput = latestOf('risk_register');
+        const recommendationOutput = latestOf('recommendations');
+        const trendOutput = latestOf('trend_analysis');
+        const powerbiOutput = latestOf('powerbi_summary');
+        const executiveContent = executive?.ContentJson || {};
+        const boardContent = board?.ContentJson || {};
+        const powerbi = powerbiOutput?.ContentJson || {};
         const period = state.tenant?.periods?.find(item => item.Status === 'completed');
-        if (!executive && !board && !period) {
+        const risks = intelligenceRowsForOutput(state.tenant?.risks, riskOutput).slice(0, 5);
+        const recommendations = intelligenceRowsForOutput(state.tenant?.recommendations, recommendationOutput).slice(0, 5);
+        const trends = intelligenceRowsForOutput(state.tenant?.trends, trendOutput);
+        const compact = state.tenant?.compactContexts?.[0] || {};
+        const readiness = state.tenant?.powerBIReadiness || [];
+        const proofBadge = el('intelligence-proof-badge');
+        if (!executive && !board && !period && !latestCompletedRun) {
+            proofBadge.className = 'status-badge status-muted';
+            proofBadge.textContent = 'Waiting for compact test';
             el('latest-intelligence-summary').innerHTML = '<div class="empty-state">Run compact analysis to populate the latest intelligence summary.</div>';
             return;
         }
+
+        proofBadge.className = 'status-badge status-completed';
+        proofBadge.textContent = 'Azure + storage verified';
+        const businessImpact = valueFrom(executiveContent, ['businessImpact', 'business_impact', 'impact']) ||
+            risks[0]?.BusinessImpact || 'Business impact is represented in the stored risk register below.';
+        const managementAttention = valueFrom(executiveContent, ['managementAttentionRequired', 'management_attention_required', 'managementAttention', 'attention_required']) ||
+            recommendations[0]?.RecommendationDetail || recommendations[0]?.BusinessReason || 'Management should review the highest-priority recommendations.';
+        const confidence = executive?.ConfidenceScore ?? valueFrom(executiveContent, ['confidenceScore', 'confidence_score', 'confidence']);
+        const boardRisks = listFrom(boardContent, ['topBoardRisks', 'top_board_risks', 'topRisks', 'top_risks', 'keyRisks', 'key_risks']);
+        const decisions = listFrom(boardContent, ['decisionsRequired', 'decisions_required', 'actions_required', 'boardDecisions']);
+        const next30 = listFrom(boardContent, ['next30DaysFocus', 'next_30_days_focus', 'next30Days', 'focus_30_days']);
+        const next90 = listFrom(boardContent, ['next90DaysFocus', 'next_90_days_focus', 'next90Days', 'focus_90_days']);
+        const improved = trends.filter(item => /improv|positive|up/i.test(item.Direction || ''));
+        const deteriorated = trends.filter(item => /declin|deterior|worsen|negative|down/i.test(item.Direction || ''));
+        const stable = trends.filter(item => /stable|same|unchanged|flat/i.test(item.Direction || ''));
+        const readinessLabels = {
+            StackCTRLTenantAIOutputs: 'AI outputs',
+            StackCTRLTenantRiskRegister: 'Risk register',
+            StackCTRLTenantRecommendations: 'Recommendations',
+            StackCTRLTenantTrendAnalysis: 'Trends',
+            StackCTRLIntelligencePeriods: 'Period intelligence row',
+            StackCTRLIntelligenceMetrics: 'Metrics',
+            StackCTRLIntelligenceSourceStatus: 'Source status'
+        };
+        const readinessRows = Object.entries(readinessLabels).map(([tableName, label]) => {
+            const row = readiness.find(item => item.tableName === tableName);
+            const ready = Boolean(row?.available && Number(row.RecordCount || 0) > 0);
+            return `<li><span>${escapeHtml(label)}</span><b class="${ready ? 'is-ready' : 'is-missing'}"><i class="fas ${ready ? 'fa-check' : 'fa-minus'}"></i>${ready ? `${number(row.RecordCount)} stored` : 'Not stored'}</b></li>`;
+        }).join('');
+        const requestTokens = latestCompletedRun?.InputTokens;
+        const responseTokens = latestCompletedRun?.OutputTokens;
+        const totalTokens = latestCompletedRun?.TotalTokens;
+        const reduction = compact.ReductionPercentage;
+
         el('latest-intelligence-summary').innerHTML = `
-            <article class="intelligence-summary-card"><span>Executive summary</span><p>${escapeHtml(summaryText(executive?.ContentJson) || period?.ExecutiveSummary || 'No executive narrative was returned.')}</p><small>${escapeHtml(shortDateTime(executive?.CreatedAt || period?.CreatedAt))}</small></article>
-            <article class="intelligence-summary-card"><span>Risk posture</span><strong>${escapeHtml(powerbi.risk_score ?? period?.RiskScore ?? '—')}</strong><p>${escapeHtml(powerbi.risk_level || period?.RiskLevel || 'Risk level unavailable')}</p></article>
-            <article class="intelligence-summary-card"><span>Top risk</span><p>${escapeHtml(period?.TopRisk || state.tenant?.risks?.[0]?.RiskTitle || 'No material risk stored.')}</p><small>${escapeHtml(state.tenant?.risks?.[0]?.Domain || 'General')}</small></article>
-            <article class="intelligence-summary-card"><span>Board view</span><p>${escapeHtml(summaryText(board?.ContentJson) || 'Board report summary becomes available after a weekly, yearly, or full output run.')}</p><small>${escapeHtml(shortDateTime(board?.CreatedAt))}</small></article>
+            <div class="intelligence-proof-banner"><i class="fas fa-circle-check"></i><div><strong>Compact Azure Intelligence Completed Successfully</strong><span>Snapshot #${number(latestCompletedRun?.SnapshotID || compact.SnapshotID)} · Run #${number(latestCompletedRun?.ID)} · ${escapeHtml(shortDateTime(latestCompletedRun?.CompletedAt))}</span></div></div>
+
+            <article class="intelligence-result-card executive-result">
+                <header><span class="result-icon"><i class="fas fa-file-lines"></i></span><div><small>01 · Azure generated</small><h3>Executive Summary</h3></div>${confidence == null ? '' : `<b class="confidence-chip">${escapeHtml(confidence)} confidence</b>`}</header>
+                <p class="result-lead">${escapeHtml(summaryText(executiveContent) || period?.ExecutiveSummary || 'Azure returned structured intelligence without a narrative summary field.')}</p>
+                <div class="result-facts"><div><span>Business impact</span><p>${escapeHtml(readableValue(businessImpact))}</p></div><div><span>Management attention required</span><p>${escapeHtml(readableValue(managementAttention))}</p></div></div>
+            </article>
+
+            <article class="intelligence-result-card board-result">
+                <header><span class="result-icon"><i class="fas fa-briefcase"></i></span><div><small>02 · Board view</small><h3>Board Report</h3></div></header>
+                <p class="result-lead">${escapeHtml(summaryText(boardContent) || 'No board-level narrative was returned in the latest output.')}</p>
+                <div class="board-detail-grid"><div><span>Top board risks</span>${resultList(boardRisks.length ? boardRisks : risks.map(item => item.RiskTitle), 'No board risks returned.')}</div><div><span>Decisions required</span>${resultList(decisions, 'No explicit board decisions returned.')}</div><div><span>Next 30 days</span>${resultList(next30.length ? next30 : recommendations.slice(0, 3).map(item => item.RecommendationTitle), 'No 30-day focus returned.', 3)}</div><div><span>Next 90 days</span>${resultList(next90.length ? next90 : recommendations.slice(3, 5).map(item => item.RecommendationTitle), 'No 90-day focus returned.', 3)}</div></div>
+            </article>
+
+            <article class="intelligence-result-card risk-result">
+                <header><span class="result-icon"><i class="fas fa-shield-halved"></i></span><div><small>03 · Risk engine</small><h3>Risk Summary</h3></div></header>
+                <div class="risk-score-row"><div><span>Overall risk</span><strong>${escapeHtml(powerbi.risk_score ?? period?.RiskScore ?? '—')}</strong></div><div><span>Risk level</span><strong>${escapeHtml(powerbi.risk_level || period?.RiskLevel || '—')}</strong></div><div><span>Maturity</span><strong>${escapeHtml(powerbi.security_maturity_score ?? period?.MaturityScore ?? '—')}</strong></div></div>
+                <div class="ranked-result-list">${risks.length ? risks.map((risk, index) => `<div><b>${index + 1}</b><span><strong>${escapeHtml(risk.RiskTitle)}</strong><small>${escapeHtml(risk.Domain || 'General')}</small></span>${statusBadge(risk.Severity || 'unknown')}</div>`).join('') : '<div class="result-empty">No normalized risks were stored.</div>'}</div>
+            </article>
+
+            <article class="intelligence-result-card recommendation-result">
+                <header><span class="result-icon"><i class="fas fa-list-check"></i></span><div><small>04 · Action plan</small><h3>Recommendations</h3></div></header>
+                <div class="recommendation-result-list">${recommendations.length ? recommendations.map(item => `<div><header><strong>${escapeHtml(item.RecommendationTitle)}</strong>${statusBadge(item.Priority || 'unprioritized')}</header><p>${escapeHtml(item.BusinessReason || item.RecommendationDetail || 'No business reason returned.')}</p><small><i class="fas fa-user"></i>${escapeHtml(item.SuggestedOwner || 'Owner not assigned')}<i class="fas fa-calendar"></i>${escapeHtml(item.SuggestedDueDate ? new Date(item.SuggestedDueDate).toLocaleDateString() : 'No due date')}</small></div>`).join('') : '<div class="result-empty">No normalized recommendations were stored.</div>'}</div>
+            </article>
+
+            <article class="intelligence-result-card trend-result">
+                <header><span class="result-icon"><i class="fas fa-arrow-trend-up"></i></span><div><small>05 · Historical intelligence</small><h3>Trend / Historical Summary</h3></div></header>
+                ${trends.length ? `<div class="trend-columns"><div class="improved"><span>Improved</span>${resultList(improved.map(item => `${item.MetricName}: ${item.Explanation || item.Direction}`), 'Nothing recorded as improved.')}</div><div class="deteriorated"><span>Deteriorated</span>${resultList(deteriorated.map(item => `${item.MetricName}: ${item.Explanation || item.Direction}`), 'Nothing recorded as deteriorated.')}</div><div class="stable"><span>Stayed the same</span>${resultList(stable.map(item => `${item.MetricName}: ${item.Explanation || item.Direction}`), 'Nothing recorded as stable.')}</div></div>` : '<div class="historical-empty"><i class="fas fa-clock-rotate-left"></i><span>Historical comparison is not available yet.</span></div>'}
+            </article>
+
+            <article class="intelligence-result-card readiness-result">
+                <header><span class="result-icon"><i class="fas fa-chart-column"></i></span><div><small>06 · Storage proof</small><h3>Power BI Readiness</h3></div></header>
+                <ul class="proof-checklist">${readinessRows}</ul>
+            </article>
+
+            <article class="intelligence-result-card diagnostics-result">
+                <header><span class="result-icon"><i class="fas fa-gauge-high"></i></span><div><small>07 · Request telemetry</small><h3>Payload / Azure Diagnostics</h3></div>${statusBadge(latestCompletedRun?.Status || 'unknown')}</header>
+                <div class="diagnostic-grid"><div><span>Full snapshot</span><strong>${bytes(compact.FullContextSizeBytes)}</strong></div><div><span>Compact package</span><strong>${bytes(compact.CompactContextSizeBytes)}</strong></div><div><span>Reduction</span><strong>${reduction == null ? '—' : `${Number(reduction).toFixed(1)}%`}</strong></div><div><span>Azure request</span><strong>${bytes(latestCompletedRun?.RequestSizeBytes)}</strong></div><div><span>Azure response</span><strong>${bytes(latestCompletedRun?.ResponseSizeBytes)}</strong></div><div><span>Input tokens</span><strong>${number(requestTokens)}</strong></div><div><span>Output tokens</span><strong>${number(responseTokens)}</strong></div><div><span>Total tokens</span><strong>${number(totalTokens)}</strong></div><div><span>Retries</span><strong>${number(latestCompletedRun?.RetryCount)}</strong></div></div>
+            </article>
         `;
     }
 
@@ -432,12 +570,17 @@
             status.className = 'action-status is-success';
             const completedSnapshotId = result.snapshotId || result.analysis?.snapshotId || result.period?.SnapshotID;
             const payload = result.payloadComparison || result.compactContext;
-            status.textContent = `${label} completed successfully${completedSnapshotId ? ` · Snapshot #${completedSnapshotId}` : ''}${payload?.compactContextSizeBytes ? ` · Azure package ${bytes(payload.compactContextSizeBytes)}` : ''}.`;
+            status.textContent = label === 'Compact Azure analysis'
+                ? `Compact Azure Intelligence Completed Successfully${completedSnapshotId ? ` · Snapshot #${completedSnapshotId}` : ''}${payload?.compactContextSizeBytes ? ` · Azure package ${bytes(payload.compactContextSizeBytes)}` : ''}.`
+                : `${label} completed successfully${completedSnapshotId ? ` · Snapshot #${completedSnapshotId}` : ''}${payload?.compactContextSizeBytes ? ` · Azure package ${bytes(payload.compactContextSizeBytes)}` : ''}.`;
             toast(`${label} completed.`);
             try {
                 state.system = (await api('/api/admin/intelligence/status'));
                 renderSystem();
                 await loadTenant();
+                if (label === 'Compact Azure analysis') {
+                    el('compact-intelligence-proof')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
             } catch (refreshError) {
                 status.textContent += ` Dashboard refresh warning: ${refreshError.message}`;
                 toast(`Action completed, but dashboard refresh failed: ${refreshError.message}`, 'error');

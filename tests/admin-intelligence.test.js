@@ -54,10 +54,14 @@ test('admin intelligence action passes the selected tenant and admin audit ident
         pool: { query: async () => [[{ SnapshotID: 27 }], []] },
         azureOpenAI: { getSafeConfiguration: async () => ({}) },
         intelligenceService: {
-            async bootstrap(options) { calls.push({ action: 'snapshot', options }); return { snapshotId: 28 }; }
+            async bootstrap(options) { calls.push({ action: 'snapshot', options }); return { snapshotId: 28 }; },
+            async runPeriodIntelligence(options) {
+                calls.push({ action: 'analysis', options });
+                return { analysis: { runId: 9 }, period: { ID: 4 }, compactContext: { compactContextSizeBytes: 280000 } };
+            }
         },
         schedulerService: {
-            async runScheduledAzureAnalysis(...args) { calls.push({ action: 'analysis', args }); return { runId: 9 }; },
+            async getHistoricalSnapshotContext() { return { comparisons: {} }; },
             async runNow(options) { calls.push({ action: 'full-test', options }); return { runId: 10 }; }
         },
         defaultOutputTypes: ['executive_summary'],
@@ -71,8 +75,9 @@ test('admin intelligence action passes the selected tenant and admin audit ident
 
     assert.equal(calls[0].options.companyId, 1);
     assert.equal(calls[0].options.user.email, 'admin@example.com');
-    assert.equal(calls[1].args[1], 27);
-    assert.deepEqual(calls[1].args[2], ['executive_summary']);
+    assert.equal(calls[1].options.snapshotId, 27);
+    assert.equal(calls[1].options.periodType, 'daily');
+    assert.deepEqual(calls[1].options.outputTypes, ['executive_summary']);
     assert.equal(calls[2].options.includeAnalysis, true);
 });
 
@@ -103,4 +108,37 @@ test('admin intelligence router blocks client users and allows admins', async ()
     } finally {
         await new Promise(resolve => server.close(resolve));
     }
+});
+
+test('tenant intelligence still loads when an optional dashboard dataset fails', async () => {
+    const pool = {
+        async query(sql) {
+            if (sql.includes('FROM Companies WHERE ID')) return [[{ ID: 1, CompanyName: 'Sunbird' }], []];
+            if (sql.includes('FROM StackCTRLTenantEvidenceSnapshots') && sql.includes('OCTET_LENGTH')) {
+                return [[{
+                    ID: 76,
+                    CompanyID: 1,
+                    TenantKey: 'tenant-1',
+                    SnapshotType: 'manual_test',
+                    DataCompletenessScore: 100,
+                    ContextSizeBytes: 1000000,
+                    CreatedAt: new Date()
+                }], []];
+            }
+            throw new Error('Optional dashboard query failed');
+        }
+    };
+    const service = createAdminIntelligenceService({
+        pool,
+        azureOpenAI: { getSafeConfiguration: async () => ({}) },
+        intelligenceService: {},
+        schedulerService: {},
+        logger: { log() {}, error() {} }
+    });
+
+    const tenant = await service.getTenant(1);
+    assert.equal(tenant.company.companyName, 'Sunbird');
+    assert.equal(tenant.latestSnapshot.ID, 76);
+    assert.deepEqual(tenant.outputs, []);
+    assert.deepEqual(tenant.historicalAvailability, {});
 });

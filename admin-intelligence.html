@@ -91,7 +91,7 @@
                         <button class="control-action" id="create-snapshot" type="button"><span class="control-icon"><i class="fas fa-camera"></i></span><span><strong>Create snapshot</strong><small>Refresh sources and freeze evidence</small></span><i class="fas fa-arrow-right"></i></button>
                         <button class="control-action" id="build-compact-context" type="button"><span class="control-icon"><i class="fas fa-compress"></i></span><span><strong>Build compact context</strong><small>Rank evidence and preserve historical comparisons</small></span><i class="fas fa-arrow-right"></i></button>
                         <button class="control-action primary" id="run-analysis" type="button"><span class="control-icon"><i class="fas fa-wand-magic-sparkles"></i></span><span><strong>Run compact Azure test</strong><small>Default 250–500 KB report-ready package</small></span><i class="fas fa-play"></i></button>
-                        <button class="control-action caution" id="run-full-snapshot-analysis" type="button"><span class="control-icon"><i class="fas fa-database"></i></span><span><strong>Run full snapshot Azure test</strong><small>Admin-only diagnostic using full frozen history</small></span><i class="fas fa-arrow-right"></i></button>
+                        <button class="control-action caution" id="run-full-snapshot-analysis" type="button"><span class="control-icon"><i class="fas fa-database"></i></span><span><strong>Full Snapshot Azure Test — Advanced / Debug</strong><small>Optional diagnostic using the full frozen history package</small></span><i class="fas fa-arrow-right"></i></button>
                         <button class="control-action" id="run-full-test" type="button"><span class="control-icon"><i class="fas fa-flask-vial"></i></span><span><strong>Run full bridge test</strong><small>Collect → snapshot → compact analyse → store</small></span><i class="fas fa-arrow-right"></i></button>
                     </div>
                     <div class="period-action-grid" aria-label="Period intelligence tests">
@@ -107,6 +107,11 @@
             <section class="glass-panel payload-panel">
                 <div class="panel-heading"><div><span class="section-index">04</span><div><h2>Azure payload preview</h2><p>What stays in StackCTRL and what the selected Azure mode receives</p></div></div><span id="payload-mode-badge" class="status-badge status-muted">No compact context</span></div>
                 <div id="payload-comparison" class="payload-comparison"><div class="empty-state">Build a compact context to compare payload size and historical coverage.</div></div>
+            </section>
+
+            <section class="glass-panel intelligence-summary-panel" id="compact-intelligence-proof">
+                <div class="panel-heading"><div><span class="section-index">05</span><div><h2>Compact Azure intelligence result</h2><p>Readable proof that StackCTRL → Azure → stored intelligence completed</p></div></div><span id="intelligence-proof-badge" class="status-badge status-muted">Waiting for compact test</span></div>
+                <div id="latest-intelligence-summary" class="latest-intelligence-summary"><div class="empty-state">Run Compact Azure Test to generate and display the complete stored intelligence result.</div></div>
             </section>
 
             <section class="metrics-strip" id="azure-usage-metrics" aria-label="Azure usage today"></section>
@@ -129,11 +134,6 @@
             <section class="glass-panel table-panel">
                 <div class="panel-heading"><div><span class="section-index">07</span><div><h2>Period intelligence</h2><p>Clean daily, weekly, monthly, and yearly rows for Power BI</p></div></div><span class="table-hint">Latest 100 periods</span></div>
                 <div class="responsive-table wide-table"><table><thead><tr><th>Period</th><th>Window</th><th>Status</th><th>Risk</th><th>Maturity</th><th>Identity</th><th>Devices</th><th>Email</th><th>Governance</th><th>Compliance</th><th>Top risk</th><th>Top recommendation</th></tr></thead><tbody id="period-history-body"><tr><td colspan="12" class="empty-cell">No period intelligence rows loaded.</td></tr></tbody></table></div>
-            </section>
-
-            <section class="glass-panel intelligence-summary-panel">
-                <div class="panel-heading"><div><span class="section-index">08</span><div><h2>Latest summarized intelligence</h2><p>Executive and board-ready information stored by StackCTRL</p></div></div></div>
-                <div id="latest-intelligence-summary" class="latest-intelligence-summary"><div class="empty-state">Run compact analysis to populate the latest intelligence summary.</div></div>
             </section>
 
             <section class="content-grid">
