@@ -180,3 +180,43 @@ test('critical trigger detection covers security, Cloudflare, compliance, and de
         'major_device_compliance_drop'
     ]));
 });
+
+test('historical context continues in memory when the comparison table is missing', async () => {
+    const currentSnapshot = {
+        ID: 27,
+        CompanyID: 1,
+        SnapshotType: 'manual',
+        CreatedAt: new Date('2026-06-22T08:00:00.000Z'),
+        DataCompletenessScore: 100,
+        MetricsJson: JSON.stringify({ stackctrl_risk: { overallRiskScore: 30 } }),
+        ContextJson: JSON.stringify({ tenant: { companyId: 1 } })
+    };
+    let comparisonInsertAttempts = 0;
+    const warnings = [];
+    const scheduler = createStackCTRLIntelligenceScheduler({
+        pool: {
+            async query(sql) {
+                if (sql.includes('WHERE ID = ? AND CompanyID = ?')) return [[currentSnapshot], []];
+                if (sql.includes('SELECT MAX(previous.ID)')) return [[], []];
+                if (sql.includes('MAX(CASE WHEN CreatedAt <= ?')) return [[{ BeforeTarget: null, AfterTarget: null }], []];
+                if (sql.includes('INSERT INTO StackCTRLIntelligenceHistoricalComparisons')) {
+                    comparisonInsertAttempts += 1;
+                    const error = new Error("Table 'consultation_db.StackCTRLIntelligenceHistoricalComparisons' doesn't exist");
+                    error.code = 'ER_NO_SUCH_TABLE';
+                    throw error;
+                }
+                return [[], []];
+            }
+        },
+        intelligenceService: {},
+        logger: { warn(message) { warnings.push(message); }, error() {} }
+    });
+
+    const context = await scheduler.getHistoricalSnapshotContext(1, 27);
+    assert.equal(context.currentSnapshot.snapshotId, 27);
+    assert.equal(context.persistence.historicalComparisonsStored, false);
+    assert.match(context.persistence.warning, /not installed/i);
+    assert.equal(comparisonInsertAttempts, 1);
+    assert.equal(warnings.length, 1);
+    assert.equal(context.comparisons['24_hours'].availability, 'unavailable');
+});

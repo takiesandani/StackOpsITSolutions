@@ -137,6 +137,7 @@ function criticalFingerprint(companyId, signal, local) {
 function createStackCTRLIntelligenceScheduler({ pool, intelligenceService, logger = console } = {}) {
     if (!pool) throw new Error('StackCTRL Intelligence Scheduler requires a database pool');
     if (!intelligenceService) throw new Error('StackCTRL Intelligence Scheduler requires the intelligence service');
+    let historicalComparisonWarningShown = false;
 
     async function ensureTenantSchedules(companyId) {
         for (const schedule of DEFAULT_SCHEDULES) {
@@ -347,6 +348,7 @@ function createStackCTRLIntelligenceScheduler({ pool, intelligenceService, logge
         const current = currentRows[0];
         const currentMetrics = parseJson(current.MetricsJson, {});
         const comparisons = {};
+        let historicalComparisonsStored = true;
 
         for (const target of HISTORICAL_TARGETS) {
             const baseline = await findNearestSnapshot(companyId, current, target);
@@ -359,8 +361,10 @@ function createStackCTRLIntelligenceScheduler({ pool, intelligenceService, logge
                 ? Math.round(Math.abs(new Date(baseline.CreatedAt).getTime() - targetAt.getTime()) / 60000)
                 : null;
 
-            await pool.query(
-                `INSERT INTO StackCTRLIntelligenceHistoricalComparisons
+            if (historicalComparisonsStored) {
+                try {
+                    await pool.query(
+                        `INSERT INTO StackCTRLIntelligenceHistoricalComparisons
                  (CompanyID, CurrentSnapshotID, ComparisonKey, TargetOffsetMinutes,
                   TargetAt, BaselineSnapshotID, BaselineCreatedAt, DifferenceMinutes,
                   AvailabilityStatus, CurrentMetricsJson, BaselineMetricsJson,
@@ -376,22 +380,31 @@ function createStackCTRLIntelligenceScheduler({ pool, intelligenceService, logge
                     BaselineMetricsJson = VALUES(BaselineMetricsJson),
                     MetricChangesJson = VALUES(MetricChangesJson),
                     WarningsJson = VALUES(WarningsJson)`,
-                [
-                    companyId,
-                    currentSnapshotId,
-                    target.key,
-                    target.minutes,
-                    targetAt,
-                    baseline?.ID || null,
-                    baseline?.CreatedAt || null,
-                    differenceMinutes,
-                    baseline ? 'available' : 'unavailable',
-                    JSON.stringify(currentMetrics),
-                    baseline ? JSON.stringify(baselineMetrics) : null,
-                    baseline ? JSON.stringify(metricChanges) : null,
-                    JSON.stringify(baseline ? [] : [`No suitable ${target.key} snapshot is available yet.`])
-                ]
-            );
+                        [
+                            companyId,
+                            currentSnapshotId,
+                            target.key,
+                            target.minutes,
+                            targetAt,
+                            baseline?.ID || null,
+                            baseline?.CreatedAt || null,
+                            differenceMinutes,
+                            baseline ? 'available' : 'unavailable',
+                            JSON.stringify(currentMetrics),
+                            baseline ? JSON.stringify(baselineMetrics) : null,
+                            baseline ? JSON.stringify(metricChanges) : null,
+                            JSON.stringify(baseline ? [] : [`No suitable ${target.key} snapshot is available yet.`])
+                        ]
+                    );
+                } catch (error) {
+                    if (error?.code !== 'ER_NO_SUCH_TABLE') throw error;
+                    historicalComparisonsStored = false;
+                    if (!historicalComparisonWarningShown) {
+                        historicalComparisonWarningShown = true;
+                        logger.warn('[StackCTRL Intelligence] Historical comparison table is missing; analysis will continue without persisting comparisons.');
+                    }
+                }
+            }
 
             comparisons[target.key] = {
                 comparisonKey: target.key,
@@ -409,6 +422,12 @@ function createStackCTRLIntelligenceScheduler({ pool, intelligenceService, logge
             currentSnapshot,
             comparisons,
             historicalIntelligence,
+            persistence: {
+                historicalComparisonsStored,
+                warning: historicalComparisonsStored
+                    ? null
+                    : 'StackCTRLIntelligenceHistoricalComparisons is not installed; comparisons were calculated in memory only.'
+            },
             instructions: {
                 compareCurrentAgainstAvailableHistory: true,
                 doNotInventMissingPeriods: true
@@ -822,8 +841,7 @@ function createStackCTRLIntelligenceScheduler({ pool, intelligenceService, logge
 
     async function getHistory(companyId, limit = 100) {
         const safeLimit = Math.max(1, Math.min(250, Number(limit) || 100));
-        const [snapshots, comparisons] = await Promise.all([
-            pool.query(
+        const snapshots = await pool.query(
                 `SELECT ID, CompanyID, TenantKey, PeriodStart, PeriodEnd, SnapshotType,
                         DataCompletenessScore, CreatedAt,
                         JSON_EXTRACT(MetricsJson, '$.stackctrl_risk') AS StackCTRLRiskJson,
@@ -831,16 +849,21 @@ function createStackCTRLIntelligenceScheduler({ pool, intelligenceService, logge
                  FROM StackCTRLTenantEvidenceSnapshots
                  WHERE CompanyID = ? ORDER BY CreatedAt DESC LIMIT ?`,
                 [companyId, safeLimit]
-            ),
-            pool.query(
+            );
+        let comparisons;
+        try {
+            comparisons = await pool.query(
                 `SELECT CurrentSnapshotID, ComparisonKey, TargetAt, BaselineSnapshotID,
                         BaselineCreatedAt, DifferenceMinutes, AvailabilityStatus,
                         MetricChangesJson, WarningsJson, CreatedAt
                  FROM StackCTRLIntelligenceHistoricalComparisons
                  WHERE CompanyID = ? ORDER BY CreatedAt DESC LIMIT 500`,
                 [companyId]
-            )
-        ]);
+            );
+        } catch (error) {
+            if (error?.code !== 'ER_NO_SUCH_TABLE') throw error;
+            comparisons = [[], []];
+        }
         const comparisonBySnapshot = comparisons[0].reduce((map, comparison) => {
             if (!map[comparison.CurrentSnapshotID]) map[comparison.CurrentSnapshotID] = {};
             map[comparison.CurrentSnapshotID][comparison.ComparisonKey] = {
