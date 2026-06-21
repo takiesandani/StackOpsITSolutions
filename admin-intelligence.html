@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Intelligence Control Center | StackCTRL Admin</title>
+    <link rel="stylesheet" href="/css/admin.css">
+    <link rel="stylesheet" href="/css/admin-intelligence.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="intelligence-admin-page is-guarded">
+    <div class="background"></div>
+
+    <header class="site-header intelligence-header">
+        <a href="/" class="logo"><img src="/Images/Logos/RemovedStackOps.png" alt="StackOps IT Solutions"></a>
+        <div class="intelligence-header-mark"><span></span>StackCTRL Intelligence</div>
+        <div class="hamburger" id="hamburger" aria-label="Open navigation"><i class="fas fa-bars"></i></div>
+        <ul class="nav-links" id="nav-links">
+            <li><a href="/admin-dashboard.html">Dashboard</a></li>
+            <li><a href="/admin/intelligence" class="active">Intelligence</a></li>
+            <li><a href="#" id="admin-signout">Sign Out</a></li>
+        </ul>
+    </header>
+
+    <div class="admin-container intelligence-shell">
+        <aside class="admin-sidebar" id="admin-sidebar">
+            <div class="sidebar-header">
+                <div><span class="sidebar-kicker">Internal operations</span><h2>Admin Panel</h2></div>
+                <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Close navigation"><i class="fas fa-times"></i></button>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="/admin-dashboard.html" class="nav-item"><i class="fas fa-chart-line"></i><span>Dashboard</span></a>
+                <a href="/admin-companies.html" class="nav-item"><i class="fas fa-building"></i><span>Companies</span></a>
+                <a href="/admin-clients.html" class="nav-item"><i class="fas fa-users"></i><span>Clients</span></a>
+                <a href="/admin-projects.html" class="nav-item"><i class="fas fa-diagram-project"></i><span>Projects</span></a>
+                <a href="/admin/intelligence" class="nav-item active"><i class="fas fa-brain"></i><span>Intelligence</span></a>
+                <a href="/admin-invoices.html" class="nav-item"><i class="fas fa-file-invoice-dollar"></i><span>Invoices</span></a>
+                <a href="/admin-payments.html" class="nav-item"><i class="fas fa-credit-card"></i><span>Payments</span></a>
+            </nav>
+            <div class="sidebar-bridge-note">
+                <i class="fas fa-shield-halved"></i>
+                <div><strong>Admin only</strong><span>Frozen evidence. Audited actions.</span></div>
+            </div>
+        </aside>
+
+        <main class="admin-main intelligence-main">
+            <button class="mobile-sidebar-toggle" id="mobile-sidebar-toggle" aria-label="Open admin navigation"><i class="fas fa-bars"></i></button>
+
+            <section class="intelligence-hero">
+                <div class="hero-copy">
+                    <div class="eyebrow"><span class="live-dot"></span>AI bridge operations</div>
+                    <h1>Intelligence Control Center</h1>
+                    <p>Collect tenant evidence, freeze a snapshot, run Azure analysis, and verify every stored output from one internal console.</p>
+                </div>
+                <div class="hero-controls">
+                    <label for="tenant-selector">Active tenant</label>
+                    <div class="tenant-select-row">
+                        <select id="tenant-selector" aria-label="Select tenant"><option value="">Loading tenants…</option></select>
+                        <button id="refresh-control-center" class="icon-action" type="button" title="Refresh data"><i class="fas fa-rotate"></i></button>
+                    </div>
+                    <div id="tenant-identity" class="tenant-identity">Select a tenant to inspect its intelligence flow.</div>
+                </div>
+            </section>
+
+            <section class="bridge-panel glass-panel" aria-labelledby="bridge-title">
+                <div class="panel-heading bridge-heading">
+                    <div><span class="section-index">01</span><div><h2 id="bridge-title">Live intelligence bridge</h2><p>Operational path for the selected tenant</p></div></div>
+                    <span id="bridge-updated" class="last-updated">Waiting for data</span>
+                </div>
+                <div class="bridge-flow" id="bridge-flow">
+                    <article class="bridge-stage" data-stage="collection"><div class="stage-icon"><i class="fas fa-satellite-dish"></i></div><div><span>Stage 01</span><strong>Data collection</strong><small>Vendor sources → StackCTRL</small></div><b class="stage-state">—</b></article>
+                    <div class="bridge-link"><span></span></div>
+                    <article class="bridge-stage" data-stage="snapshot"><div class="stage-icon"><i class="fas fa-camera"></i></div><div><span>Stage 02</span><strong>Frozen snapshot</strong><small>Permanent tenant evidence</small></div><b class="stage-state">—</b></article>
+                    <div class="bridge-link"><span></span></div>
+                    <article class="bridge-stage" data-stage="azure"><div class="stage-icon"><i class="fas fa-wand-magic-sparkles"></i></div><div><span>Stage 03</span><strong>Azure analysis</strong><small>Risk, trends, recommendations</small></div><b class="stage-state">—</b></article>
+                    <div class="bridge-link"><span></span></div>
+                    <article class="bridge-stage" data-stage="storage"><div class="stage-icon"><i class="fas fa-database"></i></div><div><span>Stage 04</span><strong>Stored outputs</strong><small>Power BI-ready tables</small></div><b class="stage-state">—</b></article>
+                </div>
+            </section>
+
+            <section class="top-grid">
+                <article class="glass-panel system-panel">
+                    <div class="panel-heading"><div><span class="section-index">02</span><div><h2>System status</h2><p>Azure bridge configuration and latest state</p></div></div></div>
+                    <div class="system-status-grid" id="system-status-grid"><div class="loading-block"></div></div>
+                </article>
+
+                <article class="glass-panel control-panel">
+                    <div class="panel-heading"><div><span class="section-index">03</span><div><h2>Snapshot controls</h2><p>Actions are logged against your admin account</p></div></div></div>
+                    <div class="control-stack">
+                        <button class="control-action" id="create-snapshot" type="button"><span class="control-icon"><i class="fas fa-camera"></i></span><span><strong>Create snapshot</strong><small>Refresh sources and freeze evidence</small></span><i class="fas fa-arrow-right"></i></button>
+                        <button class="control-action" id="run-analysis" type="button"><span class="control-icon"><i class="fas fa-wand-magic-sparkles"></i></span><span><strong>Run Azure analysis</strong><small>Analyse the latest frozen snapshot</small></span><i class="fas fa-arrow-right"></i></button>
+                        <button class="control-action primary" id="run-full-test" type="button"><span class="control-icon"><i class="fas fa-flask-vial"></i></span><span><strong>Run full intelligence test</strong><small>Collect → snapshot → analyse → store</small></span><i class="fas fa-play"></i></button>
+                    </div>
+                    <div class="action-status" id="action-status" aria-live="polite">Ready for an admin action.</div>
+                </article>
+            </section>
+
+            <section class="metrics-strip" id="azure-usage-metrics" aria-label="Azure usage today"></section>
+
+            <section class="glass-panel snapshot-panel">
+                <div class="panel-heading"><div><span class="section-index">04</span><div><h2>Latest snapshot overview</h2><p>Completeness and source coverage at capture time</p></div></div><span id="snapshot-badge" class="status-badge status-muted">No snapshot</span></div>
+                <div class="snapshot-summary" id="snapshot-summary"><div class="empty-state">Choose a tenant to load its latest snapshot.</div></div>
+            </section>
+
+            <section class="glass-panel table-panel">
+                <div class="panel-heading"><div><span class="section-index">05</span><div><h2>Source health</h2><p>Cloudflare, Microsoft Graph, Duo, governance, compliance, and operational evidence</p></div></div><div id="source-health-summary" class="table-summary"></div></div>
+                <div class="responsive-table"><table><thead><tr><th>Source</th><th>Status</th><th>Expected</th><th>Evidence</th><th>Last updated</th><th>Age</th><th>Error</th></tr></thead><tbody id="source-health-body"><tr><td colspan="7" class="empty-cell">No tenant selected.</td></tr></tbody></table></div>
+            </section>
+
+            <section class="glass-panel table-panel">
+                <div class="panel-heading"><div><span class="section-index">06</span><div><h2>Azure run history</h2><p>Lifecycle, throttling, payload size, and token telemetry</p></div></div><span class="table-hint">Latest 50 runs</span></div>
+                <div class="responsive-table wide-table"><table><thead><tr><th>Run</th><th>Snapshot</th><th>Status</th><th>Outputs</th><th>Started</th><th>Completed</th><th>Retries</th><th>Request</th><th>Response</th><th>Tokens in</th><th>Tokens out</th><th>Total</th><th>Model / deployment</th><th>Error</th></tr></thead><tbody id="run-history-body"><tr><td colspan="14" class="empty-cell">No run history loaded.</td></tr></tbody></table></div>
+            </section>
+
+            <section class="content-grid">
+                <article class="glass-panel outputs-panel">
+                    <div class="panel-heading"><div><span class="section-index">07</span><div><h2>Latest AI outputs</h2><p>Open any result as formatted JSON</p></div></div></div>
+                    <div id="ai-output-list" class="output-list"><div class="empty-state">No outputs loaded.</div></div>
+                </article>
+                <article class="glass-panel readiness-panel">
+                    <div class="panel-heading"><div><span class="section-index">08</span><div><h2>Power BI readiness</h2><p>Stored datasets available for the next phase</p></div></div></div>
+                    <div id="powerbi-readiness" class="readiness-list"><div class="empty-state">No readiness data loaded.</div></div>
+                </article>
+            </section>
+
+            <section class="glass-panel intelligence-preview-panel">
+                <div class="panel-heading"><div><span class="section-index">09</span><div><h2>Risk and recommendation preview</h2><p>Decision-ready outputs from the latest analysis</p></div></div></div>
+                <div class="preview-columns">
+                    <div><h3><i class="fas fa-triangle-exclamation"></i> Top risks</h3><div id="risk-preview" class="preview-list"><div class="empty-state">No risks stored.</div></div></div>
+                    <div><h3><i class="fas fa-list-check"></i> Recommendations</h3><div id="recommendation-preview" class="preview-list"><div class="empty-state">No recommendations stored.</div></div></div>
+                    <div><h3><i class="fas fa-arrow-trend-up"></i> Trends</h3><div id="trend-preview" class="preview-list"><div class="empty-state">No trends stored.</div></div></div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div class="json-modal" id="json-modal" aria-hidden="true">
+        <button class="modal-backdrop" data-close-json aria-label="Close output"></button>
+        <section class="json-modal-panel" role="dialog" aria-modal="true" aria-labelledby="json-modal-title">
+            <header><div><span>Stored Azure output</span><h2 id="json-modal-title">Output JSON</h2></div><button data-close-json aria-label="Close"><i class="fas fa-times"></i></button></header>
+            <pre id="json-modal-content"></pre>
+        </section>
+    </div>
+    <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+
+    <script src="/js/admin-intelligence.js"></script>
+</body>
+</html>

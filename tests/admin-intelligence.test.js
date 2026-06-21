@@ -1,0 +1,106 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const express = require('express');
+
+const { createAdminIntelligenceService } = require('../services/admin-intelligence');
+const { createAdminIntelligenceRouter } = require('../routes/admin-intelligence');
+
+test('admin intelligence status returns safe Azure visibility and daily usage', async () => {
+    const pool = {
+        async query(sql) {
+            if (sql.includes('TotalRunsToday')) return [[{
+                TotalRunsToday: 5,
+                CompletedRunsToday: 4,
+                FailedRunsToday: 1,
+                RateLimitedRunsToday: 2,
+                InputTokensToday: 1200,
+                OutputTokensToday: 400,
+                TotalTokensToday: 1600,
+                AverageRequestSize: 2400,
+                AverageResponseSize: 1800
+            }], []];
+            if (sql.includes('CurrentRateLimitedRuns')) return [[{ CurrentRateLimitedRuns: 1 }], []];
+            if (sql.includes("Status = 'completed'")) return [[{ ID: 8, Status: 'completed' }], []];
+            if (sql.includes("Status = 'failed'")) return [[{ ID: 7, Status: 'failed', ErrorMessage: 'Rate limit exhausted' }], []];
+            if (sql.includes('ORDER BY ID DESC LIMIT 1')) return [[{ ID: 8, Status: 'completed', RetryCount: 2 }], []];
+            return [[], []];
+        }
+    };
+    const service = createAdminIntelligenceService({
+        pool,
+        azureOpenAI: {
+            async getSafeConfiguration() {
+                return { endpointConfigured: true, deployment: 'gpt-4.1-mini', apiVersion: 'v1', authenticationMode: 'api_key' };
+            }
+        },
+        intelligenceService: {},
+        schedulerService: {},
+        automationService: { getStatus: () => ({ enabled: true, running: false }) }
+    });
+
+    const status = await service.getSystemStatus();
+    assert.equal(status.azure.endpointConfigured, true);
+    assert.equal(status.azure.deployment, 'gpt-4.1-mini');
+    assert.equal(status.latestErrorMessage, 'Rate limit exhausted');
+    assert.equal(status.lastRetryCount, 2);
+    assert.equal(status.usage.TotalTokensToday, 1600);
+    assert.equal(status.usage.CurrentRateLimitedRuns, 1);
+    assert.equal(Object.prototype.hasOwnProperty.call(status.azure, 'apiKey'), false);
+});
+
+test('admin intelligence action passes the selected tenant and admin audit identity', async () => {
+    const calls = [];
+    const service = createAdminIntelligenceService({
+        pool: { query: async () => [[{ SnapshotID: 27 }], []] },
+        azureOpenAI: { getSafeConfiguration: async () => ({}) },
+        intelligenceService: {
+            async bootstrap(options) { calls.push({ action: 'snapshot', options }); return { snapshotId: 28 }; }
+        },
+        schedulerService: {
+            async runScheduledAzureAnalysis(...args) { calls.push({ action: 'analysis', args }); return { runId: 9 }; },
+            async runNow(options) { calls.push({ action: 'full-test', options }); return { runId: 10 }; }
+        },
+        defaultOutputTypes: ['executive_summary'],
+        logger: { log() {} }
+    });
+    const user = { id: 3, email: 'admin@example.com', role: 'admin' };
+
+    await service.createSnapshot(1, user);
+    await service.runAnalysis(1, { snapshotId: 27 }, user);
+    await service.runFullTest(1, { includeAnalysis: true }, user);
+
+    assert.equal(calls[0].options.companyId, 1);
+    assert.equal(calls[0].options.user.email, 'admin@example.com');
+    assert.equal(calls[1].args[1], 27);
+    assert.deepEqual(calls[1].args[2], ['executive_summary']);
+    assert.equal(calls[2].options.includeAnalysis, true);
+});
+
+test('admin intelligence router blocks client users and allows admins', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use('/api/admin/intelligence', createAdminIntelligenceRouter({
+        authenticateToken(req, _res, next) {
+            req.user = { role: req.get('X-Test-Role'), email: 'test@example.com' };
+            next();
+        },
+        adminIntelligenceService: {
+            async getSystemStatus() { return { azure: { endpointConfigured: true } }; }
+        }
+    }));
+    const server = await new Promise(resolve => {
+        const instance = app.listen(0, '127.0.0.1', () => resolve(instance));
+    });
+    const address = server.address();
+    const url = `http://127.0.0.1:${address.port}/api/admin/intelligence/status`;
+
+    try {
+        const clientResponse = await fetch(url, { headers: { 'X-Test-Role': 'client' } });
+        const adminResponse = await fetch(url, { headers: { 'X-Test-Role': 'admin' } });
+        assert.equal(clientResponse.status, 403);
+        assert.equal(adminResponse.status, 200);
+        assert.equal((await adminResponse.json()).azure.endpointConfigured, true);
+    } finally {
+        await new Promise(resolve => server.close(resolve));
+    }
+});

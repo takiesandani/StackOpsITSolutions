@@ -21,9 +21,11 @@ const {
 const { getCloudflareNetworkSecuritySummary } = require('./services/cloudflare');
 const { createAzureOpenAIService } = require('./services/azure-openai');
 const { createStackCTRLIntelligenceService } = require('./services/stackctrl-intelligence');
-const { createStackCTRLIntelligenceScheduler } = require('./services/intelligence/scheduler');
+const { createStackCTRLIntelligenceScheduler, DEFAULT_OUTPUT_TYPES } = require('./services/intelligence/scheduler');
 const { createStackCTRLServerAutomation } = require('./services/intelligence/server-automation');
+const { createAdminIntelligenceService } = require('./services/admin-intelligence');
 const { createStackCTRLIntelligenceRouter } = require('./routes/stackctrl-intelligence');
+const { createAdminIntelligenceRouter } = require('./routes/admin-intelligence');
 
 // invoice payment endpoints 
 require("dotenv").config();
@@ -10757,6 +10759,14 @@ const stackCTRLIntelligenceAutomation = createStackCTRLServerAutomation({
     intervalMs: process.env.STACKCTRL_SERVER_AUTOMATION_INTERVAL_MS,
     startupDelayMs: process.env.STACKCTRL_SERVER_AUTOMATION_STARTUP_DELAY_MS
 });
+const adminIntelligenceService = createAdminIntelligenceService({
+    pool,
+    azureOpenAI: azureOpenAIService,
+    intelligenceService: stackCTRLIntelligenceService,
+    schedulerService: stackCTRLIntelligenceScheduler,
+    automationService: stackCTRLIntelligenceAutomation,
+    defaultOutputTypes: DEFAULT_OUTPUT_TYPES
+});
 
 app.use('/api/stackctrl/intelligence', createStackCTRLIntelligenceRouter({
     authenticateToken,
@@ -10765,6 +10775,14 @@ app.use('/api/stackctrl/intelligence', createStackCTRLIntelligenceRouter({
     schedulerService: stackCTRLIntelligenceScheduler,
     automationService: stackCTRLIntelligenceAutomation
 }));
+app.use('/api/admin/intelligence', createAdminIntelligenceRouter({
+    authenticateToken,
+    adminIntelligenceService
+}));
+app.get('/admin/intelligence', (_req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.sendFile(path.join(__dirname, 'admin-intelligence.html'));
+});
 
 // We freeze currently stored tenant data after deployment so the intelligence history starts immediately.
 setTimeout(() => {

@@ -284,10 +284,35 @@ function createAzureOpenAIService({
         }
     }
 
+    async function getSafeConfiguration() {
+        try {
+            const config = await loadConfig();
+            return {
+                endpointConfigured: Boolean(config.endpoint),
+                deployment: config.deployment,
+                modelVersion: config.modelVersion,
+                apiVersion: 'v1',
+                region: config.region,
+                authenticationMode: config.apiKey ? 'api_key' : 'entra_id'
+            };
+        } catch (error) {
+            return {
+                endpointConfigured: false,
+                deployment: null,
+                modelVersion: null,
+                apiVersion: 'v1',
+                region: null,
+                authenticationMode: null,
+                configurationError: error.message
+            };
+        }
+    }
+
     return {
         createChatCompletion,
         createJsonCompletion,
-        loadConfig
+        loadConfig,
+        getSafeConfiguration
     };
 }
 
