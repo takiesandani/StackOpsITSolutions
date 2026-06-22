@@ -167,7 +167,15 @@ test('stops retrying after the configured 429 retry budget', async () => {
 
         await assert.rejects(
             service.createJsonCompletion({ messages: [{ role: 'user', content: 'Analyse.' }] }),
-            /429.*after 3 attempt\(s\)/
+            error => {
+                assert.match(error.message, /429.*after 3 attempt\(s\)/);
+                assert.equal(error.azureMetadata.rateLimited, true);
+                assert.equal(error.azureMetadata.statusCode, 429);
+                assert.equal(error.azureMetadata.retryAfterMs, 1000);
+                assert.equal(error.azureMetadata.lastRetryDelayMs, 1000);
+                assert.equal(error.azureMetadata.retryCount, 2);
+                return true;
+            }
         );
         assert.equal(calls, 3);
         assert.deepEqual(delays, [1000, 1000]);
@@ -180,6 +188,11 @@ test('parses Azure textual retry delays when headers are unavailable', () => {
     assert.equal(getRetryDelayMs({
         response: { data: { error: { message: 'Please retry after 12 seconds.' } } }
     }, 0), 12000);
+});
+
+test('reads Retry-After headers case-insensitively and applies the enterprise cap', () => {
+    assert.equal(getRetryDelayMs({ response: { headers: { 'Retry-After': '900' } } }, 0, [1000], 15 * 60 * 1000), 900000);
+    assert.equal(getRetryDelayMs({ response: { headers: { 'X-MS-RETRY-AFTER-MS': '1200000' } } }, 0, [1000], 15 * 60 * 1000), 900000);
 });
 
 test('uses the production fallback retry schedule', () => {

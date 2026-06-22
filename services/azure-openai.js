@@ -10,7 +10,10 @@ const DEFAULT_RETRY_MAX_MS = 120000;
 function headerValue(headers, name) {
     if (!headers) return null;
     if (typeof headers.get === 'function') return headers.get(name);
-    return headers[name] ?? headers[name.toLowerCase()] ?? null;
+    const directValue = headers[name] ?? headers[name.toLowerCase()];
+    if (directValue !== undefined && directValue !== null) return directValue;
+    const matchingKey = Object.keys(headers).find(key => key.toLowerCase() === name.toLowerCase());
+    return matchingKey ? headers[matchingKey] : null;
 }
 
 function getRetryDelayMs(error, attempt, retryDelaysMs = DEFAULT_RETRY_DELAYS_MS, maxDelayMs = DEFAULT_RETRY_MAX_MS) {
@@ -153,6 +156,8 @@ function createAzureOpenAIService({
         responseFormat = null,
         onStatusChange = null,
         maxRetriesOverride = null,
+        retryDelaysMsOverride = null,
+        retryMaxMsOverride = null,
         timeoutMs = 60000
     }) {
         const config = await loadConfig();
@@ -171,6 +176,11 @@ function createAzureOpenAIService({
         const requestSizeBytes = Buffer.byteLength(JSON.stringify(body), 'utf8');
         const configuredRetries = maxRetriesOverride == null ? maxRetries : maxRetriesOverride;
         const retryLimit = Math.max(0, Math.min(10, Number(configuredRetries) || 0));
+        const effectiveRetryDelaysMs = Array.isArray(retryDelaysMsOverride) && retryDelaysMsOverride.length
+            ? retryDelaysMsOverride
+            : retryDelaysMs;
+        const effectiveRetryMaxMs = Number(retryMaxMsOverride) > 0 ? Number(retryMaxMsOverride) : retryMaxMs;
+        let lastRetryDelayMs = null;
         async function reportStatus(status, metadata = {}) {
             if (typeof onStatusChange !== 'function') return;
             try {
@@ -224,7 +234,8 @@ function createAzureOpenAIService({
                 const detail = error.response?.data?.error?.message || error.message || 'Unknown Azure OpenAI error';
                 const shouldRetry = status === 429 && attempt < retryLimit;
                 if (shouldRetry) {
-                    const delayMs = getRetryDelayMs(error, attempt, retryDelaysMs, retryMaxMs);
+                    const delayMs = getRetryDelayMs(error, attempt, effectiveRetryDelaysMs, effectiveRetryMaxMs);
+                    lastRetryDelayMs = delayMs;
                     await reportStatus('rate_limited', {
                         attempt: attempt + 1,
                         retryCount: attempt + 1,
@@ -248,9 +259,24 @@ function createAzureOpenAIService({
                     message: detail
                 });
                 const requestError = new Error(`Azure OpenAI request failed${status ? ` (${status})` : ''} after ${attempt + 1} attempt(s): ${detail}`);
+                const recommendedRetryDelayMs = status === 429
+                    ? getRetryDelayMs(error, attempt, effectiveRetryDelaysMs, effectiveRetryMaxMs)
+                    : null;
+                if (status === 429) {
+                    await reportStatus('failed_rate_limited', {
+                        attempt: attempt + 1,
+                        retryCount: attempt,
+                        delayMs: recommendedRetryDelayMs,
+                        requestId: requestId || null
+                    });
+                }
                 requestError.azureMetadata = {
                     model: config.deployment,
                     deployment: config.deployment,
+                    statusCode: status || null,
+                    rateLimited: status === 429,
+                    retryAfterMs: recommendedRetryDelayMs,
+                    lastRetryDelayMs,
                     requestSizeBytes,
                     responseSizeBytes: error.response?.data
                         ? Buffer.byteLength(JSON.stringify(error.response.data), 'utf8')

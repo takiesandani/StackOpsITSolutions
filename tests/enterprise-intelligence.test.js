@@ -1,7 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createEnterpriseIntelligenceService, ENTERPRISE_DOMAINS, normalizeMysqlDate } = require('../services/enterprise-intelligence');
+const {
+    createEnterpriseIntelligenceService,
+    ENTERPRISE_DOMAINS,
+    normalizeMysqlDate,
+    splitIntoBatches
+} = require('../services/enterprise-intelligence');
 
 function domainResponse(domainKey) {
     return {
@@ -115,6 +120,105 @@ test('normalizeMysqlDate stores only real MySQL dates for enterprise AI date fie
     assert.equal(normalizeMysqlDate('ASAP'), null);
     assert.equal(normalizeMysqlDate('2026-07-15'), '2026-07-15');
     assert.equal(normalizeMysqlDate(new Date('2026-07-15T13:30:00.000Z')), '2026-07-15');
+});
+
+test('enterprise batching splits 3,590 evidence items by count and byte budget', () => {
+    const evidence = Array.from({ length: 3590 }, (_, index) => ({ id: index + 1 }));
+    const countBatches = splitIntoBatches(evidence, { maxItems: 750 });
+    assert.deepEqual(countBatches.map(batch => batch.items.length), [750, 750, 750, 750, 590]);
+
+    const byteBatches = splitIntoBatches(
+        Array.from({ length: 80 }, (_, index) => ({ id: index, detail: 'x'.repeat(1200) })),
+        { maxItems: 750, maxBytes: 50000, estimateBytes: items => Buffer.byteLength(JSON.stringify(items), 'utf8') }
+    );
+    assert.ok(byteBatches.length > 1);
+    assert.ok(byteBatches.every(batch => Buffer.byteLength(JSON.stringify(batch.items), 'utf8') <= 50000));
+});
+
+test('enterprise rate-limit circuit stops remaining batches and records zero analysed items', async () => {
+    const calls = [];
+    let azureCalls = 0;
+    let insertId = 500;
+    const evidence = Array.from({ length: 3590 }, (_, index) => ({ evidenceType: 'metric', data: { id: index + 1, value: index } }));
+    const snapshot = {
+        ID: 79, CompanyID: 1, TenantKey: 'tenant-sunbird', SnapshotType: 'manual',
+        CreatedAt: new Date('2026-06-22T08:00:00.000Z'), DataCompletenessScore: 100,
+        MetricsJson: JSON.stringify({ stackctrl_risk: { domainRiskScores: { identity: 25, devices: 20 } } }),
+        ContextJson: JSON.stringify({
+            riskEngine: { domainHealthScores: { identity: 75, devices: 80 }, domainRiskScores: { identity: 25, devices: 20 } },
+            sources: [
+                { sourceKey: 'identity', status: 'available', evidence },
+                { sourceKey: 'devices', status: 'available', evidence: [{ evidenceType: 'metric', data: { id: 1 } }] }
+            ]
+        })
+    };
+    const pool = {
+        async query(sql, params = []) {
+            calls.push({ sql, params });
+            assert.equal((sql.match(/\?/g) || []).length, params.length, `Placeholder mismatch in ${sql}`);
+            if (sql.includes('FROM StackCTRLTenantEvidenceSnapshots WHERE')) return [[snapshot], []];
+            if (sql.includes('FROM StackCTRLKnowledgeBase')) return [[], []];
+            if (sql.includes('FROM StackCTRLTenantDomainIntelligence') && sql.includes('RunID <>')) return [[], []];
+            if (/^\s*INSERT/i.test(sql)) return [{ insertId: insertId++ }, []];
+            return [{ affectedRows: 1 }, []];
+        }
+    };
+    const service = createEnterpriseIntelligenceService({
+        pool,
+        schedulerService: { async getHistoricalSnapshotContext() { return { comparisons: {} }; } },
+        azureOpenAI: {
+            async createJsonCompletion(options) {
+                azureCalls += 1;
+                assert.equal(options.maxRetriesOverride, 0);
+                const error = new Error('Azure capacity is temporarily unavailable');
+                error.azureMetadata = {
+                    statusCode: 429,
+                    rateLimited: true,
+                    retryAfterMs: 600000,
+                    requestSizeBytes: 45000,
+                    retryCount: 0
+                };
+                throw error;
+            }
+        },
+        logger: { info() {}, warn() {}, error() {} },
+        wait: async () => {},
+        config: { domainDelayMs: 0, maxRetries: 0, maxItemsPerBatch: 750 }
+    });
+
+    const result = await service.runEnterpriseReport({
+        companyId: 1,
+        snapshotId: 79,
+        domainKeys: ['identity', 'devices'],
+        includeSynthesis: true
+    });
+
+    assert.equal(azureCalls, 1);
+    assert.equal(result.status, 'failed_rate_limited', JSON.stringify(result));
+    assert.equal(result.rateLimited, true);
+    assert.equal(result.rateLimit.retryAfterMs, 600000);
+    assert.equal(result.domains.length, 1);
+    assert.equal(result.domains[0].status, 'failed_rate_limited');
+    assert.equal(result.synthesisId, null);
+
+    const batchWrite = calls.find(call => call.sql.includes('INSERT INTO StackCTRLTenantDomainIntelligenceBatches'));
+    assert.ok(batchWrite);
+    assert.equal(batchWrite.params[6], 5);
+    assert.equal(batchWrite.params[9], 750);
+    assert.equal(batchWrite.params[10], 0);
+    assert.match(batchWrite.params[19], /"recommendedRetryAfterMs":600000/);
+
+    const auditWrite = calls.find(call => call.sql.includes('INSERT INTO StackCTRLIntelligenceEvidenceAudit'));
+    assert.ok(auditWrite);
+    assert.equal(auditWrite.params[4], 3590);
+    assert.equal(auditWrite.params[5], 0);
+    assert.equal(auditWrite.params[8], 3590);
+
+    await assert.rejects(
+        service.runEnterpriseReport({ companyId: 1, snapshotId: 79, domainKeys: ['devices'], includeSynthesis: false }),
+        error => error.enterpriseStatus === 'failed_rate_limited' && /circuit is open/.test(error.message)
+    );
+    assert.equal(azureCalls, 1);
 });
 
 test('enterprise invalid JSON triggers repair retry and stores repaired batch details', async () => {

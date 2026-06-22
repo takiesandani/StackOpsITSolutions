@@ -31,7 +31,8 @@ test('admin audit shows input, omissions, Azure output depth, tokens, retries, a
 test('admin enterprise UI uses clear batch labels and latest/history filters', () => {
     for (const phrase of [
         'Total StackCTRL Data',
-        'Processed by Azure',
+        'Prepared for Azure',
+        'Successfully Analysed by Azure',
         'Permanently Omitted',
         'Completed Batches',
         'Failed Batches',
@@ -45,7 +46,8 @@ test('admin enterprise UI uses clear batch labels and latest/history filters', (
 
 test('admin enterprise actions render stored failure statuses instead of unconditional success', () => {
     assert.match(javascript, /enterpriseActionMessage/);
-    assert.match(javascript, /failed_invalid_json/);
+    assert.match(javascript, /failed_rate_limited/);
+    assert.match(javascript, /Azure rate limit reached/);
     assert.match(javascript, /completed with warnings/);
     assert.match(javascript, /Retry failed domain/);
 });
