@@ -16,6 +16,20 @@
         'board_report', 'powerbi_summary'
     ];
 
+    // All 10 supported enterprise domains for Sunbird tenant profile
+    const supportedEnterpriseDomains = [
+        { key: 'identity', name: 'Identity Protection' },
+        { key: 'devices', name: 'Device Protection' },
+        { key: 'email_security', name: 'Email Security' },
+        { key: 'cloudflare_network_security', name: 'Network Security / Cloudflare' },
+        { key: 'governance', name: 'Governance' },
+        { key: 'compliance', name: 'Compliance Validation' },
+        { key: 'security_alerts', name: 'Security Alerts' },
+        { key: 'operations', name: 'Operations' },
+        { key: 'backup', name: 'Backup and Recovery' },
+        { key: 'applications', name: 'Applications' }
+    ];
+
     const el = id => document.getElementById(id);
 
     function escapeHtml(value) {
@@ -576,9 +590,22 @@
 
         const selector = el('enterprise-domain-selector');
         const currentValue = selector.value;
-        if (enterprise.domains?.length) {
-            selector.innerHTML = enterprise.domains.map(domain => `<option value="${escapeHtml(domain.key)}">${escapeHtml(domain.name)}</option>`).join('');
-            if (enterprise.domains.some(domain => domain.key === currentValue)) selector.value = currentValue;
+        
+        // Use API domains if available and non-empty, otherwise fallback to all supported domains
+        let domainsToUse = enterprise.domains && enterprise.domains.length > 0 ? enterprise.domains : supportedEnterpriseDomains;
+        
+        // If we only got one domain from API (incorrect), log warning and use all supported domains
+        if (enterprise.domains?.length === 1 && enterprise.domains[0]?.key === 'identity') {
+            console.warn('[StackCTRL Admin Intelligence] Domain dropdown received only Identity Protection from API. Using all 10 supported domains for Sunbird tenant.');
+            domainsToUse = supportedEnterpriseDomains;
+        }
+        
+        if (domainsToUse.length) {
+            selector.innerHTML = domainsToUse.map(domain => `<option value="${escapeHtml(domain.key)}">${escapeHtml(domain.name)}</option>`).join('');
+            if (domainsToUse.some(domain => domain.key === currentValue)) selector.value = currentValue;
+        } else {
+            // Fallback if no domains at all - should not happen
+            selector.innerHTML = supportedEnterpriseDomains.map(domain => `<option value="${escapeHtml(domain.key)}">${escapeHtml(domain.name)}</option>`).join('');
         }
     }
 
@@ -677,7 +704,10 @@
         el('tenant-selector').addEventListener('change', async event => {
             state.selectedCompanyId = Number(event.target.value || 0);
             localStorage.setItem('stackctrlAdminIntelligenceCompanyId', String(state.selectedCompanyId));
-            try { await loadTenant(); } catch (error) { toast(error.message, 'error'); }
+            try {
+                await loadTenant();
+                await loadEnterprise();
+            } catch (error) { toast(error.message, 'error'); }
         });
         el('refresh-control-center').addEventListener('click', () => loadAll().catch(error => toast(error.message, 'error')));
         el('create-snapshot').addEventListener('click', event => runAction(event.currentTarget, 'Snapshot creation', `/api/admin/intelligence/tenant/${state.selectedCompanyId}/snapshot`));
@@ -711,11 +741,15 @@
             snapshotId: state.tenant?.latestSnapshot?.ID,
             periodType: 'daily'
         }));
-        el('run-enterprise-selected')?.addEventListener('click', event => runAction(event.currentTarget, 'Selected Domain Deep Analysis', `/api/admin/intelligence/tenant/${state.selectedCompanyId}/enterprise/domain`, {
-            snapshotId: state.tenant?.latestSnapshot?.ID,
-            periodType: 'daily',
-            domainKey: el('enterprise-domain-selector').value
-        }));
+        el('run-enterprise-selected')?.addEventListener('click', event => {
+            const selectedDomainKey = el('enterprise-domain-selector').value;
+            if (!selectedDomainKey) return toast('No domain selected. Please select a domain from the dropdown.', 'error');
+            runAction(event.currentTarget, 'Selected Domain Deep Analysis', `/api/admin/intelligence/tenant/${state.selectedCompanyId}/enterprise/domain`, {
+                snapshotId: state.tenant?.latestSnapshot?.ID,
+                periodType: 'daily',
+                domainKey: selectedDomainKey
+            });
+        });
         el('run-enterprise-synthesis')?.addEventListener('click', event => {
             const runId = state.enterprise?.runs?.[0]?.ID;
             if (!runId) return toast('Load or run domain intelligence before synthesis.', 'error');
