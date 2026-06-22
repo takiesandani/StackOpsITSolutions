@@ -110,6 +110,82 @@ function safeValue(value, depth = 0, limits = {}) {
     return String(value).slice(0, maxString);
 }
 
+const EVIDENCE_CONTAINER_METADATA_KEYS = new Set([
+    'evidencetype', 'type', 'source', 'sourcekey', 'name', 'label', 'category',
+    'title', 'count', 'total', 'status'
+]);
+
+function containsArray(value, seen = new Set()) {
+    if (Array.isArray(value)) return true;
+    if (!value || typeof value !== 'object' || seen.has(value)) return false;
+    seen.add(value);
+    return Object.values(value).some(nested => containsArray(nested, seen));
+}
+
+function flattenDomainEvidence(evidence, { rootPath = 'evidence' } = {}) {
+    const flattened = [];
+
+    function pathLabel(path) {
+        const segments = String(path).replace(/\[\d+\]/g, '').split('.').filter(Boolean);
+        return segments.at(-1) || 'evidence';
+    }
+
+    function containerContext(value, inherited) {
+        const context = { ...inherited };
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return context;
+        for (const [key, nested] of Object.entries(value)) {
+            if (nested == null || !['string', 'number', 'boolean'].includes(typeof nested)) continue;
+            if (EVIDENCE_CONTAINER_METADATA_KEYS.has(key.toLowerCase())) context[key] = nested;
+        }
+        return context;
+    }
+
+    function append(value, path, context) {
+        const itemContext = containerContext(value, context);
+        const sourceLabel = String(itemContext.evidenceType || itemContext.type || itemContext.sourceKey || itemContext.source || pathLabel(path));
+        flattened.push({
+            sourcePath: path,
+            sourceLabel,
+            evidenceType: String(itemContext.evidenceType || itemContext.type || sourceLabel || 'stored_evidence'),
+            data: safeValue(value?.data ?? value, 0, { maxDepth: 7, maxArray: 20, maxString: 1600 })
+        });
+    }
+
+    function walk(value, path, inherited = {}, isArrayItem = false) {
+        if (Array.isArray(value)) {
+            value.forEach((item, index) => walk(item, `${path}[${index}]`, inherited, true));
+            return;
+        }
+
+        if (!value || typeof value !== 'object') {
+            append(value, path, inherited);
+            return;
+        }
+
+        const entries = Object.entries(value);
+        const arrayBearingEntries = entries.filter(([, nested]) => containsArray(nested));
+        if (!arrayBearingEntries.length) {
+            append(value, path, inherited);
+            return;
+        }
+
+        const context = containerContext(value, inherited);
+        if (isArrayItem) {
+            const recordFields = Object.fromEntries(entries.filter(([key, nested]) =>
+                !containsArray(nested) && !EVIDENCE_CONTAINER_METADATA_KEYS.has(key.toLowerCase())
+            ));
+            if (Object.keys(recordFields).length) append(recordFields, path, context);
+        }
+
+        for (const [key, nested] of arrayBearingEntries) {
+            walk(nested, `${path}.${key}`, context, false);
+        }
+    }
+
+    walk(evidence, rootPath);
+    return flattened;
+}
+
 function deepItemCount(value, depth = 0) {
     if (value == null || depth > 5) return 0;
     if (Array.isArray(value)) return value.length + value.reduce((total, item) => total + deepItemCount(item, depth + 1), 0);
@@ -365,7 +441,7 @@ function createEnterpriseIntelligenceService({
         const risk = context.riskEngine || metrics.stackctrl_risk || {};
         const health = risk.domainHealthScores?.[domain.riskKey] ?? risk.executiveKPIs?.[domain.healthKey] ?? metrics.executive_kpis?.[domain.healthKey] ?? null;
         const riskScore = risk.domainRiskScores?.[domain.riskKey] ?? metrics.stackctrl_risk?.domainRiskScores?.[domain.riskKey] ?? null;
-        const evidence = array(source.evidence);
+        const evidence = source.evidence && typeof source.evidence === 'object' ? source.evidence : [];
         return {
             context,
             source,
@@ -407,22 +483,12 @@ function createEnterpriseIntelligenceService({
         return result;
     }
 
-    function selectedEvidence(evidence, maximum = 30) {
-        return evidence.slice(0, maximum).map((item, index) => ({
-            evidenceNumber: index + 1,
-            evidenceType: item?.evidenceType || item?.type || 'stored_evidence',
-            data: safeValue(item?.data ?? item, 0, { maxDepth: 6, maxArray: 15, maxString: 1600 })
-        }));
-    }
-
     async function buildDomainPackage({ companyId, snapshot, runId, domain, historicalContext }) {
         const current = domainFromSnapshot(snapshot, domain);
         const knowledge = await loadKnowledge(domain.key);
         const previousAnalysis = await loadPreviousDomain(companyId, domain.key, runId);
-        const stackCTRLDataCount = current.evidence.length || deepItemCount(current.evidence);
-        
-        // For Enterprise Mode: prepare ALL evidence for batching, not just first 30
-        let includedEvidence = selectedEvidence(current.evidence); // This preserves all, not just 30
+        const flattenedEvidence = flattenDomainEvidence(current.evidence, { rootPath: `${domain.sourceKey}.evidence` });
+        const stackCTRLDataCount = flattenedEvidence.length;
         
         const base = {
             contextType: 'stackctrl_enterprise_domain_intelligence',
@@ -439,7 +505,7 @@ function createEnterpriseIntelligenceService({
                 freshness: safeValue(current.source.freshness || {}, 0, { maxArray: 0 }),
                 warnings: array(current.source.warnings).slice(0, 20),
                 errorMessage: current.source.errorMessage || null,
-                evidenceCount: current.evidence.length
+                evidenceCount: stackCTRLDataCount
             },
             currentMetrics: safeValue(current.metrics, 0, { maxDepth: 7, maxArray: 10, maxString: 1200 }),
             dashboardMetrics: safeValue(current.dashboardMetrics, 0, { maxDepth: 6, maxArray: 10 }),
@@ -449,7 +515,7 @@ function createEnterpriseIntelligenceService({
             previousDomainAnalysis: previousAnalysis,
             knowledgeGrounding: knowledge,
             knowledgeWarning: knowledge.length ? null : `No curated ${domain.name} knowledge references are currently available.`,
-            evidence: includedEvidence,
+            evidence: [],
             limitations: {
                 rawVendorPayloadIncluded: false,
                 rawSnapshotContextIncluded: false,
@@ -465,14 +531,14 @@ function createEnterpriseIntelligenceService({
         return {
             package: base,
             current,
-            allEvidence: current.evidence, // Keep original evidence for batching
+            allEvidence: flattenedEvidence,
             audit: {
-                stackCTRLDataCount: stackCTRLDataCount, // Total items in domain
-                preparedForAzureCount: current.evidence.length,
+                stackCTRLDataCount,
+                preparedForAzureCount: stackCTRLDataCount,
                 sentToAzureCount: 0, // Successfully analysed by Azure; updated after completed batches
                 omittedCount: 0, // For batching, nothing is permanently omitted
                 metricsIncludedCount: primitiveMetricCount(base.currentMetrics) + primitiveMetricCount(base.dashboardMetrics) + primitiveMetricCount(base.calculatedIndicators),
-                evidenceIncludedCount: current.evidence.length,
+                evidenceIncludedCount: stackCTRLDataCount,
                 evidenceOmittedCount: 0, // Batching handles all evidence
                 historicalComparisonsIncluded: Object.values(base.historicalComparisons).filter(item => item.availability === 'available').length,
                 inputSizeBytes
@@ -563,9 +629,18 @@ ${JSON.stringify(packageValue)}`;
             evidence: batchEvidence.map((item, index) => ({
                 evidenceNumber: index + 1,
                 evidenceType: item?.evidenceType || item?.type || 'stored_evidence',
+                sourceLabel: item?.sourceLabel || null,
+                sourcePath: item?.sourcePath || null,
                 data: safeValue(item?.data ?? item, 0, { maxDepth: 6, maxArray: 15, maxString: 1600 })
             })),
-            current: basePackage.current, // Ensure current is preserved
+            current: {
+                healthScore: basePackage.authoritativeScores?.healthScore ?? null,
+                riskScore: basePackage.authoritativeScores?.riskScore ?? null,
+                riskLevel: basePackage.authoritativeScores?.riskLevel || 'not_scored',
+                metrics: basePackage.currentMetrics || {},
+                dashboardMetrics: basePackage.dashboardMetrics || {},
+                calculatedIndicators: basePackage.calculatedIndicators || {}
+            },
             batchMetadata: {
                 batchNumber,
                 totalBatches,
@@ -602,7 +677,7 @@ ${JSON.stringify(packageValue)}`;
     async function storeBatch({
         companyId, snapshotId, runId, domain, batchNumber, totalBatches, batchEvidence, analysis, usage, status,
         errorMessage = null, failureReason = null, rawResponsePreview = null, azureFinishReason = null,
-        jsonRepaired = false, recommendedRetryAfterMs = null
+        jsonRepaired = false, recommendedRetryAfterMs = null, stackCTRLDataCount = 0
     }) {
         const batchItemCount = batchEvidence.length;
         const batchSummary = {
@@ -624,14 +699,14 @@ ${JSON.stringify(packageValue)}`;
               MissingDataWarningsJson, StartedAt, CompletedAt, ErrorMessage, FailureReason, RawResponsePreview, AzureFinishReason, CreatedAt)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?, ?, ?, ?, NOW())
              ON DUPLICATE KEY UPDATE
-              Status = ?, BatchItemCount = ?, SentToAzureCount = ?, InputSizeBytes = ?, ResponseSizeBytes = ?,
+              Status = ?, StackCTRLDataCount = ?, BatchCount = ?, BatchItemCount = ?, SentToAzureCount = ?, InputSizeBytes = ?, ResponseSizeBytes = ?,
               InputTokens = ?, OutputTokens = ?, TotalTokens = ?, RetryCount = ?,
               BatchSummaryJson = ?, FindingsJson = ?, RisksJson = ?, RecommendationsJson = ?, TrendsJson = ?,
               MissingDataWarningsJson = ?, CompletedAt = NOW(), ErrorMessage = ?, FailureReason = ?,
               RawResponsePreview = ?, AzureFinishReason = ?, UpdatedAt = NOW()`,
             [
                 companyId, snapshotId, runId, domain.key, domain.name, batchNumber, totalBatches, status,
-                0, batchItemCount, analysis ? batchItemCount : 0, 0, 0,
+                stackCTRLDataCount, batchItemCount, analysis ? batchItemCount : 0, 0, 0,
                 usage.requestBytes || 0, usage.responseBytes, usage.inputTokens, usage.outputTokens, usage.totalTokens, usage.retries || 0,
                 JSON.stringify(batchSummary || {}),
                 analysis ? jsonArray(analysis.keyFindings) : null,
@@ -641,7 +716,7 @@ ${JSON.stringify(packageValue)}`;
                 analysis ? jsonArray(analysis.missingDataWarnings) : null,
                 errorMessage, failureReason, rawResponsePreview, azureFinishReason,
                 // ON DUPLICATE KEY UPDATE values
-                status, batchItemCount, analysis ? batchItemCount : 0, usage.requestBytes || 0, usage.responseBytes,
+                status, stackCTRLDataCount, totalBatches, batchItemCount, analysis ? batchItemCount : 0, usage.requestBytes || 0, usage.responseBytes,
                 usage.inputTokens, usage.outputTokens, usage.totalTokens, usage.retries || 0,
                 JSON.stringify(batchSummary || {}),
                 analysis ? jsonArray(analysis.keyFindings) : null,
@@ -657,7 +732,6 @@ ${JSON.stringify(packageValue)}`;
     // Analyze a single domain batch with JSON error handling and repair
     async function analyzeDomainBatch({ companyId, snapshot, run, domain, packageResult, batchEvidence, batchNumber, totalBatches, historicalContext }) {
         const batchPackage = buildDomainBatchPackage(packageResult.package, batchEvidence, batchNumber, totalBatches);
-        batchPackage.current = packageResult.current; // Ensure current is available for normalizedDomainResult
         let usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: estimateDomainRequestBytes(domain, batchPackage), responseBytes: 0, retries: 0 };
         
         try {
@@ -681,6 +755,7 @@ ${JSON.stringify(packageValue)}`;
                 await storeBatch({
                     companyId, snapshotId: snapshot.ID, runId: run.id, domain,
                     batchNumber, totalBatches, batchEvidence, analysis: null, usage,
+                    stackCTRLDataCount: packageResult.audit.stackCTRLDataCount,
                     status: 'failed_invalid_json',
                     errorMessage: `Azure response truncated (finish_reason: length). Output tokens: ${usage.outputTokens}`,
                     failureReason: 'output_truncated',
@@ -722,6 +797,7 @@ ${JSON.stringify(packageValue)}`;
                         await storeBatch({
                             companyId, snapshotId: snapshot.ID, runId: run.id, domain,
                             batchNumber, totalBatches, batchEvidence, analysis: null, usage,
+                            stackCTRLDataCount: packageResult.audit.stackCTRLDataCount,
                             status: 'failed_invalid_json',
                             errorMessage: `JSON parse failed: ${jsonResult.error}. Repair attempt also failed: ${repairResult.error}`,
                             failureReason: 'invalid_json_unrepairable',
@@ -735,18 +811,19 @@ ${JSON.stringify(packageValue)}`;
                         };
                     }
                     jsonRepaired = true;
-                    analysis = normalizedDomainResult(repairResult.value, domain, batchPackage.current);
+                    analysis = normalizedDomainResult(repairResult.value, domain, packageResult.current);
                 } else {
-                    analysis = normalizedDomainResult(jsonResult.value, domain, batchPackage.current);
+                    analysis = normalizedDomainResult(jsonResult.value, domain, packageResult.current);
                 }
             } else {
-                analysis = normalizedDomainResult(response.data, domain, batchPackage.current);
+                analysis = normalizedDomainResult(response.data, domain, packageResult.current);
             }
             
             // Store successful batch
             await storeBatch({
                 companyId, snapshotId: snapshot.ID, runId: run.id, domain,
                 batchNumber, totalBatches, batchEvidence, analysis, usage, status: 'completed',
+                stackCTRLDataCount: packageResult.audit.stackCTRLDataCount,
                 rawResponsePreview, azureFinishReason: finishReason, jsonRepaired
             });
             
@@ -774,6 +851,7 @@ ${JSON.stringify(packageValue)}`;
                 await storeBatch({
                     companyId, snapshotId: snapshot.ID, runId: run.id, domain,
                     batchNumber, totalBatches, batchEvidence, analysis: null, usage,
+                    stackCTRLDataCount: packageResult.audit.stackCTRLDataCount,
                     status, errorMessage: error.message, failureReason,
                     rawResponsePreview: safeResponsePreview(metadata.rawResponse || metadata.responseText || ''),
                     azureFinishReason: metadata.finishReason || null,
@@ -1553,6 +1631,7 @@ ${JSON.stringify(packageValue)}`;
         settings,
         domains: ENTERPRISE_DOMAINS,
         buildDomainPackage,
+        buildDomainBatchPackage,
         runEnterpriseReport,
         runEnterpriseSynthesis,
         runRollupReport,
@@ -1565,6 +1644,7 @@ module.exports = {
     ENTERPRISE_DOMAINS,
     DOMAIN_BY_KEY,
     createEnterpriseIntelligenceService,
+    flattenDomainEvidence,
     splitIntoBatches,
     periodWindow,
     normalizeMysqlDate

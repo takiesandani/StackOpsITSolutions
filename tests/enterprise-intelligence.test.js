@@ -4,9 +4,21 @@ const assert = require('node:assert/strict');
 const {
     createEnterpriseIntelligenceService,
     ENTERPRISE_DOMAINS,
+    flattenDomainEvidence,
     normalizeMysqlDate,
     splitIntoBatches
 } = require('../services/enterprise-intelligence');
+
+function identityLikeEvidence() {
+    return {
+        users: Array.from({ length: 3000 }, (_, index) => ({ id: `user-${index + 1}`, enabled: true })),
+        roles: Array.from({ length: 300 }, (_, index) => ({ id: `role-${index + 1}`, privileged: index < 20 })),
+        signIns: Array.from({ length: 200 }, (_, index) => ({ id: `signin-${index + 1}`, risk: 'none' })),
+        history: {
+            daily: Array.from({ length: 90 }, (_, index) => ({ day: index + 1, riskySignIns: index % 3 }))
+        }
+    };
+}
 
 function domainResponse(domainKey) {
     return {
@@ -123,8 +135,20 @@ test('normalizeMysqlDate stores only real MySQL dates for enterprise AI date fie
 });
 
 test('enterprise batching splits 3,590 evidence items by count and byte budget', () => {
-    const evidence = Array.from({ length: 3590 }, (_, index) => ({ id: index + 1 }));
-    const countBatches = splitIntoBatches(evidence, { maxItems: 750 });
+    const evidence = identityLikeEvidence();
+    assert.equal(Object.keys(evidence).length, 4);
+    const flattened = flattenDomainEvidence(evidence, { rootPath: 'identity.evidence' });
+    assert.equal(flattened.length, 3590);
+    assert.ok(flattened.some(item => item.sourcePath === 'identity.evidence.users[0]'));
+    assert.ok(flattened.some(item => item.sourcePath === 'identity.evidence.history.daily[89]'));
+
+    const groupedEvidence = Object.entries(evidence).map(([evidenceType, data]) => ({ evidenceType, data }));
+    const flattenedGroups = flattenDomainEvidence(groupedEvidence, { rootPath: 'identity.evidence' });
+    assert.equal(groupedEvidence.length, 4);
+    assert.equal(flattenedGroups.length, 3590);
+    assert.equal(flattenedGroups[0].sourceLabel, 'users');
+
+    const countBatches = splitIntoBatches(flattened, { maxItems: 750 });
     assert.deepEqual(countBatches.map(batch => batch.items.length), [750, 750, 750, 750, 590]);
 
     const byteBatches = splitIntoBatches(
@@ -135,11 +159,84 @@ test('enterprise batching splits 3,590 evidence items by count and byte budget',
     assert.ok(byteBatches.every(batch => Buffer.byteLength(JSON.stringify(batch.items), 'utf8') <= 50000));
 });
 
+test('enterprise domain packages flatten nested evidence and preserve slim shared context in every batch', async () => {
+    const snapshot = {
+        ID: 80, CompanyID: 1, TenantKey: 'tenant-sunbird', SnapshotType: 'manual',
+        CreatedAt: new Date('2026-06-22T08:00:00.000Z'), DataCompletenessScore: 100,
+        MetricsJson: JSON.stringify({ identity: { mfaCoverage: 91 }, stackctrl_risk: { domainRiskScores: { identity: 25 } } }),
+        ContextJson: JSON.stringify({
+            riskEngine: { domainHealthScores: { identity: 75 }, domainRiskScores: { identity: 25 } },
+            sources: [{
+                sourceKey: 'identity', status: 'available', isExpected: true,
+                metrics: { mfaCoverage: 91 }, dashboardMetrics: { privilegedUsers: 20 },
+                calculatedIndicators: { usersWithoutMfa: 3 }, evidence: identityLikeEvidence()
+            }]
+        })
+    };
+    const pool = {
+        async query(sql) {
+            if (sql.includes('FROM StackCTRLKnowledgeBase')) return [[], []];
+            if (sql.includes('FROM StackCTRLTenantDomainIntelligence') && sql.includes('RunID <>')) return [[], []];
+            throw new Error(`Unexpected query: ${sql}`);
+        }
+    };
+    const service = createEnterpriseIntelligenceService({
+        pool,
+        azureOpenAI: { async createJsonCompletion() { throw new Error('Azure should not be called'); } },
+        schedulerService: { async getHistoricalSnapshotContext() { return {}; } },
+        config: { domainDelayMs: 0, maxItemsPerBatch: 750 }
+    });
+    const historicalContext = {
+        comparisons: {
+            '24_hours': {
+                availability: 'available', differenceMinutes: 1440, metricChanges: {},
+                snapshot: {
+                    snapshotId: 79, createdAt: new Date('2026-06-21T08:00:00.000Z'),
+                    context: { sources: [{ sourceKey: 'identity', status: 'available', metrics: { mfaCoverage: 90 } }], riskEngine: { domainHealthScores: { identity: 74 }, domainRiskScores: { identity: 26 } } },
+                    metrics: { identity: { mfaCoverage: 90 } }
+                }
+            }
+        }
+    };
+
+    const packageResult = await service.buildDomainPackage({
+        companyId: 1,
+        snapshot,
+        runId: 900,
+        domain: ENTERPRISE_DOMAINS[0],
+        historicalContext
+    });
+    assert.equal(packageResult.audit.stackCTRLDataCount, 3590);
+    assert.equal(packageResult.audit.evidenceIncludedCount, 3590);
+    assert.equal(packageResult.package.evidence.length, 0);
+
+    const batches = splitIntoBatches(packageResult.allEvidence, { maxItems: 750 });
+    assert.equal(batches.length, 5);
+    const batchPackages = batches.map((batch, index) => service.buildDomainBatchPackage(
+        packageResult.package,
+        batch.items,
+        index + 1,
+        batches.length
+    ));
+    for (const [index, batchPackage] of batchPackages.entries()) {
+        assert.equal(batchPackage.batchMetadata.batchNumber, index + 1);
+        assert.equal(batchPackage.batchMetadata.totalBatches, 5);
+        assert.equal(batchPackage.evidence.length, batches[index].items.length);
+        assert.equal(batchPackage.current.healthScore, 75);
+        assert.equal(batchPackage.current.riskScore, 25);
+        assert.equal(batchPackage.current.riskLevel, 'moderate');
+        assert.equal(batchPackage.current.metrics.mfaCoverage, 91);
+        assert.equal(batchPackage.historicalComparisons['24_hours'].availability, 'available');
+        assert.equal(Object.hasOwn(batchPackage.current, 'evidence'), false);
+        assert.ok(batchPackage.evidence.every(item => item.sourcePath && item.sourceLabel));
+    }
+});
+
 test('enterprise rate-limit circuit stops remaining batches and records zero analysed items', async () => {
     const calls = [];
     let azureCalls = 0;
     let insertId = 500;
-    const evidence = Array.from({ length: 3590 }, (_, index) => ({ evidenceType: 'metric', data: { id: index + 1, value: index } }));
+    const evidence = identityLikeEvidence();
     const snapshot = {
         ID: 79, CompanyID: 1, TenantKey: 'tenant-sunbird', SnapshotType: 'manual',
         CreatedAt: new Date('2026-06-22T08:00:00.000Z'), DataCompletenessScore: 100,
@@ -204,6 +301,7 @@ test('enterprise rate-limit circuit stops remaining batches and records zero ana
     const batchWrite = calls.find(call => call.sql.includes('INSERT INTO StackCTRLTenantDomainIntelligenceBatches'));
     assert.ok(batchWrite);
     assert.equal(batchWrite.params[6], 5);
+    assert.equal(batchWrite.params[8], 3590);
     assert.equal(batchWrite.params[9], 750);
     assert.equal(batchWrite.params[10], 0);
     assert.match(batchWrite.params[19], /"recommendedRetryAfterMs":600000/);
