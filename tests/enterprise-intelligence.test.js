@@ -158,12 +158,13 @@ test('Enterprise Identity currentMetrics follow dynamic dashboard metrics and de
             mfaEnabled,
             mfaMissing: totalUsers - mfaEnabled,
             mfaCoverage: Math.round((mfaEnabled / totalUsers) * 100),
-            privilegedUsers: 5,
+            privilegedUsers: 6,
             adminsWithoutMfa: 1,
-            highRiskUsers: 2,
-            signInIssues: 3,
+            highRiskUsers: 1,
+            signInIssues: 57,
             externalUsers: 4,
-            unknownDevices: 6,
+            unknownDevices: 48,
+            multiplePrivilegedRoles: 5,
             securityScore: 82
         };
         const snapshot = {
@@ -188,8 +189,10 @@ test('Enterprise Identity currentMetrics follow dynamic dashboard metrics and de
             domain: ENTERPRISE_DOMAINS[0],
             historicalContext: { comparisons: {} }
         });
-        assert.equal(packageResult.package.currentMetrics.mfaEnabled, mfaEnabled);
-        assert.equal(packageResult.package.currentMetrics.mfaMissing, totalUsers - mfaEnabled);
+        for (const [metric, value] of Object.entries(dashboardMetrics)) {
+            assert.equal(packageResult.package.currentMetrics[metric], value, `currentMetrics.${metric}`);
+            assert.equal(packageResult.package.dashboardMetrics[metric], value, `dashboardMetrics.${metric}`);
+        }
         assert.equal(packageResult.package.dataLineage.sourceBuilder, 'identityDashboardContext');
         assert.equal(packageResult.sourceAlignment.mismatches.length, 0);
         assert.equal(packageResult.sourceAlignment.rows.find(row => row.metric === 'mfaEnabled').status, 'MATCH');

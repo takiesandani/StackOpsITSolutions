@@ -7,7 +7,7 @@ function getRoleNames(user) {
 
 function isPrivileged(user) {
     return Boolean(user?.hasAdminRole || user?.isPrivileged) ||
-        getRoleNames(user).some(role => /(admin|global|privileged|security|directory)/i.test(role));
+        getRoleNames(user).some(role => /(admin|global|privileged|security|directory|exchange|sharepoint|compliance)/i.test(role));
 }
 
 function getLastSignIn(user) {
@@ -25,8 +25,16 @@ function buildIdentityDashboardContext(source) {
     const externalUsers = users.filter(user => Boolean(user.isExternal) || String(user.userType || '').toLowerCase() === 'guest');
     const inactiveUsers = users.filter(user => daysSince(getLastSignIn(user)) > 30);
     const unknownDeviceUsers = users.filter(user => /unknown|no sign-in|n\/a/i.test(String(user?.lastSignIn?.device || user?.device || 'Unknown')));
-    const failedSignInUsers = users.filter(user => /fail/i.test(String(user?.lastSignIn?.status || user?.signInStatus || '')) ||
-        String(user.riskLevel || '').toUpperCase() === 'HIGH');
+    const failedSignInUsers = users.filter(user => {
+        const status = String(user?.lastSignIn?.status || user?.signInStatus || '').toLowerCase();
+        const location = String(user?.lastSignIn?.location || user?.location || '').toLowerCase();
+        const device = String(user?.lastSignIn?.device || user?.device || '').toLowerCase();
+        const risk = String(user.riskLevel || '').toUpperCase();
+        return status.includes('fail') || risk === 'HIGH' ||
+            location.includes('unknown') || location === 'no sign-in' ||
+            device.includes('unknown') || device === 'no sign-in' ||
+            daysSince(getLastSignIn(user)) > 30;
+    });
     const adminsWithoutMfa = privilegedUsers.filter(user => usersWithoutMfa.includes(user));
     const mfaEnabled = users.length ? users.length - usersWithoutMfa.length : numberFrom(stored, ['MFAEnabled', 'mfaEnabled']);
     const mfaMissing = users.length ? usersWithoutMfa.length : Math.max(0, totalUsers - mfaEnabled);
@@ -46,7 +54,9 @@ function buildIdentityDashboardContext(source) {
         signInIssues: numberFrom(dashboardSource, ['signInIssues'], failedSignInUsers.length),
         unknownDevices: numberFrom(dashboardSource, ['unknownDevices'], unknownDeviceUsers.length),
         adminsWithoutMfa: numberFrom(dashboardSource, ['adminsWithoutMfa'], adminsWithoutMfa.length),
-        multiplePrivilegedRoles: numberFrom(dashboardSource, ['multiplePrivilegedRoles'], users.filter(user => getRoleNames(user).length > 1).length),
+        multiplePrivilegedRoles: numberFrom(dashboardSource, ['multiplePrivilegedRoles'], users.filter(user =>
+            getRoleNames(user).filter(role => /(admin|global|privileged|security|directory)/i.test(role)).length > 1
+        ).length),
         securityScore: numberFrom(dashboardSource, ['securityScore'], numberFrom(stored, ['SecurityScore', 'securityScore']))
     };
 

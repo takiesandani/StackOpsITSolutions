@@ -1,4 +1,5 @@
 function numberValue(value, fallback = 0) {
+    if (value === null || value === undefined || value === '') return fallback;
     const number = Number(value);
     return Number.isFinite(number) ? number : fallback;
 }
@@ -16,8 +17,8 @@ function parseArray(value) {
 
 function booleanValue(value) {
     if (typeof value === 'boolean') return value;
-    if (typeof value === 'number') return value === 1;
-    return ['1', 'true', 'yes', 'enabled'].includes(String(value || '').toLowerCase());
+    if (typeof value === 'number') return value > 0;
+    return ['1', 'true', 'yes', 'enabled'].includes(String(value || '').trim().toLowerCase());
 }
 
 function normalizeIdentityDashboardUser(row = {}) {
@@ -44,22 +45,58 @@ function normalizeIdentityDashboardUser(row = {}) {
     };
 }
 
-function buildIdentityDashboardSource({ metricsRow = {}, usersRows = [], riskRow = {}, signInRow = {}, roleAssignments = [] } = {}) {
-    const users = usersRows.map(normalizeIdentityDashboardUser);
-    const totalUsers = numberValue(metricsRow.total_users, users.length);
-    const mfaEnabled = numberValue(metricsRow.mfa_enabled_users, users.filter(user => user.mfaEnabled).length);
-    const mfaCoverage = numberValue(metricsRow.mfa_percentage, totalUsers ? Math.round((mfaEnabled / totalUsers) * 100) : 0);
-    const privilegedUsers = numberValue(metricsRow.admin_users, users.filter(user => user.roles.length > 0).length);
-    const highRiskUsers = numberValue(metricsRow.high_risk_users, users.filter(user => String(user.riskLevel).toUpperCase() === 'HIGH').length);
-    const externalUsers = users.filter(user => user.isExternal).length;
-    const unknownDevices = numberValue(riskRow.device_unknown, users.filter(user => /unknown|n\/a/i.test(String(user.lastSignIn.device))).length);
-    const signInIssues = numberValue(signInRow.failed_signin_count_24h, users.filter(user => /fail/i.test(String(user.lastSignIn.status || ''))).length);
-    const roleCounts = new Map();
+function roleName(role) {
+    return typeof role === 'string' ? role : role?.name || role?.roleName || '';
+}
+
+function privilegedRoleNames(user) {
+    return user.roles.map(roleName).filter(role => /(admin|global|privileged|security|directory|exchange|sharepoint|compliance)/i.test(role));
+}
+
+function mergeRoleAssignments(users, roleAssignments) {
+    const assignmentsByPrincipal = new Map();
     for (const assignment of roleAssignments) {
         const principal = assignment.principalId || assignment.userId || assignment.userPrincipalName || assignment.principalName;
-        if (principal) roleCounts.set(principal, (roleCounts.get(principal) || 0) + 1);
+        const name = assignment.roleName || assignment.name || assignment.displayName;
+        if (!principal || !name) continue;
+        if (!assignmentsByPrincipal.has(principal)) assignmentsByPrincipal.set(principal, []);
+        assignmentsByPrincipal.get(principal).push(name);
     }
-    const multiplePrivilegedRoles = [...roleCounts.values()].filter(count => count > 1).length || users.filter(user => user.roles.length > 1).length;
+    return users.map(user => {
+        const assigned = assignmentsByPrincipal.get(user.id) || assignmentsByPrincipal.get(user.userPrincipalName) || [];
+        return { ...user, roles: [...new Set([...user.roles.map(roleName), ...assigned].filter(Boolean))] };
+    });
+}
+
+function hasSignInIssue(user) {
+    const status = String(user.lastSignIn.status || '').toLowerCase();
+    const location = String(user.lastSignIn.location || '').toLowerCase();
+    const device = String(user.lastSignIn.device || '').toLowerCase();
+    const risk = String(user.riskLevel || '').toUpperCase();
+    return status.includes('fail') || risk === 'HIGH' ||
+        location.includes('unknown') || location === 'no sign-in' ||
+        device.includes('unknown') || device === 'no sign-in' ||
+        user.lastSignIn.daysSince > 30;
+}
+
+function buildIdentityDashboardSource({ metricsRow = {}, usersRows = [], riskRow = {}, signInRow = {}, roleAssignments = [] } = {}) {
+    const users = mergeRoleAssignments(usersRows.map(normalizeIdentityDashboardUser), roleAssignments);
+    const hasUsers = users.length > 0;
+    const totalUsers = hasUsers ? users.length : numberValue(metricsRow.total_users);
+    const mfaEnabled = hasUsers ? users.filter(user => user.mfaEnabled).length : numberValue(metricsRow.mfa_enabled_users);
+    const mfaCoverage = totalUsers ? Math.round((mfaEnabled / totalUsers) * 100) : numberValue(metricsRow.mfa_percentage);
+    const privilegedUsersList = users.filter(user => privilegedRoleNames(user).length > 0);
+    const privilegedUsers = hasUsers ? privilegedUsersList.length : numberValue(metricsRow.admin_users);
+    const highRiskUsers = hasUsers ? users.filter(user => String(user.riskLevel).toUpperCase() === 'HIGH').length : numberValue(metricsRow.high_risk_users);
+    const externalUsers = hasUsers ? users.filter(user => user.isExternal).length : numberValue(metricsRow.external_users);
+    const unknownDevices = hasUsers
+        ? users.filter(user => /unknown|no sign-in|n\/a/i.test(String(user.lastSignIn.device || 'Unknown'))).length
+        : numberValue(riskRow.device_unknown);
+    const signInIssues = hasUsers ? users.filter(hasSignInIssue).length : numberValue(signInRow.failed_signin_count_24h);
+    const adminsWithoutMfa = hasUsers ? privilegedUsersList.filter(user => !user.mfaEnabled).length : numberValue(metricsRow.privileged_users_without_mfa);
+    const multiplePrivilegedRoles = hasUsers ? users.filter(user =>
+        user.roles.map(roleName).filter(role => /(admin|global|privileged|security|directory)/i.test(role)).length > 1
+    ).length : 0;
     const securityScore = Math.round(
         (mfaCoverage * 0.4) +
         ((100 - (totalUsers > 0 ? (highRiskUsers / totalUsers) * 100 : 0)) * 0.3) +
@@ -72,7 +109,7 @@ function buildIdentityDashboardSource({ metricsRow = {}, usersRows = [], riskRow
         mfaMissing: Math.max(0, totalUsers - mfaEnabled),
         mfaCoverage,
         privilegedUsers,
-        adminsWithoutMfa: numberValue(metricsRow.privileged_users_without_mfa),
+        adminsWithoutMfa,
         highRiskUsers,
         signInIssues,
         externalUsers,
