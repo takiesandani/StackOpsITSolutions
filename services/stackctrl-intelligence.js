@@ -39,7 +39,18 @@ const PROMPT_VERSION = 'stackctrl-intelligence-v2';
 const INTELLIGENCE_TIME_ZONE = 'Africa/Johannesburg';
 
 const PERIOD_OUTPUT_TYPES = {
-    daily: ['executive_summary', 'overall_risk_score', 'risk_level', 'recommendations', 'trend_analysis', 'powerbi_summary'],
+    daily: [
+        'powerbi_summary',
+        'executive_summary',
+        'board_report',
+        'risk_register',
+        'recommendations',
+        'trend_analysis',
+        'compliance_review',
+        'governance_assessment',
+        'risk_level',
+        'overall_risk_score'
+    ],
     weekly: ['executive_summary', 'board_report', 'risk_register', 'recommendations', 'trend_analysis', 'overall_risk_score', 'risk_level', 'powerbi_summary'],
     monthly: ['executive_summary', 'governance_assessment', 'compliance_review', 'trend_analysis', 'risk_register', 'recommendations', 'overall_risk_score', 'risk_level', 'powerbi_summary'],
     yearly: ['executive_summary', 'board_report', 'governance_assessment', 'compliance_review', 'trend_analysis', 'risk_register', 'recommendations', 'overall_risk_score', 'risk_level', 'powerbi_summary']
@@ -122,6 +133,8 @@ function normalizePowerBISummary(value, analysis = {}, stackctrl = {}) {
         device_health: toNullableNumber(risk.executiveKPIs?.deviceHealth ?? summary.device_health),
         email_health: toNullableNumber(risk.executiveKPIs?.emailHealth ?? summary.email_health),
         backup_health: toNullableNumber(risk.executiveKPIs?.backupHealth ?? summary.backup_health),
+        operations_health: toNullableNumber(risk.executiveKPIs?.operationsHealth ?? summary.operations_health),
+        applications_health: toNullableNumber(risk.executiveKPIs?.applicationsHealth ?? summary.applications_health),
         domain_risk_scores: risk.domainRiskScores || summary.domain_risk_scores || {}
     };
 }
@@ -740,6 +753,7 @@ Requested output types: ${outputTypes.join(', ')}
 StackCTRL-calculated tenant evidence is the primary source of truth. Use external/grounding knowledge only to interpret risk, best practices, and recommendations.
 
 Write decision-ready enterprise intelligence. Explain business impact, cite the relevant StackCTRL source/evidence in each material risk, distinguish evidence from interpretation, and do not merely repeat metrics.
+Treat Operations and Applications as first-class reporting domains whenever their source evidence is expected and available.
 The StackCTRL riskEngine values are authoritative. Explain them, but never replace or recalculate the overall risk score, risk level, domain scores, maturity score, or executive KPIs.
 Compare the current snapshot against every available historical period in historicalComparisons: previous, 24 hours, 7 days, 30 days, and 90 days. State clearly when a period is unavailable.
 For weekly, monthly, and yearly reports, use periodRollups to explain movement across the completed lower-level reporting periods. Do not treat a missing rollup as zero activity.
@@ -774,13 +788,16 @@ Return this exact top-level structure:
     "device_health": null,
     "email_health": null,
     "backup_health": null,
+    "operations_health": null,
+    "applications_health": null,
     "domain_risk_scores": {}
   }
 }
 
 Risk fields: domain, title, description, severity, likelihood, impact, businessImpact, evidenceSummary, recommendation.
 Recommendation fields: domain, title, detail, priority, businessReason, suggestedOwner, suggestedDueDate.
-Trend fields: metricName, domain, currentValue, previousValue, changePercent, direction, explanation.
+Trend fields: metricName, domain, currentValue, previousValue, changePercent, direction, comparisonPeriod, explanation.
+Use comparisonPeriod values previous, 24_hours, 7_days, 30_days, or 90_days when the trend is tied to an available historical baseline. Otherwise return null.
 
 Overall risk score must be a number from 0 to 100 where a higher score means greater risk. Keep Power BI field names and primitive value types exactly as shown.
 Do not add tenant claims that are not supported by the snapshot. Use empty objects, arrays, or null for unrequested output types.`;
@@ -998,10 +1015,10 @@ ${JSON.stringify(context)}`;
                 if (requestedTypes.includes('trend_analysis')) {
                     for (const trend of Array.isArray(analysis.trend_analysis) ? analysis.trend_analysis : []) {
                         await connection.query(
-                            `INSERT INTO StackCTRLTenantTrendAnalysis
+                        `INSERT INTO StackCTRLTenantTrendAnalysis
                              (CompanyID, SnapshotID, AIOutputID, MetricName, Domain, CurrentValue,
-                              PreviousValue, ChangePercent, Direction, Explanation)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                              PreviousValue, ChangePercent, Direction, ComparisonPeriod, Explanation)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                             [
                                 companyId, snapshotId, outputIds.trend_analysis,
                                 String(trend.metricName || 'Unspecified metric').slice(0, 150),
@@ -1010,6 +1027,7 @@ ${JSON.stringify(context)}`;
                                 toNullableNumber(trend.previousValue),
                                 toNullableNumber(trend.changePercent),
                                 trend.direction || null,
+                                toNullableText(trend.comparisonPeriod ?? trend.comparison_period),
                                 trend.explanation || null
                             ]
                         );
@@ -1145,6 +1163,7 @@ ${JSON.stringify(context)}`;
                  SET Status = 'completed', RiskScore = ?, RiskLevel = ?, MaturityScore = ?,
                      IdentityHealth = ?, DeviceHealth = ?, EmailHealth = ?, CloudflareHealth = ?,
                      BackupHealth = ?, GovernanceHealth = ?, ComplianceHealth = ?,
+                     OperationsHealth = ?, ApplicationsHealth = ?,
                      ExecutiveSummary = ?, TopRisk = ?, TopRecommendation = ?, AzureOutputID = ?
                  WHERE ID = ?`,
                 [
@@ -1158,6 +1177,8 @@ ${JSON.stringify(context)}`;
                     toNullableNumber(health.backupHealth),
                     toNullableNumber(health.governanceHealth),
                     toNullableNumber(health.complianceHealth),
+                    toNullableNumber(health.operationsHealth),
+                    toNullableNumber(health.applicationsHealth),
                     analysis.preview.executiveSummary,
                     riskRows[0]?.RiskTitle || null,
                     recommendationRows[0]?.RecommendationTitle || null,

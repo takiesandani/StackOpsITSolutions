@@ -137,6 +137,10 @@ test('metadata lists every fixed endpoint', async () => {
         assert.deepEqual(body.authentication, {
             methods: ['X-PowerBI-API-Key header', 'apiKey query parameter']
         });
+        assert.ok(body.domainCoverage.domains.includes('Operations'));
+        assert.ok(body.domainCoverage.domains.includes('Applications'));
+        assert.ok(body.domainCoverage.intelligenceSummaryFields.includes('OperationsHealth'));
+        assert.ok(body.domainCoverage.intelligenceSummaryFields.includes('ApplicationsRiskScore'));
         assert.equal(body.endpoints.length, 20);
         assert.deepEqual(body.endpoints[0], {
             name: 'Companies',
@@ -271,6 +275,8 @@ test('OpenAPI JSON and Swagger documentation are available', async () => {
         assert.equal(document.components.securitySchemes.PowerBIHeaderAPIKey.in, 'header');
         assert.equal(document.components.securitySchemes.PowerBIQueryAPIKey.name, 'apiKey');
         assert.equal(document.components.securitySchemes.PowerBIQueryAPIKey.in, 'query');
+        assert.match(document.info.description, /Operations and Applications health\/risk fields/);
+        assert.ok(document.paths['/domain-health'].get.parameters.some(parameter => parameter.name === 'comparisonPeriod'));
         assert.deepEqual(document.paths['/risk-register'].get.security, [
             { PowerBIHeaderAPIKey: [] },
             { PowerBIQueryAPIKey: [] }
@@ -282,6 +288,7 @@ test('OpenAPI JSON and Swagger documentation are available', async () => {
         assert.match(docs, /SwaggerUIBundle/);
         assert.match(docs, /Fabric Dataflow Gen2/);
         assert.match(docs, /apiKey=&lt;POWERBI_KEY&gt;/);
+        assert.match(docs, /Operations and Applications health\/risk fields/);
         assert.doesNotMatch(JSON.stringify(document), /correct-reporting-key/);
     } finally {
         await api.close();

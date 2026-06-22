@@ -26,20 +26,34 @@ function buildApplicationsDashboardContext(source) {
     const excessivePermissionApps = apps.filter(app => app.scopeCount + app.roleCount > 10);
     const highRiskApps = apps.filter(app => app.isExternal || app.scopeCount + app.roleCount > 10 || app.userCount > 50);
     const totalApplications = apps.length || numberFrom(summary, ['totalApplications', 'TotalApps', 'totalApps']);
+    const externalApplicationCount = apps.length ? externalApps.length : numberFrom(summary, ['externalApplications', 'ExternalApps', 'externalApps']);
+    const highRiskApplicationCount = apps.length ? highRiskApps.length : numberFrom(summary, ['highRiskApps', 'HighRiskApps']);
+    const highAccessApplicationCount = apps.length ? highAccessApps.length : numberFrom(summary, ['highAccessApps', 'HighAccessApps']);
+    const excessivePermissionCount = apps.length
+        ? excessivePermissionApps.length
+        : numberFrom(summary, ['excessivePermissionApps', 'broadPermissionApps', 'HighAccessApps']);
+    const riskyPublisherCount = numberFrom(summary, ['riskyPublisherApps', 'riskyPublishers']);
+    const unreviewedPermissionCount = numberFrom(summary, ['unreviewedPermissionApps', 'unreviewedPermissions']);
+    const shadowITCount = numberFrom(summary, ['shadowITApps', 'shadowITIndicators']);
     const governanceScore = totalApplications ? Math.max(0, Math.round(100 - (
-        (externalApps.length / totalApplications * 35) +
-        (highAccessApps.length / totalApplications * 25) +
-        (excessivePermissionApps.length / totalApplications * 25) +
-        (apps.filter(app => app.assignedGroups.length).length / totalApplications * 10)
+        (externalApplicationCount / totalApplications * 10) +
+        (highRiskApplicationCount / totalApplications * 30) +
+        (excessivePermissionCount / totalApplications * 25) +
+        (riskyPublisherCount / totalApplications * 15) +
+        (unreviewedPermissionCount / totalApplications * 10) +
+        (shadowITCount / totalApplications * 10)
     ))) : 100;
 
     return buildContext(source, {
         dashboardMetrics: {
             totalApplications,
-            externalApplications: apps.length ? externalApps.length : numberFrom(summary, ['externalApplications', 'ExternalApps', 'externalApps']),
-            highRiskApps: apps.length ? highRiskApps.length : numberFrom(summary, ['highRiskApps', 'HighRiskApps']),
-            highAccessApps: apps.length ? highAccessApps.length : numberFrom(summary, ['highAccessApps', 'HighAccessApps']),
-            excessivePermissionApps: excessivePermissionApps.length,
+            externalApplications: externalApplicationCount,
+            highRiskApps: highRiskApplicationCount,
+            highAccessApps: highAccessApplicationCount,
+            excessivePermissionApps: excessivePermissionCount,
+            riskyPublisherApps: riskyPublisherCount,
+            unreviewedPermissionApps: unreviewedPermissionCount,
+            shadowITApps: shadowITCount,
             groupAssignedApps: apps.filter(app => app.assignedGroups.length).length
         },
         calculatedIndicators: {

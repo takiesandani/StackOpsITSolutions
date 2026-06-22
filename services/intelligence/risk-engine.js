@@ -6,7 +6,9 @@ const DOMAIN_WEIGHTS = {
     backup: 10,
     governance: 10,
     compliance: 10,
-    network: 10
+    network: 10,
+    operations: 10,
+    applications: 10
 };
 
 function clamp(value, minimum = 0, maximum = 100) {
@@ -109,6 +111,59 @@ function networkHealth(source) {
     return applySourceStatus(score - Math.min(25, (denied * 0.25) + (errors * 5)), source);
 }
 
+function operationsHealth(source) {
+    const values = sourceValues(source);
+    const explicitScore = numberFrom(values, [
+        'operationsHealthScore',
+        'operationsHealth',
+        'operationalHealth',
+        'healthScore',
+        'availabilityScore',
+        'successRate',
+        'uptimePercentage'
+    ], null);
+    if (explicitScore != null) return applySourceStatus(explicitScore, source);
+
+    const totalTasks = numberFrom(values, ['totalTasks', 'taskCount', 'openTasks'], 0);
+    const highPriorityTasks = numberFrom(values, ['highPriorityTasks', 'criticalTasks'], 0);
+    const failedTasks = numberFrom(values, ['failedTasks', 'failedTaskCount'], 0);
+    const activeIncidents = numberFrom(values, ['activeIncidents', 'operationalIncidents'], 0);
+    const taskPenalty = totalTasks > 0
+        ? ((highPriorityTasks / totalTasks) * 35) + ((failedTasks / totalTasks) * 40)
+        : 0;
+    const incidentPenalty = Math.min(25, activeIncidents * 5);
+    return applySourceStatus(100 - Math.min(80, taskPenalty + incidentPenalty), source);
+}
+
+function applicationsHealth(source) {
+    const values = sourceValues(source);
+    const explicitScore = numberFrom(values, [
+        'applicationGovernanceScore',
+        'applicationsHealthScore',
+        'applicationsHealth',
+        'applicationSecurityScore',
+        'healthScore'
+    ], null);
+    if (explicitScore != null) return applySourceStatus(explicitScore, source);
+
+    const totalApplications = numberFrom(values, ['totalApplications', 'TotalApps', 'totalApps'], 0);
+    if (totalApplications <= 0) return applySourceStatus(100, source);
+    const externalApplications = numberFrom(values, ['externalApplications', 'ExternalApps', 'externalApps'], 0);
+    const highRiskApps = numberFrom(values, ['highRiskApps', 'HighRiskApps'], 0);
+    const broadPermissionApps = numberFrom(values, ['excessivePermissionApps', 'broadPermissionApps', 'HighAccessApps'], 0);
+    const riskyPublishers = numberFrom(values, ['riskyPublisherApps', 'riskyPublishers'], 0);
+    const unreviewedPermissions = numberFrom(values, ['unreviewedPermissionApps', 'unreviewedPermissions'], 0);
+    const shadowIT = numberFrom(values, ['shadowITApps', 'shadowITIndicators'], 0);
+    const penalty =
+        (externalApplications / totalApplications * 10) +
+        (highRiskApps / totalApplications * 30) +
+        (broadPermissionApps / totalApplications * 25) +
+        (riskyPublishers / totalApplications * 15) +
+        (unreviewedPermissions / totalApplications * 10) +
+        (shadowIT / totalApplications * 10);
+    return applySourceStatus(100 - Math.min(100, penalty), source);
+}
+
 function levelFromHealth(score) {
     if (score == null) return 'not_scored';
     if (score >= 90) return 'excellent';
@@ -144,7 +199,9 @@ function buildRiskEngine({ sources = [], dataCompleteness = {} } = {}) {
         backup: backupHealth(getSource(sources, 'backup')),
         governance: postureHealth(getSource(sources, 'governance'), ['governanceScore', 'healthScore', 'score', 'maturityScore']),
         compliance: postureHealth(getSource(sources, 'compliance'), ['complianceScore', 'healthScore', 'score']),
-        network: networkHealth(getSource(sources, 'cloudflare_network_security'))
+        network: networkHealth(getSource(sources, 'cloudflare_network_security')),
+        operations: operationsHealth(getSource(sources, 'operations')),
+        applications: applicationsHealth(getSource(sources, 'applications'))
     };
 
     const scoredDomains = Object.entries(domainHealthScores).filter(([, score]) => score != null);
@@ -165,7 +222,9 @@ function buildRiskEngine({ sources = [], dataCompleteness = {} } = {}) {
         identityHealth: roundedHealth.identity,
         deviceHealth: roundedHealth.devices,
         emailHealth: roundedHealth.email,
-        backupHealth: roundedHealth.backup
+        backupHealth: roundedHealth.backup,
+        operationsHealth: roundedHealth.operations,
+        applicationsHealth: roundedHealth.applications
     };
 
     return {

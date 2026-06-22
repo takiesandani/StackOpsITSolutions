@@ -1,11 +1,28 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createStackCTRLIntelligenceService } = require('../services/stackctrl-intelligence');
+const { createStackCTRLIntelligenceService, PERIOD_OUTPUT_TYPES } = require('../services/stackctrl-intelligence');
 
 function emptyResult() {
     return [[], []];
 }
+
+test('daily intelligence requests every major Power BI output', () => {
+    for (const outputType of [
+        'powerbi_summary',
+        'executive_summary',
+        'board_report',
+        'risk_register',
+        'recommendations',
+        'trend_analysis',
+        'compliance_review',
+        'governance_assessment',
+        'risk_level',
+        'overall_risk_score'
+    ]) {
+        assert.ok(PERIOD_OUTPUT_TYPES.daily.includes(outputType), `Daily output is missing ${outputType}`);
+    }
+});
 
 test('buildTenantAIContext uses stored tenant evidence and includes SEDFA licences', async () => {
     const calls = [];
@@ -198,7 +215,8 @@ test('analyseSnapshot stores outputs and normalized Power BI rows in one transac
                         currentValue: 18,
                         previousValue: 17,
                         changePercent: 5.88,
-                        direction: 'up'
+                        direction: 'up',
+                        comparisonPeriod: '24_hours'
                     }]
                 }
             };
@@ -236,6 +254,9 @@ test('analyseSnapshot stores outputs and normalized Power BI rows in one transac
     assert.equal(writes.filter(write => write.sql?.includes('StackCTRLTenantRiskRegister')).length, 1);
     assert.equal(writes.filter(write => write.sql?.includes('StackCTRLTenantRecommendations')).length, 1);
     assert.equal(writes.filter(write => write.sql?.includes('StackCTRLTenantTrendAnalysis')).length, 1);
+    const trendWrite = writes.find(write => write.sql?.includes('StackCTRLTenantTrendAnalysis'));
+    assert.match(trendWrite.sql, /ComparisonPeriod/);
+    assert.equal(trendWrite.params[9], '24_hours');
     const powerBIWrite = writes.find(write => write.sql?.includes('StackCTRLTenantAIOutputs') && write.params[2] === 'powerbi_summary');
     assert.equal(JSON.parse(powerBIWrite.params[5]).risk_score, 42);
     assert.equal(JSON.parse(powerBIWrite.params[5]).mfa_coverage, 97);

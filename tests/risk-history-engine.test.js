@@ -26,7 +26,9 @@ test('risk engine generates overall, domain, maturity, and executive KPI scores'
             expectedSource('backup', { servicesCovered: 3, backupConfigured: true }, { backupCoverageScore: 100 }),
             expectedSource('governance', { governanceScore: 78 }),
             expectedSource('compliance', { complianceScore: 84 }),
-            expectedSource('cloudflare_network_security', { deniedAccessEvents: 2 }, { networkSecurityScore: 90 })
+            expectedSource('cloudflare_network_security', { deniedAccessEvents: 2 }, { networkSecurityScore: 90 }),
+            expectedSource('operations', { totalTasks: 10, highPriorityTasks: 2, failedTasks: 1, activeIncidents: 0 }, { operationsHealthScore: 82 }),
+            expectedSource('applications', { totalApplications: 20, highRiskApps: 2, excessivePermissionApps: 1 }, { applicationGovernanceScore: 86 })
         ]
     });
 
@@ -35,7 +37,33 @@ test('risk engine generates overall, domain, maturity, and executive KPI scores'
     assert.equal(typeof risk.domainRiskScores.identity, 'number');
     assert.equal(typeof risk.securityMaturityScore, 'number');
     assert.equal(risk.executiveKPIs.deviceHealth, risk.domainHealthScores.devices);
+    assert.equal(risk.executiveKPIs.operationsHealth, 82);
+    assert.equal(risk.executiveKPIs.applicationsHealth, 86);
+    assert.equal(risk.domainRiskScores.operations, 18);
+    assert.equal(risk.domainRiskScores.applications, 14);
     assert.equal(risk.dataCompletenessScore, 100);
+});
+
+test('operations and applications scoring uses available evidence and source freshness', () => {
+    const risk = buildRiskEngine({
+        dataCompleteness: { score: 100 },
+        sources: [
+            expectedSource('operations', { totalTasks: 10, highPriorityTasks: 4, failedTasks: 1, activeIncidents: 2 }),
+            expectedSource('applications', {
+                totalApplications: 20,
+                highRiskApps: 4,
+                excessivePermissionApps: 2,
+                riskyPublisherApps: 1,
+                unreviewedPermissionApps: 2,
+                shadowITApps: 1
+            })
+        ]
+    });
+
+    assert.ok(risk.domainHealthScores.operations < 100);
+    assert.ok(risk.domainHealthScores.applications < 100);
+    assert.equal(risk.domainRiskScores.operations, 100 - risk.domainHealthScores.operations);
+    assert.equal(risk.domainRiskScores.applications, 100 - risk.domainHealthScores.applications);
 });
 
 test('risk engine does not penalize tenant domains that are not expected', () => {

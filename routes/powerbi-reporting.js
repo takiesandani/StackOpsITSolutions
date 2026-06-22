@@ -17,7 +17,9 @@ function swaggerHtml() {
 </head>
 <body>
     <div class="fabric-note"><strong>Fabric Dataflow Gen2:</strong> use <code>?apiKey=&lt;POWERBI_KEY&gt;</code>.<br>
-    Example: <code>https://stackopsit.co.za/api/powerbi/intelligence-summary?apiKey=&lt;POWERBI_KEY&gt;&amp;companyId=1&amp;limit=500</code></div>
+    Example: <code>https://stackopsit.co.za/api/powerbi/intelligence-summary?apiKey=&lt;POWERBI_KEY&gt;&amp;companyId=1&amp;limit=500</code><br>
+    Operations and Applications health/risk fields are available from <code>intelligence-summary</code> and as domain rows from <code>domain-health</code>.
+    Historical movement uses <code>Direction</code>, <code>PreviousHealthScore</code>, <code>PreviousRiskScore</code>, <code>ChangePercent</code>, and <code>ComparisonPeriod</code>.</div>
     <div id="swagger-ui"></div>
     <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
     <script>

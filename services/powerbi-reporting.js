@@ -15,6 +15,11 @@ const COMMON_FILTERS = {
     periodType: 'PeriodType'
 };
 
+const HISTORICAL_FILTERS = {
+    ...COMMON_FILTERS,
+    comparisonPeriod: 'ComparisonPeriod'
+};
+
 function dataset(name, path, view, filters, dateColumn, orderColumn, sample) {
     return Object.freeze({ name, path, view, filters: Object.freeze(filters), dateColumn, orderColumn, sample: Object.freeze(sample) });
 }
@@ -36,7 +41,9 @@ const POWERBI_DATASETS = Object.freeze([
         CompanyID: 1, CompanyName: 'Sunbird', TenantID: 'tenant-sunbird', SnapshotID: 76, RunID: 21, PeriodID: 5,
         PeriodType: 'daily', PeriodStart: '2026-06-22T00:00:00.000Z', PeriodEnd: '2026-06-22T23:59:59.000Z',
         ReportDate: '2026-06-22', RiskScore: 72, RiskLevel: 'high', SecurityMaturityScore: 58,
-        DataCompletenessScore: 100, IdentityHealth: 64, SecurityHealth: 55, DeviceHealth: 71, CreatedAt: '2026-06-22T08:02:00.000Z'
+        DataCompletenessScore: 100, IdentityHealth: 64, SecurityHealth: 55, DeviceHealth: 71,
+        OperationsHealth: 62, OperationsRiskScore: 38, ApplicationsHealth: 74, ApplicationsRiskScore: 26,
+        CreatedAt: '2026-06-22T08:02:00.000Z'
     }),
     dataset('Board Report', 'board-report', 'vw_PowerBI_BoardReport', COMMON_FILTERS, 'ReportDate', 'ReportDate', {
         CompanyID: 1, CompanyName: 'Sunbird', TenantID: 'tenant-sunbird', SnapshotID: 76, RunID: 21,
@@ -62,7 +69,7 @@ const POWERBI_DATASETS = Object.freeze([
         Detail: 'Enrol every remaining user.', Domain: 'Identity', Priority: 'high', BusinessReason: 'Reduce account compromise risk.',
         SuggestedOwner: 'IT Manager', SuggestedDueDate: '2026-07-22', Status: null, CreatedAt: '2026-06-22T08:02:00.000Z', UpdatedAt: null
     }),
-    dataset('Trend Analysis', 'trend-analysis', 'vw_PowerBI_TrendAnalysis', COMMON_FILTERS, 'ReportDate', 'ReportDate', {
+    dataset('Trend Analysis', 'trend-analysis', 'vw_PowerBI_TrendAnalysis', HISTORICAL_FILTERS, 'ReportDate', 'ReportDate', {
         CompanyID: 1, CompanyName: 'Sunbird', TenantID: 'tenant-sunbird', SnapshotID: 76, RunID: 21,
         PeriodType: 'daily', ReportDate: '2026-06-22', TrendID: 12, Domain: 'Identity', MetricName: 'MFA Coverage',
         Direction: 'improving', CurrentValue: 88, PreviousValue: 82, ChangePercent: 7.32, ComparisonPeriod: '7_days',
@@ -95,7 +102,7 @@ const POWERBI_DATASETS = Object.freeze([
         CompanyID: 1, CompanyName: 'Sunbird', TenantID: 'tenant-sunbird', SnapshotID: 76,
         SourceName: 'Microsoft Graph Identity', SourceKey: 'identity', SourceStatus: 'available', IsExpected: 1,
         IsAvailable: 1, FreshnessStatus: 'available', LastCollectedAt: '2026-06-22T08:00:00.000Z', CompletenessScore: 100,
-        WarningMessage: '[]', ErrorMessage: null, CreatedAt: '2026-06-22T08:00:00.000Z'
+        EvidenceCount: 4, AgeMinutes: 2, WarningMessage: '[]', ErrorMessage: null, CreatedAt: '2026-06-22T08:00:00.000Z'
     }),
     dataset('Azure Diagnostics', 'azure-diagnostics', 'vw_PowerBI_AzureDiagnostics', COMMON_FILTERS, 'StartedAt', 'StartedAt', {
         CompanyID: 1, CompanyName: 'Sunbird', TenantID: 'tenant-sunbird', SnapshotID: 76, RunID: 21,
@@ -105,18 +112,20 @@ const POWERBI_DATASETS = Object.freeze([
         StartedAt: '2026-06-22T08:01:00.000Z', CompletedAt: '2026-06-22T08:02:00.000Z', DurationSeconds: 60,
         ErrorMessage: null, CreatedAt: '2026-06-22T08:01:00.000Z'
     }),
-    dataset('Domain Health', 'domain-health', 'vw_PowerBI_DomainHealth', COMMON_FILTERS, 'ReportDate', 'ReportDate', {
+    dataset('Domain Health', 'domain-health', 'vw_PowerBI_DomainHealth', HISTORICAL_FILTERS, 'ReportDate', 'ReportDate', {
         CompanyID: 1, CompanyName: 'Sunbird', TenantID: 'tenant-sunbird', SnapshotID: 76, RunID: 21,
-        PeriodType: 'daily', ReportDate: '2026-06-22', Domain: 'Identity', HealthScore: 64, RiskScore: 36,
+        PeriodType: 'daily', ReportDate: '2026-06-22', Domain: 'Operations', HealthScore: 62, RiskScore: 38,
         RiskLevel: 'moderate', Direction: 'improving', PreviousHealthScore: 60, PreviousRiskScore: 40,
-        ChangePercent: 6.67, CreatedAt: '2026-06-22T08:02:00.000Z'
+        ChangePercent: 3.33, ComparisonPeriod: '24_hours', CreatedAt: '2026-06-22T08:02:00.000Z'
     }),
     dataset('Period Intelligence', 'period-intelligence', 'vw_PowerBI_PeriodIntelligence', COMMON_FILTERS, 'PeriodStart', 'PeriodStart', {
         CompanyID: 1, CompanyName: 'Sunbird', TenantID: 'tenant-sunbird', PeriodID: 5, PeriodType: 'daily',
         PeriodStart: '2026-06-22T00:00:00.000Z', PeriodEnd: '2026-06-22T23:59:59.000Z', SnapshotID: 76, RunID: 21,
         Status: 'completed', RiskScore: 72, RiskLevel: 'high', SecurityMaturityScore: 58, DataCompletenessScore: 100,
+        OperationsHealth: 62, OperationsRiskScore: 38, ApplicationsHealth: 74, ApplicationsRiskScore: 26,
         ExecutiveSummaryAvailable: 1, BoardReportAvailable: 1, RiskRegisterAvailable: 1, RecommendationsAvailable: 1,
-        TrendAnalysisAvailable: 1, PowerBIRowsCreated: 1, CreatedAt: '2026-06-22T08:01:00.000Z', CompletedAt: '2026-06-22T08:02:00.000Z'
+        TrendAnalysisAvailable: 1, ComplianceReviewAvailable: 1, GovernanceAssessmentAvailable: 1,
+        PowerBIRowsCreated: 1, CreatedAt: '2026-06-22T08:01:00.000Z', CompletedAt: '2026-06-22T08:02:00.000Z'
     }),
     dataset('Snapshot Context', 'snapshot-context', 'vw_PowerBI_SnapshotContext', {
         companyId: COMMON_FILTERS.companyId, tenantId: COMMON_FILTERS.tenantId, snapshotId: COMMON_FILTERS.snapshotId
@@ -135,7 +144,8 @@ const POWERBI_DATASETS = Object.freeze([
         SnapshotCreatedAt: '2026-06-22T08:00:00.000Z'
     }),
     dataset('Historical Comparisons', 'historical-comparisons', 'vw_PowerBI_HistoricalComparisons', {
-        companyId: COMMON_FILTERS.companyId, tenantId: COMMON_FILTERS.tenantId, snapshotId: COMMON_FILTERS.snapshotId
+        companyId: COMMON_FILTERS.companyId, tenantId: COMMON_FILTERS.tenantId, snapshotId: COMMON_FILTERS.snapshotId,
+        comparisonPeriod: 'ComparisonPeriod'
     }, 'TargetAt', 'TargetAt', {
         CompanyID: 1, CompanyName: 'Sunbird', TenantID: 'tenant-sunbird', SnapshotID: 76, ComparisonPeriod: '7_days',
         TargetOffsetMinutes: 10080, TargetAt: '2026-06-15T08:00:00.000Z', BaselineSnapshotID: 42,
@@ -313,6 +323,34 @@ function createPowerBIReportingService({ pool, getSecret, logger = console, secr
                     'apiKey query parameter'
                 ]
             },
+            domainCoverage: {
+                domains: [
+                    'Identity Protection',
+                    'Device Protection',
+                    'Email Security',
+                    'Network Security / Cloudflare',
+                    'Governance',
+                    'Compliance Validation',
+                    'Security Alerts',
+                    'Operations',
+                    'Backup and Recovery',
+                    'Risks',
+                    'Applications'
+                ],
+                intelligenceSummaryFields: [
+                    'OperationsHealth',
+                    'OperationsRiskScore',
+                    'ApplicationsHealth',
+                    'ApplicationsRiskScore'
+                ],
+                domainMovementFields: [
+                    'Direction',
+                    'PreviousHealthScore',
+                    'PreviousRiskScore',
+                    'ChangePercent',
+                    'ComparisonPeriod'
+                ]
+            },
             endpoints: POWERBI_DATASETS.map(definition => ({
                 name: definition.name,
                 path: `/api/powerbi/${definition.path}`,
@@ -328,6 +366,7 @@ function createPowerBIReportingService({ pool, getSecret, logger = console, secr
             ['snapshotId', 'integer', 'Filter by SnapshotID when supported.'],
             ['runId', 'integer', 'Filter by RunID when supported.'],
             ['periodType', 'string', 'Filter by period type when supported.'],
+            ['comparisonPeriod', 'string', 'Filter historical rows by 24_hours, 7_days, 30_days, or 90_days when supported.'],
             ['fromDate', 'string', 'Inclusive start date in YYYY-MM-DD format.'],
             ['toDate', 'string', 'Inclusive end date in YYYY-MM-DD format.'],
             ['limit', 'integer', `Page size. Default ${DEFAULT_LIMIT}; maximum ${MAX_LIMIT}.`],
@@ -394,7 +433,7 @@ function createPowerBIReportingService({ pool, getSecret, logger = console, secr
             info: {
                 title: 'StackCTRL Power BI Reporting API',
                 version: API_VERSION,
-                description: 'Secure read-only access to StackCTRL Power BI reporting views. Fabric Dataflow Gen2 may authenticate with ?apiKey=<POWERBI_KEY>.'
+                description: 'Secure read-only access to all Sunbird StackCTRL reporting domains, including Operations and Applications health/risk fields and historical domain movement. Fabric Dataflow Gen2 may authenticate with ?apiKey=<POWERBI_KEY>.'
             },
             servers: [{ url: String(baseUrl).replace(/\/$/, '') }],
             components: {
