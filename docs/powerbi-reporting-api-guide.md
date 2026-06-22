@@ -84,11 +84,21 @@ https://stackopsit.co.za/api/powerbi/risk-register
 
 ## 3. How API-key security works
 
-Power BI sends this header:
+StackCTRL accepts either of these two methods.
+
+Header authentication:
 
 ```text
 X-PowerBI-API-Key: your-secret-value
 ```
+
+Fabric Dataflow Gen2-compatible query authentication:
+
+```text
+?apiKey=your-secret-value
+```
+
+If both are supplied, access succeeds when either value is correct.
 
 StackCTRL retrieves the expected value from Google Secret Manager:
 
@@ -119,7 +129,7 @@ GET /api/powerbi/risk-register?companyId=1&periodType=daily&limit=100
 Behind the scenes:
 
 1. Express receives the request.
-2. The router reads `X-PowerBI-API-Key`.
+2. The router reads `X-PowerBI-API-Key` and the optional `apiKey` query parameter.
 3. The service compares it with the Google secret.
 4. `risk-register` is matched to `vw_PowerBI_RiskRegister`.
 5. CompanyID, PeriodType, limit, and offset are validated.
@@ -161,6 +171,13 @@ Test a dataset:
 Invoke-RestMethod -Uri "https://stackopsit.co.za/api/powerbi/intelligence-summary?companyId=1&limit=100" -Headers $headers
 ```
 
+Fabric-friendly query authentication:
+
+```powershell
+$key = "YOUR_PRIVATE_KEY"
+Invoke-RestMethod -Uri "https://stackopsit.co.za/api/powerbi/intelligence-summary?apiKey=$key&companyId=1&limit=500"
+```
+
 Expected health result:
 
 ```json
@@ -196,6 +213,28 @@ in
     Result
 ```
 
+If Fabric Dataflow Gen2 rejects the connection before custom headers can be configured, use the query parameter:
+
+```powerquery
+let
+    Response = Json.Document(
+        Web.Contents(
+            "https://stackopsit.co.za/api/powerbi/intelligence-summary",
+            [
+                Query = [
+                    apiKey = PowerBIReportingApiKey,
+                    companyId = "1",
+                    limit = "500"
+                ]
+            ]
+        )
+    ),
+    Rows = Response[data],
+    Result = Table.FromRecords(Rows)
+in
+    Result
+```
+
 For more than 5,000 rows, request additional pages by increasing `offset`:
 
 - Page 1: `limit=5000&offset=0`
@@ -205,8 +244,8 @@ For more than 5,000 rows, request additional pages by increasing `offset`:
 ## 7. Useful documentation URLs
 
 ```text
-https://stackopsit.co.za/api/powerbi/openapi.json
-https://stackopsit.co.za/api/powerbi/docs
+https://stackopsit.co.za/api/powerbi/openapi.json?apiKey=<POWERBI_KEY>
+https://stackopsit.co.za/api/powerbi/docs?apiKey=<POWERBI_KEY>
 ```
 
 Swagger's **Authorize** button accepts the Power BI API key and lets an approved developer test endpoints.
@@ -227,5 +266,6 @@ Swagger's **Authorize** button accepts the Power BI API key and lets an approved
 - Never build SQL by joining user input into a query string.
 - Never return `ContextJson` or `CompactContextJson`.
 - Never put an API key in frontend JavaScript.
+- Use query authentication only over HTTPS and never share a URL containing the real key.
 - Keep reporting endpoints read-only.
 - Always limit and paginate large results.

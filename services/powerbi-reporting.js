@@ -2,7 +2,7 @@ const crypto = require('crypto');
 
 const DEFAULT_LIMIT = 500;
 const MAX_LIMIT = 5000;
-const API_VERSION = '1.0';
+const API_VERSION = '1.1';
 const DEFAULT_BASE_URL = 'https://stackopsit.co.za/api/powerbi';
 const API_KEY_SECRET_NAME = 'POWERBI_REPORTING_API_KEY';
 const FORBIDDEN_RESPONSE_FIELDS = new Set(['ContextJson', 'CompactContextJson', 'AuditOnlyContextJson']);
@@ -215,10 +215,13 @@ function createPowerBIReportingService({ pool, getSecret, logger = console, secr
         return cachedApiKey;
     }
 
-    async function authenticate(providedApiKey) {
+    async function authenticate(providedApiKeys) {
         const expectedApiKey = await getConfiguredApiKey();
         if (!expectedApiKey) throw new ReportingApiError('Power BI Reporting API is not configured', 500);
-        if (!safeApiKeyMatch(providedApiKey, expectedApiKey)) throw new ReportingApiError('Unauthorized', 401);
+        const candidates = Array.isArray(providedApiKeys) ? providedApiKeys : [providedApiKeys];
+        if (!candidates.some(candidate => safeApiKeyMatch(candidate, expectedApiKey))) {
+            throw new ReportingApiError('Unauthorized', 401);
+        }
         return true;
     }
 
@@ -304,7 +307,12 @@ function createPowerBIReportingService({ pool, getSecret, logger = console, secr
             success: true,
             service: 'StackCTRL Power BI Reporting API',
             version: API_VERSION,
-            authentication: 'X-PowerBI-API-Key',
+            authentication: {
+                methods: [
+                    'X-PowerBI-API-Key header',
+                    'apiKey query parameter'
+                ]
+            },
             endpoints: POWERBI_DATASETS.map(definition => ({
                 name: definition.name,
                 path: `/api/powerbi/${definition.path}`,
@@ -333,12 +341,16 @@ function createPowerBIReportingService({ pool, getSecret, logger = console, secr
         }));
 
         const paths = {};
+        const authenticationOptions = [
+            { PowerBIHeaderAPIKey: [] },
+            { PowerBIQueryAPIKey: [] }
+        ];
         for (const definition of POWERBI_DATASETS) {
             paths[`/${definition.path}`] = {
                 get: {
                     summary: definition.name,
                     operationId: `get${definition.path.split('-').map(part => part[0].toUpperCase() + part.slice(1)).join('')}`,
-                    security: [{ PowerBIAPIKey: [] }],
+                    security: authenticationOptions,
                     parameters: queryParameters,
                     responses: {
                         200: {
@@ -366,13 +378,13 @@ function createPowerBIReportingService({ pool, getSecret, logger = console, secr
 
         paths['/'] = {
             get: {
-                summary: 'Reporting API metadata', security: [{ PowerBIAPIKey: [] }],
+                summary: 'Reporting API metadata', security: authenticationOptions,
                 responses: { 200: { description: 'Available datasets', content: { 'application/json': { example: metadata() } } } }
             }
         };
         paths['/health'] = {
             get: {
-                summary: 'Reporting view health', security: [{ PowerBIAPIKey: [] }],
+                summary: 'Reporting view health', security: authenticationOptions,
                 responses: { 200: { description: 'All reporting views are selectable' }, 503: { description: 'Database is unavailable' } }
             }
         };
@@ -382,12 +394,23 @@ function createPowerBIReportingService({ pool, getSecret, logger = console, secr
             info: {
                 title: 'StackCTRL Power BI Reporting API',
                 version: API_VERSION,
-                description: 'Secure read-only access to StackCTRL Power BI reporting views.'
+                description: 'Secure read-only access to StackCTRL Power BI reporting views. Fabric Dataflow Gen2 may authenticate with ?apiKey=<POWERBI_KEY>.'
             },
             servers: [{ url: String(baseUrl).replace(/\/$/, '') }],
             components: {
                 securitySchemes: {
-                    PowerBIAPIKey: { type: 'apiKey', in: 'header', name: 'X-PowerBI-API-Key' }
+                    PowerBIHeaderAPIKey: {
+                        type: 'apiKey',
+                        in: 'header',
+                        name: 'X-PowerBI-API-Key',
+                        description: 'Preferred header authentication for API clients.'
+                    },
+                    PowerBIQueryAPIKey: {
+                        type: 'apiKey',
+                        in: 'query',
+                        name: 'apiKey',
+                        description: 'Fabric Dataflow Gen2-compatible query-string authentication over HTTPS.'
+                    }
                 }
             },
             paths

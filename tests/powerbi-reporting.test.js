@@ -10,7 +10,7 @@ const { createPowerBIReportingRouter } = require('../routes/powerbi-reporting');
 
 const logger = { log() {}, warn() {}, error() {} };
 
-async function startApi({ apiKey = 'correct-reporting-key', query } = {}) {
+async function startApi({ apiKey = 'correct-reporting-key', query, testLogger = logger } = {}) {
     const calls = [];
     const pool = {
         async query(sql, params = []) {
@@ -28,11 +28,11 @@ async function startApi({ apiKey = 'correct-reporting-key', query } = {}) {
     const service = createPowerBIReportingService({
         pool,
         getSecret: async () => apiKey,
-        logger,
+        logger: testLogger,
         secretCacheMs: 60000
     });
     const app = express();
-    app.use('/api/powerbi', createPowerBIReportingRouter({ reportingService: service, logger }));
+    app.use('/api/powerbi', createPowerBIReportingRouter({ reportingService: service, logger: testLogger }));
     const server = await new Promise(resolve => {
         const instance = app.listen(0, '127.0.0.1', () => resolve(instance));
     });
@@ -96,6 +96,36 @@ test('correct API key returns a sanitized standard response', async () => {
     }
 });
 
+test('correct query-string API key succeeds and a wrong query key returns 401', async () => {
+    const api = await startApi();
+    try {
+        const correct = await fetch(`${api.baseUrl}/companies?apiKey=correct-reporting-key`);
+        const wrong = await fetch(`${api.baseUrl}/companies?apiKey=wrong-key`);
+        assert.equal(correct.status, 200);
+        assert.equal((await correct.json()).success, true);
+        assert.equal(wrong.status, 401);
+        assert.deepEqual(await wrong.json(), { success: false, error: 'Unauthorized' });
+    } finally {
+        await api.close();
+    }
+});
+
+test('either credential may authenticate when both are provided', async () => {
+    const api = await startApi();
+    try {
+        const validHeader = await fetch(`${api.baseUrl}/companies?apiKey=wrong-key`, {
+            headers: { 'X-PowerBI-API-Key': 'correct-reporting-key' }
+        });
+        const validQuery = await fetch(`${api.baseUrl}/companies?apiKey=correct-reporting-key`, {
+            headers: { 'X-PowerBI-API-Key': 'wrong-key' }
+        });
+        assert.equal(validHeader.status, 200);
+        assert.equal(validQuery.status, 200);
+    } finally {
+        await api.close();
+    }
+});
+
 test('metadata lists every fixed endpoint', async () => {
     const api = await startApi();
     try {
@@ -104,7 +134,9 @@ test('metadata lists every fixed endpoint', async () => {
         });
         const body = await response.json();
         assert.equal(body.service, 'StackCTRL Power BI Reporting API');
-        assert.equal(body.authentication, 'X-PowerBI-API-Key');
+        assert.deepEqual(body.authentication, {
+            methods: ['X-PowerBI-API-Key header', 'apiKey query parameter']
+        });
         assert.equal(body.endpoints.length, 20);
         assert.deepEqual(body.endpoints[0], {
             name: 'Companies',
@@ -204,19 +236,53 @@ test('arbitrary datasets cannot be queried', async () => {
     }
 });
 
+test('reporting logs redact query-string API keys', async () => {
+    const messages = [];
+    const testLogger = {
+        error(...values) { messages.push(JSON.stringify(values)); },
+        log() {},
+        warn() {}
+    };
+    const secret = 'fabric-secret-that-must-not-be-logged';
+    const api = await startApi({ apiKey: secret, testLogger });
+    try {
+        const response = await fetch(`${api.baseUrl}/not-a-dataset?apiKey=${secret}`);
+        assert.equal(response.status, 404);
+        const logged = messages.join('\n');
+        assert.doesNotMatch(logged, new RegExp(secret));
+        assert.match(decodeURIComponent(logged), /apiKey=<redacted>/);
+    } finally {
+        await api.close();
+    }
+});
+
 test('OpenAPI JSON and Swagger documentation are available', async () => {
     const api = await startApi();
     try {
-        const openApiResponse = await fetch(`${api.baseUrl}/openapi.json`);
+        const unauthorizedOpenApi = await fetch(`${api.baseUrl}/openapi.json`);
+        const openApiResponse = await fetch(`${api.baseUrl}/openapi.json?apiKey=correct-reporting-key`);
         const document = await openApiResponse.json();
-        const docsResponse = await fetch(`${api.baseUrl}/docs`);
+        const docsResponse = await fetch(`${api.baseUrl}/docs?apiKey=correct-reporting-key`);
+        assert.equal(unauthorizedOpenApi.status, 401);
         assert.equal(openApiResponse.status, 200);
         assert.equal(document.openapi, '3.0.3');
-        assert.equal(document.components.securitySchemes.PowerBIAPIKey.name, 'X-PowerBI-API-Key');
+        assert.equal(document.info.version, '1.1');
+        assert.equal(document.components.securitySchemes.PowerBIHeaderAPIKey.name, 'X-PowerBI-API-Key');
+        assert.equal(document.components.securitySchemes.PowerBIHeaderAPIKey.in, 'header');
+        assert.equal(document.components.securitySchemes.PowerBIQueryAPIKey.name, 'apiKey');
+        assert.equal(document.components.securitySchemes.PowerBIQueryAPIKey.in, 'query');
+        assert.deepEqual(document.paths['/risk-register'].get.security, [
+            { PowerBIHeaderAPIKey: [] },
+            { PowerBIQueryAPIKey: [] }
+        ]);
         assert.equal(Object.keys(document.paths).length, 22);
         assert.equal(document.paths['/risk-register'].get.responses[200].content['application/json'].example.data.length, 1);
         assert.equal(docsResponse.status, 200);
-        assert.match(await docsResponse.text(), /SwaggerUIBundle/);
+        const docs = await docsResponse.text();
+        assert.match(docs, /SwaggerUIBundle/);
+        assert.match(docs, /Fabric Dataflow Gen2/);
+        assert.match(docs, /apiKey=&lt;POWERBI_KEY&gt;/);
+        assert.doesNotMatch(JSON.stringify(document), /correct-reporting-key/);
     } finally {
         await api.close();
     }
