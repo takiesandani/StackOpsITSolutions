@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS StackCTRLEnterpriseReportRuns (
     PeriodType VARCHAR(30) NOT NULL,
     PeriodStart DATETIME NOT NULL,
     PeriodEnd DATETIME NOT NULL,
-    Status VARCHAR(50) NOT NULL DEFAULT 'pending',
+    Status VARCHAR(50) NOT NULL DEFAULT 'queued',
     Mode VARCHAR(100) NOT NULL,
     DeduplicationKey VARCHAR(255) NULL,
     StartedAt DATETIME NULL,

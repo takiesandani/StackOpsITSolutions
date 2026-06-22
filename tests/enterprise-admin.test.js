@@ -22,10 +22,30 @@ test('admin control center includes every enterprise audit action', () => {
 
 test('admin audit shows input, omissions, Azure output depth, tokens, retries, and status', () => {
     for (const field of [
-        'StackCTRLDataCount', 'SentToAzureCount', 'OmittedCount', 'MetricsIncludedCount',
-        'HistoricalComparisonsIncluded', 'AzureMentionedDomain', 'RisksReturnedCount',
-        'RecommendationsReturnedCount', 'TrendsReturnedCount', 'InputTokens', 'OutputTokens',
-        'RetryCount', 'AzureInputSummaryJson', 'AnalysisJson'
+        'StackCTRLDataCount', 'SentToAzureCount', 'OmittedCount',
+        'InputTokens', 'OutputTokens', 'RetryCount', 'AzureInputSummaryJson',
+        'AnalysisJson', 'BatchSummaryJson', 'AzureFinishReason'
     ]) assert.match(javascript, new RegExp(field));
 });
 
+test('admin enterprise UI uses clear batch labels and latest/history filters', () => {
+    for (const phrase of [
+        'Total StackCTRL Data',
+        'Processed by Azure',
+        'Permanently Omitted',
+        'Completed Batches',
+        'Failed Batches',
+        'Latest run only',
+        'Show all runs',
+        'Failed only',
+        'Completed only',
+        'Runs all domains and final synthesis. Use selected-domain testing first.'
+    ]) assert.match(html, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+});
+
+test('admin enterprise actions render stored failure statuses instead of unconditional success', () => {
+    assert.match(javascript, /enterpriseActionMessage/);
+    assert.match(javascript, /failed_invalid_json/);
+    assert.match(javascript, /completed with warnings/);
+    assert.match(javascript, /Retry failed domain/);
+});

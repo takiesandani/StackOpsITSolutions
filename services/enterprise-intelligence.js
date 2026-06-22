@@ -44,6 +44,50 @@ function textOrNull(value, maximum = 100000) {
     return text.slice(0, maximum);
 }
 
+function normalizeMysqlDate(value) {
+    if (!value) return null;
+
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return value.toISOString().slice(0, 10);
+    }
+
+    if (typeof value !== 'string') return null;
+
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+        return trimmed;
+    }
+
+    const invalidDateWords = new Set([
+        'ongoing',
+        'immediate',
+        'asap',
+        'tbd',
+        'n/a',
+        'na',
+        'not applicable',
+        'not specified',
+        'continuous',
+        'continual',
+        'within 30 days',
+        'within 60 days',
+        'within 90 days',
+        'next review cycle',
+        'to be determined'
+    ]);
+
+    if (invalidDateWords.has(trimmed.toLowerCase())) {
+        return null;
+    }
+
+    const parsed = new Date(trimmed);
+    if (Number.isNaN(parsed.getTime())) return null;
+
+    return parsed.toISOString().slice(0, 10);
+}
+
 function array(value) {
     return Array.isArray(value) ? value : [];
 }
@@ -101,6 +145,40 @@ function responseUsage(response = {}) {
     };
 }
 
+function responseFinishReason(response = {}) {
+    return response.finish_reason || response.finishReason || response.data?.finish_reason || response.choices?.[0]?.finish_reason || null;
+}
+
+function safeResponsePreview(text, maximum = 2000) {
+    if (text === null || text === undefined) return null;
+    const value = typeof text === 'string' ? text : JSON.stringify(text);
+    return value.slice(0, maximum);
+}
+
+function domainFailureStatus(results = []) {
+    const statuses = results.map(result => result.status).filter(Boolean);
+    const reasons = results.map(result => result.failureReason || result.errorMessage || '').join(' ').toLowerCase();
+    if (statuses.length && statuses.every(status => status === 'failed_invalid_json')) return 'failed_invalid_json';
+    if (reasons.includes('rate_limited') || reasons.includes('429') || reasons.includes('throttl')) return 'failed_rate_limited';
+    if (reasons.includes('storage')) return 'failed_storage';
+    return 'failed';
+}
+
+function classifyFailureStatus(error) {
+    const message = String(error?.message || '').toLowerCase();
+    if (message.includes('json')) return 'failed_invalid_json';
+    if (message.includes('429') || message.includes('throttl') || message.includes('rate')) return 'failed_rate_limited';
+    if (error?.code || message.includes('sql') || message.includes('mysql') || message.includes('database') || message.includes('storage')) return 'failed_storage';
+    return 'failed';
+}
+
+function rollupRunStatus(results = []) {
+    if (!results.length) return 'failed';
+    if (results.every(result => result.status === 'completed')) return 'completed';
+    if (results.every(result => String(result.status || '').startsWith('failed'))) return domainFailureStatus(results);
+    return 'completed_with_warnings';
+}
+
 // Batch evidence into safe chunks for sequential Azure processing
 function splitIntoBatches(evidence, maxBatchSize = 1000) {
     const batches = [];
@@ -115,6 +193,9 @@ function splitIntoBatches(evidence, maxBatchSize = 1000) {
 
 // Safely parse JSON with error diagnostics
 function parseJsonWithDiagnostics(text, schema = null) {
+    if (text && typeof text === 'object') {
+        return { success: true, value: text, error: null };
+    }
     try {
         const value = JSON.parse(text);
         return { success: true, value, error: null };
@@ -134,7 +215,7 @@ function parseJsonWithDiagnostics(text, schema = null) {
 
 // Request repair of truncated JSON from Azure
 function createJsonRepairPrompt(invalidJson) {
-    return `You are a JSON repair tool. Return ONLY valid JSON, no markdown, no explanations.
+    return `You are a JSON repair tool. Return valid JSON only. No markdown. No code fences. No explanations outside JSON.
 
 Repair this incomplete or invalid JSON into the required schema:
 
@@ -358,7 +439,8 @@ Do not claim direct access to Microsoft Graph, Cloudflare, or another vendor. Do
 Every posture claim must identify supporting evidence, assessed areas, confirmed controls, unknown controls, gaps, movement, business impact, and recommended action.
 StackCTRL authoritative scores must be justified but never recalculated or replaced.
 
-Return valid JSON with exactly these fields:
+Return valid JSON only. No markdown. No code fences. No explanations outside JSON.
+Return exactly these fields:
 {
   "domainExecutiveSummary": "",
   "technicalSummary": "",
@@ -398,7 +480,8 @@ ${JSON.stringify(packageValue)}`;
 Azure builds the intelligence; Power BI builds the report. Do not create layouts, visuals, HTML, styling instructions, report pages, or Power BI files.
 Do not invent facts or recalculate StackCTRL scores. Reconcile conflicts, identify evidence gaps, explain business impact, and retain domain traceability.
 
-Return valid JSON with exactly these fields:
+Return valid JSON only. No markdown. No code fences. No explanations outside JSON.
+Return exactly these fields:
 {
   "enterpriseExecutiveSummary": {},
   "boardReport": {},
@@ -450,14 +533,18 @@ ${JSON.stringify(packageValue)}`;
     }
 
     // Store batch result in database
-    async function storeBatch({ companyId, snapshotId, runId, domain, batchNumber, totalBatches, batchEvidence, analysis, usage, status, errorMessage = null, failureReason = null }) {
+    async function storeBatch({
+        companyId, snapshotId, runId, domain, batchNumber, totalBatches, batchEvidence, analysis, usage, status,
+        errorMessage = null, failureReason = null, rawResponsePreview = null, azureFinishReason = null, jsonRepaired = false
+    }) {
         const batchItemCount = batchEvidence.length;
         const batchSummary = analysis ? {
             summary: analysis.domainExecutiveSummary || '',
             findingsCount: array(analysis.keyFindings).length,
             risksCount: array(analysis.risks).length,
             recommendationsCount: array(analysis.recommendations).length,
-            trendsCount: array(analysis.trendAnalysis).length
+            trendsCount: array(analysis.trendAnalysis).length,
+            jsonRepaired: Boolean(jsonRepaired)
         } : null;
         
         await pool.query(
@@ -466,13 +553,14 @@ ${JSON.stringify(packageValue)}`;
               StackCTRLDataCount, BatchItemCount, SentToAzureCount, RemainingAfterBatch, OmittedFromThisBatch,
               InputSizeBytes, ResponseSizeBytes, InputTokens, OutputTokens, TotalTokens, RetryCount,
               BatchSummaryJson, FindingsJson, RisksJson, RecommendationsJson, TrendsJson,
-              MissingDataWarningsJson, StartedAt, CompletedAt, ErrorMessage, FailureReason, AzureFinishReason, CreatedAt)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?, ?, NULL, NOW())
+              MissingDataWarningsJson, StartedAt, CompletedAt, ErrorMessage, FailureReason, RawResponsePreview, AzureFinishReason, CreatedAt)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?, ?, ?, ?, NOW())
              ON DUPLICATE KEY UPDATE
               Status = ?, BatchItemCount = ?, SentToAzureCount = ?, InputSizeBytes = ?, ResponseSizeBytes = ?,
               InputTokens = ?, OutputTokens = ?, TotalTokens = ?, RetryCount = ?,
               BatchSummaryJson = ?, FindingsJson = ?, RisksJson = ?, RecommendationsJson = ?, TrendsJson = ?,
-              MissingDataWarningsJson = ?, CompletedAt = NOW(), ErrorMessage = ?, FailureReason = ?, UpdatedAt = NOW()`,
+              MissingDataWarningsJson = ?, CompletedAt = NOW(), ErrorMessage = ?, FailureReason = ?,
+              RawResponsePreview = ?, AzureFinishReason = ?, UpdatedAt = NOW()`,
             [
                 companyId, snapshotId, runId, domain.key, domain.name, batchNumber, totalBatches, status,
                 0, batchItemCount, batchItemCount, 0, 0,
@@ -483,7 +571,7 @@ ${JSON.stringify(packageValue)}`;
                 analysis ? jsonArray(analysis.recommendations) : null,
                 analysis ? jsonArray(analysis.trendAnalysis) : null,
                 analysis ? jsonArray(analysis.missingDataWarnings) : null,
-                errorMessage, failureReason,
+                errorMessage, failureReason, rawResponsePreview, azureFinishReason,
                 // ON DUPLICATE KEY UPDATE values
                 status, batchItemCount, batchItemCount, usage.requestBytes || 0, usage.responseBytes,
                 usage.inputTokens, usage.outputTokens, usage.totalTokens, usage.retries || 0,
@@ -493,7 +581,7 @@ ${JSON.stringify(packageValue)}`;
                 analysis ? jsonArray(analysis.recommendations) : null,
                 analysis ? jsonArray(analysis.trendAnalysis) : null,
                 analysis ? jsonArray(analysis.missingDataWarnings) : null,
-                errorMessage, failureReason
+                errorMessage, failureReason, rawResponsePreview, azureFinishReason
             ]
         );
     }
@@ -508,7 +596,7 @@ ${JSON.stringify(packageValue)}`;
             // First attempt: get JSON response from Azure
             const response = await azureOpenAI.createJsonCompletion({
                 messages: [
-                    { role: 'system', content: 'You are StackCTRL Enterprise Intelligence. Return valid JSON only, no markdown.' },
+                    { role: 'system', content: 'You are StackCTRL Enterprise Intelligence. Return valid JSON only. No markdown. No code fences. No explanations outside JSON.' },
                     { role: 'user', content: domainPrompt(domain, batchPackage) }
                 ],
                 temperature: 0.15,
@@ -518,15 +606,26 @@ ${JSON.stringify(packageValue)}`;
             });
             
             usage = responseUsage(response);
+            const rawResponsePreview = safeResponsePreview(response.data);
             
             // Detect truncation by finish_reason
-            const finishReason = response.finish_reason || response.data?.finish_reason;
+            const finishReason = responseFinishReason(response);
             if (finishReason === 'length') {
+                await storeBatch({
+                    companyId, snapshotId: snapshot.ID, runId: run.id, domain,
+                    batchNumber, totalBatches, batchEvidence, analysis: null, usage,
+                    status: 'failed_invalid_json',
+                    errorMessage: `Azure response truncated (finish_reason: length). Output tokens: ${usage.outputTokens}`,
+                    failureReason: 'output_truncated',
+                    rawResponsePreview,
+                    azureFinishReason: finishReason
+                });
                 throw new Error(`Azure response truncated (finish_reason: length). Output tokens: ${usage.outputTokens}`);
             }
             
             // Parse JSON response
             let analysis = null;
+            let jsonRepaired = false;
             if (typeof response.data === 'string') {
                 const jsonResult = parseJsonWithDiagnostics(response.data);
                 if (!jsonResult.success) {
@@ -535,7 +634,7 @@ ${JSON.stringify(packageValue)}`;
                     
                     const repairResponse = await azureOpenAI.createJsonCompletion({
                         messages: [
-                            { role: 'system', content: 'You are a JSON repair tool. Return ONLY valid JSON, no markdown, no explanations.' },
+                            { role: 'system', content: 'You are a JSON repair tool. Return valid JSON only. No markdown. No code fences. No explanations outside JSON.' },
                             { role: 'user', content: createJsonRepairPrompt(response.data.slice(0, 5000)) }
                         ],
                         temperature: 0,
@@ -556,10 +655,17 @@ ${JSON.stringify(packageValue)}`;
                             batchNumber, totalBatches, batchEvidence, analysis: null, usage,
                             status: 'failed_invalid_json',
                             errorMessage: `JSON parse failed: ${jsonResult.error}. Repair attempt also failed: ${repairResult.error}`,
-                            failureReason: 'invalid_json_unrepairable'
+                            failureReason: 'invalid_json_unrepairable',
+                            rawResponsePreview,
+                            azureFinishReason: finishReason
                         });
-                        return { status: 'failed_invalid_json', batchNumber, domain, usage, failureReason: 'invalid_json_unrepairable' };
+                        return {
+                            status: 'failed_invalid_json', batchNumber, domain, usage,
+                            failureReason: 'invalid_json_unrepairable',
+                            errorMessage: `JSON parse failed: ${jsonResult.error}. Repair attempt also failed: ${repairResult.error}`
+                        };
                     }
+                    jsonRepaired = true;
                     analysis = normalizedDomainResult(repairResult.value, domain, batchPackage.current);
                 } else {
                     analysis = normalizedDomainResult(jsonResult.value, domain, batchPackage.current);
@@ -571,14 +677,16 @@ ${JSON.stringify(packageValue)}`;
             // Store successful batch
             await storeBatch({
                 companyId, snapshotId: snapshot.ID, runId: run.id, domain,
-                batchNumber, totalBatches, batchEvidence, analysis, usage, status: 'completed'
+                batchNumber, totalBatches, batchEvidence, analysis, usage, status: 'completed',
+                rawResponsePreview, azureFinishReason: finishReason, jsonRepaired
             });
             
-            return { status: 'completed', batchNumber, domain, analysis, usage };
+            return { status: 'completed', batchNumber, domain, analysis, usage, jsonRepaired };
         } catch (error) {
             const metadata = error.azureMetadata || {};
+            const alreadyStored = /finish_reason: length/.test(error.message);
             usage = {
-                inputTokens: 0, outputTokens: Number(metadata.outputTokens || 0), totalTokens: 0,
+                inputTokens: Number(metadata.inputTokens || 0), outputTokens: Number(metadata.outputTokens || 0), totalTokens: Number(metadata.totalTokens || 0),
                 requestBytes: bytes(batchPackage), responseBytes: Number(metadata.responseSizeBytes || 0),
                 retries: Number(metadata.retryCount || 0)
             };
@@ -587,15 +695,22 @@ ${JSON.stringify(packageValue)}`;
             if (error.message.includes('finish_reason: length')) failureReason = 'output_truncated';
             else if (error.message.includes('JSON')) failureReason = 'invalid_json';
             else if (error.message.includes('429') || error.message.includes('throttl')) failureReason = 'rate_limited';
+            const status = failureReason === 'output_truncated' || failureReason === 'invalid_json'
+                ? 'failed_invalid_json'
+                : failureReason === 'rate_limited' ? 'failed_rate_limited' : classifyFailureStatus(error);
             
-            await storeBatch({
-                companyId, snapshotId: snapshot.ID, runId: run.id, domain,
-                batchNumber, totalBatches, batchEvidence, analysis: null, usage,
-                status: 'failed', errorMessage: error.message, failureReason
-            });
+            if (!alreadyStored) {
+                await storeBatch({
+                    companyId, snapshotId: snapshot.ID, runId: run.id, domain,
+                    batchNumber, totalBatches, batchEvidence, analysis: null, usage,
+                    status, errorMessage: error.message, failureReason,
+                    rawResponsePreview: safeResponsePreview(metadata.rawResponse || metadata.responseText || ''),
+                    azureFinishReason: metadata.finishReason || null
+                });
+            }
             
             logger.error(`[StackCTRL Enterprise] ${domain.name} batch ${batchNumber} failed:`, error.message);
-            return { status: 'failed', batchNumber, domain, usage, failureReason, errorMessage: error.message };
+            return { status, batchNumber, domain, usage, failureReason, errorMessage: error.message };
         }
     }
 
@@ -636,7 +751,7 @@ ${JSON.stringify(packageValue)}`;
             [result] = await pool.query(
                 `INSERT INTO StackCTRLEnterpriseReportRuns
                  (CompanyID, SnapshotID, PeriodType, PeriodStart, PeriodEnd, Status, Mode, DeduplicationKey, StartedAt)
-                 VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, NOW())`,
+                 VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, NOW())`,
                 [companyId, snapshotId || null, window.periodType, window.periodStart, window.periodEnd, mode, deduplicationKey]
             );
         } catch (error) {
@@ -644,7 +759,7 @@ ${JSON.stringify(packageValue)}`;
             const [rows] = await pool.query(`SELECT ID, Status FROM StackCTRLEnterpriseReportRuns WHERE DeduplicationKey = ? LIMIT 1`, [deduplicationKey]);
             return { id: Number(rows[0]?.ID), ...window, mode, duplicate: true, status: rows[0]?.Status || 'duplicate' };
         }
-        await pool.query(`UPDATE StackCTRLEnterpriseReportRuns SET Status = 'processing' WHERE ID = ?`, [result.insertId]);
+        await pool.query(`UPDATE StackCTRLEnterpriseReportRuns SET Status = 'running' WHERE ID = ?`, [result.insertId]);
         return { id: Number(result.insertId), ...window, mode };
     }
 
@@ -680,6 +795,7 @@ ${JSON.stringify(packageValue)}`;
 
     async function insertItem({ companyId, snapshotId, runId, domainKey, domainName, period, itemType, item, source }) {
         const title = item?.title || item?.metricName || item?.name || item?.action || `${domainName} ${itemType}`;
+        const suggestedDueDate = normalizeMysqlDate(item?.suggestedDueDate || item?.dueDate || item?.targetDate || item?.actionDueDate || item?.reviewDate || item?.completionDate);
         await pool.query(
             `INSERT INTO StackCTRLEnterpriseIntelligenceItems
              (CompanyID, SnapshotID, RunID, DomainKey, DomainName, PeriodType, PeriodStart, PeriodEnd,
@@ -695,7 +811,7 @@ ${JSON.stringify(packageValue)}`;
                 textOrNull(item?.likelihood, 80), textOrNull(item?.impact, 120),
                 textOrNull(item?.businessImpact || item?.businessReason), textOrNull(item?.evidenceSummary),
                 textOrNull(item?.recommendation), textOrNull(item?.suggestedOwner || item?.owner, 180),
-                item?.suggestedDueDate || item?.dueDate || null, textOrNull(item?.direction, 50),
+                suggestedDueDate, textOrNull(item?.direction, 50),
                 numberOrNull(item?.currentValue), numberOrNull(item?.previousValue), numberOrNull(item?.changePercent),
                 textOrNull(item?.comparisonPeriod, 50), source
             ]
@@ -841,17 +957,19 @@ ${JSON.stringify(packageValue)}`;
             const completedBatches = batchResults.results.filter(r => r.status === 'completed');
             
             if (completedBatches.length === 0) {
+                const failedStatus = domainFailureStatus(failedBatches);
+                const failedMessage = failedBatches.map(batch => batch.errorMessage).filter(Boolean).join(' | ') || `All ${batchResults.batchCount} batches failed`;
                 // All batches failed
                 await storeDomain({
                     run, companyId, snapshot, domain, packageResult, analysis: null,
-                    usage: batchResults.totals, status: 'failed',
-                    errorMessage: `All ${batchResults.batchCount} batches failed`
+                    usage: batchResults.totals, status: failedStatus,
+                    errorMessage: failedMessage
                 });
                 await storeAudit({
                     run, companyId, snapshot, domain, packageResult, analysis: null,
-                    usage: batchResults.totals, status: 'failed'
+                    usage: batchResults.totals, status: failedStatus
                 });
-                return { status: 'failed', domain, usage: batchResults.totals, audit: packageResult.audit, errorMessage: `All batches failed` };
+                return { status: failedStatus, domain, usage: batchResults.totals, audit: packageResult.audit, errorMessage: failedMessage };
             }
             
             // Aggregate batch results into domain-level analysis
@@ -882,11 +1000,15 @@ ${JSON.stringify(packageValue)}`;
                 batchInfo: { completedBatches: completedBatches.length, totalBatches: batchResults.batchCount, failedBatches: failedBatches.length }
             };
             
-            const finalStatus = failedBatches.length > 0 ? 'completed_with_warnings' : 'completed';
+            const finalStatus = failedBatches.length > 0 ? 'partial' : 'completed';
+            const partialErrorMessage = failedBatches.length
+                ? `${failedBatches.length} of ${batchResults.batchCount} batch(es) failed. ${failedBatches.map(batch => batch.errorMessage).filter(Boolean).join(' | ')}`.slice(0, 5000)
+                : null;
             const domainIntelligenceId = await storeDomain({
                 run, companyId, snapshot, domain, packageResult,
                 analysis: aggregatedAnalysis, usage: batchResults.totals,
-                status: finalStatus
+                status: finalStatus,
+                errorMessage: partialErrorMessage
             });
             
             // Store aggregate audit info showing all data was processed in batches
@@ -912,17 +1034,18 @@ ${JSON.stringify(packageValue)}`;
             };
         } catch (error) {
             logger.error(`[StackCTRL Enterprise] ${domain.name} analysis failed:`, error.message);
+            const failureStatus = classifyFailureStatus(error);
             await storeDomain({
                 run, companyId, snapshot, domain, packageResult,
                 analysis: null, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: 0, responseBytes: 0, retries: 0 },
-                status: 'failed', errorMessage: error.message
+                status: failureStatus, errorMessage: error.message
             });
             await storeAudit({
                 run, companyId, snapshot, domain, packageResult,
                 analysis: null, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: 0, responseBytes: 0, retries: 0 },
-                status: 'failed'
+                status: failureStatus
             });
-            return { status: 'failed', domain, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: 0, responseBytes: 0, retries: 0 }, audit: packageResult.audit, errorMessage: error.message };
+            return { status: failureStatus, domain, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: 0, responseBytes: 0, retries: 0 }, audit: packageResult.audit, errorMessage: error.message };
         }
     }
 
@@ -998,7 +1121,7 @@ ${JSON.stringify(packageValue)}`;
         };
         const response = await azureOpenAI.createJsonCompletion({
             messages: [
-                { role: 'system', content: 'You are StackCTRL Enterprise Intelligence. Return structured JSON only.' },
+                { role: 'system', content: 'You are StackCTRL Enterprise Intelligence. Return valid JSON only. No markdown. No code fences. No explanations outside JSON.' },
                 { role: 'user', content: synthesisPrompt(safeValue(synthesisPackage, 0, { maxDepth: 8, maxArray: 100, maxString: 5000 })) }
             ],
             temperature: 0.15,
@@ -1007,7 +1130,41 @@ ${JSON.stringify(packageValue)}`;
             timeoutMs: settings.requestTimeoutMs
         });
         const usage = responseUsage(response);
-        const analysis = response.data || {};
+        const finishReason = responseFinishReason(response);
+        if (finishReason === 'length') {
+            const error = new Error(`Enterprise synthesis response truncated (finish_reason: length). Output tokens: ${usage.outputTokens}`);
+            error.enterpriseStatus = 'failed_invalid_json';
+            throw error;
+        }
+        let analysis = response.data || {};
+        if (typeof response.data === 'string') {
+            const parsed = parseJsonWithDiagnostics(response.data);
+            if (!parsed.success) {
+                logger.warn(`[StackCTRL Enterprise] Synthesis JSON parsing failed, attempting repair. Error: ${parsed.error}`);
+                const repairResponse = await azureOpenAI.createJsonCompletion({
+                    messages: [
+                        { role: 'system', content: 'You are a JSON repair tool. Return valid JSON only. No markdown. No code fences. No explanations outside JSON.' },
+                        { role: 'user', content: createJsonRepairPrompt(response.data.slice(0, 8000)) }
+                    ],
+                    temperature: 0,
+                    maxTokens: settings.maxSynthesisOutputTokens,
+                    maxRetriesOverride: 1,
+                    timeoutMs: settings.requestTimeoutMs
+                });
+                const repairUsage = responseUsage(repairResponse);
+                usage.outputTokens += repairUsage.outputTokens;
+                usage.totalTokens += repairUsage.totalTokens;
+                const repaired = parseJsonWithDiagnostics(repairResponse.data);
+                if (!repaired.success) {
+                    const error = new Error(`Enterprise synthesis JSON parse failed: ${parsed.error}. Repair attempt also failed: ${repaired.error}`);
+                    error.enterpriseStatus = 'failed_invalid_json';
+                    throw error;
+                }
+                analysis = repaired.value;
+            } else {
+                analysis = parsed.value;
+            }
+        }
         const finalRunStatus = domainRows.some(row => row.status !== 'completed') ? 'completed_with_warnings' : 'completed';
         const [result] = await pool.query(
             `INSERT INTO StackCTRLEnterpriseSynthesis
@@ -1018,9 +1175,22 @@ ${JSON.stringify(packageValue)}`;
               TopDecisionsRequiredJson, Next30DaysPlanJson, Next90DaysPlanJson,
               EvidenceJustificationJson, LimitationsJson, PowerBISummaryJson, InputSizeBytes,
               ResponseSizeBytes, InputTokens, OutputTokens, TotalTokens, RetryCount, CreatedAt)
-             VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+             ON DUPLICATE KEY UPDATE
+              Status = VALUES(Status), ExecutiveSummaryJson = VALUES(ExecutiveSummaryJson),
+              BoardReportJson = VALUES(BoardReportJson), ManagementReportJson = VALUES(ManagementReportJson),
+              RiskRegisterJson = VALUES(RiskRegisterJson), RecommendationsJson = VALUES(RecommendationsJson),
+              TrendAnalysisJson = VALUES(TrendAnalysisJson), ComplianceReviewJson = VALUES(ComplianceReviewJson),
+              GovernanceReviewJson = VALUES(GovernanceReviewJson), DomainScorecardJson = VALUES(DomainScorecardJson),
+              MaturityAssessmentJson = VALUES(MaturityAssessmentJson), BusinessImpactSummary = VALUES(BusinessImpactSummary),
+              TopDecisionsRequiredJson = VALUES(TopDecisionsRequiredJson), Next30DaysPlanJson = VALUES(Next30DaysPlanJson),
+              Next90DaysPlanJson = VALUES(Next90DaysPlanJson), EvidenceJustificationJson = VALUES(EvidenceJustificationJson),
+              LimitationsJson = VALUES(LimitationsJson), PowerBISummaryJson = VALUES(PowerBISummaryJson),
+              InputSizeBytes = VALUES(InputSizeBytes), ResponseSizeBytes = VALUES(ResponseSizeBytes),
+              InputTokens = VALUES(InputTokens), OutputTokens = VALUES(OutputTokens), TotalTokens = VALUES(TotalTokens),
+              RetryCount = VALUES(RetryCount)`,
             [
-                companyId, snapshotId || null, run.id, run.periodType, run.periodStart, run.periodEnd,
+                companyId, snapshotId || null, run.id, run.periodType, run.periodStart, run.periodEnd, finalRunStatus,
                 JSON.stringify(analysis.enterpriseExecutiveSummary || {}), JSON.stringify(analysis.boardReport || {}),
                 JSON.stringify(analysis.managementReport || {}), jsonArray(analysis.riskRegister),
                 jsonArray(analysis.recommendations), jsonArray(analysis.trendAnalysis),
@@ -1056,7 +1226,7 @@ ${JSON.stringify(packageValue)}`;
              WHERE ID = ?`,
             [finalRunStatus, totals.inputTokens, totals.outputTokens, totals.totalTokens, totals.requestBytes, totals.responseBytes, totals.retries, run.id]
         );
-        return { synthesisId: result.insertId, analysis, usage };
+        return { synthesisId: result.insertId || run.id, status: finalRunStatus, analysis, usage };
     }
 
     async function processDomains({ companyId, snapshot, run, domainKeys }) {
@@ -1093,23 +1263,39 @@ ${JSON.stringify(packageValue)}`;
         if (run.duplicate) return { status: 'duplicate', runId: run.id, snapshotId: snapshot.ID, periodType: run.periodType };
         try {
             const domains = await processDomains({ companyId: numericCompanyId, snapshot, run, domainKeys: selectedKeys });
-            const failures = domains.results.filter(result => result.status !== 'completed');
+            const runStatusBeforeSynthesis = rollupRunStatus(domains.results);
             let synthesis = null;
-            if (includeSynthesis && domains.results.some(result => result.status === 'completed')) {
+            if (includeSynthesis && domains.results.some(result => !String(result.status || '').startsWith('failed'))) {
                 synthesis = await runSynthesis({ companyId: numericCompanyId, snapshotId: snapshot.ID, run, existingTotals: domains.totals });
             } else {
                 await pool.query(
                     `UPDATE StackCTRLEnterpriseReportRuns
                      SET Status = ?, CompletedAt = NOW(), TotalInputTokens = ?, TotalOutputTokens = ?, TotalTokens = ?,
                          TotalRequestBytes = ?, TotalResponseBytes = ?, RetryCount = ?, ErrorMessage = ? WHERE ID = ?`,
-                    [failures.length ? 'completed_with_warnings' : 'completed', domains.totals.inputTokens, domains.totals.outputTokens,
+                    [runStatusBeforeSynthesis, domains.totals.inputTokens, domains.totals.outputTokens,
                         domains.totals.totalTokens, domains.totals.requestBytes, domains.totals.responseBytes, domains.totals.retries,
-                        failures.length ? `${failures.length} domain analysis request(s) did not complete.` : null, run.id]
+                        runStatusBeforeSynthesis === 'completed' ? null : `${domains.results.filter(result => result.status !== 'completed').length} domain analysis request(s) did not complete.`, run.id]
                 );
             }
-            return { runId: run.id, snapshotId: snapshot.ID, periodType: run.periodType, domains: domains.results.map(result => ({ domainKey: result.domain.key, domainName: result.domain.name, status: result.status, domainIntelligenceId: result.domainIntelligenceId || null, errorMessage: result.errorMessage || null })), synthesisId: synthesis?.synthesisId || null, totals: domains.totals };
+            const finalStatus = synthesis?.status || runStatusBeforeSynthesis;
+            return {
+                status: finalStatus,
+                runId: run.id,
+                snapshotId: snapshot.ID,
+                periodType: run.periodType,
+                domains: domains.results.map(result => ({
+                    domainKey: result.domain.key,
+                    domainName: result.domain.name,
+                    status: result.status,
+                    domainIntelligenceId: result.domainIntelligenceId || null,
+                    errorMessage: result.errorMessage || null,
+                    batchInfo: result.batchInfo || null
+                })),
+                synthesisId: synthesis?.synthesisId || null,
+                totals: domains.totals
+            };
         } catch (error) {
-            await pool.query(`UPDATE StackCTRLEnterpriseReportRuns SET Status = 'failed', CompletedAt = NOW(), ErrorMessage = ? WHERE ID = ?`, [String(error.message).slice(0, 5000), run.id]);
+            await pool.query(`UPDATE StackCTRLEnterpriseReportRuns SET Status = ?, CompletedAt = NOW(), ErrorMessage = ? WHERE ID = ?`, [error.enterpriseStatus || classifyFailureStatus(error), String(error.message).slice(0, 5000), run.id]);
             throw error;
         }
     }
@@ -1129,9 +1315,9 @@ ${JSON.stringify(packageValue)}`;
         if (run.duplicate) return { status: 'duplicate', runId: run.id, periodType };
         try {
             const synthesis = await runSynthesis({ companyId: Number(companyId), snapshotId: latestSnapshot.ID, run });
-            return { runId: run.id, synthesisId: synthesis.synthesisId, periodType };
+            return { status: synthesis.status, runId: run.id, synthesisId: synthesis.synthesisId, periodType };
         } catch (error) {
-            await pool.query(`UPDATE StackCTRLEnterpriseReportRuns SET Status = 'failed', CompletedAt = NOW(), ErrorMessage = ? WHERE ID = ?`, [String(error.message).slice(0, 5000), run.id]);
+            await pool.query(`UPDATE StackCTRLEnterpriseReportRuns SET Status = ?, CompletedAt = NOW(), ErrorMessage = ? WHERE ID = ?`, [error.enterpriseStatus || classifyFailureStatus(error), String(error.message).slice(0, 5000), run.id]);
             throw error;
         }
     }
@@ -1172,12 +1358,32 @@ ${JSON.stringify(packageValue)}`;
         const params = [Number(companyId)];
         const runFilter = runId ? ' AND RunID = ?' : '';
         if (runId) params.push(Number(runId));
-        const [[runs], [domains], [audits], [synthesis], [items]] = await Promise.all([
+        const [[runs], [domains], [audits], [synthesis], [items], [batches]] = await Promise.all([
             pool.query(`SELECT * FROM StackCTRLEnterpriseReportRuns WHERE CompanyID = ? ORDER BY ID DESC LIMIT 50`, [Number(companyId)]),
-            pool.query(`SELECT * FROM StackCTRLTenantDomainIntelligence WHERE CompanyID = ?${runFilter} ORDER BY ID DESC LIMIT 200`, params),
-            pool.query(`SELECT * FROM StackCTRLIntelligenceEvidenceAudit WHERE CompanyID = ?${runFilter} ORDER BY ID DESC LIMIT 200`, params),
+            pool.query(`SELECT * FROM StackCTRLTenantDomainIntelligence WHERE CompanyID = ?${runFilter}
+                        ORDER BY RunID DESC,
+                         CASE
+                           WHEN Status IN ('failed', 'failed_invalid_json', 'failed_storage', 'failed_rate_limited') THEN 0
+                           WHEN Status IN ('partial', 'completed_with_warnings') THEN 1
+                           WHEN Status IN ('running', 'queued') THEN 2
+                           WHEN Status = 'completed' THEN 3
+                           ELSE 4
+                         END,
+                         ID DESC LIMIT 200`, params),
+            pool.query(`SELECT * FROM StackCTRLIntelligenceEvidenceAudit WHERE CompanyID = ?${runFilter}
+                        ORDER BY RunID DESC,
+                         CASE
+                           WHEN Status IN ('failed', 'failed_invalid_json', 'failed_storage', 'failed_rate_limited') THEN 0
+                           WHEN Status IN ('partial', 'completed_with_warnings') THEN 1
+                           WHEN Status IN ('running', 'queued') THEN 2
+                           WHEN Status = 'completed' THEN 3
+                           ELSE 4
+                         END,
+                         ID DESC LIMIT 200`, params),
             pool.query(`SELECT * FROM StackCTRLEnterpriseSynthesis WHERE CompanyID = ?${runFilter} ORDER BY ID DESC LIMIT 50`, params),
-            pool.query(`SELECT * FROM StackCTRLEnterpriseIntelligenceItems WHERE CompanyID = ?${runFilter} ORDER BY ID DESC LIMIT 500`, params)
+            pool.query(`SELECT * FROM StackCTRLEnterpriseIntelligenceItems WHERE CompanyID = ?${runFilter} ORDER BY ID DESC LIMIT 500`, params),
+            pool.query(`SELECT * FROM StackCTRLTenantDomainIntelligenceBatches WHERE CompanyID = ?${runFilter}
+                        ORDER BY RunID DESC, DomainKey ASC, BatchNumber ASC LIMIT 1000`, params)
         ]);
         return {
             settings: { ...settings },
@@ -1198,7 +1404,16 @@ ${JSON.stringify(packageValue)}`;
                 MaturityAssessmentJson: parseJson(row.MaturityAssessmentJson, {}),
                 PowerBISummaryJson: parseJson(row.PowerBISummaryJson, {})
             })),
-            items
+            items,
+            batches: batches.map(row => ({
+                ...row,
+                BatchSummaryJson: parseJson(row.BatchSummaryJson, {}),
+                FindingsJson: parseJson(row.FindingsJson, []),
+                RisksJson: parseJson(row.RisksJson, []),
+                RecommendationsJson: parseJson(row.RecommendationsJson, []),
+                TrendsJson: parseJson(row.TrendsJson, []),
+                MissingDataWarningsJson: parseJson(row.MissingDataWarningsJson, [])
+            }))
         };
     }
 
@@ -1218,5 +1433,6 @@ module.exports = {
     ENTERPRISE_DOMAINS,
     DOMAIN_BY_KEY,
     createEnterpriseIntelligenceService,
-    periodWindow
+    periodWindow,
+    normalizeMysqlDate
 };

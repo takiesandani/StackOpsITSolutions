@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createEnterpriseIntelligenceService, ENTERPRISE_DOMAINS } = require('../services/enterprise-intelligence');
+const { createEnterpriseIntelligenceService, ENTERPRISE_DOMAINS, normalizeMysqlDate } = require('../services/enterprise-intelligence');
 
 function domainResponse(domainKey) {
     return {
@@ -15,12 +15,12 @@ function domainResponse(domainKey) {
         controlAssessment: { confirmed: ['MFA metrics'], unknown: ['Conditional Access policy detail'] },
         keyFindings: [{ title: 'Control gap', severity: 'high', evidenceSummary: 'Stored evidence supports this finding.' }],
         risks: [{ title: 'Domain risk', severity: 'high', businessImpact: 'Business exposure', evidenceSummary: 'Stored evidence', recommendation: 'Remediate' }],
-        recommendations: [{ title: 'Remediate control', priority: 'high', suggestedOwner: 'IT Manager' }],
+        recommendations: [{ title: 'Remediate control', priority: 'high', suggestedOwner: 'IT Manager', suggestedDueDate: 'Ongoing' }],
         trendAnalysis: [{ metricName: 'Health score', currentValue: 75, previousValue: 70, changePercent: 7.14, direction: 'improving', comparisonPeriod: '24_hours' }],
         yesterdayVsToday: { direction: 'improving' },
         whatImproved: ['Health score'], whatDeteriorated: [], whatStayedTheSame: [],
         missingDataWarnings: [], assumptions: [], confidenceScore: 0.91,
-        managementActions: [{ title: 'Approve remediation owner', priority: 'high' }],
+        managementActions: [{ title: 'Approve remediation owner', priority: 'high', suggestedDueDate: 'ASAP' }],
         powerBiSummary: { status: 'attention' }
     };
 }
@@ -103,6 +103,108 @@ test('enterprise pipeline queues domain analysis, stores audit rows, then synthe
     assert.ok(calls.some(call => call.sql.includes('StackCTRLIntelligenceEvidenceAudit')));
     assert.ok(calls.some(call => call.sql.includes('StackCTRLEnterpriseIntelligenceItems')));
     assert.ok(calls.some(call => call.sql.includes('StackCTRLEnterpriseSynthesis')));
+    const itemWrites = calls.filter(call => call.sql.includes('INSERT INTO StackCTRLEnterpriseIntelligenceItems'));
+    assert.ok(itemWrites.length);
+    assert.equal(itemWrites.some(call => call.params.includes('Ongoing') || call.params.includes('ASAP')), false);
+    assert.ok(itemWrites.some(call => call.params.includes(null)));
+    assert.ok(calls.some(call => call.sql.includes('DELETE FROM StackCTRLEnterpriseIntelligenceItems WHERE RunID = ? AND DomainKey = ?')));
+});
+
+test('normalizeMysqlDate stores only real MySQL dates for enterprise AI date fields', () => {
+    assert.equal(normalizeMysqlDate('Ongoing'), null);
+    assert.equal(normalizeMysqlDate('ASAP'), null);
+    assert.equal(normalizeMysqlDate('2026-07-15'), '2026-07-15');
+    assert.equal(normalizeMysqlDate(new Date('2026-07-15T13:30:00.000Z')), '2026-07-15');
+});
+
+test('enterprise invalid JSON triggers repair retry and stores repaired batch details', async () => {
+    const calls = [];
+    let azureCalls = 0;
+    let insertId = 300;
+    const snapshot = {
+        ID: 77, CompanyID: 1, TenantKey: 'tenant-sunbird', SnapshotType: 'manual',
+        CreatedAt: new Date('2026-06-22T08:00:00.000Z'), DataCompletenessScore: 100,
+        MetricsJson: JSON.stringify({ identity: { mfaCoverage: 90 }, stackctrl_risk: { domainRiskScores: { identity: 25 } }, executive_kpis: { identityHealth: 75 } }),
+        ContextJson: JSON.stringify({
+            riskEngine: { domainHealthScores: { identity: 75 }, domainRiskScores: { identity: 25 }, executiveKPIs: { identityHealth: 75 } },
+            sources: [{ sourceKey: 'identity', status: 'available', isExpected: true, evidence: [{ evidenceType: 'metric_summary', data: { usersWithoutMfa: 2 } }] }]
+        })
+    };
+    const pool = {
+        async query(sql, params = []) {
+            calls.push({ sql, params });
+            assert.equal((sql.match(/\?/g) || []).length, params.length, `Placeholder mismatch in ${sql}`);
+            if (sql.includes('FROM StackCTRLTenantEvidenceSnapshots WHERE')) return [[snapshot], []];
+            if (sql.includes('FROM StackCTRLKnowledgeBase')) return [[], []];
+            if (sql.includes('FROM StackCTRLTenantDomainIntelligence') && sql.includes('RunID <>')) return [[], []];
+            if (/^\s*INSERT/i.test(sql)) return [{ insertId: insertId++ }, []];
+            return [{ affectedRows: 1 }, []];
+        }
+    };
+    const service = createEnterpriseIntelligenceService({
+        pool,
+        schedulerService: { async getHistoricalSnapshotContext() { return { comparisons: {} }; } },
+        azureOpenAI: {
+            async createJsonCompletion() {
+                azureCalls += 1;
+                if (azureCalls === 1) return { data: '{"domainExecutiveSummary":', requestSizeBytes: 100, responseSizeBytes: 20, retryCount: 0, usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 } };
+                return { data: domainResponse('identity'), requestSizeBytes: 50, responseSizeBytes: 200, retryCount: 0, usage: { input_tokens: 5, output_tokens: 20, total_tokens: 25 } };
+            }
+        },
+        wait: async () => {},
+        config: { domainDelayMs: 0 }
+    });
+
+    const result = await service.runEnterpriseReport({ companyId: 1, snapshotId: 77, domainKeys: ['identity'], includeSynthesis: false });
+    assert.equal(result.status, 'completed');
+    assert.equal(azureCalls, 2);
+    const batchWrite = calls.find(call => call.sql.includes('StackCTRLTenantDomainIntelligenceBatches'));
+    assert.ok(batchWrite);
+    assert.match(batchWrite.params.join(' '), /"jsonRepaired":true/);
+});
+
+test('enterprise invalid JSON failure stores diagnostics and failed_invalid_json status', async () => {
+    const calls = [];
+    let insertId = 400;
+    const snapshot = {
+        ID: 78, CompanyID: 1, TenantKey: 'tenant-sunbird', SnapshotType: 'manual',
+        CreatedAt: new Date('2026-06-22T08:00:00.000Z'), DataCompletenessScore: 100,
+        MetricsJson: JSON.stringify({ identity: { mfaCoverage: 90 }, stackctrl_risk: { domainRiskScores: { identity: 25 } }, executive_kpis: { identityHealth: 75 } }),
+        ContextJson: JSON.stringify({
+            riskEngine: { domainHealthScores: { identity: 75 }, domainRiskScores: { identity: 25 }, executiveKPIs: { identityHealth: 75 } },
+            sources: [{ sourceKey: 'identity', status: 'available', isExpected: true, evidence: [{ evidenceType: 'metric_summary', data: { usersWithoutMfa: 2 } }] }]
+        })
+    };
+    const pool = {
+        async query(sql, params = []) {
+            calls.push({ sql, params });
+            assert.equal((sql.match(/\?/g) || []).length, params.length, `Placeholder mismatch in ${sql}`);
+            if (sql.includes('FROM StackCTRLTenantEvidenceSnapshots WHERE')) return [[snapshot], []];
+            if (sql.includes('FROM StackCTRLKnowledgeBase')) return [[], []];
+            if (sql.includes('FROM StackCTRLTenantDomainIntelligence') && sql.includes('RunID <>')) return [[], []];
+            if (/^\s*INSERT/i.test(sql)) return [{ insertId: insertId++ }, []];
+            return [{ affectedRows: 1 }, []];
+        }
+    };
+    const service = createEnterpriseIntelligenceService({
+        pool,
+        schedulerService: { async getHistoricalSnapshotContext() { return { comparisons: {} }; } },
+        azureOpenAI: {
+            async createJsonCompletion() {
+                return { data: '{"domainExecutiveSummary":', requestSizeBytes: 100, responseSizeBytes: 20, retryCount: 0, usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 } };
+            }
+        },
+        wait: async () => {},
+        config: { domainDelayMs: 0 }
+    });
+
+    const result = await service.runEnterpriseReport({ companyId: 1, snapshotId: 78, domainKeys: ['identity'], includeSynthesis: false });
+    assert.equal(result.status, 'failed_invalid_json');
+    assert.equal(result.domains[0].status, 'failed_invalid_json');
+    const batchWrite = calls.find(call => call.sql.includes('StackCTRLTenantDomainIntelligenceBatches'));
+    assert.ok(batchWrite.params.includes('failed_invalid_json'));
+    assert.ok(batchWrite.params.includes('{"domainExecutiveSummary":'));
+    assert.match(batchWrite.params.join(' '), /JSON parse failed/);
 });
 
 test('enterprise automation does nothing outside the controlled daily window', async () => {

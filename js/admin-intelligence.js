@@ -5,6 +5,8 @@
         tenants: [],
         tenant: null,
         enterprise: null,
+        enterpriseRunView: localStorage.getItem('stackctrlEnterpriseRunView') || 'latest',
+        enterpriseStatusFilter: localStorage.getItem('stackctrlEnterpriseStatusFilter') || 'all',
         selectedCompanyId: Number(localStorage.getItem('stackctrlAdminIntelligenceCompanyId') || 0),
         actionRunning: false,
         lastAction: null
@@ -65,6 +67,23 @@
         return `<span class="status-badge status-${statusClass(value)}">${escapeHtml(String(value).replaceAll('_', ' '))}</span>`;
     }
 
+    function isFailureStatus(status) {
+        return String(status || '').startsWith('failed');
+    }
+
+    function enterpriseStatusRank(status) {
+        const value = statusClass(status);
+        if (isFailureStatus(value)) return 0;
+        if (value === 'partial' || value === 'completed_with_warnings') return 1;
+        if (value === 'running' || value === 'queued') return 2;
+        if (value === 'completed') return 3;
+        return 4;
+    }
+
+    function statusLabel(status) {
+        return String(status || 'unknown').replaceAll('_', ' ');
+    }
+
     function number(value) {
         const numeric = Number(value || 0);
         return Number.isFinite(numeric) ? numeric.toLocaleString() : '0';
@@ -96,6 +115,14 @@
         if (Array.isArray(value)) return value;
         if (!value) return [];
         try { return JSON.parse(value); } catch (_) { return []; }
+    }
+
+    function batchDetailsHtml(batches) {
+        if (!batches.length) return '<div class="enterprise-batch-empty">No batch details stored for this domain.</div>';
+        return `<details class="enterprise-batch-details"><summary>Batches · ${number(batches.filter(batch => batch.Status === 'completed').length)} / ${number(batches.length)} completed</summary><div>${batches.map(batch => {
+            const repaired = batch.BatchSummaryJson?.jsonRepaired ? 'yes' : 'no';
+            return `<section><header><strong>Batch ${number(batch.BatchNumber)}</strong>${statusBadge(batch.Status)}</header><div class="enterprise-domain-meta"><span>Items ${number(batch.BatchItemCount)}</span><span>Sent to Azure ${number(batch.SentToAzureCount)}</span><span>Input size ${bytes(batch.InputSizeBytes)}</span><span>Input tokens ${number(batch.InputTokens)}</span><span>Output tokens ${number(batch.OutputTokens)}</span><span>Retries ${number(batch.RetryCount)}</span><span>Finish ${escapeHtml(batch.AzureFinishReason || '—')}</span><span>JSON repaired ${repaired}</span></div>${batch.ErrorMessage ? `<p class="enterprise-error">${escapeHtml(batch.ErrorMessage)}</p>` : ''}</section>`;
+        }).join('')}</div></details>`;
     }
 
     async function api(path, options = {}) {
@@ -546,22 +573,50 @@
         const enterprise = state.enterprise || {};
         const runs = enterprise.runs || [];
         const latestRun = runs[0];
-        const audits = enterprise.evidenceAudit || [];
-        const domainRows = enterprise.domainIntelligence || [];
-        const synthesisRows = enterprise.synthesis || [];
+        const latestRunId = latestRun?.ID;
+        const showLatestOnly = state.enterpriseRunView !== 'history';
+        const statusFilter = state.enterpriseStatusFilter || 'all';
+        const filterByRun = row => !showLatestOnly || !latestRunId || Number(row.RunID) === Number(latestRunId) || Number(row.ID) === Number(latestRunId);
+        const filterByStatus = row => {
+            if (statusFilter === 'failed') return isFailureStatus(row.Status) || row.Status === 'partial' || row.Status === 'completed_with_warnings';
+            if (statusFilter === 'completed') return row.Status === 'completed';
+            return true;
+        };
+        const audits = (enterprise.evidenceAudit || []).filter(row => filterByRun(row) && filterByStatus(row));
+        const domainRows = (enterprise.domainIntelligence || [])
+            .filter(row => filterByRun(row) && filterByStatus(row))
+            .sort((a, b) => (Number(b.RunID) - Number(a.RunID)) || (enterpriseStatusRank(a.Status) - enterpriseStatusRank(b.Status)) || (Number(b.ID) - Number(a.ID)));
+        const synthesisRows = (enterprise.synthesis || []).filter(row => filterByRun(row));
+        const batchRows = (enterprise.batches || []).filter(row => filterByRun(row));
+        const batchesByDomainRun = batchRows.reduce((map, batch) => {
+            const key = `${batch.RunID}:${batch.DomainKey}`;
+            if (!map.has(key)) map.set(key, []);
+            map.get(key).push(batch);
+            return map;
+        }, new Map());
         const badge = el('enterprise-run-badge');
         badge.className = `status-badge status-${statusClass(latestRun?.Status || 'muted')}`;
-        badge.textContent = latestRun ? `Run #${number(latestRun.ID)} · ${String(latestRun.Status || 'unknown').replaceAll('_', ' ')}` : 'No enterprise run';
-        el('enterprise-audit-summary').textContent = latestRun ? `${audits.length} domain audit row(s) · ${domainRows.length} intelligence row(s)` : 'No enterprise data stored';
+        badge.textContent = latestRun ? `Run #${number(latestRun.ID)} · ${statusLabel(latestRun.Status)}` : 'No enterprise run';
+        el('enterprise-audit-summary').textContent = latestRun ? `${showLatestOnly ? 'Latest run' : 'All runs'} · ${audits.length} audit row(s) · ${domainRows.length} domain row(s)` : 'No enterprise data stored';
+
+        document.querySelectorAll('[data-enterprise-run-view]').forEach(button => button.classList.toggle('active', button.dataset.enterpriseRunView === state.enterpriseRunView));
+        document.querySelectorAll('[data-enterprise-status-filter]').forEach(button => button.classList.toggle('active', button.dataset.enterpriseStatusFilter === state.enterpriseStatusFilter));
 
         if (latestRun) {
+            const latestRunDomains = (enterprise.domainIntelligence || []).filter(row => Number(row.RunID) === Number(latestRun.ID));
+            const completedDomains = latestRunDomains.filter(row => row.Status === 'completed').length;
+            const completedBatches = (enterprise.batches || []).filter(row => Number(row.RunID) === Number(latestRun.ID) && row.Status === 'completed').length;
+            const totalBatches = (enterprise.batches || []).filter(row => Number(row.RunID) === Number(latestRun.ID)).length;
+            const currentDomain = latestRunDomains.find(row => row.Status === 'running' || row.Status === 'queued') || latestRunDomains.find(row => row.Status !== 'completed');
             const summary = [
                 ['Run', `#${number(latestRun.ID)}`],
+                ['Snapshot', `#${number(latestRun.SnapshotID)}`],
+                ['Status', statusLabel(latestRun.Status)],
                 ['Mode', latestRun.Mode || '—'],
                 ['Period', latestRun.PeriodType || '—'],
-                ['Compact package', bytes(state.tenant?.compactContexts?.[0]?.CompactContextSizeBytes)],
-                ['Enterprise requests', bytes(latestRun.TotalRequestBytes)],
-                ['Enterprise responses', bytes(latestRun.TotalResponseBytes)],
+                ['Current domain', currentDomain?.DomainName || currentDomain?.DomainKey || '—'],
+                ['Domains', `${number(completedDomains)} / ${number(latestRunDomains.length || supportedEnterpriseDomains.length)}`],
+                ['Batches', `${number(completedBatches)} / ${number(totalBatches)}`],
                 ['Input tokens', number(latestRun.TotalInputTokens)],
                 ['Output tokens', number(latestRun.TotalOutputTokens)],
                 ['Retries', number(latestRun.RetryCount)]
@@ -571,12 +626,16 @@
             el('enterprise-run-summary').innerHTML = '<div class="empty-state">No enterprise run has been stored.</div>';
         }
 
-        el('enterprise-audit-body').innerHTML = audits.length ? audits.map(row => `
-            <tr><td><button type="button" class="output-open" data-enterprise-audit-index="${audits.indexOf(row)}">${escapeHtml(row.DomainKey)}</button></td><td>${number(row.StackCTRLDataCount)}</td><td>${number(row.SentToAzureCount)}</td><td>${number(row.OmittedCount)}</td><td>${number(row.MetricsIncludedCount)}</td><td>${number(row.HistoricalComparisonsIncluded)}</td><td>${Number(row.AzureMentionedDomain) ? 'Yes' : 'No'}</td><td>${number(row.RisksReturnedCount)}</td><td>${number(row.RecommendationsReturnedCount)}</td><td>${number(row.TrendsReturnedCount)}</td><td>${number(row.InputTokens)}</td><td>${number(row.OutputTokens)}</td><td>${number(row.RetryCount)}</td><td>${statusBadge(row.Status)}</td></tr>
-        `).join('') : '<tr><td colspan="14" class="empty-cell">No enterprise evidence audit rows are available.</td></tr>';
+        el('enterprise-audit-body').innerHTML = audits.length ? audits.map(row => {
+            const domainBatches = batchesByDomainRun.get(`${row.RunID}:${row.DomainKey}`) || [];
+            const completed = domainBatches.filter(batch => batch.Status === 'completed').length;
+            const failed = domainBatches.filter(batch => isFailureStatus(batch.Status)).length;
+            const remaining = Math.max(0, (domainBatches[0]?.BatchCount || domainBatches.length) - completed - failed);
+            return `<tr><td><button type="button" class="output-open" data-enterprise-audit-index="${(enterprise.evidenceAudit || []).indexOf(row)}">${escapeHtml(row.DomainKey)}</button><small>Run #${number(row.RunID)} · Snapshot #${number(row.SnapshotID)} · ${dateTime(row.CreatedAt)}</small></td><td>${number(row.StackCTRLDataCount)}</td><td>${number(row.SentToAzureCount)}</td><td>${number(row.OmittedCount)}</td><td>${number(domainBatches[0]?.BatchCount || domainBatches.length)}</td><td>${number(completed)}</td><td>${number(failed)}</td><td>${number(remaining)}</td><td>${number(row.InputTokens)}</td><td>${number(row.OutputTokens)}</td><td>${number(row.RetryCount)}</td><td>${statusBadge(row.Status)}</td></tr>`;
+        }).join('') : '<tr><td colspan="12" class="empty-cell">No enterprise evidence audit rows match the current filters.</td></tr>';
 
         el('enterprise-domain-results').innerHTML = domainRows.length ? domainRows.slice(0, 20).map(row => `
-            <div class="enterprise-result-item"><header><strong>${escapeHtml(row.DomainName || row.DomainKey)}</strong>${statusBadge(row.Status)}</header><p>${escapeHtml(row.DomainExecutiveSummary || row.ErrorMessage || 'No domain executive summary returned.')}</p><small>Health ${escapeHtml(row.HealthScore ?? '—')} · Risk ${escapeHtml(row.RiskScore ?? '—')} · ${number(row.TotalTokens)} tokens</small><button type="button" class="output-open" data-enterprise-domain-index="${domainRows.indexOf(row)}">View Azure output</button></div>
+            <div class="enterprise-result-item ${isFailureStatus(row.Status) ? 'is-failed' : ''}"><header><strong>${escapeHtml(row.DomainName || row.DomainKey)}</strong>${statusBadge(row.Status)}</header><p>${escapeHtml(row.DomainExecutiveSummary || row.ErrorMessage || 'No domain executive summary returned.')}</p>${row.ErrorMessage ? `<div class="enterprise-error">${escapeHtml(row.ErrorMessage)}</div>` : ''}<div class="enterprise-domain-meta"><span>Run #${number(row.RunID)}</span><span>Snapshot #${number(row.SnapshotID)}</span><span>Health ${escapeHtml(row.HealthScore ?? '—')}</span><span>Risk ${escapeHtml(row.RiskScore ?? '—')}</span><span>Total StackCTRL Data ${number((enterprise.evidenceAudit || []).find(audit => audit.RunID === row.RunID && audit.DomainKey === row.DomainKey)?.StackCTRLDataCount)}</span><span>Processed by Azure ${number((enterprise.evidenceAudit || []).find(audit => audit.RunID === row.RunID && audit.DomainKey === row.DomainKey)?.SentToAzureCount)}</span><span>Permanently Omitted ${number((enterprise.evidenceAudit || []).find(audit => audit.RunID === row.RunID && audit.DomainKey === row.DomainKey)?.OmittedCount)}</span><span>Input ${number(row.InputTokens)}</span><span>Output ${number(row.OutputTokens)}</span><span>Created ${dateTime(row.CreatedAt)}</span></div>${batchDetailsHtml(batchesByDomainRun.get(`${row.RunID}:${row.DomainKey}`) || [])}<button type="button" class="output-open" data-enterprise-domain-index="${(enterprise.domainIntelligence || []).indexOf(row)}">View Azure output</button>${isFailureStatus(row.Status) ? `<button type="button" class="output-open" data-retry-domain="${escapeHtml(row.DomainKey)}">Retry failed domain</button>` : ''}</div>
         `).join('') : '<div class="empty-state">No stored domain intelligence loaded.</div>';
 
         const synthesis = synthesisRows[0];
@@ -606,6 +665,26 @@
         state.enterprise = await api(`/api/admin/intelligence/tenant/${state.selectedCompanyId}/enterprise`);
         renderEnterprise();
         if (scroll) el('enterprise-audit-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function enterpriseActionMessage(label, result) {
+        const status = result?.status || 'completed';
+        const failedDomain = (result?.domains || []).find(domain => isFailureStatus(domain.status));
+        const partialDomain = (result?.domains || []).find(domain => domain.status === 'partial' || domain.status === 'completed_with_warnings');
+        const snapshotText = result?.snapshotId ? ` · Snapshot #${number(result.snapshotId)}` : '';
+        const runText = result?.runId ? ` · Run #${number(result.runId)}` : '';
+        if (isFailureStatus(status) || failedDomain) {
+            return { className: 'action-status is-error', toastType: 'error', text: `${label} failed${runText}${snapshotText}: ${failedDomain?.errorMessage || result?.message || statusLabel(status)}` };
+        }
+        if (status === 'partial' || status === 'completed_with_warnings' || partialDomain) {
+            const detail = partialDomain?.errorMessage ? ` ${partialDomain.errorMessage}` : '';
+            return { className: 'action-status is-warning', toastType: 'error', text: `${label} completed with warnings${runText}${snapshotText}.${detail}` };
+        }
+        return { className: 'action-status is-success', toastType: 'success', text: `${label} completed successfully${runText}${snapshotText}.` };
+    }
+
+    function isEnterpriseActionLabel(label) {
+        return /Enterprise|Domain Deep|Retry failed domain/i.test(label || '');
     }
 
     async function loadTenant() {
@@ -641,6 +720,7 @@
             'run-full-snapshot-analysis', 'run-full-test'
         ].map(el).filter(Boolean).concat(Array.from(document.querySelectorAll('[data-period-run], .enterprise-action')));
         buttons.forEach(item => { item.disabled = true; });
+        button.classList.add('is-loading');
         button.querySelector('.control-icon i')?.classList.add('is-spinning');
         const status = el('action-status');
         status.className = 'action-status is-running';
@@ -648,18 +728,25 @@
         try {
             const result = await api(path, { method: 'POST', body: JSON.stringify(body) });
             state.lastAction = result;
-            status.className = 'action-status is-success';
             const completedSnapshotId = result.snapshotId || result.analysis?.snapshotId || result.period?.SnapshotID;
             const payload = result.payloadComparison || result.compactContext;
-            status.textContent = label === 'Compact Azure analysis'
-                ? `Compact Azure Intelligence Completed Successfully${completedSnapshotId ? ` · Snapshot #${completedSnapshotId}` : ''}${payload?.compactContextSizeBytes ? ` · Azure package ${bytes(payload.compactContextSizeBytes)}` : ''}.`
-                : `${label} completed successfully${completedSnapshotId ? ` · Snapshot #${completedSnapshotId}` : ''}${payload?.compactContextSizeBytes ? ` · Azure package ${bytes(payload.compactContextSizeBytes)}` : ''}.`;
-            toast(`${label} completed.`);
+            if (isEnterpriseActionLabel(label)) {
+                const message = enterpriseActionMessage(label, result);
+                status.className = message.className;
+                status.textContent = message.text;
+                toast(message.text, message.toastType === 'error' ? 'error' : 'success');
+            } else {
+                status.className = 'action-status is-success';
+                status.textContent = label === 'Compact Azure analysis'
+                    ? `Compact Azure Intelligence Completed Successfully${completedSnapshotId ? ` · Snapshot #${completedSnapshotId}` : ''}${payload?.compactContextSizeBytes ? ` · Azure package ${bytes(payload.compactContextSizeBytes)}` : ''}.`
+                    : `${label} completed successfully${completedSnapshotId ? ` · Snapshot #${completedSnapshotId}` : ''}${payload?.compactContextSizeBytes ? ` · Azure package ${bytes(payload.compactContextSizeBytes)}` : ''}.`;
+                toast(`${label} completed.`);
+            }
             try {
                 state.system = (await api('/api/admin/intelligence/status'));
                 renderSystem();
                 await loadTenant();
-                if (/Enterprise|Domain Deep/i.test(label)) await loadEnterprise();
+                if (isEnterpriseActionLabel(label)) await loadEnterprise();
                 if (label === 'Compact Azure analysis') {
                     el('compact-intelligence-proof')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }
@@ -671,9 +758,13 @@
             status.className = 'action-status is-error';
             status.textContent = `${label} failed: ${error.message}`;
             toast(error.message, 'error');
+            if (isEnterpriseActionLabel(label)) {
+                try { await loadEnterprise(); } catch (_) {}
+            }
         } finally {
             state.actionRunning = false;
             buttons.forEach(item => { item.disabled = false; });
+            button.classList.remove('is-loading');
             button.querySelector('.control-icon i')?.classList.remove('is-spinning');
         }
     }
@@ -727,15 +818,21 @@
                 snapshotId: state.tenant?.latestSnapshot?.ID
             });
         }));
-        el('run-enterprise-report')?.addEventListener('click', event => runAction(event.currentTarget, 'Enterprise Deep Report', `/api/admin/intelligence/tenant/${state.selectedCompanyId}/enterprise/run`, {
+        el('run-enterprise-report')?.addEventListener('click', event => {
+            if (!window.confirm('Run Enterprise Deep Report for all domains and final synthesis? Use selected-domain testing first.')) return;
+            runAction(event.currentTarget, 'Enterprise Deep Report', `/api/admin/intelligence/tenant/${state.selectedCompanyId}/enterprise/run`, {
             snapshotId: state.tenant?.latestSnapshot?.ID,
             periodType: 'daily',
             includeSynthesis: true
-        }));
-        el('run-enterprise-domains')?.addEventListener('click', event => runAction(event.currentTarget, 'Enterprise Domain Deep Analysis', `/api/admin/intelligence/tenant/${state.selectedCompanyId}/enterprise/domain`, {
+            });
+        });
+        el('run-enterprise-domains')?.addEventListener('click', event => {
+            if (!window.confirm('Run Domain Deep Analysis for all enterprise domains without synthesis?')) return;
+            runAction(event.currentTarget, 'Enterprise Domain Deep Analysis', `/api/admin/intelligence/tenant/${state.selectedCompanyId}/enterprise/domain`, {
             snapshotId: state.tenant?.latestSnapshot?.ID,
             periodType: 'daily'
-        }));
+            });
+        });
         el('run-enterprise-selected')?.addEventListener('click', event => {
             const selectedDomainKey = el('enterprise-domain-selector').value;
             if (!selectedDomainKey) return toast('No domain selected. Please select a domain from the dropdown.', 'error');
@@ -753,10 +850,21 @@
         document.querySelectorAll('[data-enterprise-view]').forEach(button => button.addEventListener('click', () => {
             loadEnterprise({ scroll: true }).catch(error => toast(error.message, 'error'));
         }));
+        document.querySelectorAll('[data-enterprise-run-view]').forEach(button => button.addEventListener('click', event => {
+            state.enterpriseRunView = event.currentTarget.dataset.enterpriseRunView;
+            localStorage.setItem('stackctrlEnterpriseRunView', state.enterpriseRunView);
+            renderEnterprise();
+        }));
+        document.querySelectorAll('[data-enterprise-status-filter]').forEach(button => button.addEventListener('click', event => {
+            state.enterpriseStatusFilter = event.currentTarget.dataset.enterpriseStatusFilter;
+            localStorage.setItem('stackctrlEnterpriseStatusFilter', state.enterpriseStatusFilter);
+            renderEnterprise();
+        }));
         el('enterprise-audit-results')?.addEventListener('click', event => {
             const auditButton = event.target.closest('[data-enterprise-audit-index]');
             const domainButton = event.target.closest('[data-enterprise-domain-index]');
             const synthesisButton = event.target.closest('[data-enterprise-synthesis]');
+            const retryDomainButton = event.target.closest('[data-retry-domain]');
             if (auditButton) {
                 const row = state.enterprise?.evidenceAudit?.[Number(auditButton.dataset.enterpriseAuditIndex)];
                 if (row) {
@@ -778,6 +886,13 @@
                     el('json-modal-content').textContent = JSON.stringify(row, null, 2);
                     el('json-modal').classList.add('open'); el('json-modal').setAttribute('aria-hidden', 'false');
                 }
+            } else if (retryDomainButton) {
+                const domainKey = retryDomainButton.dataset.retryDomain;
+                runAction(retryDomainButton, 'Retry failed domain', `/api/admin/intelligence/tenant/${state.selectedCompanyId}/enterprise/domain`, {
+                    snapshotId: state.tenant?.latestSnapshot?.ID,
+                    periodType: 'daily',
+                    domainKey
+                });
             }
         });
         el('ai-output-list').addEventListener('click', event => {
