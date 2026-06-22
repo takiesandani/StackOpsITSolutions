@@ -24,6 +24,12 @@ const DEFAULT_SYNTHESIS_OUTPUT_TOKENS = 8000;
 const ENTERPRISE_RATE_LIMIT_RETRY_DELAYS_MS = Object.freeze([60000, 120000, 240000]);
 const ENTERPRISE_RATE_LIMIT_RETRY_MAX_MS = 15 * 60 * 1000;
 const DOMAIN_SYSTEM_MESSAGE = 'You are StackCTRL Enterprise Intelligence. Return valid JSON only. No markdown. No code fences. No explanations outside JSON.';
+const IDENTITY_LINEAGE_FIELDS = Object.freeze([
+    'totalUsers', 'mfaEnabled', 'mfaMissing', 'mfaCoverage', 'privilegedUsers',
+    'adminsWithoutMfa', 'highRiskUsers', 'signInIssues', 'externalUsers',
+    'unknownDevices', 'multiplePrivilegedRoles', 'securityScore', 'healthScore',
+    'riskScore', 'sourceHealth.evidenceCount', 'snapshotId', 'sourceLastUpdated'
+]);
 
 function parseJson(value, fallback = null) {
     if (value == null) return fallback;
@@ -200,6 +206,63 @@ function primitiveMetricCount(value, depth = 0) {
     return 1;
 }
 
+function lineageValue(value, metric, depth = 0) {
+    if (!value || typeof value !== 'object' || depth > 8) return null;
+    if (Object.prototype.hasOwnProperty.call(value, metric)) return value[metric];
+    const leaf = metric.split('.').at(-1).toLowerCase();
+    const directKey = Object.keys(value).find(key => key.toLowerCase() === leaf);
+    if (directKey) return value[directKey];
+    for (const nested of Object.values(value)) {
+        if (!nested || typeof nested !== 'object') continue;
+        const found = lineageValue(nested, metric, depth + 1);
+        if (found !== null && found !== undefined) return found;
+    }
+    return null;
+}
+
+function comparableLineageValue(value) {
+    if (value === null || value === undefined || value === '') return null;
+    if (typeof value === 'number' || typeof value === 'boolean') return value;
+    const numeric = Number(value);
+    return Number.isFinite(numeric) && String(value).trim() !== '' ? numeric : String(value);
+}
+
+function buildDataLineageComparison({ fields, sourceValues, inputValues, azureOutput = null, storedIntelligence = null }) {
+    const rows = fields.map(metric => {
+        const stackCTRLSource = comparableLineageValue(lineageValue(sourceValues, metric));
+        const enterpriseAzureInput = comparableLineageValue(lineageValue(inputValues, metric));
+        const azureValue = comparableLineageValue(lineageValue(azureOutput, metric));
+        const storedValue = comparableLineageValue(lineageValue(storedIntelligence, metric));
+        const sourceMissing = stackCTRLSource === null;
+        const inputMissing = enterpriseAzureInput === null;
+        return {
+            metric,
+            stackCTRLSource,
+            enterpriseAzureInput,
+            azureOutput: azureValue,
+            storedIntelligence: storedValue,
+            status: sourceMissing || inputMissing
+                ? 'MISSING'
+                : Object.is(stackCTRLSource, enterpriseAzureInput) ? 'MATCH' : 'MISMATCH',
+            azureOutputStatus: azureValue === null ? 'NOT_APPLICABLE' : 'AVAILABLE'
+        };
+    });
+    return {
+        rows,
+        mismatches: rows.filter(row => row.stackCTRLSource !== null && (row.enterpriseAzureInput === null || row.status === 'MISMATCH'))
+    };
+}
+
+function sourceAlignmentFailure(comparison, domainName) {
+    if (!comparison?.mismatches?.length) return null;
+    const mismatchedFields = comparison.mismatches.map(row => row.metric);
+    return {
+        status: 'failed_source_mismatch',
+        mismatchedFields,
+        errorMessage: `StackCTRL source mismatch for ${domainName}: ${mismatchedFields.join(', ')}`
+    };
+}
+
 function periodWindow(periodType, referenceDate = new Date()) {
     const type = String(periodType || 'daily').toLowerCase();
     if (!['daily', 'weekly', 'monthly', 'yearly'].includes(type)) throw new Error('Period type must be daily, weekly, monthly, or yearly');
@@ -239,6 +302,7 @@ function domainFailureStatus(results = []) {
     const statuses = results.map(result => result.status).filter(Boolean);
     const reasons = results.map(result => result.failureReason || result.errorMessage || '').join(' ').toLowerCase();
     if (statuses.length && statuses.every(status => status === 'failed_invalid_json')) return 'failed_invalid_json';
+    if (statuses.includes('failed_source_mismatch') || reasons.includes('source_mismatch')) return 'failed_source_mismatch';
     if (statuses.includes('failed_rate_limited') || reasons.includes('rate_limited') || reasons.includes('429') || reasons.includes('throttl')) return 'failed_rate_limited';
     if ((statuses.length && statuses.every(status => status === 'failed_storage')) || reasons.includes('storage')) return 'failed_storage';
     return 'failed';
@@ -246,6 +310,7 @@ function domainFailureStatus(results = []) {
 
 function classifyFailureStatus(error) {
     const message = String(error?.message || '').toLowerCase();
+    if (message.includes('source mismatch') || message.includes('source_mismatch')) return 'failed_source_mismatch';
     if (message.includes('json')) return 'failed_invalid_json';
     if (error?.azureMetadata?.rateLimited || error?.azureMetadata?.statusCode === 429 || message.includes('429') || message.includes('throttl') || message.includes('rate')) return 'failed_rate_limited';
     if (error?.code || message.includes('sql') || message.includes('mysql') || message.includes('database') || message.includes('storage')) return 'failed_storage';
@@ -442,11 +507,17 @@ function createEnterpriseIntelligenceService({
         const health = risk.domainHealthScores?.[domain.riskKey] ?? risk.executiveKPIs?.[domain.healthKey] ?? metrics.executive_kpis?.[domain.healthKey] ?? null;
         const riskScore = risk.domainRiskScores?.[domain.riskKey] ?? metrics.stackctrl_risk?.domainRiskScores?.[domain.riskKey] ?? null;
         const evidence = source.evidence && typeof source.evidence === 'object' ? source.evidence : [];
+        const sourceMetrics = source.metrics || metrics[domain.sourceKey] || {};
+        const dashboardMetrics = source.dashboardMetrics || {};
+        const currentMetrics = domain.key === 'identity' && Object.keys(dashboardMetrics).length
+            ? { ...sourceMetrics, ...dashboardMetrics }
+            : sourceMetrics;
         return {
             context,
             source,
-            metrics: source.metrics || metrics[domain.sourceKey] || {},
-            dashboardMetrics: source.dashboardMetrics || {},
+            metrics: currentMetrics,
+            sourceMetrics,
+            dashboardMetrics,
             calculatedIndicators: source.calculatedIndicators || {},
             evidence,
             healthScore: numberOrNull(health),
@@ -526,12 +597,47 @@ function createEnterpriseIntelligenceService({
             }
         };
 
+        const sourceLineageValues = {
+            ...(domain.key === 'identity' ? current.dashboardMetrics : current.metrics),
+            healthScore: current.healthScore,
+            riskScore: current.riskScore,
+            'sourceHealth.evidenceCount': stackCTRLDataCount,
+            snapshotId: Number(snapshot.ID),
+            sourceLastUpdated: current.source.freshness?.lastUpdated || snapshot.CreatedAt || null
+        };
+        const inputLineageValues = {
+            ...base.currentMetrics,
+            healthScore: base.authoritativeScores.healthScore,
+            riskScore: base.authoritativeScores.riskScore,
+            'sourceHealth.evidenceCount': base.sourceHealth.evidenceCount,
+            snapshotId: base.snapshotId,
+            sourceLastUpdated: base.sourceHealth.freshness?.lastUpdated || base.snapshotCreatedAt || null
+        };
+        const lineageFields = domain.key === 'identity'
+            ? IDENTITY_LINEAGE_FIELDS
+            : [...new Set([...Object.keys(sourceLineageValues), ...Object.keys(inputLineageValues)])];
+        const sourceAlignment = buildDataLineageComparison({
+            fields: lineageFields,
+            sourceValues: sourceLineageValues,
+            inputValues: inputLineageValues
+        });
+        base.dataLineage = {
+            sourceKey: domain.sourceKey,
+            sourceBuilder: current.source.sourceLineage?.sourceBuilder || (domain.key === 'identity' ? 'identityDashboardContext' : 'dashboardContext'),
+            sourceLayer: current.source.sourceLineage?.sourceLayer || 'tenant_evidence_snapshot.dashboardMetrics',
+            snapshotId: Number(snapshot.ID),
+            runId: Number(runId),
+            sourceLastUpdated: sourceLineageValues.sourceLastUpdated,
+            rows: sourceAlignment.rows
+        };
+
         // For batching: don't permanently reduce evidence, just use what we have
         const inputSizeBytes = bytes(base);
         return {
             package: base,
             current,
             allEvidence: flattenedEvidence,
+            sourceAlignment,
             audit: {
                 stackCTRLDataCount,
                 preparedForAzureCount: stackCTRLDataCount,
@@ -1110,6 +1216,23 @@ ${JSON.stringify(packageValue)}`;
 
     async function analyseDomain({ companyId, snapshot, run, domain, historicalContext }) {
         const packageResult = await buildDomainPackage({ companyId, snapshot, runId: run.id, domain, historicalContext });
+        const alignmentFailure = sourceAlignmentFailure(packageResult.sourceAlignment, domain.name);
+        if (alignmentFailure) {
+            const usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: 0, responseBytes: 0, retries: 0 };
+            packageResult.audit.sentToAzureCount = 0;
+            await storeDomain({
+                run, companyId, snapshot, domain, packageResult, analysis: null, usage,
+                status: alignmentFailure.status, errorMessage: alignmentFailure.errorMessage
+            });
+            await storeAudit({
+                run, companyId, snapshot, domain, packageResult, analysis: null, usage,
+                status: alignmentFailure.status
+            });
+            return {
+                status: alignmentFailure.status, domain, usage, audit: packageResult.audit,
+                errorMessage: alignmentFailure.errorMessage, sourceAlignment: packageResult.sourceAlignment
+            };
+        }
         
         try {
             // Process domain in batches instead of reducing evidence
@@ -1176,6 +1299,13 @@ ${JSON.stringify(packageValue)}`;
                 domain: { key: domain.key, name: domain.name },
                 batchInfo: { completedBatches: completedBatches.length, totalBatches: batchResults.batchCount, failedBatches: failedBatches.length }
             };
+            aggregatedAnalysis.dataLineageComparison = buildDataLineageComparison({
+                fields: packageResult.sourceAlignment.rows.map(row => row.metric),
+                sourceValues: Object.fromEntries(packageResult.sourceAlignment.rows.map(row => [row.metric, row.stackCTRLSource])),
+                inputValues: Object.fromEntries(packageResult.sourceAlignment.rows.map(row => [row.metric, row.enterpriseAzureInput])),
+                azureOutput: aggregatedAnalysis,
+                storedIntelligence: aggregatedAnalysis
+            }).rows;
             
             const finalStatus = failedBatches.length > 0 ? 'partial' : 'completed';
             const successfullyAnalysedCount = completedBatches.reduce((total, batch) => total + Number(batch.batchItemCount || 0), 0);
@@ -1573,7 +1703,7 @@ ${JSON.stringify(packageValue)}`;
             pool.query(`SELECT * FROM StackCTRLTenantDomainIntelligence WHERE CompanyID = ?${runFilter}
                         ORDER BY RunID DESC,
                          CASE
-                           WHEN Status IN ('failed', 'failed_invalid_json', 'failed_storage', 'failed_rate_limited') THEN 0
+                           WHEN Status IN ('failed', 'failed_invalid_json', 'failed_storage', 'failed_rate_limited', 'failed_source_mismatch') THEN 0
                            WHEN Status IN ('partial', 'completed_with_warnings') THEN 1
                            WHEN Status IN ('running', 'queued') THEN 2
                            WHEN Status = 'completed' THEN 3
@@ -1583,7 +1713,7 @@ ${JSON.stringify(packageValue)}`;
             pool.query(`SELECT * FROM StackCTRLIntelligenceEvidenceAudit WHERE CompanyID = ?${runFilter}
                         ORDER BY RunID DESC,
                          CASE
-                           WHEN Status IN ('failed', 'failed_invalid_json', 'failed_storage', 'failed_rate_limited') THEN 0
+                           WHEN Status IN ('failed', 'failed_invalid_json', 'failed_storage', 'failed_rate_limited', 'failed_source_mismatch') THEN 0
                            WHEN Status IN ('partial', 'completed_with_warnings') THEN 1
                            WHEN Status IN ('running', 'queued') THEN 2
                            WHEN Status = 'completed' THEN 3
@@ -1643,6 +1773,9 @@ ${JSON.stringify(packageValue)}`;
 module.exports = {
     ENTERPRISE_DOMAINS,
     DOMAIN_BY_KEY,
+    IDENTITY_LINEAGE_FIELDS,
+    buildDataLineageComparison,
+    sourceAlignmentFailure,
     createEnterpriseIntelligenceService,
     flattenDomainEvidence,
     splitIntoBatches,

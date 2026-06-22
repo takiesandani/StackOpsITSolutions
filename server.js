@@ -22,6 +22,7 @@ const { getCloudflareNetworkSecuritySummary } = require('./services/cloudflare')
 const { createAzureOpenAIService } = require('./services/azure-openai');
 const { createStackCTRLIntelligenceService } = require('./services/stackctrl-intelligence');
 const { createStackCTRLIntelligenceScheduler, DEFAULT_OUTPUT_TYPES } = require('./services/intelligence/scheduler');
+const { buildIdentityDashboardSource } = require('./services/intelligence/identity-dashboard-source');
 const { createStackCTRLServerAutomation } = require('./services/intelligence/server-automation');
 const { createAdminIntelligenceService } = require('./services/admin-intelligence');
 const { createEnterpriseIntelligenceService } = require('./services/enterprise-intelligence');
@@ -9291,7 +9292,7 @@ app.get('/api/sunbird/identity-dashboard-cached', authenticateToken, async (req,
         }
 
         // Build metrics object
-        const metrics = metricsRows.length > 0 ? {
+        let metrics = metricsRows.length > 0 ? {
             totalUsers: metricsRows[0].total_users || 0,
             adminUsers: metricsRows[0].admin_users || 0,
             mfaEnabledUsers: metricsRows[0].mfa_enabled_users || 0,
@@ -9392,6 +9393,16 @@ app.get('/api/sunbird/identity-dashboard-cached', authenticateToken, async (req,
             users = mergeUsersWithRoleAssignments(users, roleAssignments);
         }
 
+        const processedIdentitySource = buildIdentityDashboardSource({
+            metricsRow: metricsRows[0] || {},
+            usersRows: users,
+            riskRow: riskRows[0] || {},
+            signInRow: signinActivityRows[0] || {},
+            roleAssignments
+        });
+        users = processedIdentitySource.users;
+        metrics = processedIdentitySource.legacyMetrics;
+
         const topRoles = Object.entries(
             roleAssignments.reduce((acc, assignment) => {
                 const roleName = assignment.roleName || 'Unknown Role';
@@ -9431,6 +9442,7 @@ app.get('/api/sunbird/identity-dashboard-cached', authenticateToken, async (req,
             source: 'database_cache',
             cacheMetadata,
             metrics,
+            stackctrlMetrics: processedIdentitySource.dashboardMetrics,
             riskBreakdown,
             users,
             roleAssignments,

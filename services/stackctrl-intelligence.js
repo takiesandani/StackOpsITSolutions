@@ -486,6 +486,7 @@ function createStackCTRLIntelligenceService({ pool, azureOpenAI, refreshSource =
             chartsData: source.chartsData,
             warnings: source.warnings,
             sourceReferences: source.sourceReferences,
+            sourceLineage: source.sourceLineage,
             rawReference: source.rawReference,
             errorMessage: source.errorMessage
         }));

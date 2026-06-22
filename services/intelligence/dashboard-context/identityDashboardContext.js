@@ -31,28 +31,31 @@ function buildIdentityDashboardContext(source) {
     const mfaEnabled = users.length ? users.length - usersWithoutMfa.length : numberFrom(stored, ['MFAEnabled', 'mfaEnabled']);
     const mfaMissing = users.length ? usersWithoutMfa.length : Math.max(0, totalUsers - mfaEnabled);
     const mfaCoverage = totalUsers ? Math.round((mfaEnabled / totalUsers) * 100) : 0;
+    const dashboardSource = source.dashboardSourceMetrics || {};
+    const dashboardMetrics = {
+        totalUsers: numberFrom(dashboardSource, ['totalUsers'], totalUsers),
+        activeUsers: numberFrom(dashboardSource, ['activeUsers'], users.length ? users.filter(user => daysSince(getLastSignIn(user)) <= 30).length : numberFrom(stored, ['ActiveUsers', 'activeUsers'])),
+        mfaEnabled: numberFrom(dashboardSource, ['mfaEnabled'], mfaEnabled),
+        mfaMissing: numberFrom(dashboardSource, ['mfaMissing'], mfaMissing),
+        mfaCoverage: numberFrom(dashboardSource, ['mfaCoverage'], mfaCoverage),
+        privilegedUsers: numberFrom(dashboardSource, ['privilegedUsers'], users.length ? privilegedUsers.length : numberFrom(stored, ['AdminRoles', 'adminRoles'])),
+        highRiskUsers: numberFrom(dashboardSource, ['highRiskUsers'], highRiskUsers.length),
+        mediumRiskUsers: numberFrom(dashboardSource, ['mediumRiskUsers'], mediumRiskUsers.length),
+        externalUsers: numberFrom(dashboardSource, ['externalUsers'], externalUsers.length),
+        inactiveUsers: numberFrom(dashboardSource, ['inactiveUsers'], inactiveUsers.length),
+        signInIssues: numberFrom(dashboardSource, ['signInIssues'], failedSignInUsers.length),
+        unknownDevices: numberFrom(dashboardSource, ['unknownDevices'], unknownDeviceUsers.length),
+        adminsWithoutMfa: numberFrom(dashboardSource, ['adminsWithoutMfa'], adminsWithoutMfa.length),
+        multiplePrivilegedRoles: numberFrom(dashboardSource, ['multiplePrivilegedRoles'], users.filter(user => getRoleNames(user).length > 1).length),
+        securityScore: numberFrom(dashboardSource, ['securityScore'], numberFrom(stored, ['SecurityScore', 'securityScore']))
+    };
 
     return buildContext(source, {
-        dashboardMetrics: {
-            totalUsers,
-            activeUsers: users.length ? users.filter(user => daysSince(getLastSignIn(user)) <= 30).length : numberFrom(stored, ['ActiveUsers', 'activeUsers']),
-            mfaEnabled,
-            mfaMissing,
-            mfaCoverage,
-            privilegedUsers: users.length ? privilegedUsers.length : numberFrom(stored, ['AdminRoles', 'adminRoles']),
-            highRiskUsers: highRiskUsers.length,
-            mediumRiskUsers: mediumRiskUsers.length,
-            externalUsers: externalUsers.length,
-            inactiveUsers: inactiveUsers.length,
-            signInIssues: failedSignInUsers.length,
-            unknownDevices: unknownDeviceUsers.length,
-            adminsWithoutMfa: adminsWithoutMfa.length,
-            securityScore: numberFrom(stored, ['SecurityScore', 'securityScore'])
-        },
+        dashboardMetrics,
         calculatedIndicators: {
-            mfaCoverageStatus: mfaCoverage >= 90 ? 'healthy' : mfaCoverage >= 70 ? 'attention' : 'high_risk',
-            privilegedMfaGap: adminsWithoutMfa.length,
-            identityRiskUsers: highRiskUsers.length + failedSignInUsers.length
+            mfaCoverageStatus: dashboardMetrics.mfaCoverage >= 90 ? 'healthy' : dashboardMetrics.mfaCoverage >= 70 ? 'attention' : 'high_risk',
+            privilegedMfaGap: dashboardMetrics.adminsWithoutMfa,
+            identityRiskUsers: dashboardMetrics.highRiskUsers + dashboardMetrics.signInIssues
         },
         evidenceLists: {
             allUsers: users,
@@ -66,15 +69,15 @@ function buildIdentityDashboardContext(source) {
             unknownDeviceUsers
         },
         chartsData: {
-            mfaCoverage: { enabled: mfaEnabled, missing: mfaMissing },
+            mfaCoverage: { enabled: dashboardMetrics.mfaEnabled, missing: dashboardMetrics.mfaMissing },
             riskDistribution: {
-                high: highRiskUsers.length,
-                medium: mediumRiskUsers.length,
-                safe: Math.max(0, totalUsers - highRiskUsers.length - mediumRiskUsers.length)
+                high: dashboardMetrics.highRiskUsers,
+                medium: dashboardMetrics.mediumRiskUsers,
+                safe: Math.max(0, dashboardMetrics.totalUsers - dashboardMetrics.highRiskUsers - dashboardMetrics.mediumRiskUsers)
             },
             privilegeDistribution: {
-                privileged: privilegedUsers.length,
-                standard: Math.max(0, totalUsers - privilegedUsers.length)
+                privileged: dashboardMetrics.privilegedUsers,
+                standard: Math.max(0, dashboardMetrics.totalUsers - dashboardMetrics.privilegedUsers)
             }
         }
     });

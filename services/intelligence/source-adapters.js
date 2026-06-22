@@ -1,3 +1,5 @@
+const { buildIdentityDashboardSource } = require('./identity-dashboard-source');
+
 function parseJsonValue(value) {
     if (value == null || typeof value !== 'string') return value;
     const trimmed = value.trim();
@@ -118,7 +120,7 @@ async function collectSource(context, definition) {
     let supplementalLoadWarning = null;
     let refreshWarning = null;
     try {
-        loaded = await definition.load(pool, companyId);
+        loaded = await definition.load(pool, companyId, capability);
     } catch (error) {
         if (!definition.continueWhenStoredEvidenceFails) {
             return statusResult(capability, 'error', {
@@ -146,7 +148,7 @@ async function collectSource(context, definition) {
                     ? definition.fromRefresh(refreshed, loaded)
                     : { ...loaded, ...refreshed };
             } else {
-                loaded = await definition.load(pool, companyId);
+                loaded = await definition.load(pool, companyId, capability);
             }
             records = loaded.records || [];
             freshness = getFreshness(records, capability.freshnessThresholdMinutes);
@@ -187,6 +189,8 @@ async function collectSource(context, definition) {
             ageMinutes: freshness.ageMinutes
         },
         metrics: loaded.metrics || definition.metrics(records),
+        dashboardSourceMetrics: loaded.dashboardSourceMetrics || null,
+        sourceLineage: loaded.sourceLineage || null,
         evidence: loaded.evidence || definition.evidence(records),
         warnings,
         rawReference: loaded.rawReference || {
@@ -199,7 +203,7 @@ async function collectSource(context, definition) {
 const definitions = {
     identity: {
         table: 'IdentityMetricsCache, IdentityUserDetailsCache, MicrosoftRoleAssignmentsCache',
-        async load(pool, companyId) {
+        async load(pool, companyId, capability) {
             const [metrics, users, roles, tenant] = await Promise.all([
                 queryRows(pool, 'SELECT * FROM IdentityMetricsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
                 queryRows(pool, 'SELECT * FROM IdentityUserDetailsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
@@ -209,6 +213,46 @@ const definitions = {
                                  INNER JOIN MicrosoftTenants mt ON mt.ID = cm.MicrosoftTenantID
                                  WHERE cm.CompanyID = ? AND cm.IsActive = 1 LIMIT 1`, [companyId])
             ]);
+            if (capability?.profileKey === 'sunbird') {
+                try {
+                    const tenantKey = capability.profileKey;
+                    const [dashboardMetricsRows, dashboardUsersRows, dashboardRiskRows, dashboardSignInRows] = await Promise.all([
+                        queryRows(pool, 'SELECT * FROM identity_metrics WHERE tenant_id = ? ORDER BY last_updated DESC LIMIT 1', [tenantKey]),
+                        queryRows(pool, 'SELECT * FROM identity_users ORDER BY last_updated DESC', []),
+                        queryRows(pool, 'SELECT * FROM identity_risk_scores WHERE tenant_id = ? ORDER BY last_updated DESC LIMIT 1', [tenantKey]),
+                        queryRows(pool, 'SELECT * FROM identity_signin_activity WHERE tenant_id = ? ORDER BY last_updated DESC LIMIT 1', [tenantKey])
+                    ]);
+                    if (dashboardMetricsRows[0]) {
+                        const roleAssignments = extractPayload(roles[0], 'AssignmentsPayload') || [];
+                        const dashboardSource = buildIdentityDashboardSource({
+                            metricsRow: dashboardMetricsRows[0],
+                            usersRows: dashboardUsersRows,
+                            riskRow: dashboardRiskRows[0] || {},
+                            signInRow: dashboardSignInRows[0] || {},
+                            roleAssignments
+                        });
+                        return {
+                            records: [...dashboardMetricsRows, ...dashboardUsersRows, ...dashboardRiskRows, ...dashboardSignInRows],
+                            notConfigured: !tenant.length,
+                            metrics: dashboardSource.dashboardMetrics,
+                            dashboardSourceMetrics: dashboardSource.dashboardMetrics,
+                            sourceLineage: {
+                                sourceKey: 'identity',
+                                sourceBuilder: 'buildIdentityDashboardSource',
+                                sourceLayer: 'identity_dashboard_processed_cache'
+                            },
+                            evidence: [
+                                { evidenceType: 'tenant', data: tenant[0] || null },
+                                { evidenceType: 'users', data: dashboardSource.users },
+                                { evidenceType: 'role_assignments', data: roleAssignments }
+                            ],
+                            rawReference: { table: 'identity_metrics, identity_users, identity_risk_scores, identity_signin_activity', recordId: dashboardMetricsRows[0]?.id || null }
+                        };
+                    }
+                } catch (_) {
+                    // Older deployments may not have the processed dashboard cache tables yet.
+                }
+            }
             const records = [...metrics, ...users, ...roles];
             return {
                 records,

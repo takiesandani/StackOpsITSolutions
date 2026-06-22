@@ -80,6 +80,7 @@ function buildContext(source, values = {}) {
         warnings,
         freshness: asObject(source.freshness),
         sourceReferences: sourceReferences(source),
+        sourceLineage: source.sourceLineage || null,
         rawReference: source.rawReference,
         errorMessage: source.errorMessage || null,
         metrics: {

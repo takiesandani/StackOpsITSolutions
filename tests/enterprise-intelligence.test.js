@@ -2,10 +2,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+    buildDataLineageComparison,
     createEnterpriseIntelligenceService,
     ENTERPRISE_DOMAINS,
     flattenDomainEvidence,
     normalizeMysqlDate,
+    sourceAlignmentFailure,
     splitIntoBatches
 } = require('../services/enterprise-intelligence');
 
@@ -132,6 +134,76 @@ test('normalizeMysqlDate stores only real MySQL dates for enterprise AI date fie
     assert.equal(normalizeMysqlDate('ASAP'), null);
     assert.equal(normalizeMysqlDate('2026-07-15'), '2026-07-15');
     assert.equal(normalizeMysqlDate(new Date('2026-07-15T13:30:00.000Z')), '2026-07-15');
+});
+
+test('Enterprise Identity currentMetrics follow dynamic dashboard metrics and detect source mismatches', async () => {
+    const pool = {
+        async query(sql) {
+            if (sql.includes('FROM StackCTRLKnowledgeBase')) return [[], []];
+            if (sql.includes('FROM StackCTRLTenantDomainIntelligence') && sql.includes('RunID <>')) return [[], []];
+            throw new Error(`Unexpected query: ${sql}`);
+        }
+    };
+    const service = createEnterpriseIntelligenceService({
+        pool,
+        azureOpenAI: { async createJsonCompletion() { throw new Error('Azure should not be called'); } },
+        schedulerService: { async getHistoricalSnapshotContext() { return {}; } },
+        config: { domainDelayMs: 0 }
+    });
+
+    for (const mfaEnabled of [46, 12]) {
+        const totalUsers = 57;
+        const dashboardMetrics = {
+            totalUsers,
+            mfaEnabled,
+            mfaMissing: totalUsers - mfaEnabled,
+            mfaCoverage: Math.round((mfaEnabled / totalUsers) * 100),
+            privilegedUsers: 5,
+            adminsWithoutMfa: 1,
+            highRiskUsers: 2,
+            signInIssues: 3,
+            externalUsers: 4,
+            unknownDevices: 6,
+            securityScore: 82
+        };
+        const snapshot = {
+            ID: 900 + mfaEnabled,
+            CompanyID: 1,
+            CreatedAt: new Date('2026-06-22T08:00:00.000Z'),
+            MetricsJson: JSON.stringify({ identity: { mfaEnabled: 999 }, stackctrl_risk: { domainRiskScores: { identity: 22 } } }),
+            ContextJson: JSON.stringify({
+                riskEngine: { domainHealthScores: { identity: 78 }, domainRiskScores: { identity: 22 } },
+                sources: [{
+                    sourceKey: 'identity', status: 'available', isExpected: true,
+                    freshness: { lastUpdated: '2026-06-22T07:55:00.000Z', ageMinutes: 5 },
+                    metrics: { mfaEnabled: 999 }, dashboardMetrics,
+                    evidence: [{ evidenceType: 'users', data: [{ id: 'user-1', mfaEnabled: true }] }]
+                }]
+            })
+        };
+        const packageResult = await service.buildDomainPackage({
+            companyId: 1,
+            snapshot,
+            runId: 70,
+            domain: ENTERPRISE_DOMAINS[0],
+            historicalContext: { comparisons: {} }
+        });
+        assert.equal(packageResult.package.currentMetrics.mfaEnabled, mfaEnabled);
+        assert.equal(packageResult.package.currentMetrics.mfaMissing, totalUsers - mfaEnabled);
+        assert.equal(packageResult.package.dataLineage.sourceBuilder, 'identityDashboardContext');
+        assert.equal(packageResult.sourceAlignment.mismatches.length, 0);
+        assert.equal(packageResult.sourceAlignment.rows.find(row => row.metric === 'mfaEnabled').status, 'MATCH');
+    }
+
+    const mismatch = buildDataLineageComparison({
+        fields: ['mfaEnabled'],
+        sourceValues: { mfaEnabled: 46 },
+        inputValues: { mfaEnabled: 12 }
+    });
+    const failure = sourceAlignmentFailure(mismatch, 'Identity Protection');
+    assert.equal(failure.status, 'failed_source_mismatch');
+    assert.deepEqual(failure.mismatchedFields, ['mfaEnabled']);
+    assert.match(failure.errorMessage, /mfaEnabled/);
 });
 
 test('enterprise batching splits 3,590 evidence items by count and byte budget', () => {

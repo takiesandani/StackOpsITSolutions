@@ -44,6 +44,29 @@ test('admin enterprise UI uses clear batch labels and latest/history filters', (
     ]) assert.match(html, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 });
 
+test('enterprise audit title is reset from the currently rendered latest domain', () => {
+    assert.match(html, /id="enterprise-audit-title">Enterprise evidence and output audit</);
+    assert.match(javascript, /function enterpriseAuditTitle/);
+    assert.match(javascript, /domainRow\?\.DomainName/);
+    assert.match(javascript, /domain\.key === domainKey/);
+    assert.match(javascript, /el\('enterprise-audit-title'\)\.textContent = enterpriseAuditTitle/);
+    assert.match(javascript, /if \(!showLatestOnly \|\| !latestRunId\) return enterpriseAuditDefaultTitle/);
+});
+
+test('enterprise input comparison renders run-scoped source lineage', () => {
+    for (const heading of ['StackCTRL Source', 'Enterprise Azure Input', 'Azure Output', 'Stored Intelligence', 'Status']) {
+        assert.match(html, new RegExp(heading));
+    }
+    assert.match(html, /id="enterprise-lineage-body"/);
+    assert.match(html, /id="enterprise-lineage-summary"/);
+    assert.match(javascript, /dataLineageComparison/);
+    assert.match(javascript, /AzureInputSummaryJson\?\.dataLineage/);
+    assert.match(javascript, /target: event\.currentTarget\.dataset\.enterpriseView === 'input' \? 'lineage' : 'audit'/);
+    assert.match(javascript, /lineageMetadata\.sourceBuilder/);
+    assert.match(javascript, /lineageAudit\.RunID/);
+    assert.match(javascript, /lineageAudit\.SnapshotID/);
+});
+
 test('admin enterprise actions render stored failure statuses instead of unconditional success', () => {
     assert.match(javascript, /enterpriseActionMessage/);
     assert.match(javascript, /failed_rate_limited/);

@@ -31,6 +31,7 @@
         { key: 'backup', name: 'Backup and Recovery' },
         { key: 'applications', name: 'Applications' }
     ];
+    const enterpriseAuditDefaultTitle = 'Enterprise evidence and output audit';
 
     const el = id => document.getElementById(id);
 
@@ -80,6 +81,16 @@
         return 4;
     }
 
+    function enterpriseAuditTitle({ showLatestOnly, latestRunId, domainRows, audits }) {
+        if (!showLatestOnly || !latestRunId) return enterpriseAuditDefaultTitle;
+        const rows = [...domainRows, ...audits];
+        const domainKeys = [...new Set(rows.map(row => row.DomainKey).filter(Boolean))];
+        if (domainKeys.length !== 1) return enterpriseAuditDefaultTitle;
+        const domainKey = domainKeys[0];
+        const domainRow = domainRows.find(row => row.DomainKey === domainKey);
+        return domainRow?.DomainName || supportedEnterpriseDomains.find(domain => domain.key === domainKey)?.name || enterpriseAuditDefaultTitle;
+    }
+
     function statusLabel(status) {
         return String(status || 'unknown').replaceAll('_', ' ');
     }
@@ -121,6 +132,12 @@
         if (Array.isArray(value)) return value;
         if (!value) return [];
         try { return JSON.parse(value); } catch (_) { return []; }
+    }
+
+    function lineageValue(value, fallback = '—') {
+        if (value === null || value === undefined || value === '') return fallback;
+        if (typeof value === 'object') return JSON.stringify(value);
+        return String(value);
     }
 
     function batchDetailsHtml(batches) {
@@ -608,6 +625,12 @@
             map.get(key).push(batch);
             return map;
         }, new Map());
+        el('enterprise-audit-title').textContent = enterpriseAuditTitle({
+            showLatestOnly,
+            latestRunId,
+            domainRows,
+            audits
+        });
         const badge = el('enterprise-run-badge');
         badge.className = `status-badge status-${statusClass(latestRun?.Status || 'muted')}`;
         badge.textContent = latestRun ? `Run #${number(latestRun.ID)} · ${statusLabel(latestRun.Status)}` : 'No enterprise run';
@@ -650,6 +673,22 @@
             return `<tr><td><button type="button" class="output-open" data-enterprise-audit-index="${(enterprise.evidenceAudit || []).indexOf(row)}">${escapeHtml(row.DomainKey)}</button><small>Run #${number(row.RunID)} · Snapshot #${number(row.SnapshotID)} · ${dateTime(row.CreatedAt)}</small>${rateLimitGuidance(row, domainBatches)}</td><td>${number(row.StackCTRLDataCount)}</td><td>${number(row.EvidenceIncludedCount ?? row.StackCTRLDataCount)}</td><td>${number(row.SentToAzureCount)}</td><td>${number(row.OmittedCount)}</td><td>${number(domainBatches[0]?.BatchCount || domainBatches.length)}</td><td>${number(completed)}</td><td>${number(failed)}</td><td>${number(remaining)}</td><td>${number(row.InputTokens)}</td><td>${number(row.OutputTokens)}</td><td>${number(row.RetryCount)}</td><td>${statusBadge(row.Status)}</td></tr>`;
         }).join('') : '<tr><td colspan="13" class="empty-cell">No enterprise evidence audit rows match the current filters.</td></tr>';
 
+        const lineageDomain = domainRows[0] || null;
+        const lineageAudit = audits.find(row =>
+            (!lineageDomain || row.DomainKey === lineageDomain.DomainKey) &&
+            (!lineageDomain || Number(row.RunID) === Number(lineageDomain.RunID))
+        ) || audits[0] || null;
+        const storedLineageRows = arrayValue(lineageDomain?.AnalysisJson?.dataLineageComparison);
+        const lineageMetadata = lineageAudit?.AzureInputSummaryJson?.dataLineage || {};
+        const inputLineageRows = arrayValue(lineageMetadata.rows);
+        const lineageRows = storedLineageRows.length ? storedLineageRows : inputLineageRows;
+        el('enterprise-lineage-summary').textContent = lineageAudit
+            ? `${lineageMetadata.sourceKey || lineageAudit.DomainKey} · ${lineageMetadata.sourceBuilder || 'dashboardContext'} · Run #${number(lineageAudit.RunID)} · Snapshot #${number(lineageAudit.SnapshotID)} · Source updated ${dateTime(lineageMetadata.sourceLastUpdated)}`
+            : 'No source lineage metadata loaded.';
+        el('enterprise-lineage-body').innerHTML = lineageRows.length ? lineageRows.map(row => `
+            <tr><td>${escapeHtml(row.metric)}</td><td>${escapeHtml(lineageValue(row.stackCTRLSource))}</td><td>${escapeHtml(lineageValue(row.enterpriseAzureInput))}</td><td>${escapeHtml(lineageValue(row.azureOutput, row.azureOutputStatus || 'NOT_APPLICABLE'))}</td><td>${escapeHtml(lineageValue(row.storedIntelligence, 'NOT_APPLICABLE'))}</td><td>${statusBadge(row.status || 'MISSING')}</td></tr>
+        `).join('') : '<tr><td colspan="6" class="empty-cell">No run-scoped lineage comparison loaded.</td></tr>';
+
         el('enterprise-domain-results').innerHTML = domainRows.length ? domainRows.slice(0, 20).map(row => `
             <div class="enterprise-result-item ${isFailureStatus(row.Status) ? 'is-failed' : ''}"><header><strong>${escapeHtml(row.DomainName || row.DomainKey)}</strong>${statusBadge(row.Status)}</header><p>${escapeHtml(row.DomainExecutiveSummary || row.ErrorMessage || 'No domain executive summary returned.')}</p>${row.ErrorMessage ? `<div class="enterprise-error">${escapeHtml(row.ErrorMessage)}</div>` : ''}${rateLimitGuidance(row, batchesByDomainRun.get(`${row.RunID}:${row.DomainKey}`) || [])}<div class="enterprise-domain-meta"><span>Run #${number(row.RunID)}</span><span>Snapshot #${number(row.SnapshotID)}</span><span>Health ${escapeHtml(row.HealthScore ?? '—')}</span><span>Risk ${escapeHtml(row.RiskScore ?? '—')}</span><span>Total StackCTRL Data ${number((enterprise.evidenceAudit || []).find(audit => audit.RunID === row.RunID && audit.DomainKey === row.DomainKey)?.StackCTRLDataCount)}</span><span>Prepared for Azure ${number((enterprise.evidenceAudit || []).find(audit => audit.RunID === row.RunID && audit.DomainKey === row.DomainKey)?.EvidenceIncludedCount)}</span><span>Successfully Analysed ${number((enterprise.evidenceAudit || []).find(audit => audit.RunID === row.RunID && audit.DomainKey === row.DomainKey)?.SentToAzureCount)}</span><span>Permanently Omitted ${number((enterprise.evidenceAudit || []).find(audit => audit.RunID === row.RunID && audit.DomainKey === row.DomainKey)?.OmittedCount)}</span><span>Input ${number(row.InputTokens)}</span><span>Output ${number(row.OutputTokens)}</span><span>Created ${dateTime(row.CreatedAt)}</span></div>${batchDetailsHtml(batchesByDomainRun.get(`${row.RunID}:${row.DomainKey}`) || [])}<button type="button" class="output-open" data-enterprise-domain-index="${(enterprise.domainIntelligence || []).indexOf(row)}">View Azure output</button>${isFailureStatus(row.Status) ? `<button type="button" class="output-open" data-retry-domain="${escapeHtml(row.DomainKey)}">Retry failed domain</button>` : ''}</div>
         `).join('') : '<div class="empty-state">No stored domain intelligence loaded.</div>';
@@ -677,10 +716,10 @@
         if (supportedEnterpriseDomains.some(domain => domain.key === currentValue)) selector.value = currentValue;
     }
 
-    async function loadEnterprise({ scroll = false } = {}) {
+    async function loadEnterprise({ scroll = false, target = 'audit' } = {}) {
         state.enterprise = await api(`/api/admin/intelligence/tenant/${state.selectedCompanyId}/enterprise`);
         renderEnterprise();
-        if (scroll) el('enterprise-audit-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (scroll) el(target === 'lineage' ? 'enterprise-lineage-comparison' : 'enterprise-audit-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     function enterpriseActionMessage(label, result) {
@@ -863,8 +902,8 @@
             if (!runId) return toast('Load or run domain intelligence before synthesis.', 'error');
             runAction(event.currentTarget, 'Enterprise Synthesis', `/api/admin/intelligence/tenant/${state.selectedCompanyId}/enterprise/synthesis`, { runId });
         });
-        document.querySelectorAll('[data-enterprise-view]').forEach(button => button.addEventListener('click', () => {
-            loadEnterprise({ scroll: true }).catch(error => toast(error.message, 'error'));
+        document.querySelectorAll('[data-enterprise-view]').forEach(button => button.addEventListener('click', event => {
+            loadEnterprise({ scroll: true, target: event.currentTarget.dataset.enterpriseView === 'input' ? 'lineage' : 'audit' }).catch(error => toast(error.message, 'error'));
         }));
         document.querySelectorAll('[data-enterprise-run-view]').forEach(button => button.addEventListener('click', event => {
             state.enterpriseRunView = event.currentTarget.dataset.enterpriseRunView;

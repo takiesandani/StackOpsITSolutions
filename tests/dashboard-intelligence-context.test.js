@@ -1,7 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { cloudflareNetworkSecurityAdapter } = require('../services/intelligence/source-adapters');
+const { cloudflareNetworkSecurityAdapter, identityAdapter } = require('../services/intelligence/source-adapters');
+const { buildIdentityDashboardSource } = require('../services/intelligence/identity-dashboard-source');
 const buildIdentityDashboardContext = require('../services/intelligence/dashboard-context/identityDashboardContext');
 const buildDevicesDashboardContext = require('../services/intelligence/dashboard-context/devicesDashboardContext');
 const buildCloudflareDashboardContext = require('../services/intelligence/dashboard-context/cloudflareDashboardContext');
@@ -124,6 +125,72 @@ test('dashboard context builders include StackCTRL calculated metrics and eviden
     assert.equal(devices.dashboardMetrics.encryptionRate, 50);
     assert.equal(devices.dashboardMetrics.dead30Days, 1);
     assert.equal(devices.dashboardMetrics.unmanagedDevices, 1);
+});
+
+test('Identity dashboard and StackCTRL context share dynamic processed metrics', () => {
+    for (const mfaEnabled of [46, 12]) {
+        const processed = buildIdentityDashboardSource({
+            metricsRow: {
+                total_users: 57,
+                mfa_enabled_users: mfaEnabled,
+                mfa_percentage: Math.round((mfaEnabled / 57) * 100),
+                admin_users: 5,
+                privileged_users_without_mfa: 1,
+                high_risk_users: 2,
+                active_users_24h: 51
+            },
+            usersRows: [{ id: 'user-1', mfa_enabled: 1, roles: '[]', last_signin_device: 'Managed' }],
+            riskRow: { device_unknown: 6 },
+            signInRow: { failed_signin_count_24h: 3 }
+        });
+        const identity = buildIdentityDashboardContext(source({
+            metrics: processed.dashboardMetrics,
+            dashboardSourceMetrics: processed.dashboardMetrics,
+            evidence: [{ evidenceType: 'users', data: processed.users }]
+        }));
+        assert.equal(processed.legacyMetrics.mfaEnabledUsers, mfaEnabled);
+        assert.equal(identity.dashboardMetrics.mfaEnabled, mfaEnabled);
+        assert.equal(identity.dashboardMetrics.mfaCoverage, processed.dashboardMetrics.mfaCoverage);
+        assert.equal(identity.dashboardMetrics.unknownDevices, 6);
+        assert.equal(identity.dashboardMetrics.signInIssues, 3);
+    }
+});
+
+test('Sunbird Identity adapter prefers the processed dashboard cache over legacy metrics', async () => {
+    const result = await identityAdapter({
+        pool: {
+            async query(sql) {
+                if (sql.includes('FROM identity_metrics ')) return [[{
+                    tenant_id: 'sunbird', total_users: 20, mfa_enabled_users: 12,
+                    mfa_percentage: 60, admin_users: 3, high_risk_users: 1,
+                    privileged_users_without_mfa: 1, last_updated: new Date()
+                }], []];
+                if (sql.includes('FROM identity_users ')) return [[
+                    { id: 'one', mfa_enabled: 1, roles: '[]', last_signin_device: 'Managed', last_updated: new Date() }
+                ], []];
+                if (sql.includes('FROM identity_risk_scores ')) return [[{ device_unknown: 4, last_updated: new Date() }], []];
+                if (sql.includes('FROM identity_signin_activity ')) return [[{ failed_signin_count_24h: 2, last_updated: new Date() }], []];
+                if (sql.includes('FROM IdentityMetricsCache')) return [[{ ID: 1, CompanyID: 1, MFAEnabled: 999, LastUpdated: new Date() }], []];
+                if (sql.includes('FROM IdentityUserDetailsCache')) return [[], []];
+                if (sql.includes('FROM MicrosoftRoleAssignmentsCache')) return [[], []];
+                if (sql.includes('FROM CompanyMicrosoftMapping')) return [[{ MicrosoftTenantID: 1, TenantName: 'Sunbird', TenantID: 'tenant' }], []];
+                return [[], []];
+            }
+        },
+        companyId: 1,
+        refresh: false,
+        capability: {
+            profileKey: 'sunbird', sourceKey: 'identity', displayName: 'Identity Protection',
+            isExpected: true, isEnabled: true, refreshMode: 'stored_only', freshnessThresholdMinutes: 60,
+            configuration: {}
+        }
+    });
+    assert.equal(result.metrics.mfaEnabled, 12);
+    assert.equal(result.metrics.mfaCoverage, 60);
+    assert.equal(result.metrics.unknownDevices, 4);
+    assert.equal(result.metrics.signInIssues, 2);
+    assert.equal(result.sourceLineage.sourceBuilder, 'buildIdentityDashboardSource');
+    assert.match(result.rawReference.table, /identity_metrics/);
 });
 
 test('Cloudflare dashboard context exposes network metrics, evidence, and chart-ready values', () => {
