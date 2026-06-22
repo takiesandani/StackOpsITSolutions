@@ -588,25 +588,18 @@
             <div class="enterprise-result-item"><header><strong>Power BI readiness</strong></header><p>Domain rows, findings, risks, recommendations, trends, actions, evidence audit and synthesis are stored for the reporting API.</p><small>${number(synthesis.TotalTokens)} synthesis tokens · ${bytes(synthesis.InputSizeBytes)} request</small><button type="button" class="output-open" data-enterprise-synthesis>View synthesis output</button></div>
         ` : '<div class="empty-state">No final enterprise synthesis loaded.</div>';
 
+        // renderEnterprise() now focuses on rendering enterprise data only
+        // Domain dropdown population moved to populateDomainDropdown() for independence from this function
+    }
+
+    function populateDomainDropdown() {
+        // Populate domain dropdown immediately from static list (independent of loadEnterprise)
         const selector = el('enterprise-domain-selector');
+        if (!selector) return;
         const currentValue = selector.value;
-        
-        // Use API domains if available and non-empty, otherwise fallback to all supported domains
-        let domainsToUse = enterprise.domains && enterprise.domains.length > 0 ? enterprise.domains : supportedEnterpriseDomains;
-        
-        // If we only got one domain from API (incorrect), log warning and use all supported domains
-        if (enterprise.domains?.length === 1 && enterprise.domains[0]?.key === 'identity') {
-            console.warn('[StackCTRL Admin Intelligence] Domain dropdown received only Identity Protection from API. Using all 10 supported domains for Sunbird tenant.');
-            domainsToUse = supportedEnterpriseDomains;
-        }
-        
-        if (domainsToUse.length) {
-            selector.innerHTML = domainsToUse.map(domain => `<option value="${escapeHtml(domain.key)}">${escapeHtml(domain.name)}</option>`).join('');
-            if (domainsToUse.some(domain => domain.key === currentValue)) selector.value = currentValue;
-        } else {
-            // Fallback if no domains at all - should not happen
-            selector.innerHTML = supportedEnterpriseDomains.map(domain => `<option value="${escapeHtml(domain.key)}">${escapeHtml(domain.name)}</option>`).join('');
-        }
+        selector.innerHTML = supportedEnterpriseDomains.map(domain => `<option value="${escapeHtml(domain.key)}">${escapeHtml(domain.name)}</option>`).join('');
+        // Restore selection if it still exists in updated list
+        if (supportedEnterpriseDomains.some(domain => domain.key === currentValue)) selector.value = currentValue;
     }
 
     async function loadEnterprise({ scroll = false } = {}) {
@@ -704,6 +697,8 @@
         el('tenant-selector').addEventListener('change', async event => {
             state.selectedCompanyId = Number(event.target.value || 0);
             localStorage.setItem('stackctrlAdminIntelligenceCompanyId', String(state.selectedCompanyId));
+            // Populate domain dropdown immediately (independent of loadTenant/loadEnterprise)
+            populateDomainDropdown();
             try {
                 await loadTenant();
                 await loadEnterprise();
@@ -808,6 +803,8 @@
         const role = String(payload.role || payload.Role || '').toLowerCase();
         if (role && role !== 'admin') return redirectUnauthorized();
         setupInteractions();
+        // Populate domain dropdown immediately on page load (independent of data loading)
+        populateDomainDropdown();
         try {
             await loadAll();
             setInterval(() => {
