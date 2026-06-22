@@ -101,6 +101,46 @@ function responseUsage(response = {}) {
     };
 }
 
+// Batch evidence into safe chunks for sequential Azure processing
+function splitIntoBatches(evidence, maxBatchSize = 1000) {
+    const batches = [];
+    for (let i = 0; i < evidence.length; i += maxBatchSize) {
+        batches.push({
+            number: batches.length + 1,
+            items: evidence.slice(i, Math.min(i + maxBatchSize, evidence.length))
+        });
+    }
+    return batches.length > 0 ? batches : [{ number: 1, items: evidence }];
+}
+
+// Safely parse JSON with error diagnostics
+function parseJsonWithDiagnostics(text, schema = null) {
+    try {
+        const value = JSON.parse(text);
+        return { success: true, value, error: null };
+    } catch (error) {
+        const preview = text ? text.slice(0, 200) + (text.length > 200 ? '...' : '') : '[empty response]';
+        const suffix = text ? text.slice(-100) : '[empty response]';
+        return {
+            success: false,
+            value: null,
+            error: String(error.message),
+            preview,
+            suffix,
+            fullLength: text?.length || 0
+        };
+    }
+}
+
+// Request repair of truncated JSON from Azure
+function createJsonRepairPrompt(invalidJson) {
+    return `You are a JSON repair tool. Return ONLY valid JSON, no markdown, no explanations.
+
+Repair this incomplete or invalid JSON into the required schema:
+
+${invalidJson}`;
+}
+
 function createEnterpriseIntelligenceService({
     pool,
     azureOpenAI,
@@ -251,7 +291,10 @@ function createEnterpriseIntelligenceService({
         const knowledge = await loadKnowledge(domain.key);
         const previousAnalysis = await loadPreviousDomain(companyId, domain.key, runId);
         const stackCTRLDataCount = deepItemCount(current.evidence);
-        let includedEvidence = selectedEvidence(current.evidence);
+        
+        // For Enterprise Mode: prepare ALL evidence for batching, not just first 30
+        let includedEvidence = selectedEvidence(current.evidence); // This preserves all, not just 30
+        
         const base = {
             contextType: 'stackctrl_enterprise_domain_intelligence',
             schemaVersion: 1,
@@ -288,27 +331,20 @@ function createEnterpriseIntelligenceService({
             }
         };
 
-        while (bytes(base) > settings.maxInputBytes && includedEvidence.length > 1) {
-            includedEvidence = includedEvidence.slice(0, Math.max(1, Math.floor(includedEvidence.length * 0.75)));
-            base.evidence = includedEvidence;
-        }
-        if (bytes(base) > settings.maxInputBytes) {
-            base.evidence = includedEvidence.map(item => ({ evidenceNumber: item.evidenceNumber, evidenceType: item.evidenceType, data: safeValue(item.data, 0, { maxDepth: 3, maxArray: 5, maxString: 500 }) }));
-            base.limitations.detailReducedToMeetInputLimit = true;
-        }
+        // For batching: don't permanently reduce evidence, just use what we have
         const inputSizeBytes = bytes(base);
-        if (inputSizeBytes > settings.maxInputBytes) throw new Error(`${domain.name} package exceeds ENTERPRISE_AI_MAX_INPUT_BYTES_PER_DOMAIN`);
         const sentToAzureCount = deepItemCount(base.evidence);
         return {
             package: base,
             current,
+            allEvidence: current.evidence, // Keep original evidence for batching
             audit: {
-                stackCTRLDataCount,
-                sentToAzureCount,
-                omittedCount: Math.max(0, stackCTRLDataCount - sentToAzureCount),
+                stackCTRLDataCount: stackCTRLDataCount, // Total items in domain
+                sentToAzureCount: stackCTRLDataCount, // All will be sent across batches
+                omittedCount: 0, // For batching, nothing is permanently omitted
                 metricsIncludedCount: primitiveMetricCount(base.currentMetrics) + primitiveMetricCount(base.dashboardMetrics) + primitiveMetricCount(base.calculatedIndicators),
                 evidenceIncludedCount: base.evidence.length,
-                evidenceOmittedCount: Math.max(0, current.evidence.length - base.evidence.length),
+                evidenceOmittedCount: 0, // Batching handles all evidence
                 historicalComparisonsIncluded: Object.values(base.historicalComparisons).filter(item => item.availability === 'available').length,
                 inputSizeBytes
             }
@@ -387,6 +423,210 @@ Risk, recommendation, trend, and management action fields must follow the domain
 
 STORED STACKCTRL ENTERPRISE INTELLIGENCE:
 ${JSON.stringify(packageValue)}`;
+    }
+
+    // Build a domain analysis package for a specific batch of evidence
+    function buildDomainBatchPackage(basePackage, batchEvidence, batchNumber, totalBatches) {
+        return {
+            ...basePackage,
+            evidence: batchEvidence.map((item, index) => ({
+                evidenceNumber: index + 1,
+                evidenceType: item?.evidenceType || item?.type || 'stored_evidence',
+                data: safeValue(item?.data ?? item, 0, { maxDepth: 6, maxArray: 15, maxString: 1600 })
+            })),
+            current: basePackage.current, // Ensure current is preserved
+            batchMetadata: {
+                batchNumber,
+                totalBatches,
+                batchEvidentItemCount: batchEvidence.length
+            },
+            limitations: {
+                ...basePackage.limitations,
+                batchProcessing: true,
+                batchNumber,
+                totalBatches
+            }
+        };
+    }
+
+    // Store batch result in database
+    async function storeBatch({ companyId, snapshotId, runId, domain, batchNumber, totalBatches, batchEvidence, analysis, usage, status, errorMessage = null, failureReason = null }) {
+        const batchItemCount = batchEvidence.length;
+        const batchSummary = analysis ? {
+            summary: analysis.domainExecutiveSummary || '',
+            findingsCount: array(analysis.keyFindings).length,
+            risksCount: array(analysis.risks).length,
+            recommendationsCount: array(analysis.recommendations).length,
+            trendsCount: array(analysis.trendAnalysis).length
+        } : null;
+        
+        await pool.query(
+            `INSERT INTO StackCTRLTenantDomainIntelligenceBatches
+             (CompanyID, SnapshotID, RunID, DomainKey, DomainName, BatchNumber, BatchCount, Status,
+              StackCTRLDataCount, BatchItemCount, SentToAzureCount, RemainingAfterBatch, OmittedFromThisBatch,
+              InputSizeBytes, ResponseSizeBytes, InputTokens, OutputTokens, TotalTokens, RetryCount,
+              BatchSummaryJson, FindingsJson, RisksJson, RecommendationsJson, TrendsJson,
+              MissingDataWarningsJson, StartedAt, CompletedAt, ErrorMessage, FailureReason, AzureFinishReason, CreatedAt)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?, ?, NULL, NOW())
+             ON DUPLICATE KEY UPDATE
+              Status = ?, BatchItemCount = ?, SentToAzureCount = ?, InputSizeBytes = ?, ResponseSizeBytes = ?,
+              InputTokens = ?, OutputTokens = ?, TotalTokens = ?, RetryCount = ?,
+              BatchSummaryJson = ?, FindingsJson = ?, RisksJson = ?, RecommendationsJson = ?, TrendsJson = ?,
+              MissingDataWarningsJson = ?, CompletedAt = NOW(), ErrorMessage = ?, FailureReason = ?, UpdatedAt = NOW()`,
+            [
+                companyId, snapshotId, runId, domain.key, domain.name, batchNumber, totalBatches, status,
+                0, batchItemCount, batchItemCount, 0, 0,
+                usage.requestBytes || 0, usage.responseBytes, usage.inputTokens, usage.outputTokens, usage.totalTokens, usage.retries || 0,
+                JSON.stringify(batchSummary || {}),
+                analysis ? jsonArray(analysis.keyFindings) : null,
+                analysis ? jsonArray(analysis.risks) : null,
+                analysis ? jsonArray(analysis.recommendations) : null,
+                analysis ? jsonArray(analysis.trendAnalysis) : null,
+                analysis ? jsonArray(analysis.missingDataWarnings) : null,
+                errorMessage, failureReason,
+                // ON DUPLICATE KEY UPDATE values
+                status, batchItemCount, batchItemCount, usage.requestBytes || 0, usage.responseBytes,
+                usage.inputTokens, usage.outputTokens, usage.totalTokens, usage.retries || 0,
+                JSON.stringify(batchSummary || {}),
+                analysis ? jsonArray(analysis.keyFindings) : null,
+                analysis ? jsonArray(analysis.risks) : null,
+                analysis ? jsonArray(analysis.recommendations) : null,
+                analysis ? jsonArray(analysis.trendAnalysis) : null,
+                analysis ? jsonArray(analysis.missingDataWarnings) : null,
+                errorMessage, failureReason
+            ]
+        );
+    }
+
+    // Analyze a single domain batch with JSON error handling and repair
+    async function analyzeDomainBatch({ companyId, snapshot, run, domain, packageResult, batchEvidence, batchNumber, totalBatches, historicalContext }) {
+        const batchPackage = buildDomainBatchPackage(packageResult.package, batchEvidence, batchNumber, totalBatches);
+        batchPackage.current = packageResult.current; // Ensure current is available for normalizedDomainResult
+        let usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: bytes(batchPackage), responseBytes: 0, retries: 0 };
+        
+        try {
+            // First attempt: get JSON response from Azure
+            const response = await azureOpenAI.createJsonCompletion({
+                messages: [
+                    { role: 'system', content: 'You are StackCTRL Enterprise Intelligence. Return valid JSON only, no markdown.' },
+                    { role: 'user', content: domainPrompt(domain, batchPackage) }
+                ],
+                temperature: 0.15,
+                maxTokens: settings.maxDomainOutputTokens,
+                maxRetriesOverride: settings.maxRetries,
+                timeoutMs: settings.requestTimeoutMs
+            });
+            
+            usage = responseUsage(response);
+            
+            // Detect truncation by finish_reason
+            const finishReason = response.finish_reason || response.data?.finish_reason;
+            if (finishReason === 'length') {
+                throw new Error(`Azure response truncated (finish_reason: length). Output tokens: ${usage.outputTokens}`);
+            }
+            
+            // Parse JSON response
+            let analysis = null;
+            if (typeof response.data === 'string') {
+                const jsonResult = parseJsonWithDiagnostics(response.data);
+                if (!jsonResult.success) {
+                    // JSON parsing failed - attempt repair
+                    logger.warn(`[StackCTRL Enterprise] Batch ${batchNumber} JSON parsing failed, attempting repair. Error: ${jsonResult.error}`);
+                    
+                    const repairResponse = await azureOpenAI.createJsonCompletion({
+                        messages: [
+                            { role: 'system', content: 'You are a JSON repair tool. Return ONLY valid JSON, no markdown, no explanations.' },
+                            { role: 'user', content: createJsonRepairPrompt(response.data.slice(0, 5000)) }
+                        ],
+                        temperature: 0,
+                        maxTokens: settings.maxDomainOutputTokens,
+                        maxRetriesOverride: 1,
+                        timeoutMs: settings.requestTimeoutMs
+                    });
+                    
+                    const repairUsage = responseUsage(repairResponse);
+                    usage.outputTokens += repairUsage.outputTokens;
+                    usage.totalTokens += repairUsage.totalTokens;
+                    
+                    const repairResult = parseJsonWithDiagnostics(repairResponse.data);
+                    if (!repairResult.success) {
+                        // Repair also failed
+                        await storeBatch({
+                            companyId, snapshotId: snapshot.ID, runId: run.id, domain,
+                            batchNumber, totalBatches, batchEvidence, analysis: null, usage,
+                            status: 'failed_invalid_json',
+                            errorMessage: `JSON parse failed: ${jsonResult.error}. Repair attempt also failed: ${repairResult.error}`,
+                            failureReason: 'invalid_json_unrepairable'
+                        });
+                        return { status: 'failed_invalid_json', batchNumber, domain, usage, failureReason: 'invalid_json_unrepairable' };
+                    }
+                    analysis = normalizedDomainResult(repairResult.value, domain, batchPackage.current);
+                } else {
+                    analysis = normalizedDomainResult(jsonResult.value, domain, batchPackage.current);
+                }
+            } else {
+                analysis = normalizedDomainResult(response.data, domain, batchPackage.current);
+            }
+            
+            // Store successful batch
+            await storeBatch({
+                companyId, snapshotId: snapshot.ID, runId: run.id, domain,
+                batchNumber, totalBatches, batchEvidence, analysis, usage, status: 'completed'
+            });
+            
+            return { status: 'completed', batchNumber, domain, analysis, usage };
+        } catch (error) {
+            const metadata = error.azureMetadata || {};
+            usage = {
+                inputTokens: 0, outputTokens: Number(metadata.outputTokens || 0), totalTokens: 0,
+                requestBytes: bytes(batchPackage), responseBytes: Number(metadata.responseSizeBytes || 0),
+                retries: Number(metadata.retryCount || 0)
+            };
+            
+            let failureReason = 'unknown_error';
+            if (error.message.includes('finish_reason: length')) failureReason = 'output_truncated';
+            else if (error.message.includes('JSON')) failureReason = 'invalid_json';
+            else if (error.message.includes('429') || error.message.includes('throttl')) failureReason = 'rate_limited';
+            
+            await storeBatch({
+                companyId, snapshotId: snapshot.ID, runId: run.id, domain,
+                batchNumber, totalBatches, batchEvidence, analysis: null, usage,
+                status: 'failed', errorMessage: error.message, failureReason
+            });
+            
+            logger.error(`[StackCTRL Enterprise] ${domain.name} batch ${batchNumber} failed:`, error.message);
+            return { status: 'failed', batchNumber, domain, usage, failureReason, errorMessage: error.message };
+        }
+    }
+
+    // Process all batches for a domain and aggregate results
+    async function processDomainBatches({ companyId, snapshot, run, domain, packageResult, allEvidence, historicalContext }) {
+        const batchSize = 1000; // Items per batch
+        const batches = splitIntoBatches(allEvidence, batchSize);
+        const results = [];
+        const totals = { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: 0, responseBytes: 0, retries: 0 };
+        
+        logger.info(`[StackCTRL Enterprise] Processing ${domain.name} in ${batches.length} batch(es)`);
+        
+        for (const batch of batches) {
+            const result = await analyzeDomainBatch({
+                companyId, snapshot, run, domain, packageResult,
+                batchEvidence: batch.items, batchNumber: batch.number, totalBatches: batches.length,
+                historicalContext
+            });
+            
+            results.push(result);
+            for (const key of Object.keys(totals)) {
+                totals[key] += result.usage?.[key] || 0;
+            }
+            
+            // Delay between batches to avoid throttling
+            if (batch.number < batches.length && settings.domainDelayMs > 0) {
+                await wait(Math.min(settings.domainDelayMs, 5000)); // Use smaller delay between batches
+            }
+        }
+        
+        return { results, batchCount: batches.length, totals };
     }
 
     async function createRun({ companyId, snapshotId, periodType, referenceDate, mode, deduplicationKey = null }) {
@@ -586,34 +826,103 @@ ${JSON.stringify(packageValue)}`;
 
     async function analyseDomain({ companyId, snapshot, run, domain, historicalContext }) {
         const packageResult = await buildDomainPackage({ companyId, snapshot, runId: run.id, domain, historicalContext });
-        let usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: packageResult.audit.inputSizeBytes, responseBytes: 0, retries: 0 };
+        
         try {
-            const response = await azureOpenAI.createJsonCompletion({
-                messages: [
-                    { role: 'system', content: 'You are StackCTRL Enterprise Intelligence. Return structured JSON only.' },
-                    { role: 'user', content: domainPrompt(domain, packageResult.package) }
-                ],
-                temperature: 0.15,
-                maxTokens: settings.maxDomainOutputTokens,
-                maxRetriesOverride: settings.maxRetries,
-                timeoutMs: settings.requestTimeoutMs
+            // Process domain in batches instead of reducing evidence
+            const batchResults = await processDomainBatches({
+                companyId, snapshot, run, domain,
+                packageResult,
+                allEvidence: packageResult.allEvidence,
+                historicalContext
             });
-            usage = responseUsage(response);
-            const analysis = normalizedDomainResult(response.data, domain, packageResult.current);
-            const domainIntelligenceId = await storeDomain({ run, companyId, snapshot, domain, packageResult, analysis, usage });
-            await storeAudit({ run, companyId, snapshot, domain, packageResult, analysis, usage, status: 'completed' });
-            return { status: 'completed', domain, domainIntelligenceId, analysis, usage, audit: packageResult.audit };
-        } catch (error) {
-            const metadata = error.azureMetadata || {};
-            usage = {
-                inputTokens: 0, outputTokens: 0, totalTokens: 0,
-                requestBytes: Number(metadata.requestSizeBytes || packageResult.audit.inputSizeBytes),
-                responseBytes: Number(metadata.responseSizeBytes || 0), retries: Number(metadata.retryCount || 0)
+            
+            // Check if all batches completed successfully
+            const failedBatches = batchResults.results.filter(r => r.status !== 'completed');
+            const completedBatches = batchResults.results.filter(r => r.status === 'completed');
+            
+            if (completedBatches.length === 0) {
+                // All batches failed
+                await storeDomain({
+                    run, companyId, snapshot, domain, packageResult, analysis: null,
+                    usage: batchResults.totals, status: 'failed',
+                    errorMessage: `All ${batchResults.batchCount} batches failed`
+                });
+                await storeAudit({
+                    run, companyId, snapshot, domain, packageResult, analysis: null,
+                    usage: batchResults.totals, status: 'failed'
+                });
+                return { status: 'failed', domain, usage: batchResults.totals, audit: packageResult.audit, errorMessage: `All batches failed` };
+            }
+            
+            // Aggregate batch results into domain-level analysis
+            const aggregatedAnalysis = {
+                domainExecutiveSummary: completedBatches.map(b => b.analysis?.domainExecutiveSummary).filter(Boolean).join(' '),
+                technicalSummary: completedBatches.map(b => b.analysis?.technicalSummary).filter(Boolean).join(' '),
+                businessImpact: completedBatches.map(b => b.analysis?.businessImpact).filter(Boolean).join(' '),
+                currentPosture: completedBatches.map(b => b.analysis?.currentPosture).filter(Boolean).join(' '),
+                evidenceUsed: completedBatches.flatMap(b => b.analysis?.evidenceUsed || []),
+                evidenceGaps: completedBatches.flatMap(b => b.analysis?.evidenceGaps || []),
+                scoreJustification: completedBatches.map(b => b.analysis?.scoreJustification).filter(Boolean).join(' '),
+                controlAssessment: completedBatches[0]?.analysis?.controlAssessment || {},
+                keyFindings: completedBatches.flatMap(b => b.analysis?.keyFindings || []).slice(0, 50),
+                risks: completedBatches.flatMap(b => b.analysis?.risks || []).slice(0, 50),
+                recommendations: completedBatches.flatMap(b => b.analysis?.recommendations || []).slice(0, 50),
+                trendAnalysis: completedBatches.flatMap(b => b.analysis?.trendAnalysis || []).slice(0, 50),
+                yesterdayVsToday: completedBatches[0]?.analysis?.yesterdayVsToday || {},
+                whatImproved: completedBatches.flatMap(b => b.analysis?.whatImproved || []),
+                whatDeteriorated: completedBatches.flatMap(b => b.analysis?.whatDeteriorated || []),
+                whatStayedTheSame: completedBatches.flatMap(b => b.analysis?.whatStayedTheSame || []),
+                missingDataWarnings: completedBatches.flatMap(b => b.analysis?.missingDataWarnings || []),
+                assumptions: completedBatches.flatMap(b => b.analysis?.assumptions || []),
+                confidenceScore: completedBatches[0]?.analysis?.confidenceScore ?? null,
+                managementActions: completedBatches.flatMap(b => b.analysis?.managementActions || []),
+                powerBiSummary: completedBatches[0]?.analysis?.powerBiSummary || {},
+                authoritativeScores: { healthScore: packageResult.current.healthScore, riskScore: packageResult.current.riskScore, riskLevel: packageResult.current.riskLevel },
+                domain: { key: domain.key, name: domain.name },
+                batchInfo: { completedBatches: completedBatches.length, totalBatches: batchResults.batchCount, failedBatches: failedBatches.length }
             };
-            await storeDomain({ run, companyId, snapshot, domain, packageResult, analysis: null, usage, status: 'failed', errorMessage: error.message });
-            await storeAudit({ run, companyId, snapshot, domain, packageResult, analysis: null, usage, status: 'failed' });
+            
+            const finalStatus = failedBatches.length > 0 ? 'completed_with_warnings' : 'completed';
+            const domainIntelligenceId = await storeDomain({
+                run, companyId, snapshot, domain, packageResult,
+                analysis: aggregatedAnalysis, usage: batchResults.totals,
+                status: finalStatus
+            });
+            
+            // Store aggregate audit info showing all data was processed in batches
+            const updatedAudit = {
+                ...packageResult.audit,
+                batchCount: batchResults.batchCount,
+                completedBatches: completedBatches.length
+            };
+            await storeAudit({
+                run, companyId, snapshot, domain, packageResult,
+                analysis: aggregatedAnalysis, usage: batchResults.totals,
+                status: finalStatus
+            });
+            
+            return {
+                status: finalStatus,
+                domain,
+                domainIntelligenceId,
+                analysis: aggregatedAnalysis,
+                usage: batchResults.totals,
+                audit: updatedAudit,
+                batchInfo: { completedBatches: completedBatches.length, totalBatches: batchResults.batchCount, failedBatches: failedBatches.length }
+            };
+        } catch (error) {
             logger.error(`[StackCTRL Enterprise] ${domain.name} analysis failed:`, error.message);
-            return { status: 'failed', domain, usage, audit: packageResult.audit, errorMessage: error.message };
+            await storeDomain({
+                run, companyId, snapshot, domain, packageResult,
+                analysis: null, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: 0, responseBytes: 0, retries: 0 },
+                status: 'failed', errorMessage: error.message
+            });
+            await storeAudit({
+                run, companyId, snapshot, domain, packageResult,
+                analysis: null, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: 0, responseBytes: 0, retries: 0 },
+                status: 'failed'
+            });
+            return { status: 'failed', domain, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: 0, responseBytes: 0, retries: 0 }, audit: packageResult.audit, errorMessage: error.message };
         }
     }
 

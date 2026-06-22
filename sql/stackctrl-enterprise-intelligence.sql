@@ -195,6 +195,53 @@ CREATE TABLE IF NOT EXISTS StackCTRLKnowledgeBase (
     KEY ix_stackctrl_knowledge_domain (DomainKey, IsActive, UpdatedAt)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Enterprise domain batches: split large domain datasets into safe Azure request chunks.
+-- Each domain may generate multiple batches if it has more data than max input bytes.
+CREATE TABLE IF NOT EXISTS StackCTRLTenantDomainIntelligenceBatches (
+    ID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    CompanyID BIGINT NOT NULL,
+    SnapshotID BIGINT NOT NULL,
+    RunID BIGINT UNSIGNED NOT NULL,
+    DomainKey VARCHAR(100) NOT NULL,
+    DomainName VARCHAR(180) NOT NULL,
+    BatchNumber INT NOT NULL DEFAULT 1,
+    BatchCount INT NOT NULL DEFAULT 1,
+    BatchType VARCHAR(50) NOT NULL DEFAULT 'normal',
+    Status VARCHAR(50) NOT NULL DEFAULT 'pending',
+    StackCTRLDataCount INT NOT NULL DEFAULT 0,
+    BatchItemCount INT NOT NULL DEFAULT 0,
+    SentToAzureCount INT NOT NULL DEFAULT 0,
+    RemainingAfterBatch INT NOT NULL DEFAULT 0,
+    OmittedFromThisBatch INT NOT NULL DEFAULT 0,
+    PermanentOmittedCount INT NOT NULL DEFAULT 0,
+    PermanentOmissionReason VARCHAR(255) NULL,
+    InputSizeBytes BIGINT NOT NULL DEFAULT 0,
+    ResponseSizeBytes BIGINT NOT NULL DEFAULT 0,
+    InputTokens BIGINT NOT NULL DEFAULT 0,
+    OutputTokens BIGINT NOT NULL DEFAULT 0,
+    TotalTokens BIGINT NOT NULL DEFAULT 0,
+    RetryCount INT NOT NULL DEFAULT 0,
+    BatchSummaryJson JSON NULL,
+    FindingsJson JSON NULL,
+    RisksJson JSON NULL,
+    RecommendationsJson JSON NULL,
+    TrendsJson JSON NULL,
+    MissingDataWarningsJson JSON NULL,
+    StartedAt DATETIME NULL,
+    CompletedAt DATETIME NULL,
+    ErrorMessage TEXT NULL,
+    FailureReason VARCHAR(100) NULL,
+    RawResponsePreview LONGTEXT NULL,
+    AzureFinishReason VARCHAR(50) NULL,
+    CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (ID),
+    UNIQUE KEY uq_enterprise_batch_run_domain_number (RunID, DomainKey, BatchNumber),
+    KEY ix_enterprise_batch_company_domain (CompanyID, DomainKey, Status),
+    KEY ix_enterprise_batch_run_status (RunID, Status, CreatedAt),
+    KEY ix_enterprise_batch_completion (CompletedAt)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Enterprise run telemetry. No prompt packages or raw snapshot fields are exposed.
 CREATE OR REPLACE SQL SECURITY INVOKER VIEW vw_PowerBI_EnterpriseRuns AS
 SELECT run.ID AS RunID, run.CompanyID, company.CompanyName, snapshot.TenantKey AS TenantID,
