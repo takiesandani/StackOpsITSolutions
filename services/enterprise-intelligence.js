@@ -462,7 +462,18 @@ ${JSON.stringify(packageValue)}`;
         );
     }
 
+    async function deleteItemsForDomainRun({ runId, domainKey }) {
+        // Delete old items for this RunID + DomainKey before reinserting (prevents duplicates on reruns)
+        await pool.query(
+            `DELETE FROM StackCTRLEnterpriseIntelligenceItems WHERE RunID = ? AND DomainKey = ?`,
+            [runId, domainKey]
+        );
+    }
+
     async function storeItems({ companyId, snapshotId, runId, domain, period, analysis, source = 'domain' }) {
+        // Clean up old items for this domain run before inserting new ones (makes reruns idempotent)
+        await deleteItemsForDomainRun({ runId, domainKey: domain.key });
+        
         const groups = [
             ['finding', analysis.keyFindings],
             ['risk', analysis.risks || analysis.riskRegister],
@@ -491,7 +502,20 @@ ${JSON.stringify(packageValue)}`;
               TechnicalSummary, BusinessImpact, CurrentPosture, EvidenceSummary, ScoreJustification,
               ControlAssessment, FindingsJson, RisksJson, RecommendationsJson, TrendAnalysisJson,
               YesterdayVsTodayJson, MissingDataWarningsJson, AssumptionsJson, ConfidenceScore, ErrorMessage)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+              HealthScore = VALUES(HealthScore), RiskScore = VALUES(RiskScore), RiskLevel = VALUES(RiskLevel),
+              InputSizeBytes = VALUES(InputSizeBytes), ResponseSizeBytes = VALUES(ResponseSizeBytes),
+              InputTokens = VALUES(InputTokens), OutputTokens = VALUES(OutputTokens), TotalTokens = VALUES(TotalTokens),
+              RetryCount = VALUES(RetryCount), Status = VALUES(Status), AnalysisJson = VALUES(AnalysisJson),
+              DomainExecutiveSummary = VALUES(DomainExecutiveSummary), TechnicalSummary = VALUES(TechnicalSummary),
+              BusinessImpact = VALUES(BusinessImpact), CurrentPosture = VALUES(CurrentPosture),
+              EvidenceSummary = VALUES(EvidenceSummary), ScoreJustification = VALUES(ScoreJustification),
+              ControlAssessment = VALUES(ControlAssessment), FindingsJson = VALUES(FindingsJson),
+              RisksJson = VALUES(RisksJson), RecommendationsJson = VALUES(RecommendationsJson),
+              TrendAnalysisJson = VALUES(TrendAnalysisJson), YesterdayVsTodayJson = VALUES(YesterdayVsTodayJson),
+              MissingDataWarningsJson = VALUES(MissingDataWarningsJson), AssumptionsJson = VALUES(AssumptionsJson),
+              ConfidenceScore = VALUES(ConfidenceScore), ErrorMessage = VALUES(ErrorMessage)`,
             [
                 companyId, snapshot.ID, run.id, domain.key, domain.name, run.periodType, run.periodStart, run.periodEnd,
                 packageResult.current.healthScore, packageResult.current.riskScore, packageResult.current.riskLevel,
@@ -508,11 +532,24 @@ ${JSON.stringify(packageValue)}`;
             ]
         );
         if (analysis) await storeItems({ companyId, snapshotId: snapshot.ID, runId: run.id, domain, period: run, analysis });
-        return result.insertId;
+        return result.insertId || result.affectedRows;
     }
 
     async function storeAudit({ run, companyId, snapshot, domain, packageResult, analysis, usage, status }) {
         const combinedText = JSON.stringify(analysis || {}).toLowerCase();
+        const auditInput = JSON.stringify(packageResult.package);
+        const auditOmitted = JSON.stringify({
+            stackCTRLDataCount: packageResult.audit.stackCTRLDataCount,
+            sentToAzureCount: packageResult.audit.sentToAzureCount,
+            omittedCount: packageResult.audit.omittedCount,
+            evidenceOmittedCount: packageResult.audit.evidenceOmittedCount,
+            detailReducedToMeetInputLimit: Boolean(packageResult.package.limitations?.detailReducedToMeetInputLimit)
+        });
+        const azureMentioned = combinedText.includes(domain.key.replaceAll('_', ' ')) || combinedText.includes(domain.name.toLowerCase()) ? 1 : 0;
+        const risksCount = array(analysis?.risks).length;
+        const recommendationsCount = array(analysis?.recommendations).length;
+        const trendsCount = array(analysis?.trendAnalysis).length;
+        const inputBytes = usage.requestBytes || packageResult.audit.inputSizeBytes;
         await pool.query(
             `INSERT INTO StackCTRLIntelligenceEvidenceAudit
              (CompanyID, SnapshotID, RunID, DomainKey, StackCTRLDataCount, SentToAzureCount,
@@ -521,24 +558,28 @@ ${JSON.stringify(packageValue)}`;
               RecommendationsReturnedCount, TrendsReturnedCount, InputSizeBytes, OutputSizeBytes,
               InputTokens, OutputTokens, RetryCount, Status, AzureInputSummaryJson,
               OmittedSummaryJson, CreatedAt)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+             ON DUPLICATE KEY UPDATE
+              StackCTRLDataCount = ?, SentToAzureCount = ?, OmittedCount = ?, MetricsIncludedCount = ?,
+              EvidenceIncludedCount = ?, EvidenceOmittedCount = ?, HistoricalComparisonsIncluded = ?,
+              AzureMentionedDomain = ?, RisksReturnedCount = ?, RecommendationsReturnedCount = ?,
+              TrendsReturnedCount = ?, InputSizeBytes = ?, OutputSizeBytes = ?, InputTokens = ?,
+              OutputTokens = ?, RetryCount = ?, Status = ?, AzureInputSummaryJson = ?, OmittedSummaryJson = ?`,
             [
                 companyId, snapshot.ID, run.id, domain.key, packageResult.audit.stackCTRLDataCount,
                 packageResult.audit.sentToAzureCount, packageResult.audit.omittedCount,
                 packageResult.audit.metricsIncludedCount, packageResult.audit.evidenceIncludedCount,
                 packageResult.audit.evidenceOmittedCount, packageResult.audit.historicalComparisonsIncluded,
-                combinedText.includes(domain.key.replaceAll('_', ' ')) || combinedText.includes(domain.name.toLowerCase()) ? 1 : 0,
-                array(analysis?.risks).length, array(analysis?.recommendations).length,
-                array(analysis?.trendAnalysis).length, usage.requestBytes || packageResult.audit.inputSizeBytes,
-                usage.responseBytes, usage.inputTokens, usage.outputTokens, usage.retries, status,
-                JSON.stringify(packageResult.package),
-                JSON.stringify({
-                    stackCTRLDataCount: packageResult.audit.stackCTRLDataCount,
-                    sentToAzureCount: packageResult.audit.sentToAzureCount,
-                    omittedCount: packageResult.audit.omittedCount,
-                    evidenceOmittedCount: packageResult.audit.evidenceOmittedCount,
-                    detailReducedToMeetInputLimit: Boolean(packageResult.package.limitations?.detailReducedToMeetInputLimit)
-                })
+                azureMentioned, risksCount, recommendationsCount,
+                trendsCount, inputBytes, usage.responseBytes, usage.inputTokens, usage.outputTokens, usage.retries, status,
+                auditInput, auditOmitted,
+                // ON DUPLICATE KEY UPDATE values
+                packageResult.audit.stackCTRLDataCount, packageResult.audit.sentToAzureCount,
+                packageResult.audit.omittedCount, packageResult.audit.metricsIncludedCount,
+                packageResult.audit.evidenceIncludedCount, packageResult.audit.evidenceOmittedCount,
+                packageResult.audit.historicalComparisonsIncluded, azureMentioned, risksCount,
+                recommendationsCount, trendsCount, inputBytes, usage.responseBytes, usage.inputTokens,
+                usage.outputTokens, usage.retries, status, auditInput, auditOmitted
             ]
         );
     }
