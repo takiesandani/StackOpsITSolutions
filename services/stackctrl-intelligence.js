@@ -478,6 +478,8 @@ function createStackCTRLIntelligenceService({ pool, azureOpenAI, refreshSource =
             status: source.status,
             isExpected: source.isExpected,
             freshness: source.freshness,
+            credentialSource: source.credentialSource || null,  // NEW: Track which credentials used
+            credentialPath: source.credentialPath || null,  // NEW: Show credential path for admin visibility
             refreshFailed: source.refreshFailed || false,
             refreshErrorMessage: source.refreshErrorMessage || null,
             metrics: source.metrics,

@@ -10629,7 +10629,9 @@ async function refreshStackCTRLIntelligenceSource(sourceKey, companyId) {
     switch (sourceKey) {
         case 'identity': {
             try {
-                const token = await getMicrosoftGraphTokenForCompany(companyId);
+                // Use environment credentials (like dashboard does) for consistent, working access
+                // This ensures Enterprise refresh uses the same validated credentials as the dashboard
+                const token = await getMicrosoftGraphToken();
                 const [metrics, details] = await Promise.all([
                     fetchIdentityMetricsFromApi(token),
                     fetchIdentityDetailsFromApi(token)
