@@ -141,7 +141,7 @@ test('metadata lists every fixed endpoint', async () => {
         assert.ok(body.domainCoverage.domains.includes('Applications'));
         assert.ok(body.domainCoverage.intelligenceSummaryFields.includes('OperationsHealth'));
         assert.ok(body.domainCoverage.intelligenceSummaryFields.includes('ApplicationsRiskScore'));
-        assert.equal(body.endpoints.length, 20);
+        assert.equal(body.endpoints.length, 30);
         assert.deepEqual(body.endpoints[0], {
             name: 'Companies',
             path: '/api/powerbi/companies',
@@ -152,7 +152,7 @@ test('metadata lists every fixed endpoint', async () => {
     }
 });
 
-test('health endpoint checks all 20 reporting views', async () => {
+test('health endpoint checks all compact and enterprise reporting views', async () => {
     const api = await startApi();
     try {
         const response = await fetch(`${api.baseUrl}/health`, {
@@ -162,8 +162,8 @@ test('health endpoint checks all 20 reporting views', async () => {
         assert.equal(response.status, 200);
         assert.equal(body.status, 'available');
         assert.equal(body.database, 'connected');
-        assert.equal(body.viewsChecked, 20);
-        assert.equal(api.calls.filter(call => call.sql.includes('LIMIT 0')).length, 20);
+        assert.equal(body.viewsChecked, 30);
+        assert.equal(api.calls.filter(call => call.sql.includes('LIMIT 0')).length, 30);
     } finally {
         await api.close();
     }
@@ -275,20 +275,20 @@ test('OpenAPI JSON and Swagger documentation are available', async () => {
         assert.equal(document.components.securitySchemes.PowerBIHeaderAPIKey.in, 'header');
         assert.equal(document.components.securitySchemes.PowerBIQueryAPIKey.name, 'apiKey');
         assert.equal(document.components.securitySchemes.PowerBIQueryAPIKey.in, 'query');
-        assert.match(document.info.description, /Operations and Applications health\/risk fields/);
+        assert.match(document.info.description, /Azure creates structured intelligence; Power BI creates the final report visuals/);
         assert.ok(document.paths['/domain-health'].get.parameters.some(parameter => parameter.name === 'comparisonPeriod'));
         assert.deepEqual(document.paths['/risk-register'].get.security, [
             { PowerBIHeaderAPIKey: [] },
             { PowerBIQueryAPIKey: [] }
         ]);
-        assert.equal(Object.keys(document.paths).length, 22);
+        assert.equal(Object.keys(document.paths).length, 32);
         assert.equal(document.paths['/risk-register'].get.responses[200].content['application/json'].example.data.length, 1);
         assert.equal(docsResponse.status, 200);
         const docs = await docsResponse.text();
         assert.match(docs, /SwaggerUIBundle/);
         assert.match(docs, /Fabric Dataflow Gen2/);
         assert.match(docs, /apiKey=&lt;POWERBI_KEY&gt;/);
-        assert.match(docs, /Operations and Applications health\/risk fields/);
+        assert.match(docs, /Azure creates structured intelligence, not Power BI layouts/);
         assert.doesNotMatch(JSON.stringify(document), /correct-reporting-key/);
     } finally {
         await api.close();

@@ -4,6 +4,7 @@
         system: null,
         tenants: [],
         tenant: null,
+        enterprise: null,
         selectedCompanyId: Number(localStorage.getItem('stackctrlAdminIntelligenceCompanyId') || 0),
         actionRunning: false,
         lastAction: null
@@ -527,6 +528,66 @@
         renderLatestSummary();
     }
 
+    function renderEnterprise() {
+        const enterprise = state.enterprise || {};
+        const runs = enterprise.runs || [];
+        const latestRun = runs[0];
+        const audits = enterprise.evidenceAudit || [];
+        const domainRows = enterprise.domainIntelligence || [];
+        const synthesisRows = enterprise.synthesis || [];
+        const badge = el('enterprise-run-badge');
+        badge.className = `status-badge status-${statusClass(latestRun?.Status || 'muted')}`;
+        badge.textContent = latestRun ? `Run #${number(latestRun.ID)} · ${String(latestRun.Status || 'unknown').replaceAll('_', ' ')}` : 'No enterprise run';
+        el('enterprise-audit-summary').textContent = latestRun ? `${audits.length} domain audit row(s) · ${domainRows.length} intelligence row(s)` : 'No enterprise data stored';
+
+        if (latestRun) {
+            const summary = [
+                ['Run', `#${number(latestRun.ID)}`],
+                ['Mode', latestRun.Mode || '—'],
+                ['Period', latestRun.PeriodType || '—'],
+                ['Compact package', bytes(state.tenant?.compactContexts?.[0]?.CompactContextSizeBytes)],
+                ['Enterprise requests', bytes(latestRun.TotalRequestBytes)],
+                ['Enterprise responses', bytes(latestRun.TotalResponseBytes)],
+                ['Input tokens', number(latestRun.TotalInputTokens)],
+                ['Output tokens', number(latestRun.TotalOutputTokens)],
+                ['Retries', number(latestRun.RetryCount)]
+            ];
+            el('enterprise-run-summary').innerHTML = summary.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join('');
+        } else {
+            el('enterprise-run-summary').innerHTML = '<div class="empty-state">No enterprise run has been stored.</div>';
+        }
+
+        el('enterprise-audit-body').innerHTML = audits.length ? audits.map(row => `
+            <tr><td><button type="button" class="output-open" data-enterprise-audit-index="${audits.indexOf(row)}">${escapeHtml(row.DomainKey)}</button></td><td>${number(row.StackCTRLDataCount)}</td><td>${number(row.SentToAzureCount)}</td><td>${number(row.OmittedCount)}</td><td>${number(row.MetricsIncludedCount)}</td><td>${number(row.HistoricalComparisonsIncluded)}</td><td>${Number(row.AzureMentionedDomain) ? 'Yes' : 'No'}</td><td>${number(row.RisksReturnedCount)}</td><td>${number(row.RecommendationsReturnedCount)}</td><td>${number(row.TrendsReturnedCount)}</td><td>${number(row.InputTokens)}</td><td>${number(row.OutputTokens)}</td><td>${number(row.RetryCount)}</td><td>${statusBadge(row.Status)}</td></tr>
+        `).join('') : '<tr><td colspan="14" class="empty-cell">No enterprise evidence audit rows are available.</td></tr>';
+
+        el('enterprise-domain-results').innerHTML = domainRows.length ? domainRows.slice(0, 20).map(row => `
+            <div class="enterprise-result-item"><header><strong>${escapeHtml(row.DomainName || row.DomainKey)}</strong>${statusBadge(row.Status)}</header><p>${escapeHtml(row.DomainExecutiveSummary || row.ErrorMessage || 'No domain executive summary returned.')}</p><small>Health ${escapeHtml(row.HealthScore ?? '—')} · Risk ${escapeHtml(row.RiskScore ?? '—')} · ${number(row.TotalTokens)} tokens</small><button type="button" class="output-open" data-enterprise-domain-index="${domainRows.indexOf(row)}">View Azure output</button></div>
+        `).join('') : '<div class="empty-state">No stored domain intelligence loaded.</div>';
+
+        const synthesis = synthesisRows[0];
+        const executiveSummary = summaryText(synthesis?.ExecutiveSummaryJson || {});
+        const boardSummary = summaryText(synthesis?.BoardReportJson || {});
+        el('enterprise-synthesis-result').innerHTML = synthesis ? `
+            <div class="enterprise-result-item"><header><strong>Enterprise executive summary</strong>${statusBadge(synthesis.Status)}</header><p>${escapeHtml(executiveSummary || 'Structured synthesis stored without a summary text field.')}</p></div>
+            <div class="enterprise-result-item"><header><strong>Board-level summary</strong></header><p>${escapeHtml(boardSummary || 'No board summary text was returned.')}</p></div>
+            <div class="enterprise-result-item"><header><strong>Power BI readiness</strong></header><p>Domain rows, findings, risks, recommendations, trends, actions, evidence audit and synthesis are stored for the reporting API.</p><small>${number(synthesis.TotalTokens)} synthesis tokens · ${bytes(synthesis.InputSizeBytes)} request</small><button type="button" class="output-open" data-enterprise-synthesis>View synthesis output</button></div>
+        ` : '<div class="empty-state">No final enterprise synthesis loaded.</div>';
+
+        const selector = el('enterprise-domain-selector');
+        const currentValue = selector.value;
+        if (enterprise.domains?.length) {
+            selector.innerHTML = enterprise.domains.map(domain => `<option value="${escapeHtml(domain.key)}">${escapeHtml(domain.name)}</option>`).join('');
+            if (enterprise.domains.some(domain => domain.key === currentValue)) selector.value = currentValue;
+        }
+    }
+
+    async function loadEnterprise({ scroll = false } = {}) {
+        state.enterprise = await api(`/api/admin/intelligence/tenant/${state.selectedCompanyId}/enterprise`);
+        renderEnterprise();
+        if (scroll) el('enterprise-audit-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
     async function loadTenant() {
         if (!state.selectedCompanyId) return;
         state.tenant = await api(`/api/admin/intelligence/tenant/${state.selectedCompanyId}`);
@@ -558,7 +619,7 @@
         const buttons = [
             'create-snapshot', 'build-compact-context', 'run-analysis',
             'run-full-snapshot-analysis', 'run-full-test'
-        ].map(el).filter(Boolean).concat(Array.from(document.querySelectorAll('[data-period-run]')));
+        ].map(el).filter(Boolean).concat(Array.from(document.querySelectorAll('[data-period-run], .enterprise-action')));
         buttons.forEach(item => { item.disabled = true; });
         button.querySelector('.control-icon i')?.classList.add('is-spinning');
         const status = el('action-status');
@@ -578,6 +639,7 @@
                 state.system = (await api('/api/admin/intelligence/status'));
                 renderSystem();
                 await loadTenant();
+                if (/Enterprise|Domain Deep/i.test(label)) await loadEnterprise();
                 if (label === 'Compact Azure analysis') {
                     el('compact-intelligence-proof')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }
@@ -640,6 +702,55 @@
                 snapshotId: state.tenant?.latestSnapshot?.ID
             });
         }));
+        el('run-enterprise-report')?.addEventListener('click', event => runAction(event.currentTarget, 'Enterprise Deep Report', `/api/admin/intelligence/tenant/${state.selectedCompanyId}/enterprise/run`, {
+            snapshotId: state.tenant?.latestSnapshot?.ID,
+            periodType: 'daily',
+            includeSynthesis: true
+        }));
+        el('run-enterprise-domains')?.addEventListener('click', event => runAction(event.currentTarget, 'Enterprise Domain Deep Analysis', `/api/admin/intelligence/tenant/${state.selectedCompanyId}/enterprise/domain`, {
+            snapshotId: state.tenant?.latestSnapshot?.ID,
+            periodType: 'daily'
+        }));
+        el('run-enterprise-selected')?.addEventListener('click', event => runAction(event.currentTarget, 'Selected Domain Deep Analysis', `/api/admin/intelligence/tenant/${state.selectedCompanyId}/enterprise/domain`, {
+            snapshotId: state.tenant?.latestSnapshot?.ID,
+            periodType: 'daily',
+            domainKey: el('enterprise-domain-selector').value
+        }));
+        el('run-enterprise-synthesis')?.addEventListener('click', event => {
+            const runId = state.enterprise?.runs?.[0]?.ID;
+            if (!runId) return toast('Load or run domain intelligence before synthesis.', 'error');
+            runAction(event.currentTarget, 'Enterprise Synthesis', `/api/admin/intelligence/tenant/${state.selectedCompanyId}/enterprise/synthesis`, { runId });
+        });
+        document.querySelectorAll('[data-enterprise-view]').forEach(button => button.addEventListener('click', () => {
+            loadEnterprise({ scroll: true }).catch(error => toast(error.message, 'error'));
+        }));
+        el('enterprise-audit-results')?.addEventListener('click', event => {
+            const auditButton = event.target.closest('[data-enterprise-audit-index]');
+            const domainButton = event.target.closest('[data-enterprise-domain-index]');
+            const synthesisButton = event.target.closest('[data-enterprise-synthesis]');
+            if (auditButton) {
+                const row = state.enterprise?.evidenceAudit?.[Number(auditButton.dataset.enterpriseAuditIndex)];
+                if (row) {
+                    el('json-modal-title').textContent = `${row.DomainKey} · sanitized Azure input`;
+                    el('json-modal-content').textContent = JSON.stringify({ azureInput: row.AzureInputSummaryJson, omitted: row.OmittedSummaryJson }, null, 2);
+                    el('json-modal').classList.add('open'); el('json-modal').setAttribute('aria-hidden', 'false');
+                }
+            } else if (domainButton) {
+                const row = state.enterprise?.domainIntelligence?.[Number(domainButton.dataset.enterpriseDomainIndex)];
+                if (row) {
+                    el('json-modal-title').textContent = `${row.DomainName || row.DomainKey} · Azure output`;
+                    el('json-modal-content').textContent = JSON.stringify(row.AnalysisJson || {}, null, 2);
+                    el('json-modal').classList.add('open'); el('json-modal').setAttribute('aria-hidden', 'false');
+                }
+            } else if (synthesisButton) {
+                const row = state.enterprise?.synthesis?.[0];
+                if (row) {
+                    el('json-modal-title').textContent = 'Final enterprise synthesis';
+                    el('json-modal-content').textContent = JSON.stringify(row, null, 2);
+                    el('json-modal').classList.add('open'); el('json-modal').setAttribute('aria-hidden', 'false');
+                }
+            }
+        });
         el('ai-output-list').addEventListener('click', event => {
             const button = event.target.closest('[data-output-index]');
             if (button) openOutput(Number(button.dataset.outputIndex));

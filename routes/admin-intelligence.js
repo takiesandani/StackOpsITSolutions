@@ -1,6 +1,6 @@
 const express = require('express');
 
-function createAdminIntelligenceRouter({ authenticateToken, adminIntelligenceService } = {}) {
+function createAdminIntelligenceRouter({ authenticateToken, adminIntelligenceService, enterpriseIntelligenceService = null } = {}) {
     if (!authenticateToken || !adminIntelligenceService) {
         throw new Error('Admin Intelligence router requires authentication and service dependencies');
     }
@@ -26,6 +26,12 @@ function createAdminIntelligenceRouter({ authenticateToken, adminIntelligenceSer
             return null;
         }
         return companyId;
+    }
+
+    function requireEnterprise(res) {
+        if (enterpriseIntelligenceService) return true;
+        res.status(503).json({ success: false, message: 'Enterprise Deep Reporting is not configured' });
+        return false;
     }
 
     router.get('/status', async (_req, res) => {
@@ -110,6 +116,89 @@ function createAdminIntelligenceRouter({ authenticateToken, adminIntelligenceSer
             res.status(201).json({ success: true, ...result });
         } catch (error) {
             sendError(res, error, 'Full intelligence test failed');
+        }
+    });
+
+    router.get('/tenant/:companyId/enterprise', async (req, res) => {
+        try {
+            if (!requireEnterprise(res)) return;
+            const companyId = companyIdFrom(req, res);
+            if (!companyId) return;
+            const runId = req.query.runId ? Number(req.query.runId) : null;
+            res.json({ success: true, ...(await enterpriseIntelligenceService.getAdminData(companyId, runId)) });
+        } catch (error) {
+            sendError(res, error, 'Enterprise intelligence lookup failed');
+        }
+    });
+
+    router.post('/tenant/:companyId/enterprise/run', async (req, res) => {
+        try {
+            if (!requireEnterprise(res)) return;
+            const companyId = companyIdFrom(req, res);
+            if (!companyId) return;
+            const result = await enterpriseIntelligenceService.runEnterpriseReport({
+                companyId,
+                snapshotId: req.body?.snapshotId || null,
+                periodType: req.body?.periodType || 'daily',
+                domainKeys: req.body?.domainKeys || null,
+                includeSynthesis: req.body?.includeSynthesis !== false
+            });
+            res.status(201).json({ success: true, ...result });
+        } catch (error) {
+            sendError(res, error, 'Enterprise Deep Reporting run failed');
+        }
+    });
+
+    router.post('/tenant/:companyId/enterprise/domain', async (req, res) => {
+        try {
+            if (!requireEnterprise(res)) return;
+            const companyId = companyIdFrom(req, res);
+            if (!companyId) return;
+            const domainKeys = Array.isArray(req.body?.domainKeys)
+                ? req.body.domainKeys
+                : req.body?.domainKey ? [String(req.body.domainKey)] : enterpriseIntelligenceService.domains.map(domain => domain.key);
+            const result = await enterpriseIntelligenceService.runEnterpriseReport({
+                companyId,
+                snapshotId: req.body?.snapshotId || null,
+                periodType: req.body?.periodType || 'daily',
+                domainKeys,
+                includeSynthesis: false
+            });
+            res.status(201).json({ success: true, ...result });
+        } catch (error) {
+            sendError(res, error, 'Enterprise domain analysis failed');
+        }
+    });
+
+    router.post('/tenant/:companyId/enterprise/synthesis', async (req, res) => {
+        try {
+            if (!requireEnterprise(res)) return;
+            const companyId = companyIdFrom(req, res);
+            if (!companyId) return;
+            const runId = Number(req.body?.runId);
+            if (!Number.isInteger(runId) || runId <= 0) {
+                return res.status(400).json({ success: false, message: 'A completed enterprise runId is required' });
+            }
+            const result = await enterpriseIntelligenceService.runEnterpriseSynthesis({ companyId, runId });
+            res.status(201).json({ success: true, runId, ...result });
+        } catch (error) {
+            sendError(res, error, 'Enterprise synthesis failed');
+        }
+    });
+
+    router.post('/tenant/:companyId/enterprise/rollup/:periodType', async (req, res) => {
+        try {
+            if (!requireEnterprise(res)) return;
+            const companyId = companyIdFrom(req, res);
+            if (!companyId) return;
+            const periodType = String(req.params.periodType || '').toLowerCase();
+            if (!['weekly', 'monthly', 'yearly'].includes(periodType)) {
+                return res.status(400).json({ success: false, message: 'Enterprise rollup must be weekly, monthly, or yearly' });
+            }
+            const result = await enterpriseIntelligenceService.runRollupReport({ companyId, periodType });
+            res.status(201).json({ success: true, ...result });
+        } catch (error) {
+            sendError(res, error, 'Enterprise rollup failed');
         }
     });
 

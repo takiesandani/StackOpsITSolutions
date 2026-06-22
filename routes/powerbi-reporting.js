@@ -19,7 +19,8 @@ function swaggerHtml() {
     <div class="fabric-note"><strong>Fabric Dataflow Gen2:</strong> use <code>?apiKey=&lt;POWERBI_KEY&gt;</code>.<br>
     Example: <code>https://stackopsit.co.za/api/powerbi/intelligence-summary?apiKey=&lt;POWERBI_KEY&gt;&amp;companyId=1&amp;limit=500</code><br>
     Operations and Applications health/risk fields are available from <code>intelligence-summary</code> and as domain rows from <code>domain-health</code>.
-    Historical movement uses <code>Direction</code>, <code>PreviousHealthScore</code>, <code>PreviousRiskScore</code>, <code>ChangePercent</code>, and <code>ComparisonPeriod</code>.</div>
+    Historical movement uses <code>Direction</code>, <code>PreviousHealthScore</code>, <code>PreviousRiskScore</code>, <code>ChangePercent</code>, and <code>ComparisonPeriod</code>.<br>
+    <strong>Enterprise Deep Reporting:</strong> Azure creates structured intelligence, not Power BI layouts. Use <code>domain-intelligence</code>, <code>domain-findings</code>, <code>domain-risks</code>, <code>domain-recommendations</code>, <code>domain-trends</code>, <code>domain-evidence-audit</code>, and <code>enterprise-synthesis</code> to build report visuals.</div>
     <div id="swagger-ui"></div>
     <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
     <script>

@@ -159,6 +159,63 @@ const POWERBI_DATASETS = Object.freeze([
         OutputTitle: 'Executive Summary', ExecutiveSummary: 'Security posture requires attention.', ModelName: 'gpt-4.1-mini',
         AzureDeployment: 'gpt-4.1-mini', PromptVersion: 'stackctrl-intelligence-v2', ConfidenceScore: 0.94,
         OutputStatus: 'completed', CreatedAt: '2026-06-22T08:02:00.000Z'
+    }),
+    dataset('Enterprise Runs', 'enterprise-runs', 'vw_PowerBI_EnterpriseRuns', COMMON_FILTERS, 'ReportDate', 'ReportDate', {
+        RunID: 401, CompanyID: 1, CompanyName: 'Sunbird', TenantID: 'tenant-sunbird', SnapshotID: 76,
+        PeriodType: 'daily', ReportDate: '2026-06-22', Status: 'completed', Mode: 'enterprise_deep_reporting',
+        TotalInputTokens: 72000, TotalOutputTokens: 18000, TotalTokens: 90000, RetryCount: 1
+    }),
+    dataset('Domain Intelligence', 'domain-intelligence', 'vw_PowerBI_DomainIntelligence', COMMON_FILTERS, 'ReportDate', 'ReportDate', {
+        DomainIntelligenceID: 501, CompanyID: 1, CompanyName: 'Sunbird', TenantID: 'tenant-sunbird',
+        SnapshotID: 76, RunID: 401, DomainKey: 'identity', DomainName: 'Identity Protection',
+        PeriodType: 'daily', ReportDate: '2026-06-22', HealthScore: 72, RiskScore: 28, RiskLevel: 'moderate',
+        DomainExecutiveSummary: 'Identity controls are improving, with remaining MFA gaps.', ConfidenceScore: 0.93, Status: 'completed'
+    }),
+    dataset('Domain Findings', 'domain-findings', 'vw_PowerBI_DomainFindings', COMMON_FILTERS, 'ReportDate', 'ReportDate', {
+        FindingID: 601, CompanyID: 1, CompanyName: 'Sunbird', TenantID: 'tenant-sunbird', SnapshotID: 76,
+        RunID: 401, DomainKey: 'identity', DomainName: 'Identity Protection', PeriodType: 'daily',
+        ReportDate: '2026-06-22', Title: 'MFA coverage gap', Severity: 'high', Status: 'open',
+        EvidenceSummary: 'Stored identity metrics show users without MFA.'
+    }),
+    dataset('Domain Risks', 'domain-risks', 'vw_PowerBI_DomainRisks', COMMON_FILTERS, 'ReportDate', 'ReportDate', {
+        RiskID: 701, CompanyID: 1, CompanyName: 'Sunbird', TenantID: 'tenant-sunbird', SnapshotID: 76,
+        RunID: 401, DomainKey: 'applications', DomainName: 'Applications', PeriodType: 'daily',
+        ReportDate: '2026-06-22', RiskTitle: 'Broad application permissions', Severity: 'high',
+        BusinessImpact: 'An over-permissioned application could expose tenant data.'
+    }),
+    dataset('Domain Recommendations', 'domain-recommendations', 'vw_PowerBI_DomainRecommendations', COMMON_FILTERS, 'ReportDate', 'ReportDate', {
+        RecommendationID: 801, CompanyID: 1, CompanyName: 'Sunbird', TenantID: 'tenant-sunbird', SnapshotID: 76,
+        RunID: 401, DomainKey: 'applications', DomainName: 'Applications', PeriodType: 'daily',
+        ReportDate: '2026-06-22', Title: 'Review broad consent grants', Priority: 'high', SuggestedOwner: 'Security Lead'
+    }),
+    dataset('Domain Trends', 'domain-trends', 'vw_PowerBI_DomainTrends', HISTORICAL_FILTERS, 'ReportDate', 'ReportDate', {
+        TrendID: 901, CompanyID: 1, CompanyName: 'Sunbird', TenantID: 'tenant-sunbird', SnapshotID: 76,
+        RunID: 401, DomainKey: 'identity', DomainName: 'Identity Protection', PeriodType: 'daily',
+        ReportDate: '2026-06-22', MetricName: 'MFA coverage', Direction: 'improving', CurrentValue: 92,
+        PreviousValue: 88, ChangePercent: 4.55, ComparisonPeriod: '24_hours'
+    }),
+    dataset('Domain Evidence Audit', 'domain-evidence-audit', 'vw_PowerBI_DomainEvidenceAudit', COMMON_FILTERS, 'ReportDate', 'ReportDate', {
+        EvidenceAuditID: 1001, CompanyID: 1, CompanyName: 'Sunbird', TenantID: 'tenant-sunbird', SnapshotID: 76,
+        RunID: 401, DomainKey: 'identity', DomainName: 'Identity Protection', PeriodType: 'daily', ReportDate: '2026-06-22',
+        StackCTRLDataCount: 120, SentToAzureCount: 45, OmittedCount: 75, MetricsIncludedCount: 18,
+        HistoricalComparisonsIncluded: 4, AzureMentionedDomain: 1, RisksReturnedCount: 3,
+        RecommendationsReturnedCount: 5, TrendsReturnedCount: 4, InputTokens: 6800, OutputTokens: 1800, Status: 'completed'
+    }),
+    dataset('Enterprise Synthesis', 'enterprise-synthesis', 'vw_PowerBI_EnterpriseSynthesis', COMMON_FILTERS, 'ReportDate', 'ReportDate', {
+        SynthesisID: 1101, CompanyID: 1, CompanyName: 'Sunbird', TenantID: 'tenant-sunbird', SnapshotID: 76,
+        RunID: 401, PeriodType: 'daily', ReportDate: '2026-06-22', Status: 'completed',
+        EnterpriseExecutiveSummary: 'The tenant has moderate overall risk with priority identity and application actions.',
+        MaturityLevel: 'defined', OverallRiskScore: 38, OverallRiskLevel: 'moderate'
+    }),
+    dataset('Enterprise Board Report', 'enterprise-board-report', 'vw_PowerBI_EnterpriseBoardReport', COMMON_FILTERS, 'ReportDate', 'ReportDate', {
+        SynthesisID: 1101, CompanyID: 1, CompanyName: 'Sunbird', TenantID: 'tenant-sunbird', SnapshotID: 76,
+        RunID: 401, PeriodType: 'daily', ReportDate: '2026-06-22',
+        BoardSummary: 'Management attention is required for identity and application governance.', Status: 'completed'
+    }),
+    dataset('Enterprise Management Actions', 'enterprise-management-actions', 'vw_PowerBI_EnterpriseManagementActions', COMMON_FILTERS, 'ReportDate', 'ReportDate', {
+        ActionID: 1201, CompanyID: 1, CompanyName: 'Sunbird', TenantID: 'tenant-sunbird', SnapshotID: 76,
+        RunID: 401, DomainKey: 'identity', DomainName: 'Identity Protection', PeriodType: 'daily', ReportDate: '2026-06-22',
+        ActionType: 'management_action', Title: 'Complete MFA rollout', Priority: 'high', SuggestedOwner: 'IT Manager'
     })
 ]);
 
@@ -349,7 +406,16 @@ function createPowerBIReportingService({ pool, getSecret, logger = console, secr
                     'PreviousRiskScore',
                     'ChangePercent',
                     'ComparisonPeriod'
-                ]
+                ],
+                enterpriseIntelligence: {
+                    principle: 'Azure builds the intelligence. Power BI builds the report.',
+                    producesReportLayouts: false,
+                    datasets: [
+                        'enterprise-runs', 'domain-intelligence', 'domain-findings', 'domain-risks',
+                        'domain-recommendations', 'domain-trends', 'domain-evidence-audit',
+                        'enterprise-synthesis', 'enterprise-board-report', 'enterprise-management-actions'
+                    ]
+                }
             },
             endpoints: POWERBI_DATASETS.map(definition => ({
                 name: definition.name,
@@ -433,7 +499,7 @@ function createPowerBIReportingService({ pool, getSecret, logger = console, secr
             info: {
                 title: 'StackCTRL Power BI Reporting API',
                 version: API_VERSION,
-                description: 'Secure read-only access to all Sunbird StackCTRL reporting domains, including Operations and Applications health/risk fields and historical domain movement. Fabric Dataflow Gen2 may authenticate with ?apiKey=<POWERBI_KEY>.'
+                description: 'Secure read-only access to compact and Enterprise Deep Reporting intelligence. Azure creates structured intelligence; Power BI creates the final report visuals. Enterprise datasets include domain narratives, findings, risks, recommendations, trends, evidence audit, synthesis, board narrative, and management actions. Fabric Dataflow Gen2 may authenticate with ?apiKey=<POWERBI_KEY>.'
             },
             servers: [{ url: String(baseUrl).replace(/\/$/, '') }],
             components: {

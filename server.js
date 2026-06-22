@@ -24,6 +24,7 @@ const { createStackCTRLIntelligenceService } = require('./services/stackctrl-int
 const { createStackCTRLIntelligenceScheduler, DEFAULT_OUTPUT_TYPES } = require('./services/intelligence/scheduler');
 const { createStackCTRLServerAutomation } = require('./services/intelligence/server-automation');
 const { createAdminIntelligenceService } = require('./services/admin-intelligence');
+const { createEnterpriseIntelligenceService } = require('./services/enterprise-intelligence');
 const { createStackCTRLIntelligenceRouter } = require('./routes/stackctrl-intelligence');
 const { createAdminIntelligenceRouter } = require('./routes/admin-intelligence');
 const { createPowerBIReportingService } = require('./services/powerbi-reporting');
@@ -10756,11 +10757,22 @@ const stackCTRLIntelligenceScheduler = createStackCTRLIntelligenceScheduler({
     pool,
     intelligenceService: stackCTRLIntelligenceService
 });
+const enterpriseIntelligenceService = createEnterpriseIntelligenceService({
+    pool,
+    azureOpenAI: azureOpenAIService,
+    schedulerService: stackCTRLIntelligenceScheduler
+});
 const stackCTRLIntelligenceAutomation = createStackCTRLServerAutomation({
     schedulerService: stackCTRLIntelligenceScheduler,
     enabled: !['false', '0', 'no'].includes(String(process.env.STACKCTRL_SERVER_AUTOMATION_ENABLED || 'true').toLowerCase()),
     intervalMs: process.env.STACKCTRL_SERVER_AUTOMATION_INTERVAL_MS,
     startupDelayMs: process.env.STACKCTRL_SERVER_AUTOMATION_STARTUP_DELAY_MS
+});
+const enterpriseIntelligenceAutomation = createStackCTRLServerAutomation({
+    schedulerService: enterpriseIntelligenceService,
+    enabled: !['false', '0', 'no'].includes(String(process.env.ENTERPRISE_AI_AUTOMATION_ENABLED || 'false').toLowerCase()),
+    intervalMs: process.env.ENTERPRISE_AI_AUTOMATION_INTERVAL_MS || (15 * 60 * 1000),
+    startupDelayMs: process.env.ENTERPRISE_AI_AUTOMATION_STARTUP_DELAY_MS || (60 * 1000)
 });
 const adminIntelligenceService = createAdminIntelligenceService({
     pool,
@@ -10784,7 +10796,8 @@ app.use('/api/stackctrl/intelligence', createStackCTRLIntelligenceRouter({
 }));
 app.use('/api/admin/intelligence', createAdminIntelligenceRouter({
     authenticateToken,
-    adminIntelligenceService
+    adminIntelligenceService,
+    enterpriseIntelligenceService
 }));
 app.use('/api/powerbi', createPowerBIReportingRouter({
     reportingService: powerBIReportingService
@@ -11832,6 +11845,8 @@ process.on('unhandledRejection', (reason, promise) => {
 const server = app.listen(PORT, async () => {
     // StackCTRL automation runs inside this server and uses database deduplication across instances.
     stackCTRLIntelligenceAutomation.start();
+    // Enterprise reporting runs separately because domain batches may take much longer than compact intelligence.
+    enterpriseIntelligenceAutomation.start();
     const memUsage = process.memoryUsage();
     console.log(`\n${'='.repeat(60)}`);
     console.log(`✅ Server running on port ${PORT}`);

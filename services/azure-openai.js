@@ -151,7 +151,9 @@ function createAzureOpenAIService({
         temperature = 0.2,
         maxTokens = 1200,
         responseFormat = null,
-        onStatusChange = null
+        onStatusChange = null,
+        maxRetriesOverride = null,
+        timeoutMs = 60000
     }) {
         const config = await loadConfig();
         const authorization = await getAuthorizationHeader(config);
@@ -167,7 +169,8 @@ function createAzureOpenAIService({
         if (responseFormat) body.text = { format: responseFormat };
 
         const requestSizeBytes = Buffer.byteLength(JSON.stringify(body), 'utf8');
-        const retryLimit = Math.max(0, Math.min(10, Number(maxRetries) || 0));
+        const configuredRetries = maxRetriesOverride == null ? maxRetries : maxRetriesOverride;
+        const retryLimit = Math.max(0, Math.min(10, Number(configuredRetries) || 0));
         async function reportStatus(status, metadata = {}) {
             if (typeof onStatusChange !== 'function') return;
             try {
@@ -191,7 +194,7 @@ function createAzureOpenAIService({
                         Authorization: authorization,
                         'Content-Type': 'application/json'
                     },
-                    timeout: 60000
+                    timeout: Math.max(10000, Number(timeoutMs) || 60000)
                 });
 
                 const content = extractResponseText(response.data);
