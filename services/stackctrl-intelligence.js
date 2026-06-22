@@ -478,6 +478,8 @@ function createStackCTRLIntelligenceService({ pool, azureOpenAI, refreshSource =
             status: source.status,
             isExpected: source.isExpected,
             freshness: source.freshness,
+            refreshFailed: source.refreshFailed || false,
+            refreshErrorMessage: source.refreshErrorMessage || null,
             metrics: source.metrics,
             dashboardMetrics: source.dashboardMetrics,
             calculatedIndicators: source.calculatedIndicators,

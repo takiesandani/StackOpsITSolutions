@@ -119,6 +119,9 @@ async function collectSource(context, definition) {
     let loaded;
     let supplementalLoadWarning = null;
     let refreshWarning = null;
+    let refreshErrorMessage = null;
+    let refreshFailed = false;
+    
     try {
         loaded = await definition.load(pool, companyId, capability);
     } catch (error) {
@@ -147,14 +150,34 @@ async function collectSource(context, definition) {
                 loaded = definition.fromRefresh
                     ? definition.fromRefresh(refreshed, loaded)
                     : { ...loaded, ...refreshed };
+                records = loaded.records || [];
+                freshness = getFreshness(records, capability.freshnessThresholdMinutes);
+                // Clear any previous refresh error since it succeeded
+                refreshFailed = false;
+                refreshErrorMessage = null;
             } else {
+                // Refresh returned null - reload from storage
                 loaded = await definition.load(pool, companyId, capability);
+                records = loaded.records || [];
+                freshness = getFreshness(records, capability.freshnessThresholdMinutes);
             }
-            records = loaded.records || [];
-            freshness = getFreshness(records, capability.freshnessThresholdMinutes);
         } catch (error) {
+            refreshFailed = true;
+            refreshErrorMessage = error.message;
             const notConfigured = error.statusCode === 503 || /missing|not configured|credentials/i.test(error.message);
+            const isRefreshError = error.isRefreshError === true;
+            
+            console.warn(`[Intelligence Source] ${capability.displayName} refresh error:`, {
+                sourceKey: capability.sourceKey,
+                companyId,
+                errorMessage: error.message,
+                isRefreshError,
+                notConfigured,
+                hasStoredData: records.length > 0
+            });
+            
             if (!records.length) {
+                // No stored data - must fail
                 return statusResult(capability, notConfigured ? 'not_configured' : 'error', {
                     warnings: [
                         ...(supplementalLoadWarning ? [supplementalLoadWarning] : []),
@@ -163,7 +186,9 @@ async function collectSource(context, definition) {
                     errorMessage: error.message
                 });
             }
-            refreshWarning = `${capability.displayName} refresh failed; the stored evidence was retained.`;
+            
+            // Has stored data - mark as stale/refresh failed
+            refreshWarning = `${capability.displayName} refresh failed; the stored evidence was retained: ${error.message}`;
         }
     }
 
@@ -177,7 +202,8 @@ async function collectSource(context, definition) {
         });
     }
 
-    const status = freshness.stale ? 'stale' : 'available';
+    // If refresh failed and we're falling back to stored data, mark as stale
+    const status = refreshFailed ? 'stale' : (freshness.stale ? 'stale' : 'available');
     const warnings = [...(loaded.warnings || [])];
     if (supplementalLoadWarning) warnings.push(supplementalLoadWarning);
     if (freshness.stale) warnings.push(`${capability.displayName} evidence is stale.`);
@@ -188,6 +214,8 @@ async function collectSource(context, definition) {
             lastUpdated: freshness.lastUpdated,
             ageMinutes: freshness.ageMinutes
         },
+        refreshFailed,
+        refreshErrorMessage,
         metrics: loaded.metrics || definition.metrics(records),
         dashboardSourceMetrics: loaded.dashboardSourceMetrics || null,
         sourceLineage: loaded.sourceLineage || null,
@@ -264,6 +292,45 @@ const definitions = {
                     { evidenceType: 'role_assignments', data: extractPayload(roles[0], 'AssignmentsPayload') || [] }
                 ],
                 rawReference: { table: this.table, recordId: metrics[0]?.ID || null }
+            };
+        },
+        fromRefresh(refreshed, stored) {
+            if (!refreshed || typeof refreshed !== 'object') {
+                return stored;
+            }
+            const users = refreshed.users || [];
+            const roleAssignments = refreshed.roleAssignments || [];
+            
+            // Build fresh dashboard metrics from refreshed data
+            const dashboardSource = buildIdentityDashboardSource({
+                metricsRow: {
+                    total_users: refreshed.metrics?.totalUsers,
+                    mfa_enabled_users: users.filter(u => u.mfaEnabled).length,
+                    admin_users: users.filter(u => u.roles?.length > 0).length,
+                    high_risk_users: users.filter(u => u.riskLevel === 'HIGH').length,
+                    active_users_24h: users.filter(u => u.lastSignIn?.daysSince <= 1).length
+                },
+                usersRows: users,
+                riskRow: {},
+                signInRow: {},
+                roleAssignments: roleAssignments
+            });
+            
+            const record = {
+                LastUpdated: refreshed.lastUpdated || new Date().toISOString(),
+                ...refreshed.metrics
+            };
+            
+            return {
+                ...stored,
+                records: [record],
+                metrics: dashboardSource.dashboardMetrics,
+                dashboardSourceMetrics: dashboardSource.dashboardMetrics,
+                evidence: [
+                    ...stored.evidence.filter(e => e.evidenceType === 'tenant'),
+                    { evidenceType: 'users', data: dashboardSource.users },
+                    { evidenceType: 'role_assignments', data: roleAssignments }
+                ]
             };
         },
         metrics: records => primitiveMetrics(records[0]),

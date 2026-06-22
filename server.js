@@ -10628,24 +10628,113 @@ async function getSecret(secretName) {
 async function refreshStackCTRLIntelligenceSource(sourceKey, companyId) {
     switch (sourceKey) {
         case 'identity': {
-            const token = await getMicrosoftGraphTokenForCompany(companyId);
-            const [metrics, details] = await Promise.all([
-                fetchIdentityMetricsFromApi(token),
-                fetchIdentityDetailsFromApi(token)
-            ]);
-            await pool.query(
-                `REPLACE INTO IdentityMetricsCache
-                 (CompanyID, TotalUsers, ActiveUsers, AdminRoles, SecurityScore, LastUpdated)
-                 VALUES (?, ?, ?, ?, ?, NOW())`,
-                [companyId, metrics.totalUsers, metrics.activeUsers, metrics.adminRoles, metrics.securityScore]
-            );
-            await pool.query(
-                `REPLACE INTO IdentityUserDetailsCache (CompanyID, UsersPayload, LastUpdated)
-                 VALUES (?, ?, NOW())`,
-                [companyId, JSON.stringify(details.users || [])]
-            );
-            await upsertRoleAssignmentsCache(companyId, details.roleAssignments || []);
-            return null;
+            try {
+                const token = await getMicrosoftGraphTokenForCompany(companyId);
+                const [metrics, details] = await Promise.all([
+                    fetchIdentityMetricsFromApi(token),
+                    fetchIdentityDetailsFromApi(token)
+                ]);
+                
+                // Update Azure cache
+                await pool.query(
+                    `REPLACE INTO IdentityMetricsCache
+                     (CompanyID, TotalUsers, ActiveUsers, AdminRoles, SecurityScore, LastUpdated)
+                     VALUES (?, ?, ?, ?, ?, NOW())`,
+                    [companyId, metrics.totalUsers, metrics.activeUsers, metrics.adminRoles, metrics.securityScore]
+                );
+                await pool.query(
+                    `REPLACE INTO IdentityUserDetailsCache (CompanyID, UsersPayload, LastUpdated)
+                     VALUES (?, ?, NOW())`,
+                    [companyId, JSON.stringify(details.users || [])]
+                );
+                await upsertRoleAssignmentsCache(companyId, details.roleAssignments || []);
+                
+                // ALSO update Sunbird dashboard tables for fresh identity source
+                try {
+                    const totalUsers = details.users?.length || 0;
+                    const mfaEnabledUsers = details.users?.filter(u => u.mfaEnabled)?.length || 0;
+                    const mfaCoverage = totalUsers > 0 ? Math.round((mfaEnabledUsers / totalUsers) * 100) : 0;
+                    const privilegedUsers = details.users?.filter(u => u.roles?.length > 0)?.length || 0;
+                    const highRiskUsers = details.users?.filter(u => u.riskLevel === 'HIGH')?.length || 0;
+                    const externalUsers = details.users?.filter(u => u.isExternal)?.length || 0;
+                    const unknownDevices = details.users?.filter(u => /unknown|n\/a/i.test(String(u.lastSignIn?.device || '')))?.length || 0;
+                    
+                    // Update identity_metrics with fresh data
+                    await pool.query(
+                        `REPLACE INTO identity_metrics 
+                         (tenant_id, total_users, mfa_enabled_users, mfa_percentage, admin_users, high_risk_users, 
+                          active_users_24h, users_with_complete_profile, privileged_users_without_mfa, 
+                          identity_risk_score, last_updated)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+                        ['sunbird', totalUsers, mfaEnabledUsers, mfaCoverage, privilegedUsers, highRiskUsers, 
+                         totalUsers, Math.max(0, totalUsers - unknownDevices), 0, 50]
+                    );
+                    
+                    // Update identity_users with fresh user data
+                    if (details.users && details.users.length > 0) {
+                        const userInserts = details.users.map(u => [
+                            'sunbird',
+                            u.id,
+                            u.displayName,
+                            u.mail,
+                            u.userPrincipalName,
+                            u.jobTitle || 'No Title',
+                            u.mobilePhone || 'N/A',
+                            JSON.stringify(u.roles || []),
+                            u.mfaEnabled ? 1 : 0,
+                            u.authMethodCount || 0,
+                            u.riskLevel || 'SAFE',
+                            u.isExternal ? 1 : 0,
+                            JSON.stringify(u.lastSignIn || {}),
+                            new Date().toISOString()
+                        ]);
+                        
+                        // Batch insert users
+                        for (const userRow of userInserts) {
+                            try {
+                                await pool.query(
+                                    `REPLACE INTO identity_users 
+                                     (tenant_id, user_id, display_name, mail, user_principal_name, job_title, mobile_phone, 
+                                      roles, mfa_enabled, auth_method_count, risk_level, is_external, last_signin, last_updated)
+                                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                    userRow
+                                );
+                            } catch (userError) {
+                                console.warn(`[Identity Refresh] Failed to update user ${userRow[2]}: ${userError.message}`);
+                            }
+                        }
+                    }
+                    
+                    console.log(`[Identity Refresh] Successfully updated Sunbird identity_metrics and identity_users for CompanyID ${companyId}`);
+                } catch (sunbirdError) {
+                    console.warn(`[Identity Refresh] Failed to update Sunbird tables: ${sunbirdError.message}. Using Azure cache only.`);
+                }
+                
+                // Return the processed data for fromRefresh handler
+                return {
+                    metrics: {
+                        totalUsers: metrics.totalUsers,
+                        activeUsers: metrics.activeUsers,
+                        adminRoles: metrics.adminRoles,
+                        securityScore: metrics.securityScore
+                    },
+                    evidence: details.users || [],
+                    users: details.users || [],
+                    roleAssignments: details.roleAssignments || [],
+                    lastUpdated: new Date().toISOString()
+                };
+            } catch (error) {
+                console.error(`[Identity Refresh] Refresh failed for CompanyID ${companyId}: ${error.message}`, {
+                    errorCode: error.code,
+                    errorType: error.constructor.name,
+                    stack: error.stack
+                });
+                const refreshError = new Error(`Identity source refresh failed: ${error.message}`);
+                refreshError.statusCode = error.statusCode || 500;
+                refreshError.isRefreshError = true;
+                refreshError.sourceKey = 'identity';
+                throw refreshError;
+            }
         }
         case 'devices': {
             const token = await getMicrosoftGraphTokenForCompany(companyId);
