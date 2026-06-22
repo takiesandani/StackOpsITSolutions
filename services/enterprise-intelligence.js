@@ -263,6 +263,33 @@ function sourceAlignmentFailure(comparison, domainName) {
     };
 }
 
+function sourceStaleFailure(sourceHealth, domainName) {
+    if (sourceHealth?.status !== 'stale') return null;
+    const age = sourceHealth.freshness?.ageMinutes;
+    const lastUpdated = sourceHealth.freshness?.lastUpdated;
+    const ageDisplay = age != null ? `(${age} minutes old)` : '';
+    const warnings = sourceHealth.warnings || [];
+    const refreshFailedWarning = warnings.find(w => /refresh failed|stored evidence retained/i.test(w));
+    if (refreshFailedWarning) {
+        return {
+            status: 'blocked_stale_source',
+            isStale: true,
+            ageMinutes: age,
+            lastUpdated,
+            errorMessage: `${domainName} source is stale ${ageDisplay}. Refresh ${domainName.toLowerCase()} dashboard/source before running Azure analysis.`,
+            reason: 'refresh_failed_stale_cache'
+        };
+    }
+    return {
+        status: 'blocked_stale_source',
+        isStale: true,
+        ageMinutes: age,
+        lastUpdated,
+        errorMessage: `${domainName} source is stale ${ageDisplay}. Refresh ${domainName.toLowerCase()} dashboard/source before running Azure analysis.`,
+        reason: 'source_too_old'
+    };
+}
+
 function periodWindow(periodType, referenceDate = new Date()) {
     const type = String(periodType || 'daily').toLowerCase();
     if (!['daily', 'weekly', 'monthly', 'yearly'].includes(type)) throw new Error('Period type must be daily, weekly, monthly, or yearly');
@@ -625,9 +652,14 @@ function createEnterpriseIntelligenceService({
             sourceKey: domain.sourceKey,
             sourceBuilder: current.source.sourceLineage?.sourceBuilder || (domain.key === 'identity' ? 'identityDashboardContext' : 'dashboardContext'),
             sourceLayer: current.source.sourceLineage?.sourceLayer || 'tenant_evidence_snapshot.dashboardMetrics',
+            sourceName: domain.name,
+            sourceLastUpdated: sourceLineageValues.sourceLastUpdated,
+            sourceAge: current.source.freshness?.ageMinutes,
+            sourceAgeLabel: current.source.freshness?.ageMinutes != null ? `${Math.floor(current.source.freshness.ageMinutes / 60)} hour(s) ${current.source.freshness.ageMinutes % 60} minute(s)` : null,
+            sourceStatus: current.source.status || 'unknown',
+            sourceIsStale: current.source.status === 'stale',
             snapshotId: Number(snapshot.ID),
             runId: Number(runId),
-            sourceLastUpdated: sourceLineageValues.sourceLastUpdated,
             rows: sourceAlignment.rows
         };
 
@@ -1231,6 +1263,24 @@ ${JSON.stringify(packageValue)}`;
             return {
                 status: alignmentFailure.status, domain, usage, audit: packageResult.audit,
                 errorMessage: alignmentFailure.errorMessage, sourceAlignment: packageResult.sourceAlignment
+            };
+        }
+
+        const staleFailure = sourceStaleFailure(packageResult.package.sourceHealth, domain.name);
+        if (staleFailure) {
+            const usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: 0, responseBytes: 0, retries: 0 };
+            packageResult.audit.sentToAzureCount = 0;
+            await storeDomain({
+                run, companyId, snapshot, domain, packageResult, analysis: null, usage,
+                status: staleFailure.status, errorMessage: staleFailure.errorMessage
+            });
+            await storeAudit({
+                run, companyId, snapshot, domain, packageResult, analysis: null, usage,
+                status: staleFailure.status
+            });
+            return {
+                status: staleFailure.status, domain, usage, audit: packageResult.audit,
+                errorMessage: staleFailure.errorMessage, sourceHealth: packageResult.package.sourceHealth
             };
         }
         
