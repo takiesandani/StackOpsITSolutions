@@ -172,31 +172,41 @@ test('Identity dashboard and StackCTRL context share the exact user-derived prem
     }
 });
 
-test('Sunbird Identity adapter prefers the processed dashboard cache over legacy metrics', async () => {
+test('Sunbird Identity adapter reads the latest complete saved StackCTRL evidence without recalculating metrics', async () => {
+    const dashboardMetrics = {
+        totalUsers: 20, mfaEnabled: 12, mfaMissing: 8, mfaCoverage: 60,
+        privilegedUsers: 3, adminsWithoutMfa: 1, highRiskUsers: 1,
+        signInIssues: 4, externalUsers: 2, unknownDevices: 4, multiplePrivilegedRoles: 1
+    };
     const result = await identityAdapter({
         pool: {
             async query(sql) {
-                if (sql.includes('FROM identity_metrics ')) return [[{
-                    tenant_id: 'sunbird', total_users: 20, mfa_enabled_users: 12,
-                    mfa_percentage: 60, admin_users: 3, high_risk_users: 1,
-                    privileged_users_without_mfa: 1, last_updated: new Date()
-                }], []];
-                if (sql.includes('FROM identity_users ')) return [[...Array.from({ length: 20 }, (_, index) => ({
-                    id: `user-${index + 1}`,
-                    mfa_enabled: index < 12,
-                    roles: '[]',
-                    last_signin_device: index < 4 ? 'Unknown' : 'Managed',
-                    last_signin_location: 'Office',
-                    last_signin_status: index < 2 ? 'Failed' : 'Success',
-                    days_since_signin: 1,
-                    last_updated: new Date()
-                }))], []];
-                if (sql.includes('FROM identity_risk_scores ')) return [[{ device_unknown: 4, last_updated: new Date() }], []];
-                if (sql.includes('FROM identity_signin_activity ')) return [[{ failed_signin_count_24h: 2, last_updated: new Date() }], []];
-                if (sql.includes('FROM IdentityMetricsCache')) return [[{ ID: 1, CompanyID: 1, MFAEnabled: 999, LastUpdated: new Date() }], []];
-                if (sql.includes('FROM IdentityUserDetailsCache')) return [[], []];
-                if (sql.includes('FROM MicrosoftRoleAssignmentsCache')) return [[], []];
                 if (sql.includes('FROM CompanyMicrosoftMapping')) return [[{ MicrosoftTenantID: 1, TenantName: 'Sunbird', TenantID: 'tenant' }], []];
+                if (sql.includes('FROM StackCTRLIdentityEvidenceSnapshots')) return [[{
+                    ID: 91,
+                    CompanyID: 1,
+                    IsComplete: 1,
+                    CollectionStatus: 'complete',
+                    CollectedAt: new Date(),
+                    SourceFetchedAt: new Date(),
+                    SourceEndpoint: '/api/sunbird/identity-dashboard',
+                    CollectionTrigger: 'scheduled_30_minute',
+                    EvidenceRecordCount: 20,
+                    OmittedRecordCount: 0,
+                    DashboardMetricsJson: JSON.stringify(dashboardMetrics)
+                }], []];
+                if (sql.includes('FROM StackCTRLIdentityUserEvidence')) return [[...Array.from({ length: 20 }, (_, index) => ({
+                    ID: index + 1,
+                    SnapshotID: 91,
+                    ProcessedEvidenceJson: JSON.stringify({
+                        id: `user-${index + 1}`,
+                        displayName: `User ${index + 1}`,
+                        mfaEnabled: false,
+                        roles: [],
+                        riskLevel: 'SAFE',
+                        lastSignIn: { device: 'Managed', location: 'Office', status: 'Success', daysSince: 1 }
+                    })
+                }))], []];
                 return [[], []];
             }
         },
@@ -212,8 +222,11 @@ test('Sunbird Identity adapter prefers the processed dashboard cache over legacy
     assert.equal(result.metrics.mfaCoverage, 60);
     assert.equal(result.metrics.unknownDevices, 4);
     assert.equal(result.metrics.signInIssues, 4);
-    assert.equal(result.sourceLineage.sourceBuilder, 'buildIdentityDashboardSource');
-    assert.match(result.rawReference.table, /identity_metrics/);
+    assert.equal(result.sourceLineage.sourceBuilder, 'storedStackCTRLIdentityEvidence');
+    assert.equal(result.sourceLineage.evidenceSnapshotId, 91);
+    assert.equal(result.sourceLineage.evidenceRecordCount, 20);
+    assert.match(result.rawReference.table, /StackCTRLIdentityEvidenceSnapshots/);
+    assert.equal(result.evidence.find(item => item.evidenceType === 'users').data.length, 20);
 });
 
 test('Cloudflare dashboard context exposes network metrics, evidence, and chart-ready values', () => {

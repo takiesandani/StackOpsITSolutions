@@ -290,6 +290,17 @@ function sourceStaleFailure(sourceHealth, domainName) {
     };
 }
 
+function sourceMissingFailure(sourceHealth, domainName) {
+    const status = String(sourceHealth?.status || 'missing');
+    if (!['missing', 'error', 'not_configured'].includes(status)) return null;
+    const warning = array(sourceHealth?.warnings).find(Boolean);
+    return {
+        status: 'blocked_missing_source',
+        errorMessage: warning || `${domainName} has no complete saved evidence snapshot. Azure analysis is blocked until evidence collection succeeds.`,
+        reason: status
+    };
+}
+
 function periodWindow(periodType, referenceDate = new Date()) {
     const type = String(periodType || 'daily').toLowerCase();
     if (!['daily', 'weekly', 'monthly', 'yearly'].includes(type)) throw new Error('Period type must be daily, weekly, monthly, or yearly');
@@ -328,6 +339,8 @@ function safeResponsePreview(text, maximum = 2000) {
 function domainFailureStatus(results = []) {
     const statuses = results.map(result => result.status).filter(Boolean);
     const reasons = results.map(result => result.failureReason || result.errorMessage || '').join(' ').toLowerCase();
+    if (statuses.includes('blocked_missing_source')) return 'blocked_missing_source';
+    if (statuses.includes('blocked_stale_source')) return 'blocked_stale_source';
     if (statuses.length && statuses.every(status => status === 'failed_invalid_json')) return 'failed_invalid_json';
     if (statuses.includes('failed_source_mismatch') || reasons.includes('source_mismatch')) return 'failed_source_mismatch';
     if (statuses.includes('failed_rate_limited') || reasons.includes('rate_limited') || reasons.includes('429') || reasons.includes('throttl')) return 'failed_rate_limited';
@@ -347,7 +360,7 @@ function classifyFailureStatus(error) {
 function rollupRunStatus(results = []) {
     if (!results.length) return 'failed';
     if (results.every(result => result.status === 'completed')) return 'completed';
-    if (results.every(result => String(result.status || '').startsWith('failed'))) return domainFailureStatus(results);
+    if (results.every(result => /^(failed|blocked)/.test(String(result.status || '')))) return domainFailureStatus(results);
     return 'completed_with_warnings';
 }
 
@@ -533,7 +546,10 @@ function createEnterpriseIntelligenceService({
         const risk = context.riskEngine || metrics.stackctrl_risk || {};
         const health = risk.domainHealthScores?.[domain.riskKey] ?? risk.executiveKPIs?.[domain.healthKey] ?? metrics.executive_kpis?.[domain.healthKey] ?? null;
         const riskScore = risk.domainRiskScores?.[domain.riskKey] ?? metrics.stackctrl_risk?.domainRiskScores?.[domain.riskKey] ?? null;
-        const evidence = source.evidence && typeof source.evidence === 'object' ? source.evidence : [];
+        const sourceEvidence = source.evidence && typeof source.evidence === 'object' ? source.evidence : [];
+        const evidence = domain.key === 'identity' && source.sourceLineage?.sourceBuilder === 'storedStackCTRLIdentityEvidence'
+            ? array(sourceEvidence).filter(item => item?.evidenceType === 'users')
+            : sourceEvidence;
         const sourceMetrics = source.metrics || metrics[domain.sourceKey] || {};
         const dashboardMetrics = source.dashboardMetrics || {};
         const currentMetrics = domain.key === 'identity' && Object.keys(dashboardMetrics).length
@@ -652,6 +668,15 @@ function createEnterpriseIntelligenceService({
             sourceKey: domain.sourceKey,
             sourceBuilder: current.source.sourceLineage?.sourceBuilder || (domain.key === 'identity' ? 'identityDashboardContext' : 'dashboardContext'),
             sourceLayer: current.source.sourceLineage?.sourceLayer || 'tenant_evidence_snapshot.dashboardMetrics',
+            evidenceSnapshotId: current.source.sourceLineage?.evidenceSnapshotId || null,
+            evidenceCollectedAt: current.source.sourceLineage?.collectedAt || null,
+            sourceFetchedAt: current.source.sourceLineage?.sourceFetchedAt || null,
+            sourceEndpoint: current.source.sourceLineage?.sourceEndpoint || null,
+            collectionTrigger: current.source.sourceLineage?.collectionTrigger || null,
+            collectionStatus: current.source.sourceLineage?.collectionStatus || null,
+            evidenceIsComplete: current.source.sourceLineage?.isComplete ?? null,
+            evidenceRecordCount: current.source.sourceLineage?.evidenceRecordCount ?? stackCTRLDataCount,
+            evidenceOmittedRecordCount: current.source.sourceLineage?.omittedRecordCount ?? 0,
             sourceName: domain.name,
             sourceLastUpdated: sourceLineageValues.sourceLastUpdated,
             sourceAge: current.source.freshness?.ageMinutes,
@@ -1248,6 +1273,25 @@ ${JSON.stringify(packageValue)}`;
 
     async function analyseDomain({ companyId, snapshot, run, domain, historicalContext }) {
         const packageResult = await buildDomainPackage({ companyId, snapshot, runId: run.id, domain, historicalContext });
+        const missingFailure = domain.key === 'identity'
+            ? sourceMissingFailure(packageResult.package.sourceHealth, domain.name)
+            : null;
+        if (missingFailure) {
+            const usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: 0, responseBytes: 0, retries: 0 };
+            packageResult.audit.sentToAzureCount = 0;
+            await storeDomain({
+                run, companyId, snapshot, domain, packageResult, analysis: null, usage,
+                status: missingFailure.status, errorMessage: missingFailure.errorMessage
+            });
+            await storeAudit({
+                run, companyId, snapshot, domain, packageResult, analysis: null, usage,
+                status: missingFailure.status
+            });
+            return {
+                status: missingFailure.status, domain, usage, audit: packageResult.audit,
+                errorMessage: missingFailure.errorMessage, sourceHealth: packageResult.package.sourceHealth
+            };
+        }
         const alignmentFailure = sourceAlignmentFailure(packageResult.sourceAlignment, domain.name);
         if (alignmentFailure) {
             const usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: 0, responseBytes: 0, retries: 0 };

@@ -178,7 +178,17 @@ test('Enterprise Identity currentMetrics follow dynamic dashboard metrics and de
                     sourceKey: 'identity', status: 'available', isExpected: true,
                     freshness: { lastUpdated: '2026-06-22T07:55:00.000Z', ageMinutes: 5 },
                     metrics: { mfaEnabled: 999 }, dashboardMetrics,
-                    evidence: [{ evidenceType: 'users', data: [{ id: 'user-1', mfaEnabled: true }] }]
+                    sourceLineage: {
+                        sourceBuilder: 'storedStackCTRLIdentityEvidence',
+                        sourceLayer: 'StackCTRLIdentityEvidenceSnapshots + StackCTRLIdentityUserEvidence',
+                        evidenceSnapshotId: 501,
+                        evidenceRecordCount: 57,
+                        omittedRecordCount: 0
+                    },
+                    evidence: [
+                        { evidenceType: 'users', data: Array.from({ length: 57 }, (_, index) => ({ id: `user-${index + 1}` })) },
+                        { evidenceType: 'dashboard_evidence_lists', data: { usersWithoutMfa: Array.from({ length: 11 }, (_, index) => ({ id: `user-${index + 1}` })) } }
+                    ]
                 }]
             })
         };
@@ -193,7 +203,13 @@ test('Enterprise Identity currentMetrics follow dynamic dashboard metrics and de
             assert.equal(packageResult.package.currentMetrics[metric], value, `currentMetrics.${metric}`);
             assert.equal(packageResult.package.dashboardMetrics[metric], value, `dashboardMetrics.${metric}`);
         }
-        assert.equal(packageResult.package.dataLineage.sourceBuilder, 'identityDashboardContext');
+        assert.equal(packageResult.package.dataLineage.sourceBuilder, 'storedStackCTRLIdentityEvidence');
+        assert.equal(packageResult.package.dataLineage.evidenceSnapshotId, 501);
+        assert.equal(packageResult.package.dataLineage.evidenceRecordCount, 57);
+        assert.equal(packageResult.package.dataLineage.evidenceOmittedRecordCount, 0);
+        assert.equal(packageResult.audit.stackCTRLDataCount, 57);
+        assert.equal(packageResult.audit.evidenceIncludedCount, 57);
+        assert.equal(packageResult.audit.omittedCount, 0);
         assert.equal(packageResult.sourceAlignment.mismatches.length, 0);
         assert.equal(packageResult.sourceAlignment.rows.find(row => row.metric === 'mfaEnabled').status, 'MATCH');
     }
@@ -207,6 +223,70 @@ test('Enterprise Identity currentMetrics follow dynamic dashboard metrics and de
     assert.equal(failure.status, 'failed_source_mismatch');
     assert.deepEqual(failure.mismatchedFields, ['mfaEnabled']);
     assert.match(failure.errorMessage, /mfaEnabled/);
+});
+
+test('Enterprise blocks missing or stale saved Identity evidence before calling Azure', async () => {
+    for (const sourceStatus of ['missing', 'stale']) {
+        let insertId = 800;
+        let azureCalls = 0;
+        const source = {
+            sourceKey: 'identity',
+            status: sourceStatus,
+            isExpected: true,
+            freshness: sourceStatus === 'stale'
+                ? { lastUpdated: '2026-06-22T05:00:00.000Z', ageMinutes: 180 }
+                : { lastUpdated: null, ageMinutes: null },
+            warnings: [sourceStatus === 'stale'
+                ? 'Identity Protection evidence is stale.'
+                : 'No complete StackCTRL Identity evidence snapshot is available. Azure analysis is blocked until collection succeeds.'],
+            metrics: sourceStatus === 'stale' ? { totalUsers: 57, mfaCoverage: 81 } : {},
+            dashboardMetrics: sourceStatus === 'stale' ? { totalUsers: 57, mfaCoverage: 81 } : {},
+            evidence: sourceStatus === 'stale' ? [{ evidenceType: 'users', data: [{ id: 'user-1' }] }] : [],
+            sourceLineage: { sourceBuilder: 'storedStackCTRLIdentityEvidence', evidenceSnapshotId: 700 }
+        };
+        const snapshot = {
+            ID: sourceStatus === 'stale' ? 702 : 701,
+            CompanyID: 1,
+            TenantKey: 'sunbird',
+            SnapshotType: 'manual',
+            CreatedAt: new Date('2026-06-22T08:00:00.000Z'),
+            DataCompletenessScore: sourceStatus === 'stale' ? 100 : 0,
+            MetricsJson: JSON.stringify({ stackctrl_risk: { domainRiskScores: { identity: 25 } } }),
+            ContextJson: JSON.stringify({
+                riskEngine: { domainHealthScores: { identity: 75 }, domainRiskScores: { identity: 25 } },
+                sources: [source]
+            })
+        };
+        const calls = [];
+        const pool = {
+            async query(sql, params = []) {
+                calls.push({ sql, params });
+                if (sql.includes('FROM StackCTRLTenantEvidenceSnapshots WHERE')) return [[snapshot], []];
+                if (sql.includes('FROM StackCTRLKnowledgeBase')) return [[], []];
+                if (sql.includes('FROM StackCTRLTenantDomainIntelligence') && sql.includes('RunID <>')) return [[], []];
+                if (/^\s*INSERT/i.test(sql)) return [{ insertId: insertId++ }, []];
+                return [{ affectedRows: 1 }, []];
+            }
+        };
+        const service = createEnterpriseIntelligenceService({
+            pool,
+            azureOpenAI: { async createJsonCompletion() { azureCalls += 1; return { data: domainResponse('identity') }; } },
+            schedulerService: { async getHistoricalSnapshotContext() { return { comparisons: {} }; } },
+            config: { domainDelayMs: 0 }
+        });
+        const result = await service.runEnterpriseReport({
+            companyId: 1,
+            snapshotId: snapshot.ID,
+            domainKeys: ['identity'],
+            includeSynthesis: false
+        });
+        assert.equal(azureCalls, 0, sourceStatus);
+        assert.equal(result.domains[0].status, sourceStatus === 'stale' ? 'blocked_stale_source' : 'blocked_missing_source');
+        const auditWrite = calls.find(call => call.sql.includes('INSERT INTO StackCTRLIntelligenceEvidenceAudit'));
+        assert.ok(auditWrite);
+        assert.equal(auditWrite.params[5], 0);
+        assert.match(result.domains[0].errorMessage, /stale|no complete/i);
+    }
 });
 
 test('enterprise batching splits 3,590 evidence items by count and byte budget', () => {

@@ -1,5 +1,3 @@
-const { buildIdentityDashboardSource } = require('./identity-dashboard-source');
-
 function parseJsonValue(value) {
     if (value == null || typeof value !== 'string') return value;
     const trimmed = value.trim();
@@ -24,7 +22,8 @@ function toDate(value) {
 
 function findTimestamp(value) {
     if (!value || typeof value !== 'object') return null;
-    const direct = value.LastUpdated || value.last_updated || value.UpdatedAt || value.updated_at ||
+    const direct = value.CollectedAt || value.collected_at || value.SourceFetchedAt ||
+        value.LastUpdated || value.last_updated || value.UpdatedAt || value.updated_at ||
         value.CreatedAt || value.fetchedAt || value.generatedAt || value.InvoiceDate || null;
     const directDate = toDate(direct);
     if (directDate) return directDate;
@@ -198,6 +197,8 @@ async function collectSource(context, definition) {
             warnings: loaded.warnings?.length
                 ? loaded.warnings
                 : [`${capability.displayName} has no stored evidence for this tenant.`],
+            dashboardSourceMetrics: loaded.dashboardSourceMetrics || null,
+            sourceLineage: loaded.sourceLineage || null,
             rawReference: loaded.rawReference || { table: definition.table || null, recordId: null }
         });
     }
@@ -234,57 +235,114 @@ async function collectSource(context, definition) {
 
 const definitions = {
     identity: {
-        table: 'IdentityMetricsCache, IdentityUserDetailsCache, MicrosoftRoleAssignmentsCache',
+        table: 'StackCTRLIdentityEvidenceSnapshots, StackCTRLIdentityUserEvidence',
+        refreshWhenMissing: true,
         async load(pool, companyId, capability) {
-            const [metrics, users, roles, tenant] = await Promise.all([
+            const tenant = await queryRows(pool, `SELECT mt.ID AS MicrosoftTenantID, mt.TenantName, mt.TenantID
+                                                  FROM CompanyMicrosoftMapping cm
+                                                  INNER JOIN MicrosoftTenants mt ON mt.ID = cm.MicrosoftTenantID
+                                                  WHERE cm.CompanyID = ? AND cm.IsActive = 1 LIMIT 1`, [companyId]);
+            if (capability?.profileKey === 'sunbird') {
+                const snapshots = await queryRows(
+                    pool,
+                    `SELECT * FROM StackCTRLIdentityEvidenceSnapshots
+                     WHERE CompanyID = ? AND IsComplete = 1 AND CollectionStatus = 'complete'
+                     ORDER BY CollectedAt DESC, ID DESC LIMIT 1`,
+                    [companyId]
+                );
+                const snapshot = snapshots[0];
+                if (!snapshot) {
+                    return {
+                        records: [],
+                        notConfigured: !tenant.length,
+                        metrics: {},
+                        dashboardSourceMetrics: {},
+                        sourceLineage: {
+                            sourceKey: 'identity',
+                            sourceBuilder: 'storedStackCTRLIdentityEvidence',
+                            sourceLayer: 'StackCTRLIdentityEvidenceSnapshots',
+                            collectionStatus: 'missing'
+                        },
+                        evidence: [],
+                        warnings: ['No complete StackCTRL Identity evidence snapshot is available. Azure analysis is blocked until collection succeeds.'],
+                        rawReference: { table: this.table, recordId: null }
+                    };
+                }
+                const userRows = await queryRows(
+                    pool,
+                    `SELECT * FROM StackCTRLIdentityUserEvidence
+                     WHERE SnapshotID = ? ORDER BY ID`,
+                    [snapshot.ID]
+                );
+                if (userRows.length !== Number(snapshot.EvidenceRecordCount)) {
+                    return {
+                        records: [],
+                        notConfigured: !tenant.length,
+                        metrics: {},
+                        dashboardSourceMetrics: {},
+                        sourceLineage: {
+                            sourceKey: 'identity',
+                            sourceBuilder: 'storedStackCTRLIdentityEvidence',
+                            sourceLayer: 'StackCTRLIdentityEvidenceSnapshots',
+                            evidenceSnapshotId: snapshot.ID,
+                            collectionStatus: 'incomplete'
+                        },
+                        evidence: [],
+                        warnings: [`Identity evidence snapshot ${snapshot.ID} expected ${snapshot.EvidenceRecordCount} user rows but ${userRows.length} were stored. Azure analysis is blocked.`],
+                        rawReference: { table: this.table, recordId: snapshot.ID }
+                    };
+                }
+                const dashboardMetrics = snapshot.DashboardMetricsJson || {};
+                const users = userRows.map(row => row.ProcessedEvidenceJson || ({
+                    id: row.UserSourceID,
+                    displayName: row.Name,
+                    mail: row.Email,
+                    userPrincipalName: row.Email,
+                    jobTitle: row.JobTitle,
+                    mobilePhone: row.Phone,
+                    roles: row.RolesJson || [],
+                    mfaEnabled: Boolean(Number(row.MFAEnabled)),
+                    authMethodCount: Number(row.AuthMethodCount || 0),
+                    riskLevel: row.RiskLevel,
+                    isExternal: String(row.UserType).toLowerCase() === 'external',
+                    accountEnabled: String(row.AccountStatus).toLowerCase() !== 'disabled',
+                    lastSignIn: {
+                        dateTime: row.LastSignInAt,
+                        daysSince: row.DaysSinceLastSignIn,
+                        status: row.SignInStatus,
+                        location: row.Location,
+                        device: row.Device
+                    }
+                }));
+                return {
+                    records: snapshots,
+                    notConfigured: !tenant.length,
+                    metrics: dashboardMetrics,
+                    dashboardSourceMetrics: dashboardMetrics,
+                    sourceLineage: {
+                        sourceKey: 'identity',
+                        sourceBuilder: 'storedStackCTRLIdentityEvidence',
+                        sourceLayer: 'StackCTRLIdentityEvidenceSnapshots + StackCTRLIdentityUserEvidence',
+                        evidenceSnapshotId: snapshot.ID,
+                        collectedAt: snapshot.CollectedAt,
+                        sourceFetchedAt: snapshot.SourceFetchedAt,
+                        sourceEndpoint: snapshot.SourceEndpoint,
+                        collectionTrigger: snapshot.CollectionTrigger,
+                        collectionStatus: snapshot.CollectionStatus,
+                        isComplete: Boolean(Number(snapshot.IsComplete)),
+                        evidenceRecordCount: Number(snapshot.EvidenceRecordCount),
+                        omittedRecordCount: Number(snapshot.OmittedRecordCount)
+                    },
+                    evidence: [{ evidenceType: 'users', data: users }],
+                    warnings: [],
+                    rawReference: { table: this.table, recordId: snapshot.ID }
+                };
+            }
+            const [metrics, users, roles] = await Promise.all([
                 queryRows(pool, 'SELECT * FROM IdentityMetricsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
                 queryRows(pool, 'SELECT * FROM IdentityUserDetailsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
-                queryRows(pool, 'SELECT * FROM MicrosoftRoleAssignmentsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
-                queryRows(pool, `SELECT mt.ID AS MicrosoftTenantID, mt.TenantName, mt.TenantID
-                                 FROM CompanyMicrosoftMapping cm
-                                 INNER JOIN MicrosoftTenants mt ON mt.ID = cm.MicrosoftTenantID
-                                 WHERE cm.CompanyID = ? AND cm.IsActive = 1 LIMIT 1`, [companyId])
+                queryRows(pool, 'SELECT * FROM MicrosoftRoleAssignmentsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId])
             ]);
-            if (capability?.profileKey === 'sunbird') {
-                try {
-                    const tenantKey = capability.profileKey;
-                    const [dashboardMetricsRows, dashboardUsersRows, dashboardRiskRows, dashboardSignInRows] = await Promise.all([
-                        queryRows(pool, 'SELECT * FROM identity_metrics WHERE tenant_id = ? ORDER BY last_updated DESC LIMIT 1', [tenantKey]),
-                        queryRows(pool, 'SELECT * FROM identity_users ORDER BY last_updated DESC', []),
-                        queryRows(pool, 'SELECT * FROM identity_risk_scores WHERE tenant_id = ? ORDER BY last_updated DESC LIMIT 1', [tenantKey]),
-                        queryRows(pool, 'SELECT * FROM identity_signin_activity WHERE tenant_id = ? ORDER BY last_updated DESC LIMIT 1', [tenantKey])
-                    ]);
-                    if (dashboardMetricsRows[0]) {
-                        const roleAssignments = extractPayload(roles[0], 'AssignmentsPayload') || [];
-                        const dashboardSource = buildIdentityDashboardSource({
-                            metricsRow: dashboardMetricsRows[0],
-                            usersRows: dashboardUsersRows,
-                            riskRow: dashboardRiskRows[0] || {},
-                            signInRow: dashboardSignInRows[0] || {},
-                            roleAssignments
-                        });
-                        return {
-                            records: [...dashboardMetricsRows, ...dashboardUsersRows, ...dashboardRiskRows, ...dashboardSignInRows],
-                            notConfigured: !tenant.length,
-                            metrics: dashboardSource.dashboardMetrics,
-                            dashboardSourceMetrics: dashboardSource.dashboardMetrics,
-                            sourceLineage: {
-                                sourceKey: 'identity',
-                                sourceBuilder: 'buildIdentityDashboardSource',
-                                sourceLayer: 'identity_dashboard_processed_cache'
-                            },
-                            evidence: [
-                                { evidenceType: 'tenant', data: tenant[0] || null },
-                                { evidenceType: 'users', data: dashboardSource.users },
-                                { evidenceType: 'role_assignments', data: roleAssignments }
-                            ],
-                            rawReference: { table: 'identity_metrics, identity_users, identity_risk_scores, identity_signin_activity', recordId: dashboardMetricsRows[0]?.id || null }
-                        };
-                    }
-                } catch (_) {
-                    // Older deployments may not have the processed dashboard cache tables yet.
-                }
-            }
             const records = [...metrics, ...users, ...roles];
             return {
                 records,
@@ -295,46 +353,7 @@ const definitions = {
                     { evidenceType: 'users', data: extractPayload(users[0], 'UsersPayload') || [] },
                     { evidenceType: 'role_assignments', data: extractPayload(roles[0], 'AssignmentsPayload') || [] }
                 ],
-                rawReference: { table: this.table, recordId: metrics[0]?.ID || null }
-            };
-        },
-        fromRefresh(refreshed, stored) {
-            if (!refreshed || typeof refreshed !== 'object') {
-                return stored;
-            }
-            const users = refreshed.users || [];
-            const roleAssignments = refreshed.roleAssignments || [];
-            
-            // Build fresh dashboard metrics from refreshed data
-            const dashboardSource = buildIdentityDashboardSource({
-                metricsRow: {
-                    total_users: refreshed.metrics?.totalUsers,
-                    mfa_enabled_users: users.filter(u => u.mfaEnabled).length,
-                    admin_users: users.filter(u => u.roles?.length > 0).length,
-                    high_risk_users: users.filter(u => u.riskLevel === 'HIGH').length,
-                    active_users_24h: users.filter(u => u.lastSignIn?.daysSince <= 1).length
-                },
-                usersRows: users,
-                riskRow: {},
-                signInRow: {},
-                roleAssignments: roleAssignments
-            });
-            
-            const record = {
-                LastUpdated: refreshed.lastUpdated || new Date().toISOString(),
-                ...refreshed.metrics
-            };
-            
-            return {
-                ...stored,
-                records: [record],
-                metrics: dashboardSource.dashboardMetrics,
-                dashboardSourceMetrics: dashboardSource.dashboardMetrics,
-                evidence: [
-                    ...stored.evidence.filter(e => e.evidenceType === 'tenant'),
-                    { evidenceType: 'users', data: dashboardSource.users },
-                    { evidenceType: 'role_assignments', data: roleAssignments }
-                ]
+                rawReference: { table: 'IdentityMetricsCache, IdentityUserDetailsCache, MicrosoftRoleAssignmentsCache', recordId: metrics[0]?.ID || null }
             };
         },
         metrics: records => primitiveMetrics(records[0]),

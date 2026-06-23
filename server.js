@@ -23,6 +23,9 @@ const { createAzureOpenAIService } = require('./services/azure-openai');
 const { createStackCTRLIntelligenceService } = require('./services/stackctrl-intelligence');
 const { createStackCTRLIntelligenceScheduler, DEFAULT_OUTPUT_TYPES } = require('./services/intelligence/scheduler');
 const { buildIdentityDashboardSource } = require('./services/intelligence/identity-dashboard-source');
+const { buildIdentityDashboardPayload } = require('./services/intelligence/identity-dashboard-processor');
+const { createIdentityEvidenceStore } = require('./services/intelligence/identity-evidence-store');
+const { createIdentityEvidenceAutomation } = require('./services/intelligence/identity-evidence-automation');
 const { createStackCTRLServerAutomation } = require('./services/intelligence/server-automation');
 const { createAdminIntelligenceService } = require('./services/admin-intelligence');
 const { createEnterpriseIntelligenceService } = require('./services/enterprise-intelligence');
@@ -55,6 +58,8 @@ function getTenantByEmail(email) {
 const microsoftTokenCache = new Map();
 const authMethodsCache = new Map();
 const AUTH_METHODS_CACHE_TTL_MS = 5 * 60 * 1000;
+let identityEvidenceService = null;
+const identityEvidenceCollectionPromises = new Map();
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -8964,7 +8969,7 @@ app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) =
 
         console.log('[Sunbird Dashboard] Dashboard data compiled successfully');
 
-        res.json({
+        const dashboardPayload = {
             success: true,
             tenant: tenant.clientId,
             fetchedAt: new Date().toISOString(),
@@ -9014,7 +9019,21 @@ app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) =
                 usersWithMultipleRoles: enrichedUsers.filter(u => u.roles.length > 1).length,
                 roleDistribution: topRoles
             }
-        });
+        };
+
+        if (identityEvidenceService && tenant.companyId) {
+            identityEvidenceService.persistProcessedEvidence({
+                companyId: tenant.companyId,
+                tenantKey: tenant.clientId,
+                payload: dashboardPayload,
+                collectionTrigger: 'dashboard_request',
+                sourceEndpoint: '/api/sunbird/identity-dashboard'
+            }).catch(error => {
+                console.warn('[Identity Evidence] Dashboard response could not be stored:', error.message);
+            });
+        }
+
+        res.json(dashboardPayload);
 
     } catch (error) {
         console.error('[Sunbird Dashboard] Error:', error.message);
@@ -10625,9 +10644,98 @@ async function getSecret(secretName) {
     }
 }
 
+async function performIdentityEvidenceCollection(companyId, collectionTrigger) {
+    if (!identityEvidenceService) throw new Error('Identity evidence storage is not initialized');
+    const sourceEndpoint = 'Microsoft Graph processed by StackCTRL Identity Protection';
+    try {
+        const token = await getMicrosoftGraphToken();
+        const [users, roleAssignments, signIns] = await Promise.all([
+            fetchMicrosoftUsers(token),
+            fetchMicrosoftRoleAssignments(token),
+            fetchMicrosoftSignIns(token)
+        ]);
+        const payload = await buildIdentityDashboardPayload({
+            tenantKey: 'sunbird',
+            users,
+            roleAssignments,
+            signIns,
+            loadAuthMethods: user => fetchUserAuthMethods(token, user.id),
+            hasRealMfaMethod,
+            mapWithConcurrency,
+            concurrency: Number(process.env.IDENTITY_EVIDENCE_AUTH_CONCURRENCY || 4)
+        });
+        return identityEvidenceService.persistProcessedEvidence({
+            companyId,
+            tenantKey: 'sunbird',
+            payload,
+            collectionTrigger,
+            sourceEndpoint
+        });
+    } catch (error) {
+        await identityEvidenceService.recordCollectionFailure({
+            companyId,
+            tenantKey: 'sunbird',
+            collectionTrigger,
+            sourceEndpoint,
+            error
+        }).catch(auditError => {
+            console.warn('[Identity Evidence] Collection failure could not be audited:', auditError.message);
+        });
+        throw error;
+    }
+}
+
+async function collectAndPersistIdentityEvidence(companyId, collectionTrigger = 'scheduled_30_minute') {
+    const key = String(companyId);
+    const existing = identityEvidenceCollectionPromises.get(key);
+    if (existing) return existing;
+    const collection = performIdentityEvidenceCollection(companyId, collectionTrigger);
+    identityEvidenceCollectionPromises.set(key, collection);
+    try {
+        return await collection;
+    } finally {
+        if (identityEvidenceCollectionPromises.get(key) === collection) identityEvidenceCollectionPromises.delete(key);
+    }
+}
+
+async function collectIdentityEvidenceForConfiguredTenants({ trigger = 'scheduled_30_minute' } = {}) {
+    const [companies] = await pool.query(
+        `SELECT DISTINCT company.ID AS CompanyID, company.CompanyName
+         FROM Companies company
+         LEFT JOIN StackCTRLClientCapabilities capability
+           ON capability.CompanyID = company.ID
+          AND capability.SourceKey = 'identity'
+         WHERE LOWER(company.CompanyName) LIKE '%sunbird%'
+            OR (capability.ProfileKey = 'sunbird' AND capability.IsExpected = 1 AND capability.IsEnabled = 1)`
+    );
+    const results = [];
+    for (const company of companies) {
+        try {
+            results.push(await collectAndPersistIdentityEvidence(company.CompanyID, trigger));
+        } catch (error) {
+            console.error(`[Identity Evidence] Company ${company.CompanyID} collection failed:`, error.message);
+            results.push({ companyId: company.CompanyID, status: 'failed', message: error.message });
+        }
+    }
+    return { companyCount: companies.length, results };
+}
+
 async function refreshStackCTRLIntelligenceSource(sourceKey, companyId) {
     switch (sourceKey) {
         case 'identity': {
+            if (identityEvidenceService) {
+                try {
+                    await collectAndPersistIdentityEvidence(companyId, 'enterprise_refresh');
+                    // Returning null makes the source adapter reload the committed evidence snapshot.
+                    return null;
+                } catch (error) {
+                    const refreshError = new Error(`Identity evidence refresh failed: ${error.message}`);
+                    refreshError.statusCode = error.statusCode || 500;
+                    refreshError.isRefreshError = true;
+                    refreshError.sourceKey = 'identity';
+                    throw refreshError;
+                }
+            }
             try {
                 // Use environment credentials (like dashboard does) for consistent, working access
                 // This ensures Enterprise refresh uses the same validated credentials as the dashboard
@@ -10850,6 +10958,21 @@ const azureOpenAIService = createAzureOpenAIService({
     getSecret,
     maxRetries: process.env.AZURE_OPENAI_MAX_RETRIES,
     retryMaxMs: process.env.AZURE_OPENAI_RETRY_MAX_MS
+});
+identityEvidenceService = createIdentityEvidenceStore({ pool });
+const identityEvidenceSchemaReady = identityEvidenceService.ensureSchema().catch(error => {
+    console.error('[Identity Evidence] Schema initialization failed:', error.message);
+    return { error };
+});
+const identityEvidenceAutomation = createIdentityEvidenceAutomation({
+    collectAll: async options => {
+        const schema = await identityEvidenceSchemaReady;
+        if (schema?.error) throw schema.error;
+        return collectIdentityEvidenceForConfiguredTenants(options);
+    },
+    enabled: !['false', '0', 'no'].includes(String(process.env.IDENTITY_EVIDENCE_COLLECTION_ENABLED || 'true').toLowerCase()),
+    intervalMs: process.env.IDENTITY_EVIDENCE_COLLECTION_INTERVAL_MS || (30 * 60 * 1000),
+    startupDelayMs: process.env.IDENTITY_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (30 * 1000)
 });
 const stackCTRLIntelligenceService = createStackCTRLIntelligenceService({
     pool,
@@ -11946,6 +12069,7 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 const server = app.listen(PORT, async () => {
+    identityEvidenceAutomation.start();
     // StackCTRL automation runs inside this server and uses database deduplication across instances.
     stackCTRLIntelligenceAutomation.start();
     // Enterprise reporting runs separately because domain batches may take much longer than compact intelligence.
@@ -11967,6 +12091,7 @@ server.on('error', (error) => {
 
 function stopServer(signal) {
     console.log(`[StackCTRL] ${signal} received. Stopping server automation.`);
+    identityEvidenceAutomation.stop();
     stackCTRLIntelligenceAutomation.stop();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(1), 10000).unref();
