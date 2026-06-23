@@ -5,6 +5,8 @@ const {
     buildDataLineageComparison,
     createEnterpriseIntelligenceService,
     DEVICE_LINEAGE_FIELDS,
+    EMAIL_LINEAGE_FIELDS,
+    NETWORK_LINEAGE_FIELDS,
     ENTERPRISE_DOMAINS,
     flattenDomainEvidence,
     normalizeMysqlDate,
@@ -651,6 +653,149 @@ test('Enterprise Device currentMetrics follow stored dashboard metrics and flatt
     assert.equal(packageResult.audit.omittedCount, 0);
     assert.equal(packageResult.sourceAlignment.mismatches.length, 0);
     assert.equal(packageResult.sourceAlignment.rows.find(row => row.metric === 'complianceRate').status, 'MATCH');
+});
+
+test('Enterprise Email currentMetrics follow stored dashboard metrics and flatten row-level evidence', async () => {
+    const pool = {
+        async query(sql) {
+            if (sql.includes('FROM StackCTRLKnowledgeBase')) return [[], []];
+            if (sql.includes('FROM StackCTRLTenantDomainIntelligence') && sql.includes('RunID <>')) return [[], []];
+            throw new Error(`Unexpected query: ${sql}`);
+        }
+    };
+    const service = createEnterpriseIntelligenceService({
+        pool,
+        azureOpenAI: { async createJsonCompletion() { throw new Error('Azure should not be called'); } },
+        schedulerService: { async getHistoricalSnapshotContext() { return {}; } },
+        config: { domainDelayMs: 0 }
+    });
+    const dashboardMetrics = {
+        activeThreats: 6,
+        highSeverityAlerts: 0,
+        affectedUsersCount: 8,
+        activeIncidents: 0,
+        securityScore: 88,
+        threatResolutionRate: 0,
+        phishingCount: 1,
+        malwareCount: 0,
+        spamCount: 0,
+        becCount: 0,
+        activeMailboxes: 36,
+        totalMailActivity: 11867,
+        sendCount: 1430,
+        receiveCount: 4759,
+        readCount: 5678,
+        recommendationsCount: 3
+    };
+    const snapshot = {
+        ID: 911,
+        CompanyID: 1,
+        CreatedAt: new Date('2026-06-22T08:00:00.000Z'),
+        MetricsJson: JSON.stringify({ email_security: { activeThreats: 99 }, stackctrl_risk: { domainRiskScores: { email: 22 } } }),
+        ContextJson: JSON.stringify({
+            riskEngine: { domainHealthScores: { email: 78 }, domainRiskScores: { email: 22 } },
+            sources: [{
+                sourceKey: 'email_security', status: 'available', isExpected: true,
+                freshness: { lastUpdated: '2026-06-22T07:55:00.000Z', ageMinutes: 5 },
+                metrics: { activeThreats: 99 }, dashboardMetrics,
+                sourceLineage: {
+                    sourceBuilder: 'storedStackCTRLEmailEvidence',
+                    sourceLayer: 'StackCTRLEmailEvidenceSnapshots + StackCTRLEmailEvidence',
+                    evidenceSnapshotId: 901,
+                    evidenceRecordCount: 42,
+                    omittedRecordCount: 0
+                },
+                evidence: [
+                    { evidenceType: 'alerts', data: Array.from({ length: 6 }, (_, index) => ({ id: `alert-${index + 1}` })) },
+                    { evidenceType: 'incidents', data: [] },
+                    { evidenceType: 'mailActivityUsers', data: Array.from({ length: 36 }, (_, index) => ({ userPrincipalName: `user${index + 1}` })) }
+                ]
+            }]
+        })
+    };
+    const packageResult = await service.buildDomainPackage({
+        companyId: 1,
+        snapshot,
+        runId: 72,
+        domain: ENTERPRISE_DOMAINS.find(domain => domain.key === 'email_security'),
+        historicalContext: { comparisons: {} }
+    });
+    for (const metric of EMAIL_LINEAGE_FIELDS.filter(field => !['healthScore', 'riskScore', 'sourceHealth.evidenceCount', 'snapshotId', 'sourceLastUpdated'].includes(field))) {
+        assert.equal(packageResult.package.currentMetrics[metric], dashboardMetrics[metric], `currentMetrics.${metric}`);
+    }
+    assert.equal(packageResult.package.dataLineage.sourceBuilder, 'storedStackCTRLEmailEvidence');
+    assert.equal(packageResult.audit.stackCTRLDataCount, 42);
+    assert.equal(packageResult.sourceAlignment.mismatches.length, 0);
+});
+
+test('Enterprise Network currentMetrics follow stored dashboard metrics and flatten row-level evidence', async () => {
+    const pool = {
+        async query(sql) {
+            if (sql.includes('FROM StackCTRLKnowledgeBase')) return [[], []];
+            if (sql.includes('FROM StackCTRLTenantDomainIntelligence') && sql.includes('RunID <>')) return [[], []];
+            throw new Error(`Unexpected query: ${sql}`);
+        }
+    };
+    const service = createEnterpriseIntelligenceService({
+        pool,
+        azureOpenAI: { async createJsonCompletion() { throw new Error('Azure should not be called'); } },
+        schedulerService: { async getHistoricalSnapshotContext() { return {}; } },
+        config: { domainDelayMs: 0 }
+    });
+    const dashboardMetrics = {
+        protectedApps: 4,
+        enrolledDevices: 12,
+        gatewayPolicies: 8,
+        activeGatewayPolicies: 7,
+        deniedAccessEvents: 1,
+        recentAccessEvents: 15,
+        networkSecurityScore: 91,
+        dlpProfiles: 2,
+        identityProviders: 1,
+        sectionErrors: 0
+    };
+    const snapshot = {
+        ID: 912,
+        CompanyID: 1,
+        CreatedAt: new Date('2026-06-22T08:00:00.000Z'),
+        MetricsJson: JSON.stringify({ cloudflare_network_security: { protectedApps: 99 }, stackctrl_risk: { domainRiskScores: { network: 18 } } }),
+        ContextJson: JSON.stringify({
+            riskEngine: { domainHealthScores: { network: 82 }, domainRiskScores: { network: 18 } },
+            sources: [{
+                sourceKey: 'cloudflare_network_security', status: 'available', isExpected: true,
+                freshness: { lastUpdated: '2026-06-22T07:55:00.000Z', ageMinutes: 5 },
+                metrics: { protectedApps: 99 }, dashboardMetrics,
+                sourceLineage: {
+                    sourceBuilder: 'storedStackCTRLNetworkEvidence',
+                    sourceLayer: 'StackCTRLNetworkEvidenceSnapshots + StackCTRLNetworkEvidence',
+                    evidenceSnapshotId: 1001,
+                    evidenceRecordCount: 42,
+                    omittedRecordCount: 0
+                },
+                evidence: [
+                    { evidenceType: 'accessApps', data: Array.from({ length: 4 }, (_, index) => ({ id: `app-${index + 1}` })) },
+                    { evidenceType: 'devices', data: Array.from({ length: 12 }, (_, index) => ({ id: `device-${index + 1}` })) },
+                    { evidenceType: 'gatewayRules', data: Array.from({ length: 8 }, (_, index) => ({ id: `rule-${index + 1}` })) },
+                    { evidenceType: 'accessLogs', data: Array.from({ length: 15 }, (_, index) => ({ id: `log-${index + 1}` })) },
+                    { evidenceType: 'dlpProfiles', data: [{ id: 'dlp-1' }, { id: 'dlp-2' }] },
+                    { evidenceType: 'warpProfiles', data: [{ id: 'warp-1' }] }
+                ]
+            }]
+        })
+    };
+    const packageResult = await service.buildDomainPackage({
+        companyId: 1,
+        snapshot,
+        runId: 73,
+        domain: ENTERPRISE_DOMAINS.find(domain => domain.key === 'cloudflare_network_security'),
+        historicalContext: { comparisons: {} }
+    });
+    for (const metric of NETWORK_LINEAGE_FIELDS.filter(field => !['healthScore', 'riskScore', 'sourceHealth.evidenceCount', 'snapshotId', 'sourceLastUpdated'].includes(field))) {
+        assert.equal(packageResult.package.currentMetrics[metric], dashboardMetrics[metric], `currentMetrics.${metric}`);
+    }
+    assert.equal(packageResult.package.dataLineage.sourceBuilder, 'storedStackCTRLNetworkEvidence');
+    assert.equal(packageResult.audit.stackCTRLDataCount, 42);
+    assert.equal(packageResult.sourceAlignment.mismatches.length, 0);
 });
 
 test('Enterprise blocks missing or stale saved Device evidence before calling Azure', async () => {

@@ -29,6 +29,12 @@ const { createIdentityEvidenceAutomation } = require('./services/intelligence/id
 const { buildDeviceDashboardPayload } = require('./services/intelligence/device-dashboard-processor');
 const { createDeviceEvidenceStore } = require('./services/intelligence/device-evidence-store');
 const { createDeviceEvidenceAutomation } = require('./services/intelligence/device-evidence-automation');
+const { buildEmailDashboardPayload } = require('./services/intelligence/email-dashboard-processor');
+const { createEmailEvidenceStore } = require('./services/intelligence/email-evidence-store');
+const { createEmailEvidenceAutomation } = require('./services/intelligence/email-evidence-automation');
+const { buildNetworkDashboardPayload } = require('./services/intelligence/network-dashboard-processor');
+const { createNetworkEvidenceStore } = require('./services/intelligence/network-evidence-store');
+const { createNetworkEvidenceAutomation } = require('./services/intelligence/network-evidence-automation');
 const { createStackCTRLServerAutomation } = require('./services/intelligence/server-automation');
 const { createAdminIntelligenceService } = require('./services/admin-intelligence');
 const { createEnterpriseIntelligenceService } = require('./services/enterprise-intelligence');
@@ -63,8 +69,12 @@ const authMethodsCache = new Map();
 const AUTH_METHODS_CACHE_TTL_MS = 5 * 60 * 1000;
 let identityEvidenceService = null;
 let deviceEvidenceService = null;
+let emailEvidenceService = null;
+let networkEvidenceService = null;
 const identityEvidenceCollectionPromises = new Map();
 const deviceEvidenceCollectionPromises = new Map();
+const emailEvidenceCollectionPromises = new Map();
+const networkEvidenceCollectionPromises = new Map();
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -2491,6 +2501,22 @@ const authenticateToken = (req, res, next) => {
 app.get('/api/cloudflare/network-security/summary', authenticateToken, async (req, res) => {
     try {
         const summary = await getCloudflareNetworkSecuritySummary({ getSecret });
+        const tenant = getTenantByEmail(req.user?.email);
+        if (networkEvidenceService && tenant?.companyId) {
+            const dashboardPayload = buildNetworkDashboardPayload({
+                tenantKey: tenant.clientId || 'sunbird',
+                payload: summary
+            });
+            networkEvidenceService.persistProcessedEvidence({
+                companyId: tenant.companyId,
+                tenantKey: tenant.clientId || 'sunbird',
+                payload: dashboardPayload,
+                collectionTrigger: 'dashboard_request',
+                sourceEndpoint: '/api/cloudflare/network-security/summary'
+            }).catch(error => {
+                console.warn('[Network Evidence] Dashboard response could not be stored:', error.message);
+            });
+        }
         res.json(summary);
     } catch (error) {
         const statusCode = error.statusCode || 500;
@@ -10512,6 +10538,22 @@ app.get('/api/email-security', authenticateToken, async (req, res) => {
         const payload = await fetchEmailSecurityPayloadFromApi();
         console.log(`[Email Security] Compiled: ${payload.alerts.length} email alerts, ${payload.incidents.length} incidents, ${payload.summary.affectedUsersCount} affected users`);
 
+        if (emailEvidenceService && tenant.companyId) {
+            const dashboardPayload = buildEmailDashboardPayload({
+                tenantKey: tenant.clientId || 'sunbird',
+                payload
+            });
+            emailEvidenceService.persistProcessedEvidence({
+                companyId: tenant.companyId,
+                tenantKey: tenant.clientId || 'sunbird',
+                payload: dashboardPayload,
+                collectionTrigger: 'dashboard_request',
+                sourceEndpoint: '/api/email-security'
+            }).catch(error => {
+                console.warn('[Email Evidence] Dashboard response could not be stored:', error.message);
+            });
+        }
+
         res.json({
             ...payload,
             tenant: tenant.clientId,
@@ -10816,6 +10858,155 @@ async function collectDeviceEvidenceForConfiguredTenants({ trigger = 'scheduled_
     return { companyCount: companies.length, results };
 }
 
+async function performEmailEvidenceCollection(companyId, collectionTrigger) {
+    if (!emailEvidenceService) throw new Error('Email evidence storage is not initialized');
+    const sourceEndpoint = 'Microsoft Graph processed by StackCTRL Email Security';
+    try {
+        const payload = await fetchEmailSecurityPayloadFromApi();
+        const dashboardPayload = buildEmailDashboardPayload({
+            tenantKey: 'sunbird',
+            payload
+        });
+        await pool.query(
+            `REPLACE INTO EmailMetricsCache
+             (CompanyID, ActiveThreats, HighSeverity, UsersTargeted, OpenIncidents, LastUpdated)
+             VALUES (?, ?, ?, ?, ?, NOW())`,
+            [
+                companyId,
+                dashboardPayload.summary.activeThreats || 0,
+                dashboardPayload.summary.highSeverityAlerts || 0,
+                dashboardPayload.summary.affectedUsersCount || 0,
+                dashboardPayload.summary.activeIncidents || 0
+            ]
+        );
+        await pool.query(
+            `REPLACE INTO EmailSecurityPayloadCache (CompanyID, Payload, LastUpdated)
+             VALUES (?, ?, NOW())`,
+            [companyId, JSON.stringify(dashboardPayload)]
+        );
+        return emailEvidenceService.persistProcessedEvidence({
+            companyId,
+            tenantKey: 'sunbird',
+            payload: dashboardPayload,
+            collectionTrigger,
+            sourceEndpoint
+        });
+    } catch (error) {
+        console.error(`[Email Evidence] Collection failed for CompanyID ${companyId}: ${error.message}`);
+        await emailEvidenceService.recordCollectionFailure({
+            companyId,
+            tenantKey: 'sunbird',
+            collectionTrigger,
+            sourceEndpoint,
+            error
+        }).catch(auditError => {
+            console.warn('[Email Evidence] Collection failure could not be audited:', auditError.message);
+        });
+        throw error;
+    }
+}
+
+async function collectAndPersistEmailEvidence(companyId, collectionTrigger = 'scheduled_hourly') {
+    const key = String(companyId);
+    const existing = emailEvidenceCollectionPromises.get(key);
+    if (existing) return existing;
+    const collection = performEmailEvidenceCollection(companyId, collectionTrigger);
+    emailEvidenceCollectionPromises.set(key, collection);
+    try {
+        return await collection;
+    } finally {
+        if (emailEvidenceCollectionPromises.get(key) === collection) emailEvidenceCollectionPromises.delete(key);
+    }
+}
+
+async function collectEmailEvidenceForConfiguredTenants({ trigger = 'scheduled_hourly' } = {}) {
+    const [companies] = await pool.query(
+        `SELECT DISTINCT company.ID AS CompanyID, company.CompanyName
+         FROM Companies company
+         LEFT JOIN StackCTRLClientCapabilities capability
+           ON capability.CompanyID = company.ID
+          AND capability.SourceKey = 'email_security'
+         WHERE LOWER(company.CompanyName) LIKE '%sunbird%'
+            OR (capability.ProfileKey = 'sunbird' AND capability.IsExpected = 1 AND capability.IsEnabled = 1)`
+    );
+    const results = [];
+    for (const company of companies) {
+        try {
+            results.push(await collectAndPersistEmailEvidence(company.CompanyID, trigger));
+        } catch (error) {
+            console.error(`[Email Evidence] Company ${company.CompanyID} collection failed:`, error.message);
+            results.push({ companyId: company.CompanyID, status: 'failed', message: error.message });
+        }
+    }
+    return { companyCount: companies.length, results };
+}
+
+async function performNetworkEvidenceCollection(companyId, collectionTrigger) {
+    if (!networkEvidenceService) throw new Error('Network evidence storage is not initialized');
+    const sourceEndpoint = 'Cloudflare Zero Trust processed by StackCTRL Network Security';
+    try {
+        const summary = await getCloudflareNetworkSecuritySummary({ getSecret });
+        const dashboardPayload = buildNetworkDashboardPayload({
+            tenantKey: 'sunbird',
+            payload: summary
+        });
+        return networkEvidenceService.persistProcessedEvidence({
+            companyId,
+            tenantKey: 'sunbird',
+            payload: dashboardPayload,
+            collectionTrigger,
+            sourceEndpoint
+        });
+    } catch (error) {
+        console.error(`[Network Evidence] Collection failed for CompanyID ${companyId}: ${error.message}`);
+        await networkEvidenceService.recordCollectionFailure({
+            companyId,
+            tenantKey: 'sunbird',
+            collectionTrigger,
+            sourceEndpoint,
+            error
+        }).catch(auditError => {
+            console.warn('[Network Evidence] Collection failure could not be audited:', auditError.message);
+        });
+        throw error;
+    }
+}
+
+async function collectAndPersistNetworkEvidence(companyId, collectionTrigger = 'scheduled_hourly') {
+    const key = String(companyId);
+    const existing = networkEvidenceCollectionPromises.get(key);
+    if (existing) return existing;
+    const collection = performNetworkEvidenceCollection(companyId, collectionTrigger);
+    networkEvidenceCollectionPromises.set(key, collection);
+    try {
+        return await collection;
+    } finally {
+        if (networkEvidenceCollectionPromises.get(key) === collection) networkEvidenceCollectionPromises.delete(key);
+    }
+}
+
+async function collectNetworkEvidenceForConfiguredTenants({ trigger = 'scheduled_hourly' } = {}) {
+    const [companies] = await pool.query(
+        `SELECT DISTINCT company.ID AS CompanyID, company.CompanyName
+         FROM Companies company
+         LEFT JOIN StackCTRLClientCapabilities capability
+           ON capability.CompanyID = company.ID
+          AND capability.SourceKey = 'cloudflare_network_security'
+         WHERE LOWER(company.CompanyName) LIKE '%sunbird%'
+            OR (capability.ProfileKey = 'sunbird' AND capability.IsExpected = 1 AND capability.IsEnabled = 1)`
+    );
+    const results = [];
+    for (const company of companies) {
+        try {
+            results.push(await collectAndPersistNetworkEvidence(company.CompanyID, trigger));
+        } catch (error) {
+            console.error(`[Network Evidence] Company ${company.CompanyID} collection failed:`, error.message);
+            results.push({ companyId: company.CompanyID, status: 'failed', message: error.message });
+        }
+    }
+    return { companyCount: companies.length, results };
+}
+
 async function refreshStackCTRLIntelligenceSource(sourceKey, companyId) {
     switch (sourceKey) {
         case 'identity': {
@@ -10976,8 +11167,19 @@ async function refreshStackCTRLIntelligenceSource(sourceKey, companyId) {
             };
         }
         case 'email_security': {
-            const token = await getMicrosoftGraphTokenForCompany(companyId);
-            const payload = await fetchEmailSecurityPayloadFromApi(token);
+            if (emailEvidenceService) {
+                try {
+                    await collectAndPersistEmailEvidence(companyId, 'enterprise_refresh');
+                    return null;
+                } catch (error) {
+                    const refreshError = new Error(`Email evidence refresh failed: ${error.message}`);
+                    refreshError.statusCode = error.statusCode || 500;
+                    refreshError.isRefreshError = true;
+                    refreshError.sourceKey = 'email_security';
+                    throw refreshError;
+                }
+            }
+            const payload = await fetchEmailSecurityPayloadFromApi();
             const metrics = {
                 activeThreats: payload.summary?.activeThreats || 0,
                 highSeverity: payload.summary?.highSeverityAlerts || 0,
@@ -11037,19 +11239,19 @@ async function refreshStackCTRLIntelligenceSource(sourceKey, companyId) {
             return null;
         }
         case 'cloudflare_network_security': {
-            const [rows] = await pool.query(
-                `SELECT ConfigurationJson FROM StackCTRLClientCapabilities
-                 WHERE CompanyID = ? AND SourceKey = 'cloudflare_network_security'
-                 LIMIT 1`,
-                [companyId]
-            );
-            const configuration = parseReportJson(rows[0]?.ConfigurationJson, {});
-            const accountId = configuration.accountId ||
-                (configuration.accountIdSecret ? await getSecret(configuration.accountIdSecret) : null);
-            const apiToken = configuration.apiTokenSecret
-                ? await getSecret(configuration.apiTokenSecret)
-                : null;
-            return getCloudflareNetworkSecuritySummary({ getSecret, accountId, apiToken });
+            if (networkEvidenceService) {
+                try {
+                    await collectAndPersistNetworkEvidence(companyId, 'enterprise_refresh');
+                    return null;
+                } catch (error) {
+                    const refreshError = new Error(`Network evidence refresh failed: ${error.message}`);
+                    refreshError.statusCode = error.statusCode || 500;
+                    refreshError.isRefreshError = true;
+                    refreshError.sourceKey = 'cloudflare_network_security';
+                    throw refreshError;
+                }
+            }
+            return getCloudflareNetworkSecuritySummary({ getSecret });
         }
         case 'duo_licences':
             await syncDuoData();
@@ -11097,6 +11299,36 @@ const deviceEvidenceAutomation = createDeviceEvidenceAutomation({
     enabled: !['false', '0', 'no'].includes(String(process.env.DEVICE_EVIDENCE_COLLECTION_ENABLED || 'true').toLowerCase()),
     intervalMs: process.env.DEVICE_EVIDENCE_COLLECTION_INTERVAL_MS || (30 * 60 * 1000),
     startupDelayMs: process.env.DEVICE_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (30 * 1000)
+});
+emailEvidenceService = createEmailEvidenceStore({ pool });
+const emailEvidenceSchemaReady = emailEvidenceService.ensureSchema().catch(error => {
+    console.error('[Email Evidence] Schema initialization failed:', error.message);
+    return { error };
+});
+const emailEvidenceAutomation = createEmailEvidenceAutomation({
+    collectAll: async options => {
+        const schema = await emailEvidenceSchemaReady;
+        if (schema?.error) throw schema.error;
+        return collectEmailEvidenceForConfiguredTenants(options);
+    },
+    enabled: !['false', '0', 'no'].includes(String(process.env.EMAIL_EVIDENCE_COLLECTION_ENABLED || 'true').toLowerCase()),
+    intervalMs: process.env.EMAIL_EVIDENCE_COLLECTION_INTERVAL_MS || (60 * 60 * 1000),
+    startupDelayMs: process.env.EMAIL_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (45 * 1000)
+});
+networkEvidenceService = createNetworkEvidenceStore({ pool });
+const networkEvidenceSchemaReady = networkEvidenceService.ensureSchema().catch(error => {
+    console.error('[Network Evidence] Schema initialization failed:', error.message);
+    return { error };
+});
+const networkEvidenceAutomation = createNetworkEvidenceAutomation({
+    collectAll: async options => {
+        const schema = await networkEvidenceSchemaReady;
+        if (schema?.error) throw schema.error;
+        return collectNetworkEvidenceForConfiguredTenants(options);
+    },
+    enabled: !['false', '0', 'no'].includes(String(process.env.NETWORK_EVIDENCE_COLLECTION_ENABLED || 'true').toLowerCase()),
+    intervalMs: process.env.NETWORK_EVIDENCE_COLLECTION_INTERVAL_MS || (60 * 60 * 1000),
+    startupDelayMs: process.env.NETWORK_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (60 * 1000)
 });
 const stackCTRLIntelligenceService = createStackCTRLIntelligenceService({
     pool,
@@ -12195,6 +12427,8 @@ process.on('unhandledRejection', (reason, promise) => {
 const server = app.listen(PORT, async () => {
     identityEvidenceAutomation.start();
     deviceEvidenceAutomation.start();
+    emailEvidenceAutomation.start();
+    networkEvidenceAutomation.start();
     // StackCTRL automation runs inside this server and uses database deduplication across instances.
     stackCTRLIntelligenceAutomation.start();
     // Enterprise reporting runs separately because domain batches may take much longer than compact intelligence.
@@ -12218,6 +12452,8 @@ function stopServer(signal) {
     console.log(`[StackCTRL] ${signal} received. Stopping server automation.`);
     identityEvidenceAutomation.stop();
     deviceEvidenceAutomation.stop();
+    emailEvidenceAutomation.stop();
+    networkEvidenceAutomation.stop();
     stackCTRLIntelligenceAutomation.stop();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(1), 10000).unref();

@@ -215,8 +215,11 @@ async function collectSource(context, definition) {
             lastUpdated: freshness.lastUpdated,
             ageMinutes: freshness.ageMinutes
         },
-        credentialSource: capability.sourceKey === 'identity' || capability.sourceKey === 'devices' ? 'environment' : 'database',
-        credentialPath: capability.sourceKey === 'identity' || capability.sourceKey === 'devices'
+        credentialSource: ['identity', 'devices', 'email_security'].includes(capability.sourceKey)
+            || capability.sourceKey === 'cloudflare_network_security' ? 'environment' : 'database',
+        credentialPath: capability.sourceKey === 'cloudflare_network_security'
+            ? 'CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN (Azure Key Vault, shared with dashboard)'
+            : ['identity', 'devices', 'email_security'].includes(capability.sourceKey)
             ? 'MICROSOFT_CLIENT_SECRET (Azure Key Vault, shared with dashboard)'
             : 'CompanyMicrosoftMapping (per-company database)',
         refreshFailed,
@@ -474,8 +477,100 @@ const definitions = {
         evidence: records => records
     },
     email_security: {
-        table: 'EmailMetricsCache, EmailSecurityPayloadCache',
-        async load(pool, companyId) {
+        table: 'StackCTRLEmailEvidenceSnapshots, StackCTRLEmailEvidence',
+        refreshWhenMissing: true,
+        async load(pool, companyId, capability) {
+            const tenant = await queryRows(pool, `SELECT mt.ID AS MicrosoftTenantID, mt.TenantName, mt.TenantID
+                                                  FROM CompanyMicrosoftMapping cm
+                                                  INNER JOIN MicrosoftTenants mt ON mt.ID = cm.MicrosoftTenantID
+                                                  WHERE cm.CompanyID = ? AND cm.IsActive = 1 LIMIT 1`, [companyId]);
+            if (capability?.profileKey === 'sunbird') {
+                const snapshots = await queryRows(
+                    pool,
+                    `SELECT * FROM StackCTRLEmailEvidenceSnapshots
+                     WHERE CompanyID = ? AND IsComplete = 1 AND CollectionStatus = 'complete'
+                     ORDER BY CollectedAt DESC, ID DESC LIMIT 1`,
+                    [companyId]
+                );
+                const snapshot = snapshots[0];
+                if (!snapshot) {
+                    return {
+                        records: [],
+                        notConfigured: !tenant.length,
+                        metrics: {},
+                        dashboardSourceMetrics: {},
+                        sourceLineage: {
+                            sourceKey: 'email_security',
+                            sourceBuilder: 'storedStackCTRLEmailEvidence',
+                            sourceLayer: 'StackCTRLEmailEvidenceSnapshots',
+                            collectionStatus: 'missing'
+                        },
+                        evidence: [],
+                        warnings: ['No complete StackCTRL Email Security evidence snapshot is available. Azure analysis is blocked until collection succeeds.'],
+                        rawReference: { table: this.table, recordId: null }
+                    };
+                }
+                const evidenceRows = await queryRows(
+                    pool,
+                    `SELECT * FROM StackCTRLEmailEvidence WHERE SnapshotID = ? ORDER BY ID`,
+                    [snapshot.ID]
+                );
+                if (evidenceRows.length !== Number(snapshot.EvidenceRecordCount)) {
+                    return {
+                        records: [],
+                        notConfigured: !tenant.length,
+                        metrics: {},
+                        dashboardSourceMetrics: {},
+                        sourceLineage: {
+                            sourceKey: 'email_security',
+                            sourceBuilder: 'storedStackCTRLEmailEvidence',
+                            sourceLayer: 'StackCTRLEmailEvidenceSnapshots',
+                            evidenceSnapshotId: snapshot.ID,
+                            collectionStatus: 'incomplete'
+                        },
+                        evidence: [],
+                        warnings: [`Email evidence snapshot ${snapshot.ID} expected ${snapshot.EvidenceRecordCount} rows but ${evidenceRows.length} were stored. Azure analysis is blocked.`],
+                        rawReference: { table: this.table, recordId: snapshot.ID }
+                    };
+                }
+                const dashboardMetrics = snapshot.DashboardMetricsJson || {};
+                const alerts = [];
+                const incidents = [];
+                const mailActivityUsers = [];
+                evidenceRows.forEach(row => {
+                    const item = row.ProcessedEvidenceJson || {};
+                    if (row.EvidenceKind === 'alert') alerts.push(item);
+                    else if (row.EvidenceKind === 'incident') incidents.push(item);
+                    else if (row.EvidenceKind === 'mail_activity') mailActivityUsers.push(item);
+                });
+                return {
+                    records: snapshots,
+                    notConfigured: !tenant.length,
+                    metrics: dashboardMetrics,
+                    dashboardSourceMetrics: dashboardMetrics,
+                    sourceLineage: {
+                        sourceKey: 'email_security',
+                        sourceBuilder: 'storedStackCTRLEmailEvidence',
+                        sourceLayer: 'StackCTRLEmailEvidenceSnapshots + StackCTRLEmailEvidence',
+                        evidenceSnapshotId: snapshot.ID,
+                        collectedAt: snapshot.CollectedAt,
+                        sourceFetchedAt: snapshot.SourceFetchedAt,
+                        sourceEndpoint: snapshot.SourceEndpoint,
+                        collectionTrigger: snapshot.CollectionTrigger,
+                        collectionStatus: snapshot.CollectionStatus,
+                        isComplete: Boolean(Number(snapshot.IsComplete)),
+                        evidenceRecordCount: Number(snapshot.EvidenceRecordCount),
+                        omittedRecordCount: Number(snapshot.OmittedRecordCount)
+                    },
+                    evidence: [
+                        { evidenceType: 'alerts', data: alerts },
+                        { evidenceType: 'incidents', data: incidents },
+                        { evidenceType: 'mailActivityUsers', data: mailActivityUsers }
+                    ],
+                    warnings: [],
+                    rawReference: { table: this.table, recordId: snapshot.ID }
+                };
+            }
             const [metrics, payloadRows, configured] = await Promise.all([
                 queryRows(pool, 'SELECT * FROM EmailMetricsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
                 queryRows(pool, 'SELECT * FROM EmailSecurityPayloadCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
@@ -488,6 +583,9 @@ const definitions = {
                 metrics: metrics[0] ? primitiveMetrics(metrics[0]) : summaryMetrics(payload),
                 evidence: payload ? [payload] : []
             };
+        },
+        fromRefresh(refreshed, stored) {
+            return stored;
         },
         metrics: records => primitiveMetrics(records[0]),
         evidence: records => records
@@ -541,11 +639,100 @@ const definitions = {
     compliance: payloadDefinition('SunbirdComplianceControlsCache'),
     operations: payloadDefinition('SunbirdOperationsPayloadCache'),
     cloudflare_network_security: {
-        table: 'StackCTRLTenantEvidenceSnapshots',
+        table: 'StackCTRLNetworkEvidenceSnapshots, StackCTRLNetworkEvidence',
         refreshWhenMissing: true,
-        continueWhenStoredEvidenceFails: true,
-        async load(pool, companyId) {
-            // We read only the latest Cloudflare metrics. Full snapshot JSON is not loaded or sorted.
+        async load(pool, companyId, capability) {
+            if (capability?.profileKey === 'sunbird') {
+                const snapshots = await queryRows(
+                    pool,
+                    `SELECT * FROM StackCTRLNetworkEvidenceSnapshots
+                     WHERE CompanyID = ? AND IsComplete = 1 AND CollectionStatus = 'complete'
+                     ORDER BY CollectedAt DESC, ID DESC LIMIT 1`,
+                    [companyId]
+                );
+                const snapshot = snapshots[0];
+                if (!snapshot) {
+                    return {
+                        records: [],
+                        notConfigured: false,
+                        metrics: {},
+                        dashboardSourceMetrics: {},
+                        sourceLineage: {
+                            sourceKey: 'cloudflare_network_security',
+                            sourceBuilder: 'storedStackCTRLNetworkEvidence',
+                            sourceLayer: 'StackCTRLNetworkEvidenceSnapshots',
+                            collectionStatus: 'missing'
+                        },
+                        evidence: [],
+                        warnings: ['No complete StackCTRL Network Security evidence snapshot is available. Azure analysis is blocked until collection succeeds.'],
+                        rawReference: { table: this.table, recordId: null }
+                    };
+                }
+                const evidenceRows = await queryRows(
+                    pool,
+                    `SELECT * FROM StackCTRLNetworkEvidence WHERE SnapshotID = ? ORDER BY ID`,
+                    [snapshot.ID]
+                );
+                if (evidenceRows.length !== Number(snapshot.EvidenceRecordCount)) {
+                    return {
+                        records: [],
+                        notConfigured: false,
+                        metrics: {},
+                        dashboardSourceMetrics: {},
+                        sourceLineage: {
+                            sourceKey: 'cloudflare_network_security',
+                            sourceBuilder: 'storedStackCTRLNetworkEvidence',
+                            sourceLayer: 'StackCTRLNetworkEvidenceSnapshots',
+                            evidenceSnapshotId: snapshot.ID,
+                            collectionStatus: 'incomplete'
+                        },
+                        evidence: [],
+                        warnings: [`Network evidence snapshot ${snapshot.ID} expected ${snapshot.EvidenceRecordCount} rows but ${evidenceRows.length} were stored. Azure analysis is blocked.`],
+                        rawReference: { table: this.table, recordId: snapshot.ID }
+                    };
+                }
+                const dashboardMetrics = snapshot.DashboardMetricsJson || {};
+                const grouped = {
+                    accessApps: [],
+                    devices: [],
+                    gatewayRules: [],
+                    accessLogs: [],
+                    dlpProfiles: [],
+                    warpProfiles: []
+                };
+                evidenceRows.forEach(row => {
+                    const item = row.ProcessedEvidenceJson || {};
+                    if (row.EvidenceKind === 'access_app') grouped.accessApps.push(item);
+                    else if (row.EvidenceKind === 'device') grouped.devices.push(item);
+                    else if (row.EvidenceKind === 'gateway_rule') grouped.gatewayRules.push(item);
+                    else if (row.EvidenceKind === 'access_log') grouped.accessLogs.push(item);
+                    else if (row.EvidenceKind === 'dlp_profile') grouped.dlpProfiles.push(item);
+                    else if (row.EvidenceKind === 'warp_profile') grouped.warpProfiles.push(item);
+                });
+                return {
+                    records: snapshots,
+                    notConfigured: false,
+                    metrics: dashboardMetrics,
+                    dashboardSourceMetrics: dashboardMetrics,
+                    sourceLineage: {
+                        sourceKey: 'cloudflare_network_security',
+                        sourceBuilder: 'storedStackCTRLNetworkEvidence',
+                        sourceLayer: 'StackCTRLNetworkEvidenceSnapshots + StackCTRLNetworkEvidence',
+                        evidenceSnapshotId: snapshot.ID,
+                        collectedAt: snapshot.CollectedAt,
+                        sourceFetchedAt: snapshot.SourceFetchedAt,
+                        sourceEndpoint: snapshot.SourceEndpoint,
+                        collectionTrigger: snapshot.CollectionTrigger,
+                        collectionStatus: snapshot.CollectionStatus,
+                        isComplete: Boolean(Number(snapshot.IsComplete)),
+                        evidenceRecordCount: Number(snapshot.EvidenceRecordCount),
+                        omittedRecordCount: Number(snapshot.OmittedRecordCount)
+                    },
+                    evidence: Object.entries(grouped).map(([evidenceType, data]) => ({ evidenceType, data })),
+                    warnings: [],
+                    rawReference: { table: this.table, recordId: snapshot.ID }
+                };
+            }
             const rows = await queryRows(
                 pool,
                 `SELECT snapshot.ID, snapshot.CreatedAt,
@@ -575,20 +762,11 @@ const definitions = {
                     evidenceType: 'cached_cloudflare_metrics',
                     data: metrics
                 }],
-                rawReference: { table: this.table, recordId: snapshot.ID }
+                rawReference: { table: 'StackCTRLTenantEvidenceSnapshots', recordId: snapshot.ID }
             };
         },
-        fromRefresh(refreshed) {
-            const payload = refreshed.payload || refreshed;
-            const deniedAccessEvents = Array.isArray(payload.accessLogs)
-                ? payload.accessLogs.filter(event => /block|deny|fail/i.test(String(event.action || event.status || ''))).length
-                : 0;
-            return {
-                records: [{ ...payload, LastUpdated: payload.fetchedAt || new Date().toISOString() }],
-                metrics: { ...summaryMetrics(payload), deniedAccessEvents },
-                evidence: [payload],
-                rawReference: { table: 'StackCTRLTenantEvidenceSnapshots', recordId: null }
-            };
+        fromRefresh(refreshed, stored) {
+            return stored;
         },
         metrics: records => summaryMetrics(records[0]),
         evidence: records => records
