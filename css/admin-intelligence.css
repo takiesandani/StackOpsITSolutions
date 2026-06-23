@@ -12,7 +12,10 @@
     --intel-red: #ff6577;
     --intel-muted: #8391a7;
     --intel-text: #edf5ff;
+    --intel-header-height: 80px;
 }
+
+html { scroll-padding-top: calc(var(--intel-header-height) + 18px); }
 
 body.intelligence-admin-page {
     min-height: 100vh;
@@ -70,11 +73,19 @@ body.intelligence-admin-page.is-guarded .site-header {
     box-shadow: 0 0 14px var(--intel-blue);
 }
 
-.intelligence-shell { padding-top: 78px; }
+.intelligence-shell {
+    margin-top: var(--intel-header-height);
+    min-height: calc(100vh - var(--intel-header-height));
+    padding-top: 0;
+}
 .intelligence-main { min-width: 0; padding: 32px clamp(18px, 3vw, 48px) 72px; }
 .intelligence-main > section { max-width: 1680px; margin-left: auto; margin-right: auto; }
+.intelligence-main > section,
+#enterprise-lineage-comparison { scroll-margin-top: calc(var(--intel-header-height) + 18px); }
 
 .intelligence-admin-page .admin-sidebar {
+    top: var(--intel-header-height);
+    height: calc(100vh - var(--intel-header-height));
     background: rgba(5, 10, 18, .78);
     border-right: 1px solid var(--intel-line);
     backdrop-filter: blur(24px);
@@ -341,17 +352,18 @@ body.intelligence-admin-page.is-guarded .site-header {
 .preview-card p { margin: 6px 0 0; color: #8292a7; font-size: 9px; line-height: 1.55; }
 .preview-card small { display: block; margin-top: 7px; color: #5f7188; font-size: 8px; }
 
-.json-modal { position: fixed; inset: 0; z-index: 3000; display: none; place-items: center; padding: 22px; }
+.intelligence-admin-page.json-modal-open { overflow: hidden; }
+.json-modal { position: fixed; inset: 0; z-index: 3000; display: none; place-items: start center; padding: calc(var(--intel-header-height) + 16px) 22px 22px; }
 .json-modal.open { display: grid; }
 .modal-backdrop { position: absolute; inset: 0; width: 100%; border: 0; background: rgba(1,4,9,.8); backdrop-filter: blur(10px); }
-.json-modal-panel { position: relative; display: flex; flex-direction: column; width: min(980px, 100%); max-height: 88vh; border: 1px solid rgba(52,151,255,.28); border-radius: 20px; background: #07101d; box-shadow: 0 30px 100px rgba(0,0,0,.55); overflow: hidden; }
+.json-modal-panel { position: relative; display: flex; flex-direction: column; width: min(980px, 100%); max-height: calc(100dvh - var(--intel-header-height) - 38px); border: 1px solid rgba(52,151,255,.28); border-radius: 20px; background: #07101d; box-shadow: 0 30px 100px rgba(0,0,0,.55); overflow: hidden; }
 .json-modal-panel header { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; padding: 16px 20px; border-bottom: 1px solid var(--intel-line); }
 .json-modal-heading { display: grid; gap: 2px; min-width: 0; }
 .json-modal-panel header span { color: var(--intel-blue); font-size: 8px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
 .json-modal-panel h2 { margin: 0; font-size: 16px; line-height: 1.25; }
 .json-modal-subtitle { margin: 4px 0 0; color: #7f93ab; font-size: 10px; line-height: 1.45; }
 .json-modal-panel header button { width: 36px; height: 36px; color: #9aabc0; border: 1px solid var(--intel-line); border-radius: 10px; background: rgba(255,255,255,.03); cursor: pointer; flex: 0 0 auto; }
-.json-modal-panel pre { overflow: auto; margin: 0; padding: 16px 20px 20px; color: #abd8ff; font: 11px/1.7 Consolas, Monaco, monospace; white-space: pre-wrap; word-break: break-word; }
+.json-modal-panel pre { min-height: 0; overflow: auto; margin: 0; padding: 16px 20px 20px; color: #abd8ff; font: 11px/1.7 Consolas, Monaco, monospace; white-space: pre-wrap; word-break: break-word; }
 .enterprise-lineage td { vertical-align: top; white-space: pre-wrap; word-break: break-word; font-size: 10px; line-height: 1.45; }
 #enterprise-audit-subtitle { margin: 4px 0 0; color: #7f93ab; font-size: 11px; line-height: 1.45; max-width: 760px; }
 .toast-stack { position: fixed; right: 22px; bottom: 22px; z-index: 4000; display: grid; gap: 8px; }
@@ -388,6 +400,8 @@ body.intelligence-admin-page.is-guarded .site-header {
 
 @media (max-width: 600px) {
     .intelligence-main { padding: 22px 12px 60px; }
+    .json-modal { padding: calc(var(--intel-header-height) + 8px) 8px 8px; }
+    .json-modal-panel { max-height: calc(100dvh - var(--intel-header-height) - 16px); border-radius: 12px; }
     .hero-copy h1 { font-size: 34px; }
     .bridge-flow { grid-template-columns: 1fr; padding: 14px; }
     .system-status-grid,.snapshot-summary { grid-template-columns: 1fr 1fr; }

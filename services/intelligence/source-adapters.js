@@ -215,11 +215,11 @@ async function collectSource(context, definition) {
             lastUpdated: freshness.lastUpdated,
             ageMinutes: freshness.ageMinutes
         },
-        credentialSource: ['identity', 'devices', 'email_security'].includes(capability.sourceKey)
+        credentialSource: ['identity', 'devices', 'email_security', 'security_alerts', 'backup', 'applications'].includes(capability.sourceKey)
             || capability.sourceKey === 'cloudflare_network_security' ? 'environment' : 'database',
         credentialPath: capability.sourceKey === 'cloudflare_network_security'
             ? 'CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN (Azure Key Vault, shared with dashboard)'
-            : ['identity', 'devices', 'email_security'].includes(capability.sourceKey)
+            : ['identity', 'devices', 'email_security', 'security_alerts', 'backup', 'applications'].includes(capability.sourceKey)
             ? 'MICROSOFT_CLIENT_SECRET (Azure Key Vault, shared with dashboard)'
             : 'CompanyMicrosoftMapping (per-company database)',
         refreshFailed,
@@ -591,47 +591,84 @@ const definitions = {
         evidence: records => records
     },
     security_alerts: {
-        table: 'SecurityEventsPayloadCache',
-        async load(pool, companyId) {
-            const [records, configured] = await Promise.all([
-                queryRows(pool, 'SELECT * FROM SecurityEventsPayloadCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
-                hasActiveMicrosoftTenant(pool, companyId)
-            ]);
+        table: 'StackCTRLSecurityEvidenceSnapshots, StackCTRLSecurityEvidence',
+        refreshWhenMissing: true,
+        async load(pool, companyId, capability) {
+            const tenant = await queryRows(pool, `SELECT mt.ID AS MicrosoftTenantID FROM CompanyMicrosoftMapping cm INNER JOIN MicrosoftTenants mt ON mt.ID = cm.MicrosoftTenantID WHERE cm.CompanyID = ? AND cm.IsActive = 1 LIMIT 1`, [companyId]);
+            if (capability?.profileKey === 'sunbird') {
+                const snapshots = await queryRows(pool, `SELECT * FROM StackCTRLSecurityEvidenceSnapshots WHERE CompanyID = ? AND IsComplete = 1 AND CollectionStatus = 'complete' ORDER BY CollectedAt DESC, ID DESC LIMIT 1`, [companyId]);
+                const snapshot = snapshots[0];
+                if (!snapshot) return { records: [], notConfigured: !tenant.length, metrics: {}, dashboardSourceMetrics: {}, sourceLineage: { sourceKey: 'security_alerts', sourceBuilder: 'storedStackCTRLSecurityEvidence', sourceLayer: 'StackCTRLSecurityEvidenceSnapshots', collectionStatus: 'missing' }, evidence: [], warnings: ['No complete StackCTRL Security Alerts evidence snapshot is available. Azure analysis is blocked until collection succeeds.'], rawReference: { table: this.table, recordId: null } };
+                const evidenceRows = await queryRows(pool, `SELECT * FROM StackCTRLSecurityEvidence WHERE SnapshotID = ? ORDER BY ID`, [snapshot.ID]);
+                if (evidenceRows.length !== Number(snapshot.EvidenceRecordCount)) return { records: [], notConfigured: !tenant.length, metrics: {}, dashboardSourceMetrics: {}, sourceLineage: { sourceKey: 'security_alerts', sourceBuilder: 'storedStackCTRLSecurityEvidence', evidenceSnapshotId: snapshot.ID, collectionStatus: 'incomplete' }, evidence: [], warnings: [`Security evidence snapshot ${snapshot.ID} expected ${snapshot.EvidenceRecordCount} rows but ${evidenceRows.length} were stored. Azure analysis is blocked.`], rawReference: { table: this.table, recordId: snapshot.ID } };
+                const grouped = { alerts: [], incidents: [], signIns: [], threatIndicators: [] };
+                evidenceRows.forEach(row => {
+                    const item = row.ProcessedEvidenceJson || {};
+                    if (row.EvidenceKind === 'alert') grouped.alerts.push(item);
+                    else if (row.EvidenceKind === 'incident') grouped.incidents.push(item);
+                    else if (row.EvidenceKind === 'sign_in') grouped.signIns.push(item);
+                    else if (row.EvidenceKind === 'threat_indicator') grouped.threatIndicators.push(item);
+                });
+                const dashboardMetrics = snapshot.DashboardMetricsJson || {};
+                return { records: snapshots, notConfigured: !tenant.length, metrics: dashboardMetrics, dashboardSourceMetrics: dashboardMetrics, sourceLineage: { sourceKey: 'security_alerts', sourceBuilder: 'storedStackCTRLSecurityEvidence', sourceLayer: 'StackCTRLSecurityEvidenceSnapshots + StackCTRLSecurityEvidence', evidenceSnapshotId: snapshot.ID, collectedAt: snapshot.CollectedAt, sourceFetchedAt: snapshot.SourceFetchedAt, sourceEndpoint: snapshot.SourceEndpoint, collectionTrigger: snapshot.CollectionTrigger, collectionStatus: snapshot.CollectionStatus, isComplete: Boolean(Number(snapshot.IsComplete)), evidenceRecordCount: Number(snapshot.EvidenceRecordCount), omittedRecordCount: Number(snapshot.OmittedRecordCount) }, evidence: Object.entries(grouped).map(([evidenceType, data]) => ({ evidenceType, data })), warnings: [], rawReference: { table: this.table, recordId: snapshot.ID } };
+            }
+            const [records, configured] = await Promise.all([queryRows(pool, 'SELECT * FROM SecurityEventsPayloadCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]), hasActiveMicrosoftTenant(pool, companyId)]);
             const payload = extractPayload(records[0]);
             return { records, notConfigured: !configured, metrics: summaryMetrics(payload), evidence: payload ? [payload] : [] };
         },
+        fromRefresh(refreshed, stored) { return stored; },
         metrics: records => summaryMetrics(extractPayload(records[0])),
         evidence: records => records
     },
     backup: {
-        table: 'BackupRecoveryPayloadCache',
-        async load(pool, companyId) {
-            const [records, configured] = await Promise.all([
-                queryRows(pool, 'SELECT * FROM BackupRecoveryPayloadCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
-                hasActiveMicrosoftTenant(pool, companyId)
-            ]);
+        table: 'StackCTRLBackupEvidenceSnapshots, StackCTRLBackupEvidence',
+        refreshWhenMissing: true,
+        async load(pool, companyId, capability) {
+            const tenant = await queryRows(pool, `SELECT mt.ID AS MicrosoftTenantID FROM CompanyMicrosoftMapping cm INNER JOIN MicrosoftTenants mt ON mt.ID = cm.MicrosoftTenantID WHERE cm.CompanyID = ? AND cm.IsActive = 1 LIMIT 1`, [companyId]);
+            if (capability?.profileKey === 'sunbird') {
+                const snapshots = await queryRows(pool, `SELECT * FROM StackCTRLBackupEvidenceSnapshots WHERE CompanyID = ? AND IsComplete = 1 AND CollectionStatus = 'complete' ORDER BY CollectedAt DESC, ID DESC LIMIT 1`, [companyId]);
+                const snapshot = snapshots[0];
+                if (!snapshot) return { records: [], notConfigured: !tenant.length, metrics: {}, dashboardSourceMetrics: {}, sourceLineage: { sourceKey: 'backup', sourceBuilder: 'storedStackCTRLBackupEvidence', sourceLayer: 'StackCTRLBackupEvidenceSnapshots', collectionStatus: 'missing' }, evidence: [], warnings: ['No complete StackCTRL Backup and Recovery evidence snapshot is available. Azure analysis is blocked until collection succeeds.'], rawReference: { table: this.table, recordId: null } };
+                const evidenceRows = await queryRows(pool, `SELECT * FROM StackCTRLBackupEvidence WHERE SnapshotID = ? ORDER BY ID`, [snapshot.ID]);
+                if (evidenceRows.length !== Number(snapshot.EvidenceRecordCount)) return { records: [], notConfigured: !tenant.length, metrics: {}, dashboardSourceMetrics: {}, sourceLineage: { sourceKey: 'backup', sourceBuilder: 'storedStackCTRLBackupEvidence', evidenceSnapshotId: snapshot.ID, collectionStatus: 'incomplete' }, evidence: [], warnings: [`Backup evidence snapshot ${snapshot.ID} expected ${snapshot.EvidenceRecordCount} rows but ${evidenceRows.length} were stored. Azure analysis is blocked.`], rawReference: { table: this.table, recordId: snapshot.ID } };
+                const users = [];
+                const sites = [];
+                evidenceRows.forEach(row => {
+                    const item = row.ProcessedEvidenceJson || {};
+                    if (row.EvidenceKind === 'site') sites.push(item);
+                    else users.push(item);
+                });
+                const dashboardMetrics = snapshot.DashboardMetricsJson || {};
+                return { records: snapshots, notConfigured: !tenant.length, metrics: dashboardMetrics, dashboardSourceMetrics: dashboardMetrics, sourceLineage: { sourceKey: 'backup', sourceBuilder: 'storedStackCTRLBackupEvidence', sourceLayer: 'StackCTRLBackupEvidenceSnapshots + StackCTRLBackupEvidence', evidenceSnapshotId: snapshot.ID, collectedAt: snapshot.CollectedAt, sourceFetchedAt: snapshot.SourceFetchedAt, sourceEndpoint: snapshot.SourceEndpoint, collectionTrigger: snapshot.CollectionTrigger, collectionStatus: snapshot.CollectionStatus, isComplete: Boolean(Number(snapshot.IsComplete)), evidenceRecordCount: Number(snapshot.EvidenceRecordCount), omittedRecordCount: Number(snapshot.OmittedRecordCount) }, evidence: [{ evidenceType: 'users', data: users }, { evidenceType: 'sites', data: sites }], warnings: [], rawReference: { table: this.table, recordId: snapshot.ID } };
+            }
+            const [records, configured] = await Promise.all([queryRows(pool, 'SELECT * FROM BackupRecoveryPayloadCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]), hasActiveMicrosoftTenant(pool, companyId)]);
             const payload = extractPayload(records[0]);
             return { records, notConfigured: !configured, metrics: summaryMetrics(payload), evidence: payload ? [payload] : [] };
         },
+        fromRefresh(refreshed, stored) { return stored; },
         metrics: records => summaryMetrics(extractPayload(records[0])),
         evidence: records => records
     },
     applications: {
-        table: 'ApplicationMetricsCache, ApplicationPayloadCache',
-        async load(pool, companyId) {
-            const [metrics, payloadRows, configured] = await Promise.all([
-                queryRows(pool, 'SELECT * FROM ApplicationMetricsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
-                queryRows(pool, 'SELECT * FROM ApplicationPayloadCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
-                hasActiveMicrosoftTenant(pool, companyId)
-            ]);
+        table: 'StackCTRLApplicationsEvidenceSnapshots, StackCTRLApplicationsEvidence',
+        refreshWhenMissing: true,
+        async load(pool, companyId, capability) {
+            const tenant = await queryRows(pool, `SELECT mt.ID AS MicrosoftTenantID FROM CompanyMicrosoftMapping cm INNER JOIN MicrosoftTenants mt ON mt.ID = cm.MicrosoftTenantID WHERE cm.CompanyID = ? AND cm.IsActive = 1 LIMIT 1`, [companyId]);
+            if (capability?.profileKey === 'sunbird') {
+                const snapshots = await queryRows(pool, `SELECT * FROM StackCTRLApplicationsEvidenceSnapshots WHERE CompanyID = ? AND IsComplete = 1 AND CollectionStatus = 'complete' ORDER BY CollectedAt DESC, ID DESC LIMIT 1`, [companyId]);
+                const snapshot = snapshots[0];
+                if (!snapshot) return { records: [], notConfigured: !tenant.length, metrics: {}, dashboardSourceMetrics: {}, sourceLineage: { sourceKey: 'applications', sourceBuilder: 'storedStackCTRLApplicationsEvidence', sourceLayer: 'StackCTRLApplicationsEvidenceSnapshots', collectionStatus: 'missing' }, evidence: [], warnings: ['No complete StackCTRL Applications evidence snapshot is available. Azure analysis is blocked until collection succeeds.'], rawReference: { table: this.table, recordId: null } };
+                const evidenceRows = await queryRows(pool, `SELECT * FROM StackCTRLApplicationsEvidence WHERE SnapshotID = ? ORDER BY ID`, [snapshot.ID]);
+                if (evidenceRows.length !== Number(snapshot.EvidenceRecordCount)) return { records: [], notConfigured: !tenant.length, metrics: {}, dashboardSourceMetrics: {}, sourceLineage: { sourceKey: 'applications', sourceBuilder: 'storedStackCTRLApplicationsEvidence', evidenceSnapshotId: snapshot.ID, collectionStatus: 'incomplete' }, evidence: [], warnings: [`Applications evidence snapshot ${snapshot.ID} expected ${snapshot.EvidenceRecordCount} rows but ${evidenceRows.length} were stored. Azure analysis is blocked.`], rawReference: { table: this.table, recordId: snapshot.ID } };
+                const applications = evidenceRows.map(row => row.ProcessedEvidenceJson || {});
+                const dashboardMetrics = snapshot.DashboardMetricsJson || {};
+                return { records: snapshots, notConfigured: !tenant.length, metrics: dashboardMetrics, dashboardSourceMetrics: dashboardMetrics, sourceLineage: { sourceKey: 'applications', sourceBuilder: 'storedStackCTRLApplicationsEvidence', sourceLayer: 'StackCTRLApplicationsEvidenceSnapshots + StackCTRLApplicationsEvidence', evidenceSnapshotId: snapshot.ID, collectedAt: snapshot.CollectedAt, sourceFetchedAt: snapshot.SourceFetchedAt, sourceEndpoint: snapshot.SourceEndpoint, collectionTrigger: snapshot.CollectionTrigger, collectionStatus: snapshot.CollectionStatus, isComplete: Boolean(Number(snapshot.IsComplete)), evidenceRecordCount: Number(snapshot.EvidenceRecordCount), omittedRecordCount: Number(snapshot.OmittedRecordCount) }, evidence: [{ evidenceType: 'applications', data: applications }], warnings: [], rawReference: { table: this.table, recordId: snapshot.ID } };
+            }
+            const [metrics, payloadRows, configured] = await Promise.all([queryRows(pool, 'SELECT * FROM ApplicationMetricsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]), queryRows(pool, 'SELECT * FROM ApplicationPayloadCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]), hasActiveMicrosoftTenant(pool, companyId)]);
             const payload = extractPayload(payloadRows[0]);
-            return {
-                records: [...metrics, ...payloadRows],
-                notConfigured: !configured,
-                metrics: metrics[0] ? primitiveMetrics(metrics[0]) : summaryMetrics(payload),
-                evidence: payload ? [payload] : []
-            };
+            return { records: [...metrics, ...payloadRows], notConfigured: !configured, metrics: metrics[0] ? primitiveMetrics(metrics[0]) : summaryMetrics(payload), evidence: payload ? [payload] : [] };
         },
+        fromRefresh(refreshed, stored) { return stored; },
         metrics: records => primitiveMetrics(records[0]),
         evidence: records => records
     },

@@ -35,6 +35,15 @@ const { createEmailEvidenceAutomation } = require('./services/intelligence/email
 const { buildNetworkDashboardPayload } = require('./services/intelligence/network-dashboard-processor');
 const { createNetworkEvidenceStore } = require('./services/intelligence/network-evidence-store');
 const { createNetworkEvidenceAutomation } = require('./services/intelligence/network-evidence-automation');
+const { buildBackupDashboardPayload } = require('./services/intelligence/backup-dashboard-processor');
+const { createBackupEvidenceStore } = require('./services/intelligence/backup-evidence-store');
+const { createBackupEvidenceAutomation } = require('./services/intelligence/backup-evidence-automation');
+const { buildApplicationsDashboardPayload } = require('./services/intelligence/applications-dashboard-processor');
+const { createApplicationsEvidenceStore } = require('./services/intelligence/applications-evidence-store');
+const { createApplicationsEvidenceAutomation } = require('./services/intelligence/applications-evidence-automation');
+const { buildSecurityDashboardPayload } = require('./services/intelligence/security-dashboard-processor');
+const { createSecurityEvidenceStore } = require('./services/intelligence/security-evidence-store');
+const { createSecurityEvidenceAutomation } = require('./services/intelligence/security-evidence-automation');
 const { createStackCTRLServerAutomation } = require('./services/intelligence/server-automation');
 const { createAdminIntelligenceService } = require('./services/admin-intelligence');
 const { createEnterpriseIntelligenceService } = require('./services/enterprise-intelligence');
@@ -71,10 +80,16 @@ let identityEvidenceService = null;
 let deviceEvidenceService = null;
 let emailEvidenceService = null;
 let networkEvidenceService = null;
+let backupEvidenceService = null;
+let applicationsEvidenceService = null;
+let securityEvidenceService = null;
 const identityEvidenceCollectionPromises = new Map();
 const deviceEvidenceCollectionPromises = new Map();
 const emailEvidenceCollectionPromises = new Map();
 const networkEvidenceCollectionPromises = new Map();
+const backupEvidenceCollectionPromises = new Map();
+const applicationsEvidenceCollectionPromises = new Map();
+const securityEvidenceCollectionPromises = new Map();
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -7706,7 +7721,17 @@ app.get('/api/microsoft-applications', authenticateToken, async (req, res) => {
         }
 
         const payload = await fetchApplicationsPayloadFromApi();
-        res.json({ ...payload, tenant: tenant.clientId, source: 'api' });
+        const dashboardPayload = buildApplicationsDashboardPayload({ tenantKey: tenant.clientId || 'sunbird', payload });
+        if (applicationsEvidenceService && tenant.companyId) {
+            applicationsEvidenceService.persistProcessedEvidence({
+                companyId: tenant.companyId,
+                tenantKey: tenant.clientId || 'sunbird',
+                payload: dashboardPayload,
+                collectionTrigger: 'dashboard_request',
+                sourceEndpoint: '/api/microsoft-applications'
+            }).catch(error => console.warn('[Applications Evidence] Dashboard response could not be stored:', error.message));
+        }
+        res.json({ ...dashboardPayload, tenant: tenant.clientId, source: 'api' });
 
     } catch (error) {
         console.error('[Microsoft Graph] Error fetching applications:', error);
@@ -10412,8 +10437,19 @@ app.get('/api/security-events', authenticateToken, async (req, res) => {
             usersUnderAttack: payload.signIns.usersUnderAttack.length
         });
 
+        const dashboardPayload = buildSecurityDashboardPayload({ tenantKey: tenant.clientId || 'sunbird', payload });
+        if (securityEvidenceService && tenant.companyId) {
+            securityEvidenceService.persistProcessedEvidence({
+                companyId: tenant.companyId,
+                tenantKey: tenant.clientId || 'sunbird',
+                payload: dashboardPayload,
+                collectionTrigger: 'dashboard_request',
+                sourceEndpoint: '/api/security-events'
+            }).catch(error => console.warn('[Security Evidence] Dashboard response could not be stored:', error.message));
+        }
+
         res.json({
-            ...payload,
+            ...dashboardPayload,
             tenant: tenant.clientId,
             source: 'api'
         });
@@ -10671,11 +10707,18 @@ app.get('/api/backup-recovery', authenticateToken, async (req, res) => {
         const context = await getAccessContextByUser(req.user);
         const payload = await fetchBackupRecoveryPayloadFromApi();
         if (context?.companyId) {
-            await pool.query(
-                `REPLACE INTO BackupRecoveryPayloadCache (CompanyID, Payload, LastUpdated)
-                 VALUES (?, ?, NOW())`,
-                [context.companyId, JSON.stringify(payload)]
-            );
+            const dashboardPayload = buildBackupDashboardPayload({ tenantKey: 'sunbird', payload });
+            await pool.query(`REPLACE INTO BackupRecoveryPayloadCache (CompanyID, Payload, LastUpdated) VALUES (?, ?, NOW())`, [context.companyId, JSON.stringify(dashboardPayload)]);
+            if (backupEvidenceService) {
+                backupEvidenceService.persistProcessedEvidence({
+                    companyId: context.companyId,
+                    tenantKey: 'sunbird',
+                    payload: dashboardPayload,
+                    collectionTrigger: 'dashboard_request',
+                    sourceEndpoint: '/api/backup-recovery'
+                }).catch(error => console.warn('[Backup Evidence] Dashboard response could not be stored:', error.message));
+            }
+            return res.json(dashboardPayload);
         }
         res.json(payload);
 
@@ -11007,6 +11050,103 @@ async function collectNetworkEvidenceForConfiguredTenants({ trigger = 'scheduled
     return { companyCount: companies.length, results };
 }
 
+async function performBackupEvidenceCollection(companyId, collectionTrigger) {
+    if (!backupEvidenceService) throw new Error('Backup evidence storage is not initialized');
+    const sourceEndpoint = 'Microsoft Graph processed by StackCTRL Backup and Recovery';
+    try {
+        const payload = await fetchBackupRecoveryPayloadFromApi();
+        const dashboardPayload = buildBackupDashboardPayload({ tenantKey: 'sunbird', payload });
+        await pool.query(`REPLACE INTO BackupRecoveryPayloadCache (CompanyID, Payload, LastUpdated) VALUES (?, ?, NOW())`, [companyId, JSON.stringify(dashboardPayload)]);
+        return backupEvidenceService.persistProcessedEvidence({ companyId, tenantKey: 'sunbird', payload: dashboardPayload, collectionTrigger, sourceEndpoint });
+    } catch (error) {
+        await backupEvidenceService.recordCollectionFailure({ companyId, tenantKey: 'sunbird', collectionTrigger, sourceEndpoint, error }).catch(() => {});
+        throw error;
+    }
+}
+
+async function collectAndPersistBackupEvidence(companyId, collectionTrigger = 'scheduled_6_hour') {
+    const key = String(companyId);
+    if (backupEvidenceCollectionPromises.get(key)) return backupEvidenceCollectionPromises.get(key);
+    const collection = performBackupEvidenceCollection(companyId, collectionTrigger);
+    backupEvidenceCollectionPromises.set(key, collection);
+    try { return await collection; } finally { if (backupEvidenceCollectionPromises.get(key) === collection) backupEvidenceCollectionPromises.delete(key); }
+}
+
+async function collectBackupEvidenceForConfiguredTenants({ trigger = 'scheduled_6_hour' } = {}) {
+    const [companies] = await pool.query(`SELECT DISTINCT company.ID AS CompanyID FROM Companies company LEFT JOIN StackCTRLClientCapabilities capability ON capability.CompanyID = company.ID AND capability.SourceKey = 'backup' WHERE LOWER(company.CompanyName) LIKE '%sunbird%' OR (capability.ProfileKey = 'sunbird' AND capability.IsExpected = 1 AND capability.IsEnabled = 1)`);
+    const results = [];
+    for (const company of companies) {
+        try { results.push(await collectAndPersistBackupEvidence(company.CompanyID, trigger)); }
+        catch (error) { results.push({ companyId: company.CompanyID, status: 'failed', message: error.message }); }
+    }
+    return { companyCount: companies.length, results };
+}
+
+async function performApplicationsEvidenceCollection(companyId, collectionTrigger) {
+    if (!applicationsEvidenceService) throw new Error('Applications evidence storage is not initialized');
+    const sourceEndpoint = 'Microsoft Graph processed by StackCTRL Applications';
+    try {
+        const payload = await fetchApplicationsPayloadFromApi();
+        const dashboardPayload = buildApplicationsDashboardPayload({ tenantKey: 'sunbird', payload });
+        await pool.query(`REPLACE INTO ApplicationMetricsCache (CompanyID, TotalApps, ExternalApps, HighRiskApps, HighAccessApps, LastUpdated) VALUES (?, ?, ?, ?, ?, NOW())`, [companyId, dashboardPayload.summary.totalApplications, dashboardPayload.summary.externalApplications, dashboardPayload.summary.highRiskApps, dashboardPayload.summary.highAccessApps]);
+        await pool.query(`REPLACE INTO ApplicationPayloadCache (CompanyID, Payload, LastUpdated) VALUES (?, ?, NOW())`, [companyId, JSON.stringify(dashboardPayload)]);
+        return applicationsEvidenceService.persistProcessedEvidence({ companyId, tenantKey: 'sunbird', payload: dashboardPayload, collectionTrigger, sourceEndpoint });
+    } catch (error) {
+        await applicationsEvidenceService.recordCollectionFailure({ companyId, tenantKey: 'sunbird', collectionTrigger, sourceEndpoint, error }).catch(() => {});
+        throw error;
+    }
+}
+
+async function collectAndPersistApplicationsEvidence(companyId, collectionTrigger = 'scheduled_hourly') {
+    const key = String(companyId);
+    if (applicationsEvidenceCollectionPromises.get(key)) return applicationsEvidenceCollectionPromises.get(key);
+    const collection = performApplicationsEvidenceCollection(companyId, collectionTrigger);
+    applicationsEvidenceCollectionPromises.set(key, collection);
+    try { return await collection; } finally { if (applicationsEvidenceCollectionPromises.get(key) === collection) applicationsEvidenceCollectionPromises.delete(key); }
+}
+
+async function collectApplicationsEvidenceForConfiguredTenants({ trigger = 'scheduled_hourly' } = {}) {
+    const [companies] = await pool.query(`SELECT DISTINCT company.ID AS CompanyID FROM Companies company LEFT JOIN StackCTRLClientCapabilities capability ON capability.CompanyID = company.ID AND capability.SourceKey = 'applications' WHERE LOWER(company.CompanyName) LIKE '%sunbird%' OR (capability.ProfileKey = 'sunbird' AND capability.IsExpected = 1 AND capability.IsEnabled = 1)`);
+    const results = [];
+    for (const company of companies) {
+        try { results.push(await collectAndPersistApplicationsEvidence(company.CompanyID, trigger)); }
+        catch (error) { results.push({ companyId: company.CompanyID, status: 'failed', message: error.message }); }
+    }
+    return { companyCount: companies.length, results };
+}
+
+async function performSecurityEvidenceCollection(companyId, collectionTrigger) {
+    if (!securityEvidenceService) throw new Error('Security evidence storage is not initialized');
+    const sourceEndpoint = 'Microsoft Graph processed by StackCTRL Security Alerts';
+    try {
+        const payload = await fetchSecurityEventsPayloadFromApi({ skipWhatsAppAuto: true });
+        const dashboardPayload = buildSecurityDashboardPayload({ tenantKey: 'sunbird', payload });
+        await pool.query(`REPLACE INTO SecurityEventsPayloadCache (CompanyID, Payload, LastUpdated) VALUES (?, ?, NOW())`, [companyId, JSON.stringify(dashboardPayload)]);
+        return securityEvidenceService.persistProcessedEvidence({ companyId, tenantKey: 'sunbird', payload: dashboardPayload, collectionTrigger, sourceEndpoint });
+    } catch (error) {
+        await securityEvidenceService.recordCollectionFailure({ companyId, tenantKey: 'sunbird', collectionTrigger, sourceEndpoint, error }).catch(() => {});
+        throw error;
+    }
+}
+
+async function collectAndPersistSecurityEvidence(companyId, collectionTrigger = 'scheduled_hourly') {
+    const key = String(companyId);
+    if (securityEvidenceCollectionPromises.get(key)) return securityEvidenceCollectionPromises.get(key);
+    const collection = performSecurityEvidenceCollection(companyId, collectionTrigger);
+    securityEvidenceCollectionPromises.set(key, collection);
+    try { return await collection; } finally { if (securityEvidenceCollectionPromises.get(key) === collection) securityEvidenceCollectionPromises.delete(key); }
+}
+
+async function collectSecurityEvidenceForConfiguredTenants({ trigger = 'scheduled_hourly' } = {}) {
+    const [companies] = await pool.query(`SELECT DISTINCT company.ID AS CompanyID FROM Companies company LEFT JOIN StackCTRLClientCapabilities capability ON capability.CompanyID = company.ID AND capability.SourceKey = 'security_alerts' WHERE LOWER(company.CompanyName) LIKE '%sunbird%' OR (capability.ProfileKey = 'sunbird' AND capability.IsExpected = 1 AND capability.IsEnabled = 1)`);
+    const results = [];
+    for (const company of companies) {
+        try { results.push(await collectAndPersistSecurityEvidence(company.CompanyID, trigger)); }
+        catch (error) { results.push({ companyId: company.CompanyID, status: 'failed', message: error.message }); }
+    }
+    return { companyCount: companies.length, results };
+}
+
 async function refreshStackCTRLIntelligenceSource(sourceKey, companyId) {
     switch (sourceKey) {
         case 'identity': {
@@ -11200,42 +11340,55 @@ async function refreshStackCTRLIntelligenceSource(sourceKey, companyId) {
             return null;
         }
         case 'security_alerts': {
-            const token = await getMicrosoftGraphTokenForCompany(companyId);
-            const payload = await fetchSecurityEventsPayloadFromApi({ skipWhatsAppAuto: true, token });
-            await pool.query(
-                `REPLACE INTO SecurityEventsPayloadCache (CompanyID, Payload, LastUpdated)
-                 VALUES (?, ?, NOW())`,
-                [companyId, JSON.stringify(payload)]
-            );
+            if (securityEvidenceService) {
+                try {
+                    await collectAndPersistSecurityEvidence(companyId, 'enterprise_refresh');
+                    return null;
+                } catch (error) {
+                    const refreshError = new Error(`Security evidence refresh failed: ${error.message}`);
+                    refreshError.statusCode = error.statusCode || 500;
+                    refreshError.isRefreshError = true;
+                    refreshError.sourceKey = 'security_alerts';
+                    throw refreshError;
+                }
+            }
+            const payload = await fetchSecurityEventsPayloadFromApi({ skipWhatsAppAuto: true });
+            await pool.query(`REPLACE INTO SecurityEventsPayloadCache (CompanyID, Payload, LastUpdated) VALUES (?, ?, NOW())`, [companyId, JSON.stringify(payload)]);
             return null;
         }
         case 'backup': {
-            const token = await getMicrosoftGraphTokenForCompany(companyId);
-            const payload = await fetchBackupRecoveryPayloadFromApi(token);
-            await pool.query(
-                `REPLACE INTO BackupRecoveryPayloadCache (CompanyID, Payload, LastUpdated)
-                 VALUES (?, ?, NOW())`,
-                [companyId, JSON.stringify(payload)]
-            );
+            if (backupEvidenceService) {
+                try {
+                    await collectAndPersistBackupEvidence(companyId, 'enterprise_refresh');
+                    return null;
+                } catch (error) {
+                    const refreshError = new Error(`Backup evidence refresh failed: ${error.message}`);
+                    refreshError.statusCode = error.statusCode || 500;
+                    refreshError.isRefreshError = true;
+                    refreshError.sourceKey = 'backup';
+                    throw refreshError;
+                }
+            }
+            const payload = await fetchBackupRecoveryPayloadFromApi();
+            await pool.query(`REPLACE INTO BackupRecoveryPayloadCache (CompanyID, Payload, LastUpdated) VALUES (?, ?, NOW())`, [companyId, JSON.stringify(payload)]);
             return null;
         }
         case 'applications': {
-            const token = await getMicrosoftGraphTokenForCompany(companyId);
-            const [metrics, payload] = await Promise.all([
-                fetchApplicationMetricsFromApi(token),
-                fetchApplicationsPayloadFromApi(token)
-            ]);
-            await pool.query(
-                `REPLACE INTO ApplicationMetricsCache
-                 (CompanyID, TotalApps, ExternalApps, HighRiskApps, HighAccessApps, LastUpdated)
-                 VALUES (?, ?, ?, ?, ?, NOW())`,
-                [companyId, metrics.totalApps, metrics.externalApps, metrics.highRiskApps, metrics.highAccessApps]
-            );
-            await pool.query(
-                `REPLACE INTO ApplicationPayloadCache (CompanyID, Payload, LastUpdated)
-                 VALUES (?, ?, NOW())`,
-                [companyId, JSON.stringify(payload)]
-            );
+            if (applicationsEvidenceService) {
+                try {
+                    await collectAndPersistApplicationsEvidence(companyId, 'enterprise_refresh');
+                    return null;
+                } catch (error) {
+                    const refreshError = new Error(`Applications evidence refresh failed: ${error.message}`);
+                    refreshError.statusCode = error.statusCode || 500;
+                    refreshError.isRefreshError = true;
+                    refreshError.sourceKey = 'applications';
+                    throw refreshError;
+                }
+            }
+            const [metrics, payload] = await Promise.all([fetchApplicationMetricsFromApi(), fetchApplicationsPayloadFromApi()]);
+            await pool.query(`REPLACE INTO ApplicationMetricsCache (CompanyID, TotalApps, ExternalApps, HighRiskApps, HighAccessApps, LastUpdated) VALUES (?, ?, ?, ?, ?, NOW())`, [companyId, metrics.totalApps, metrics.externalApps, metrics.highRiskApps, metrics.highAccessApps]);
+            await pool.query(`REPLACE INTO ApplicationPayloadCache (CompanyID, Payload, LastUpdated) VALUES (?, ?, NOW())`, [companyId, JSON.stringify(payload)]);
             return null;
         }
         case 'cloudflare_network_security': {
@@ -11329,6 +11482,51 @@ const networkEvidenceAutomation = createNetworkEvidenceAutomation({
     enabled: !['false', '0', 'no'].includes(String(process.env.NETWORK_EVIDENCE_COLLECTION_ENABLED || 'true').toLowerCase()),
     intervalMs: process.env.NETWORK_EVIDENCE_COLLECTION_INTERVAL_MS || (60 * 60 * 1000),
     startupDelayMs: process.env.NETWORK_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (60 * 1000)
+});
+backupEvidenceService = createBackupEvidenceStore({ pool });
+const backupEvidenceSchemaReady = backupEvidenceService.ensureSchema().catch(error => {
+    console.error('[Backup Evidence] Schema initialization failed:', error.message);
+    return { error };
+});
+const backupEvidenceAutomation = createBackupEvidenceAutomation({
+    collectAll: async options => {
+        const schema = await backupEvidenceSchemaReady;
+        if (schema?.error) throw schema.error;
+        return collectBackupEvidenceForConfiguredTenants(options);
+    },
+    enabled: !['false', '0', 'no'].includes(String(process.env.BACKUP_EVIDENCE_COLLECTION_ENABLED || 'true').toLowerCase()),
+    intervalMs: process.env.BACKUP_EVIDENCE_COLLECTION_INTERVAL_MS || (6 * 60 * 60 * 1000),
+    startupDelayMs: process.env.BACKUP_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (75 * 1000)
+});
+applicationsEvidenceService = createApplicationsEvidenceStore({ pool });
+const applicationsEvidenceSchemaReady = applicationsEvidenceService.ensureSchema().catch(error => {
+    console.error('[Applications Evidence] Schema initialization failed:', error.message);
+    return { error };
+});
+const applicationsEvidenceAutomation = createApplicationsEvidenceAutomation({
+    collectAll: async options => {
+        const schema = await applicationsEvidenceSchemaReady;
+        if (schema?.error) throw schema.error;
+        return collectApplicationsEvidenceForConfiguredTenants(options);
+    },
+    enabled: !['false', '0', 'no'].includes(String(process.env.APPLICATIONS_EVIDENCE_COLLECTION_ENABLED || 'true').toLowerCase()),
+    intervalMs: process.env.APPLICATIONS_EVIDENCE_COLLECTION_INTERVAL_MS || (60 * 60 * 1000),
+    startupDelayMs: process.env.APPLICATIONS_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (90 * 1000)
+});
+securityEvidenceService = createSecurityEvidenceStore({ pool });
+const securityEvidenceSchemaReady = securityEvidenceService.ensureSchema().catch(error => {
+    console.error('[Security Evidence] Schema initialization failed:', error.message);
+    return { error };
+});
+const securityEvidenceAutomation = createSecurityEvidenceAutomation({
+    collectAll: async options => {
+        const schema = await securityEvidenceSchemaReady;
+        if (schema?.error) throw schema.error;
+        return collectSecurityEvidenceForConfiguredTenants(options);
+    },
+    enabled: !['false', '0', 'no'].includes(String(process.env.SECURITY_EVIDENCE_COLLECTION_ENABLED || 'true').toLowerCase()),
+    intervalMs: process.env.SECURITY_EVIDENCE_COLLECTION_INTERVAL_MS || (60 * 60 * 1000),
+    startupDelayMs: process.env.SECURITY_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (105 * 1000)
 });
 const stackCTRLIntelligenceService = createStackCTRLIntelligenceService({
     pool,
@@ -12429,6 +12627,9 @@ const server = app.listen(PORT, async () => {
     deviceEvidenceAutomation.start();
     emailEvidenceAutomation.start();
     networkEvidenceAutomation.start();
+    backupEvidenceAutomation.start();
+    applicationsEvidenceAutomation.start();
+    securityEvidenceAutomation.start();
     // StackCTRL automation runs inside this server and uses database deduplication across instances.
     stackCTRLIntelligenceAutomation.start();
     // Enterprise reporting runs separately because domain batches may take much longer than compact intelligence.
@@ -12454,6 +12655,9 @@ function stopServer(signal) {
     deviceEvidenceAutomation.stop();
     emailEvidenceAutomation.stop();
     networkEvidenceAutomation.stop();
+    backupEvidenceAutomation.stop();
+    applicationsEvidenceAutomation.stop();
+    securityEvidenceAutomation.stop();
     stackCTRLIntelligenceAutomation.stop();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(1), 10000).unref();

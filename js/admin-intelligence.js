@@ -7,9 +7,11 @@
         enterprise: null,
         enterpriseRunView: localStorage.getItem('stackctrlEnterpriseRunView') || 'latest',
         enterpriseStatusFilter: localStorage.getItem('stackctrlEnterpriseStatusFilter') || 'all',
+        enterpriseSelectedDomain: null,
         selectedCompanyId: Number(localStorage.getItem('stackctrlAdminIntelligenceCompanyId') || 0),
         actionRunning: false,
-        lastAction: null
+        lastAction: null,
+        headerResizeObserver: null
     };
 
     const outputTypes = [
@@ -33,12 +35,6 @@
     ];
     const enterpriseAuditDefaultTitle = 'Enterprise evidence and output audit';
 
-    function enterpriseDomainKeyFromMode(mode) {
-        const prefix = 'enterprise_domain_';
-        if (!mode || typeof mode !== 'string' || !mode.startsWith(prefix)) return null;
-        return mode.slice(prefix.length);
-    }
-
     function enterpriseDomainDisplayName(domainKey, domainRow) {
         if (!domainKey) return enterpriseAuditDefaultTitle;
         return supportedEnterpriseDomains.find(domain => domain.key === domainKey)?.name
@@ -46,26 +42,69 @@
             || String(domainKey).replaceAll('_', ' ');
     }
 
-    function resolveEnterprisePrimaryDomain({ latestRun, domainRows, audits } = {}) {
+    function parseEnterpriseRunModeDomainKey(mode) {
+        const value = String(mode || '').trim();
+        if (!value.startsWith('enterprise_domain_')) return null;
+        const domainKey = value.slice('enterprise_domain_'.length);
+        return supportedEnterpriseDomains.some(domain => domain.key === domainKey) ? domainKey : null;
+    }
+
+    function resolveEnterprisePrimaryDomain({ domainRows = [], audits = [], selectedDomain = null, latestRun = null } = {}) {
         const combined = [...domainRows, ...audits];
-        const modeKey = enterpriseDomainKeyFromMode(latestRun?.Mode);
-        if (modeKey) {
-            const row = combined.find(item => item.DomainKey === modeKey);
-            return { domainKey: modeKey, domainName: enterpriseDomainDisplayName(modeKey, row), row: row || null };
+        if (selectedDomain?.domainKey) {
+            const selectedRow = combined.find(row =>
+                row.DomainKey === selectedDomain.domainKey &&
+                Number(row.RunID) === Number(selectedDomain.runId)
+            );
+            if (selectedRow) {
+                return {
+                    domainKey: selectedRow.DomainKey,
+                    domainName: enterpriseDomainDisplayName(selectedRow.DomainKey, selectedRow),
+                    row: selectedRow
+                };
+            }
         }
-        const domainKeys = [...new Set(combined.map(row => row.DomainKey).filter(Boolean))];
+        const runDomainKey = parseEnterpriseRunModeDomainKey(latestRun?.Mode);
+        if (runDomainKey) {
+            const row = (latestRun?.ID
+                ? combined.find(item => item.DomainKey === runDomainKey && Number(item.RunID) === Number(latestRun.ID))
+                : null) || combined.find(item => item.DomainKey === runDomainKey);
+            return {
+                domainKey: runDomainKey,
+                domainName: enterpriseDomainDisplayName(runDomainKey, row),
+                row: row || null
+            };
+        }
+        const displayedRows = domainRows.length ? domainRows : audits;
+        const domainKeys = [...new Set(displayedRows.map(row => row.DomainKey).filter(Boolean))];
         if (domainKeys.length === 1) {
             const domainKey = domainKeys[0];
-            const row = combined.find(item => item.DomainKey === domainKey);
+            const row = displayedRows.find(item => item.DomainKey === domainKey);
             return { domainKey, domainName: enterpriseDomainDisplayName(domainKey, row), row: row || null };
         }
         return { domainKey: null, domainName: enterpriseAuditDefaultTitle, row: null };
     }
 
-    function enterpriseAuditTitle({ showLatestOnly, latestRunId, latestRun, domainRows, audits }) {
-        if (!showLatestOnly || !latestRunId) return enterpriseAuditDefaultTitle;
-        const primary = resolveEnterprisePrimaryDomain({ latestRun, domainRows, audits });
+    function enterpriseAuditTitle({ domainRows, audits, selectedDomain }) {
+        const primary = resolveEnterprisePrimaryDomain({ domainRows, audits, selectedDomain });
         return primary.domainKey ? primary.domainName : enterpriseAuditDefaultTitle;
+    }
+
+    function selectEnterpriseDomain(row) {
+        if (!row?.DomainKey || !row?.RunID) {
+            state.enterpriseSelectedDomain = null;
+            return;
+        }
+        state.enterpriseSelectedDomain = { domainKey: row.DomainKey, runId: Number(row.RunID) };
+        const domainName = enterpriseDomainDisplayName(row.DomainKey, row);
+        el('enterprise-audit-title').textContent = domainName;
+        el('enterprise-audit-subtitle').textContent = `${domainName} · Run #${number(row.RunID)} · ${statusLabel(row.Status || 'unknown')} · Proof of what StackCTRL held, what Azure received, and what structured intelligence was stored`;
+    }
+
+    function syncIntelligenceHeaderOffset() {
+        const header = document.querySelector('.intelligence-header');
+        const height = Math.ceil(header?.getBoundingClientRect().height || 80);
+        document.documentElement.style.setProperty('--intel-header-height', `${height}px`);
     }
 
     const el = id => document.getElementById(id);
@@ -203,11 +242,15 @@
         el('json-modal-label').textContent = label || 'Stored Azure output';
         el('json-modal-title').textContent = title || 'Output JSON';
         el('json-modal-subtitle').textContent = subtitle || '';
-        el('json-modal-content').textContent = typeof payload === 'string'
+        const content = el('json-modal-content');
+        content.textContent = typeof payload === 'string'
             ? payload
             : JSON.stringify(payload ?? {}, null, 2);
+        document.body.classList.add('json-modal-open');
         el('json-modal').classList.add('open');
         el('json-modal').setAttribute('aria-hidden', 'false');
+        content.scrollTop = 0;
+        requestAnimationFrame(() => { content.scrollTop = 0; });
     }
 
     function batchDetailsHtml(batches) {
@@ -695,17 +738,27 @@
             map.get(key).push(batch);
             return map;
         }, new Map());
-        const primaryDomain = resolveEnterprisePrimaryDomain({ latestRun, domainRows, audits });
+        const visibleRows = [...domainRows, ...audits];
+        if (state.enterpriseSelectedDomain && !visibleRows.some(row =>
+            row.DomainKey === state.enterpriseSelectedDomain.domainKey &&
+            Number(row.RunID) === Number(state.enterpriseSelectedDomain.runId)
+        )) state.enterpriseSelectedDomain = null;
+        const primaryDomain = resolveEnterprisePrimaryDomain({
+            domainRows,
+            audits,
+            selectedDomain: state.enterpriseSelectedDomain,
+            latestRun
+        });
         state.enterprisePrimaryDomain = primaryDomain;
         el('enterprise-audit-title').textContent = enterpriseAuditTitle({
-            showLatestOnly,
-            latestRunId,
-            latestRun,
             domainRows,
-            audits
+            audits,
+            selectedDomain: state.enterpriseSelectedDomain
         });
+        const headingRunId = primaryDomain.row?.RunID || latestRun?.ID || latestRunId || 0;
+        const headingStatus = primaryDomain.row?.Status || latestRun?.Status || 'unknown';
         el('enterprise-audit-subtitle').textContent = primaryDomain.domainKey
-            ? `${primaryDomain.domainName} · Run #${number(latestRun?.ID || latestRunId || 0)} · ${statusLabel(latestRun?.Status || 'unknown')} · Proof of what StackCTRL held, what Azure received, and what structured intelligence was stored`
+            ? `${primaryDomain.domainName} · Run #${number(headingRunId)} · ${statusLabel(headingStatus)} · Proof of what StackCTRL held, what Azure received, and what structured intelligence was stored`
             : 'Proof of what StackCTRL held, what Azure received, and what structured intelligence was stored';
         const badge = el('enterprise-run-badge');
         badge.className = `status-badge status-${statusClass(latestRun?.Status || 'muted')}`;
@@ -798,10 +851,13 @@
         if (supportedEnterpriseDomains.some(domain => domain.key === currentValue)) selector.value = currentValue;
     }
 
-    async function loadEnterprise({ scroll = false, target = 'audit' } = {}) {
+    async function loadEnterprise({ scroll = false } = {}) {
         state.enterprise = await api(`/api/admin/intelligence/tenant/${state.selectedCompanyId}/enterprise`);
         renderEnterprise();
-        if (scroll) el(target === 'lineage' ? 'enterprise-lineage-comparison' : 'enterprise-audit-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (scroll) {
+            // Keep the run/domain heading visible; scrolling to a nested lineage table hides it behind the fixed header.
+            el('enterprise-audit-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
     }
 
     function enterpriseActionMessage(label, result) {
@@ -883,7 +939,13 @@
                 state.system = (await api('/api/admin/intelligence/status'));
                 renderSystem();
                 await loadTenant();
-                if (isEnterpriseActionLabel(label)) await loadEnterprise();
+                if (isEnterpriseActionLabel(label)) {
+                    const domainKey = body.domainKey || (Array.isArray(result.domains) && result.domains.length === 1 ? result.domains[0].domainKey : null);
+                    if (domainKey && result.runId) {
+                        state.enterpriseSelectedDomain = { domainKey, runId: Number(result.runId) };
+                    }
+                    await loadEnterprise();
+                }
                 if (label === 'Compact Azure analysis') {
                     el('compact-intelligence-proof')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }
@@ -920,11 +982,13 @@
     function closeOutput() {
         el('json-modal').classList.remove('open');
         el('json-modal').setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('json-modal-open');
     }
 
     function setupInteractions() {
         el('tenant-selector').addEventListener('change', async event => {
             state.selectedCompanyId = Number(event.target.value || 0);
+            state.enterpriseSelectedDomain = null;
             localStorage.setItem('stackctrlAdminIntelligenceCompanyId', String(state.selectedCompanyId));
             // Populate domain dropdown immediately (independent of loadTenant/loadEnterprise)
             populateDomainDropdown();
@@ -1006,6 +1070,7 @@
             if (auditButton) {
                 const row = state.enterprise?.evidenceAudit?.[Number(auditButton.dataset.enterpriseAuditIndex)];
                 if (row) {
+                    selectEnterpriseDomain(row);
                     openJsonModal({
                         label: 'Sanitized Azure input',
                         title: `${enterpriseDomainDisplayName(row.DomainKey, row)} · Azure input package`,
@@ -1016,6 +1081,7 @@
             } else if (domainButton) {
                 const row = state.enterprise?.domainIntelligence?.[Number(domainButton.dataset.enterpriseDomainIndex)];
                 if (row) {
+                    selectEnterpriseDomain(row);
                     openJsonModal({
                         label: 'Stored Azure output',
                         title: `${enterpriseDomainDisplayName(row.DomainKey, row)} · Azure output`,
@@ -1026,6 +1092,9 @@
             } else if (synthesisButton) {
                 const row = state.enterprise?.synthesis?.[0];
                 if (row) {
+                    state.enterpriseSelectedDomain = null;
+                    el('enterprise-audit-title').textContent = enterpriseAuditDefaultTitle;
+                    el('enterprise-audit-subtitle').textContent = 'Proof of what StackCTRL held, what Azure received, and what structured intelligence was stored';
                     openJsonModal({
                         label: 'Final enterprise synthesis',
                         title: 'Final enterprise synthesis',
@@ -1060,6 +1129,15 @@
     }
 
     async function initialize() {
+        syncIntelligenceHeaderOffset();
+        window.addEventListener('resize', syncIntelligenceHeaderOffset, { passive: true });
+        if ('ResizeObserver' in window) {
+            const header = document.querySelector('.intelligence-header');
+            if (header) {
+                state.headerResizeObserver = new ResizeObserver(syncIntelligenceHeaderOffset);
+                state.headerResizeObserver.observe(header);
+            }
+        }
         if (!state.token) return redirectToSignIn();
         const payload = decodeToken(state.token);
         const role = String(payload.role || payload.Role || '').toLowerCase();

@@ -1,60 +1,37 @@
 const { asArray, buildContext, numberFrom, payloadFromSource } = require('./common');
 
 function normalizeApp(app) {
-    const assignedGroups = Array.isArray(app.assignedGroups)
-        ? app.assignedGroups.filter(Boolean)
-        : String(app.assignedGroups || '').split(',').map(value => value.trim()).filter(Boolean);
+    const assignedGroups = Array.isArray(app.assignedGroups) ? app.assignedGroups.filter(Boolean) : [];
     const explicitType = String(app.type || '').toLowerCase();
     const publisherName = String(app.publisherName || '').toLowerCase();
     const isExternal = explicitType ? explicitType === 'external' : Boolean(app.isExternal || (publisherName && !publisherName.includes('microsoft')));
-    return {
-        ...app,
-        assignedGroups,
-        isExternal,
-        scopeCount: Number(app.scopeCount || app.scopes || 0),
-        roleCount: Number(app.roleCount || app.roles || 0),
-        userCount: Number(app.userCount || app.users || app.assignmentCount || 0)
-    };
+    return { ...app, assignedGroups, isExternal, scopeCount: Number(app.scopeCount || 0), roleCount: Number(app.roleCount || 0), userCount: Number(app.userCount || 0) };
 }
 
 function buildApplicationsDashboardContext(source) {
     const payload = payloadFromSource(source);
+    const storedMetrics = source.dashboardMetrics || source.dashboardSourceMetrics || {};
+    const summary = { ...(payload.summary || {}), ...storedMetrics };
     const apps = asArray(payload.applications).map(normalizeApp);
-    const summary = payload.summary || source.metrics || {};
     const externalApps = apps.filter(app => app.isExternal);
     const highAccessApps = apps.filter(app => app.userCount >= 20 || app.assignedGroups.length >= 3);
     const excessivePermissionApps = apps.filter(app => app.scopeCount + app.roleCount > 10);
     const highRiskApps = apps.filter(app => app.isExternal || app.scopeCount + app.roleCount > 10 || app.userCount > 50);
-    const totalApplications = apps.length || numberFrom(summary, ['totalApplications', 'TotalApps', 'totalApps']);
-    const externalApplicationCount = apps.length ? externalApps.length : numberFrom(summary, ['externalApplications', 'ExternalApps', 'externalApps']);
-    const highRiskApplicationCount = apps.length ? highRiskApps.length : numberFrom(summary, ['highRiskApps', 'HighRiskApps']);
-    const highAccessApplicationCount = apps.length ? highAccessApps.length : numberFrom(summary, ['highAccessApps', 'HighAccessApps']);
-    const excessivePermissionCount = apps.length
-        ? excessivePermissionApps.length
-        : numberFrom(summary, ['excessivePermissionApps', 'broadPermissionApps', 'HighAccessApps']);
-    const riskyPublisherCount = numberFrom(summary, ['riskyPublisherApps', 'riskyPublishers']);
-    const unreviewedPermissionCount = numberFrom(summary, ['unreviewedPermissionApps', 'unreviewedPermissions']);
-    const shadowITCount = numberFrom(summary, ['shadowITApps', 'shadowITIndicators']);
-    const governanceScore = totalApplications ? Math.max(0, Math.round(100 - (
-        (externalApplicationCount / totalApplications * 10) +
-        (highRiskApplicationCount / totalApplications * 30) +
-        (excessivePermissionCount / totalApplications * 25) +
-        (riskyPublisherCount / totalApplications * 15) +
-        (unreviewedPermissionCount / totalApplications * 10) +
-        (shadowITCount / totalApplications * 10)
-    ))) : 100;
+    const totalApplications = apps.length || numberFrom(summary, ['totalApplications', 'TotalApps']);
+    const governanceScore = numberFrom(summary, ['applicationGovernanceScore'], 100);
 
     return buildContext(source, {
         dashboardMetrics: {
             totalApplications,
-            externalApplications: externalApplicationCount,
-            highRiskApps: highRiskApplicationCount,
-            highAccessApps: highAccessApplicationCount,
-            excessivePermissionApps: excessivePermissionCount,
-            riskyPublisherApps: riskyPublisherCount,
-            unreviewedPermissionApps: unreviewedPermissionCount,
-            shadowITApps: shadowITCount,
-            groupAssignedApps: apps.filter(app => app.assignedGroups.length).length
+            externalApplications: apps.length ? externalApps.length : numberFrom(summary, ['externalApplications', 'ExternalApps']),
+            highRiskApps: apps.length ? highRiskApps.length : numberFrom(summary, ['highRiskApps', 'HighRiskApps']),
+            highAccessApps: apps.length ? highAccessApps.length : numberFrom(summary, ['highAccessApps', 'HighAccessApps']),
+            excessivePermissionApps: apps.length ? excessivePermissionApps.length : numberFrom(summary, ['excessivePermissionApps']),
+            groupAssignedApps: apps.filter(app => app.assignedGroups.length).length || numberFrom(summary, ['groupAssignedApps']),
+            applicationGovernanceScore: governanceScore,
+            userCount: numberFrom(summary, ['userCount']),
+            groupCount: numberFrom(summary, ['groupCount']),
+            recommendationsCount: numberFrom(summary, ['recommendationsCount'], asArray(payload.recommendations).length)
         },
         calculatedIndicators: {
             applicationGovernanceScore: governanceScore,

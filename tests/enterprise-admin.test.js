@@ -5,6 +5,7 @@ const path = require('node:path');
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'admin-intelligence.html'), 'utf8');
 const javascript = fs.readFileSync(path.join(__dirname, '..', 'js', 'admin-intelligence.js'), 'utf8');
+const stylesheet = fs.readFileSync(path.join(__dirname, '..', 'css', 'admin-intelligence.css'), 'utf8');
 
 test('admin control center includes every enterprise audit action', () => {
     for (const phrase of [
@@ -49,12 +50,28 @@ test('enterprise audit title is reset from the currently rendered latest domain'
     assert.match(html, /id="enterprise-audit-subtitle"/);
     assert.match(javascript, /function enterpriseAuditTitle/);
     assert.match(javascript, /function resolveEnterprisePrimaryDomain/);
-    assert.match(javascript, /function enterpriseDomainKeyFromMode/);
     assert.match(javascript, /function enterpriseDomainDisplayName/);
+    assert.match(javascript, /function parseEnterpriseRunModeDomainKey/);
+    assert.match(javascript, /const displayedRows = domainRows\.length \? domainRows : audits/);
+    assert.match(javascript, /Number\(row\.RunID\) === Number\(selectedDomain\.runId\)/);
+    assert.match(javascript, /function selectEnterpriseDomain/);
     assert.match(javascript, /supportedEnterpriseDomains\.find\(domain => domain\.key === domainKey\)/);
     assert.match(javascript, /el\('enterprise-audit-title'\)\.textContent = enterpriseAuditTitle/);
     assert.match(javascript, /el\('enterprise-audit-subtitle'\)\.textContent/);
-    assert.match(javascript, /if \(!showLatestOnly \|\| !latestRunId\) return enterpriseAuditDefaultTitle/);
+    assert.match(javascript, /state\.enterpriseSelectedDomain = null/);
+});
+
+test('admin content and JSON input stay below the measured fixed header', () => {
+    assert.match(javascript, /function syncIntelligenceHeaderOffset/);
+    assert.match(javascript, /--intel-header-height/);
+    assert.match(javascript, /content\.scrollTop = 0/);
+    assert.match(javascript, /document\.body\.classList\.add\('json-modal-open'\)/);
+    assert.match(javascript, /document\.body\.classList\.remove\('json-modal-open'\)/);
+    assert.match(stylesheet, /scroll-padding-top:\s*calc\(var\(--intel-header-height\) \+ 18px\)/);
+    assert.match(stylesheet, /scroll-margin-top:\s*calc\(var\(--intel-header-height\) \+ 18px\)/);
+    assert.match(stylesheet, /margin-top:\s*var\(--intel-header-height\)/);
+    assert.match(stylesheet, /place-items:\s*start center/);
+    assert.match(stylesheet, /max-height:\s*calc\(100dvh - var\(--intel-header-height\) - 38px\)/);
 });
 
 test('enterprise lineage and modal views format object values instead of [object Object]', () => {
@@ -75,6 +92,7 @@ test('enterprise input comparison renders run-scoped source lineage', () => {
     assert.match(javascript, /dataLineageComparison/);
     assert.match(javascript, /AzureInputSummaryJson\?\.dataLineage/);
     assert.match(javascript, /target: event\.currentTarget\.dataset\.enterpriseView === 'input' \? 'lineage' : 'audit'/);
+    assert.match(javascript, /el\('enterprise-audit-results'\)\?\.scrollIntoView/);
     assert.match(javascript, /lineageMetadata\.sourceBuilder/);
     assert.match(javascript, /lineageAudit\.RunID/);
     assert.match(javascript, /lineageAudit\.SnapshotID/);

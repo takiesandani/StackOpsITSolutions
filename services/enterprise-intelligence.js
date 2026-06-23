@@ -47,7 +47,24 @@ const NETWORK_LINEAGE_FIELDS = Object.freeze([
     'recentAccessEvents', 'networkSecurityScore', 'dlpProfiles', 'identityProviders', 'sectionErrors',
     'healthScore', 'riskScore', 'sourceHealth.evidenceCount', 'snapshotId', 'sourceLastUpdated'
 ]);
-const DASHBOARD_BACKED_ENTERPRISE_DOMAINS = Object.freeze(['identity', 'devices', 'email_security', 'cloudflare_network_security']);
+const DASHBOARD_BACKED_ENTERPRISE_DOMAINS = Object.freeze(['identity', 'devices', 'email_security', 'cloudflare_network_security', 'backup', 'applications', 'security_alerts']);
+const BACKUP_LINEAGE_FIELDS = Object.freeze([
+    'totalStorageGB', 'oneDriveStorageGB', 'sharePointStorageGB', 'exchangeStorageGB',
+    'activeUsersCount', 'inactiveUsersCount', 'servicesCovered', 'inactiveUserStorageGB',
+    'backupCoverageScore', 'dataExposureRiskScore', 'recommendationsCount',
+    'healthScore', 'riskScore', 'sourceHealth.evidenceCount', 'snapshotId', 'sourceLastUpdated'
+]);
+const APPLICATIONS_LINEAGE_FIELDS = Object.freeze([
+    'totalApplications', 'externalApplications', 'highRiskApps', 'highAccessApps',
+    'excessivePermissionApps', 'groupAssignedApps', 'applicationGovernanceScore',
+    'userCount', 'groupCount', 'recommendationsCount',
+    'healthScore', 'riskScore', 'sourceHealth.evidenceCount', 'snapshotId', 'sourceLastUpdated'
+]);
+const SECURITY_LINEAGE_FIELDS = Object.freeze([
+    'totalAlerts', 'highSeverityAlerts', 'activeIncidents', 'threatIndicators',
+    'usersUnderAttack', 'securityScore', 'suspiciousSignIns', 'recommendationsCount',
+    'healthScore', 'riskScore', 'sourceHealth.evidenceCount', 'snapshotId', 'sourceLastUpdated'
+]);
 
 function parseJson(value, fallback = null) {
     if (value == null) return fallback;
@@ -573,6 +590,12 @@ function createEnterpriseIntelligenceService({
             ? array(sourceEvidence).filter(item => ['alerts', 'incidents', 'mailActivityUsers'].includes(item?.evidenceType))
             : domain.key === 'cloudflare_network_security' && source.sourceLineage?.sourceBuilder === 'storedStackCTRLNetworkEvidence'
             ? array(sourceEvidence).filter(item => ['accessApps', 'devices', 'gatewayRules', 'accessLogs', 'dlpProfiles', 'warpProfiles'].includes(item?.evidenceType))
+            : domain.key === 'backup' && source.sourceLineage?.sourceBuilder === 'storedStackCTRLBackupEvidence'
+            ? array(sourceEvidence).filter(item => ['users', 'sites'].includes(item?.evidenceType))
+            : domain.key === 'applications' && source.sourceLineage?.sourceBuilder === 'storedStackCTRLApplicationsEvidence'
+            ? array(sourceEvidence).filter(item => item?.evidenceType === 'applications')
+            : domain.key === 'security_alerts' && source.sourceLineage?.sourceBuilder === 'storedStackCTRLSecurityEvidence'
+            ? array(sourceEvidence).filter(item => ['alerts', 'incidents', 'signIns', 'threatIndicators'].includes(item?.evidenceType))
             : sourceEvidence;
         const sourceMetrics = source.metrics || metrics[domain.sourceKey] || {};
         const dashboardMetrics = source.dashboardMetrics || {};
@@ -689,6 +712,12 @@ function createEnterpriseIntelligenceService({
             ? EMAIL_LINEAGE_FIELDS
             : domain.key === 'cloudflare_network_security'
             ? NETWORK_LINEAGE_FIELDS
+            : domain.key === 'backup'
+            ? BACKUP_LINEAGE_FIELDS
+            : domain.key === 'applications'
+            ? APPLICATIONS_LINEAGE_FIELDS
+            : domain.key === 'security_alerts'
+            ? SECURITY_LINEAGE_FIELDS
             : [...new Set([...Object.keys(sourceLineageValues), ...Object.keys(inputLineageValues)])];
         const sourceAlignment = buildDataLineageComparison({
             fields: lineageFields,
@@ -702,6 +731,9 @@ function createEnterpriseIntelligenceService({
                     : domain.key === 'devices' ? 'deviceDashboardContext'
                     : domain.key === 'email_security' ? 'emailSecurityDashboardContext'
                     : domain.key === 'cloudflare_network_security' ? 'cloudflareDashboardContext'
+                    : domain.key === 'backup' ? 'backupDashboardContext'
+                    : domain.key === 'applications' ? 'applicationsDashboardContext'
+                    : domain.key === 'security_alerts' ? 'securityAlertsDashboardContext'
                     : 'dashboardContext'
             ),
             sourceLayer: current.source.sourceLineage?.sourceLayer || 'tenant_evidence_snapshot.dashboardMetrics',
@@ -1310,7 +1342,7 @@ ${JSON.stringify(packageValue)}`;
 
     async function analyseDomain({ companyId, snapshot, run, domain, historicalContext }) {
         const packageResult = await buildDomainPackage({ companyId, snapshot, runId: run.id, domain, historicalContext });
-        const missingFailure = ['identity', 'devices', 'email_security', 'cloudflare_network_security'].includes(domain.key)
+        const missingFailure = DASHBOARD_BACKED_ENTERPRISE_DOMAINS.includes(domain.key)
             ? sourceMissingFailure(packageResult.package.sourceHealth, domain.name)
             : null;
         if (missingFailure) {
@@ -1908,6 +1940,9 @@ module.exports = {
     DEVICE_LINEAGE_FIELDS,
     EMAIL_LINEAGE_FIELDS,
     NETWORK_LINEAGE_FIELDS,
+    BACKUP_LINEAGE_FIELDS,
+    APPLICATIONS_LINEAGE_FIELDS,
+    SECURITY_LINEAGE_FIELDS,
     DASHBOARD_BACKED_ENTERPRISE_DOMAINS,
     buildDataLineageComparison,
     sourceAlignmentFailure,
