@@ -44,6 +44,15 @@ const { createApplicationsEvidenceAutomation } = require('./services/intelligenc
 const { buildSecurityDashboardPayload } = require('./services/intelligence/security-dashboard-processor');
 const { createSecurityEvidenceStore } = require('./services/intelligence/security-evidence-store');
 const { createSecurityEvidenceAutomation } = require('./services/intelligence/security-evidence-automation');
+const { buildGovernanceDashboardPayload } = require('./services/intelligence/governance-dashboard-processor');
+const { createGovernanceEvidenceStore } = require('./services/intelligence/governance-evidence-store');
+const { createGovernanceEvidenceAutomation } = require('./services/intelligence/governance-evidence-automation');
+const { buildComplianceDashboardPayload } = require('./services/intelligence/compliance-dashboard-processor');
+const { createComplianceEvidenceStore } = require('./services/intelligence/compliance-evidence-store');
+const { createComplianceEvidenceAutomation } = require('./services/intelligence/compliance-evidence-automation');
+const { buildOperationsDashboardPayload } = require('./services/intelligence/operations-dashboard-processor');
+const { createOperationsEvidenceStore } = require('./services/intelligence/operations-evidence-store');
+const { createOperationsEvidenceAutomation } = require('./services/intelligence/operations-evidence-automation');
 const { createStackCTRLServerAutomation } = require('./services/intelligence/server-automation');
 const { createAdminIntelligenceService } = require('./services/admin-intelligence');
 const { createEnterpriseIntelligenceService } = require('./services/enterprise-intelligence');
@@ -83,6 +92,9 @@ let networkEvidenceService = null;
 let backupEvidenceService = null;
 let applicationsEvidenceService = null;
 let securityEvidenceService = null;
+let governanceEvidenceService = null;
+let complianceEvidenceService = null;
+let operationsEvidenceService = null;
 const identityEvidenceCollectionPromises = new Map();
 const deviceEvidenceCollectionPromises = new Map();
 const emailEvidenceCollectionPromises = new Map();
@@ -90,6 +102,9 @@ const networkEvidenceCollectionPromises = new Map();
 const backupEvidenceCollectionPromises = new Map();
 const applicationsEvidenceCollectionPromises = new Map();
 const securityEvidenceCollectionPromises = new Map();
+const governanceEvidenceCollectionPromises = new Map();
+const complianceEvidenceCollectionPromises = new Map();
+const operationsEvidenceCollectionPromises = new Map();
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -7868,28 +7883,7 @@ async function upsertSunbirdPayloadCache(tableName, companyId, payload) {
 }
 
 // ============================================================================
-// SUNBIRD ONLY: GOVERNANCE EVIDENCE REGISTER
-// ============================================================================
-app.get('/api/sunbird/governance', authenticateToken, async (req, res) => {
-    let companyId = null;
-    try {
-        const userEmail = req.user.email;
-        const tenant = getTenantByEmail(userEmail);
-
-        if (!tenant || tenant.clientId !== 'sunbird') {
-            return res.status(403).json({ error: 'Access denied. Sunbird only.' });
-        }
-
-        companyId = tenant.companyId || req.user.companyId || null;
-        const cached = await getSunbirdPayloadCache('SunbirdGovernancePayloadCache', companyId);
-        if (cached?.payload?.success && Array.isArray(cached.payload.rows)) {
-            return res.json({
-                ...cached.payload,
-                source: 'db',
-                fetchedAt: cached.lastUpdated
-            });
-        }
-
+async function fetchGovernancePayloadFromApi() {
         const token = await getMicrosoftGraphToken();
         const fetchedAt = new Date().toISOString();
         const lastReviewed = fetchedAt.split('T')[0];
@@ -8227,13 +8221,47 @@ app.get('/api/sunbird/governance', authenticateToken, async (req, res) => {
             'Security awareness completion is not available from Microsoft Graph in this dashboard. Evidence should come from the training platform or signed attendance/completion records.'
         );
 
-        const payload = {
+        return {
             success: true,
             rows,
             source: 'api',
             fetchedAt
         };
+}
+
+// SUNBIRD ONLY: GOVERNANCE EVIDENCE REGISTER
+// ============================================================================
+app.get('/api/sunbird/governance', authenticateToken, async (req, res) => {
+    let companyId = null;
+    try {
+        const userEmail = req.user.email;
+        const tenant = getTenantByEmail(userEmail);
+
+        if (!tenant || tenant.clientId !== 'sunbird') {
+            return res.status(403).json({ error: 'Access denied. Sunbird only.' });
+        }
+
+        companyId = tenant.companyId || req.user.companyId || null;
+        const cached = await getSunbirdPayloadCache('SunbirdGovernancePayloadCache', companyId);
+        if (cached?.payload?.success && Array.isArray(cached.payload.rows)) {
+            return res.json({
+                ...cached.payload,
+                source: 'db',
+                fetchedAt: cached.lastUpdated
+            });
+        }
+
+        const payload = await fetchGovernancePayloadFromApi();
         await upsertSunbirdPayloadCache('SunbirdGovernancePayloadCache', companyId, payload);
+        if (governanceEvidenceService && companyId) {
+            governanceEvidenceService.persistProcessedEvidence({
+                companyId,
+                tenantKey: 'sunbird',
+                payload: buildGovernanceDashboardPayload({ tenantKey: 'sunbird', payload }),
+                collectionTrigger: 'dashboard_refresh',
+                sourceEndpoint: '/api/sunbird/governance'
+            }).catch(error => console.warn('[Governance Evidence] Dashboard persist failed:', error.message));
+        }
         res.json(payload);
     } catch (error) {
         console.error('[Governance API] Critical Error:', error);
@@ -8251,29 +8279,7 @@ app.get('/api/sunbird/governance', authenticateToken, async (req, res) => {
 });
 
 // ============================================================================
-// SUNBIRD ONLY: STRICT COMPLIANCE VALIDATION ENGINE (FULL MATRIX)
-// ============================================================================
-app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) => {
-    let companyId = null;
-    try {
-        const userEmail = req.user.email;
-        const tenant = getTenantByEmail(userEmail);
-        
-        // 🚨 STRICT SCOPE CONTROL
-        if (!tenant || tenant.clientId !== 'sunbird') {
-            return res.status(403).json({ error: 'Access denied. Sunbird only.' });
-        }
-
-        companyId = tenant.companyId || req.user.companyId || null;
-        const cached = await getSunbirdPayloadCache('SunbirdComplianceControlsCache', companyId);
-        if (cached?.payload?.success && Array.isArray(cached.payload.controls)) {
-            return res.json({
-                ...cached.payload,
-                source: 'db',
-                fetchedAt: cached.lastUpdated
-            });
-        }
-
+async function fetchComplianceControlsFromApi() {
         const token = await getMicrosoftGraphToken();
         const controls = [];
 
@@ -8496,13 +8502,48 @@ app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) 
             limitation: "Usage reports can show activity and storage footprint, but this control still needs permissions, sensitivity, and retention review evidence."
         });
 
-        const payload = {
+        return {
             success: true,
             controls,
             source: 'api',
             fetchedAt: new Date().toISOString()
         };
+}
+
+// SUNBIRD ONLY: STRICT COMPLIANCE VALIDATION ENGINE (FULL MATRIX)
+// ============================================================================
+app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) => {
+    let companyId = null;
+    try {
+        const userEmail = req.user.email;
+        const tenant = getTenantByEmail(userEmail);
+        
+        // 🚨 STRICT SCOPE CONTROL
+        if (!tenant || tenant.clientId !== 'sunbird') {
+            return res.status(403).json({ error: 'Access denied. Sunbird only.' });
+        }
+
+        companyId = tenant.companyId || req.user.companyId || null;
+        const cached = await getSunbirdPayloadCache('SunbirdComplianceControlsCache', companyId);
+        if (cached?.payload?.success && Array.isArray(cached.payload.controls)) {
+            return res.json({
+                ...cached.payload,
+                source: 'db',
+                fetchedAt: cached.lastUpdated
+            });
+        }
+
+        const payload = await fetchComplianceControlsFromApi();
         await upsertSunbirdPayloadCache('SunbirdComplianceControlsCache', companyId, payload);
+        if (complianceEvidenceService && companyId) {
+            complianceEvidenceService.persistProcessedEvidence({
+                companyId,
+                tenantKey: 'sunbird',
+                payload: buildComplianceDashboardPayload({ tenantKey: 'sunbird', payload }),
+                collectionTrigger: 'dashboard_refresh',
+                sourceEndpoint: '/api/sunbird/compliance-controls'
+            }).catch(error => console.warn('[Compliance Evidence] Dashboard persist failed:', error.message));
+        }
         res.json(payload);
 
     } catch (error) {
@@ -8521,29 +8562,7 @@ app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) 
 });
 
 // ============================================================================
-// SUNBIRD ONLY: OPERATIONS REMEDIATION ENGINE
-// ============================================================================
-app.get('/api/sunbird/operations', authenticateToken, async (req, res) => {
-    let companyId = null;
-    try {
-        const userEmail = req.user.email;
-        const tenant = getTenantByEmail(userEmail);
-        
-        // 🚨 STRICT SCOPE CONTROL
-        if (!tenant || tenant.clientId !== 'sunbird') {
-            return res.status(403).json({ error: 'Access denied. Sunbird only.' });
-        }
-
-        companyId = tenant.companyId || req.user.companyId || null;
-        const cached = await getSunbirdPayloadCache('SunbirdOperationsPayloadCache', companyId);
-        if (cached?.payload?.success && Array.isArray(cached.payload.tasks)) {
-            return res.json({
-                ...cached.payload,
-                source: 'db',
-                fetchedAt: cached.lastUpdated
-            });
-        }
-
+async function fetchOperationsPayloadFromApi() {
         const token = await getMicrosoftGraphToken();
         const tasks = [];
 
@@ -8746,13 +8765,48 @@ app.get('/api/sunbird/operations', authenticateToken, async (req, res) => {
         const priorityWeight = { 'High': 3, 'Medium': 2, 'Low': 1 };
         tasks.sort((a, b) => priorityWeight[b.priority] - priorityWeight[a.priority]);
 
-        const payload = {
+        return {
             success: true,
             tasks,
             source: 'api',
             fetchedAt: new Date().toISOString()
         };
+}
+
+// SUNBIRD ONLY: OPERATIONS REMEDIATION ENGINE
+// ============================================================================
+app.get('/api/sunbird/operations', authenticateToken, async (req, res) => {
+    let companyId = null;
+    try {
+        const userEmail = req.user.email;
+        const tenant = getTenantByEmail(userEmail);
+        
+        // 🚨 STRICT SCOPE CONTROL
+        if (!tenant || tenant.clientId !== 'sunbird') {
+            return res.status(403).json({ error: 'Access denied. Sunbird only.' });
+        }
+
+        companyId = tenant.companyId || req.user.companyId || null;
+        const cached = await getSunbirdPayloadCache('SunbirdOperationsPayloadCache', companyId);
+        if (cached?.payload?.success && Array.isArray(cached.payload.tasks)) {
+            return res.json({
+                ...cached.payload,
+                source: 'db',
+                fetchedAt: cached.lastUpdated
+            });
+        }
+
+        const payload = await fetchOperationsPayloadFromApi();
         await upsertSunbirdPayloadCache('SunbirdOperationsPayloadCache', companyId, payload);
+        if (operationsEvidenceService && companyId) {
+            operationsEvidenceService.persistProcessedEvidence({
+                companyId,
+                tenantKey: 'sunbird',
+                payload: buildOperationsDashboardPayload({ tenantKey: 'sunbird', payload }),
+                collectionTrigger: 'dashboard_refresh',
+                sourceEndpoint: '/api/sunbird/operations'
+            }).catch(error => console.warn('[Operations Evidence] Dashboard persist failed:', error.message));
+        }
         res.json(payload);
 
     } catch (error) {
@@ -11147,6 +11201,102 @@ async function collectSecurityEvidenceForConfiguredTenants({ trigger = 'schedule
     return { companyCount: companies.length, results };
 }
 
+async function performGovernanceEvidenceCollection(companyId, collectionTrigger) {
+    if (!governanceEvidenceService) throw new Error('Governance evidence storage is not initialized');
+    const sourceEndpoint = 'Microsoft Graph processed by StackCTRL Governance';
+    try {
+        const rawPayload = await fetchGovernancePayloadFromApi();
+        const dashboardPayload = buildGovernanceDashboardPayload({ tenantKey: 'sunbird', payload: rawPayload });
+        await upsertSunbirdPayloadCache('SunbirdGovernancePayloadCache', companyId, rawPayload);
+        return governanceEvidenceService.persistProcessedEvidence({ companyId, tenantKey: 'sunbird', payload: dashboardPayload, collectionTrigger, sourceEndpoint });
+    } catch (error) {
+        await governanceEvidenceService.recordCollectionFailure({ companyId, tenantKey: 'sunbird', collectionTrigger, sourceEndpoint, error }).catch(() => {});
+        throw error;
+    }
+}
+
+async function collectAndPersistGovernanceEvidence(companyId, collectionTrigger = 'scheduled_daily') {
+    const key = String(companyId);
+    if (governanceEvidenceCollectionPromises.get(key)) return governanceEvidenceCollectionPromises.get(key);
+    const collection = performGovernanceEvidenceCollection(companyId, collectionTrigger);
+    governanceEvidenceCollectionPromises.set(key, collection);
+    try { return await collection; } finally { if (governanceEvidenceCollectionPromises.get(key) === collection) governanceEvidenceCollectionPromises.delete(key); }
+}
+
+async function collectGovernanceEvidenceForConfiguredTenants({ trigger = 'scheduled_daily' } = {}) {
+    const [companies] = await pool.query(`SELECT DISTINCT company.ID AS CompanyID FROM Companies company LEFT JOIN StackCTRLClientCapabilities capability ON capability.CompanyID = company.ID AND capability.SourceKey = 'governance' WHERE LOWER(company.CompanyName) LIKE '%sunbird%' OR (capability.ProfileKey = 'sunbird' AND capability.IsExpected = 1 AND capability.IsEnabled = 1)`);
+    const results = [];
+    for (const company of companies) {
+        try { results.push(await collectAndPersistGovernanceEvidence(company.CompanyID, trigger)); }
+        catch (error) { results.push({ companyId: company.CompanyID, status: 'failed', message: error.message }); }
+    }
+    return { companyCount: companies.length, results };
+}
+
+async function performComplianceEvidenceCollection(companyId, collectionTrigger) {
+    if (!complianceEvidenceService) throw new Error('Compliance evidence storage is not initialized');
+    const sourceEndpoint = 'Microsoft Graph processed by StackCTRL Compliance Validation';
+    try {
+        const rawPayload = await fetchComplianceControlsFromApi();
+        const dashboardPayload = buildComplianceDashboardPayload({ tenantKey: 'sunbird', payload: rawPayload });
+        await upsertSunbirdPayloadCache('SunbirdComplianceControlsCache', companyId, rawPayload);
+        return complianceEvidenceService.persistProcessedEvidence({ companyId, tenantKey: 'sunbird', payload: dashboardPayload, collectionTrigger, sourceEndpoint });
+    } catch (error) {
+        await complianceEvidenceService.recordCollectionFailure({ companyId, tenantKey: 'sunbird', collectionTrigger, sourceEndpoint, error }).catch(() => {});
+        throw error;
+    }
+}
+
+async function collectAndPersistComplianceEvidence(companyId, collectionTrigger = 'scheduled_daily') {
+    const key = String(companyId);
+    if (complianceEvidenceCollectionPromises.get(key)) return complianceEvidenceCollectionPromises.get(key);
+    const collection = performComplianceEvidenceCollection(companyId, collectionTrigger);
+    complianceEvidenceCollectionPromises.set(key, collection);
+    try { return await collection; } finally { if (complianceEvidenceCollectionPromises.get(key) === collection) complianceEvidenceCollectionPromises.delete(key); }
+}
+
+async function collectComplianceEvidenceForConfiguredTenants({ trigger = 'scheduled_daily' } = {}) {
+    const [companies] = await pool.query(`SELECT DISTINCT company.ID AS CompanyID FROM Companies company LEFT JOIN StackCTRLClientCapabilities capability ON capability.CompanyID = company.ID AND capability.SourceKey = 'compliance' WHERE LOWER(company.CompanyName) LIKE '%sunbird%' OR (capability.ProfileKey = 'sunbird' AND capability.IsExpected = 1 AND capability.IsEnabled = 1)`);
+    const results = [];
+    for (const company of companies) {
+        try { results.push(await collectAndPersistComplianceEvidence(company.CompanyID, trigger)); }
+        catch (error) { results.push({ companyId: company.CompanyID, status: 'failed', message: error.message }); }
+    }
+    return { companyCount: companies.length, results };
+}
+
+async function performOperationsEvidenceCollection(companyId, collectionTrigger) {
+    if (!operationsEvidenceService) throw new Error('Operations evidence storage is not initialized');
+    const sourceEndpoint = 'Microsoft Graph processed by StackCTRL Operations';
+    try {
+        const rawPayload = await fetchOperationsPayloadFromApi();
+        const dashboardPayload = buildOperationsDashboardPayload({ tenantKey: 'sunbird', payload: rawPayload });
+        await upsertSunbirdPayloadCache('SunbirdOperationsPayloadCache', companyId, rawPayload);
+        return operationsEvidenceService.persistProcessedEvidence({ companyId, tenantKey: 'sunbird', payload: dashboardPayload, collectionTrigger, sourceEndpoint });
+    } catch (error) {
+        await operationsEvidenceService.recordCollectionFailure({ companyId, tenantKey: 'sunbird', collectionTrigger, sourceEndpoint, error }).catch(() => {});
+        throw error;
+    }
+}
+
+async function collectAndPersistOperationsEvidence(companyId, collectionTrigger = 'scheduled_hourly') {
+    const key = String(companyId);
+    if (operationsEvidenceCollectionPromises.get(key)) return operationsEvidenceCollectionPromises.get(key);
+    const collection = performOperationsEvidenceCollection(companyId, collectionTrigger);
+    operationsEvidenceCollectionPromises.set(key, collection);
+    try { return await collection; } finally { if (operationsEvidenceCollectionPromises.get(key) === collection) operationsEvidenceCollectionPromises.delete(key); }
+}
+
+async function collectOperationsEvidenceForConfiguredTenants({ trigger = 'scheduled_hourly' } = {}) {
+    const [companies] = await pool.query(`SELECT DISTINCT company.ID AS CompanyID FROM Companies company LEFT JOIN StackCTRLClientCapabilities capability ON capability.CompanyID = company.ID AND capability.SourceKey = 'operations' WHERE LOWER(company.CompanyName) LIKE '%sunbird%' OR (capability.ProfileKey = 'sunbird' AND capability.IsExpected = 1 AND capability.IsEnabled = 1)`);
+    const results = [];
+    for (const company of companies) {
+        try { results.push(await collectAndPersistOperationsEvidence(company.CompanyID, trigger)); }
+        catch (error) { results.push({ companyId: company.CompanyID, status: 'failed', message: error.message }); }
+    }
+    return { companyCount: companies.length, results };
+}
+
 async function refreshStackCTRLIntelligenceSource(sourceKey, companyId) {
     switch (sourceKey) {
         case 'identity': {
@@ -11406,6 +11556,57 @@ async function refreshStackCTRLIntelligenceSource(sourceKey, companyId) {
             }
             return getCloudflareNetworkSecuritySummary({ getSecret });
         }
+        case 'governance': {
+            if (governanceEvidenceService) {
+                try {
+                    await collectAndPersistGovernanceEvidence(companyId, 'enterprise_refresh');
+                    return null;
+                } catch (error) {
+                    const refreshError = new Error(`Governance evidence refresh failed: ${error.message}`);
+                    refreshError.statusCode = error.statusCode || 500;
+                    refreshError.isRefreshError = true;
+                    refreshError.sourceKey = 'governance';
+                    throw refreshError;
+                }
+            }
+            const payload = await fetchGovernancePayloadFromApi();
+            await upsertSunbirdPayloadCache('SunbirdGovernancePayloadCache', companyId, payload);
+            return null;
+        }
+        case 'compliance': {
+            if (complianceEvidenceService) {
+                try {
+                    await collectAndPersistComplianceEvidence(companyId, 'enterprise_refresh');
+                    return null;
+                } catch (error) {
+                    const refreshError = new Error(`Compliance evidence refresh failed: ${error.message}`);
+                    refreshError.statusCode = error.statusCode || 500;
+                    refreshError.isRefreshError = true;
+                    refreshError.sourceKey = 'compliance';
+                    throw refreshError;
+                }
+            }
+            const payload = await fetchComplianceControlsFromApi();
+            await upsertSunbirdPayloadCache('SunbirdComplianceControlsCache', companyId, payload);
+            return null;
+        }
+        case 'operations': {
+            if (operationsEvidenceService) {
+                try {
+                    await collectAndPersistOperationsEvidence(companyId, 'enterprise_refresh');
+                    return null;
+                } catch (error) {
+                    const refreshError = new Error(`Operations evidence refresh failed: ${error.message}`);
+                    refreshError.statusCode = error.statusCode || 500;
+                    refreshError.isRefreshError = true;
+                    refreshError.sourceKey = 'operations';
+                    throw refreshError;
+                }
+            }
+            const payload = await fetchOperationsPayloadFromApi();
+            await upsertSunbirdPayloadCache('SunbirdOperationsPayloadCache', companyId, payload);
+            return null;
+        }
         case 'duo_licences':
             await syncDuoData();
             return null;
@@ -11527,6 +11728,51 @@ const securityEvidenceAutomation = createSecurityEvidenceAutomation({
     enabled: !['false', '0', 'no'].includes(String(process.env.SECURITY_EVIDENCE_COLLECTION_ENABLED || 'true').toLowerCase()),
     intervalMs: process.env.SECURITY_EVIDENCE_COLLECTION_INTERVAL_MS || (60 * 60 * 1000),
     startupDelayMs: process.env.SECURITY_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (105 * 1000)
+});
+governanceEvidenceService = createGovernanceEvidenceStore({ pool });
+const governanceEvidenceSchemaReady = governanceEvidenceService.ensureSchema().catch(error => {
+    console.error('[Governance Evidence] Schema initialization failed:', error.message);
+    return { error };
+});
+const governanceEvidenceAutomation = createGovernanceEvidenceAutomation({
+    collectAll: async options => {
+        const schema = await governanceEvidenceSchemaReady;
+        if (schema?.error) throw schema.error;
+        return collectGovernanceEvidenceForConfiguredTenants(options);
+    },
+    enabled: !['false', '0', 'no'].includes(String(process.env.GOVERNANCE_EVIDENCE_COLLECTION_ENABLED || 'true').toLowerCase()),
+    intervalMs: process.env.GOVERNANCE_EVIDENCE_COLLECTION_INTERVAL_MS || (6 * 60 * 60 * 1000),
+    startupDelayMs: process.env.GOVERNANCE_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (120 * 1000)
+});
+complianceEvidenceService = createComplianceEvidenceStore({ pool });
+const complianceEvidenceSchemaReady = complianceEvidenceService.ensureSchema().catch(error => {
+    console.error('[Compliance Evidence] Schema initialization failed:', error.message);
+    return { error };
+});
+const complianceEvidenceAutomation = createComplianceEvidenceAutomation({
+    collectAll: async options => {
+        const schema = await complianceEvidenceSchemaReady;
+        if (schema?.error) throw schema.error;
+        return collectComplianceEvidenceForConfiguredTenants(options);
+    },
+    enabled: !['false', '0', 'no'].includes(String(process.env.COMPLIANCE_EVIDENCE_COLLECTION_ENABLED || 'true').toLowerCase()),
+    intervalMs: process.env.COMPLIANCE_EVIDENCE_COLLECTION_INTERVAL_MS || (6 * 60 * 60 * 1000),
+    startupDelayMs: process.env.COMPLIANCE_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (150 * 1000)
+});
+operationsEvidenceService = createOperationsEvidenceStore({ pool });
+const operationsEvidenceSchemaReady = operationsEvidenceService.ensureSchema().catch(error => {
+    console.error('[Operations Evidence] Schema initialization failed:', error.message);
+    return { error };
+});
+const operationsEvidenceAutomation = createOperationsEvidenceAutomation({
+    collectAll: async options => {
+        const schema = await operationsEvidenceSchemaReady;
+        if (schema?.error) throw schema.error;
+        return collectOperationsEvidenceForConfiguredTenants(options);
+    },
+    enabled: !['false', '0', 'no'].includes(String(process.env.OPERATIONS_EVIDENCE_COLLECTION_ENABLED || 'true').toLowerCase()),
+    intervalMs: process.env.OPERATIONS_EVIDENCE_COLLECTION_INTERVAL_MS || (60 * 60 * 1000),
+    startupDelayMs: process.env.OPERATIONS_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (180 * 1000)
 });
 const stackCTRLIntelligenceService = createStackCTRLIntelligenceService({
     pool,
@@ -12630,6 +12876,9 @@ const server = app.listen(PORT, async () => {
     backupEvidenceAutomation.start();
     applicationsEvidenceAutomation.start();
     securityEvidenceAutomation.start();
+    governanceEvidenceAutomation.start();
+    complianceEvidenceAutomation.start();
+    operationsEvidenceAutomation.start();
     // StackCTRL automation runs inside this server and uses database deduplication across instances.
     stackCTRLIntelligenceAutomation.start();
     // Enterprise reporting runs separately because domain batches may take much longer than compact intelligence.
@@ -12658,6 +12907,9 @@ function stopServer(signal) {
     backupEvidenceAutomation.stop();
     applicationsEvidenceAutomation.stop();
     securityEvidenceAutomation.stop();
+    governanceEvidenceAutomation.stop();
+    complianceEvidenceAutomation.stop();
+    operationsEvidenceAutomation.stop();
     stackCTRLIntelligenceAutomation.stop();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(1), 10000).unref();

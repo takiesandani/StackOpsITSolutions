@@ -47,7 +47,7 @@ const NETWORK_LINEAGE_FIELDS = Object.freeze([
     'recentAccessEvents', 'networkSecurityScore', 'dlpProfiles', 'identityProviders', 'sectionErrors',
     'healthScore', 'riskScore', 'sourceHealth.evidenceCount', 'snapshotId', 'sourceLastUpdated'
 ]);
-const DASHBOARD_BACKED_ENTERPRISE_DOMAINS = Object.freeze(['identity', 'devices', 'email_security', 'cloudflare_network_security', 'backup', 'applications', 'security_alerts']);
+const DASHBOARD_BACKED_ENTERPRISE_DOMAINS = Object.freeze(['identity', 'devices', 'email_security', 'cloudflare_network_security', 'backup', 'applications', 'security_alerts', 'governance', 'compliance', 'operations']);
 const BACKUP_LINEAGE_FIELDS = Object.freeze([
     'totalStorageGB', 'oneDriveStorageGB', 'sharePointStorageGB', 'exchangeStorageGB',
     'activeUsersCount', 'inactiveUsersCount', 'servicesCovered', 'inactiveUserStorageGB',
@@ -64,6 +64,24 @@ const SECURITY_LINEAGE_FIELDS = Object.freeze([
     'totalAlerts', 'highSeverityAlerts', 'activeIncidents', 'threatIndicators',
     'usersUnderAttack', 'securityScore', 'suspiciousSignIns', 'recommendationsCount',
     'healthScore', 'riskScore', 'sourceHealth.evidenceCount', 'snapshotId', 'sourceLastUpdated'
+]);
+
+const GOVERNANCE_LINEAGE_FIELDS = Object.freeze([
+    'totalRows', 'apiConnectedRows', 'manualRowsExcluded', 'attentionRequiredRows', 'connectedRows',
+    'governanceScore', 'recommendationsCount', 'healthScore', 'riskScore',
+    'sourceHealth.evidenceCount', 'snapshotId', 'sourceLastUpdated'
+]);
+
+const COMPLIANCE_LINEAGE_FIELDS = Object.freeze([
+    'totalControls', 'apiControls', 'manualControlsExcluded', 'failingControls', 'partialControls',
+    'passingControls', 'complianceScore', 'recommendationsCount', 'healthScore', 'riskScore',
+    'sourceHealth.evidenceCount', 'snapshotId', 'sourceLastUpdated'
+]);
+
+const OPERATIONS_LINEAGE_FIELDS = Object.freeze([
+    'totalTasks', 'apiTasks', 'manualTasksExcluded', 'highPriorityTasks', 'mediumPriorityTasks',
+    'lowPriorityTasks', 'operationsHealthScore', 'recommendationsCount', 'healthScore', 'riskScore',
+    'sourceHealth.evidenceCount', 'snapshotId', 'sourceLastUpdated'
 ]);
 
 function parseJson(value, fallback = null) {
@@ -596,6 +614,12 @@ function createEnterpriseIntelligenceService({
             ? array(sourceEvidence).filter(item => item?.evidenceType === 'applications')
             : domain.key === 'security_alerts' && source.sourceLineage?.sourceBuilder === 'storedStackCTRLSecurityEvidence'
             ? array(sourceEvidence).filter(item => ['alerts', 'incidents', 'signIns', 'threatIndicators'].includes(item?.evidenceType))
+            : domain.key === 'governance' && source.sourceLineage?.sourceBuilder === 'storedStackCTRLGovernanceEvidence'
+            ? array(sourceEvidence).filter(item => item?.evidenceType === 'governanceRows')
+            : domain.key === 'compliance' && source.sourceLineage?.sourceBuilder === 'storedStackCTRLComplianceEvidence'
+            ? array(sourceEvidence).filter(item => item?.evidenceType === 'controls')
+            : domain.key === 'operations' && source.sourceLineage?.sourceBuilder === 'storedStackCTRLOperationsEvidence'
+            ? array(sourceEvidence).filter(item => item?.evidenceType === 'tasks')
             : sourceEvidence;
         const sourceMetrics = source.metrics || metrics[domain.sourceKey] || {};
         const dashboardMetrics = source.dashboardMetrics || {};
@@ -718,6 +742,12 @@ function createEnterpriseIntelligenceService({
             ? APPLICATIONS_LINEAGE_FIELDS
             : domain.key === 'security_alerts'
             ? SECURITY_LINEAGE_FIELDS
+            : domain.key === 'governance'
+            ? GOVERNANCE_LINEAGE_FIELDS
+            : domain.key === 'compliance'
+            ? COMPLIANCE_LINEAGE_FIELDS
+            : domain.key === 'operations'
+            ? OPERATIONS_LINEAGE_FIELDS
             : [...new Set([...Object.keys(sourceLineageValues), ...Object.keys(inputLineageValues)])];
         const sourceAlignment = buildDataLineageComparison({
             fields: lineageFields,
@@ -734,6 +764,9 @@ function createEnterpriseIntelligenceService({
                     : domain.key === 'backup' ? 'backupDashboardContext'
                     : domain.key === 'applications' ? 'applicationsDashboardContext'
                     : domain.key === 'security_alerts' ? 'securityAlertsDashboardContext'
+                    : domain.key === 'governance' ? 'governanceDashboardContext'
+                    : domain.key === 'compliance' ? 'complianceDashboardContext'
+                    : domain.key === 'operations' ? 'operationsDashboardContext'
                     : 'dashboardContext'
             ),
             sourceLayer: current.source.sourceLineage?.sourceLayer || 'tenant_evidence_snapshot.dashboardMetrics',
@@ -1943,6 +1976,9 @@ module.exports = {
     BACKUP_LINEAGE_FIELDS,
     APPLICATIONS_LINEAGE_FIELDS,
     SECURITY_LINEAGE_FIELDS,
+    GOVERNANCE_LINEAGE_FIELDS,
+    COMPLIANCE_LINEAGE_FIELDS,
+    OPERATIONS_LINEAGE_FIELDS,
     DASHBOARD_BACKED_ENTERPRISE_DOMAINS,
     buildDataLineageComparison,
     sourceAlignmentFailure,

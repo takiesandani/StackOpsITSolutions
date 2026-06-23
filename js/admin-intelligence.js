@@ -85,9 +85,13 @@
         return { domainKey: null, domainName: enterpriseAuditDefaultTitle, row: null };
     }
 
-    function enterpriseAuditTitle({ domainRows, audits, selectedDomain }) {
-        const primary = resolveEnterprisePrimaryDomain({ domainRows, audits, selectedDomain });
-        return primary.domainKey ? primary.domainName : enterpriseAuditDefaultTitle;
+    function updateEnterpriseAuditHeading(primaryDomain, fallbackRun = null) {
+        const domainName = primaryDomain?.domainKey ? primaryDomain.domainName : enterpriseAuditDefaultTitle;
+        const row = primaryDomain?.row || null;
+        el('enterprise-audit-title').textContent = domainName;
+        el('enterprise-audit-subtitle').textContent = primaryDomain?.domainKey
+            ? `${domainName} · Run #${number(row?.RunID || fallbackRun?.ID || 0)} · ${statusLabel(row?.Status || fallbackRun?.Status || 'unknown')} · Proof of what StackCTRL held, what Azure received, and what structured intelligence was stored`
+            : 'Proof of what StackCTRL held, what Azure received, and what structured intelligence was stored';
     }
 
     function selectEnterpriseDomain(row) {
@@ -96,9 +100,11 @@
             return;
         }
         state.enterpriseSelectedDomain = { domainKey: row.DomainKey, runId: Number(row.RunID) };
-        const domainName = enterpriseDomainDisplayName(row.DomainKey, row);
-        el('enterprise-audit-title').textContent = domainName;
-        el('enterprise-audit-subtitle').textContent = `${domainName} · Run #${number(row.RunID)} · ${statusLabel(row.Status || 'unknown')} · Proof of what StackCTRL held, what Azure received, and what structured intelligence was stored`;
+        updateEnterpriseAuditHeading({
+            domainKey: row.DomainKey,
+            domainName: enterpriseDomainDisplayName(row.DomainKey, row),
+            row
+        });
     }
 
     function syncIntelligenceHeaderOffset() {
@@ -720,7 +726,7 @@
         const latestRunId = latestRun?.ID;
         const showLatestOnly = state.enterpriseRunView !== 'history';
         const statusFilter = state.enterpriseStatusFilter || 'all';
-        const filterByRun = row => !showLatestOnly || !latestRunId || Number(row.RunID) === Number(latestRunId) || Number(row.ID) === Number(latestRunId);
+        const filterByRun = row => !showLatestOnly || !latestRunId || Number(row.RunID) === Number(latestRunId);
         const filterByStatus = row => {
             if (statusFilter === 'failed') return isFailureStatus(row.Status) || row.Status === 'partial' || row.Status === 'completed_with_warnings';
             if (statusFilter === 'completed') return row.Status === 'completed';
@@ -750,16 +756,7 @@
             latestRun
         });
         state.enterprisePrimaryDomain = primaryDomain;
-        el('enterprise-audit-title').textContent = enterpriseAuditTitle({
-            domainRows,
-            audits,
-            selectedDomain: state.enterpriseSelectedDomain
-        });
-        const headingRunId = primaryDomain.row?.RunID || latestRun?.ID || latestRunId || 0;
-        const headingStatus = primaryDomain.row?.Status || latestRun?.Status || 'unknown';
-        el('enterprise-audit-subtitle').textContent = primaryDomain.domainKey
-            ? `${primaryDomain.domainName} · Run #${number(headingRunId)} · ${statusLabel(headingStatus)} · Proof of what StackCTRL held, what Azure received, and what structured intelligence was stored`
-            : 'Proof of what StackCTRL held, what Azure received, and what structured intelligence was stored';
+        updateEnterpriseAuditHeading(primaryDomain, latestRun);
         const badge = el('enterprise-run-badge');
         badge.className = `status-badge status-${statusClass(latestRun?.Status || 'muted')}`;
         badge.textContent = latestRun ? `Run #${number(latestRun.ID)} · ${statusLabel(latestRun.Status)}` : 'No enterprise run';

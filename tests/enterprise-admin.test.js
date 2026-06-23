@@ -48,15 +48,17 @@ test('admin enterprise UI uses clear batch labels and latest/history filters', (
 test('enterprise audit title is reset from the currently rendered latest domain', () => {
     assert.match(html, /id="enterprise-audit-title">Enterprise evidence and output audit</);
     assert.match(html, /id="enterprise-audit-subtitle"/);
-    assert.match(javascript, /function enterpriseAuditTitle/);
+    assert.match(javascript, /function updateEnterpriseAuditHeading/);
     assert.match(javascript, /function resolveEnterprisePrimaryDomain/);
     assert.match(javascript, /function enterpriseDomainDisplayName/);
     assert.match(javascript, /function parseEnterpriseRunModeDomainKey/);
     assert.match(javascript, /const displayedRows = domainRows\.length \? domainRows : audits/);
     assert.match(javascript, /Number\(row\.RunID\) === Number\(selectedDomain\.runId\)/);
     assert.match(javascript, /function selectEnterpriseDomain/);
+    assert.match(javascript, /const filterByRun = row => !showLatestOnly \|\| !latestRunId \|\| Number\(row\.RunID\) === Number\(latestRunId\)/);
+    assert.doesNotMatch(javascript, /Number\(row\.ID\) === Number\(latestRunId\)/);
     assert.match(javascript, /supportedEnterpriseDomains\.find\(domain => domain\.key === domainKey\)/);
-    assert.match(javascript, /el\('enterprise-audit-title'\)\.textContent = enterpriseAuditTitle/);
+    assert.match(javascript, /el\('enterprise-audit-title'\)\.textContent = domainName/);
     assert.match(javascript, /el\('enterprise-audit-subtitle'\)\.textContent/);
     assert.match(javascript, /state\.enterpriseSelectedDomain = null/);
 });
@@ -72,6 +74,8 @@ test('admin content and JSON input stay below the measured fixed header', () => 
     assert.match(stylesheet, /margin-top:\s*var\(--intel-header-height\)/);
     assert.match(stylesheet, /place-items:\s*start center/);
     assert.match(stylesheet, /max-height:\s*calc\(100dvh - var\(--intel-header-height\) - 38px\)/);
+    assert.match(stylesheet, /\.enterprise-audit-panel > \.panel-heading \{[^}]*min-height:\s*88px/);
+    assert.match(stylesheet, /#enterprise-audit-subtitle \{[^}]*position:\s*static/);
 });
 
 test('enterprise lineage and modal views format object values instead of [object Object]', () => {
