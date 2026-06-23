@@ -141,7 +141,9 @@ function createAdminIntelligenceRouter({ authenticateToken, adminIntelligenceSer
                 snapshotId: req.body?.snapshotId || null,
                 periodType: req.body?.periodType || 'daily',
                 domainKeys: req.body?.domainKeys || null,
-                includeSynthesis: req.body?.includeSynthesis !== false
+                includeSynthesis: req.body?.includeSynthesis !== false,
+                refreshSnapshot: req.body?.refreshSnapshot,
+                user: req.user || {}
             });
             res.status(201).json({ success: true, ...result });
         } catch (error) {
@@ -162,7 +164,9 @@ function createAdminIntelligenceRouter({ authenticateToken, adminIntelligenceSer
                 snapshotId: req.body?.snapshotId || null,
                 periodType: req.body?.periodType || 'daily',
                 domainKeys,
-                includeSynthesis: false
+                includeSynthesis: false,
+                refreshSnapshot: domainKeys.length > 1 ? req.body?.refreshSnapshot : false,
+                user: req.user || {}
             });
             res.status(201).json({ success: true, ...result });
         } catch (error) {

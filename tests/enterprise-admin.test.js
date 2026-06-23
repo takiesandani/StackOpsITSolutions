@@ -53,7 +53,7 @@ test('enterprise audit title is reset from the currently rendered latest domain'
     assert.match(javascript, /function enterpriseDomainDisplayName/);
     assert.match(javascript, /function parseEnterpriseRunModeDomainKey/);
     assert.match(javascript, /const displayedRows = domainRows\.length \? domainRows : audits/);
-    assert.match(javascript, /Number\(row\.RunID\) === Number\(selectedDomain\.runId\)/);
+    assert.match(javascript, /Number\(selectedDomain\.runId\) === latestRunId/);
     assert.match(javascript, /function selectEnterpriseDomain/);
     assert.match(javascript, /const filterByRun = row => !showLatestOnly \|\| !latestRunId \|\| Number\(row\.RunID\) === Number\(latestRunId\)/);
     assert.doesNotMatch(javascript, /Number\(row\.ID\) === Number\(latestRunId\)/);
@@ -100,6 +100,19 @@ test('enterprise input comparison renders run-scoped source lineage', () => {
     assert.match(javascript, /lineageMetadata\.sourceBuilder/);
     assert.match(javascript, /lineageAudit\.RunID/);
     assert.match(javascript, /lineageAudit\.SnapshotID/);
+});
+
+test('admin enterprise UI shows full pipeline progress and queue status', () => {
+    for (const phrase of [
+        'enterprise-pipeline-progress',
+        'Full run status',
+        'Current domain',
+        'Domains completed',
+        'Failed / blocked / skipped',
+        'Synthesis status',
+        'Final report ready',
+        'enterprise-pipeline-queue'
+    ]) assert.match(html.includes(phrase) ? html : javascript, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 });
 
 test('admin enterprise actions render stored failure statuses instead of unconditional success', () => {

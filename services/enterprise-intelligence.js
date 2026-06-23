@@ -23,6 +23,8 @@ const DEFAULT_DOMAIN_OUTPUT_TOKENS = 5000;
 const DEFAULT_SYNTHESIS_OUTPUT_TOKENS = 8000;
 const ENTERPRISE_RATE_LIMIT_RETRY_DELAYS_MS = Object.freeze([60000, 120000, 240000]);
 const ENTERPRISE_RATE_LIMIT_RETRY_MAX_MS = 15 * 60 * 1000;
+const SUCCESSFUL_DOMAIN_STATUSES = Object.freeze(new Set(['completed', 'partial', 'completed_with_warnings']));
+const SKIPPED_DOMAIN_STATUSES = Object.freeze(new Set(['skipped_rate_limited', 'skipped_token_threshold', 'skipped_pipeline_stop']));
 const DOMAIN_SYSTEM_MESSAGE = 'You are StackCTRL Enterprise Intelligence. Return valid JSON only. No markdown. No code fences. No explanations outside JSON.';
 const IDENTITY_LINEAGE_FIELDS = Object.freeze([
     'totalUsers', 'mfaEnabled', 'mfaMissing', 'mfaCoverage', 'privilegedUsers',
@@ -413,8 +415,40 @@ function classifyFailureStatus(error) {
 function rollupRunStatus(results = []) {
     if (!results.length) return 'failed';
     if (results.every(result => result.status === 'completed')) return 'completed';
-    if (results.every(result => /^(failed|blocked)/.test(String(result.status || '')))) return domainFailureStatus(results);
+    if (results.every(result => /^(failed|blocked|skipped)/.test(String(result.status || '')))) return domainFailureStatus(results);
     return 'completed_with_warnings';
+}
+
+function isSuccessfulDomainStatus(status) {
+    return SUCCESSFUL_DOMAIN_STATUSES.has(String(status || ''));
+}
+
+function buildDomainRunSummary(domainRows = [], queuedDomainKeys = []) {
+    const byKey = new Map(domainRows.map(row => [row.domainKey, row]));
+    const queue = queuedDomainKeys.length ? queuedDomainKeys : [...byKey.keys()];
+    const summary = {
+        totalDomains: queue.length,
+        includedDomains: [],
+        skippedDomains: [],
+        blockedDomains: [],
+        failedDomains: [],
+        successfulDomains: [],
+        pendingDomains: []
+    };
+    for (const domainKey of queue) {
+        const row = byKey.get(domainKey);
+        if (!row) {
+            summary.pendingDomains.push(domainKey);
+            continue;
+        }
+        const status = String(row.status || '');
+        if (isSuccessfulDomainStatus(status)) summary.successfulDomains.push(domainKey);
+        else if (SKIPPED_DOMAIN_STATUSES.has(status)) summary.skippedDomains.push({ domainKey, status, errorMessage: row.errorMessage || null });
+        else if (status.startsWith('blocked')) summary.blockedDomains.push({ domainKey, status, errorMessage: row.errorMessage || null });
+        else if (status.startsWith('failed')) summary.failedDomains.push({ domainKey, status, errorMessage: row.errorMessage || null });
+        else summary.includedDomains.push({ domainKey, status });
+    }
+    return summary;
 }
 
 // Batch evidence into safe chunks for sequential Azure processing.
@@ -479,6 +513,7 @@ function createEnterpriseIntelligenceService({
     pool,
     azureOpenAI,
     schedulerService,
+    intelligenceService = null,
     logger = console,
     wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
     config = {}
@@ -1205,6 +1240,112 @@ ${JSON.stringify(packageValue)}`;
         return { id: Number(result.insertId), ...window, mode };
     }
 
+    function buildRunProgress({
+        run,
+        domainKeys = [],
+        results = [],
+        currentDomainKey = null,
+        phase = 'domains',
+        synthesisStatus = null,
+        rateLimit = null,
+        snapshot = null
+    } = {}) {
+        const completed = results.filter(result => result.status === 'completed').length;
+        const partial = results.filter(result => result.status === 'partial').length;
+        const failed = results.filter(result => String(result.status || '').startsWith('failed')).length;
+        const blocked = results.filter(result => String(result.status || '').startsWith('blocked')).length;
+        const skipped = results.filter(result => SKIPPED_DOMAIN_STATUSES.has(String(result.status || ''))).length;
+        const successful = results.filter(result => isSuccessfulDomainStatus(result.status)).length;
+        const queue = domainKeys.map(key => ({
+            domainKey: key,
+            domainName: DOMAIN_BY_KEY[key]?.name || key,
+            status: results.find(result => result.domain?.key === key)?.status || (currentDomainKey === key ? 'running' : 'queued'),
+            errorMessage: results.find(result => result.domain?.key === key)?.errorMessage || null
+        }));
+        return {
+            phase,
+            runId: run?.id || null,
+            mode: run?.mode || null,
+            snapshotId: snapshot?.ID || null,
+            snapshotCreatedAt: snapshot?.CreatedAt || null,
+            currentDomainKey,
+            currentDomainName: currentDomainKey ? (DOMAIN_BY_KEY[currentDomainKey]?.name || currentDomainKey) : null,
+            domainQueue: queue,
+            counts: {
+                total: domainKeys.length,
+                completed,
+                partial,
+                successful,
+                failed,
+                blocked,
+                skipped,
+                processed: results.length
+            },
+            synthesisStatus,
+            rateLimit: rateLimit ? {
+                domainKey: rateLimit.domainKey || null,
+                retryAfterMs: rateLimit.retryAfterMs || null,
+                active: true
+            } : null,
+            updatedAt: new Date().toISOString()
+        };
+    }
+
+    async function updateRunProgress(runId, progress, totals = null) {
+        const params = [JSON.stringify(progress || {}), Number(runId)];
+        let sql = `UPDATE StackCTRLEnterpriseReportRuns SET ProgressJson = ? WHERE ID = ?`;
+        if (totals) {
+            sql = `UPDATE StackCTRLEnterpriseReportRuns
+                   SET ProgressJson = ?, TotalInputTokens = ?, TotalOutputTokens = ?, TotalTokens = ?,
+                       TotalRequestBytes = ?, TotalResponseBytes = ?, RetryCount = ?
+                   WHERE ID = ?`;
+            params.splice(1, 0, totals.inputTokens, totals.outputTokens, totals.totalTokens, totals.requestBytes, totals.responseBytes, totals.retries);
+        }
+        try {
+            await pool.query(sql, params);
+        } catch (error) {
+            if (error?.code !== 'ER_BAD_FIELD_ERROR') throw error;
+            if (!totals) return;
+            await pool.query(
+                `UPDATE StackCTRLEnterpriseReportRuns
+                 SET TotalInputTokens = ?, TotalOutputTokens = ?, TotalTokens = ?,
+                     TotalRequestBytes = ?, TotalResponseBytes = ?, RetryCount = ?
+                 WHERE ID = ?`,
+                [totals.inputTokens, totals.outputTokens, totals.totalTokens, totals.requestBytes, totals.responseBytes, totals.retries, Number(runId)]
+            );
+        }
+    }
+
+    async function storeSkippedDomain({ run, companyId, snapshot, domain, status, errorMessage }) {
+        const usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: 0, responseBytes: 0, retries: 0 };
+        const packageResult = await buildDomainPackage({ companyId, snapshot, runId: run.id, domain, historicalContext: { comparisons: {} } });
+        packageResult.audit.sentToAzureCount = 0;
+        await storeDomain({
+            run, companyId, snapshot, domain, packageResult, analysis: null, usage,
+            status, errorMessage
+        });
+        await storeAudit({
+            run, companyId, snapshot, domain, packageResult, analysis: null, usage,
+            status
+        });
+        return {
+            status,
+            domain,
+            usage,
+            audit: packageResult.audit,
+            errorMessage
+        };
+    }
+
+    async function refreshEnterpriseSnapshot(companyId, user = {}) {
+        if (!intelligenceService?.createSnapshot) return null;
+        return intelligenceService.createSnapshot({
+            companyId: Number(companyId),
+            options: { snapshotType: 'enterprise_pipeline', refresh: true },
+            user
+        });
+    }
+
     function normalizedDomainResult(data, domain, current) {
         const value = data && typeof data === 'object' && !Array.isArray(data) ? data : {};
         return {
@@ -1566,17 +1707,18 @@ ${JSON.stringify(packageValue)}`;
         }
     }
 
-    async function loadDomainRows(runId) {
+    async function loadDomainRows(runId, { successfulOnly = false } = {}) {
         const [rows] = await pool.query(
             `SELECT ID, CompanyID, SnapshotID, RunID, DomainKey, DomainName, HealthScore, RiskScore,
                     RiskLevel, Status, DomainExecutiveSummary, TechnicalSummary, BusinessImpact,
                     CurrentPosture, EvidenceSummary, ScoreJustification, ControlAssessment,
                     FindingsJson, RisksJson, RecommendationsJson, TrendAnalysisJson,
-                    YesterdayVsTodayJson, MissingDataWarningsJson, AssumptionsJson, ConfidenceScore
+                    YesterdayVsTodayJson, MissingDataWarningsJson, AssumptionsJson, ConfidenceScore,
+                    ErrorMessage
              FROM StackCTRLTenantDomainIntelligence WHERE RunID = ? ORDER BY ID`,
             [runId]
         );
-        return rows.map(row => ({
+        const mapped = rows.map(row => ({
             domainKey: row.DomainKey, domainName: row.DomainName, healthScore: row.HealthScore,
             riskScore: row.RiskScore, riskLevel: row.RiskLevel, status: row.Status,
             domainExecutiveSummary: row.DomainExecutiveSummary, technicalSummary: row.TechnicalSummary,
@@ -1590,8 +1732,10 @@ ${JSON.stringify(packageValue)}`;
             yesterdayVsToday: safeValue(parseJson(row.YesterdayVsTodayJson, {}), 0, { maxArray: 20 }),
             missingDataWarnings: array(parseJson(row.MissingDataWarningsJson, [])).slice(0, 30),
             assumptions: array(parseJson(row.AssumptionsJson, [])).slice(0, 30),
-            confidenceScore: row.ConfidenceScore
+            confidenceScore: row.ConfidenceScore,
+            errorMessage: row.ErrorMessage || null
         }));
+        return successfulOnly ? mapped.filter(row => isSuccessfulDomainStatus(row.status)) : mapped;
     }
 
     async function loadRollups(companyId, periodType, periodStart, periodEnd) {
@@ -1620,10 +1764,12 @@ ${JSON.stringify(packageValue)}`;
         }));
     }
 
-    async function runSynthesis({ companyId, snapshotId, run, existingTotals = null }) {
-        const domainRows = await loadDomainRows(run.id);
+    async function runSynthesis({ companyId, snapshotId, run, existingTotals = null, queuedDomainKeys = null }) {
+        const allDomainRows = await loadDomainRows(run.id);
+        const domainRows = await loadDomainRows(run.id, { successfulOnly: true });
         const rollups = await loadRollups(companyId, run.periodType, run.periodStart, run.periodEnd);
         if (!domainRows.length && !rollups.length) throw new Error('Enterprise synthesis requires stored domain intelligence or completed lower-period reports');
+        const domainRunSummary = buildDomainRunSummary(allDomainRows, queuedDomainKeys || allDomainRows.map(row => row.domainKey));
         const synthesisPackage = {
             contextType: 'stackctrl_enterprise_synthesis',
             schemaVersion: 1,
@@ -1631,10 +1777,18 @@ ${JSON.stringify(packageValue)}`;
             snapshotId: snapshotId || null,
             period: { type: run.periodType, start: run.periodStart, end: run.periodEnd },
             domainIntelligence: domainRows,
+            domainRunSummary,
             lowerPeriodReports: rollups,
             sourceHealthSummary: domainRows.map(row => ({ domainKey: row.domainKey, status: row.status, healthScore: row.healthScore, riskScore: row.riskScore, riskLevel: row.riskLevel })),
             missingDataWarnings: domainRows.flatMap(row => array(row.missingDataWarnings)),
-            limitations: { rawSnapshotIncluded: false, rawVendorPayloadIncluded: false, synthesisUsesStoredIntelligenceOnly: true }
+            limitations: {
+                rawSnapshotIncluded: false,
+                rawVendorPayloadIncluded: false,
+                synthesisUsesStoredIntelligenceOnly: true,
+                excludedDomainStatuses: allDomainRows
+                    .filter(row => !isSuccessfulDomainStatus(row.status))
+                    .map(row => ({ domainKey: row.domainKey, status: row.status, errorMessage: row.errorMessage || null }))
+            }
         };
         const response = await azureOpenAI.createJsonCompletion({
             messages: [
@@ -1686,7 +1840,7 @@ ${JSON.stringify(packageValue)}`;
                 analysis = parsed.value;
             }
         }
-        const finalRunStatus = domainRows.some(row => row.status !== 'completed') ? 'completed_with_warnings' : 'completed';
+        const finalRunStatus = allDomainRows.some(row => !isSuccessfulDomainStatus(row.status)) ? 'completed_with_warnings' : 'completed';
         const [result] = await pool.query(
             `INSERT INTO StackCTRLEnterpriseSynthesis
              (CompanyID, SnapshotID, RunID, PeriodType, PeriodStart, PeriodEnd, Status,
@@ -1756,63 +1910,183 @@ ${JSON.stringify(packageValue)}`;
         const results = [];
         const totals = { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: 0, responseBytes: 0, retries: 0 };
         let rateLimit = null;
-        let nextIndex = 0;
-        async function worker() {
-            while (nextIndex < selected.length) {
-                const index = nextIndex++;
-                if (totals.totalTokens >= settings.maxTotalTokens) {
-                    results.push({ status: 'skipped_token_threshold', domain: selected[index], errorMessage: 'Enterprise total token safety threshold reached' });
-                    continue;
+
+        await updateRunProgress(run.id, buildRunProgress({
+            run,
+            domainKeys,
+            results,
+            phase: 'domains',
+            snapshot
+        }), totals);
+
+        for (let index = 0; index < selected.length; index += 1) {
+            const domain = selected[index];
+            await updateRunProgress(run.id, buildRunProgress({
+                run,
+                domainKeys,
+                results,
+                currentDomainKey: domain.key,
+                phase: 'domain',
+                snapshot
+            }), totals);
+
+            if (totals.totalTokens >= settings.maxTotalTokens) {
+                const skipped = await storeSkippedDomain({
+                    run, companyId, snapshot, domain,
+                    status: 'skipped_token_threshold',
+                    errorMessage: 'Enterprise total token safety threshold reached before this domain could be analysed'
+                });
+                results.push(skipped);
+                for (let pendingIndex = index + 1; pendingIndex < selected.length; pendingIndex += 1) {
+                    results.push(await storeSkippedDomain({
+                        run, companyId, snapshot, domain: selected[pendingIndex],
+                        status: 'skipped_token_threshold',
+                        errorMessage: 'Enterprise total token safety threshold reached before this domain could be analysed'
+                    }));
                 }
-                const result = await analyseDomain({ companyId, snapshot, run, domain: selected[index], historicalContext });
-                results.push(result);
-                for (const key of Object.keys(totals)) totals[key] += result.usage?.[key] || 0;
-                if (result.rateLimited || result.status === 'failed_rate_limited') {
-                    rateLimit = {
-                        domainKey: result.domain.key,
-                        retryAfterMs: result.recommendedRetryAfterMs || Math.max(0, rateLimitCircuitOpenUntil - Date.now())
-                    };
-                    break;
-                }
-                if (index < selected.length - 1 && settings.domainDelayMs > 0) await wait(settings.domainDelayMs);
+                break;
             }
+
+            const result = await analyseDomain({ companyId, snapshot, run, domain, historicalContext });
+            results.push(result);
+            for (const key of Object.keys(totals)) totals[key] += result.usage?.[key] || 0;
+
+            await updateRunProgress(run.id, buildRunProgress({
+                run,
+                domainKeys,
+                results,
+                currentDomainKey: null,
+                phase: 'domain',
+                rateLimit: result.rateLimited ? {
+                    domainKey: result.domain.key,
+                    retryAfterMs: result.recommendedRetryAfterMs || Math.max(0, rateLimitCircuitOpenUntil - Date.now())
+                } : null,
+                snapshot
+            }), totals);
+
+            if (result.rateLimited || result.status === 'failed_rate_limited') {
+                rateLimit = {
+                    domainKey: result.domain.key,
+                    retryAfterMs: result.recommendedRetryAfterMs || Math.max(0, rateLimitCircuitOpenUntil - Date.now())
+                };
+                for (let pendingIndex = index + 1; pendingIndex < selected.length; pendingIndex += 1) {
+                    results.push(await storeSkippedDomain({
+                        run, companyId, snapshot, domain: selected[pendingIndex],
+                        status: 'skipped_rate_limited',
+                        errorMessage: `Azure rate limit reached while processing ${result.domain.name}. Retry this domain after cooldown.`
+                    }));
+                }
+                break;
+            }
+
+            if (index < selected.length - 1 && settings.domainDelayMs > 0) await wait(settings.domainDelayMs);
         }
-        await Promise.all(Array.from({ length: Math.min(settings.concurrency, selected.length || 1) }, () => worker()));
+
+        await updateRunProgress(run.id, buildRunProgress({
+            run,
+            domainKeys,
+            results,
+            phase: rateLimit ? 'rate_limited' : 'domains_complete',
+            rateLimit,
+            snapshot
+        }), totals);
+
         return { results, totals, rateLimited: Boolean(rateLimit), rateLimit };
     }
 
-    async function runEnterpriseReport({ companyId, snapshotId = null, periodType = 'daily', referenceDate = new Date(), domainKeys = null, includeSynthesis = true, deduplicationKey = null } = {}) {
+    async function runEnterpriseReport({ companyId, snapshotId = null, periodType = 'daily', referenceDate = new Date(), domainKeys = null, includeSynthesis = true, deduplicationKey = null, refreshSnapshot = null, user = null } = {}) {
         const numericCompanyId = Number(companyId);
         if (!Number.isInteger(numericCompanyId) || numericCompanyId <= 0) throw new Error('A valid companyId is required');
         assertRateLimitCircuitClosed();
-        const snapshot = await loadSnapshot(numericCompanyId, snapshotId);
         const selectedKeys = Array.isArray(domainKeys) && domainKeys.length ? [...new Set(domainKeys)] : ENTERPRISE_DOMAINS.map(domain => domain.key);
         const invalid = selectedKeys.filter(key => !DOMAIN_BY_KEY[key]);
         if (invalid.length) throw new Error(`Unsupported enterprise domains: ${invalid.join(', ')}`);
-        const run = await createRun({ companyId: numericCompanyId, snapshotId: snapshot.ID, periodType, referenceDate, mode: selectedKeys.length === 1 ? DOMAIN_BY_KEY[selectedKeys[0]].mode : 'enterprise_deep_reporting', deduplicationKey });
+        const isSingleDomainRun = selectedKeys.length === 1;
+        const shouldRefreshSnapshot = refreshSnapshot ?? !isSingleDomainRun;
+        let resolvedSnapshotId = snapshotId;
+        let snapshotRefresh = null;
+        if (shouldRefreshSnapshot) {
+            snapshotRefresh = await refreshEnterpriseSnapshot(numericCompanyId, user);
+            resolvedSnapshotId = snapshotRefresh?.snapshotId || resolvedSnapshotId;
+        }
+        const snapshot = await loadSnapshot(numericCompanyId, resolvedSnapshotId);
+        const run = await createRun({ companyId: numericCompanyId, snapshotId: snapshot.ID, periodType, referenceDate, mode: isSingleDomainRun ? DOMAIN_BY_KEY[selectedKeys[0]].mode : 'enterprise_deep_reporting', deduplicationKey });
         if (run.duplicate) return { status: 'duplicate', runId: run.id, snapshotId: snapshot.ID, periodType: run.periodType };
         try {
             const domains = await processDomains({ companyId: numericCompanyId, snapshot, run, domainKeys: selectedKeys });
             const runStatusBeforeSynthesis = rollupRunStatus(domains.results);
+            const successfulDomains = domains.results.filter(result => isSuccessfulDomainStatus(result.status));
+            const allDomainsStored = domains.results.length === selectedKeys.length;
             let synthesis = null;
-            if (includeSynthesis && !domains.rateLimited && domains.results.some(result => !String(result.status || '').startsWith('failed'))) {
-                synthesis = await runSynthesis({ companyId: numericCompanyId, snapshotId: snapshot.ID, run, existingTotals: domains.totals });
+            const canSynthesize = includeSynthesis
+                && !domains.rateLimited
+                && allDomainsStored
+                && successfulDomains.length > 0;
+            if (canSynthesize) {
+                await updateRunProgress(run.id, buildRunProgress({
+                    run,
+                    domainKeys: selectedKeys,
+                    results: domains.results,
+                    phase: 'synthesis',
+                    synthesisStatus: 'running',
+                    snapshot
+                }), domains.totals);
+                synthesis = await runSynthesis({
+                    companyId: numericCompanyId,
+                    snapshotId: snapshot.ID,
+                    run,
+                    existingTotals: domains.totals,
+                    queuedDomainKeys: selectedKeys
+                });
+                await updateRunProgress(run.id, buildRunProgress({
+                    run,
+                    domainKeys: selectedKeys,
+                    results: domains.results,
+                    phase: 'complete',
+                    synthesisStatus: synthesis.status,
+                    snapshot
+                }), domains.totals);
             } else {
+                const incompleteCount = domains.results.filter(result => !isSuccessfulDomainStatus(result.status)).length;
+                const errorMessage = domains.rateLimited
+                    ? `Azure rate limit reached at ${domains.rateLimit?.domainKey || 'unknown domain'}. Completed domains were stored; synthesis was not run.`
+                    : runStatusBeforeSynthesis === 'completed'
+                        ? null
+                        : `${incompleteCount} domain analysis request(s) did not complete successfully.`;
                 await pool.query(
                     `UPDATE StackCTRLEnterpriseReportRuns
                      SET Status = ?, CompletedAt = NOW(), TotalInputTokens = ?, TotalOutputTokens = ?, TotalTokens = ?,
                          TotalRequestBytes = ?, TotalResponseBytes = ?, RetryCount = ?, ErrorMessage = ? WHERE ID = ?`,
                     [runStatusBeforeSynthesis, domains.totals.inputTokens, domains.totals.outputTokens,
                         domains.totals.totalTokens, domains.totals.requestBytes, domains.totals.responseBytes, domains.totals.retries,
-                        runStatusBeforeSynthesis === 'completed' ? null : `${domains.results.filter(result => result.status !== 'completed').length} domain analysis request(s) did not complete.`, run.id]
+                        errorMessage, run.id]
                 );
+                await updateRunProgress(run.id, buildRunProgress({
+                    run,
+                    domainKeys: selectedKeys,
+                    results: domains.results,
+                    phase: domains.rateLimited ? 'rate_limited' : 'domains_complete',
+                    synthesisStatus: includeSynthesis ? 'skipped' : 'not_requested',
+                    rateLimit: domains.rateLimit,
+                    snapshot
+                }), domains.totals);
             }
             const finalStatus = synthesis?.status || runStatusBeforeSynthesis;
+            const domainRunSummary = buildDomainRunSummary(
+                domains.results.map(result => ({
+                    domainKey: result.domain.key,
+                    status: result.status,
+                    errorMessage: result.errorMessage || null
+                })),
+                selectedKeys
+            );
             return {
                 status: finalStatus,
                 runId: run.id,
                 snapshotId: snapshot.ID,
+                snapshotRefresh,
                 periodType: run.periodType,
+                mode: run.mode,
                 domains: domains.results.map(result => ({
                     domainKey: result.domain.key,
                     domainName: result.domain.name,
@@ -1821,7 +2095,9 @@ ${JSON.stringify(packageValue)}`;
                     errorMessage: result.errorMessage || null,
                     batchInfo: result.batchInfo || null
                 })),
+                domainRunSummary,
                 synthesisId: synthesis?.synthesisId || null,
+                synthesisStatus: synthesis?.status || (includeSynthesis ? (domains.rateLimited ? 'skipped_rate_limited' : (successfulDomains.length ? 'skipped' : 'skipped_no_successful_domains')) : 'not_requested'),
                 totals: domains.totals,
                 rateLimited: domains.rateLimited,
                 rateLimit: domains.rateLimit
@@ -1838,9 +2114,16 @@ ${JSON.stringify(packageValue)}`;
         const [rows] = await pool.query(`SELECT * FROM StackCTRLEnterpriseReportRuns WHERE ID = ? AND CompanyID = ? LIMIT 1`, [Number(runId), Number(companyId)]);
         if (!rows.length) throw new Error('Enterprise run not found');
         const row = rows[0];
-        const run = { id: row.ID, periodType: row.PeriodType, periodStart: row.PeriodStart, periodEnd: row.PeriodEnd };
+        const run = { id: row.ID, periodType: row.PeriodType, periodStart: row.PeriodStart, periodEnd: row.PeriodEnd, mode: row.Mode };
+        const progress = parseJson(row.ProgressJson, {});
+        const queuedDomainKeys = array(progress.domainQueue).map(item => item.domainKey).filter(Boolean);
         try {
-            return await runSynthesis({ companyId: Number(companyId), snapshotId: row.SnapshotID, run });
+            return await runSynthesis({
+                companyId: Number(companyId),
+                snapshotId: row.SnapshotID,
+                run,
+                queuedDomainKeys: queuedDomainKeys.length ? queuedDomainKeys : null
+            });
         } catch (error) {
             captureRateLimit(error);
             throw error;
@@ -1933,7 +2216,7 @@ ${JSON.stringify(packageValue)}`;
         return {
             settings: { ...settings },
             domains: ENTERPRISE_DOMAINS.map(domain => ({ key: domain.key, name: domain.name, mode: domain.mode })),
-            runs: runs.map(row => ({ ...row })),
+            runs: runs.map(row => ({ ...row, ProgressJson: parseJson(row.ProgressJson, {}) })),
             domainIntelligence: domains.map(row => ({ ...row, AnalysisJson: parseJson(row.AnalysisJson, {}) })),
             evidenceAudit: audits.map(row => ({
                 ...row,

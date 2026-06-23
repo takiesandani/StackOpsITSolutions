@@ -11819,7 +11819,8 @@ const stackCTRLIntelligenceScheduler = createStackCTRLIntelligenceScheduler({
 const enterpriseIntelligenceService = createEnterpriseIntelligenceService({
     pool,
     azureOpenAI: azureOpenAIService,
-    schedulerService: stackCTRLIntelligenceScheduler
+    schedulerService: stackCTRLIntelligenceScheduler,
+    intelligenceService: stackCTRLIntelligenceService
 });
 const stackCTRLIntelligenceAutomation = createStackCTRLServerAutomation({
     schedulerService: stackCTRLIntelligenceScheduler,

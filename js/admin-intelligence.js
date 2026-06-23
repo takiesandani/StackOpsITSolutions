@@ -51,28 +51,39 @@
 
     function resolveEnterprisePrimaryDomain({ domainRows = [], audits = [], selectedDomain = null, latestRun = null } = {}) {
         const combined = [...domainRows, ...audits];
-        if (selectedDomain?.domainKey) {
+        const latestRunId = latestRun?.ID ? Number(latestRun.ID) : null;
+        const isMultiDomainRun = latestRun?.Mode === 'enterprise_deep_reporting'
+            || (latestRunId && new Set(combined.filter(row => Number(row.RunID) === latestRunId).map(row => row.DomainKey)).size > 1);
+
+        if (selectedDomain?.domainKey && latestRunId && Number(selectedDomain.runId) === latestRunId) {
             const selectedRow = combined.find(row =>
                 row.DomainKey === selectedDomain.domainKey &&
-                Number(row.RunID) === Number(selectedDomain.runId)
+                Number(row.RunID) === latestRunId
             );
             if (selectedRow) {
                 return {
                     domainKey: selectedRow.DomainKey,
                     domainName: enterpriseDomainDisplayName(selectedRow.DomainKey, selectedRow),
-                    row: selectedRow
+                    row: selectedRow,
+                    isMultiDomainRun
                 };
             }
         }
+
+        if (isMultiDomainRun) {
+            return { domainKey: null, domainName: 'Enterprise Deep Reporting', row: null, isMultiDomainRun: true };
+        }
+
         const runDomainKey = parseEnterpriseRunModeDomainKey(latestRun?.Mode);
         if (runDomainKey) {
-            const row = (latestRun?.ID
-                ? combined.find(item => item.DomainKey === runDomainKey && Number(item.RunID) === Number(latestRun.ID))
+            const row = (latestRunId
+                ? combined.find(item => item.DomainKey === runDomainKey && Number(item.RunID) === latestRunId)
                 : null) || combined.find(item => item.DomainKey === runDomainKey);
             return {
                 domainKey: runDomainKey,
                 domainName: enterpriseDomainDisplayName(runDomainKey, row),
-                row: row || null
+                row: row || null,
+                isMultiDomainRun: false
             };
         }
         const displayedRows = domainRows.length ? domainRows : audits;
@@ -80,12 +91,24 @@
         if (domainKeys.length === 1) {
             const domainKey = domainKeys[0];
             const row = displayedRows.find(item => item.DomainKey === domainKey);
-            return { domainKey, domainName: enterpriseDomainDisplayName(domainKey, row), row: row || null };
+            return { domainKey, domainName: enterpriseDomainDisplayName(domainKey, row), row: row || null, isMultiDomainRun: false };
         }
-        return { domainKey: null, domainName: enterpriseAuditDefaultTitle, row: null };
+        return { domainKey: null, domainName: enterpriseAuditDefaultTitle, row: null, isMultiDomainRun: false };
     }
 
-    function updateEnterpriseAuditHeading(primaryDomain, fallbackRun = null) {
+    function updateEnterpriseAuditHeading(primaryDomain, fallbackRun = null, pipeline = null) {
+        if (primaryDomain?.isMultiDomainRun) {
+            const progress = pipeline || fallbackRun?.ProgressJson || {};
+            const counts = progress.counts || {};
+            const total = counts.total || supportedEnterpriseDomains.length;
+            const successful = counts.successful ?? counts.completed ?? 0;
+            const failed = counts.failed || 0;
+            const blocked = counts.blocked || 0;
+            const skipped = counts.skipped || 0;
+            el('enterprise-audit-title').textContent = 'Enterprise Deep Reporting';
+            el('enterprise-audit-subtitle').textContent = `Run #${number(fallbackRun?.ID || progress.runId || 0)} · ${statusLabel(fallbackRun?.Status || progress.phase || 'unknown')} · ${number(successful)} successful · ${number(failed)} failed · ${number(blocked)} blocked · ${number(skipped)} skipped · ${number(counts.processed || 0)} / ${number(total)} domains processed`;
+            return;
+        }
         const domainName = primaryDomain?.domainKey ? primaryDomain.domainName : enterpriseAuditDefaultTitle;
         const row = primaryDomain?.row || null;
         el('enterprise-audit-title').textContent = domainName;
@@ -103,8 +126,9 @@
         updateEnterpriseAuditHeading({
             domainKey: row.DomainKey,
             domainName: enterpriseDomainDisplayName(row.DomainKey, row),
-            row
-        });
+            row,
+            isMultiDomainRun: false
+        }, null, null);
     }
 
     function syncIntelligenceHeaderOffset() {
@@ -719,6 +743,63 @@
         renderLatestSummary();
     }
 
+    function renderEnterprisePipelineProgress(latestRun, enterprise = {}) {
+        const container = el('enterprise-pipeline-progress');
+        if (!container) return;
+        if (!latestRun) {
+            container.innerHTML = '<div class="empty-state">Run or load Enterprise Deep Reporting to see the full pipeline status.</div>';
+            return;
+        }
+
+        const progress = latestRun.ProgressJson || {};
+        const counts = progress.counts || {};
+        const totalDomains = counts.total || supportedEnterpriseDomains.length;
+        const audits = (enterprise.evidenceAudit || []).filter(row => Number(row.RunID) === Number(latestRun.ID));
+        const domainRows = (enterprise.domainIntelligence || []).filter(row => Number(row.RunID) === Number(latestRun.ID));
+        const synthesis = (enterprise.synthesis || []).find(row => Number(row.RunID) === Number(latestRun.ID)) || null;
+        const queue = Array.isArray(progress.domainQueue) && progress.domainQueue.length
+            ? progress.domainQueue
+            : supportedEnterpriseDomains.map(domain => {
+                const stored = domainRows.find(row => row.DomainKey === domain.key) || audits.find(row => row.DomainKey === domain.key);
+                return {
+                    domainKey: domain.key,
+                    domainName: domain.name,
+                    status: stored?.Status || 'queued',
+                    errorMessage: stored?.ErrorMessage || null
+                };
+            });
+        const currentDomainName = progress.currentDomainName
+            || (progress.currentDomainKey ? enterpriseDomainDisplayName(progress.currentDomainKey) : null);
+        const rateLimitMinutes = minutesFromMs(progress.rateLimit?.retryAfterMs);
+        const reportReady = Boolean(synthesis) && ['completed', 'completed_with_warnings'].includes(String(synthesis.Status || ''));
+        const snapshotFreshness = progress.snapshotCreatedAt ? dateTime(progress.snapshotCreatedAt) : dateTime(latestRun.StartedAt);
+        const completedCount = counts.successful ?? queue.filter(item => item.status === 'completed').length;
+        const failedCount = counts.failed ?? queue.filter(item => String(item.status || '').startsWith('failed')).length;
+        const blockedCount = counts.blocked ?? queue.filter(item => String(item.status || '').startsWith('blocked')).length;
+        const skippedCount = counts.skipped ?? queue.filter(item => /skipped/.test(String(item.status || ''))).length;
+        const synthesisStatus = progress.synthesisStatus || (synthesis ? synthesis.Status : (latestRun.Status === 'running' ? 'pending' : 'not_started'));
+
+        container.innerHTML = `
+            <div class="enterprise-pipeline-grid">
+                <div><span>Full run status</span><strong>${escapeHtml(statusLabel(latestRun.Status))}</strong></div>
+                <div><span>Current domain</span><strong>${escapeHtml(currentDomainName || (latestRun.Status === 'running' ? 'Starting…' : '—'))}</strong></div>
+                <div><span>Domains completed</span><strong>${number(completedCount)} / ${number(totalDomains)}</strong></div>
+                <div><span>Failed / blocked / skipped</span><strong>${number(failedCount)} / ${number(blockedCount)} / ${number(skippedCount)}</strong></div>
+                <div><span>Snapshot ID</span><strong>#${number(latestRun.SnapshotID || progress.snapshotId)}</strong></div>
+                <div><span>Evidence freshness</span><strong>${escapeHtml(snapshotFreshness)}</strong></div>
+                <div><span>Synthesis status</span><strong>${escapeHtml(statusLabel(synthesisStatus))}</strong></div>
+                <div><span>Final report ready</span><strong class="${reportReady ? 'is-ready' : 'is-missing'}">${reportReady ? 'Yes' : 'No'}</strong></div>
+            </div>
+            ${progress.rateLimit?.active || latestRun.Status === 'failed_rate_limited' ? `<div class="enterprise-error">Azure cooldown active${rateLimitMinutes ? ` · retry after ${number(rateLimitMinutes)} minute(s)` : ''}${progress.rateLimit?.domainKey ? ` · stopped at ${escapeHtml(enterpriseDomainDisplayName(progress.rateLimit.domainKey))}` : ''}</div>` : ''}
+            <div class="enterprise-pipeline-queue">
+                ${queue.map(item => {
+                    const audit = audits.find(row => row.DomainKey === item.domainKey);
+                    return `<div class="enterprise-pipeline-domain ${statusClass(item.status)}"><div><strong>${escapeHtml(item.domainName || enterpriseDomainDisplayName(item.domainKey))}</strong><small>${escapeHtml(item.domainKey)}</small></div><div class="enterprise-pipeline-domain-meta"><span>${statusBadge(item.status)}</span><span>StackCTRL ${number(audit?.StackCTRLDataCount)}</span><span>Prepared ${number(audit?.EvidenceIncludedCount ?? audit?.StackCTRLDataCount)}</span><span>Analysed ${number(audit?.SentToAzureCount)}</span><span>Omitted ${number(audit?.OmittedCount)}</span></div>${item.errorMessage ? `<p class="enterprise-error">${escapeHtml(item.errorMessage)}</p>` : ''}</div>`;
+                }).join('')}
+            </div>
+        `;
+    }
+
     function renderEnterprise() {
         const enterprise = state.enterprise || {};
         const runs = enterprise.runs || [];
@@ -756,7 +837,8 @@
             latestRun
         });
         state.enterprisePrimaryDomain = primaryDomain;
-        updateEnterpriseAuditHeading(primaryDomain, latestRun);
+        renderEnterprisePipelineProgress(latestRun, enterprise);
+        updateEnterpriseAuditHeading(primaryDomain, latestRun, latestRun?.ProgressJson || null);
         const badge = el('enterprise-run-badge');
         badge.className = `status-badge status-${statusClass(latestRun?.Status || 'muted')}`;
         badge.textContent = latestRun ? `Run #${number(latestRun.ID)} · ${statusLabel(latestRun.Status)}` : 'No enterprise run';
@@ -905,6 +987,8 @@
     async function runAction(button, label, path, body = {}) {
         if (state.actionRunning || !state.selectedCompanyId) return;
         state.actionRunning = true;
+        const isFullEnterpriseRun = /Enterprise Deep Report|Enterprise Domain Deep Analysis/i.test(label || '');
+        if (isFullEnterpriseRun) state.enterpriseSelectedDomain = null;
         const buttons = [
             'create-snapshot', 'build-compact-context', 'run-analysis',
             'run-full-snapshot-analysis', 'run-full-test'
@@ -915,6 +999,12 @@
         const status = el('action-status');
         status.className = 'action-status is-running';
         status.textContent = `${label} is running. Azure rate-limit retries can keep this request open for several minutes.`;
+        let enterprisePollTimer = null;
+        if (isEnterpriseActionLabel(label)) {
+            enterprisePollTimer = setInterval(() => {
+                loadEnterprise().catch(() => {});
+            }, 15000);
+        }
         try {
             const result = await api(path, { method: 'POST', body: JSON.stringify(body) });
             state.lastAction = result;
@@ -958,6 +1048,7 @@
                 try { await loadEnterprise(); } catch (_) {}
             }
         } finally {
+            if (enterprisePollTimer) clearInterval(enterprisePollTimer);
             state.actionRunning = false;
             buttons.forEach(item => { item.disabled = false; });
             button.classList.remove('is-loading');

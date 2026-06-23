@@ -452,8 +452,9 @@ test('enterprise rate-limit circuit stops remaining batches and records zero ana
     assert.equal(result.status, 'failed_rate_limited', JSON.stringify(result));
     assert.equal(result.rateLimited, true);
     assert.equal(result.rateLimit.retryAfterMs, 600000);
-    assert.equal(result.domains.length, 1);
+    assert.equal(result.domains.length, 2);
     assert.equal(result.domains[0].status, 'failed_rate_limited');
+    assert.equal(result.domains[1].status, 'skipped_rate_limited');
     assert.equal(result.synthesisId, null);
 
     const batchWrite = calls.find(call => call.sql.includes('INSERT INTO StackCTRLTenantDomainIntelligenceBatches'));
@@ -928,6 +929,90 @@ test('Enterprise blocks missing or stale saved Device evidence before calling Az
         assert.equal(auditWrite.params[5], 0);
         assert.match(result.domains[0].errorMessage, /stale|no complete/i);
     }
+});
+
+test('enterprise synthesis uses stored successful domain intelligence only', async () => {
+    const azurePrompts = [];
+    let insertId = 700;
+    const snapshot = {
+        ID: 80, CompanyID: 1, TenantKey: 'tenant-sunbird', SnapshotType: 'manual',
+        CreatedAt: new Date('2026-06-22T08:00:00.000Z'), DataCompletenessScore: 100,
+        MetricsJson: JSON.stringify({ stackctrl_risk: { domainRiskScores: { identity: 25, devices: 20 } } }),
+        ContextJson: JSON.stringify({
+            riskEngine: { domainHealthScores: { identity: 75, devices: 80 }, domainRiskScores: { identity: 25, devices: 20 } },
+            sources: [
+                { sourceKey: 'identity', status: 'available', metrics: { mfaCoverage: 90 }, evidence: [{ evidenceType: 'metric_summary', data: { usersWithoutMfa: 2 } }] },
+                { sourceKey: 'devices', status: 'available', metrics: { complianceRate: 90 }, evidence: [{ evidenceType: 'metric_summary', data: { staleDevices: 1 } }] }
+            ]
+        })
+    };
+    const pool = {
+        async query(sql, params = []) {
+            if (sql.includes('FROM StackCTRLTenantEvidenceSnapshots WHERE')) return [[snapshot], []];
+            if (sql.includes('FROM StackCTRLKnowledgeBase')) return [[], []];
+            if (sql.includes('FROM StackCTRLTenantDomainIntelligence') && sql.includes('RunID <>')) return [[], []];
+            if (sql.includes('FROM StackCTRLEnterpriseReportRuns WHERE')) {
+                return [[{
+                    ID: 700, CompanyID: 1, SnapshotID: 80, PeriodType: 'daily',
+                    PeriodStart: new Date('2026-06-22T00:00:00.000Z'),
+                    PeriodEnd: new Date('2026-06-22T23:59:59.000Z'),
+                    Mode: 'enterprise_deep_reporting',
+                    ProgressJson: JSON.stringify({ domainQueue: [{ domainKey: 'identity' }, { domainKey: 'devices' }] })
+                }], []];
+            }
+            if (sql.includes('SELECT ID, CompanyID, SnapshotID, RunID, DomainKey') && sql.includes('ErrorMessage')) {
+                return [[
+                    {
+                        ID: 801, CompanyID: 1, SnapshotID: 80, RunID: 700, DomainKey: 'identity', DomainName: 'Identity Protection',
+                        HealthScore: 75, RiskScore: 25, RiskLevel: 'moderate', Status: 'completed',
+                        DomainExecutiveSummary: 'Identity summary', TechnicalSummary: 'Technical summary', BusinessImpact: 'Impact', CurrentPosture: 'partial',
+                        EvidenceSummary: 'Evidence', ScoreJustification: 'Justified', ControlAssessment: '{}', FindingsJson: '[]', RisksJson: '[]',
+                        RecommendationsJson: '[]', TrendAnalysisJson: '[]', YesterdayVsTodayJson: '{}', MissingDataWarningsJson: '[]', AssumptionsJson: '[]',
+                        ErrorMessage: null
+                    },
+                    {
+                        ID: 802, CompanyID: 1, SnapshotID: 80, RunID: 700, DomainKey: 'devices', DomainName: 'Device Protection',
+                        HealthScore: null, RiskScore: null, RiskLevel: null, Status: 'failed_rate_limited',
+                        DomainExecutiveSummary: null, TechnicalSummary: null, BusinessImpact: null, CurrentPosture: null,
+                        EvidenceSummary: null, ScoreJustification: null, ControlAssessment: null, FindingsJson: null, RisksJson: null,
+                        RecommendationsJson: null, TrendAnalysisJson: null, YesterdayVsTodayJson: null, MissingDataWarningsJson: null, AssumptionsJson: null,
+                        ErrorMessage: 'Azure rate limit reached'
+                    }
+                ], []];
+            }
+            if (sql.includes('FROM StackCTRLEnterpriseSynthesis synthesis')) return [[], []];
+            if (/^\s*INSERT/i.test(sql)) return [{ insertId: insertId++ }, []];
+            return [{ affectedRows: 1 }, []];
+        }
+    };
+    const service = createEnterpriseIntelligenceService({
+        pool,
+        schedulerService: { async getHistoricalSnapshotContext() { return { comparisons: {} }; } },
+        azureOpenAI: {
+            async createJsonCompletion(options) {
+                azurePrompts.push(options.messages[1].content);
+                return {
+                    data: synthesisResponse(),
+                    requestSizeBytes: 1200,
+                    responseSizeBytes: 2400,
+                    retryCount: 0,
+                    usage: { input_tokens: 500, output_tokens: 250, total_tokens: 750 }
+                };
+            }
+        },
+        wait: async () => {},
+        config: { domainDelayMs: 0 }
+    });
+
+    await service.runEnterpriseSynthesis({ companyId: 1, runId: 700 });
+    assert.equal(azurePrompts.length, 1);
+    const payload = azurePrompts[0].split('STORED STACKCTRL ENTERPRISE INTELLIGENCE:\n')[1];
+    const synthesisInput = JSON.parse(payload);
+    assert.equal(synthesisInput.domainIntelligence.length, 1);
+    assert.equal(synthesisInput.domainIntelligence[0].domainKey, 'identity');
+    assert.deepEqual(synthesisInput.domainRunSummary.successfulDomains, ['identity']);
+    assert.equal(synthesisInput.domainRunSummary.failedDomains.length, 1);
+    assert.equal(synthesisInput.limitations.excludedDomainStatuses[0].domainKey, 'devices');
 });
 
 test('all required enterprise domain modes are registered', () => {
