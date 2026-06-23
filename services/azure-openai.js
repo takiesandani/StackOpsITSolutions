@@ -63,6 +63,13 @@ function extractResponseText(responseData) {
     return textParts.join('\n').trim();
 }
 
+function extractResponseFinishReason(responseData) {
+    const reason = responseData?.incomplete_details?.reason || null;
+    if (reason === 'max_output_tokens') return 'length';
+    if (responseData?.status === 'incomplete') return reason || 'incomplete';
+    return responseData?.finish_reason || null;
+}
+
 function createAzureOpenAIService({
     getSecret,
     logger = console,
@@ -226,7 +233,10 @@ function createAzureOpenAIService({
                     attempts: attempt + 1,
                     retryCount: attempt,
                     requestSizeBytes,
-                    responseSizeBytes: Buffer.byteLength(JSON.stringify(response.data || {}), 'utf8')
+                    responseSizeBytes: Buffer.byteLength(JSON.stringify(response.data || {}), 'utf8'),
+                    responseStatus: response.data?.status || null,
+                    incompleteReason: response.data?.incomplete_details?.reason || null,
+                    finishReason: extractResponseFinishReason(response.data)
                 };
             } catch (error) {
                 const status = error.response?.status;
@@ -291,15 +301,24 @@ function createAzureOpenAIService({
         throw new Error('Azure OpenAI request failed after retry limit was reached');
     }
 
-    async function createJsonCompletion(options) {
+    async function createJsonCompletion(options = {}) {
+        const { allowInvalidJsonResponse = false, ...completionOptions } = options;
         const result = await createChatCompletion({
-            ...options,
+            ...completionOptions,
             responseFormat: { type: 'json_object' }
         });
 
         try {
             return { ...result, data: JSON.parse(result.content) };
         } catch (error) {
+            if (allowInvalidJsonResponse) {
+                return {
+                    ...result,
+                    data: result.content,
+                    invalidJson: true,
+                    invalidJsonError: error.message
+                };
+            }
             const invalidJsonError = new Error(`Azure OpenAI returned invalid JSON: ${error.message}`);
             invalidJsonError.azureMetadata = {
                 model: result.model,
@@ -307,7 +326,10 @@ function createAzureOpenAIService({
                 requestSizeBytes: result.requestSizeBytes,
                 responseSizeBytes: result.responseSizeBytes,
                 tokenUsage: result.usage,
-                retryCount: result.retryCount
+                retryCount: result.retryCount,
+                rawResponse: result.content,
+                finishReason: result.finishReason,
+                incompleteReason: result.incompleteReason
             };
             throw invalidJsonError;
         }

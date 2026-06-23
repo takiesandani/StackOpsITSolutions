@@ -10,6 +10,7 @@ const {
     ENTERPRISE_DOMAINS,
     flattenDomainEvidence,
     normalizeMysqlDate,
+    repairTruncatedJson,
     sourceAlignmentFailure,
     splitIntoBatches
 } = require('../services/enterprise-intelligence');
@@ -137,6 +138,18 @@ test('normalizeMysqlDate stores only real MySQL dates for enterprise AI date fie
     assert.equal(normalizeMysqlDate('ASAP'), null);
     assert.equal(normalizeMysqlDate('2026-07-15'), '2026-07-15');
     assert.equal(normalizeMysqlDate(new Date('2026-07-15T13:30:00.000Z')), '2026-07-15');
+});
+
+test('repairTruncatedJson closes a long unterminated Azure string without discarding completed fields', () => {
+    const longNarrative = 'x'.repeat(38470);
+    const truncated = `{"domainExecutiveSummary":"Complete summary","technicalSummary":"${longNarrative}`;
+    const repaired = repairTruncatedJson(truncated);
+
+    assert.equal(repaired.success, true);
+    assert.equal(repaired.repaired, true);
+    assert.equal(repaired.value.domainExecutiveSummary, 'Complete summary');
+    assert.equal(repaired.value.technicalSummary.length, 38470);
+    assert.doesNotThrow(() => JSON.parse(repaired.repairedText));
 });
 
 test('Enterprise Identity currentMetrics follow dynamic dashboard metrics and detect source mismatches', async () => {
@@ -524,6 +537,61 @@ test('enterprise invalid JSON triggers repair retry and stores repaired batch de
     assert.match(batchWrite.params.join(' '), /"jsonRepaired":true/);
 });
 
+test('enterprise domain batch locally recovers a long unterminated Azure string', async () => {
+    const calls = [];
+    let azureCalls = 0;
+    let insertId = 350;
+    const snapshot = {
+        ID: 775, CompanyID: 1, TenantKey: 'tenant-sunbird', SnapshotType: 'manual',
+        CreatedAt: new Date('2026-06-23T08:00:00.000Z'), DataCompletenessScore: 100,
+        MetricsJson: JSON.stringify({ identity: { mfaCoverage: 90 }, stackctrl_risk: { domainRiskScores: { identity: 25 } }, executive_kpis: { identityHealth: 75 } }),
+        ContextJson: JSON.stringify({
+            riskEngine: { domainHealthScores: { identity: 75 }, domainRiskScores: { identity: 25 }, executiveKPIs: { identityHealth: 75 } },
+            sources: [{ sourceKey: 'identity', status: 'available', isExpected: true, evidence: [{ evidenceType: 'metric_summary', data: { usersWithoutMfa: 2 } }] }]
+        })
+    };
+    const pool = {
+        async query(sql, params = []) {
+            calls.push({ sql, params });
+            assert.equal((sql.match(/\?/g) || []).length, params.length, `Placeholder mismatch in ${sql}`);
+            if (sql.includes('FROM StackCTRLTenantEvidenceSnapshots WHERE')) return [[snapshot], []];
+            if (sql.includes('FROM StackCTRLKnowledgeBase')) return [[], []];
+            if (sql.includes('FROM StackCTRLTenantDomainIntelligence') && sql.includes('RunID <>')) return [[], []];
+            if (/^\s*INSERT/i.test(sql)) return [{ insertId: insertId++ }, []];
+            return [{ affectedRows: 1 }, []];
+        }
+    };
+    const service = createEnterpriseIntelligenceService({
+        pool,
+        schedulerService: { async getHistoricalSnapshotContext() { return { comparisons: {} }; } },
+        azureOpenAI: {
+            async createJsonCompletion(options) {
+                azureCalls += 1;
+                assert.equal(options.allowInvalidJsonResponse, true);
+                return {
+                    data: `{"domainExecutiveSummary":"Recovered domain summary","technicalSummary":"${'x'.repeat(38470)}`,
+                    finishReason: 'length',
+                    requestSizeBytes: 1000,
+                    responseSizeBytes: 39000,
+                    retryCount: 0,
+                    usage: { input_tokens: 500, output_tokens: 5000, total_tokens: 5500 }
+                };
+            }
+        },
+        logger: { info() {}, warn() {}, error() {} },
+        wait: async () => {},
+        config: { domainDelayMs: 0 }
+    });
+
+    const result = await service.runEnterpriseReport({ companyId: 1, snapshotId: 775, domainKeys: ['identity'], includeSynthesis: false });
+    assert.equal(azureCalls, 1);
+    assert.equal(result.status, 'completed');
+    assert.equal(result.domains[0].status, 'completed');
+    assert.match(result.domains[0].analysis.missingDataWarnings.join(' '), /safely recovered/);
+    const batchWrite = calls.find(call => call.sql.includes('StackCTRLTenantDomainIntelligenceBatches'));
+    assert.match(batchWrite.params.join(' '), /"jsonRepairMethod":"local_truncation_closure"/);
+});
+
 test('enterprise invalid JSON failure stores diagnostics and failed_invalid_json status', async () => {
     const calls = [];
     let insertId = 400;
@@ -566,6 +634,79 @@ test('enterprise invalid JSON failure stores diagnostics and failed_invalid_json
     assert.ok(batchWrite.params.includes('failed_invalid_json'));
     assert.ok(batchWrite.params.includes('{"domainExecutiveSummary":'));
     assert.match(batchWrite.params.join(' '), /JSON parse failed/);
+});
+
+test('Enterprise synthesis recovers a long unterminated JSON string and completes with warnings', async () => {
+    const calls = [];
+    let azureCalls = 0;
+    const periodStart = new Date('2026-06-23T00:00:00.000Z');
+    const periodEnd = new Date('2026-06-23T23:59:59.000Z');
+    const domainRow = {
+        ID: 200,
+        CompanyID: 1,
+        SnapshotID: 76,
+        RunID: 100,
+        DomainKey: 'identity',
+        DomainName: 'Identity Protection',
+        HealthScore: 75,
+        RiskScore: 25,
+        RiskLevel: 'moderate',
+        Status: 'completed',
+        DomainExecutiveSummary: 'Identity summary',
+        TechnicalSummary: 'Technical summary',
+        BusinessImpact: 'Impact',
+        CurrentPosture: 'partial',
+        EvidenceSummary: 'Evidence',
+        ScoreJustification: 'Justified',
+        ControlAssessment: '{}',
+        FindingsJson: '[]',
+        RisksJson: '[]',
+        RecommendationsJson: '[]',
+        TrendAnalysisJson: '[]',
+        YesterdayVsTodayJson: '{}',
+        MissingDataWarningsJson: '[]',
+        AssumptionsJson: '[]'
+    };
+    const pool = {
+        async query(sql, params = []) {
+            calls.push({ sql, params });
+            assert.equal((sql.match(/\?/g) || []).length, params.length, `Placeholder mismatch in ${sql}`);
+            if (sql.includes('FROM StackCTRLEnterpriseReportRuns WHERE ID')) return [[{ ID: 100, CompanyID: 1, SnapshotID: 76, PeriodType: 'daily', PeriodStart: periodStart, PeriodEnd: periodEnd, Mode: 'enterprise_deep', ProgressJson: '{}' }], []];
+            if (sql.includes('SELECT ID, CompanyID, SnapshotID, RunID, DomainKey')) return [[domainRow], []];
+            if (sql.includes('FROM StackCTRLEnterpriseSynthesis synthesis')) return [[], []];
+            if (sql.includes('INSERT INTO StackCTRLEnterpriseSynthesis')) return [{ insertId: 901 }, []];
+            return [{ affectedRows: 1 }, []];
+        }
+    };
+    const service = createEnterpriseIntelligenceService({
+        pool,
+        schedulerService: { async getHistoricalSnapshotContext() { return {}; } },
+        azureOpenAI: {
+            async createJsonCompletion(options) {
+                azureCalls += 1;
+                assert.equal(options.allowInvalidJsonResponse, true);
+                return {
+                    data: `{"enterpriseExecutiveSummary":{"summary":"Recovered summary"},"boardReport":{"summary":"${'x'.repeat(38470)}`,
+                    finishReason: 'length',
+                    requestSizeBytes: 1000,
+                    responseSizeBytes: 39000,
+                    retryCount: 0,
+                    usage: { input_tokens: 500, output_tokens: 8000, total_tokens: 8500 }
+                };
+            }
+        },
+        logger: { info() {}, warn() {}, error() {} },
+        config: { domainDelayMs: 0 }
+    });
+
+    const result = await service.runEnterpriseSynthesis({ companyId: 1, runId: 100 });
+    assert.equal(azureCalls, 1);
+    assert.equal(result.status, 'completed_with_warnings');
+    assert.equal(result.synthesisId, 901);
+    assert.equal(result.analysis.enterpriseExecutiveSummary.summary, 'Recovered summary');
+    assert.match(result.analysis.limitationsAndAssumptions.join(' '), /safely recovered/);
+    const synthesisWrite = calls.find(call => call.sql.includes('INSERT INTO StackCTRLEnterpriseSynthesis'));
+    assert.equal(synthesisWrite.params[6], 'completed_with_warnings');
 });
 
 test('enterprise automation does nothing outside the controlled daily window', async () => {

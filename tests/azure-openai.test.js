@@ -88,6 +88,47 @@ test('extracts text from Responses API output items', () => {
     }), 'first\nsecond');
 });
 
+test('Enterprise can receive invalid JSON text with truncation metadata while strict callers still fail', async () => {
+    const originalPost = axios.post;
+    const truncatedJson = '{"domainExecutiveSummary":"Analysis ended before Azure closed this string';
+    axios.post = async () => ({
+        data: {
+            id: 'resp_truncated',
+            status: 'incomplete',
+            incomplete_details: { reason: 'max_output_tokens' },
+            output: [{ content: [{ type: 'output_text', text: truncatedJson }] }],
+            usage: { input_tokens: 100, output_tokens: 5000, total_tokens: 5100 }
+        }
+    });
+
+    try {
+        const service = createAzureOpenAIService({
+            getSecret: async name => azureSecrets[name] || null,
+            logger: { error() {} }
+        });
+        await assert.rejects(
+            service.createJsonCompletion({ messages: [{ role: 'user', content: 'Strict JSON.' }] }),
+            error => {
+                assert.match(error.message, /Azure OpenAI returned invalid JSON: Unterminated string/);
+                assert.equal(error.azureMetadata.finishReason, 'length');
+                assert.equal(error.azureMetadata.rawResponse, truncatedJson);
+                return true;
+            }
+        );
+        const enterpriseResult = await service.createJsonCompletion({
+            messages: [{ role: 'user', content: 'Enterprise JSON.' }],
+            allowInvalidJsonResponse: true
+        });
+        assert.equal(enterpriseResult.data, truncatedJson);
+        assert.equal(enterpriseResult.invalidJson, true);
+        assert.match(enterpriseResult.invalidJsonError, /Unterminated string/);
+        assert.equal(enterpriseResult.finishReason, 'length');
+        assert.equal(enterpriseResult.incompleteReason, 'max_output_tokens');
+    } finally {
+        axios.post = originalPost;
+    }
+});
+
 test('waits for Azure Retry-After and retries a throttled request', async () => {
     const originalPost = axios.post;
     const delays = [];

@@ -500,6 +500,54 @@ function parseJsonWithDiagnostics(text, schema = null) {
     }
 }
 
+function repairTruncatedJson(text) {
+    if (typeof text !== 'string' || !text.trim()) return { success: false, value: null, error: 'Response is empty' };
+    const original = text.trim();
+    const parsed = parseJsonWithDiagnostics(original);
+    if (parsed.success) return { ...parsed, repairedText: original, repaired: false };
+
+    const stack = [];
+    let inString = false;
+    let escaped = false;
+    for (const character of original) {
+        if (inString) {
+            if (escaped) {
+                escaped = false;
+            } else if (character === '\\') {
+                escaped = true;
+            } else if (character === '"') {
+                inString = false;
+            }
+            continue;
+        }
+        if (character === '"') {
+            inString = true;
+        } else if (character === '{' || character === '[') {
+            stack.push(character);
+        } else if (character === '}' || character === ']') {
+            const expected = character === '}' ? '{' : '[';
+            if (stack.at(-1) !== expected) return { success: false, value: null, error: parsed.error };
+            stack.pop();
+        }
+    }
+
+    if (!inString && !stack.length) return { success: false, value: null, error: parsed.error };
+    let candidate = original;
+    if (inString) {
+        if (escaped) candidate += '\\';
+        candidate += '"';
+    } else {
+        candidate = candidate.replace(/,\s*$/, '');
+    }
+    for (let index = stack.length - 1; index >= 0; index -= 1) {
+        candidate += stack[index] === '{' ? '}' : ']';
+    }
+    const repaired = parseJsonWithDiagnostics(candidate);
+    return repaired.success
+        ? { ...repaired, repairedText: candidate, repaired: true }
+        : { success: false, value: null, error: repaired.error || parsed.error };
+}
+
 // Request repair of truncated JSON from Azure
 function createJsonRepairPrompt(invalidJson) {
     return `You are a JSON repair tool. Return valid JSON only. No markdown. No code fences. No explanations outside JSON.
@@ -986,7 +1034,7 @@ ${JSON.stringify(packageValue)}`;
     async function storeBatch({
         companyId, snapshotId, runId, domain, batchNumber, totalBatches, batchEvidence, analysis, usage, status,
         errorMessage = null, failureReason = null, rawResponsePreview = null, azureFinishReason = null,
-        jsonRepaired = false, recommendedRetryAfterMs = null, stackCTRLDataCount = 0
+        jsonRepaired = false, jsonRepairMethod = null, recommendedRetryAfterMs = null, stackCTRLDataCount = 0
     }) {
         const batchItemCount = batchEvidence.length;
         const batchSummary = {
@@ -996,6 +1044,7 @@ ${JSON.stringify(packageValue)}`;
             recommendationsCount: array(analysis?.recommendations).length,
             trendsCount: array(analysis?.trendAnalysis).length,
             jsonRepaired: Boolean(jsonRepaired),
+            jsonRepairMethod,
             recommendedRetryAfterMs: recommendedRetryAfterMs == null ? null : Number(recommendedRetryAfterMs)
         };
         
@@ -1052,80 +1101,80 @@ ${JSON.stringify(packageValue)}`;
                 maxRetriesOverride: settings.maxRetries,
                 retryDelaysMsOverride: ENTERPRISE_RATE_LIMIT_RETRY_DELAYS_MS,
                 retryMaxMsOverride: ENTERPRISE_RATE_LIMIT_RETRY_MAX_MS,
-                timeoutMs: settings.requestTimeoutMs
+                timeoutMs: settings.requestTimeoutMs,
+                allowInvalidJsonResponse: true
             });
             
             usage = responseUsage(response);
             const rawResponsePreview = safeResponsePreview(response.data);
             
-            // Detect truncation by finish_reason
             const finishReason = responseFinishReason(response);
-            if (finishReason === 'length') {
-                await storeBatch({
-                    companyId, snapshotId: snapshot.ID, runId: run.id, domain,
-                    batchNumber, totalBatches, batchEvidence, analysis: null, usage,
-                    stackCTRLDataCount: packageResult.audit.stackCTRLDataCount,
-                    status: 'failed_invalid_json',
-                    errorMessage: `Azure response truncated (finish_reason: length). Output tokens: ${usage.outputTokens}`,
-                    failureReason: 'output_truncated',
-                    rawResponsePreview,
-                    azureFinishReason: finishReason
-                });
-                throw new Error(`Azure response truncated (finish_reason: length). Output tokens: ${usage.outputTokens}`);
-            }
-            
-            // Parse JSON response
             let analysis = null;
             let jsonRepaired = false;
+            let jsonRepairMethod = null;
             if (typeof response.data === 'string') {
                 const jsonResult = parseJsonWithDiagnostics(response.data);
                 if (!jsonResult.success) {
-                    // JSON parsing failed - attempt repair
-                    logger.warn(`[StackCTRL Enterprise] Batch ${batchNumber} JSON parsing failed, attempting repair. Error: ${jsonResult.error}`);
-                    
-                    const repairResponse = await azureOpenAI.createJsonCompletion({
-                        messages: [
-                            { role: 'system', content: 'You are a JSON repair tool. Return valid JSON only. No markdown. No code fences. No explanations outside JSON.' },
-                            { role: 'user', content: createJsonRepairPrompt(response.data.slice(0, 5000)) }
-                        ],
-                        temperature: 0,
-                        maxTokens: settings.maxDomainOutputTokens,
-                        maxRetriesOverride: 1,
-                        retryDelaysMsOverride: ENTERPRISE_RATE_LIMIT_RETRY_DELAYS_MS,
-                        retryMaxMsOverride: ENTERPRISE_RATE_LIMIT_RETRY_MAX_MS,
-                        timeoutMs: settings.requestTimeoutMs
-                    });
-                    
-                    const repairUsage = responseUsage(repairResponse);
-                    usage.outputTokens += repairUsage.outputTokens;
-                    usage.totalTokens += repairUsage.totalTokens;
-                    
-                    const repairResult = parseJsonWithDiagnostics(repairResponse.data);
-                    if (!repairResult.success) {
-                        // Repair also failed
-                        await storeBatch({
-                            companyId, snapshotId: snapshot.ID, runId: run.id, domain,
-                            batchNumber, totalBatches, batchEvidence, analysis: null, usage,
-                            stackCTRLDataCount: packageResult.audit.stackCTRLDataCount,
-                            status: 'failed_invalid_json',
-                            errorMessage: `JSON parse failed: ${jsonResult.error}. Repair attempt also failed: ${repairResult.error}`,
-                            failureReason: 'invalid_json_unrepairable',
-                            rawResponsePreview,
-                            azureFinishReason: finishReason
+                    const localRepair = repairTruncatedJson(response.data);
+                    if (localRepair.success) {
+                        logger.warn(`[StackCTRL Enterprise] Batch ${batchNumber} contained truncated JSON; StackCTRL closed the incomplete JSON structure locally.`);
+                        jsonRepaired = true;
+                        jsonRepairMethod = 'local_truncation_closure';
+                        analysis = normalizedDomainResult(localRepair.value, domain, packageResult.current);
+                    } else {
+                        logger.warn(`[StackCTRL Enterprise] Batch ${batchNumber} JSON parsing failed, attempting repair. Error: ${jsonResult.error}`);
+                        const repairResponse = await azureOpenAI.createJsonCompletion({
+                            messages: [
+                                { role: 'system', content: 'You are a JSON repair tool. Return valid JSON only. No markdown. No code fences. No explanations outside JSON.' },
+                                { role: 'user', content: createJsonRepairPrompt(response.data.slice(0, 5000)) }
+                            ],
+                            temperature: 0,
+                            maxTokens: settings.maxDomainOutputTokens,
+                            maxRetriesOverride: 1,
+                            retryDelaysMsOverride: ENTERPRISE_RATE_LIMIT_RETRY_DELAYS_MS,
+                            retryMaxMsOverride: ENTERPRISE_RATE_LIMIT_RETRY_MAX_MS,
+                            timeoutMs: settings.requestTimeoutMs,
+                            allowInvalidJsonResponse: true
                         });
-                        return {
-                            status: 'failed_invalid_json', batchNumber, batchItemCount: batchEvidence.length, domain, usage,
-                            failureReason: 'invalid_json_unrepairable',
-                            errorMessage: `JSON parse failed: ${jsonResult.error}. Repair attempt also failed: ${repairResult.error}`
-                        };
+                        const repairUsage = responseUsage(repairResponse);
+                        usage.outputTokens += repairUsage.outputTokens;
+                        usage.totalTokens += repairUsage.totalTokens;
+                        const repairResult = parseJsonWithDiagnostics(repairResponse.data);
+                        const localRepairResult = repairResult.success ? null : repairTruncatedJson(repairResponse.data);
+                        if (!repairResult.success && !localRepairResult?.success) {
+                            const failureReason = finishReason === 'length' ? 'output_truncated_unrepairable' : 'invalid_json_unrepairable';
+                            await storeBatch({
+                                companyId, snapshotId: snapshot.ID, runId: run.id, domain,
+                                batchNumber, totalBatches, batchEvidence, analysis: null, usage,
+                                stackCTRLDataCount: packageResult.audit.stackCTRLDataCount,
+                                status: 'failed_invalid_json',
+                                errorMessage: `JSON parse failed: ${jsonResult.error}. Repair attempt also failed: ${repairResult.error}`,
+                                failureReason,
+                                rawResponsePreview,
+                                azureFinishReason: finishReason
+                            });
+                            return {
+                                status: 'failed_invalid_json', batchNumber, batchItemCount: batchEvidence.length, domain, usage,
+                                failureReason,
+                                errorMessage: `JSON parse failed: ${jsonResult.error}. Repair attempt also failed: ${repairResult.error}`
+                            };
+                        }
+                        jsonRepaired = true;
+                        jsonRepairMethod = repairResult.success ? 'azure_repair' : 'azure_repair_then_local_closure';
+                        analysis = normalizedDomainResult(repairResult.success ? repairResult.value : localRepairResult.value, domain, packageResult.current);
                     }
-                    jsonRepaired = true;
-                    analysis = normalizedDomainResult(repairResult.value, domain, packageResult.current);
                 } else {
                     analysis = normalizedDomainResult(jsonResult.value, domain, packageResult.current);
                 }
             } else {
                 analysis = normalizedDomainResult(response.data, domain, packageResult.current);
+            }
+
+            if (jsonRepairMethod === 'local_truncation_closure' || finishReason === 'length') {
+                analysis.missingDataWarnings = [
+                    ...array(analysis.missingDataWarnings),
+                    'Azure output ended before all closing JSON delimiters were returned. StackCTRL safely recovered the structured response; trailing narrative fields may be incomplete.'
+                ];
             }
             
             // Store successful batch
@@ -1133,10 +1182,10 @@ ${JSON.stringify(packageValue)}`;
                 companyId, snapshotId: snapshot.ID, runId: run.id, domain,
                 batchNumber, totalBatches, batchEvidence, analysis, usage, status: 'completed',
                 stackCTRLDataCount: packageResult.audit.stackCTRLDataCount,
-                rawResponsePreview, azureFinishReason: finishReason, jsonRepaired
+                rawResponsePreview, azureFinishReason: finishReason, jsonRepaired, jsonRepairMethod
             });
             
-            return { status: 'completed', batchNumber, batchItemCount: batchEvidence.length, domain, analysis, usage, jsonRepaired };
+            return { status: 'completed', batchNumber, batchItemCount: batchEvidence.length, domain, analysis, usage, jsonRepaired, jsonRepairMethod };
         } catch (error) {
             const metadata = error.azureMetadata || {};
             const alreadyStored = /finish_reason: length/.test(error.message);
@@ -1800,47 +1849,62 @@ ${JSON.stringify(packageValue)}`;
             maxRetriesOverride: settings.maxRetries,
             retryDelaysMsOverride: ENTERPRISE_RATE_LIMIT_RETRY_DELAYS_MS,
             retryMaxMsOverride: ENTERPRISE_RATE_LIMIT_RETRY_MAX_MS,
-            timeoutMs: settings.requestTimeoutMs
+            timeoutMs: settings.requestTimeoutMs,
+            allowInvalidJsonResponse: true
         });
         const usage = responseUsage(response);
         const finishReason = responseFinishReason(response);
-        if (finishReason === 'length') {
-            const error = new Error(`Enterprise synthesis response truncated (finish_reason: length). Output tokens: ${usage.outputTokens}`);
-            error.enterpriseStatus = 'failed_invalid_json';
-            throw error;
-        }
         let analysis = response.data || {};
+        let synthesisJsonRecovered = false;
         if (typeof response.data === 'string') {
             const parsed = parseJsonWithDiagnostics(response.data);
             if (!parsed.success) {
-                logger.warn(`[StackCTRL Enterprise] Synthesis JSON parsing failed, attempting repair. Error: ${parsed.error}`);
-                const repairResponse = await azureOpenAI.createJsonCompletion({
-                    messages: [
-                        { role: 'system', content: 'You are a JSON repair tool. Return valid JSON only. No markdown. No code fences. No explanations outside JSON.' },
-                        { role: 'user', content: createJsonRepairPrompt(response.data.slice(0, 8000)) }
-                    ],
-                    temperature: 0,
-                    maxTokens: settings.maxSynthesisOutputTokens,
-                    maxRetriesOverride: 1,
-                    retryDelaysMsOverride: ENTERPRISE_RATE_LIMIT_RETRY_DELAYS_MS,
-                    retryMaxMsOverride: ENTERPRISE_RATE_LIMIT_RETRY_MAX_MS,
-                    timeoutMs: settings.requestTimeoutMs
-                });
-                const repairUsage = responseUsage(repairResponse);
-                usage.outputTokens += repairUsage.outputTokens;
-                usage.totalTokens += repairUsage.totalTokens;
-                const repaired = parseJsonWithDiagnostics(repairResponse.data);
-                if (!repaired.success) {
-                    const error = new Error(`Enterprise synthesis JSON parse failed: ${parsed.error}. Repair attempt also failed: ${repaired.error}`);
-                    error.enterpriseStatus = 'failed_invalid_json';
-                    throw error;
+                const localRepair = repairTruncatedJson(response.data);
+                if (localRepair.success) {
+                    logger.warn('[StackCTRL Enterprise] Synthesis contained truncated JSON; StackCTRL closed the incomplete JSON structure locally.');
+                    analysis = localRepair.value;
+                    synthesisJsonRecovered = true;
+                } else {
+                    logger.warn(`[StackCTRL Enterprise] Synthesis JSON parsing failed, attempting repair. Error: ${parsed.error}`);
+                    const repairResponse = await azureOpenAI.createJsonCompletion({
+                        messages: [
+                            { role: 'system', content: 'You are a JSON repair tool. Return valid JSON only. No markdown. No code fences. No explanations outside JSON.' },
+                            { role: 'user', content: createJsonRepairPrompt(response.data.slice(0, 8000)) }
+                        ],
+                        temperature: 0,
+                        maxTokens: settings.maxSynthesisOutputTokens,
+                        maxRetriesOverride: 1,
+                        retryDelaysMsOverride: ENTERPRISE_RATE_LIMIT_RETRY_DELAYS_MS,
+                        retryMaxMsOverride: ENTERPRISE_RATE_LIMIT_RETRY_MAX_MS,
+                        timeoutMs: settings.requestTimeoutMs,
+                        allowInvalidJsonResponse: true
+                    });
+                    const repairUsage = responseUsage(repairResponse);
+                    usage.outputTokens += repairUsage.outputTokens;
+                    usage.totalTokens += repairUsage.totalTokens;
+                    const repaired = parseJsonWithDiagnostics(repairResponse.data);
+                    const locallyRepairedResponse = repaired.success ? null : repairTruncatedJson(repairResponse.data);
+                    if (!repaired.success && !locallyRepairedResponse?.success) {
+                        const error = new Error(`Enterprise synthesis JSON parse failed: ${parsed.error}. Repair attempt also failed: ${repaired.error}`);
+                        error.enterpriseStatus = 'failed_invalid_json';
+                        throw error;
+                    }
+                    analysis = repaired.success ? repaired.value : locallyRepairedResponse.value;
+                    synthesisJsonRecovered = true;
                 }
-                analysis = repaired.value;
             } else {
                 analysis = parsed.value;
             }
         }
-        const finalRunStatus = allDomainRows.some(row => !isSuccessfulDomainStatus(row.status)) ? 'completed_with_warnings' : 'completed';
+        if (synthesisJsonRecovered || finishReason === 'length') {
+            analysis.limitationsAndAssumptions = [
+                ...array(analysis.limitationsAndAssumptions),
+                'Azure synthesis output ended before all closing JSON delimiters were returned. StackCTRL safely recovered the structured response; trailing narrative fields may be incomplete.'
+            ];
+        }
+        const finalRunStatus = synthesisJsonRecovered || finishReason === 'length' || allDomainRows.some(row => !isSuccessfulDomainStatus(row.status))
+            ? 'completed_with_warnings'
+            : 'completed';
         const [result] = await pool.query(
             `INSERT INTO StackCTRLEnterpriseSynthesis
              (CompanyID, SnapshotID, RunID, PeriodType, PeriodStart, PeriodEnd, Status,
@@ -2276,6 +2340,7 @@ module.exports = {
     sourceAlignmentFailure,
     createEnterpriseIntelligenceService,
     flattenDomainEvidence,
+    repairTruncatedJson,
     splitIntoBatches,
     periodWindow,
     normalizeMysqlDate
