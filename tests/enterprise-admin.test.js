@@ -46,11 +46,24 @@ test('admin enterprise UI uses clear batch labels and latest/history filters', (
 
 test('enterprise audit title is reset from the currently rendered latest domain', () => {
     assert.match(html, /id="enterprise-audit-title">Enterprise evidence and output audit</);
+    assert.match(html, /id="enterprise-audit-subtitle"/);
     assert.match(javascript, /function enterpriseAuditTitle/);
-    assert.match(javascript, /domainRow\?\.DomainName/);
-    assert.match(javascript, /domain\.key === domainKey/);
+    assert.match(javascript, /function resolveEnterprisePrimaryDomain/);
+    assert.match(javascript, /function enterpriseDomainKeyFromMode/);
+    assert.match(javascript, /function enterpriseDomainDisplayName/);
+    assert.match(javascript, /supportedEnterpriseDomains\.find\(domain => domain\.key === domainKey\)/);
     assert.match(javascript, /el\('enterprise-audit-title'\)\.textContent = enterpriseAuditTitle/);
+    assert.match(javascript, /el\('enterprise-audit-subtitle'\)\.textContent/);
     assert.match(javascript, /if \(!showLatestOnly \|\| !latestRunId\) return enterpriseAuditDefaultTitle/);
+});
+
+test('enterprise lineage and modal views format object values instead of [object Object]', () => {
+    assert.match(javascript, /function formatDisplayValue/);
+    assert.match(javascript, /function formatLineageCell/);
+    assert.match(javascript, /function openJsonModal/);
+    assert.match(html, /id="json-modal-subtitle"/);
+    assert.match(html, /id="json-modal-label"/);
+    assert.match(javascript, /trimmed === '\[object Object\]'/);
 });
 
 test('enterprise input comparison renders run-scoped source lineage', () => {

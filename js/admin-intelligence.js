@@ -33,6 +33,41 @@
     ];
     const enterpriseAuditDefaultTitle = 'Enterprise evidence and output audit';
 
+    function enterpriseDomainKeyFromMode(mode) {
+        const prefix = 'enterprise_domain_';
+        if (!mode || typeof mode !== 'string' || !mode.startsWith(prefix)) return null;
+        return mode.slice(prefix.length);
+    }
+
+    function enterpriseDomainDisplayName(domainKey, domainRow) {
+        if (!domainKey) return enterpriseAuditDefaultTitle;
+        return supportedEnterpriseDomains.find(domain => domain.key === domainKey)?.name
+            || domainRow?.DomainName
+            || String(domainKey).replaceAll('_', ' ');
+    }
+
+    function resolveEnterprisePrimaryDomain({ latestRun, domainRows, audits } = {}) {
+        const combined = [...domainRows, ...audits];
+        const modeKey = enterpriseDomainKeyFromMode(latestRun?.Mode);
+        if (modeKey) {
+            const row = combined.find(item => item.DomainKey === modeKey);
+            return { domainKey: modeKey, domainName: enterpriseDomainDisplayName(modeKey, row), row: row || null };
+        }
+        const domainKeys = [...new Set(combined.map(row => row.DomainKey).filter(Boolean))];
+        if (domainKeys.length === 1) {
+            const domainKey = domainKeys[0];
+            const row = combined.find(item => item.DomainKey === domainKey);
+            return { domainKey, domainName: enterpriseDomainDisplayName(domainKey, row), row: row || null };
+        }
+        return { domainKey: null, domainName: enterpriseAuditDefaultTitle, row: null };
+    }
+
+    function enterpriseAuditTitle({ showLatestOnly, latestRunId, latestRun, domainRows, audits }) {
+        if (!showLatestOnly || !latestRunId) return enterpriseAuditDefaultTitle;
+        const primary = resolveEnterprisePrimaryDomain({ latestRun, domainRows, audits });
+        return primary.domainKey ? primary.domainName : enterpriseAuditDefaultTitle;
+    }
+
     const el = id => document.getElementById(id);
 
     function escapeHtml(value) {
@@ -81,16 +116,6 @@
         return 4;
     }
 
-    function enterpriseAuditTitle({ showLatestOnly, latestRunId, domainRows, audits }) {
-        if (!showLatestOnly || !latestRunId) return enterpriseAuditDefaultTitle;
-        const rows = [...domainRows, ...audits];
-        const domainKeys = [...new Set(rows.map(row => row.DomainKey).filter(Boolean))];
-        if (domainKeys.length !== 1) return enterpriseAuditDefaultTitle;
-        const domainKey = domainKeys[0];
-        const domainRow = domainRows.find(row => row.DomainKey === domainKey);
-        return domainRow?.DomainName || supportedEnterpriseDomains.find(domain => domain.key === domainKey)?.name || enterpriseAuditDefaultTitle;
-    }
-
     function statusLabel(status) {
         return String(status || 'unknown').replaceAll('_', ' ');
     }
@@ -134,10 +159,55 @@
         try { return JSON.parse(value); } catch (_) { return []; }
     }
 
-    function lineageValue(value, fallback = '—') {
+    function formatDisplayValue(value, fallback = '—') {
         if (value === null || value === undefined || value === '') return fallback;
-        if (typeof value === 'object') return JSON.stringify(value);
+        if (typeof value === 'boolean') return value ? 'true' : 'false';
+        if (typeof value === 'number') return Number.isFinite(value) ? String(value) : fallback;
+        if (typeof value === 'string') {
+            const trimmed = value.trim();
+            if (!trimmed || trimmed === '[object Object]') return fallback;
+            return trimmed;
+        }
+        if (Array.isArray(value)) {
+            if (!value.length) return '[]';
+            if (value.every(item => item === null || ['string', 'number', 'boolean'].includes(typeof item))) {
+                return value.map(item => formatDisplayValue(item, '')).filter(Boolean).join(', ');
+            }
+            try { return JSON.stringify(value); } catch (_) { return fallback; }
+        }
+        if (typeof value === 'object') {
+            try {
+                const entries = Object.entries(value);
+                if (!entries.length) return '{}';
+                if (entries.every(([, nested]) => nested === null || ['string', 'number', 'boolean'].includes(typeof nested))) {
+                    return entries.map(([key, nested]) => `${key}: ${formatDisplayValue(nested, '')}`).join(' · ');
+                }
+                return JSON.stringify(value);
+            } catch (_) {
+                return fallback;
+            }
+        }
         return String(value);
+    }
+
+    function formatLineageCell(value, fallback = '—') {
+        const formatted = formatDisplayValue(value, fallback);
+        return formatted.length > 220 ? `${formatted.slice(0, 217)}...` : formatted;
+    }
+
+    function lineageValue(value, fallback = '—') {
+        return formatLineageCell(value, fallback);
+    }
+
+    function openJsonModal({ label, title, subtitle, payload }) {
+        el('json-modal-label').textContent = label || 'Stored Azure output';
+        el('json-modal-title').textContent = title || 'Output JSON';
+        el('json-modal-subtitle').textContent = subtitle || '';
+        el('json-modal-content').textContent = typeof payload === 'string'
+            ? payload
+            : JSON.stringify(payload ?? {}, null, 2);
+        el('json-modal').classList.add('open');
+        el('json-modal').setAttribute('aria-hidden', 'false');
     }
 
     function batchDetailsHtml(batches) {
@@ -625,12 +695,18 @@
             map.get(key).push(batch);
             return map;
         }, new Map());
+        const primaryDomain = resolveEnterprisePrimaryDomain({ latestRun, domainRows, audits });
+        state.enterprisePrimaryDomain = primaryDomain;
         el('enterprise-audit-title').textContent = enterpriseAuditTitle({
             showLatestOnly,
             latestRunId,
+            latestRun,
             domainRows,
             audits
         });
+        el('enterprise-audit-subtitle').textContent = primaryDomain.domainKey
+            ? `${primaryDomain.domainName} · Run #${number(latestRun?.ID || latestRunId || 0)} · ${statusLabel(latestRun?.Status || 'unknown')} · Proof of what StackCTRL held, what Azure received, and what structured intelligence was stored`
+            : 'Proof of what StackCTRL held, what Azure received, and what structured intelligence was stored';
         const badge = el('enterprise-run-badge');
         badge.className = `status-badge status-${statusClass(latestRun?.Status || 'muted')}`;
         badge.textContent = latestRun ? `Run #${number(latestRun.ID)} · ${statusLabel(latestRun.Status)}` : 'No enterprise run';
@@ -644,14 +720,16 @@
             const completedDomains = latestRunDomains.filter(row => row.Status === 'completed').length;
             const completedBatches = (enterprise.batches || []).filter(row => Number(row.RunID) === Number(latestRun.ID) && row.Status === 'completed').length;
             const totalBatches = (enterprise.batches || []).filter(row => Number(row.RunID) === Number(latestRun.ID)).length;
-            const currentDomain = latestRunDomains.find(row => row.Status === 'running' || row.Status === 'queued') || latestRunDomains.find(row => row.Status !== 'completed');
+            const currentDomain = primaryDomain.domainKey
+                ? latestRunDomains.find(row => row.DomainKey === primaryDomain.domainKey) || primaryDomain.row
+                : latestRunDomains.find(row => row.Status === 'running' || row.Status === 'queued') || latestRunDomains.find(row => row.Status !== 'completed');
             const summary = [
                 ['Run', `#${number(latestRun.ID)}`],
                 ['Snapshot', `#${number(latestRun.SnapshotID)}`],
                 ['Status', statusLabel(latestRun.Status)],
                 ['Mode', latestRun.Mode || '—'],
                 ['Period', latestRun.PeriodType || '—'],
-                ['Current domain', currentDomain?.DomainName || currentDomain?.DomainKey || '—'],
+                ['Current domain', primaryDomain.domainKey ? primaryDomain.domainName : (currentDomain?.DomainName || currentDomain?.DomainKey || '—')],
                 ['Domains', `${number(completedDomains)} / ${number(latestRunDomains.length || supportedEnterpriseDomains.length)}`],
                 ['Batches', `${number(completedBatches)} / ${number(totalBatches)}`],
                 ['Input tokens', number(latestRun.TotalInputTokens)],
@@ -670,20 +748,24 @@
             const totalItems = Number(row.EvidenceIncludedCount ?? row.StackCTRLDataCount ?? 0);
             const completedItems = domainBatches.filter(batch => batch.Status === 'completed').reduce((total, batch) => total + Number(batch.BatchItemCount || 0), 0);
             const remaining = Math.max(0, totalItems - completedItems);
-            return `<tr><td><button type="button" class="output-open" data-enterprise-audit-index="${(enterprise.evidenceAudit || []).indexOf(row)}">${escapeHtml(row.DomainKey)}</button><small>Run #${number(row.RunID)} · Snapshot #${number(row.SnapshotID)} · ${dateTime(row.CreatedAt)}</small>${rateLimitGuidance(row, domainBatches)}</td><td>${number(row.StackCTRLDataCount)}</td><td>${number(row.EvidenceIncludedCount ?? row.StackCTRLDataCount)}</td><td>${number(row.SentToAzureCount)}</td><td>${number(row.OmittedCount)}</td><td>${number(domainBatches[0]?.BatchCount || domainBatches.length)}</td><td>${number(completed)}</td><td>${number(failed)}</td><td>${number(remaining)}</td><td>${number(row.InputTokens)}</td><td>${number(row.OutputTokens)}</td><td>${number(row.RetryCount)}</td><td>${statusBadge(row.Status)}</td></tr>`;
+            return `<tr><td><button type="button" class="output-open" data-enterprise-audit-index="${(enterprise.evidenceAudit || []).indexOf(row)}">${escapeHtml(enterpriseDomainDisplayName(row.DomainKey, row))}</button><small>${escapeHtml(row.DomainKey)} · Run #${number(row.RunID)} · Snapshot #${number(row.SnapshotID)} · ${dateTime(row.CreatedAt)}</small>${rateLimitGuidance(row, domainBatches)}</td><td>${number(row.StackCTRLDataCount)}</td><td>${number(row.EvidenceIncludedCount ?? row.StackCTRLDataCount)}</td><td>${number(row.SentToAzureCount)}</td><td>${number(row.OmittedCount)}</td><td>${number(domainBatches[0]?.BatchCount || domainBatches.length)}</td><td>${number(completed)}</td><td>${number(failed)}</td><td>${number(remaining)}</td><td>${number(row.InputTokens)}</td><td>${number(row.OutputTokens)}</td><td>${number(row.RetryCount)}</td><td>${statusBadge(row.Status)}</td></tr>`;
         }).join('') : '<tr><td colspan="13" class="empty-cell">No enterprise evidence audit rows match the current filters.</td></tr>';
 
-        const lineageDomain = domainRows[0] || null;
-        const lineageAudit = audits.find(row =>
-            (!lineageDomain || row.DomainKey === lineageDomain.DomainKey) &&
-            (!lineageDomain || Number(row.RunID) === Number(lineageDomain.RunID))
-        ) || audits[0] || null;
+        const lineageDomain = primaryDomain.domainKey
+            ? domainRows.find(row => row.DomainKey === primaryDomain.domainKey) || null
+            : domainRows[0] || null;
+        const lineageAudit = primaryDomain.domainKey
+            ? audits.find(row => row.DomainKey === primaryDomain.domainKey) || null
+            : audits.find(row =>
+                (!lineageDomain || row.DomainKey === lineageDomain.DomainKey) &&
+                (!lineageDomain || Number(row.RunID) === Number(lineageDomain.RunID))
+            ) || audits[0] || null;
         const storedLineageRows = arrayValue(lineageDomain?.AnalysisJson?.dataLineageComparison);
         const lineageMetadata = lineageAudit?.AzureInputSummaryJson?.dataLineage || {};
         const inputLineageRows = arrayValue(lineageMetadata.rows);
         const lineageRows = storedLineageRows.length ? storedLineageRows : inputLineageRows;
         el('enterprise-lineage-summary').textContent = lineageAudit
-            ? `${lineageMetadata.sourceKey || lineageAudit.DomainKey} · ${lineageMetadata.sourceBuilder || 'dashboardContext'} · Run #${number(lineageAudit.RunID)} · Snapshot #${number(lineageAudit.SnapshotID)} · Source updated ${dateTime(lineageMetadata.sourceLastUpdated)}`
+            ? `${enterpriseDomainDisplayName(lineageAudit.DomainKey, lineageDomain)} · ${lineageMetadata.sourceBuilder || 'dashboardContext'} · Run #${number(lineageAudit.RunID)} · Snapshot #${number(lineageAudit.SnapshotID)} · Source updated ${dateTime(lineageMetadata.sourceLastUpdated)}`
             : 'No source lineage metadata loaded.';
         el('enterprise-lineage-body').innerHTML = lineageRows.length ? lineageRows.map(row => `
             <tr><td>${escapeHtml(row.metric)}</td><td>${escapeHtml(lineageValue(row.stackCTRLSource))}</td><td>${escapeHtml(lineageValue(row.enterpriseAzureInput))}</td><td>${escapeHtml(lineageValue(row.azureOutput, row.azureOutputStatus || 'NOT_APPLICABLE'))}</td><td>${escapeHtml(lineageValue(row.storedIntelligence, 'NOT_APPLICABLE'))}</td><td>${statusBadge(row.status || 'MISSING')}</td></tr>
@@ -827,11 +909,12 @@
     function openOutput(index) {
         const output = state.tenant?.outputs?.[index];
         if (!output) return;
-        el('json-modal-title').textContent = output.Title || output.OutputType || 'Output JSON';
-        const content = output.ContentJson ?? {};
-        el('json-modal-content').textContent = JSON.stringify(content, null, 2);
-        el('json-modal').classList.add('open');
-        el('json-modal').setAttribute('aria-hidden', 'false');
+        openJsonModal({
+            label: 'Stored Azure output',
+            title: output.Title || output.OutputType || 'Output JSON',
+            subtitle: `${output.OutputType || 'output'} · ${shortDateTime(output.CreatedAt)}`,
+            payload: output.ContentJson ?? {}
+        });
     }
 
     function closeOutput() {
@@ -923,23 +1006,32 @@
             if (auditButton) {
                 const row = state.enterprise?.evidenceAudit?.[Number(auditButton.dataset.enterpriseAuditIndex)];
                 if (row) {
-                    el('json-modal-title').textContent = `${row.DomainKey} · sanitized Azure input`;
-                    el('json-modal-content').textContent = JSON.stringify({ azureInput: row.AzureInputSummaryJson, omitted: row.OmittedSummaryJson }, null, 2);
-                    el('json-modal').classList.add('open'); el('json-modal').setAttribute('aria-hidden', 'false');
+                    openJsonModal({
+                        label: 'Sanitized Azure input',
+                        title: `${enterpriseDomainDisplayName(row.DomainKey, row)} · Azure input package`,
+                        subtitle: `Run #${number(row.RunID)} · Snapshot #${number(row.SnapshotID)} · Total StackCTRL Data ${number(row.StackCTRLDataCount)} · Prepared for Azure ${number(row.EvidenceIncludedCount ?? row.StackCTRLDataCount)} · ${dateTime(row.CreatedAt)}`,
+                        payload: { azureInput: row.AzureInputSummaryJson, omitted: row.OmittedSummaryJson }
+                    });
                 }
             } else if (domainButton) {
                 const row = state.enterprise?.domainIntelligence?.[Number(domainButton.dataset.enterpriseDomainIndex)];
                 if (row) {
-                    el('json-modal-title').textContent = `${row.DomainName || row.DomainKey} · Azure output`;
-                    el('json-modal-content').textContent = JSON.stringify(row.AnalysisJson || {}, null, 2);
-                    el('json-modal').classList.add('open'); el('json-modal').setAttribute('aria-hidden', 'false');
+                    openJsonModal({
+                        label: 'Stored Azure output',
+                        title: `${enterpriseDomainDisplayName(row.DomainKey, row)} · Azure output`,
+                        subtitle: `Run #${number(row.RunID)} · Snapshot #${number(row.SnapshotID)} · ${statusLabel(row.Status)} · Input ${number(row.InputTokens)} · Output ${number(row.OutputTokens)} · ${dateTime(row.CreatedAt)}`,
+                        payload: row.AnalysisJson || {}
+                    });
                 }
             } else if (synthesisButton) {
                 const row = state.enterprise?.synthesis?.[0];
                 if (row) {
-                    el('json-modal-title').textContent = 'Final enterprise synthesis';
-                    el('json-modal-content').textContent = JSON.stringify(row, null, 2);
-                    el('json-modal').classList.add('open'); el('json-modal').setAttribute('aria-hidden', 'false');
+                    openJsonModal({
+                        label: 'Final enterprise synthesis',
+                        title: 'Final enterprise synthesis',
+                        subtitle: `Run #${number(row.RunID)} · Snapshot #${number(row.SnapshotID)} · ${statusLabel(row.Status)} · ${dateTime(row.CreatedAt)}`,
+                        payload: row
+                    });
                 }
             } else if (retryDomainButton) {
                 const domainKey = retryDomainButton.dataset.retryDomain;

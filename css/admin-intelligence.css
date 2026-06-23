@@ -345,11 +345,15 @@ body.intelligence-admin-page.is-guarded .site-header {
 .json-modal.open { display: grid; }
 .modal-backdrop { position: absolute; inset: 0; width: 100%; border: 0; background: rgba(1,4,9,.8); backdrop-filter: blur(10px); }
 .json-modal-panel { position: relative; display: flex; flex-direction: column; width: min(980px, 100%); max-height: 88vh; border: 1px solid rgba(52,151,255,.28); border-radius: 20px; background: #07101d; box-shadow: 0 30px 100px rgba(0,0,0,.55); overflow: hidden; }
-.json-modal-panel header { display: flex; justify-content: space-between; align-items: center; padding: 18px 20px; border-bottom: 1px solid var(--intel-line); }
+.json-modal-panel header { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; padding: 16px 20px; border-bottom: 1px solid var(--intel-line); }
+.json-modal-heading { display: grid; gap: 2px; min-width: 0; }
 .json-modal-panel header span { color: var(--intel-blue); font-size: 8px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
-.json-modal-panel h2 { margin: 3px 0 0; font-size: 16px; }
-.json-modal-panel header button { width: 36px; height: 36px; color: #9aabc0; border: 1px solid var(--intel-line); border-radius: 10px; background: rgba(255,255,255,.03); cursor: pointer; }
-.json-modal-panel pre { overflow: auto; margin: 0; padding: 22px; color: #abd8ff; font: 11px/1.7 Consolas, Monaco, monospace; white-space: pre-wrap; word-break: break-word; }
+.json-modal-panel h2 { margin: 0; font-size: 16px; line-height: 1.25; }
+.json-modal-subtitle { margin: 4px 0 0; color: #7f93ab; font-size: 10px; line-height: 1.45; }
+.json-modal-panel header button { width: 36px; height: 36px; color: #9aabc0; border: 1px solid var(--intel-line); border-radius: 10px; background: rgba(255,255,255,.03); cursor: pointer; flex: 0 0 auto; }
+.json-modal-panel pre { overflow: auto; margin: 0; padding: 16px 20px 20px; color: #abd8ff; font: 11px/1.7 Consolas, Monaco, monospace; white-space: pre-wrap; word-break: break-word; }
+.enterprise-lineage td { vertical-align: top; white-space: pre-wrap; word-break: break-word; font-size: 10px; line-height: 1.45; }
+#enterprise-audit-subtitle { margin: 4px 0 0; color: #7f93ab; font-size: 11px; line-height: 1.45; max-width: 760px; }
 .toast-stack { position: fixed; right: 22px; bottom: 22px; z-index: 4000; display: grid; gap: 8px; }
 .intel-toast { width: min(360px, calc(100vw - 44px)); padding: 12px 14px; color: #dfeafa; font-size: 10px; border: 1px solid var(--intel-line); border-radius: 12px; background: rgba(8,16,28,.96); box-shadow: 0 18px 50px rgba(0,0,0,.4); }
 .intel-toast.success { border-color: rgba(78,212,155,.35); }

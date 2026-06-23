@@ -123,7 +123,7 @@
             </section>
 
             <section class="glass-panel enterprise-audit-panel" id="enterprise-audit-results">
-                <div class="panel-heading"><div><span class="section-index">E2</span><div><h2 id="enterprise-audit-title">Enterprise evidence and output audit</h2><p>Proof of what StackCTRL held, what Azure received, and what structured intelligence was stored</p></div></div><span class="table-hint" id="enterprise-audit-summary">Load enterprise data to inspect it</span></div>
+                <div class="panel-heading"><div><span class="section-index">E2</span><div><h2 id="enterprise-audit-title">Enterprise evidence and output audit</h2><p id="enterprise-audit-subtitle">Proof of what StackCTRL held, what Azure received, and what structured intelligence was stored</p></div></div><span class="table-hint" id="enterprise-audit-summary">Load enterprise data to inspect it</span></div>
                 <div class="enterprise-filter-bar">
                     <button type="button" data-enterprise-run-view="latest">Latest run only</button>
                     <button type="button" data-enterprise-run-view="history">Show all runs</button>
@@ -194,7 +194,7 @@
     <div class="json-modal" id="json-modal" aria-hidden="true">
         <button class="modal-backdrop" data-close-json aria-label="Close output"></button>
         <section class="json-modal-panel" role="dialog" aria-modal="true" aria-labelledby="json-modal-title">
-            <header><div><span>Stored Azure output</span><h2 id="json-modal-title">Output JSON</h2></div><button data-close-json aria-label="Close"><i class="fas fa-times"></i></button></header>
+            <header><div class="json-modal-heading"><span id="json-modal-label">Stored Azure output</span><h2 id="json-modal-title">Output JSON</h2><p id="json-modal-subtitle" class="json-modal-subtitle"></p></div><button data-close-json aria-label="Close"><i class="fas fa-times"></i></button></header>
             <pre id="json-modal-content"></pre>
         </section>
     </div>
