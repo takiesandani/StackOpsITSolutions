@@ -286,9 +286,10 @@
     function batchDetailsHtml(batches) {
         if (!batches.length) return '<div class="enterprise-batch-empty">No batch details stored for this domain.</div>';
         return `<details class="enterprise-batch-details"><summary>Batches · ${number(batches.filter(batch => batch.Status === 'completed').length)} / ${number(batches.length)} completed</summary><div>${batches.map(batch => {
-            const repaired = batch.BatchSummaryJson?.jsonRepaired ? 'yes' : 'no';
-            const retryMinutes = minutesFromMs(batch.BatchSummaryJson?.recommendedRetryAfterMs);
-            return `<section><header><strong>Batch ${number(batch.BatchNumber)}</strong>${statusBadge(batch.Status)}</header><div class="enterprise-domain-meta"><span>Items ${number(batch.BatchItemCount)}</span><span>Input size ${bytes(batch.InputSizeBytes)}</span><span>Input tokens ${number(batch.InputTokens)}</span><span>Output tokens ${number(batch.OutputTokens)}</span><span>Retries ${number(batch.RetryCount)}</span><span>Finish ${escapeHtml(batch.AzureFinishReason || '—')}</span><span>JSON repaired ${repaired}</span>${retryMinutes ? `<span>Retry after ${number(retryMinutes)} min</span>` : ''}</div>${batch.ErrorMessage ? `<p class="enterprise-error">${escapeHtml(batch.ErrorMessage)}</p>` : ''}</section>`;
+            const batchSummary = batch.BatchSummaryJson || {};
+            const repaired = batchSummary.jsonRepaired ? 'yes' : 'no';
+            const retryMinutes = minutesFromMs(batchSummary.recommendedRetryAfterMs);
+            return `<section><header><strong>Batch ${number(batch.BatchNumber)}</strong>${statusBadge(batch.Status)}</header><div class="enterprise-domain-meta"><span>Items ${number(batch.BatchItemCount)}</span><span>Records sent ${number(batchSummary.recordsSent ?? batch.BatchItemCount)}</span><span>Input size ${bytes(batch.InputSizeBytes)}</span><span>Input tokens ${number(batch.InputTokens)}</span><span>Output tokens ${number(batch.OutputTokens)}</span><span>Retries ${number(batch.RetryCount)}</span><span>Finish ${escapeHtml(batch.AzureFinishReason || '—')}</span><span>JSON repaired ${repaired}</span>${retryMinutes ? `<span>Retry after ${number(retryMinutes)} min</span>` : ''}</div>${batch.ErrorMessage ? `<p class="enterprise-error">${escapeHtml(batch.ErrorMessage)}</p>` : ''}</section>`;
         }).join('')}</div></details>`;
     }
 

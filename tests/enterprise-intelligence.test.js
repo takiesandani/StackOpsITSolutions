@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const {
     buildDataLineageComparison,
+    buildEvidenceCatalog,
     createEnterpriseIntelligenceService,
     DEVICE_LINEAGE_FIELDS,
     EMAIL_LINEAGE_FIELDS,
@@ -1154,6 +1155,27 @@ test('enterprise synthesis uses stored successful domain intelligence only', asy
     assert.deepEqual(synthesisInput.domainRunSummary.successfulDomains, ['identity']);
     assert.equal(synthesisInput.domainRunSummary.failedDomains.length, 1);
     assert.equal(synthesisInput.limitations.excludedDomainStatuses[0].domainKey, 'devices');
+});
+
+test('enterprise evidence flattening preserves entity rows and builds categorized evidence catalog', () => {
+    const users = [
+        { id: 'admin-1', displayName: 'Break glass account', mail: 'admin@example.com', mfaEnabled: false, roles: ['Global Administrator'], riskLevel: 'HIGH' },
+        { id: 'user-2', displayName: 'Chad Brown', mail: 'chad@example.com', mfaEnabled: true, roles: ['Standard'], riskLevel: 'MEDIUM' }
+    ];
+    const evidence = [
+        { evidenceType: 'users', data: users },
+        { evidenceType: 'dashboard_evidence_lists', data: { usersWithoutMfa: [users[0]], privilegedUsers: [users[0]], allUsers: users } }
+    ];
+    const flattened = flattenDomainEvidence(evidence, { rootPath: 'identity.evidence', domainKey: 'identity' });
+    assert.equal(flattened.length, 2);
+    assert.deepEqual(flattened[0].data.roles, ['Global Administrator']);
+    assert.equal(flattened[0].entityKey, 'admin-1');
+
+    const catalog = buildEvidenceCatalog(evidence, ENTERPRISE_DOMAINS[0], 501);
+    assert.equal(catalog.primaryTable.count, 2);
+    assert.equal(catalog.categories.find(category => category.key === 'usersWithoutMfa').count, 1);
+    assert.equal(catalog.categories.find(category => category.key === 'usersWithoutMfa').sourceMetric, 'mfaMissing');
+    assert.equal(catalog.categories.find(category => category.key === 'usersWithoutMfa').entities[0].displayName, 'Break glass account');
 });
 
 test('all required enterprise domain modes are registered', () => {

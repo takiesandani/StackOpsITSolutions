@@ -1,4 +1,5 @@
 const { DateTime } = require('luxon');
+const { buildDashboardIntelligenceContext } = require('./intelligence/dashboard-context');
 
 const ENTERPRISE_DOMAINS = Object.freeze([
     { key: 'identity', name: 'Identity Protection', sourceKey: 'identity', mode: 'enterprise_domain_identity', riskKey: 'identity', healthKey: 'identityHealth', focus: ['MFA coverage', 'users without MFA', 'privileged accounts', 'admin roles', 'legacy authentication', 'risky sign-ins', 'external users', 'Conditional Access gaps'] },
@@ -15,7 +16,9 @@ const ENTERPRISE_DOMAINS = Object.freeze([
 
 const DOMAIN_BY_KEY = Object.freeze(Object.fromEntries(ENTERPRISE_DOMAINS.map(domain => [domain.key, domain])));
 const LOWER_PERIOD = Object.freeze({ weekly: 'daily', monthly: 'weekly', yearly: 'monthly' });
-const DEFAULT_DOMAIN_DELAY_MS = 30000;
+const DEFAULT_DOMAIN_DELAY_MS = 60000;
+const LARGE_DOMAIN_INPUT_TOKEN_THRESHOLD = 50000;
+const ENTITY_EVIDENCE_LIMITS = Object.freeze({ maxDepth: 8, maxArray: 50, maxString: 1200, maxObjectKeys: 100 });
 const DEFAULT_MAX_INPUT_BYTES = 350000;
 const DEFAULT_MAX_ITEMS_PER_BATCH = 750;
 const DEFAULT_MAX_TOTAL_TOKENS = 200000;
@@ -50,6 +53,93 @@ const NETWORK_LINEAGE_FIELDS = Object.freeze([
     'healthScore', 'riskScore', 'sourceHealth.evidenceCount', 'snapshotId', 'sourceLastUpdated'
 ]);
 const DASHBOARD_BACKED_ENTERPRISE_DOMAINS = Object.freeze(['identity', 'devices', 'email_security', 'cloudflare_network_security', 'backup', 'applications', 'security_alerts', 'governance', 'compliance', 'operations']);
+const DOMAIN_EVIDENCE_TYPES = Object.freeze({
+    identity: ['users', 'dashboard_evidence_lists'],
+    devices: ['devices', 'dashboard_evidence_lists'],
+    email_security: ['alerts', 'incidents', 'mailActivityUsers', 'dashboard_evidence_lists'],
+    cloudflare_network_security: ['accessApps', 'devices', 'gatewayRules', 'accessLogs', 'dlpProfiles', 'warpProfiles', 'dashboard_evidence_lists'],
+    backup: ['users', 'sites', 'dashboard_evidence_lists'],
+    applications: ['applications', 'dashboard_evidence_lists'],
+    security_alerts: ['alerts', 'incidents', 'signIns', 'threatIndicators', 'dashboard_evidence_lists'],
+    governance: ['governanceRows', 'dashboard_evidence_lists'],
+    compliance: ['controls', 'dashboard_evidence_lists'],
+    operations: ['tasks', 'dashboard_evidence_lists']
+});
+const DOMAIN_EVIDENCE_CATEGORY_METRICS = Object.freeze({
+    identity: {
+        allUsers: 'totalUsers',
+        usersWithoutMfa: 'mfaMissing',
+        usersWithMfa: 'mfaEnabled',
+        privilegedUsers: 'privilegedUsers',
+        adminsWithoutMfa: 'adminsWithoutMfa',
+        highRiskUsers: 'highRiskUsers',
+        inactiveUsers: 'inactiveUsers',
+        failedSignInUsers: 'signInIssues',
+        externalUsers: 'externalUsers',
+        unknownDeviceUsers: 'unknownDevices'
+    },
+    devices: {
+        allDevices: 'totalDevices',
+        nonCompliantDevices: 'nonCompliantDevices',
+        notEncryptedDevices: 'notEncryptedDevices',
+        staleDevices: 'staleDevices',
+        deadDevices: 'dead30Days',
+        unmanagedDevices: 'unmanagedDevices',
+        unknownDevices: 'unknownDevices'
+    },
+    email_security: {
+        allAlerts: 'activeThreats',
+        highSeverityAlerts: 'highSeverityAlerts',
+        activeIncidents: 'activeIncidents',
+        phishingAlerts: 'phishingCount',
+        malwareAlerts: 'malwareCount',
+        affectedUsers: 'affectedUsersCount',
+        mailActivityUsers: 'activeMailboxes'
+    },
+    cloudflare_network_security: {
+        applications: 'protectedApps',
+        devices: 'enrolledDevices',
+        gatewayRules: 'gatewayPolicies',
+        accessPolicies: 'protectedApps',
+        accessLogs: 'recentAccessEvents',
+        dlpProfiles: 'dlpProfiles',
+        warpProfiles: 'enrolledDevices',
+        sectionStatus: 'sectionErrors'
+    },
+    compliance: {
+        controls: 'totalControls',
+        failedControls: 'failingControls',
+        validationEvidence: 'partialControls'
+    },
+    governance: {
+        governanceEvidence: 'totalRows',
+        controls: 'connectedRows',
+        risks: 'attentionRequiredRows'
+    },
+    applications: {
+        allApplications: 'totalApplications',
+        externalApps: 'externalApplications',
+        highRiskApps: 'highRiskApps',
+        excessivePermissionApps: 'excessivePermissionApps',
+        highAccessApps: 'highAccessApps'
+    },
+    backup: {
+        users: 'activeUsersCount',
+        inactiveUsers: 'inactiveUsersCount',
+        sites: 'servicesCovered'
+    },
+    security_alerts: {
+        alerts: 'totalAlerts',
+        highSeverityAlerts: 'highSeverityAlerts',
+        activeIncidents: 'activeIncidents',
+        suspiciousSignIns: 'suspiciousSignIns',
+        threatIndicators: 'threatIndicators'
+    },
+    operations: {
+        tasks: 'totalTasks',
+        highPriorityTasks: 'highPriorityTasks'
+    }
+});
 const BACKUP_LINEAGE_FIELDS = Object.freeze([
     'totalStorageGB', 'oneDriveStorageGB', 'sharePointStorageGB', 'exchangeStorageGB',
     'activeUsersCount', 'inactiveUsersCount', 'servicesCovered', 'inactiveUserStorageGB',
@@ -166,9 +256,29 @@ function safeValue(value, depth = 0, limits = {}) {
     if (depth >= maxDepth) return Array.isArray(value) ? `[${value.length} items omitted]` : '[nested detail omitted]';
     if (Array.isArray(value)) return value.slice(0, maxArray).map(item => safeValue(item, depth + 1, limits));
     if (typeof value === 'object') {
-        return Object.fromEntries(Object.entries(value).slice(0, 80).map(([key, nested]) => [key, safeValue(nested, depth + 1, limits)]));
+        const maxObjectKeys = limits.maxObjectKeys ?? 80;
+        return Object.fromEntries(Object.entries(value).slice(0, maxObjectKeys).map(([key, nested]) => [key, safeValue(nested, depth + 1, limits)]));
     }
     return String(value).slice(0, maxString);
+}
+
+function safeEvidenceEntity(value, limits = ENTITY_EVIDENCE_LIMITS) {
+    return safeValue(value, 0, limits);
+}
+
+function entityRecordKey(value) {
+    if (!value || typeof value !== 'object') return null;
+    return value.id || value.userPrincipalName || value.mail || value.email || value.deviceName ||
+        value.applicationId || value.controlId || value.alertId || value.serialNumber || value.name || null;
+}
+
+function isEntityRecord(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    return Boolean(
+        entityRecordKey(value) ||
+        value.displayName || value.userEmail || value.complianceState || value.severity ||
+        value.title || value.subject || value.policyName
+    );
 }
 
 const EVIDENCE_CONTAINER_METADATA_KEYS = new Set([
@@ -183,7 +293,7 @@ function containsArray(value, seen = new Set()) {
     return Object.values(value).some(nested => containsArray(nested, seen));
 }
 
-function flattenDomainEvidence(evidence, { rootPath = 'evidence' } = {}) {
+function flattenDomainEvidence(evidence, { rootPath = 'evidence', domainKey = null } = {}) {
     const flattened = [];
 
     function pathLabel(path) {
@@ -198,17 +308,26 @@ function flattenDomainEvidence(evidence, { rootPath = 'evidence' } = {}) {
             if (nested == null || !['string', 'number', 'boolean'].includes(typeof nested)) continue;
             if (EVIDENCE_CONTAINER_METADATA_KEYS.has(key.toLowerCase())) context[key] = nested;
         }
+        if (value.evidenceType) context.evidenceType = value.evidenceType;
         return context;
     }
 
-    function append(value, path, context) {
+    function append(value, path, context, { preserveEntity = false } = {}) {
         const itemContext = containerContext(value, context);
-        const sourceLabel = String(itemContext.evidenceType || itemContext.type || itemContext.sourceKey || itemContext.source || pathLabel(path));
+        const sourceLabel = String(
+            itemContext.listName || itemContext.evidenceType || itemContext.type ||
+            itemContext.sourceKey || itemContext.source || pathLabel(path)
+        );
         flattened.push({
             sourcePath: path,
             sourceLabel,
             evidenceType: String(itemContext.evidenceType || itemContext.type || sourceLabel || 'stored_evidence'),
-            data: safeValue(value?.data ?? value, 0, { maxDepth: 7, maxArray: 20, maxString: 1600 })
+            evidenceCategory: itemContext.listName || null,
+            sourceMetric: itemContext.sourceMetric || null,
+            entityKey: entityRecordKey(value?.data ?? value),
+            data: preserveEntity
+                ? safeEvidenceEntity(value?.data ?? value)
+                : safeValue(value?.data ?? value, 0, { maxDepth: 7, maxArray: 50, maxString: 1600, maxObjectKeys: 100 })
         });
     }
 
@@ -223,19 +342,32 @@ function flattenDomainEvidence(evidence, { rootPath = 'evidence' } = {}) {
             return;
         }
 
+        if (value.evidenceType === 'dashboard_evidence_lists') {
+            return;
+        }
+
+        if (isArrayItem && isEntityRecord(value)) {
+            append(value, path, inherited, { preserveEntity: true });
+            return;
+        }
+
+        if (Object.prototype.hasOwnProperty.call(value, 'data') && Array.isArray(value.data)) {
+            const context = containerContext(value, inherited);
+            value.data.forEach((item, index) => walk(item, `${path}.data[${index}]`, context, true));
+            return;
+        }
+
         const entries = Object.entries(value);
         const arrayBearingEntries = entries.filter(([, nested]) => containsArray(nested));
         if (!arrayBearingEntries.length) {
-            append(value, path, inherited);
+            append(value, path, inherited, { preserveEntity: isEntityRecord(value) });
             return;
         }
 
         const context = containerContext(value, inherited);
-        if (isArrayItem) {
-            const recordFields = Object.fromEntries(entries.filter(([key, nested]) =>
-                !containsArray(nested) && !EVIDENCE_CONTAINER_METADATA_KEYS.has(key.toLowerCase())
-            ));
-            if (Object.keys(recordFields).length) append(recordFields, path, context);
+        if (isArrayItem && isEntityRecord(value)) {
+            append(value, path, context, { preserveEntity: true });
+            return;
         }
 
         for (const [key, nested] of arrayBearingEntries) {
@@ -243,8 +375,142 @@ function flattenDomainEvidence(evidence, { rootPath = 'evidence' } = {}) {
         }
     }
 
-    walk(evidence, rootPath);
+    const normalizedEvidence = Array.isArray(evidence)
+        ? evidence.filter(item => item?.evidenceType !== 'dashboard_evidence_lists')
+        : evidence;
+    walk(normalizedEvidence, rootPath);
     return flattened;
+}
+
+function filterDomainEvidence(sourceEvidence, domainKey) {
+    if (!Array.isArray(sourceEvidence)) return sourceEvidence;
+    const allowedTypes = DOMAIN_EVIDENCE_TYPES[domainKey];
+    if (!allowedTypes?.length) return sourceEvidence;
+    const filtered = sourceEvidence.filter(item => allowedTypes.includes(item?.evidenceType));
+    return filtered.length ? filtered : sourceEvidence.filter(item => item?.evidenceType !== 'dashboard_evidence_lists');
+}
+
+function enrichDomainEvidence(source, domain, evidence) {
+    if (!Array.isArray(evidence)) return evidence;
+    if (evidence.some(item => item?.evidenceType === 'dashboard_evidence_lists')) {
+        return evidence;
+    }
+    try {
+        const enriched = buildDashboardIntelligenceContext({
+            sourceKey: domain.sourceKey,
+            displayName: domain.name,
+            status: source.status || 'available',
+            isExpected: source.isExpected !== false,
+            metrics: source.metrics || {},
+            dashboardMetrics: source.dashboardMetrics || {},
+            dashboardSourceMetrics: source.dashboardSourceMetrics || source.dashboardMetrics || {},
+            evidence,
+            warnings: source.warnings || [],
+            freshness: source.freshness || {},
+            sourceLineage: source.sourceLineage || null,
+            rawReference: source.rawReference || null
+        });
+        const listPackage = array(enriched.evidence).find(item => item?.evidenceType === 'dashboard_evidence_lists');
+        return listPackage ? [...array(evidence), listPackage] : evidence;
+    } catch (_) {
+        return evidence;
+    }
+}
+
+function buildEvidenceCatalog(evidence, domain, snapshotId) {
+    const evidenceItems = Array.isArray(evidence) ? evidence : [];
+    const listContainer = evidenceItems.find(item => item?.evidenceType === 'dashboard_evidence_lists');
+    const listData = listContainer?.data && typeof listContainer.data === 'object' ? listContainer.data : {};
+    const metricMap = DOMAIN_EVIDENCE_CATEGORY_METRICS[domain.key] || {};
+    const categories = Object.entries(listData).map(([key, rows]) => {
+        const entities = array(rows).map(row => safeEvidenceEntity(row));
+        return {
+            key,
+            label: key.replace(/([A-Z])/g, ' $1').replace(/^./, char => char.toUpperCase()).trim(),
+            sourceMetric: metricMap[key] || null,
+            count: entities.length,
+            entities
+        };
+    }).filter(category => category.count > 0);
+
+    const primaryTypes = (DOMAIN_EVIDENCE_TYPES[domain.key] || []).filter(type => type !== 'dashboard_evidence_lists');
+    const primaryTable = primaryTypes.map(type => {
+        const container = evidenceItems.find(item => item?.evidenceType === type);
+        const rows = array(container?.data);
+        return rows.length ? { evidenceType: type, count: rows.length, description: `StackCTRL ${domain.name} dashboard table (${type})` } : null;
+    }).filter(Boolean)[0] || null;
+
+    const catalogEntityCount = categories.reduce((total, category) => total + category.count, 0);
+    return {
+        snapshotId: Number(snapshotId),
+        domainKey: domain.key,
+        domainName: domain.name,
+        primaryTable,
+        categories,
+        catalogEntityCount,
+        categoryCount: categories.length
+    };
+}
+
+function buildEvidenceBatchPlan(allEvidence, batches) {
+    return {
+        totalEntityRows: allEvidence.length,
+        batchCount: batches.length,
+        itemsPerBatch: batches.map(batch => batch.items.length),
+        batches: batches.map(batch => ({
+            batchNumber: batch.number,
+            itemCount: batch.items.length,
+            evidenceTypes: [...new Set(batch.items.map(item => item.evidenceType))]
+        }))
+    };
+}
+
+function computeInterBatchDelayMs(inputTokens, settings) {
+    const configured = Number(settings?.domainDelayMs);
+    const baseDelay = Number.isFinite(configured) ? Math.max(0, configured) : DEFAULT_DOMAIN_DELAY_MS;
+    if (baseDelay === 0) return 0;
+    if (inputTokens >= LARGE_DOMAIN_INPUT_TOKEN_THRESHOLD) return Math.max(baseDelay, 180000);
+    if (inputTokens >= 30000) return Math.max(baseDelay, 120000);
+    return Math.max(baseDelay, DEFAULT_DOMAIN_DELAY_MS);
+}
+
+function computeInterDomainDelayMs(inputTokens, settings) {
+    return computeInterBatchDelayMs(inputTokens, settings);
+}
+
+function normalizeEvidenceBackedItem(item, domain, snapshotId) {
+    const value = item && typeof item === 'object' && !Array.isArray(item) ? item : { title: String(item || '') };
+    return {
+        ...value,
+        title: textOrNull(value.title || value.name || value.metricName, 255),
+        description: textOrNull(value.description || value.detail || value.explanation, 4000),
+        severity: textOrNull(value.severity, 50),
+        status: textOrNull(value.status, 50),
+        likelihood: textOrNull(value.likelihood, 80),
+        impact: textOrNull(value.impact, 120),
+        priority: textOrNull(value.priority, 50),
+        businessImpact: textOrNull(value.businessImpact || value.businessReason, 4000),
+        businessReason: textOrNull(value.businessReason || value.businessImpact, 4000),
+        evidenceSummary: textOrNull(value.evidenceSummary, 4000),
+        recommendation: textOrNull(value.recommendation || value.detail, 4000),
+        detail: textOrNull(value.detail || value.recommendation, 4000),
+        suggestedOwner: textOrNull(value.suggestedOwner || value.owner, 180),
+        owner: textOrNull(value.owner || value.suggestedOwner, 180),
+        suggestedDueDate: normalizeMysqlDate(value.suggestedDueDate || value.dueDate),
+        sourceDomain: textOrNull(value.sourceDomain || domain.key, 80),
+        sourceMetric: textOrNull(value.sourceMetric, 120),
+        snapshotId: numberOrNull(value.snapshotId ?? snapshotId),
+        affectedEntities: array(value.affectedEntities).slice(0, 100).map(entity =>
+            typeof entity === 'string' ? textOrNull(entity, 500) : safeEvidenceEntity(entity, { ...ENTITY_EVIDENCE_LIMITS, maxArray: 20, maxObjectKeys: 40 })
+        ),
+        evidenceRows: array(value.evidenceRows).slice(0, 100).map(row =>
+            typeof row === 'string' ? textOrNull(row, 500) : safeEvidenceEntity(row, { ...ENTITY_EVIDENCE_LIMITS, maxArray: 20, maxObjectKeys: 40 })
+        ),
+        evidenceSource: textOrNull(value.evidenceSource || value.sourceLabel || 'stackctrl_dashboard_evidence', 255),
+        whatHappened: textOrNull(value.whatHappened || value.description, 4000),
+        whyItMatters: textOrNull(value.whyItMatters || value.businessImpact, 4000),
+        recommendedAction: textOrNull(value.recommendedAction || value.recommendation || value.detail, 4000)
+    };
 }
 
 function deepItemCount(value, depth = 0) {
@@ -683,27 +949,7 @@ function createEnterpriseIntelligenceService({
         const health = risk.domainHealthScores?.[domain.riskKey] ?? risk.executiveKPIs?.[domain.healthKey] ?? metrics.executive_kpis?.[domain.healthKey] ?? null;
         const riskScore = risk.domainRiskScores?.[domain.riskKey] ?? metrics.stackctrl_risk?.domainRiskScores?.[domain.riskKey] ?? null;
         const sourceEvidence = source.evidence && typeof source.evidence === 'object' ? source.evidence : [];
-        const evidence = domain.key === 'identity' && source.sourceLineage?.sourceBuilder === 'storedStackCTRLIdentityEvidence'
-            ? array(sourceEvidence).filter(item => item?.evidenceType === 'users')
-            : domain.key === 'devices' && source.sourceLineage?.sourceBuilder === 'storedStackCTRLDeviceEvidence'
-            ? array(sourceEvidence).filter(item => item?.evidenceType === 'devices')
-            : domain.key === 'email_security' && source.sourceLineage?.sourceBuilder === 'storedStackCTRLEmailEvidence'
-            ? array(sourceEvidence).filter(item => ['alerts', 'incidents', 'mailActivityUsers'].includes(item?.evidenceType))
-            : domain.key === 'cloudflare_network_security' && source.sourceLineage?.sourceBuilder === 'storedStackCTRLNetworkEvidence'
-            ? array(sourceEvidence).filter(item => ['accessApps', 'devices', 'gatewayRules', 'accessLogs', 'dlpProfiles', 'warpProfiles'].includes(item?.evidenceType))
-            : domain.key === 'backup' && source.sourceLineage?.sourceBuilder === 'storedStackCTRLBackupEvidence'
-            ? array(sourceEvidence).filter(item => ['users', 'sites'].includes(item?.evidenceType))
-            : domain.key === 'applications' && source.sourceLineage?.sourceBuilder === 'storedStackCTRLApplicationsEvidence'
-            ? array(sourceEvidence).filter(item => item?.evidenceType === 'applications')
-            : domain.key === 'security_alerts' && source.sourceLineage?.sourceBuilder === 'storedStackCTRLSecurityEvidence'
-            ? array(sourceEvidence).filter(item => ['alerts', 'incidents', 'signIns', 'threatIndicators'].includes(item?.evidenceType))
-            : domain.key === 'governance' && source.sourceLineage?.sourceBuilder === 'storedStackCTRLGovernanceEvidence'
-            ? array(sourceEvidence).filter(item => item?.evidenceType === 'governanceRows')
-            : domain.key === 'compliance' && source.sourceLineage?.sourceBuilder === 'storedStackCTRLComplianceEvidence'
-            ? array(sourceEvidence).filter(item => item?.evidenceType === 'controls')
-            : domain.key === 'operations' && source.sourceLineage?.sourceBuilder === 'storedStackCTRLOperationsEvidence'
-            ? array(sourceEvidence).filter(item => item?.evidenceType === 'tasks')
-            : sourceEvidence;
+        const evidence = filterDomainEvidence(sourceEvidence, domain.key);
         const sourceMetrics = source.metrics || metrics[domain.sourceKey] || {};
         const dashboardMetrics = source.dashboardMetrics || {};
         const dashboardBackedDomains = DASHBOARD_BACKED_ENTERPRISE_DOMAINS;
@@ -754,13 +1000,19 @@ function createEnterpriseIntelligenceService({
 
     async function buildDomainPackage({ companyId, snapshot, runId, domain, historicalContext }) {
         const current = domainFromSnapshot(snapshot, domain);
+        current.evidence = enrichDomainEvidence(current.source, domain, current.evidence);
         const knowledge = await loadKnowledge(domain.key);
         const previousAnalysis = await loadPreviousDomain(companyId, domain.key, runId);
-        const flattenedEvidence = flattenDomainEvidence(current.evidence, { rootPath: `${domain.sourceKey}.evidence` });
+        const flattenedEvidence = flattenDomainEvidence(current.evidence, { rootPath: `${domain.sourceKey}.evidence`, domainKey: domain.key });
+        const evidenceCatalog = buildEvidenceCatalog(current.evidence, domain, snapshot.ID);
         const stackCTRLDataCount = flattenedEvidence.length;
         const sourceEvidenceLineage = current.source.sourceLineage || {};
         const manualFilteredDomain = ['governance', 'compliance', 'operations'].includes(domain.key);
         const manualExcludedCount = manualFilteredDomain ? Number(sourceEvidenceLineage.manualRowsExcluded || sourceEvidenceLineage.omittedRecordCount || 0) : 0;
+        const expectedRecordCount = Number(sourceEvidenceLineage.evidenceRecordCount || evidenceCatalog.primaryTable?.count || stackCTRLDataCount);
+        const evidenceOmittedCount = expectedRecordCount > stackCTRLDataCount
+            ? expectedRecordCount - stackCTRLDataCount
+            : 0;
         
         const base = {
             contextType: 'stackctrl_enterprise_domain_intelligence',
@@ -787,20 +1039,33 @@ function createEnterpriseIntelligenceService({
             previousDomainAnalysis: previousAnalysis,
             knowledgeGrounding: knowledge,
             knowledgeWarning: knowledge.length ? null : `No curated ${domain.name} knowledge references are currently available.`,
+            evidenceCatalog,
             evidence: [],
             limitations: {
                 rawVendorPayloadIncluded: false,
                 rawSnapshotContextIncluded: false,
+                evidenceCompleteness: {
+                    expectedEntityRows: expectedRecordCount,
+                    includedEntityRows: stackCTRLDataCount,
+                    omittedEntityRows: evidenceOmittedCount,
+                    catalogCategories: evidenceCatalog.categoryCount,
+                    catalogEntityRows: evidenceCatalog.catalogEntityCount,
+                    manualRowsExcluded: manualExcludedCount,
+                    complete: evidenceOmittedCount === 0 && stackCTRLDataCount > 0
+                },
                 missingDataWarnings: [
                     ...array(current.source.warnings),
                     ...(manualExcludedCount > 0 ? [`${manualExcludedCount} manual evidence row(s) were intentionally excluded from Azure input; only API-connected evidence was prepared.`] : []),
+                    ...(evidenceOmittedCount > 0 ? [`${evidenceOmittedCount} expected dashboard entity row(s) were not included in the Azure evidence payload.`] : []),
                     ...(!knowledge.length ? [`Curated ${domain.name} best-practice references were unavailable.`] : [])
                 ]
             }
         };
 
         const sourceLineageValues = {
-            ...(DASHBOARD_BACKED_ENTERPRISE_DOMAINS.includes(domain.key) ? current.dashboardMetrics : current.metrics),
+            ...(DASHBOARD_BACKED_ENTERPRISE_DOMAINS.includes(domain.key)
+                ? { ...current.sourceMetrics, ...current.dashboardMetrics }
+                : current.metrics),
             healthScore: current.healthScore,
             riskScore: current.riskScore,
             'sourceHealth.evidenceCount': stackCTRLDataCount,
@@ -884,10 +1149,15 @@ function createEnterpriseIntelligenceService({
 
         // For batching: don't permanently reduce evidence, just use what we have
         const inputSizeBytes = bytes(base);
+        const batchPlan = buildEvidenceBatchPlan(flattenedEvidence, splitIntoBatches(flattenedEvidence, {
+            maxItems: settings.maxItemsPerBatch,
+            maxBytes: settings.maxInputBytes
+        }));
         return {
             package: base,
             current,
             allEvidence: flattenedEvidence,
+            evidenceCatalog,
             sourceAlignment,
             audit: {
                 stackCTRLDataCount,
@@ -896,9 +1166,18 @@ function createEnterpriseIntelligenceService({
                 omittedCount: manualExcludedCount,
                 metricsIncludedCount: primitiveMetricCount(base.currentMetrics) + primitiveMetricCount(base.dashboardMetrics) + primitiveMetricCount(base.calculatedIndicators),
                 evidenceIncludedCount: stackCTRLDataCount,
-                evidenceOmittedCount: 0, // Batching handles all evidence
+                evidenceOmittedCount,
+                catalogEntityCount: evidenceCatalog.catalogEntityCount,
+                catalogCategoryCount: evidenceCatalog.categoryCount,
                 historicalComparisonsIncluded: Object.values(base.historicalComparisons).filter(item => item.availability === 'available').length,
-                inputSizeBytes
+                inputSizeBytes,
+                batchPlan,
+                evidenceSample: flattenedEvidence.slice(0, 5).map(item => ({
+                    sourcePath: item.sourcePath,
+                    sourceLabel: item.sourceLabel,
+                    evidenceType: item.evidenceType,
+                    entityKey: item.entityKey || null
+                }))
             }
         };
     }
@@ -909,6 +1188,12 @@ Azure builds structured enterprise intelligence; Power BI builds the final repor
 Do not claim direct access to Microsoft Graph, Cloudflare, or another vendor. Do not invent missing controls or evidence.
 Every posture claim must identify supporting evidence, assessed areas, confirmed controls, unknown controls, gaps, movement, business impact, and recommended action.
 StackCTRL authoritative scores must be justified but never recalculated or replaced.
+
+Use BOTH summary metrics and entity-level evidence:
+- currentMetrics, dashboardMetrics, and calculatedIndicators provide executive counts and scores.
+- evidenceCatalog.categories contains categorized dashboard entity rows tied to sourceMetric keys.
+- evidence[] contains individual entity rows from the StackCTRL dashboard table for this batch.
+Every finding, risk, and recommendation MUST be evidence-backed. Do not state a gap without naming affected users, devices, apps, controls, policies, alerts, or other entities from the supplied evidence.
 
 Return valid JSON only. No markdown. No code fences. No explanations outside JSON.
 Return exactly these fields:
@@ -933,14 +1218,19 @@ Return exactly these fields:
   "assumptions": [],
   "confidenceScore": null,
   "managementActions": [],
-  "powerBiSummary": {}
+  "powerBiSummary": {},
+  "evidenceLimitations": {}
 }
 
-Finding fields: title, description, severity, status, evidenceSummary, businessImpact.
-Risk fields: title, description, severity, likelihood, impact, businessImpact, evidenceSummary, recommendation.
-Recommendation/action fields: title, detail, priority, businessReason, suggestedOwner, suggestedDueDate.
-Trend fields: metricName, currentValue, previousValue, changePercent, direction, comparisonPeriod, explanation.
+Finding fields: title, description, severity, status, whatHappened, whyItMatters, businessImpact, evidenceSummary, affectedEntities, evidenceRows, sourceDomain, sourceMetric, snapshotId, evidenceSource, suggestedOwner, suggestedDueDate.
+Risk fields: title, description, severity, likelihood, impact, whatHappened, whyItMatters, businessImpact, evidenceSummary, affectedEntities, evidenceRows, sourceDomain, sourceMetric, snapshotId, evidenceSource, recommendation, suggestedOwner, suggestedDueDate.
+Recommendation/action fields: title, detail, priority, whatHappened, whyItMatters, businessReason, affectedEntities, evidenceRows, sourceDomain, sourceMetric, snapshotId, evidenceSource, suggestedOwner, suggestedDueDate.
+Trend fields: metricName, currentValue, previousValue, changePercent, direction, comparisonPeriod, explanation, sourceMetric, affectedEntities.
+evidenceUsed items: label, sourceMetric, entityCount, snapshotId, evidenceSource.
+evidenceGaps items: gap, reason, omittedCount, sourceMetric.
+evidenceLimitations: recordsSent, recordsOmitted, batchNumber, totalBatches, complete, omittedReasons.
 Use empty arrays, objects, or null when evidence is unavailable. Clearly state limitations instead of filling gaps with assumptions.
+Cap each free-text field at 1200 characters. Do not use markdown.
 
 STACKCTRL DOMAIN PACKAGE:
 ${JSON.stringify(packageValue)}`;
@@ -984,11 +1274,14 @@ ${JSON.stringify(packageValue)}`;
         return {
             ...basePackage,
             evidence: batchEvidence.map((item, index) => ({
-                evidenceNumber: index + 1,
+                evidenceNumber: (batchNumber - 1) * Math.max(batchEvidence.length, 1) + index + 1,
                 evidenceType: item?.evidenceType || item?.type || 'stored_evidence',
                 sourceLabel: item?.sourceLabel || null,
                 sourcePath: item?.sourcePath || null,
-                data: safeValue(item?.data ?? item, 0, { maxDepth: 6, maxArray: 15, maxString: 1600 })
+                evidenceCategory: item?.evidenceCategory || null,
+                sourceMetric: item?.sourceMetric || null,
+                entityKey: item?.entityKey || entityRecordKey(item?.data ?? item),
+                data: safeEvidenceEntity(item?.data ?? item)
             })),
             current: {
                 healthScore: basePackage.authoritativeScores?.healthScore ?? null,
@@ -1001,13 +1294,18 @@ ${JSON.stringify(packageValue)}`;
             batchMetadata: {
                 batchNumber,
                 totalBatches,
-                batchEvidentItemCount: batchEvidence.length
+                batchEvidentItemCount: batchEvidence.length,
+                recordsSent: batchEvidence.length,
+                evidenceRowsIncluded: batchEvidence.length
             },
             limitations: {
                 ...basePackage.limitations,
                 batchProcessing: true,
                 batchNumber,
-                totalBatches
+                totalBatches,
+                recordsSent: batchEvidence.length,
+                recordsOmitted: 0,
+                evidenceRowsIncluded: batchEvidence.length
             }
         };
     }
@@ -1045,7 +1343,19 @@ ${JSON.stringify(packageValue)}`;
             trendsCount: array(analysis?.trendAnalysis).length,
             jsonRepaired: Boolean(jsonRepaired),
             jsonRepairMethod,
-            recommendedRetryAfterMs: recommendedRetryAfterMs == null ? null : Number(recommendedRetryAfterMs)
+            recommendedRetryAfterMs: recommendedRetryAfterMs == null ? null : Number(recommendedRetryAfterMs),
+            batchNumber,
+            totalBatches,
+            recordsSent: batchItemCount,
+            recordsOmitted: 0,
+            evidenceRowsIncluded: batchItemCount,
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            totalTokens: usage.totalTokens,
+            retryCount: usage.retries || 0,
+            evidenceTypes: [...new Set(batchEvidence.map(item => item?.evidenceType).filter(Boolean))],
+            firstEvidenceNumber: batchEvidence.length ? 1 : 0,
+            lastEvidencePath: batchEvidence.at(-1)?.sourcePath || null
         };
         
         await pool.query(
@@ -1120,7 +1430,7 @@ ${JSON.stringify(packageValue)}`;
                         logger.warn(`[StackCTRL Enterprise] Batch ${batchNumber} contained truncated JSON; StackCTRL closed the incomplete JSON structure locally.`);
                         jsonRepaired = true;
                         jsonRepairMethod = 'local_truncation_closure';
-                        analysis = normalizedDomainResult(localRepair.value, domain, packageResult.current);
+                        analysis = normalizedDomainResult(localRepair.value, domain, packageResult.current, snapshot.ID);
                     } else {
                         logger.warn(`[StackCTRL Enterprise] Batch ${batchNumber} JSON parsing failed, attempting repair. Error: ${jsonResult.error}`);
                         const repairResponse = await azureOpenAI.createJsonCompletion({
@@ -1161,13 +1471,13 @@ ${JSON.stringify(packageValue)}`;
                         }
                         jsonRepaired = true;
                         jsonRepairMethod = repairResult.success ? 'azure_repair' : 'azure_repair_then_local_closure';
-                        analysis = normalizedDomainResult(repairResult.success ? repairResult.value : localRepairResult.value, domain, packageResult.current);
+                        analysis = normalizedDomainResult(repairResult.success ? repairResult.value : localRepairResult.value, domain, packageResult.current, snapshot.ID);
                     }
                 } else {
-                    analysis = normalizedDomainResult(jsonResult.value, domain, packageResult.current);
+                    analysis = normalizedDomainResult(jsonResult.value, domain, packageResult.current, snapshot.ID);
                 }
             } else {
-                analysis = normalizedDomainResult(response.data, domain, packageResult.current);
+                analysis = normalizedDomainResult(response.data, domain, packageResult.current, snapshot.ID);
             }
 
             if (jsonRepairMethod === 'local_truncation_closure' || finishReason === 'length') {
@@ -1255,16 +1565,24 @@ ${JSON.stringify(packageValue)}`;
             }
             
             // Delay between batches to avoid throttling
-            if (batch.number < batches.length && settings.domainDelayMs > 0) {
-                await wait(settings.domainDelayMs);
+            if (batch.number < batches.length) {
+                const delayMs = computeInterBatchDelayMs(result.usage?.inputTokens || 0, settings);
+                if (delayMs > 0) await wait(delayMs);
             }
         }
         
+        const completedCount = results.filter(result => result.status === 'completed').length;
+        const processedItems = results.filter(result => result.status === 'completed')
+            .reduce((total, result) => total + Number(result.batchItemCount || 0), 0);
+        const omittedItems = Math.max(0, allEvidence.length - processedItems);
         const rateLimitedBatch = results.find(result => result.status === 'failed_rate_limited');
         return {
             results,
             batchCount: batches.length,
             totals,
+            processedItems,
+            omittedItems,
+            complete: completedCount === batches.length && omittedItems === 0,
             rateLimited: Boolean(rateLimitedBatch),
             recommendedRetryAfterMs: rateLimitedBatch?.recommendedRetryAfterMs || null
         };
@@ -1395,8 +1713,10 @@ ${JSON.stringify(packageValue)}`;
         });
     }
 
-    function normalizedDomainResult(data, domain, current) {
+    function normalizedDomainResult(data, domain, current, snapshotId = null) {
         const value = data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+        const resolvedSnapshotId = snapshotId ?? current?.snapshotId ?? null;
+        const normalizeItems = items => array(items).map(item => normalizeEvidenceBackedItem(item, domain, resolvedSnapshotId));
         return {
             ...value,
             domainExecutiveSummary: textOrNull(value.domainExecutiveSummary),
@@ -1407,10 +1727,10 @@ ${JSON.stringify(packageValue)}`;
             evidenceGaps: array(value.evidenceGaps),
             scoreJustification: textOrNull(value.scoreJustification),
             controlAssessment: value.controlAssessment || {},
-            keyFindings: array(value.keyFindings),
-            risks: array(value.risks),
-            recommendations: array(value.recommendations),
-            trendAnalysis: array(value.trendAnalysis),
+            keyFindings: normalizeItems(value.keyFindings),
+            risks: normalizeItems(value.risks),
+            recommendations: normalizeItems(value.recommendations),
+            trendAnalysis: normalizeItems(value.trendAnalysis),
             yesterdayVsToday: value.yesterdayVsToday || {},
             whatImproved: array(value.whatImproved),
             whatDeteriorated: array(value.whatDeteriorated),
@@ -1418,8 +1738,9 @@ ${JSON.stringify(packageValue)}`;
             missingDataWarnings: array(value.missingDataWarnings),
             assumptions: array(value.assumptions),
             confidenceScore: numberOrNull(value.confidenceScore),
-            managementActions: array(value.managementActions),
+            managementActions: normalizeItems(value.managementActions),
             powerBiSummary: value.powerBiSummary || {},
+            evidenceLimitations: value.evidenceLimitations || {},
             authoritativeScores: { healthScore: current.healthScore, riskScore: current.riskScore, riskLevel: current.riskLevel },
             domain: { key: domain.key, name: domain.name }
         };
@@ -1428,6 +1749,14 @@ ${JSON.stringify(packageValue)}`;
     async function insertItem({ companyId, snapshotId, runId, domainKey, domainName, period, itemType, item, source }) {
         const title = item?.title || item?.metricName || item?.name || item?.action || `${domainName} ${itemType}`;
         const suggestedDueDate = normalizeMysqlDate(item?.suggestedDueDate || item?.dueDate || item?.targetDate || item?.actionDueDate || item?.reviewDate || item?.completionDate);
+        const affectedEntities = array(item?.affectedEntities);
+        const evidenceRows = array(item?.evidenceRows);
+        const entityEvidence = affectedEntities.length ? affectedEntities : evidenceRows;
+        const evidenceSummary = textOrNull(
+            item?.evidenceSummary ||
+            (entityEvidence.length ? `${entityEvidence.length} affected entity row(s) from ${item?.sourceMetric || item?.evidenceSource || domainKey}` : null),
+            4000
+        );
         await pool.query(
             `INSERT INTO StackCTRLEnterpriseIntelligenceItems
              (CompanyID, SnapshotID, RunID, DomainKey, DomainName, PeriodType, PeriodStart, PeriodEnd,
@@ -1441,7 +1770,7 @@ ${JSON.stringify(packageValue)}`;
                 textOrNull(title, 255), textOrNull(item?.description || item?.detail || item?.explanation),
                 textOrNull(item?.severity, 50), textOrNull(item?.priority, 50), textOrNull(item?.status, 50),
                 textOrNull(item?.likelihood, 80), textOrNull(item?.impact, 120),
-                textOrNull(item?.businessImpact || item?.businessReason), textOrNull(item?.evidenceSummary),
+                textOrNull(item?.businessImpact || item?.businessReason), evidenceSummary,
                 textOrNull(item?.recommendation), textOrNull(item?.suggestedOwner || item?.owner, 180),
                 suggestedDueDate, textOrNull(item?.direction, 50),
                 numberOrNull(item?.currentValue), numberOrNull(item?.previousValue), numberOrNull(item?.changePercent),
@@ -1525,13 +1854,35 @@ ${JSON.stringify(packageValue)}`;
 
     async function storeAudit({ run, companyId, snapshot, domain, packageResult, analysis, usage, status }) {
         const combinedText = JSON.stringify(analysis || {}).toLowerCase();
-        const auditInput = JSON.stringify(packageResult.package);
+        const auditInput = JSON.stringify({
+            ...packageResult.package,
+            evidenceBatchPlan: packageResult.audit.batchPlan,
+            evidenceSample: packageResult.audit.evidenceSample,
+            tokenTracking: {
+                inputTokens: usage.inputTokens,
+                outputTokens: usage.outputTokens,
+                totalTokens: usage.totalTokens,
+                retryCount: usage.retries || 0,
+                batchCount: packageResult.audit.batchPlan?.batchCount || 0,
+                recordsSent: packageResult.audit.sentToAzureCount,
+                recordsOmitted: packageResult.audit.evidenceOmittedCount,
+                evidenceRowsIncluded: packageResult.audit.sentToAzureCount,
+                catalogEntityCount: packageResult.audit.catalogEntityCount,
+                catalogCategoryCount: packageResult.audit.catalogCategoryCount
+            }
+        });
         const auditOmitted = JSON.stringify({
             stackCTRLDataCount: packageResult.audit.stackCTRLDataCount,
             sentToAzureCount: packageResult.audit.sentToAzureCount,
             omittedCount: packageResult.audit.omittedCount,
             evidenceOmittedCount: packageResult.audit.evidenceOmittedCount,
-            detailReducedToMeetInputLimit: Boolean(packageResult.package.limitations?.detailReducedToMeetInputLimit)
+            catalogEntityCount: packageResult.audit.catalogEntityCount,
+            catalogCategoryCount: packageResult.audit.catalogCategoryCount,
+            batchPlan: packageResult.audit.batchPlan,
+            detailReducedToMeetInputLimit: Boolean(packageResult.package.limitations?.detailReducedToMeetInputLimit),
+            evidenceCompleteness: packageResult.package.limitations?.evidenceCompleteness || null,
+            complete: packageResult.package.limitations?.evidenceCompleteness?.complete ?? null,
+            omittedReasons: array(packageResult.package.limitations?.missingDataWarnings).slice(0, 20)
         });
         const azureMentioned = combinedText.includes(domain.key.replaceAll('_', ' ')) || combinedText.includes(domain.name.toLowerCase()) ? 1 : 0;
         const risksCount = array(analysis?.risks).length;
@@ -1668,6 +2019,22 @@ ${JSON.stringify(packageValue)}`;
             }
             
             // Aggregate batch results into domain-level analysis
+            const dedupeByTitle = items => {
+                const seen = new Set();
+                return array(items).filter(item => {
+                    const key = `${item?.title || ''}|${item?.sourceMetric || ''}|${item?.severity || ''}`;
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                });
+            };
+            const mergedControlAssessment = completedBatches.reduce((merged, batch) => ({
+                ...merged,
+                ...(batch.analysis?.controlAssessment || {})
+            }), {});
+            const confidenceScores = completedBatches
+                .map(batch => numberOrNull(batch.analysis?.confidenceScore))
+                .filter(score => score != null);
             const aggregatedAnalysis = {
                 domainExecutiveSummary: completedBatches.map(b => b.analysis?.domainExecutiveSummary).filter(Boolean).join(' '),
                 technicalSummary: completedBatches.map(b => b.analysis?.technicalSummary).filter(Boolean).join(' '),
@@ -1676,23 +2043,47 @@ ${JSON.stringify(packageValue)}`;
                 evidenceUsed: completedBatches.flatMap(b => b.analysis?.evidenceUsed || []),
                 evidenceGaps: completedBatches.flatMap(b => b.analysis?.evidenceGaps || []),
                 scoreJustification: completedBatches.map(b => b.analysis?.scoreJustification).filter(Boolean).join(' '),
-                controlAssessment: completedBatches[0]?.analysis?.controlAssessment || {},
-                keyFindings: completedBatches.flatMap(b => b.analysis?.keyFindings || []).slice(0, 50),
-                risks: completedBatches.flatMap(b => b.analysis?.risks || []).slice(0, 50),
-                recommendations: completedBatches.flatMap(b => b.analysis?.recommendations || []).slice(0, 50),
-                trendAnalysis: completedBatches.flatMap(b => b.analysis?.trendAnalysis || []).slice(0, 50),
+                controlAssessment: mergedControlAssessment,
+                keyFindings: dedupeByTitle(completedBatches.flatMap(b => b.analysis?.keyFindings || [])).slice(0, 100),
+                risks: dedupeByTitle(completedBatches.flatMap(b => b.analysis?.risks || [])).slice(0, 100),
+                recommendations: dedupeByTitle(completedBatches.flatMap(b => b.analysis?.recommendations || [])).slice(0, 100),
+                trendAnalysis: dedupeByTitle(completedBatches.flatMap(b => b.analysis?.trendAnalysis || [])).slice(0, 100),
                 yesterdayVsToday: completedBatches[0]?.analysis?.yesterdayVsToday || {},
                 whatImproved: completedBatches.flatMap(b => b.analysis?.whatImproved || []),
                 whatDeteriorated: completedBatches.flatMap(b => b.analysis?.whatDeteriorated || []),
                 whatStayedTheSame: completedBatches.flatMap(b => b.analysis?.whatStayedTheSame || []),
-                missingDataWarnings: completedBatches.flatMap(b => b.analysis?.missingDataWarnings || []),
+                missingDataWarnings: [
+                    ...completedBatches.flatMap(b => b.analysis?.missingDataWarnings || []),
+                    ...(batchResults.omittedItems > 0 ? [`${batchResults.omittedItems} evidence row(s) were not analysed because ${failedBatches.length} batch(es) failed.`] : []),
+                    ...(batchResults.complete ? [] : ['Domain analysis is incomplete; do not treat this output as fully complete.'])
+                ],
                 assumptions: completedBatches.flatMap(b => b.analysis?.assumptions || []),
-                confidenceScore: completedBatches[0]?.analysis?.confidenceScore ?? null,
-                managementActions: completedBatches.flatMap(b => b.analysis?.managementActions || []),
-                powerBiSummary: completedBatches[0]?.analysis?.powerBiSummary || {},
+                confidenceScore: confidenceScores.length
+                    ? Number((confidenceScores.reduce((total, score) => total + score, 0) / confidenceScores.length).toFixed(2))
+                    : completedBatches[0]?.analysis?.confidenceScore ?? null,
+                managementActions: dedupeByTitle(completedBatches.flatMap(b => b.analysis?.managementActions || [])),
+                powerBiSummary: completedBatches.reduce((merged, batch) => ({ ...merged, ...(batch.analysis?.powerBiSummary || {}) }), {}),
+                evidenceLimitations: {
+                    recordsSent: batchResults.processedItems,
+                    recordsOmitted: batchResults.omittedItems + packageResult.audit.evidenceOmittedCount,
+                    totalEntityRows: packageResult.audit.stackCTRLDataCount,
+                    catalogEntityCount: packageResult.audit.catalogEntityCount,
+                    catalogCategoryCount: packageResult.audit.catalogCategoryCount,
+                    completedBatches: completedBatches.length,
+                    totalBatches: batchResults.batchCount,
+                    complete: batchResults.complete && packageResult.audit.evidenceOmittedCount === 0,
+                    omittedReasons: array(packageResult.package.limitations?.missingDataWarnings).slice(0, 20)
+                },
                 authoritativeScores: { healthScore: packageResult.current.healthScore, riskScore: packageResult.current.riskScore, riskLevel: packageResult.current.riskLevel },
                 domain: { key: domain.key, name: domain.name },
-                batchInfo: { completedBatches: completedBatches.length, totalBatches: batchResults.batchCount, failedBatches: failedBatches.length }
+                batchInfo: {
+                    completedBatches: completedBatches.length,
+                    totalBatches: batchResults.batchCount,
+                    failedBatches: failedBatches.length,
+                    processedItems: batchResults.processedItems,
+                    omittedItems: batchResults.omittedItems,
+                    complete: batchResults.complete
+                }
             };
             aggregatedAnalysis.dataLineageComparison = buildDataLineageComparison({
                 fields: packageResult.sourceAlignment.rows.map(row => row.metric),
@@ -2043,7 +2434,10 @@ ${JSON.stringify(packageValue)}`;
                 break;
             }
 
-            if (index < selected.length - 1 && settings.domainDelayMs > 0) await wait(settings.domainDelayMs);
+            if (index < selected.length - 1) {
+                const delayMs = computeInterDomainDelayMs(result.usage?.inputTokens || 0, settings);
+                if (delayMs > 0) await wait(delayMs);
+            }
         }
 
         await updateRunProgress(run.id, buildRunProgress({
@@ -2156,6 +2550,7 @@ ${JSON.stringify(packageValue)}`;
                     domainName: result.domain.name,
                     status: result.status,
                     domainIntelligenceId: result.domainIntelligenceId || null,
+                    analysis: result.analysis || null,
                     errorMessage: result.errorMessage || null,
                     batchInfo: result.batchInfo || null
                 })),
@@ -2336,12 +2731,16 @@ module.exports = {
     COMPLIANCE_LINEAGE_FIELDS,
     OPERATIONS_LINEAGE_FIELDS,
     DASHBOARD_BACKED_ENTERPRISE_DOMAINS,
+    DOMAIN_EVIDENCE_TYPES,
     buildDataLineageComparison,
     sourceAlignmentFailure,
     createEnterpriseIntelligenceService,
     flattenDomainEvidence,
+    filterDomainEvidence,
+    buildEvidenceCatalog,
     repairTruncatedJson,
     splitIntoBatches,
     periodWindow,
-    normalizeMysqlDate
+    normalizeMysqlDate,
+    normalizeEvidenceBackedItem
 };
