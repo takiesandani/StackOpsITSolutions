@@ -30,6 +30,12 @@ const IDENTITY_LINEAGE_FIELDS = Object.freeze([
     'unknownDevices', 'multiplePrivilegedRoles', 'securityScore', 'healthScore',
     'riskScore', 'sourceHealth.evidenceCount', 'snapshotId', 'sourceLastUpdated'
 ]);
+const DEVICE_LINEAGE_FIELDS = Object.freeze([
+    'totalDevices', 'compliantDevices', 'nonCompliantDevices', 'complianceRate',
+    'encryptedDevices', 'encryptionRate', 'activeDevices24h', 'staleDevices', 'dead30Days',
+    'highRiskDevices', 'unmanagedDevices', 'securityAlerts', 'deviceSecurityScore',
+    'healthScore', 'riskScore', 'sourceHealth.evidenceCount', 'snapshotId', 'sourceLastUpdated'
+]);
 
 function parseJson(value, fallback = null) {
     if (value == null) return fallback;
@@ -549,10 +555,12 @@ function createEnterpriseIntelligenceService({
         const sourceEvidence = source.evidence && typeof source.evidence === 'object' ? source.evidence : [];
         const evidence = domain.key === 'identity' && source.sourceLineage?.sourceBuilder === 'storedStackCTRLIdentityEvidence'
             ? array(sourceEvidence).filter(item => item?.evidenceType === 'users')
+            : domain.key === 'devices' && source.sourceLineage?.sourceBuilder === 'storedStackCTRLDeviceEvidence'
+            ? array(sourceEvidence).filter(item => item?.evidenceType === 'devices')
             : sourceEvidence;
         const sourceMetrics = source.metrics || metrics[domain.sourceKey] || {};
         const dashboardMetrics = source.dashboardMetrics || {};
-        const currentMetrics = domain.key === 'identity' && Object.keys(dashboardMetrics).length
+        const currentMetrics = (domain.key === 'identity' || domain.key === 'devices') && Object.keys(dashboardMetrics).length
             ? { ...sourceMetrics, ...dashboardMetrics }
             : sourceMetrics;
         return {
@@ -641,7 +649,7 @@ function createEnterpriseIntelligenceService({
         };
 
         const sourceLineageValues = {
-            ...(domain.key === 'identity' ? current.dashboardMetrics : current.metrics),
+            ...(domain.key === 'identity' || domain.key === 'devices' ? current.dashboardMetrics : current.metrics),
             healthScore: current.healthScore,
             riskScore: current.riskScore,
             'sourceHealth.evidenceCount': stackCTRLDataCount,
@@ -658,6 +666,8 @@ function createEnterpriseIntelligenceService({
         };
         const lineageFields = domain.key === 'identity'
             ? IDENTITY_LINEAGE_FIELDS
+            : domain.key === 'devices'
+            ? DEVICE_LINEAGE_FIELDS
             : [...new Set([...Object.keys(sourceLineageValues), ...Object.keys(inputLineageValues)])];
         const sourceAlignment = buildDataLineageComparison({
             fields: lineageFields,
@@ -666,7 +676,11 @@ function createEnterpriseIntelligenceService({
         });
         base.dataLineage = {
             sourceKey: domain.sourceKey,
-            sourceBuilder: current.source.sourceLineage?.sourceBuilder || (domain.key === 'identity' ? 'identityDashboardContext' : 'dashboardContext'),
+            sourceBuilder: current.source.sourceLineage?.sourceBuilder || (
+                domain.key === 'identity' ? 'identityDashboardContext'
+                    : domain.key === 'devices' ? 'deviceDashboardContext'
+                    : 'dashboardContext'
+            ),
             sourceLayer: current.source.sourceLineage?.sourceLayer || 'tenant_evidence_snapshot.dashboardMetrics',
             evidenceSnapshotId: current.source.sourceLineage?.evidenceSnapshotId || null,
             evidenceCollectedAt: current.source.sourceLineage?.collectedAt || null,
@@ -1273,7 +1287,7 @@ ${JSON.stringify(packageValue)}`;
 
     async function analyseDomain({ companyId, snapshot, run, domain, historicalContext }) {
         const packageResult = await buildDomainPackage({ companyId, snapshot, runId: run.id, domain, historicalContext });
-        const missingFailure = domain.key === 'identity'
+        const missingFailure = (domain.key === 'identity' || domain.key === 'devices')
             ? sourceMissingFailure(packageResult.package.sourceHealth, domain.name)
             : null;
         if (missingFailure) {
@@ -1868,6 +1882,7 @@ module.exports = {
     ENTERPRISE_DOMAINS,
     DOMAIN_BY_KEY,
     IDENTITY_LINEAGE_FIELDS,
+    DEVICE_LINEAGE_FIELDS,
     buildDataLineageComparison,
     sourceAlignmentFailure,
     createEnterpriseIntelligenceService,

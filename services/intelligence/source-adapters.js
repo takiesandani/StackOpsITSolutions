@@ -360,8 +360,98 @@ const definitions = {
         evidence: records => records
     },
     devices: {
-        table: 'DeviceMetricsCache',
-        async load(pool, companyId) {
+        table: 'StackCTRLDeviceEvidenceSnapshots, StackCTRLDeviceEvidence',
+        refreshWhenMissing: true,
+        async load(pool, companyId, capability) {
+            const tenant = await queryRows(pool, `SELECT mt.ID AS MicrosoftTenantID, mt.TenantName, mt.TenantID
+                                                  FROM CompanyMicrosoftMapping cm
+                                                  INNER JOIN MicrosoftTenants mt ON mt.ID = cm.MicrosoftTenantID
+                                                  WHERE cm.CompanyID = ? AND cm.IsActive = 1 LIMIT 1`, [companyId]);
+            if (capability?.profileKey === 'sunbird') {
+                const snapshots = await queryRows(
+                    pool,
+                    `SELECT * FROM StackCTRLDeviceEvidenceSnapshots
+                     WHERE CompanyID = ? AND IsComplete = 1 AND CollectionStatus = 'complete'
+                     ORDER BY CollectedAt DESC, ID DESC LIMIT 1`,
+                    [companyId]
+                );
+                const snapshot = snapshots[0];
+                if (!snapshot) {
+                    return {
+                        records: [],
+                        notConfigured: !tenant.length,
+                        metrics: {},
+                        dashboardSourceMetrics: {},
+                        sourceLineage: {
+                            sourceKey: 'devices',
+                            sourceBuilder: 'storedStackCTRLDeviceEvidence',
+                            sourceLayer: 'StackCTRLDeviceEvidenceSnapshots',
+                            collectionStatus: 'missing'
+                        },
+                        evidence: [],
+                        warnings: ['No complete StackCTRL Device Protection evidence snapshot is available. Azure analysis is blocked until collection succeeds.'],
+                        rawReference: { table: this.table, recordId: null }
+                    };
+                }
+                const deviceRows = await queryRows(
+                    pool,
+                    `SELECT * FROM StackCTRLDeviceEvidence
+                     WHERE SnapshotID = ? ORDER BY ID`,
+                    [snapshot.ID]
+                );
+                if (deviceRows.length !== Number(snapshot.EvidenceRecordCount)) {
+                    return {
+                        records: [],
+                        notConfigured: !tenant.length,
+                        metrics: {},
+                        dashboardSourceMetrics: {},
+                        sourceLineage: {
+                            sourceKey: 'devices',
+                            sourceBuilder: 'storedStackCTRLDeviceEvidence',
+                            sourceLayer: 'StackCTRLDeviceEvidenceSnapshots',
+                            evidenceSnapshotId: snapshot.ID,
+                            collectionStatus: 'incomplete'
+                        },
+                        evidence: [],
+                        warnings: [`Device evidence snapshot ${snapshot.ID} expected ${snapshot.EvidenceRecordCount} device rows but ${deviceRows.length} were stored. Azure analysis is blocked.`],
+                        rawReference: { table: this.table, recordId: snapshot.ID }
+                    };
+                }
+                const dashboardMetrics = snapshot.DashboardMetricsJson || {};
+                const devices = deviceRows.map(row => row.ProcessedEvidenceJson || ({
+                    id: row.DeviceSourceID,
+                    deviceName: row.DeviceName,
+                    operatingSystem: row.OperatingSystem,
+                    complianceState: row.ComplianceState,
+                    isEncrypted: Boolean(Number(row.IsEncrypted)),
+                    managementAgent: row.ManagementAgent,
+                    lastSyncDateTime: row.LastSyncAt,
+                    riskLevel: row.RiskLevel
+                }));
+                return {
+                    records: snapshots,
+                    notConfigured: !tenant.length,
+                    metrics: dashboardMetrics,
+                    dashboardSourceMetrics: dashboardMetrics,
+                    sourceLineage: {
+                        sourceKey: 'devices',
+                        sourceBuilder: 'storedStackCTRLDeviceEvidence',
+                        sourceLayer: 'StackCTRLDeviceEvidenceSnapshots + StackCTRLDeviceEvidence',
+                        evidenceSnapshotId: snapshot.ID,
+                        collectedAt: snapshot.CollectedAt,
+                        sourceFetchedAt: snapshot.SourceFetchedAt,
+                        sourceEndpoint: snapshot.SourceEndpoint,
+                        collectionTrigger: snapshot.CollectionTrigger,
+                        collectionStatus: snapshot.CollectionStatus,
+                        isComplete: Boolean(Number(snapshot.IsComplete)),
+                        evidenceRecordCount: Number(snapshot.EvidenceRecordCount),
+                        omittedRecordCount: Number(snapshot.OmittedRecordCount)
+                    },
+                    evidence: [{ evidenceType: 'devices', data: devices }],
+                    warnings: [],
+                    rawReference: { table: this.table, recordId: snapshot.ID }
+                };
+            }
             const [records, configured] = await Promise.all([
                 queryRows(pool, 'SELECT * FROM DeviceMetricsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
                 hasActiveMicrosoftTenant(pool, companyId)

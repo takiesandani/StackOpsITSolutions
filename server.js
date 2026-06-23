@@ -26,6 +26,9 @@ const { buildIdentityDashboardSource } = require('./services/intelligence/identi
 const { buildIdentityDashboardPayload } = require('./services/intelligence/identity-dashboard-processor');
 const { createIdentityEvidenceStore } = require('./services/intelligence/identity-evidence-store');
 const { createIdentityEvidenceAutomation } = require('./services/intelligence/identity-evidence-automation');
+const { buildDeviceDashboardPayload } = require('./services/intelligence/device-dashboard-processor');
+const { createDeviceEvidenceStore } = require('./services/intelligence/device-evidence-store');
+const { createDeviceEvidenceAutomation } = require('./services/intelligence/device-evidence-automation');
 const { createStackCTRLServerAutomation } = require('./services/intelligence/server-automation');
 const { createAdminIntelligenceService } = require('./services/admin-intelligence');
 const { createEnterpriseIntelligenceService } = require('./services/enterprise-intelligence');
@@ -59,7 +62,9 @@ const microsoftTokenCache = new Map();
 const authMethodsCache = new Map();
 const AUTH_METHODS_CACHE_TTL_MS = 5 * 60 * 1000;
 let identityEvidenceService = null;
+let deviceEvidenceService = null;
 const identityEvidenceCollectionPromises = new Map();
+const deviceEvidenceCollectionPromises = new Map();
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -9723,7 +9728,7 @@ app.get('/api/microsoft-devices', authenticateToken, async (req, res) => {
 
         console.log(`[Devices Dashboard] Successfully compiled device data: ${totalDevices} devices, ${processedAlerts.length} alerts`);
 
-        res.json({
+        const dashboardPayload = {
             success: true,
             tenant: tenant.clientId,
             fetchedAt: new Date().toISOString(),
@@ -9732,11 +9737,12 @@ app.get('/api/microsoft-devices', authenticateToken, async (req, res) => {
                 compliantDevices,
                 encryptedDevices,
                 registeredDevices,
-                staleDevices,
+                staleDevices: activityBreakdown.stale7days,
                 highRiskDevices: highRiskDevices.length,
                 compliancePercentage: totalDevices > 0 ? Math.round((compliantDevices / totalDevices) * 100) : 0,
                 encryptionPercentage: totalDevices > 0 ? Math.round((encryptedDevices / totalDevices) * 100) : 0,
-                deviceSecurityScore
+                deviceSecurityScore,
+                securityAlerts: processedAlerts.length
             },
             devices: processedDevices,
             compliance: complianceBreakdown,
@@ -9746,7 +9752,21 @@ app.get('/api/microsoft-devices', authenticateToken, async (req, res) => {
             highRiskDevices: highRiskDevices.slice(0, 10),
             alerts: processedAlerts,
             policies: policies.slice(0, 10)
-        });
+        };
+
+        if (deviceEvidenceService && tenant.companyId) {
+            deviceEvidenceService.persistProcessedEvidence({
+                companyId: tenant.companyId,
+                tenantKey: tenant.clientId,
+                payload: dashboardPayload,
+                collectionTrigger: 'dashboard_request',
+                sourceEndpoint: '/api/microsoft-devices'
+            }).catch(error => {
+                console.warn('[Device Evidence] Dashboard response could not be stored:', error.message);
+            });
+        }
+
+        res.json(dashboardPayload);
 
     } catch (error) {
         console.error('[Devices Dashboard] Error:', error.message);
@@ -10720,6 +10740,78 @@ async function collectIdentityEvidenceForConfiguredTenants({ trigger = 'schedule
     return { companyCount: companies.length, results };
 }
 
+async function performDeviceEvidenceCollection(companyId, collectionTrigger) {
+    if (!deviceEvidenceService) throw new Error('Device evidence storage is not initialized');
+    const sourceEndpoint = 'Microsoft Graph processed by StackCTRL Device Protection';
+    try {
+        const token = await getMicrosoftGraphTokenForCompany(companyId);
+        const [devices, policies, alerts] = await Promise.all([
+            fetchMicrosoftDevices(token),
+            fetchCompliancePolicies(token),
+            fetchSecurityAlerts(token)
+        ]);
+        const payload = buildDeviceDashboardPayload({
+            tenantKey: 'sunbird',
+            devices,
+            alerts,
+            policies
+        });
+        return deviceEvidenceService.persistProcessedEvidence({
+            companyId,
+            tenantKey: 'sunbird',
+            payload,
+            collectionTrigger,
+            sourceEndpoint
+        });
+    } catch (error) {
+        await deviceEvidenceService.recordCollectionFailure({
+            companyId,
+            tenantKey: 'sunbird',
+            collectionTrigger,
+            sourceEndpoint,
+            error
+        }).catch(auditError => {
+            console.warn('[Device Evidence] Collection failure could not be audited:', auditError.message);
+        });
+        throw error;
+    }
+}
+
+async function collectAndPersistDeviceEvidence(companyId, collectionTrigger = 'scheduled_30_minute') {
+    const key = String(companyId);
+    const existing = deviceEvidenceCollectionPromises.get(key);
+    if (existing) return existing;
+    const collection = performDeviceEvidenceCollection(companyId, collectionTrigger);
+    deviceEvidenceCollectionPromises.set(key, collection);
+    try {
+        return await collection;
+    } finally {
+        if (deviceEvidenceCollectionPromises.get(key) === collection) deviceEvidenceCollectionPromises.delete(key);
+    }
+}
+
+async function collectDeviceEvidenceForConfiguredTenants({ trigger = 'scheduled_30_minute' } = {}) {
+    const [companies] = await pool.query(
+        `SELECT DISTINCT company.ID AS CompanyID, company.CompanyName
+         FROM Companies company
+         LEFT JOIN StackCTRLClientCapabilities capability
+           ON capability.CompanyID = company.ID
+          AND capability.SourceKey = 'devices'
+         WHERE LOWER(company.CompanyName) LIKE '%sunbird%'
+            OR (capability.ProfileKey = 'sunbird' AND capability.IsExpected = 1 AND capability.IsEnabled = 1)`
+    );
+    const results = [];
+    for (const company of companies) {
+        try {
+            results.push(await collectAndPersistDeviceEvidence(company.CompanyID, trigger));
+        } catch (error) {
+            console.error(`[Device Evidence] Company ${company.CompanyID} collection failed:`, error.message);
+            results.push({ companyId: company.CompanyID, status: 'failed', message: error.message });
+        }
+    }
+    return { companyCount: companies.length, results };
+}
+
 async function refreshStackCTRLIntelligenceSource(sourceKey, companyId) {
     switch (sourceKey) {
         case 'identity': {
@@ -10847,6 +10939,19 @@ async function refreshStackCTRLIntelligenceSource(sourceKey, companyId) {
             }
         }
         case 'devices': {
+            if (deviceEvidenceService) {
+                try {
+                    await collectAndPersistDeviceEvidence(companyId, 'enterprise_refresh');
+                    return null;
+                } catch (error) {
+                    console.error('[Device Evidence] Enterprise refresh failed:', error.message);
+                    const refreshError = new Error(`Device source refresh failed: ${error.message}`);
+                    refreshError.statusCode = error.statusCode || 500;
+                    refreshError.isRefreshError = true;
+                    refreshError.sourceKey = 'devices';
+                    throw refreshError;
+                }
+            }
             const token = await getMicrosoftGraphTokenForCompany(companyId);
             const result = await fetchDeviceIntelligenceEvidenceFromApi(token);
             await pool.query(
@@ -10973,6 +11078,21 @@ const identityEvidenceAutomation = createIdentityEvidenceAutomation({
     enabled: !['false', '0', 'no'].includes(String(process.env.IDENTITY_EVIDENCE_COLLECTION_ENABLED || 'true').toLowerCase()),
     intervalMs: process.env.IDENTITY_EVIDENCE_COLLECTION_INTERVAL_MS || (30 * 60 * 1000),
     startupDelayMs: process.env.IDENTITY_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (30 * 1000)
+});
+deviceEvidenceService = createDeviceEvidenceStore({ pool });
+const deviceEvidenceSchemaReady = deviceEvidenceService.ensureSchema().catch(error => {
+    console.error('[Device Evidence] Schema initialization failed:', error.message);
+    return { error };
+});
+const deviceEvidenceAutomation = createDeviceEvidenceAutomation({
+    collectAll: async options => {
+        const schema = await deviceEvidenceSchemaReady;
+        if (schema?.error) throw schema.error;
+        return collectDeviceEvidenceForConfiguredTenants(options);
+    },
+    enabled: !['false', '0', 'no'].includes(String(process.env.DEVICE_EVIDENCE_COLLECTION_ENABLED || 'true').toLowerCase()),
+    intervalMs: process.env.DEVICE_EVIDENCE_COLLECTION_INTERVAL_MS || (30 * 60 * 1000),
+    startupDelayMs: process.env.DEVICE_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (30 * 1000)
 });
 const stackCTRLIntelligenceService = createStackCTRLIntelligenceService({
     pool,
@@ -12070,6 +12190,7 @@ process.on('unhandledRejection', (reason, promise) => {
 
 const server = app.listen(PORT, async () => {
     identityEvidenceAutomation.start();
+    deviceEvidenceAutomation.start();
     // StackCTRL automation runs inside this server and uses database deduplication across instances.
     stackCTRLIntelligenceAutomation.start();
     // Enterprise reporting runs separately because domain batches may take much longer than compact intelligence.
@@ -12092,6 +12213,7 @@ server.on('error', (error) => {
 function stopServer(signal) {
     console.log(`[StackCTRL] ${signal} received. Stopping server automation.`);
     identityEvidenceAutomation.stop();
+    deviceEvidenceAutomation.stop();
     stackCTRLIntelligenceAutomation.stop();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(1), 10000).unref();

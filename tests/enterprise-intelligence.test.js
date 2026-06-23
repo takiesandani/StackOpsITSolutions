@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
     buildDataLineageComparison,
     createEnterpriseIntelligenceService,
+    DEVICE_LINEAGE_FIELDS,
     ENTERPRISE_DOMAINS,
     flattenDomainEvidence,
     normalizeMysqlDate,
@@ -575,6 +576,145 @@ test('enterprise automation does nothing outside the controlled daily window', a
     const result = await service.runScheduledTick({ now: new Date('2026-06-22T06:00:00.000Z') });
     assert.equal(result.status, 'not_due');
     assert.equal(queryCount, 0);
+});
+
+test('Enterprise Device currentMetrics follow stored dashboard metrics and flatten per-device evidence', async () => {
+    const pool = {
+        async query(sql) {
+            if (sql.includes('FROM StackCTRLKnowledgeBase')) return [[], []];
+            if (sql.includes('FROM StackCTRLTenantDomainIntelligence') && sql.includes('RunID <>')) return [[], []];
+            throw new Error(`Unexpected query: ${sql}`);
+        }
+    };
+    const service = createEnterpriseIntelligenceService({
+        pool,
+        azureOpenAI: { async createJsonCompletion() { throw new Error('Azure should not be called'); } },
+        schedulerService: { async getHistoricalSnapshotContext() { return {}; } },
+        config: { domainDelayMs: 0 }
+    });
+    const dashboardMetrics = {
+        totalDevices: 17,
+        compliantDevices: 13,
+        nonCompliantDevices: 3,
+        complianceRate: 76,
+        encryptedDevices: 17,
+        encryptionRate: 100,
+        activeDevices24h: 12,
+        staleDevices: 1,
+        dead30Days: 4,
+        highRiskDevices: 4,
+        unmanagedDevices: 0,
+        securityAlerts: 19,
+        deviceSecurityScore: 82
+    };
+    const snapshot = {
+        ID: 910,
+        CompanyID: 1,
+        CreatedAt: new Date('2026-06-22T08:00:00.000Z'),
+        MetricsJson: JSON.stringify({ devices: { complianceRate: 99 }, stackctrl_risk: { domainRiskScores: { devices: 22 } } }),
+        ContextJson: JSON.stringify({
+            riskEngine: { domainHealthScores: { devices: 78 }, domainRiskScores: { devices: 22 } },
+            sources: [{
+                sourceKey: 'devices', status: 'available', isExpected: true,
+                freshness: { lastUpdated: '2026-06-22T07:55:00.000Z', ageMinutes: 5 },
+                metrics: { complianceRate: 99 }, dashboardMetrics,
+                sourceLineage: {
+                    sourceBuilder: 'storedStackCTRLDeviceEvidence',
+                    sourceLayer: 'StackCTRLDeviceEvidenceSnapshots + StackCTRLDeviceEvidence',
+                    evidenceSnapshotId: 801,
+                    evidenceRecordCount: 17,
+                    omittedRecordCount: 0
+                },
+                evidence: [
+                    { evidenceType: 'devices', data: Array.from({ length: 17 }, (_, index) => ({ id: `device-${index + 1}`, deviceName: `Device ${index + 1}` })) }
+                ]
+            }]
+        })
+    };
+    const packageResult = await service.buildDomainPackage({
+        companyId: 1,
+        snapshot,
+        runId: 71,
+        domain: ENTERPRISE_DOMAINS.find(domain => domain.key === 'devices'),
+        historicalContext: { comparisons: {} }
+    });
+    for (const metric of DEVICE_LINEAGE_FIELDS.filter(field => !['healthScore', 'riskScore', 'sourceHealth.evidenceCount', 'snapshotId', 'sourceLastUpdated'].includes(field))) {
+        assert.equal(packageResult.package.currentMetrics[metric], dashboardMetrics[metric], `currentMetrics.${metric}`);
+        assert.equal(packageResult.package.dashboardMetrics[metric], dashboardMetrics[metric], `dashboardMetrics.${metric}`);
+    }
+    assert.equal(packageResult.package.dataLineage.sourceBuilder, 'storedStackCTRLDeviceEvidence');
+    assert.equal(packageResult.package.dataLineage.evidenceSnapshotId, 801);
+    assert.equal(packageResult.package.dataLineage.evidenceRecordCount, 17);
+    assert.equal(packageResult.package.dataLineage.evidenceOmittedRecordCount, 0);
+    assert.equal(packageResult.audit.stackCTRLDataCount, 17);
+    assert.equal(packageResult.audit.evidenceIncludedCount, 17);
+    assert.equal(packageResult.audit.omittedCount, 0);
+    assert.equal(packageResult.sourceAlignment.mismatches.length, 0);
+    assert.equal(packageResult.sourceAlignment.rows.find(row => row.metric === 'complianceRate').status, 'MATCH');
+});
+
+test('Enterprise blocks missing or stale saved Device evidence before calling Azure', async () => {
+    for (const sourceStatus of ['missing', 'stale']) {
+        let insertId = 900;
+        let azureCalls = 0;
+        const source = {
+            sourceKey: 'devices',
+            status: sourceStatus,
+            isExpected: true,
+            freshness: sourceStatus === 'stale'
+                ? { lastUpdated: '2026-06-22T05:00:00.000Z', ageMinutes: 180 }
+                : { lastUpdated: null, ageMinutes: null },
+            warnings: [sourceStatus === 'stale'
+                ? 'Device Protection evidence is stale.'
+                : 'No complete StackCTRL Device Protection evidence snapshot is available. Azure analysis is blocked until collection succeeds.'],
+            metrics: sourceStatus === 'stale' ? { totalDevices: 17, complianceRate: 76 } : {},
+            dashboardMetrics: sourceStatus === 'stale' ? { totalDevices: 17, complianceRate: 76 } : {},
+            evidence: sourceStatus === 'stale' ? [{ evidenceType: 'devices', data: [{ id: 'device-1' }] }] : [],
+            sourceLineage: { sourceBuilder: 'storedStackCTRLDeviceEvidence', evidenceSnapshotId: 801 }
+        };
+        const snapshot = {
+            ID: sourceStatus === 'stale' ? 912 : 911,
+            CompanyID: 1,
+            TenantKey: 'sunbird',
+            SnapshotType: 'manual',
+            CreatedAt: new Date('2026-06-22T08:00:00.000Z'),
+            DataCompletenessScore: sourceStatus === 'stale' ? 100 : 0,
+            MetricsJson: JSON.stringify({ stackctrl_risk: { domainRiskScores: { devices: 25 } } }),
+            ContextJson: JSON.stringify({
+                riskEngine: { domainHealthScores: { devices: 75 }, domainRiskScores: { devices: 25 } },
+                sources: [source]
+            })
+        };
+        const calls = [];
+        const pool = {
+            async query(sql, params = []) {
+                calls.push({ sql, params });
+                if (sql.includes('FROM StackCTRLTenantEvidenceSnapshots WHERE')) return [[snapshot], []];
+                if (sql.includes('FROM StackCTRLKnowledgeBase')) return [[], []];
+                if (sql.includes('FROM StackCTRLTenantDomainIntelligence') && sql.includes('RunID <>')) return [[], []];
+                if (/^\s*INSERT/i.test(sql)) return [{ insertId: insertId++ }, []];
+                return [{ affectedRows: 1 }, []];
+            }
+        };
+        const service = createEnterpriseIntelligenceService({
+            pool,
+            azureOpenAI: { async createJsonCompletion() { azureCalls += 1; return { data: domainResponse('devices') }; } },
+            schedulerService: { async getHistoricalSnapshotContext() { return { comparisons: {} }; } },
+            config: { domainDelayMs: 0 }
+        });
+        const result = await service.runEnterpriseReport({
+            companyId: 1,
+            snapshotId: snapshot.ID,
+            domainKeys: ['devices'],
+            includeSynthesis: false
+        });
+        assert.equal(azureCalls, 0, sourceStatus);
+        assert.equal(result.domains[0].status, sourceStatus === 'stale' ? 'blocked_stale_source' : 'blocked_missing_source');
+        const auditWrite = calls.find(call => call.sql.includes('INSERT INTO StackCTRLIntelligenceEvidenceAudit'));
+        assert.ok(auditWrite);
+        assert.equal(auditWrite.params[5], 0);
+        assert.match(result.domains[0].errorMessage, /stale|no complete/i);
+    }
 });
 
 test('all required enterprise domain modes are registered', () => {

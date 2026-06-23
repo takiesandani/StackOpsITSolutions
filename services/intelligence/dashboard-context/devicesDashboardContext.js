@@ -1,4 +1,5 @@
 const { asArray, booleanFrom, buildContext, daysSince, numberFrom } = require('./common');
+const { calculateDeviceSecurityScore, getDeviceRiskLevel } = require('../device-dashboard-source');
 
 function isDevice(item) {
     return item && typeof item === 'object' && Boolean(item.deviceName || item.operatingSystem || item.complianceState || item.lastSyncDateTime);
@@ -13,24 +14,40 @@ function lastSyncDays(device) {
 }
 
 function buildDevicesDashboardContext(source) {
-    const devices = asArray(source.evidence).filter(isDevice);
+    const storedDevices = asArray(source.evidence?.find(item => item?.evidenceType === 'devices')?.data);
+    const devices = storedDevices.length ? storedDevices : asArray(source.evidence).filter(isDevice);
     const stored = source.metrics || {};
-    const totalDevices = devices.length || numberFrom(stored, ['TotalDevices', 'totalDevices']);
+    const dashboardSource = source.dashboardSourceMetrics || {};
+    const totalDevices = numberFrom(dashboardSource, ['totalDevices'], devices.length || numberFrom(stored, ['TotalDevices', 'totalDevices']));
     const nonCompliantDevices = devices.filter(device => compliance(device) === 'noncompliant');
     const unknownDevices = devices.filter(device => compliance(device) === 'unknown');
     const notEncryptedDevices = devices.filter(device => !booleanFrom(device.isEncrypted));
-    const staleDevices = devices.filter(device => lastSyncDays(device) > 7 && lastSyncDays(device) <= 30);
+    const staleDevicesList = devices.filter(device => lastSyncDays(device) > 7 && lastSyncDays(device) <= 30);
     const deadDevices = devices.filter(device => lastSyncDays(device) > 30);
     const unmanagedDevices = devices.filter(device => !device.managementAgent || String(device.managementAgent).toLowerCase() === 'unknown');
-    const compliant = devices.length ? devices.filter(device => compliance(device) === 'compliant').length :
-        Math.max(0, totalDevices - numberFrom(stored, ['NonCompliant', 'nonCompliant']));
-    const encrypted = devices.length ? devices.length - notEncryptedDevices.length :
-        Math.max(0, totalDevices - numberFrom(stored, ['NotEncrypted', 'notEncrypted']));
-    const nonCompliant = devices.length ? nonCompliantDevices.length : numberFrom(stored, ['NonCompliant', 'nonCompliant']);
-    const notEncrypted = devices.length ? notEncryptedDevices.length : numberFrom(stored, ['NotEncrypted', 'notEncrypted']);
-    const stale = devices.length ? staleDevices.length : numberFrom(stored, ['StaleDevices', 'staleDevices']);
-    const complianceRate = totalDevices ? Math.round((compliant / totalDevices) * 100) : 0;
-    const encryptionRate = totalDevices ? Math.round((encrypted / totalDevices) * 100) : 0;
+    const compliant = numberFrom(dashboardSource, ['compliantDevices'], devices.length
+        ? devices.filter(device => compliance(device) === 'compliant').length
+        : Math.max(0, totalDevices - numberFrom(stored, ['NonCompliant', 'nonCompliant'])));
+    const encrypted = numberFrom(dashboardSource, ['encryptedDevices'], devices.length
+        ? devices.length - notEncryptedDevices.length
+        : Math.max(0, totalDevices - numberFrom(stored, ['NotEncrypted', 'notEncrypted'])));
+    const nonCompliant = numberFrom(dashboardSource, ['nonCompliantDevices'], devices.length ? nonCompliantDevices.length : numberFrom(stored, ['NonCompliant', 'nonCompliant']));
+    const notEncrypted = numberFrom(dashboardSource, ['notEncryptedDevices'], devices.length ? notEncryptedDevices.length : numberFrom(stored, ['NotEncrypted', 'notEncrypted']));
+    const stale = numberFrom(dashboardSource, ['staleDevices'], devices.length ? staleDevicesList.length : numberFrom(stored, ['StaleDevices', 'staleDevices']));
+    const dead30Days = numberFrom(dashboardSource, ['dead30Days'], deadDevices.length);
+    const activeDevices24h = numberFrom(dashboardSource, ['activeDevices24h'], devices.filter(device => lastSyncDays(device) <= 1).length);
+    const highRiskDevices = numberFrom(dashboardSource, ['highRiskDevices'], devices.length
+        ? devices.filter(device => getDeviceRiskLevel(device) === 'high').length
+        : numberFrom(stored, ['HighRiskDevices', 'highRiskDevices']));
+    const unmanagedCount = numberFrom(dashboardSource, ['unmanagedDevices'], unmanagedDevices.length);
+    const securityAlerts = numberFrom(dashboardSource, ['securityAlerts'], 0);
+    const complianceRate = totalDevices ? Math.round((compliant / totalDevices) * 100) : numberFrom(dashboardSource, ['complianceRate'], 0);
+    const encryptionRate = totalDevices ? Math.round((encrypted / totalDevices) * 100) : numberFrom(dashboardSource, ['encryptionRate'], 0);
+    const deviceSecurityScore = numberFrom(
+        dashboardSource,
+        ['deviceSecurityScore'],
+        totalDevices ? calculateDeviceSecurityScore(totalDevices, compliant, encrypted, activeDevices24h) : 0
+    );
 
     const osDistribution = devices.reduce((counts, device) => {
         const key = device.operatingSystem || 'Unknown';
@@ -47,21 +64,25 @@ function buildDevicesDashboardContext(source) {
             notEncryptedDevices: notEncrypted,
             complianceRate,
             encryptionRate,
+            activeDevices24h,
             staleDevices: stale,
-            dead30Days: deadDevices.length,
-            unmanagedDevices: unmanagedDevices.length,
-            unknownDevices: unknownDevices.length
+            dead30Days,
+            highRiskDevices,
+            unmanagedDevices: unmanagedCount,
+            unknownDevices: unknownDevices.length,
+            securityAlerts,
+            deviceSecurityScore
         },
         calculatedIndicators: {
-            deviceSecurityScore: totalDevices ? Math.round((complianceRate + encryptionRate) / 2) : 0,
+            deviceSecurityScore,
             deviceComplianceStatus: complianceRate >= 90 ? 'healthy' : complianceRate >= 70 ? 'attention' : 'high_risk',
-            deviceExposureCount: nonCompliant + notEncrypted + stale + deadDevices.length
+            deviceExposureCount: nonCompliant + notEncrypted + stale + dead30Days
         },
         evidenceLists: {
             allDevices: devices,
             nonCompliantDevices,
             notEncryptedDevices,
-            staleDevices,
+            staleDevices: staleDevicesList,
             deadDevices,
             unmanagedDevices,
             unknownDevices
@@ -70,9 +91,9 @@ function buildDevicesDashboardContext(source) {
             compliance: { compliant, nonCompliant, unknown: unknownDevices.length },
             encryption: { encrypted, notEncrypted },
             activity: {
-                active24Hours: devices.filter(device => lastSyncDays(device) <= 1).length,
-                stale7To30Days: staleDevices.length,
-                dead30Days: deadDevices.length
+                active24Hours: activeDevices24h,
+                stale7To30Days: stale,
+                dead30Days
             },
             osDistribution
         }
