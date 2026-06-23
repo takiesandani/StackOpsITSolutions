@@ -10744,7 +10744,7 @@ async function performDeviceEvidenceCollection(companyId, collectionTrigger) {
     if (!deviceEvidenceService) throw new Error('Device evidence storage is not initialized');
     const sourceEndpoint = 'Microsoft Graph processed by StackCTRL Device Protection';
     try {
-        const token = await getMicrosoftGraphTokenForCompany(companyId);
+        const token = await getMicrosoftGraphToken();
         const [devices, policies, alerts] = await Promise.all([
             fetchMicrosoftDevices(token),
             fetchCompliancePolicies(token),
@@ -10764,6 +10764,10 @@ async function performDeviceEvidenceCollection(companyId, collectionTrigger) {
             sourceEndpoint
         });
     } catch (error) {
+        console.error(`[Device Evidence] Collection failed for CompanyID ${companyId}: ${error.message}`, {
+            errorCode: error.code,
+            errorType: error.constructor.name
+        });
         await deviceEvidenceService.recordCollectionFailure({
             companyId,
             tenantKey: 'sunbird',
@@ -10952,7 +10956,7 @@ async function refreshStackCTRLIntelligenceSource(sourceKey, companyId) {
                     throw refreshError;
                 }
             }
-            const token = await getMicrosoftGraphTokenForCompany(companyId);
+            const token = await getMicrosoftGraphToken();
             const result = await fetchDeviceIntelligenceEvidenceFromApi(token);
             await pool.query(
                 `REPLACE INTO DeviceMetricsCache

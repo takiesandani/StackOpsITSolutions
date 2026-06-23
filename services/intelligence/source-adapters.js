@@ -215,9 +215,9 @@ async function collectSource(context, definition) {
             lastUpdated: freshness.lastUpdated,
             ageMinutes: freshness.ageMinutes
         },
-        credentialSource: capability.sourceKey === 'identity' ? 'environment' : 'database',  // NEW: Track credential path
-        credentialPath: capability.sourceKey === 'identity' 
-            ? 'MICROSOFT_CLIENT_SECRET (Azure Key Vault, shared with dashboard)' 
+        credentialSource: capability.sourceKey === 'identity' || capability.sourceKey === 'devices' ? 'environment' : 'database',
+        credentialPath: capability.sourceKey === 'identity' || capability.sourceKey === 'devices'
+            ? 'MICROSOFT_CLIENT_SECRET (Azure Key Vault, shared with dashboard)'
             : 'CompanyMicrosoftMapping (per-company database)',
         refreshFailed,
         refreshErrorMessage,

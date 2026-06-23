@@ -194,7 +194,9 @@ function createDeviceEvidenceStore({ pool, logger = console, now = () => new Dat
                         source: 'stackctrl_processed_device_dashboard',
                         dashboardFetchedAt: payload?.fetchedAt || null,
                         collectionTrigger,
-                        sourceEndpoint
+                        sourceEndpoint,
+                        credentialSource: 'environment',
+                        credentialPath: 'MICROSOFT_CLIENT_SECRET (Azure Key Vault, shared with dashboard)'
                     }),
                     evidenceHash, evidence.incompleteReason
                 ]
@@ -264,7 +266,13 @@ function createDeviceEvidenceStore({ pool, logger = console, now = () => new Dat
                 JSON.stringify({ compliant: 0, nonCompliant: 0, unknown: 0 }),
                 JSON.stringify({ safe: 0, medium: 0, high: 0 }),
                 JSON.stringify({}),
-                JSON.stringify({ source: 'stackctrl_processed_device_dashboard', collectionTrigger, sourceEndpoint }),
+                JSON.stringify({
+                    source: 'stackctrl_processed_device_dashboard',
+                    collectionTrigger,
+                    sourceEndpoint,
+                    credentialSource: 'environment',
+                    credentialPath: 'MICROSOFT_CLIENT_SECRET (Azure Key Vault, shared with dashboard)'
+                }),
                 'Device evidence collection did not complete.', message
             ]
         );
