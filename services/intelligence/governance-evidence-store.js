@@ -93,7 +93,13 @@ function deriveGovernanceEvidence(payload = {}) {
         processed: row
     }));
     const omittedRecordCount = metrics.manualRowsExcluded || 0;
-    const isComplete = Boolean(payload.success !== false);
+    const sourceSucceeded = payload.success !== false;
+    const isComplete = sourceSucceeded && evidenceRows.length > 0;
+    const incompleteReason = !sourceSucceeded
+        ? 'The processed Governance dashboard did not complete successfully.'
+        : evidenceRows.length === 0
+            ? 'No API-connected evidence rows found after filtering manual evidence.'
+            : null;
     return {
         evidenceRows,
         dashboardMetrics,
@@ -101,9 +107,10 @@ function deriveGovernanceEvidence(payload = {}) {
         stackctrlHealthScore,
         expectedRecordCount: evidenceRows.length,
         omittedRecordCount,
-        completenessPercent: evidenceRows.length > 0 || isComplete ? 100 : 0,
+        completenessPercent: isComplete ? 100 : 0,
         isComplete,
-        incompleteReason: isComplete ? null : 'The processed Governance dashboard did not complete successfully.'
+        collectionStatus: isComplete ? 'complete' : 'blocked',
+        incompleteReason
     };
 }
 
@@ -111,6 +118,7 @@ function createGovernanceEvidenceStore({ pool, logger = console, now = () => new
     if (!pool?.query) throw new Error('Governance evidence storage requires a database pool');
     async function ensureSchema() {
         for (const statement of GOVERNANCE_EVIDENCE_SCHEMA) await pool.query(statement);
+        logger.log('[Governance Evidence] Schema ready: StackCTRLGovernanceEvidenceSnapshots, StackCTRLGovernanceEvidence');
         return { tables: ['StackCTRLGovernanceEvidenceSnapshots', 'StackCTRLGovernanceEvidence'] };
     }
     async function persistProcessedEvidence({ companyId, tenantKey = 'sunbird', payload, collectionTrigger = 'scheduled_daily', sourceEndpoint = 'Microsoft Graph processed by StackCTRL Governance' } = {}) {
@@ -118,6 +126,15 @@ function createGovernanceEvidenceStore({ pool, logger = console, now = () => new
         if (!Number.isFinite(numericCompanyId) || numericCompanyId <= 0) throw new Error('A valid companyId is required');
         const evidence = deriveGovernanceEvidence(payload);
         const collectedAt = now();
+        logger.log('[Governance Evidence] Preparing snapshot', {
+            companyId: numericCompanyId,
+            collectionTrigger,
+            sourcePayloadRowCount: evidence.dashboardMetrics.totalRows,
+            apiConnectedRowsKept: evidence.evidenceRows.length,
+            manualRowsExcluded: evidence.omittedRecordCount,
+            collectionStatus: evidence.collectionStatus,
+            incompleteReason: evidence.incompleteReason
+        });
         const connection = typeof pool.getConnection === 'function' ? await pool.getConnection() : pool;
         const ownsConnection = connection !== pool;
         let snapshotId = null;
@@ -130,18 +147,19 @@ function createGovernanceEvidenceStore({ pool, logger = console, now = () => new
                   CollectedAt, SourceFetchedAt, EvidenceRecordCount, ExpectedRecordCount, OmittedRecordCount,
                   CompletenessPercent, TotalRows, ApiConnectedRows, ManualRowsExcluded, AttentionRequiredRows,
                   ConnectedRows, GovernanceScore, RecommendationsCount, StackCTRLRiskScore, StackCTRLHealthScore,
-                  DashboardMetricsJson, SourceAuditJson, EvidenceSha256, IncompleteReason)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                  DashboardMetricsJson, SourceAuditJson, EvidenceSha256, IncompleteReason, ErrorMessage)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     numericCompanyId, tenantKey, collectionTrigger, sourceEndpoint,
-                    evidence.isComplete ? 'complete' : 'incomplete', evidence.isComplete ? 1 : 0,
+                    evidence.collectionStatus, evidence.isComplete ? 1 : 0,
                     mysqlDateTime(collectedAt), mysqlDateTime(payload?.fetchedAt || collectedAt),
                     evidence.evidenceRows.length, evidence.expectedRecordCount, evidence.omittedRecordCount, evidence.completenessPercent,
                     metrics.totalRows, metrics.apiConnectedRows, metrics.manualRowsExcluded, metrics.attentionRequiredRows,
                     metrics.connectedRows, metrics.governanceScore, metrics.recommendationsCount,
                     evidence.stackctrlRiskScore, evidence.stackctrlHealthScore, JSON.stringify(metrics),
-                    JSON.stringify({ source: 'stackctrl_processed_governance_dashboard', collectionTrigger, sourceEndpoint, manualRowsExcludedFromAzureInput: evidence.omittedRecordCount, credentialSource: 'environment' }),
+                    JSON.stringify({ source: 'stackctrl_processed_governance_dashboard', collectionTrigger, sourceEndpoint, sourcePayloadRowCount: metrics.totalRows, apiConnectedRowsKept: evidence.evidenceRows.length, manualRowsExcluded: evidence.omittedRecordCount, collectionStatus: evidence.collectionStatus, isComplete: evidence.isComplete, incompleteReason: evidence.incompleteReason, credentialSource: 'environment' }),
                     crypto.createHash('sha256').update(JSON.stringify({ rows: evidence.evidenceRows, dashboardMetrics: metrics })).digest('hex'),
+                    evidence.incompleteReason,
                     evidence.incompleteReason
                 ]
             );
@@ -161,8 +179,17 @@ function createGovernanceEvidenceStore({ pool, logger = console, now = () => new
         } finally {
             if (ownsConnection && typeof connection.release === 'function') connection.release();
         }
-        logger.log(`[Governance Evidence] Stored snapshot ${snapshotId} with ${evidence.evidenceRows.length} API-connected governance records (${evidence.omittedRecordCount} manual rows excluded).`);
-        return { snapshotId, companyId: numericCompanyId, collectedAt: collectedAt.toISOString(), recordCount: evidence.evidenceRows.length, omittedRecordCount: evidence.omittedRecordCount, isComplete: evidence.isComplete, dashboardMetrics: evidence.dashboardMetrics };
+        logger.log('[Governance Evidence] Snapshot stored', {
+            snapshotId,
+            companyId: numericCompanyId,
+            sourcePayloadRowCount: evidence.dashboardMetrics.totalRows,
+            apiConnectedRowsKept: evidence.evidenceRows.length,
+            manualRowsExcluded: evidence.omittedRecordCount,
+            collectionStatus: evidence.collectionStatus,
+            isComplete: evidence.isComplete,
+            errorMessage: evidence.incompleteReason
+        });
+        return { snapshotId, companyId: numericCompanyId, collectedAt: collectedAt.toISOString(), recordCount: evidence.evidenceRows.length, omittedRecordCount: evidence.omittedRecordCount, isComplete: evidence.isComplete, collectionStatus: evidence.collectionStatus, errorMessage: evidence.incompleteReason, dashboardMetrics: evidence.dashboardMetrics };
     }
     async function recordCollectionFailure({ companyId, tenantKey = 'sunbird', collectionTrigger = 'scheduled_daily', sourceEndpoint, error } = {}) {
         const [result] = await pool.query(
@@ -170,8 +197,9 @@ function createGovernanceEvidenceStore({ pool, logger = console, now = () => new
              (CompanyID, TenantKey, CollectionTrigger, SourceEndpoint, CollectionStatus, IsComplete, CollectedAt,
               EvidenceRecordCount, ExpectedRecordCount, OmittedRecordCount, CompletenessPercent, DashboardMetricsJson, SourceAuditJson, IncompleteReason, ErrorMessage)
              VALUES (?, ?, ?, ?, 'failed', 0, ?, 0, 0, 0, 0, ?, ?, ?, ?)`,
-            [Number(companyId), tenantKey, collectionTrigger, sourceEndpoint || 'Microsoft Graph processed by StackCTRL Governance', mysqlDateTime(now()), JSON.stringify({}), JSON.stringify({ credentialSource: 'environment' }), 'Governance evidence collection did not complete.', String(error?.message || error).slice(0, 5000)]
+            [Number(companyId), tenantKey, collectionTrigger, sourceEndpoint || 'Microsoft Graph processed by StackCTRL Governance', mysqlDateTime(now()), JSON.stringify({}), JSON.stringify({ sourcePayloadRowCount: 0, apiConnectedRowsKept: 0, manualRowsExcluded: 0, collectionStatus: 'failed', isComplete: false, incompleteReason: 'Governance evidence collection did not complete.', credentialSource: 'environment' }), 'Governance evidence collection did not complete.', String(error?.message || error).slice(0, 5000)]
         );
+        logger.error('[Governance Evidence] Collection failure stored', { snapshotId: result.insertId, companyId: Number(companyId), collectionTrigger, errorMessage: String(error?.message || error) });
         return { snapshotId: result.insertId, companyId: Number(companyId), status: 'failed' };
     }
     return { ensureSchema, persistProcessedEvidence, recordCollectionFailure, deriveGovernanceEvidence };

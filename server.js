@@ -8244,6 +8244,10 @@ app.get('/api/sunbird/governance', authenticateToken, async (req, res) => {
         companyId = tenant.companyId || req.user.companyId || null;
         const cached = await getSunbirdPayloadCache('SunbirdGovernancePayloadCache', companyId);
         if (cached?.payload?.success && Array.isArray(cached.payload.rows)) {
+            if (governanceEvidenceService && companyId) {
+                persistGovernanceDashboardEvidence(companyId, cached.payload, 'dashboard_request', '/api/sunbird/governance')
+                    .catch(error => console.warn('[Governance Evidence] Cached dashboard payload could not be stored:', error.message));
+            }
             return res.json({
                 ...cached.payload,
                 source: 'db',
@@ -8254,13 +8258,8 @@ app.get('/api/sunbird/governance', authenticateToken, async (req, res) => {
         const payload = await fetchGovernancePayloadFromApi();
         await upsertSunbirdPayloadCache('SunbirdGovernancePayloadCache', companyId, payload);
         if (governanceEvidenceService && companyId) {
-            governanceEvidenceService.persistProcessedEvidence({
-                companyId,
-                tenantKey: 'sunbird',
-                payload: buildGovernanceDashboardPayload({ tenantKey: 'sunbird', payload }),
-                collectionTrigger: 'dashboard_refresh',
-                sourceEndpoint: '/api/sunbird/governance'
-            }).catch(error => console.warn('[Governance Evidence] Dashboard persist failed:', error.message));
+            persistGovernanceDashboardEvidence(companyId, payload, 'dashboard_request', '/api/sunbird/governance')
+                .catch(error => console.warn('[Governance Evidence] Dashboard persist failed:', error.message));
         }
         res.json(payload);
     } catch (error) {
@@ -8526,6 +8525,10 @@ app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) 
         companyId = tenant.companyId || req.user.companyId || null;
         const cached = await getSunbirdPayloadCache('SunbirdComplianceControlsCache', companyId);
         if (cached?.payload?.success && Array.isArray(cached.payload.controls)) {
+            if (complianceEvidenceService && companyId) {
+                persistComplianceDashboardEvidence(companyId, cached.payload, 'dashboard_request', '/api/sunbird/compliance-controls')
+                    .catch(error => console.warn('[Compliance Evidence] Cached dashboard payload could not be stored:', error.message));
+            }
             return res.json({
                 ...cached.payload,
                 source: 'db',
@@ -8536,13 +8539,8 @@ app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) 
         const payload = await fetchComplianceControlsFromApi();
         await upsertSunbirdPayloadCache('SunbirdComplianceControlsCache', companyId, payload);
         if (complianceEvidenceService && companyId) {
-            complianceEvidenceService.persistProcessedEvidence({
-                companyId,
-                tenantKey: 'sunbird',
-                payload: buildComplianceDashboardPayload({ tenantKey: 'sunbird', payload }),
-                collectionTrigger: 'dashboard_refresh',
-                sourceEndpoint: '/api/sunbird/compliance-controls'
-            }).catch(error => console.warn('[Compliance Evidence] Dashboard persist failed:', error.message));
+            persistComplianceDashboardEvidence(companyId, payload, 'dashboard_request', '/api/sunbird/compliance-controls')
+                .catch(error => console.warn('[Compliance Evidence] Dashboard persist failed:', error.message));
         }
         res.json(payload);
 
@@ -8789,6 +8787,10 @@ app.get('/api/sunbird/operations', authenticateToken, async (req, res) => {
         companyId = tenant.companyId || req.user.companyId || null;
         const cached = await getSunbirdPayloadCache('SunbirdOperationsPayloadCache', companyId);
         if (cached?.payload?.success && Array.isArray(cached.payload.tasks)) {
+            if (operationsEvidenceService && companyId) {
+                persistOperationsDashboardEvidence(companyId, cached.payload, 'dashboard_request', '/api/sunbird/operations')
+                    .catch(error => console.warn('[Operations Evidence] Cached dashboard payload could not be stored:', error.message));
+            }
             return res.json({
                 ...cached.payload,
                 source: 'db',
@@ -8799,13 +8801,8 @@ app.get('/api/sunbird/operations', authenticateToken, async (req, res) => {
         const payload = await fetchOperationsPayloadFromApi();
         await upsertSunbirdPayloadCache('SunbirdOperationsPayloadCache', companyId, payload);
         if (operationsEvidenceService && companyId) {
-            operationsEvidenceService.persistProcessedEvidence({
-                companyId,
-                tenantKey: 'sunbird',
-                payload: buildOperationsDashboardPayload({ tenantKey: 'sunbird', payload }),
-                collectionTrigger: 'dashboard_refresh',
-                sourceEndpoint: '/api/sunbird/operations'
-            }).catch(error => console.warn('[Operations Evidence] Dashboard persist failed:', error.message));
+            persistOperationsDashboardEvidence(companyId, payload, 'dashboard_request', '/api/sunbird/operations')
+                .catch(error => console.warn('[Operations Evidence] Dashboard persist failed:', error.message));
         }
         res.json(payload);
 
@@ -11201,15 +11198,51 @@ async function collectSecurityEvidenceForConfiguredTenants({ trigger = 'schedule
     return { companyCount: companies.length, results };
 }
 
+async function requireEvidenceSchema(schemaReady, domainLabel) {
+    const schema = await schemaReady;
+    if (schema?.error) throw new Error(`${domainLabel} evidence schema is unavailable: ${schema.error.message}`);
+    return schema;
+}
+
+async function persistGovernanceDashboardEvidence(companyId, rawPayload, collectionTrigger, sourceEndpoint) {
+    await requireEvidenceSchema(governanceEvidenceSchemaReady, 'Governance');
+    const sourcePayloadRowCount = Array.isArray(rawPayload?.rows) ? rawPayload.rows.length : 0;
+    console.log('[Governance Evidence] Collector received payload', { companyId, collectionTrigger, sourcePayloadRowCount });
+    const dashboardPayload = buildGovernanceDashboardPayload({ tenantKey: 'sunbird', payload: rawPayload });
+    const result = await governanceEvidenceService.persistProcessedEvidence({ companyId, tenantKey: 'sunbird', payload: dashboardPayload, collectionTrigger, sourceEndpoint });
+    console.log('[Governance Evidence] Collector completed', { companyId, collectionTrigger, sourcePayloadRowCount, apiConnectedRowsKept: result.recordCount, manualRowsExcluded: result.omittedRecordCount, snapshotId: result.snapshotId, collectionStatus: result.collectionStatus, isComplete: result.isComplete });
+    return result;
+}
+
+async function persistComplianceDashboardEvidence(companyId, rawPayload, collectionTrigger, sourceEndpoint) {
+    await requireEvidenceSchema(complianceEvidenceSchemaReady, 'Compliance Validation');
+    const sourcePayloadRowCount = Array.isArray(rawPayload?.controls) ? rawPayload.controls.length : 0;
+    console.log('[Compliance Evidence] Collector received payload', { companyId, collectionTrigger, sourcePayloadRowCount });
+    const dashboardPayload = buildComplianceDashboardPayload({ tenantKey: 'sunbird', payload: rawPayload });
+    const result = await complianceEvidenceService.persistProcessedEvidence({ companyId, tenantKey: 'sunbird', payload: dashboardPayload, collectionTrigger, sourceEndpoint });
+    console.log('[Compliance Evidence] Collector completed', { companyId, collectionTrigger, sourcePayloadRowCount, apiConnectedRowsKept: result.recordCount, manualRowsExcluded: result.omittedRecordCount, snapshotId: result.snapshotId, collectionStatus: result.collectionStatus, isComplete: result.isComplete });
+    return result;
+}
+
+async function persistOperationsDashboardEvidence(companyId, rawPayload, collectionTrigger, sourceEndpoint) {
+    await requireEvidenceSchema(operationsEvidenceSchemaReady, 'Operations');
+    const sourcePayloadRowCount = Array.isArray(rawPayload?.tasks) ? rawPayload.tasks.length : 0;
+    console.log('[Operations Evidence] Collector received payload', { companyId, collectionTrigger, sourcePayloadRowCount });
+    const dashboardPayload = buildOperationsDashboardPayload({ tenantKey: 'sunbird', payload: rawPayload });
+    const result = await operationsEvidenceService.persistProcessedEvidence({ companyId, tenantKey: 'sunbird', payload: dashboardPayload, collectionTrigger, sourceEndpoint });
+    console.log('[Operations Evidence] Collector completed', { companyId, collectionTrigger, sourcePayloadRowCount, apiConnectedRowsKept: result.recordCount, manualRowsExcluded: result.omittedRecordCount, snapshotId: result.snapshotId, collectionStatus: result.collectionStatus, isComplete: result.isComplete });
+    return result;
+}
+
 async function performGovernanceEvidenceCollection(companyId, collectionTrigger) {
     if (!governanceEvidenceService) throw new Error('Governance evidence storage is not initialized');
     const sourceEndpoint = 'Microsoft Graph processed by StackCTRL Governance';
     try {
         const rawPayload = await fetchGovernancePayloadFromApi();
-        const dashboardPayload = buildGovernanceDashboardPayload({ tenantKey: 'sunbird', payload: rawPayload });
         await upsertSunbirdPayloadCache('SunbirdGovernancePayloadCache', companyId, rawPayload);
-        return governanceEvidenceService.persistProcessedEvidence({ companyId, tenantKey: 'sunbird', payload: dashboardPayload, collectionTrigger, sourceEndpoint });
+        return persistGovernanceDashboardEvidence(companyId, rawPayload, collectionTrigger, sourceEndpoint);
     } catch (error) {
+        console.error('[Governance Evidence] Collector failed', { companyId, collectionTrigger, errorMessage: error.message });
         await governanceEvidenceService.recordCollectionFailure({ companyId, tenantKey: 'sunbird', collectionTrigger, sourceEndpoint, error }).catch(() => {});
         throw error;
     }
@@ -11238,10 +11271,10 @@ async function performComplianceEvidenceCollection(companyId, collectionTrigger)
     const sourceEndpoint = 'Microsoft Graph processed by StackCTRL Compliance Validation';
     try {
         const rawPayload = await fetchComplianceControlsFromApi();
-        const dashboardPayload = buildComplianceDashboardPayload({ tenantKey: 'sunbird', payload: rawPayload });
         await upsertSunbirdPayloadCache('SunbirdComplianceControlsCache', companyId, rawPayload);
-        return complianceEvidenceService.persistProcessedEvidence({ companyId, tenantKey: 'sunbird', payload: dashboardPayload, collectionTrigger, sourceEndpoint });
+        return persistComplianceDashboardEvidence(companyId, rawPayload, collectionTrigger, sourceEndpoint);
     } catch (error) {
+        console.error('[Compliance Evidence] Collector failed', { companyId, collectionTrigger, errorMessage: error.message });
         await complianceEvidenceService.recordCollectionFailure({ companyId, tenantKey: 'sunbird', collectionTrigger, sourceEndpoint, error }).catch(() => {});
         throw error;
     }
@@ -11270,10 +11303,10 @@ async function performOperationsEvidenceCollection(companyId, collectionTrigger)
     const sourceEndpoint = 'Microsoft Graph processed by StackCTRL Operations';
     try {
         const rawPayload = await fetchOperationsPayloadFromApi();
-        const dashboardPayload = buildOperationsDashboardPayload({ tenantKey: 'sunbird', payload: rawPayload });
         await upsertSunbirdPayloadCache('SunbirdOperationsPayloadCache', companyId, rawPayload);
-        return operationsEvidenceService.persistProcessedEvidence({ companyId, tenantKey: 'sunbird', payload: dashboardPayload, collectionTrigger, sourceEndpoint });
+        return persistOperationsDashboardEvidence(companyId, rawPayload, collectionTrigger, sourceEndpoint);
     } catch (error) {
+        console.error('[Operations Evidence] Collector failed', { companyId, collectionTrigger, errorMessage: error.message });
         await operationsEvidenceService.recordCollectionFailure({ companyId, tenantKey: 'sunbird', collectionTrigger, sourceEndpoint, error }).catch(() => {});
         throw error;
     }
@@ -11741,7 +11774,7 @@ const governanceEvidenceAutomation = createGovernanceEvidenceAutomation({
         return collectGovernanceEvidenceForConfiguredTenants(options);
     },
     enabled: !['false', '0', 'no'].includes(String(process.env.GOVERNANCE_EVIDENCE_COLLECTION_ENABLED || 'true').toLowerCase()),
-    intervalMs: process.env.GOVERNANCE_EVIDENCE_COLLECTION_INTERVAL_MS || (6 * 60 * 60 * 1000),
+    intervalMs: process.env.GOVERNANCE_EVIDENCE_COLLECTION_INTERVAL_MS || (30 * 60 * 1000),
     startupDelayMs: process.env.GOVERNANCE_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (120 * 1000)
 });
 complianceEvidenceService = createComplianceEvidenceStore({ pool });
@@ -11756,7 +11789,7 @@ const complianceEvidenceAutomation = createComplianceEvidenceAutomation({
         return collectComplianceEvidenceForConfiguredTenants(options);
     },
     enabled: !['false', '0', 'no'].includes(String(process.env.COMPLIANCE_EVIDENCE_COLLECTION_ENABLED || 'true').toLowerCase()),
-    intervalMs: process.env.COMPLIANCE_EVIDENCE_COLLECTION_INTERVAL_MS || (6 * 60 * 60 * 1000),
+    intervalMs: process.env.COMPLIANCE_EVIDENCE_COLLECTION_INTERVAL_MS || (30 * 60 * 1000),
     startupDelayMs: process.env.COMPLIANCE_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (150 * 1000)
 });
 operationsEvidenceService = createOperationsEvidenceStore({ pool });
@@ -11771,7 +11804,7 @@ const operationsEvidenceAutomation = createOperationsEvidenceAutomation({
         return collectOperationsEvidenceForConfiguredTenants(options);
     },
     enabled: !['false', '0', 'no'].includes(String(process.env.OPERATIONS_EVIDENCE_COLLECTION_ENABLED || 'true').toLowerCase()),
-    intervalMs: process.env.OPERATIONS_EVIDENCE_COLLECTION_INTERVAL_MS || (60 * 60 * 1000),
+    intervalMs: process.env.OPERATIONS_EVIDENCE_COLLECTION_INTERVAL_MS || (30 * 60 * 1000),
     startupDelayMs: process.env.OPERATIONS_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (180 * 1000)
 });
 const stackCTRLIntelligenceService = createStackCTRLIntelligenceService({

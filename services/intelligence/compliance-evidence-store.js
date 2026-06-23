@@ -93,7 +93,13 @@ function deriveComplianceEvidence(payload = {}) {
         processed: control
     }));
     const omittedRecordCount = metrics.manualControlsExcluded || 0;
-    const isComplete = Boolean(payload.success !== false);
+    const sourceSucceeded = payload.success !== false;
+    const isComplete = sourceSucceeded && evidenceRows.length > 0;
+    const incompleteReason = !sourceSucceeded
+        ? 'The processed Compliance Validation dashboard did not complete successfully.'
+        : evidenceRows.length === 0
+            ? 'No API-connected evidence rows found after filtering manual evidence.'
+            : null;
     return {
         evidenceRows,
         dashboardMetrics,
@@ -101,9 +107,10 @@ function deriveComplianceEvidence(payload = {}) {
         stackctrlHealthScore,
         expectedRecordCount: evidenceRows.length,
         omittedRecordCount,
-        completenessPercent: evidenceRows.length > 0 || isComplete ? 100 : 0,
+        completenessPercent: isComplete ? 100 : 0,
         isComplete,
-        incompleteReason: isComplete ? null : 'The processed Compliance Validation dashboard did not complete successfully.'
+        collectionStatus: isComplete ? 'complete' : 'blocked',
+        incompleteReason
     };
 }
 
@@ -111,6 +118,7 @@ function createComplianceEvidenceStore({ pool, logger = console, now = () => new
     if (!pool?.query) throw new Error('Compliance evidence storage requires a database pool');
     async function ensureSchema() {
         for (const statement of COMPLIANCE_EVIDENCE_SCHEMA) await pool.query(statement);
+        logger.log('[Compliance Evidence] Schema ready: StackCTRLComplianceEvidenceSnapshots, StackCTRLComplianceEvidence');
         return { tables: ['StackCTRLComplianceEvidenceSnapshots', 'StackCTRLComplianceEvidence'] };
     }
     async function persistProcessedEvidence({ companyId, tenantKey = 'sunbird', payload, collectionTrigger = 'scheduled_daily', sourceEndpoint = 'Microsoft Graph processed by StackCTRL Compliance Validation' } = {}) {
@@ -118,6 +126,15 @@ function createComplianceEvidenceStore({ pool, logger = console, now = () => new
         if (!Number.isFinite(numericCompanyId) || numericCompanyId <= 0) throw new Error('A valid companyId is required');
         const evidence = deriveComplianceEvidence(payload);
         const collectedAt = now();
+        logger.log('[Compliance Evidence] Preparing snapshot', {
+            companyId: numericCompanyId,
+            collectionTrigger,
+            sourcePayloadRowCount: evidence.dashboardMetrics.totalControls,
+            apiConnectedRowsKept: evidence.evidenceRows.length,
+            manualRowsExcluded: evidence.omittedRecordCount,
+            collectionStatus: evidence.collectionStatus,
+            incompleteReason: evidence.incompleteReason
+        });
         const connection = typeof pool.getConnection === 'function' ? await pool.getConnection() : pool;
         const ownsConnection = connection !== pool;
         let snapshotId = null;
@@ -131,18 +148,19 @@ function createComplianceEvidenceStore({ pool, logger = console, now = () => new
                   CompletenessPercent, TotalControls, ApiControls, ManualControlsExcluded, FailingControls,
                   PartialControls, PassingControls, ComplianceScore, RecommendationsCount,
                   StackCTRLRiskScore, StackCTRLHealthScore, DashboardMetricsJson, SourceAuditJson,
-                  EvidenceSha256, IncompleteReason)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                  EvidenceSha256, IncompleteReason, ErrorMessage)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     numericCompanyId, tenantKey, collectionTrigger, sourceEndpoint,
-                    evidence.isComplete ? 'complete' : 'incomplete', evidence.isComplete ? 1 : 0,
+                    evidence.collectionStatus, evidence.isComplete ? 1 : 0,
                     mysqlDateTime(collectedAt), mysqlDateTime(payload?.fetchedAt || collectedAt),
                     evidence.evidenceRows.length, evidence.expectedRecordCount, evidence.omittedRecordCount, evidence.completenessPercent,
                     metrics.totalControls, metrics.apiControls, metrics.manualControlsExcluded, metrics.failingControls,
                     metrics.partialControls, metrics.passingControls, metrics.complianceScore, metrics.recommendationsCount,
                     evidence.stackctrlRiskScore, evidence.stackctrlHealthScore, JSON.stringify(metrics),
-                    JSON.stringify({ source: 'stackctrl_processed_compliance_dashboard', collectionTrigger, sourceEndpoint, manualControlsExcludedFromAzureInput: evidence.omittedRecordCount, credentialSource: 'environment' }),
+                    JSON.stringify({ source: 'stackctrl_processed_compliance_dashboard', collectionTrigger, sourceEndpoint, sourcePayloadRowCount: metrics.totalControls, apiConnectedRowsKept: evidence.evidenceRows.length, manualRowsExcluded: evidence.omittedRecordCount, collectionStatus: evidence.collectionStatus, isComplete: evidence.isComplete, incompleteReason: evidence.incompleteReason, credentialSource: 'environment' }),
                     crypto.createHash('sha256').update(JSON.stringify({ rows: evidence.evidenceRows, dashboardMetrics: metrics })).digest('hex'),
+                    evidence.incompleteReason,
                     evidence.incompleteReason
                 ]
             );
@@ -162,8 +180,17 @@ function createComplianceEvidenceStore({ pool, logger = console, now = () => new
         } finally {
             if (ownsConnection && typeof connection.release === 'function') connection.release();
         }
-        logger.log(`[Compliance Evidence] Stored snapshot ${snapshotId} with ${evidence.evidenceRows.length} API-sourced controls (${evidence.omittedRecordCount} manual controls excluded).`);
-        return { snapshotId, companyId: numericCompanyId, collectedAt: collectedAt.toISOString(), recordCount: evidence.evidenceRows.length, omittedRecordCount: evidence.omittedRecordCount, isComplete: evidence.isComplete, dashboardMetrics: evidence.dashboardMetrics };
+        logger.log('[Compliance Evidence] Snapshot stored', {
+            snapshotId,
+            companyId: numericCompanyId,
+            sourcePayloadRowCount: evidence.dashboardMetrics.totalControls,
+            apiConnectedRowsKept: evidence.evidenceRows.length,
+            manualRowsExcluded: evidence.omittedRecordCount,
+            collectionStatus: evidence.collectionStatus,
+            isComplete: evidence.isComplete,
+            errorMessage: evidence.incompleteReason
+        });
+        return { snapshotId, companyId: numericCompanyId, collectedAt: collectedAt.toISOString(), recordCount: evidence.evidenceRows.length, omittedRecordCount: evidence.omittedRecordCount, isComplete: evidence.isComplete, collectionStatus: evidence.collectionStatus, errorMessage: evidence.incompleteReason, dashboardMetrics: evidence.dashboardMetrics };
     }
     async function recordCollectionFailure({ companyId, tenantKey = 'sunbird', collectionTrigger = 'scheduled_daily', sourceEndpoint, error } = {}) {
         const [result] = await pool.query(
@@ -171,8 +198,9 @@ function createComplianceEvidenceStore({ pool, logger = console, now = () => new
              (CompanyID, TenantKey, CollectionTrigger, SourceEndpoint, CollectionStatus, IsComplete, CollectedAt,
               EvidenceRecordCount, ExpectedRecordCount, OmittedRecordCount, CompletenessPercent, DashboardMetricsJson, SourceAuditJson, IncompleteReason, ErrorMessage)
              VALUES (?, ?, ?, ?, 'failed', 0, ?, 0, 0, 0, 0, ?, ?, ?, ?)`,
-            [Number(companyId), tenantKey, collectionTrigger, sourceEndpoint || 'Microsoft Graph processed by StackCTRL Compliance Validation', mysqlDateTime(now()), JSON.stringify({}), JSON.stringify({ credentialSource: 'environment' }), 'Compliance evidence collection did not complete.', String(error?.message || error).slice(0, 5000)]
+            [Number(companyId), tenantKey, collectionTrigger, sourceEndpoint || 'Microsoft Graph processed by StackCTRL Compliance Validation', mysqlDateTime(now()), JSON.stringify({}), JSON.stringify({ sourcePayloadRowCount: 0, apiConnectedRowsKept: 0, manualRowsExcluded: 0, collectionStatus: 'failed', isComplete: false, incompleteReason: 'Compliance evidence collection did not complete.', credentialSource: 'environment' }), 'Compliance evidence collection did not complete.', String(error?.message || error).slice(0, 5000)]
         );
+        logger.error('[Compliance Evidence] Collection failure stored', { snapshotId: result.insertId, companyId: Number(companyId), collectionTrigger, errorMessage: String(error?.message || error) });
         return { snapshotId: result.insertId, companyId: Number(companyId), status: 'failed' };
     }
     return { ensureSchema, persistProcessedEvidence, recordCollectionFailure, deriveComplianceEvidence };

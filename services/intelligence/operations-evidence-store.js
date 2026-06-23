@@ -93,7 +93,13 @@ function deriveOperationsEvidence(payload = {}) {
         processed: task
     }));
     const omittedRecordCount = metrics.manualTasksExcluded || 0;
-    const isComplete = Boolean(payload.success !== false);
+    const sourceSucceeded = payload.success !== false;
+    const isComplete = sourceSucceeded && evidenceRows.length > 0;
+    const incompleteReason = !sourceSucceeded
+        ? 'The processed Operations dashboard did not complete successfully.'
+        : evidenceRows.length === 0
+            ? 'No API-connected evidence rows found after filtering manual evidence.'
+            : null;
     return {
         evidenceRows,
         dashboardMetrics,
@@ -101,9 +107,10 @@ function deriveOperationsEvidence(payload = {}) {
         stackctrlHealthScore,
         expectedRecordCount: evidenceRows.length,
         omittedRecordCount,
-        completenessPercent: evidenceRows.length > 0 || isComplete ? 100 : 0,
+        completenessPercent: isComplete ? 100 : 0,
         isComplete,
-        incompleteReason: isComplete ? null : 'The processed Operations dashboard did not complete successfully.'
+        collectionStatus: isComplete ? 'complete' : 'blocked',
+        incompleteReason
     };
 }
 
@@ -111,6 +118,7 @@ function createOperationsEvidenceStore({ pool, logger = console, now = () => new
     if (!pool?.query) throw new Error('Operations evidence storage requires a database pool');
     async function ensureSchema() {
         for (const statement of OPERATIONS_EVIDENCE_SCHEMA) await pool.query(statement);
+        logger.log('[Operations Evidence] Schema ready: StackCTRLOperationsEvidenceSnapshots, StackCTRLOperationsEvidence');
         return { tables: ['StackCTRLOperationsEvidenceSnapshots', 'StackCTRLOperationsEvidence'] };
     }
     async function persistProcessedEvidence({ companyId, tenantKey = 'sunbird', payload, collectionTrigger = 'scheduled_hourly', sourceEndpoint = 'Microsoft Graph processed by StackCTRL Operations' } = {}) {
@@ -118,6 +126,15 @@ function createOperationsEvidenceStore({ pool, logger = console, now = () => new
         if (!Number.isFinite(numericCompanyId) || numericCompanyId <= 0) throw new Error('A valid companyId is required');
         const evidence = deriveOperationsEvidence(payload);
         const collectedAt = now();
+        logger.log('[Operations Evidence] Preparing snapshot', {
+            companyId: numericCompanyId,
+            collectionTrigger,
+            sourcePayloadRowCount: evidence.dashboardMetrics.totalTasks,
+            apiConnectedRowsKept: evidence.evidenceRows.length,
+            manualRowsExcluded: evidence.omittedRecordCount,
+            collectionStatus: evidence.collectionStatus,
+            incompleteReason: evidence.incompleteReason
+        });
         const connection = typeof pool.getConnection === 'function' ? await pool.getConnection() : pool;
         const ownsConnection = connection !== pool;
         let snapshotId = null;
@@ -131,18 +148,19 @@ function createOperationsEvidenceStore({ pool, logger = console, now = () => new
                   CompletenessPercent, TotalTasks, ApiTasks, ManualTasksExcluded, HighPriorityTasks,
                   MediumPriorityTasks, LowPriorityTasks, OperationsHealthScore, RecommendationsCount,
                   StackCTRLRiskScore, StackCTRLHealthScore, DashboardMetricsJson, SourceAuditJson,
-                  EvidenceSha256, IncompleteReason)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                  EvidenceSha256, IncompleteReason, ErrorMessage)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     numericCompanyId, tenantKey, collectionTrigger, sourceEndpoint,
-                    evidence.isComplete ? 'complete' : 'incomplete', evidence.isComplete ? 1 : 0,
+                    evidence.collectionStatus, evidence.isComplete ? 1 : 0,
                     mysqlDateTime(collectedAt), mysqlDateTime(payload?.fetchedAt || collectedAt),
                     evidence.evidenceRows.length, evidence.expectedRecordCount, evidence.omittedRecordCount, evidence.completenessPercent,
                     metrics.totalTasks, metrics.apiTasks, metrics.manualTasksExcluded, metrics.highPriorityTasks,
                     metrics.mediumPriorityTasks, metrics.lowPriorityTasks, metrics.operationsHealthScore, metrics.recommendationsCount,
                     evidence.stackctrlRiskScore, evidence.stackctrlHealthScore, JSON.stringify(metrics),
-                    JSON.stringify({ source: 'stackctrl_processed_operations_dashboard', collectionTrigger, sourceEndpoint, manualTasksExcludedFromAzureInput: evidence.omittedRecordCount, credentialSource: 'environment' }),
+                    JSON.stringify({ source: 'stackctrl_processed_operations_dashboard', collectionTrigger, sourceEndpoint, sourcePayloadRowCount: metrics.totalTasks, apiConnectedRowsKept: evidence.evidenceRows.length, manualRowsExcluded: evidence.omittedRecordCount, collectionStatus: evidence.collectionStatus, isComplete: evidence.isComplete, incompleteReason: evidence.incompleteReason, credentialSource: 'environment' }),
                     crypto.createHash('sha256').update(JSON.stringify({ rows: evidence.evidenceRows, dashboardMetrics: metrics })).digest('hex'),
+                    evidence.incompleteReason,
                     evidence.incompleteReason
                 ]
             );
@@ -162,8 +180,17 @@ function createOperationsEvidenceStore({ pool, logger = console, now = () => new
         } finally {
             if (ownsConnection && typeof connection.release === 'function') connection.release();
         }
-        logger.log(`[Operations Evidence] Stored snapshot ${snapshotId} with ${evidence.evidenceRows.length} API-sourced tasks (${evidence.omittedRecordCount} manual tasks excluded).`);
-        return { snapshotId, companyId: numericCompanyId, collectedAt: collectedAt.toISOString(), recordCount: evidence.evidenceRows.length, omittedRecordCount: evidence.omittedRecordCount, isComplete: evidence.isComplete, dashboardMetrics: evidence.dashboardMetrics };
+        logger.log('[Operations Evidence] Snapshot stored', {
+            snapshotId,
+            companyId: numericCompanyId,
+            sourcePayloadRowCount: evidence.dashboardMetrics.totalTasks,
+            apiConnectedRowsKept: evidence.evidenceRows.length,
+            manualRowsExcluded: evidence.omittedRecordCount,
+            collectionStatus: evidence.collectionStatus,
+            isComplete: evidence.isComplete,
+            errorMessage: evidence.incompleteReason
+        });
+        return { snapshotId, companyId: numericCompanyId, collectedAt: collectedAt.toISOString(), recordCount: evidence.evidenceRows.length, omittedRecordCount: evidence.omittedRecordCount, isComplete: evidence.isComplete, collectionStatus: evidence.collectionStatus, errorMessage: evidence.incompleteReason, dashboardMetrics: evidence.dashboardMetrics };
     }
     async function recordCollectionFailure({ companyId, tenantKey = 'sunbird', collectionTrigger = 'scheduled_hourly', sourceEndpoint, error } = {}) {
         const [result] = await pool.query(
@@ -171,8 +198,9 @@ function createOperationsEvidenceStore({ pool, logger = console, now = () => new
              (CompanyID, TenantKey, CollectionTrigger, SourceEndpoint, CollectionStatus, IsComplete, CollectedAt,
               EvidenceRecordCount, ExpectedRecordCount, OmittedRecordCount, CompletenessPercent, DashboardMetricsJson, SourceAuditJson, IncompleteReason, ErrorMessage)
              VALUES (?, ?, ?, ?, 'failed', 0, ?, 0, 0, 0, 0, ?, ?, ?, ?)`,
-            [Number(companyId), tenantKey, collectionTrigger, sourceEndpoint || 'Microsoft Graph processed by StackCTRL Operations', mysqlDateTime(now()), JSON.stringify({}), JSON.stringify({ credentialSource: 'environment' }), 'Operations evidence collection did not complete.', String(error?.message || error).slice(0, 5000)]
+            [Number(companyId), tenantKey, collectionTrigger, sourceEndpoint || 'Microsoft Graph processed by StackCTRL Operations', mysqlDateTime(now()), JSON.stringify({}), JSON.stringify({ sourcePayloadRowCount: 0, apiConnectedRowsKept: 0, manualRowsExcluded: 0, collectionStatus: 'failed', isComplete: false, incompleteReason: 'Operations evidence collection did not complete.', credentialSource: 'environment' }), 'Operations evidence collection did not complete.', String(error?.message || error).slice(0, 5000)]
         );
+        logger.error('[Operations Evidence] Collection failure stored', { snapshotId: result.insertId, companyId: Number(companyId), collectionTrigger, errorMessage: String(error?.message || error) });
         return { snapshotId: result.insertId, companyId: Number(companyId), status: 'failed' };
     }
     return { ensureSchema, persistProcessedEvidence, recordCollectionFailure, deriveOperationsEvidence };

@@ -798,6 +798,74 @@ test('Enterprise Network currentMetrics follow stored dashboard metrics and flat
     assert.equal(packageResult.sourceAlignment.mismatches.length, 0);
 });
 
+test('Enterprise Governance, Compliance, and Operations use saved API rows and document manual exclusions', async () => {
+    const pool = {
+        async query(sql) {
+            if (sql.includes('FROM StackCTRLKnowledgeBase')) return [[], []];
+            if (sql.includes('FROM StackCTRLTenantDomainIntelligence') && sql.includes('RunID <>')) return [[], []];
+            throw new Error(`Unexpected query: ${sql}`);
+        }
+    };
+    const service = createEnterpriseIntelligenceService({
+        pool,
+        azureOpenAI: { async createJsonCompletion() { throw new Error('Azure should not be called'); } },
+        schedulerService: { async getHistoricalSnapshotContext() { return {}; } },
+        config: { domainDelayMs: 0 }
+    });
+    const cases = [
+        { key: 'governance', builder: 'storedStackCTRLGovernanceEvidence', evidenceType: 'governanceRows', apiRows: 4, manualRows: 2, metrics: { totalRows: 6, apiConnectedRows: 4, manualRowsExcluded: 2 } },
+        { key: 'compliance', builder: 'storedStackCTRLComplianceEvidence', evidenceType: 'controls', apiRows: 5, manualRows: 3, metrics: { totalControls: 8, apiControls: 5, manualControlsExcluded: 3 } },
+        { key: 'operations', builder: 'storedStackCTRLOperationsEvidence', evidenceType: 'tasks', apiRows: 3, manualRows: 4, metrics: { totalTasks: 7, apiTasks: 3, manualTasksExcluded: 4 } }
+    ];
+
+    for (const [index, item] of cases.entries()) {
+        const snapshot = {
+            ID: 920 + index,
+            CompanyID: 1,
+            CreatedAt: new Date('2026-06-23T08:00:00.000Z'),
+            MetricsJson: JSON.stringify({ stackctrl_risk: { domainRiskScores: { [item.key]: 20 } } }),
+            ContextJson: JSON.stringify({
+                riskEngine: { domainHealthScores: { [item.key]: 80 }, domainRiskScores: { [item.key]: 20 } },
+                sources: [{
+                    sourceKey: item.key,
+                    status: 'available',
+                    isExpected: true,
+                    freshness: { lastUpdated: '2026-06-23T07:55:00.000Z', ageMinutes: 5 },
+                    metrics: item.metrics,
+                    dashboardMetrics: item.metrics,
+                    sourceLineage: {
+                        sourceBuilder: item.builder,
+                        evidenceSnapshotId: 1100 + index,
+                        collectionStatus: 'complete',
+                        isComplete: true,
+                        totalRows: item.apiRows + item.manualRows,
+                        apiConnectedRows: item.apiRows,
+                        manualRowsExcluded: item.manualRows,
+                        evidenceRecordCount: item.apiRows,
+                        omittedRecordCount: item.manualRows
+                    },
+                    evidence: [{ evidenceType: item.evidenceType, data: Array.from({ length: item.apiRows }, (_, rowIndex) => ({ id: `${item.key}-${rowIndex + 1}` })) }]
+                }]
+            })
+        };
+        const packageResult = await service.buildDomainPackage({
+            companyId: 1,
+            snapshot,
+            runId: 80 + index,
+            domain: ENTERPRISE_DOMAINS.find(domain => domain.key === item.key),
+            historicalContext: { comparisons: {} }
+        });
+
+        assert.equal(packageResult.audit.stackCTRLDataCount, item.apiRows, item.key);
+        assert.equal(packageResult.audit.preparedForAzureCount, item.apiRows, item.key);
+        assert.equal(packageResult.audit.omittedCount, item.manualRows, item.key);
+        assert.equal(packageResult.package.dataLineage.totalRows, item.apiRows + item.manualRows, item.key);
+        assert.equal(packageResult.package.dataLineage.apiConnectedRows, item.apiRows, item.key);
+        assert.equal(packageResult.package.dataLineage.manualRowsExcluded, item.manualRows, item.key);
+        assert.match(packageResult.package.limitations.missingDataWarnings.join(' '), /intentionally excluded from Azure input/, item.key);
+    }
+});
+
 test('Enterprise blocks missing or stale saved Device evidence before calling Azure', async () => {
     for (const sourceStatus of ['missing', 'stale']) {
         let insertId = 900;

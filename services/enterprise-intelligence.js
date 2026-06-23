@@ -675,6 +675,9 @@ function createEnterpriseIntelligenceService({
         const previousAnalysis = await loadPreviousDomain(companyId, domain.key, runId);
         const flattenedEvidence = flattenDomainEvidence(current.evidence, { rootPath: `${domain.sourceKey}.evidence` });
         const stackCTRLDataCount = flattenedEvidence.length;
+        const sourceEvidenceLineage = current.source.sourceLineage || {};
+        const manualFilteredDomain = ['governance', 'compliance', 'operations'].includes(domain.key);
+        const manualExcludedCount = manualFilteredDomain ? Number(sourceEvidenceLineage.manualRowsExcluded || sourceEvidenceLineage.omittedRecordCount || 0) : 0;
         
         const base = {
             contextType: 'stackctrl_enterprise_domain_intelligence',
@@ -707,6 +710,7 @@ function createEnterpriseIntelligenceService({
                 rawSnapshotContextIncluded: false,
                 missingDataWarnings: [
                     ...array(current.source.warnings),
+                    ...(manualExcludedCount > 0 ? [`${manualExcludedCount} manual evidence row(s) were intentionally excluded from Azure input; only API-connected evidence was prepared.`] : []),
                     ...(!knowledge.length ? [`Curated ${domain.name} best-practice references were unavailable.`] : [])
                 ]
             }
@@ -777,8 +781,13 @@ function createEnterpriseIntelligenceService({
             collectionTrigger: current.source.sourceLineage?.collectionTrigger || null,
             collectionStatus: current.source.sourceLineage?.collectionStatus || null,
             evidenceIsComplete: current.source.sourceLineage?.isComplete ?? null,
+            totalRows: current.source.sourceLineage?.totalRows ?? stackCTRLDataCount,
+            apiConnectedRows: current.source.sourceLineage?.apiConnectedRows ?? stackCTRLDataCount,
+            manualRowsExcluded: current.source.sourceLineage?.manualRowsExcluded ?? 0,
             evidenceRecordCount: current.source.sourceLineage?.evidenceRecordCount ?? stackCTRLDataCount,
             evidenceOmittedRecordCount: current.source.sourceLineage?.omittedRecordCount ?? 0,
+            incompleteReason: current.source.sourceLineage?.incompleteReason || null,
+            errorMessage: current.source.sourceLineage?.errorMessage || null,
             sourceName: domain.name,
             sourceLastUpdated: sourceLineageValues.sourceLastUpdated,
             sourceAge: current.source.freshness?.ageMinutes,
@@ -801,7 +810,7 @@ function createEnterpriseIntelligenceService({
                 stackCTRLDataCount,
                 preparedForAzureCount: stackCTRLDataCount,
                 sentToAzureCount: 0, // Successfully analysed by Azure; updated after completed batches
-                omittedCount: 0, // For batching, nothing is permanently omitted
+                omittedCount: manualExcludedCount,
                 metricsIncludedCount: primitiveMetricCount(base.currentMetrics) + primitiveMetricCount(base.dashboardMetrics) + primitiveMetricCount(base.calculatedIndicators),
                 evidenceIncludedCount: stackCTRLDataCount,
                 evidenceOmittedCount: 0, // Batching handles all evidence
