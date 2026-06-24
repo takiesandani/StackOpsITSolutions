@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
     buildDataLineageComparison,
     buildEvidenceCatalog,
+    computeInterDomainDelayMs,
     createEnterpriseIntelligenceService,
     DEVICE_LINEAGE_FIELDS,
     EMAIL_LINEAGE_FIELDS,
@@ -15,6 +16,19 @@ const {
     sourceAlignmentFailure,
     splitIntoBatches
 } = require('../services/enterprise-intelligence');
+
+test('enterprise domain order keeps governance, operations, and compliance last', () => {
+    assert.deepEqual(ENTERPRISE_DOMAINS.map(domain => domain.key), [
+        'identity', 'devices', 'email_security', 'cloudflare_network_security', 'security_alerts',
+        'applications', 'backup', 'governance', 'operations', 'compliance'
+    ]);
+});
+
+test('heavy domains and large inputs enforce automation-safe cooldowns', () => {
+    assert.equal(computeInterDomainDelayMs(1000, { domainDelayMs: 0 }, 'governance'), 120000);
+    assert.equal(computeInterDomainDelayMs(30000, { domainDelayMs: 0 }, 'identity'), 60000);
+    assert.equal(computeInterDomainDelayMs(50000, { domainDelayMs: 0 }, 'identity'), 180000);
+});
 
 function identityLikeEvidence() {
     return {
@@ -531,7 +545,7 @@ test('enterprise invalid JSON triggers repair retry and stores repaired batch de
     });
 
     const result = await service.runEnterpriseReport({ companyId: 1, snapshotId: 77, domainKeys: ['identity'], includeSynthesis: false });
-    assert.equal(result.status, 'completed');
+    assert.equal(result.status, 'completed_with_warnings');
     assert.equal(azureCalls, 2);
     const batchWrite = calls.find(call => call.sql.includes('StackCTRLTenantDomainIntelligenceBatches'));
     assert.ok(batchWrite);
@@ -585,12 +599,12 @@ test('enterprise domain batch locally recovers a long unterminated Azure string'
     });
 
     const result = await service.runEnterpriseReport({ companyId: 1, snapshotId: 775, domainKeys: ['identity'], includeSynthesis: false });
-    assert.equal(azureCalls, 1);
-    assert.equal(result.status, 'completed');
-    assert.equal(result.domains[0].status, 'completed');
+    assert.equal(azureCalls, 2);
+    assert.equal(result.status, 'completed_with_warnings');
+    assert.equal(result.domains[0].status, 'completed_with_warnings');
     assert.match(result.domains[0].analysis.missingDataWarnings.join(' '), /safely recovered/);
     const batchWrite = calls.find(call => call.sql.includes('StackCTRLTenantDomainIntelligenceBatches'));
-    assert.match(batchWrite.params.join(' '), /"jsonRepairMethod":"local_truncation_closure"/);
+    assert.match(batchWrite.params.join(' '), /"jsonRepairMethod":"azure_repair_then_local_closure"/);
 });
 
 test('enterprise invalid JSON failure stores diagnostics and failed_invalid_json status', async () => {
@@ -701,7 +715,7 @@ test('Enterprise synthesis recovers a long unterminated JSON string and complete
     });
 
     const result = await service.runEnterpriseSynthesis({ companyId: 1, runId: 100 });
-    assert.equal(azureCalls, 1);
+    assert.equal(azureCalls, 2);
     assert.equal(result.status, 'completed_with_warnings');
     assert.equal(result.synthesisId, 901);
     assert.equal(result.analysis.enterpriseExecutiveSummary.summary, 'Recovered summary');
@@ -1185,4 +1199,107 @@ test('all required enterprise domain modes are registered', () => {
         'identity', 'devices', 'email_security', 'cloudflare_network_security', 'governance',
         'compliance', 'security_alerts', 'operations', 'backup', 'applications'
     ]));
+});
+
+test('enterprise token threshold switches later domains to safe batches instead of skipping Applications', async () => {
+    let insertId = 9000;
+    let azureCalls = 0;
+    const snapshot = {
+        ID: 990, CompanyID: 1, TenantKey: 'sunbird', SnapshotType: 'manual',
+        CreatedAt: new Date('2026-06-24T08:00:00.000Z'), DataCompletenessScore: 100,
+        MetricsJson: '{}',
+        ContextJson: JSON.stringify({
+            riskEngine: { domainHealthScores: { identity: 80, applications: 75 }, domainRiskScores: { identity: 20, applications: 25 } },
+            sources: [
+                { sourceKey: 'identity', status: 'available', isExpected: true, evidence: [{ evidenceType: 'users', data: [{ id: 'user-1', displayName: 'User One' }] }] },
+                { sourceKey: 'applications', status: 'available', isExpected: true, evidence: [{ evidenceType: 'applications', data: [
+                    { id: 'app-1', displayName: 'App One' }, { id: 'app-2', displayName: 'App Two' }, { id: 'app-3', displayName: 'App Three' }
+                ] }] }
+            ]
+        })
+    };
+    const pool = {
+        async query(sql) {
+            if (sql.includes('FROM StackCTRLTenantEvidenceSnapshots WHERE')) return [[snapshot], []];
+            if (sql.includes('FROM StackCTRLKnowledgeBase')) return [[], []];
+            if (sql.includes('FROM StackCTRLTenantDomainIntelligence') && sql.includes('RunID <>')) return [[], []];
+            if (/^\s*INSERT/i.test(sql)) return [{ insertId: insertId++ }, []];
+            return [{ affectedRows: 1 }, []];
+        }
+    };
+    const service = createEnterpriseIntelligenceService({
+        pool,
+        schedulerService: { async getHistoricalSnapshotContext() { return { comparisons: {} }; } },
+        azureOpenAI: {
+            async createJsonCompletion(options) {
+                azureCalls += 1;
+                const domainKey = options.messages[1].content.includes('"key":"applications"') ? 'applications' : 'identity';
+                return {
+                    data: domainResponse(domainKey), requestSizeBytes: 1000, responseSizeBytes: 1000, retryCount: 0,
+                    usage: azureCalls === 1
+                        ? { input_tokens: 9000, output_tokens: 2000, total_tokens: 11000 }
+                        : { input_tokens: 100, output_tokens: 50, total_tokens: 150 }
+                };
+            }
+        },
+        logger: { info() {}, warn() {}, error() {} }, wait: async () => {},
+        config: { domainDelayMs: 0, maxTotalTokens: 10000, thresholdBatchMaxItems: 1 }
+    });
+
+    const result = await service.runEnterpriseReport({
+        companyId: 1, snapshotId: snapshot.ID, domainKeys: ['identity', 'applications'], includeSynthesis: false
+    });
+
+    assert.equal(result.domains[1].domainKey, 'applications');
+    assert.equal(result.domains[1].status, 'completed');
+    assert.equal(result.domains[1].batchInfo.totalBatches, 3);
+    assert.equal(result.domains[1].analysis.evidenceLimitations.recordsSent, 3);
+    assert.equal(result.domains[1].analysis.evidenceLimitations.recordsOmitted, 0);
+    assert.equal(azureCalls, 4);
+    assert.ok(result.domains[1].analysis.recommendations.every(item => item.affectedEntities.length && item.evidenceRows.length));
+    assert.equal(result.domains.some(domain => domain.status === 'skipped_token_threshold'), false);
+});
+
+test('Power BI read model returns full domain outputs, synthesis, raw labels, and evidence tables', async () => {
+    const run = { ID: 700, CompanyID: 1, SnapshotID: 500, PeriodType: 'weekly', PeriodStart: '2026-06-15', PeriodEnd: '2026-06-21', Status: 'completed', StartedAt: '2026-06-21T18:00:00Z' };
+    const domainRows = ENTERPRISE_DOMAINS.map((domain, index) => ({
+        ID: index + 1, CompanyID: 1, SnapshotID: 500, RunID: 700, DomainKey: domain.key, DomainName: domain.name,
+        PeriodType: 'weekly', PeriodStart: run.PeriodStart, PeriodEnd: run.PeriodEnd, Status: 'completed',
+        InputTokens: 100, OutputTokens: 50, TotalTokens: 150, RetryCount: 0, CreatedAt: run.StartedAt,
+        AnalysisJson: JSON.stringify({
+            domain: { key: domain.key, name: domain.name }, evidenceCatalog: { categories: [{ categoryKey: 'all', entities: [{ id: `${domain.key}-1` }] }] },
+            risks: [{ title: `${domain.name} risk`, sourceMetric: 'all', affectedEntities: [{ id: `${domain.key}-1` }], evidenceRows: [{ id: `${domain.key}-1` }] }],
+            recommendations: [{ title: 'Fix it', sourceMetric: 'all', affectedEntities: [{ id: `${domain.key}-1` }], evidenceRows: [{ id: `${domain.key}-1` }] }],
+            controlAssessment: [], trendAnalysis: [], batchInfo: { complete: true }, evidenceLimitations: { recordsSent: 1, recordsOmitted: 0 }
+        })
+    }));
+    const synthesis = {
+        ID: 800, CompanyID: 1, SnapshotID: 500, RunID: 700, PeriodType: 'weekly', PeriodStart: run.PeriodStart, PeriodEnd: run.PeriodEnd,
+        Status: 'completed', CreatedAt: run.StartedAt, ExecutiveSummaryJson: '{"summary":"Full synthesis"}', BoardReportJson: '{}', ManagementReportJson: '{}',
+        RiskRegisterJson: '[]', RecommendationsJson: '[]', TrendAnalysisJson: '[]', ComplianceReviewJson: '{}', GovernanceReviewJson: '{}',
+        DomainScorecardJson: '[]', MaturityAssessmentJson: '{}', TopDecisionsRequiredJson: '[]', Next30DaysPlanJson: '[]', Next90DaysPlanJson: '[]',
+        EvidenceJustificationJson: '{}', LimitationsJson: '[]', PowerBISummaryJson: '{}'
+    };
+    const snapshot = { ID: 500, CompanyID: 1, SnapshotType: 'weekly', CreatedAt: run.StartedAt, MetricsJson: '{"identity":{"totalUsers":1}}', ContextJson: JSON.stringify({ sources: [{ sourceKey: 'identity', evidence: [{ id: 'user-1' }] }] }) };
+    const pool = {
+        async query(sql) {
+            if (sql.includes('FROM StackCTRLEnterpriseReportRuns')) return [[run], []];
+            if (sql.includes('FROM StackCTRLTenantDomainIntelligence')) return [domainRows, []];
+            if (sql.includes('FROM StackCTRLEnterpriseSynthesis')) return [[synthesis], []];
+            if (sql.includes('FROM StackCTRLIntelligenceEvidenceAudit')) return [[], []];
+            if (sql.includes('FROM StackCTRLTenantEvidenceSnapshots')) return [[snapshot], []];
+            throw new Error(`Unexpected query: ${sql}`);
+        }
+    };
+    const service = createEnterpriseIntelligenceService({ pool, azureOpenAI: {}, schedulerService: {} });
+    const intelligence = await service.getPowerBIIntelligenceRun(1);
+    const raw = await service.getPowerBIRaw(1, 'identity');
+
+    assert.equal(intelligence.dataClassification, 'intelligent_azure_output');
+    assert.equal(intelligence.domains.length, 10);
+    assert.equal(intelligence.finalSynthesis.synthesisOutput.enterpriseExecutiveSummary.summary, 'Full synthesis');
+    assert.equal(intelligence.tables.AffectedEntityRows.length, 20);
+    assert.equal(intelligence.tables.EvidenceRows.length, 20);
+    assert.equal(raw.dataClassification, 'raw_non_intelligent_stackctrl');
+    assert.match(raw.warning, /not been analysed/i);
 });

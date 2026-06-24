@@ -29,6 +29,14 @@ test('admin audit shows input, omissions, Azure output depth, tokens, retries, a
     ]) assert.match(javascript, new RegExp(field));
 });
 
+test('admin audit exposes catalog, evidence, JSON recovery, and affected-entity diagnostics', () => {
+    for (const phrase of [
+        'Catalog Categories', 'Catalog Entity Rows', 'Evidence Rows Included', 'JSON status',
+        'Affected entities', 'Records remaining', 'Estimated tokens', 'Cooldown / retry',
+        'skipped_token_threshold', 'No safe batch was available'
+    ]) assert.match(html.includes(phrase) ? html : javascript, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+});
+
 test('admin enterprise UI uses clear batch labels and latest/history filters', () => {
     for (const phrase of [
         'Total StackCTRL Data',

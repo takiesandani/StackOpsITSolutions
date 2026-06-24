@@ -10,7 +10,7 @@ const { createPowerBIReportingRouter } = require('../routes/powerbi-reporting');
 
 const logger = { log() {}, warn() {}, error() {} };
 
-async function startApi({ apiKey = 'correct-reporting-key', query, testLogger = logger } = {}) {
+async function startApi({ apiKey = 'correct-reporting-key', query, testLogger = logger, enterpriseIntelligenceService = null } = {}) {
     const calls = [];
     const pool = {
         async query(sql, params = []) {
@@ -32,7 +32,7 @@ async function startApi({ apiKey = 'correct-reporting-key', query, testLogger = 
         secretCacheMs: 60000
     });
     const app = express();
-    app.use('/api/powerbi', createPowerBIReportingRouter({ reportingService: service, logger: testLogger }));
+    app.use('/api/powerbi', createPowerBIReportingRouter({ reportingService: service, enterpriseIntelligenceService, logger: testLogger }));
     const server = await new Promise(resolve => {
         const instance = app.listen(0, '127.0.0.1', () => resolve(instance));
     });
@@ -44,6 +44,37 @@ async function startApi({ apiKey = 'correct-reporting-key', query, testLogger = 
         close: () => new Promise(resolve => server.close(resolve))
     };
 }
+
+test('Power BI enterprise endpoints keep intelligent, raw, and flattened data clearly separated', async () => {
+    const enterpriseIntelligenceService = {
+        async getPowerBIIntelligenceRun() {
+            return { dataClassification: 'intelligent_azure_output', companyId: 1, latestSnapshotId: 2, latestRunId: 3, periodType: 'daily', tables: { EvidenceRows: [{ id: 1 }] } };
+        },
+        async getPowerBIDomain() { return { dataClassification: 'intelligent_azure_output', domain: { domainKey: 'identity', intelligenceOutput: { risks: [] } } }; },
+        async getPowerBIFinal() { return { dataClassification: 'intelligent_azure_output', finalSynthesis: { synthesisOutput: { boardReport: {} } } }; },
+        async getPowerBIHistory() { return { dataClassification: 'intelligent_azure_output', runs: [] }; },
+        async getPowerBIRaw() { return { dataClassification: 'raw_non_intelligent_stackctrl', warning: 'Raw StackCTRL evidence. This payload has not been analysed by Azure OpenAI.' }; }
+    };
+    const api = await startApi({ enterpriseIntelligenceService });
+    try {
+        const headers = { 'X-PowerBI-API-Key': 'correct-reporting-key' };
+        const [latest, domain, final, raw, tables] = await Promise.all([
+            fetch(`${api.baseUrl}/intelligence/latest/1`, { headers }).then(response => response.json()),
+            fetch(`${api.baseUrl}/intelligence/domain/1/identity`, { headers }).then(response => response.json()),
+            fetch(`${api.baseUrl}/intelligence/final/1`, { headers }).then(response => response.json()),
+            fetch(`${api.baseUrl}/raw/latest/1`, { headers }).then(response => response.json()),
+            fetch(`${api.baseUrl}/tables/latest/1`, { headers }).then(response => response.json())
+        ]);
+        assert.equal(latest.dataClassification, 'intelligent_azure_output');
+        assert.equal(domain.dataClassification, 'intelligent_azure_output');
+        assert.equal(final.dataClassification, 'intelligent_azure_output');
+        assert.equal(raw.dataClassification, 'raw_non_intelligent_stackctrl');
+        assert.equal(tables.dataClassification, 'derived_intelligence_tables');
+        assert.deepEqual(tables.tables.EvidenceRows, [{ id: 1 }]);
+    } finally {
+        await api.close();
+    }
+});
 
 test('missing and wrong API keys return 401', async () => {
     const api = await startApi();

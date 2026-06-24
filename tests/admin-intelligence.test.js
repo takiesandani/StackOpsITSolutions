@@ -163,7 +163,7 @@ test('enterprise domain list contains all 10 expected domain keys', async () => 
     
     assert.equal(domains.length, 10);
     
-    const expectedKeys = ['identity', 'devices', 'email_security', 'cloudflare_network_security', 'governance', 'compliance', 'security_alerts', 'operations', 'backup', 'applications'];
+    const expectedKeys = ['identity', 'devices', 'email_security', 'cloudflare_network_security', 'security_alerts', 'applications', 'backup', 'governance', 'operations', 'compliance'];
     const actualKeys = domains.map(d => d.key);
     assert.deepEqual(actualKeys, expectedKeys);
 });
@@ -190,12 +190,12 @@ test('enterprise domain list contains all 10 expected labels', async () => {
         'Device Protection',
         'Email Security',
         'Network Security / Cloudflare',
-        'Governance',
-        'Compliance Validation',
         'Security Alerts',
-        'Operations',
+        'Applications',
         'Backup and Recovery',
-        'Applications'
+        'Governance',
+        'Operations',
+        'Compliance Validation'
     ];
     const actualLabels = domains.map(d => d.name);
     assert.deepEqual(actualLabels, expectedLabels);

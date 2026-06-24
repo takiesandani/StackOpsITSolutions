@@ -20,7 +20,7 @@ function swaggerHtml() {
     Example: <code>https://stackopsit.co.za/api/powerbi/intelligence-summary?apiKey=&lt;POWERBI_KEY&gt;&amp;companyId=1&amp;limit=500</code><br>
     Operations and Applications health/risk fields are available from <code>intelligence-summary</code> and as domain rows from <code>domain-health</code>.
     Historical movement uses <code>Direction</code>, <code>PreviousHealthScore</code>, <code>PreviousRiskScore</code>, <code>ChangePercent</code>, and <code>ComparisonPeriod</code>.<br>
-    <strong>Enterprise Deep Reporting:</strong> Azure creates structured intelligence, not Power BI layouts. Use <code>domain-intelligence</code>, <code>domain-findings</code>, <code>domain-risks</code>, <code>domain-recommendations</code>, <code>domain-trends</code>, <code>domain-evidence-audit</code>, and <code>enterprise-synthesis</code> to build report visuals.</div>
+    <strong>Enterprise Deep Reporting:</strong> Azure creates structured intelligence, not Power BI layouts. Full JSON is available from <code>intelligence/latest/{companyId}</code>, <code>intelligence/domain/{companyId}/{domainKey}</code>, and <code>intelligence/final/{companyId}</code>. Raw, non-intelligent evidence is deliberately separate under <code>raw/</code>; table-friendly derived views are under <code>tables/</code>.</div>
     <div id="swagger-ui"></div>
     <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
     <script>
@@ -52,7 +52,7 @@ function redactRequestUrl(value) {
     }
 }
 
-function createPowerBIReportingRouter({ reportingService, logger = console } = {}) {
+function createPowerBIReportingRouter({ reportingService, enterpriseIntelligenceService = null, logger = console } = {}) {
     if (!reportingService) throw new Error('Power BI Reporting router requires the reporting service');
     const router = express.Router();
 
@@ -93,7 +93,20 @@ function createPowerBIReportingRouter({ reportingService, logger = console } = {
     });
 
     router.get('/', (_req, res) => {
-        res.json(reportingService.metadata());
+        const metadata = reportingService.metadata();
+        res.json({
+            ...metadata,
+            enterpriseJsonEndpoints: enterpriseIntelligenceService ? [
+                '/api/powerbi/intelligence/latest/{companyId}',
+                '/api/powerbi/intelligence/domain/{companyId}/{domainKey}',
+                '/api/powerbi/intelligence/final/{companyId}',
+                '/api/powerbi/intelligence/final/{companyId}/run/{runId}',
+                '/api/powerbi/intelligence/history/{companyId}',
+                '/api/powerbi/raw/latest/{companyId}',
+                '/api/powerbi/raw/domain/{companyId}/{domainKey}',
+                '/api/powerbi/tables/latest/{companyId}'
+            ] : []
+        });
     });
 
     router.get('/health', async (req, res) => {
@@ -104,6 +117,53 @@ function createPowerBIReportingRouter({ reportingService, logger = console } = {
             sendError(req, res, error);
         }
     });
+
+    if (enterpriseIntelligenceService) {
+        const options = req => ({
+            periodType: req.query?.periodType || null,
+            runId: req.query?.runId ? Number(req.query.runId) : null,
+            limit: req.query?.limit ? Number(req.query.limit) : undefined
+        });
+        const enterpriseRoute = handler => async (req, res) => {
+            try { res.json(await handler(req)); } catch (error) { sendError(req, res, error); }
+        };
+
+        router.get('/intelligence/latest/:companyId', enterpriseRoute(req =>
+            enterpriseIntelligenceService.getPowerBIIntelligenceRun(Number(req.params.companyId), options(req).runId, options(req))
+        ));
+        router.get('/intelligence/domain/:companyId/:domainKey', enterpriseRoute(req =>
+            enterpriseIntelligenceService.getPowerBIDomain(Number(req.params.companyId), req.params.domainKey, options(req))
+        ));
+        router.get('/intelligence/final/:companyId', enterpriseRoute(req =>
+            enterpriseIntelligenceService.getPowerBIFinal(Number(req.params.companyId), options(req).runId, options(req))
+        ));
+        router.get('/intelligence/final/:companyId/run/:runId', enterpriseRoute(req =>
+            enterpriseIntelligenceService.getPowerBIFinal(Number(req.params.companyId), Number(req.params.runId), options(req))
+        ));
+        router.get('/intelligence/history/:companyId', enterpriseRoute(req =>
+            enterpriseIntelligenceService.getPowerBIHistory(Number(req.params.companyId), options(req))
+        ));
+        router.get('/raw/latest/:companyId', enterpriseRoute(req =>
+            enterpriseIntelligenceService.getPowerBIRaw(Number(req.params.companyId))
+        ));
+        router.get('/raw/domain/:companyId/:domainKey', enterpriseRoute(req =>
+            enterpriseIntelligenceService.getPowerBIRaw(Number(req.params.companyId), req.params.domainKey)
+        ));
+        router.get('/tables/latest/:companyId', enterpriseRoute(async req => {
+            const result = await enterpriseIntelligenceService.getPowerBIIntelligenceRun(Number(req.params.companyId), options(req).runId, options(req));
+            return {
+                dataClassification: 'derived_intelligence_tables',
+                companyId: result.companyId,
+                snapshotId: result.latestSnapshotId,
+                runId: result.latestRunId,
+                periodType: result.periodType,
+                periodStart: result.periodStart,
+                periodEnd: result.periodEnd,
+                createdAt: result.createdAt,
+                tables: result.tables
+            };
+        }));
+    }
 
     router.get('/:dataset', async (req, res) => {
         try {

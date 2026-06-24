@@ -11860,7 +11860,8 @@ app.use('/api/admin/intelligence', createAdminIntelligenceRouter({
     enterpriseIntelligenceService
 }));
 app.use('/api/powerbi', createPowerBIReportingRouter({
-    reportingService: powerBIReportingService
+    reportingService: powerBIReportingService,
+    enterpriseIntelligenceService
 }));
 app.get('/admin/intelligence', (_req, res) => {
     res.set('Cache-Control', 'no-store');

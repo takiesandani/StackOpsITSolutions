@@ -131,6 +131,76 @@ function createAdminIntelligenceRouter({ authenticateToken, adminIntelligenceSer
         }
     });
 
+    router.get('/powerbi/intelligence/latest/:companyId', async (req, res) => {
+        try {
+            if (!requireEnterprise(res)) return;
+            const companyId = companyIdFrom(req, res); if (!companyId) return;
+            res.json({ success: true, ...(await enterpriseIntelligenceService.getPowerBIIntelligenceRun(companyId, req.query.runId || null, { periodType: req.query.periodType || null })) });
+        } catch (error) { sendError(res, error, 'Power BI intelligence lookup failed'); }
+    });
+
+    router.get('/powerbi/intelligence/domain/:companyId/:domainKey', async (req, res) => {
+        try {
+            if (!requireEnterprise(res)) return;
+            const companyId = companyIdFrom(req, res); if (!companyId) return;
+            res.json({ success: true, ...(await enterpriseIntelligenceService.getPowerBIDomain(companyId, req.params.domainKey, { runId: req.query.runId || null, periodType: req.query.periodType || null })) });
+        } catch (error) { sendError(res, error, 'Power BI domain intelligence lookup failed'); }
+    });
+
+    router.get('/powerbi/intelligence/final/:companyId', async (req, res) => {
+        try {
+            if (!requireEnterprise(res)) return;
+            const companyId = companyIdFrom(req, res); if (!companyId) return;
+            res.json({ success: true, ...(await enterpriseIntelligenceService.getPowerBIFinal(companyId, req.query.runId || null, { periodType: req.query.periodType || null })) });
+        } catch (error) { sendError(res, error, 'Power BI enterprise synthesis lookup failed'); }
+    });
+
+    router.get('/powerbi/intelligence/final/:companyId/run/:runId', async (req, res) => {
+        try {
+            if (!requireEnterprise(res)) return;
+            const companyId = companyIdFrom(req, res); if (!companyId) return;
+            res.json({ success: true, ...(await enterpriseIntelligenceService.getPowerBIFinal(companyId, Number(req.params.runId))) });
+        } catch (error) { sendError(res, error, 'Power BI enterprise synthesis run lookup failed'); }
+    });
+
+    router.get('/powerbi/intelligence/history/:companyId', async (req, res) => {
+        try {
+            if (!requireEnterprise(res)) return;
+            const companyId = companyIdFrom(req, res); if (!companyId) return;
+            res.json({ success: true, ...(await enterpriseIntelligenceService.getPowerBIHistory(companyId, { periodType: req.query.periodType || null, limit: req.query.limit })) });
+        } catch (error) { sendError(res, error, 'Power BI intelligence history lookup failed'); }
+    });
+
+    router.get('/powerbi/raw/latest/:companyId', async (req, res) => {
+        try {
+            if (!requireEnterprise(res)) return;
+            const companyId = companyIdFrom(req, res); if (!companyId) return;
+            res.json({ success: true, ...(await enterpriseIntelligenceService.getPowerBIRaw(companyId)) });
+        } catch (error) { sendError(res, error, 'Power BI raw StackCTRL lookup failed'); }
+    });
+
+    router.get('/powerbi/raw/domain/:companyId/:domainKey', async (req, res) => {
+        try {
+            if (!requireEnterprise(res)) return;
+            const companyId = companyIdFrom(req, res); if (!companyId) return;
+            res.json({ success: true, ...(await enterpriseIntelligenceService.getPowerBIRaw(companyId, req.params.domainKey)) });
+        } catch (error) { sendError(res, error, 'Power BI raw domain lookup failed'); }
+    });
+
+    router.get('/powerbi/tables/latest/:companyId', async (req, res) => {
+        try {
+            if (!requireEnterprise(res)) return;
+            const companyId = companyIdFrom(req, res); if (!companyId) return;
+            const result = await enterpriseIntelligenceService.getPowerBIIntelligenceRun(companyId, req.query.runId || null, { periodType: req.query.periodType || null });
+            res.json({
+                success: true, dataClassification: 'derived_intelligence_tables', companyId,
+                snapshotId: result.latestSnapshotId, runId: result.latestRunId,
+                periodType: result.periodType, periodStart: result.periodStart, periodEnd: result.periodEnd,
+                createdAt: result.createdAt, tables: result.tables
+            });
+        } catch (error) { sendError(res, error, 'Power BI flattened table lookup failed'); }
+    });
+
     router.post('/tenant/:companyId/enterprise/run', async (req, res) => {
         try {
             if (!requireEnterprise(res)) return;

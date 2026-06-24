@@ -285,15 +285,27 @@
 
     function batchDetailsHtml(batches) {
         if (!batches.length) return '<div class="enterprise-batch-empty">No batch details stored for this domain.</div>';
-        return `<details class="enterprise-batch-details"><summary>Batches · ${number(batches.filter(batch => batch.Status === 'completed').length)} / ${number(batches.length)} completed</summary><div>${batches.map(batch => {
+        return `<details class="enterprise-batch-details"><summary>Batches · ${number(batches.filter(batch => ['completed', 'completed_with_warnings'].includes(batch.Status)).length)} / ${number(batches.length)} completed</summary><div>${batches.map(batch => {
             const batchSummary = batch.BatchSummaryJson || {};
             const repaired = batchSummary.jsonRepaired ? 'yes' : 'no';
             const retryMinutes = minutesFromMs(batchSummary.recommendedRetryAfterMs);
-            return `<section><header><strong>Batch ${number(batch.BatchNumber)}</strong>${statusBadge(batch.Status)}</header><div class="enterprise-domain-meta"><span>Items ${number(batch.BatchItemCount)}</span><span>Records sent ${number(batchSummary.recordsSent ?? batch.BatchItemCount)}</span><span>Input size ${bytes(batch.InputSizeBytes)}</span><span>Input tokens ${number(batch.InputTokens)}</span><span>Output tokens ${number(batch.OutputTokens)}</span><span>Retries ${number(batch.RetryCount)}</span><span>Finish ${escapeHtml(batch.AzureFinishReason || '—')}</span><span>JSON repaired ${repaired}</span>${retryMinutes ? `<span>Retry after ${number(retryMinutes)} min</span>` : ''}</div>${batch.ErrorMessage ? `<p class="enterprise-error">${escapeHtml(batch.ErrorMessage)}</p>` : ''}</section>`;
+            return `<section><header><strong>Batch ${number(batch.BatchNumber)} / ${number(batch.BatchCount)}</strong>${statusBadge(batch.Status)}</header><div class="enterprise-domain-meta"><span>Items ${number(batch.BatchItemCount)}</span><span>Records sent ${number(batchSummary.recordsSent ?? batch.BatchItemCount)}</span><span>Records remaining ${number(batchSummary.recordsRemaining ?? batch.RemainingAfterBatch)}</span><span>Records omitted ${number(batchSummary.recordsOmitted ?? batch.OmittedFromThisBatch)}</span><span>Estimated tokens ${number(batchSummary.estimatedInputTokens)}</span><span>Actual input ${number(batchSummary.actualInputTokens ?? batch.InputTokens)}</span><span>Actual output ${number(batchSummary.actualOutputTokens ?? batch.OutputTokens)}</span><span>Total tokens ${number(batch.TotalTokens)}</span><span>Threshold ${number(batchSummary.thresholdUsed)}</span><span>Retries ${number(batch.RetryCount)}</span><span>Finish ${escapeHtml(batch.AzureFinishReason || '—')}</span><span>JSON status ${escapeHtml(batchSummary.jsonRepaired ? `recovered (${batchSummary.jsonRepairMethod || 'repair'})` : 'valid')}</span><span>Cooldown / retry ${batchSummary.retryOrCooldownOccurred ? 'yes' : 'no'}</span>${retryMinutes ? `<span>Retry after ${number(retryMinutes)} min</span>` : ''}</div>${batch.FailureReason ? `<p class="enterprise-error">Omission / failure reason: ${escapeHtml(batch.FailureReason)}</p>` : ''}${batch.ErrorMessage ? `<p class="enterprise-error">${escapeHtml(batch.ErrorMessage)}</p>` : ''}</section>`;
         }).join('')}</div></details>`;
     }
 
+    function affectedEntityCount(analysis = {}) {
+        return ['keyFindings', 'risks', 'recommendations', 'managementActions', 'trendAnalysis']
+            .flatMap(section => arrayValue(analysis?.[section]))
+            .reduce((total, item) => total + arrayValue(item?.affectedEntities).length, 0);
+    }
+
     function rateLimitGuidance(row, batches = []) {
+        if (row?.Status === 'skipped_token_threshold') {
+            const summary = batches[0]?.BatchSummaryJson || row?.AzureInputSummaryJson?.tokenTracking || {};
+            const prepared = row?.EvidenceIncludedCount ?? row?.StackCTRLDataCount ?? 0;
+            const analysed = row?.SentToAzureCount ?? 0;
+            return `<div class="enterprise-error">Token threshold ${number(summary.thresholdUsed)} was reached. Prepared ${number(prepared)} record(s); analysed ${number(analysed)}. No safe batch was available. Retry this domain independently after the token window resets.</div>`;
+        }
         if (row?.Status !== 'failed_rate_limited' && !batches.some(batch => batch.Status === 'failed_rate_limited')) return '';
         const retryMs = batches.map(batch => batch.BatchSummaryJson?.recommendedRetryAfterMs).find(Boolean);
         const retryMinutes = minutesFromMs(retryMs);
@@ -774,7 +786,7 @@
         const rateLimitMinutes = minutesFromMs(progress.rateLimit?.retryAfterMs);
         const reportReady = Boolean(synthesis) && ['completed', 'completed_with_warnings'].includes(String(synthesis.Status || ''));
         const snapshotFreshness = progress.snapshotCreatedAt ? dateTime(progress.snapshotCreatedAt) : dateTime(latestRun.StartedAt);
-        const completedCount = counts.successful ?? queue.filter(item => item.status === 'completed').length;
+        const completedCount = counts.successful ?? queue.filter(item => ['completed', 'completed_with_warnings', 'partial'].includes(item.status)).length;
         const failedCount = counts.failed ?? queue.filter(item => String(item.status || '').startsWith('failed')).length;
         const blockedCount = counts.blocked ?? queue.filter(item => String(item.status || '').startsWith('blocked')).length;
         const skippedCount = counts.skipped ?? queue.filter(item => /skipped/.test(String(item.status || ''))).length;
@@ -850,8 +862,8 @@
 
         if (latestRun) {
             const latestRunDomains = (enterprise.domainIntelligence || []).filter(row => Number(row.RunID) === Number(latestRun.ID));
-            const completedDomains = latestRunDomains.filter(row => row.Status === 'completed').length;
-            const completedBatches = (enterprise.batches || []).filter(row => Number(row.RunID) === Number(latestRun.ID) && row.Status === 'completed').length;
+            const completedDomains = latestRunDomains.filter(row => ['completed', 'completed_with_warnings', 'partial'].includes(row.Status)).length;
+            const completedBatches = (enterprise.batches || []).filter(row => Number(row.RunID) === Number(latestRun.ID) && ['completed', 'completed_with_warnings'].includes(row.Status)).length;
             const totalBatches = (enterprise.batches || []).filter(row => Number(row.RunID) === Number(latestRun.ID)).length;
             const currentDomain = primaryDomain.domainKey
                 ? latestRunDomains.find(row => row.DomainKey === primaryDomain.domainKey) || primaryDomain.row
@@ -876,13 +888,15 @@
 
         el('enterprise-audit-body').innerHTML = audits.length ? audits.map(row => {
             const domainBatches = batchesByDomainRun.get(`${row.RunID}:${row.DomainKey}`) || [];
-            const completed = domainBatches.filter(batch => batch.Status === 'completed').length;
+            const completed = domainBatches.filter(batch => ['completed', 'completed_with_warnings'].includes(batch.Status)).length;
             const failed = domainBatches.filter(batch => isFailureStatus(batch.Status)).length;
             const totalItems = Number(row.EvidenceIncludedCount ?? row.StackCTRLDataCount ?? 0);
-            const completedItems = domainBatches.filter(batch => batch.Status === 'completed').reduce((total, batch) => total + Number(batch.BatchItemCount || 0), 0);
+            const completedItems = domainBatches.filter(batch => ['completed', 'completed_with_warnings'].includes(batch.Status)).reduce((total, batch) => total + Number(batch.BatchItemCount || 0), 0);
             const remaining = Math.max(0, totalItems - completedItems);
-            return `<tr><td><button type="button" class="output-open" data-enterprise-audit-index="${(enterprise.evidenceAudit || []).indexOf(row)}">${escapeHtml(enterpriseDomainDisplayName(row.DomainKey, row))}</button><small>${escapeHtml(row.DomainKey)} · Run #${number(row.RunID)} · Snapshot #${number(row.SnapshotID)} · ${dateTime(row.CreatedAt)}</small>${rateLimitGuidance(row, domainBatches)}</td><td>${number(row.StackCTRLDataCount)}</td><td>${number(row.EvidenceIncludedCount ?? row.StackCTRLDataCount)}</td><td>${number(row.SentToAzureCount)}</td><td>${number(row.OmittedCount)}</td><td>${number(domainBatches[0]?.BatchCount || domainBatches.length)}</td><td>${number(completed)}</td><td>${number(failed)}</td><td>${number(remaining)}</td><td>${number(row.InputTokens)}</td><td>${number(row.OutputTokens)}</td><td>${number(row.RetryCount)}</td><td>${statusBadge(row.Status)}</td></tr>`;
-        }).join('') : '<tr><td colspan="13" class="empty-cell">No enterprise evidence audit rows match the current filters.</td></tr>';
+            const tokenTracking = row.AzureInputSummaryJson?.tokenTracking || {};
+            const jsonStatus = row.AzureInputSummaryJson?.jsonStatus || (domainBatches.some(batch => batch.BatchSummaryJson?.jsonRepaired) ? 'recovered_with_warnings' : 'valid');
+            return `<tr><td><button type="button" class="output-open" data-enterprise-audit-index="${(enterprise.evidenceAudit || []).indexOf(row)}">${escapeHtml(enterpriseDomainDisplayName(row.DomainKey, row))}</button><small>${escapeHtml(row.DomainKey)} · Run #${number(row.RunID)} · Snapshot #${number(row.SnapshotID)} · ${dateTime(row.CreatedAt)}</small>${rateLimitGuidance(row, domainBatches)}</td><td>${number(row.StackCTRLDataCount)}</td><td>${number(row.EvidenceIncludedCount ?? row.StackCTRLDataCount)}</td><td>${number(row.SentToAzureCount)}</td><td>${number(row.OmittedCount)}</td><td>${number(tokenTracking.catalogCategoryCount)}</td><td>${number(tokenTracking.catalogEntityCount)}</td><td>${number(tokenTracking.evidenceRowsIncluded ?? row.SentToAzureCount)}</td><td>${number(domainBatches[0]?.BatchCount || domainBatches.length)}</td><td>${number(completed)}</td><td>${number(failed)}</td><td>${number(remaining)}</td><td>${number(row.InputTokens)}</td><td>${number(row.OutputTokens)}</td><td>${number(Number(row.InputTokens || 0) + Number(row.OutputTokens || 0))}</td><td>${escapeHtml(statusLabel(jsonStatus))}</td><td>${number(row.RetryCount)}</td><td>${statusBadge(row.Status)}</td></tr>`;
+        }).join('') : '<tr><td colspan="18" class="empty-cell">No enterprise evidence audit rows match the current filters.</td></tr>';
 
         const lineageDomain = primaryDomain.domainKey
             ? domainRows.find(row => row.DomainKey === primaryDomain.domainKey) || null
@@ -905,7 +919,7 @@
         `).join('') : '<tr><td colspan="6" class="empty-cell">No run-scoped lineage comparison loaded.</td></tr>';
 
         el('enterprise-domain-results').innerHTML = domainRows.length ? domainRows.slice(0, 20).map(row => `
-            <div class="enterprise-result-item ${isFailureStatus(row.Status) ? 'is-failed' : ''}"><header><strong>${escapeHtml(row.DomainName || row.DomainKey)}</strong>${statusBadge(row.Status)}</header><p>${escapeHtml(row.DomainExecutiveSummary || row.ErrorMessage || 'No domain executive summary returned.')}</p>${row.ErrorMessage ? `<div class="enterprise-error">${escapeHtml(row.ErrorMessage)}</div>` : ''}${rateLimitGuidance(row, batchesByDomainRun.get(`${row.RunID}:${row.DomainKey}`) || [])}<div class="enterprise-domain-meta"><span>Run #${number(row.RunID)}</span><span>Snapshot #${number(row.SnapshotID)}</span><span>Health ${escapeHtml(row.HealthScore ?? '—')}</span><span>Risk ${escapeHtml(row.RiskScore ?? '—')}</span><span>Total StackCTRL Data ${number((enterprise.evidenceAudit || []).find(audit => audit.RunID === row.RunID && audit.DomainKey === row.DomainKey)?.StackCTRLDataCount)}</span><span>Prepared for Azure ${number((enterprise.evidenceAudit || []).find(audit => audit.RunID === row.RunID && audit.DomainKey === row.DomainKey)?.EvidenceIncludedCount)}</span><span>Successfully Analysed ${number((enterprise.evidenceAudit || []).find(audit => audit.RunID === row.RunID && audit.DomainKey === row.DomainKey)?.SentToAzureCount)}</span><span>Permanently Omitted ${number((enterprise.evidenceAudit || []).find(audit => audit.RunID === row.RunID && audit.DomainKey === row.DomainKey)?.OmittedCount)}</span><span>Input ${number(row.InputTokens)}</span><span>Output ${number(row.OutputTokens)}</span><span>Created ${dateTime(row.CreatedAt)}</span></div>${batchDetailsHtml(batchesByDomainRun.get(`${row.RunID}:${row.DomainKey}`) || [])}<button type="button" class="output-open" data-enterprise-domain-index="${(enterprise.domainIntelligence || []).indexOf(row)}">View Azure output</button>${isFailureStatus(row.Status) ? `<button type="button" class="output-open" data-retry-domain="${escapeHtml(row.DomainKey)}">Retry failed domain</button>` : ''}</div>
+            <div class="enterprise-result-item ${isFailureStatus(row.Status) ? 'is-failed' : ''}"><header><strong>${escapeHtml(row.DomainName || row.DomainKey)}</strong>${statusBadge(row.Status)}</header><p>${escapeHtml(row.DomainExecutiveSummary || row.ErrorMessage || 'No domain executive summary returned.')}</p>${row.ErrorMessage ? `<div class="enterprise-error">${escapeHtml(row.ErrorMessage)}</div>` : ''}${rateLimitGuidance(row, batchesByDomainRun.get(`${row.RunID}:${row.DomainKey}`) || [])}<div class="enterprise-domain-meta"><span>Run #${number(row.RunID)}</span><span>Snapshot #${number(row.SnapshotID)}</span><span>Health ${escapeHtml(row.HealthScore ?? '—')}</span><span>Risk ${escapeHtml(row.RiskScore ?? '—')}</span><span>Total StackCTRL Data ${number((enterprise.evidenceAudit || []).find(audit => audit.RunID === row.RunID && audit.DomainKey === row.DomainKey)?.StackCTRLDataCount)}</span><span>Prepared for Azure ${number((enterprise.evidenceAudit || []).find(audit => audit.RunID === row.RunID && audit.DomainKey === row.DomainKey)?.EvidenceIncludedCount)}</span><span>Successfully Analysed ${number((enterprise.evidenceAudit || []).find(audit => audit.RunID === row.RunID && audit.DomainKey === row.DomainKey)?.SentToAzureCount)}</span><span>Permanently Omitted ${number((enterprise.evidenceAudit || []).find(audit => audit.RunID === row.RunID && audit.DomainKey === row.DomainKey)?.OmittedCount)}</span><span>Affected entities ${number(affectedEntityCount(row.AnalysisJson))}</span><span>Input ${number(row.InputTokens)}</span><span>Output ${number(row.OutputTokens)}</span><span>Created ${dateTime(row.CreatedAt)}</span></div>${batchDetailsHtml(batchesByDomainRun.get(`${row.RunID}:${row.DomainKey}`) || [])}<button type="button" class="output-open" data-enterprise-domain-index="${(enterprise.domainIntelligence || []).indexOf(row)}">View Azure output</button>${isFailureStatus(row.Status) ? `<button type="button" class="output-open" data-retry-domain="${escapeHtml(row.DomainKey)}">Retry failed domain</button>` : ''}</div>
         `).join('') : '<div class="empty-state">No stored domain intelligence loaded.</div>';
 
         const synthesis = synthesisRows[0];
