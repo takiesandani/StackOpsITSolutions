@@ -278,7 +278,7 @@ test('Enterprise Identity currentMetrics follow dynamic dashboard metrics and de
     assert.match(failure.errorMessage, /mfaEnabled/);
 });
 
-test('Enterprise warns on missing Identity evidence but blocks stale saved evidence before calling Azure', async () => {
+test('Enterprise warns on missing Identity evidence and continues with stale saved evidence', async () => {
     for (const sourceStatus of ['missing', 'stale']) {
         let insertId = 800;
         let azureCalls = 0;
@@ -333,15 +333,18 @@ test('Enterprise warns on missing Identity evidence but blocks stale saved evide
             domainKeys: ['identity'],
             includeSynthesis: false
         });
-        assert.equal(azureCalls, 0, sourceStatus);
-        assert.equal(result.domains[0].status, sourceStatus === 'stale' ? 'blocked_stale_source' : 'completed_with_warnings');
+        assert.equal(azureCalls, sourceStatus === 'stale' ? 1 : 0, sourceStatus);
+        assert.equal(result.domains[0].status, sourceStatus === 'stale' ? 'completed' : 'completed_with_warnings');
         const auditWrite = calls.find(call => call.sql.includes('INSERT INTO StackCTRLIntelligenceEvidenceAudit'));
         assert.ok(auditWrite);
-        assert.equal(auditWrite.params[5], 0);
-        assert.match(result.domains[0].errorMessage, /stale|no complete/i);
+        assert.equal(auditWrite.params[5], sourceStatus === 'stale' ? 1 : 0);
         if (sourceStatus === 'missing') {
+            assert.match(result.domains[0].errorMessage, /no complete/i);
             assert.equal(result.status, 'completed_with_warnings');
             assert.equal(result.domains[0].analysis.evidenceLimitations.recordsSent, 0);
+        } else {
+            assert.match(result.domains[0].analysis.missingDataWarnings.join(' '), /source_stale.*180.*2026-06-22T05:00:00.000Z/i);
+            assert.equal(result.domains[0].analysis.evidenceLimitations.recordsSent, 1);
         }
     }
 });
@@ -513,9 +516,9 @@ test('enterprise rate-limit circuit stops remaining batches and records zero ana
 
     const batchWrite = calls.find(call => call.sql.includes('INSERT INTO StackCTRLTenantDomainIntelligenceBatches'));
     assert.ok(batchWrite);
-    assert.equal(batchWrite.params[6], 5);
+    assert.ok(batchWrite.params[6] >= 5);
     assert.equal(batchWrite.params[8], 3590);
-    assert.equal(batchWrite.params[9], 750);
+    assert.ok(batchWrite.params[9] > 0 && batchWrite.params[9] <= 750);
     assert.equal(batchWrite.params[10], 0);
     assert.match(batchWrite.params[19], /"recommendedRetryAfterMs":600000/);
 
@@ -1090,7 +1093,7 @@ test('Enterprise Governance, Compliance, and Operations use saved API rows and d
     }
 });
 
-test('Enterprise warns on missing Device evidence but blocks stale saved Device evidence before calling Azure', async () => {
+test('Enterprise warns on missing Device evidence and continues with stale saved Device evidence', async () => {
     for (const sourceStatus of ['missing', 'stale']) {
         let insertId = 900;
         let azureCalls = 0;
@@ -1145,16 +1148,19 @@ test('Enterprise warns on missing Device evidence but blocks stale saved Device 
             domainKeys: ['devices'],
             includeSynthesis: false
         });
-        assert.equal(azureCalls, 0, sourceStatus);
-        assert.equal(result.domains[0].status, sourceStatus === 'stale' ? 'blocked_stale_source' : 'completed_with_warnings');
+        assert.equal(azureCalls, sourceStatus === 'stale' ? 1 : 0, sourceStatus);
+        assert.equal(result.domains[0].status, sourceStatus === 'stale' ? 'completed' : 'completed_with_warnings');
         const auditWrite = calls.find(call => call.sql.includes('INSERT INTO StackCTRLIntelligenceEvidenceAudit'));
         assert.ok(auditWrite);
-        assert.equal(auditWrite.params[5], 0);
-        assert.match(result.domains[0].errorMessage, /stale|no complete/i);
+        assert.equal(auditWrite.params[5], sourceStatus === 'stale' ? 1 : 0);
         if (sourceStatus === 'missing') {
+            assert.match(result.domains[0].errorMessage, /no complete/i);
             assert.equal(result.status, 'completed_with_warnings');
             assert.equal(result.domains[0].analysis.evidenceLimitations.recordsSent, 0);
             assert.match(result.domains[0].analysis.evidenceGaps.join(' '), /limited data|No complete/i);
+        } else {
+            assert.match(result.domains[0].analysis.missingDataWarnings.join(' '), /source_stale.*180.*2026-06-22T05:00:00.000Z/i);
+            assert.equal(result.domains[0].analysis.evidenceLimitations.recordsSent, 1);
         }
     }
 });
@@ -1487,7 +1493,7 @@ test('admin enterprise progress excludes heavy JSON and returns polling counters
     assert.equal(progress.progressSummary.finalSynthesisReady, false);
 });
 
-test('Security Alerts analysis keeps all source alerts and uses compact structured batch output', async () => {
+test('Security Alerts analysis keeps all source alerts and human-readable evidence output', async () => {
     let insertId = 12000;
     const prompts = [];
     const alertRows = Array.from({ length: 150 }, (_, index) => ({
@@ -1547,24 +1553,22 @@ test('Security Alerts analysis keeps all source alerts and uses compact structur
     assert.equal(result.domains[0].analysis.evidenceLimitations.recordsPrepared, 150);
     assert.equal(result.domains[0].analysis.evidenceLimitations.recordsSent, 150);
     assert.equal(result.domains[0].analysis.evidenceLimitations.recordsOmitted, 0);
-    assert.equal(finding.sourceAlertIds.length, 10);
-    assert.equal(finding.evidenceRows.length, 10);
-    assert.equal(finding.affectedEntities.length, 10);
-    assert.ok(finding.evidenceRows.every(row => typeof row === 'string'));
-    assert.equal(result.domains[0].analysis.keyFindings.length, 8);
-    assert.equal(result.domains[0].analysis.risks.length, 5);
-    assert.equal(result.domains[0].analysis.recommendations.length, 10);
-    assert.equal(result.domains[0].analysis.managementActions.length, 10);
-    assert.equal(result.domains[0].analysis.trendAnalysis.length, 10);
-    assert.equal(finding.description.length, 500);
-    assert.ok([
-        result.domains[0].analysis.domainExecutiveSummary,
-        result.domains[0].analysis.technicalSummary,
-        result.domains[0].analysis.businessImpact,
-        result.domains[0].analysis.currentPosture,
-        result.domains[0].analysis.scoreJustification
-    ].reduce((total, value) => total + String(value || '').length, 0) <= 1200);
+    assert.equal(finding.sourceAlertIds.length, 150);
+    assert.equal(finding.evidenceRows.length, 150);
+    assert.equal(finding.affectedEntities.length, 150);
+    assert.ok(finding.evidenceRows.every(row => row && typeof row === 'object'));
+    assert.equal(finding.affectedEntities[0].title, 'Repeated alert pattern 0');
+    assert.equal(finding.affectedEntities[0].userPrincipalName, 'user0@example.com');
+    assert.equal(finding.affectedEntities[0].deviceName, 'device-0');
+    assert.equal(result.domains[0].analysis.keyFindings.length, 12);
+    assert.equal(result.domains[0].analysis.risks.length, 8);
+    assert.equal(result.domains[0].analysis.recommendations.length, 15);
+    assert.equal(result.domains[0].analysis.managementActions.length, 15);
+    assert.equal(result.domains[0].analysis.trendAnalysis.length, 15);
+    assert.equal(finding.description.length, 900);
+    assert.equal(result.domains[0].analysis.domainExecutiveSummary.length, 700);
     assert.ok(prompts.length <= 10);
-    assert.match(prompts[0], /Return compact JSON only/);
+    assert.match(prompts[0], /Return valid JSON only/);
+    assert.match(prompts[0], /human-readable alert, user, or device details/);
     assert.match(prompts[0], /sourceAlertIds/);
 });

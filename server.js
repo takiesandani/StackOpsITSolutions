@@ -85,6 +85,7 @@ function getTenantByEmail(email) {
 const microsoftTokenCache = new Map();
 let microsoftGraphCredentialsCache = null;
 let microsoftGraphCredentialsPromise = null;
+let microsoftGraphTokenPromise = null;
 let microsoftGraphStartupWarningShown = false;
 const MICROSOFT_GRAPH_CREDENTIAL_TIMEOUT_MS = Math.max(3000, Number(process.env.MICROSOFT_GRAPH_CREDENTIAL_TIMEOUT_MS) || 12000);
 const MICROSOFT_GRAPH_TOKEN_TIMEOUT_MS = Math.max(3000, Number(process.env.MICROSOFT_GRAPH_TOKEN_TIMEOUT_MS) || 12000);
@@ -210,56 +211,66 @@ async function validateMicrosoftGraphCredentialsAtStartup() {
 }
 
 async function getMicrosoftGraphToken(options = {}) {
+  const cacheKey = 'microsoft_graph_token';
+  const cachedToken = microsoftTokenCache.get(cacheKey);
+  if (cachedToken && cachedToken.expiresAt > Date.now()) {
+    console.log('[Microsoft Graph] Using cached token');
+    return cachedToken.token;
+  }
+  if (microsoftGraphTokenPromise) {
+    console.log('[Microsoft Graph] Reusing token request already in progress');
+    return microsoftGraphTokenPromise;
+  }
+
+  const load = (async () => {
+    try {
+      const { tenantId, clientId, clientSecret } = await getMicrosoftGraphCredentials({ securityAlerts: Boolean(options.securityAlerts) });
+      console.log('[Microsoft Graph] Requesting new token...');
+      const tokenUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
+      const controller = new AbortController();
+      const timeoutHandle = setTimeout(() => controller.abort(), MICROSOFT_GRAPH_TOKEN_TIMEOUT_MS);
+      let response;
+      try {
+        response = await fetch(tokenUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            client_id: clientId,
+            scope: 'https://graph.microsoft.com/.default',
+            client_secret: clientSecret,
+            grant_type: 'client_credentials'
+          }).toString(),
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timeoutHandle);
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`Token request failed: ${errorData.error_description || response.statusText}`);
+      }
+
+      const data = await response.json();
+      const expiresInMs = Math.max(60, Number(data.expires_in) || 3600) * 1000;
+      microsoftTokenCache.set(cacheKey, {
+        token: data.access_token,
+        expiresAt: Date.now() + expiresInMs - 60000
+      });
+      console.log('[Microsoft Graph] Token obtained successfully');
+      return data.access_token;
+    } catch (error) {
+      console.error('[Microsoft Graph] Token generation failed:', error.message);
+      if (!error.code && error.name === 'AbortError') error.code = 'GRAPH_TOKEN_TIMEOUT';
+      throw error;
+    }
+  })();
+
+  microsoftGraphTokenPromise = load;
   try {
-    // Check cache (valid for 30 minutes)
-    const cacheKey = 'microsoft_graph_token';
-    const cachedToken = microsoftTokenCache.get(cacheKey);
-    if (cachedToken && cachedToken.expiresAt > Date.now()) {
-      console.log('[Microsoft Graph] Using cached token');
-      return cachedToken.token;
-    }
-
-    const { tenantId, clientId, clientSecret } = await getMicrosoftGraphCredentials({ securityAlerts: Boolean(options.securityAlerts) });
-
-    console.log('[Microsoft Graph] Requesting new token...');
-    const tokenUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
-    const controller = new AbortController();
-    const timeoutHandle = setTimeout(() => controller.abort(), MICROSOFT_GRAPH_TOKEN_TIMEOUT_MS);
-    const response = await fetch(tokenUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: new URLSearchParams({
-        client_id: clientId,
-        scope: 'https://graph.microsoft.com/.default',
-        client_secret: clientSecret,
-        grant_type: 'client_credentials'
-      }).toString(),
-      signal: controller.signal
-    });
-    clearTimeout(timeoutHandle);
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Token request failed: ${errorData.error_description || response.statusText}`);
-    }
-
-    const data = await response.json();
-    const expiresAt = Date.now() + (data.expires_in * 1000) - 60000; // Cache for 1 minute less
-
-    // Store in cache
-    microsoftTokenCache.set(cacheKey, {
-      token: data.access_token,
-      expiresAt: expiresAt
-    });
-
-    console.log('[Microsoft Graph] Token obtained successfully');
-    return data.access_token;
-  } catch (error) {
-    console.error('[Microsoft Graph] Token generation failed:', error.message);
-    if (!error.code && error.name === 'AbortError') error.code = 'GRAPH_TOKEN_TIMEOUT';
-    throw error;
+    return await load;
+  } finally {
+    if (microsoftGraphTokenPromise === load) microsoftGraphTokenPromise = null;
   }
 }
 
@@ -12030,7 +12041,7 @@ const identityEvidenceAutomation = createIdentityEvidenceAutomation({
     },
     enabled: !['false', '0', 'no'].includes(String(process.env.IDENTITY_EVIDENCE_COLLECTION_ENABLED || 'true').toLowerCase()),
     intervalMs: process.env.IDENTITY_EVIDENCE_COLLECTION_INTERVAL_MS || (30 * 60 * 1000),
-    startupDelayMs: process.env.IDENTITY_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (30 * 1000)
+    startupDelayMs: process.env.IDENTITY_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (5 * 60 * 1000)
 });
 deviceEvidenceService = createDeviceEvidenceStore({ pool });
 const deviceEvidenceSchemaReady = deviceEvidenceService.ensureSchema().catch(error => {
@@ -12045,7 +12056,7 @@ const deviceEvidenceAutomation = createDeviceEvidenceAutomation({
     },
     enabled: !['false', '0', 'no'].includes(String(process.env.DEVICE_EVIDENCE_COLLECTION_ENABLED || 'true').toLowerCase()),
     intervalMs: process.env.DEVICE_EVIDENCE_COLLECTION_INTERVAL_MS || (30 * 60 * 1000),
-    startupDelayMs: process.env.DEVICE_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (30 * 1000)
+    startupDelayMs: process.env.DEVICE_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (7 * 60 * 1000)
 });
 emailEvidenceService = createEmailEvidenceStore({ pool });
 const emailEvidenceSchemaReady = emailEvidenceService.ensureSchema().catch(error => {
@@ -12060,7 +12071,7 @@ const emailEvidenceAutomation = createEmailEvidenceAutomation({
     },
     enabled: !['false', '0', 'no'].includes(String(process.env.EMAIL_EVIDENCE_COLLECTION_ENABLED || 'true').toLowerCase()),
     intervalMs: process.env.EMAIL_EVIDENCE_COLLECTION_INTERVAL_MS || (60 * 60 * 1000),
-    startupDelayMs: process.env.EMAIL_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (45 * 1000)
+    startupDelayMs: process.env.EMAIL_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (9 * 60 * 1000)
 });
 networkEvidenceService = createNetworkEvidenceStore({ pool });
 const networkEvidenceSchemaReady = networkEvidenceService.ensureSchema().catch(error => {
@@ -12075,7 +12086,7 @@ const networkEvidenceAutomation = createNetworkEvidenceAutomation({
     },
     enabled: !['false', '0', 'no'].includes(String(process.env.NETWORK_EVIDENCE_COLLECTION_ENABLED || 'true').toLowerCase()),
     intervalMs: process.env.NETWORK_EVIDENCE_COLLECTION_INTERVAL_MS || (60 * 60 * 1000),
-    startupDelayMs: process.env.NETWORK_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (60 * 1000)
+    startupDelayMs: process.env.NETWORK_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (11 * 60 * 1000)
 });
 backupEvidenceService = createBackupEvidenceStore({ pool });
 const backupEvidenceSchemaReady = backupEvidenceService.ensureSchema().catch(error => {
@@ -12090,7 +12101,7 @@ const backupEvidenceAutomation = createBackupEvidenceAutomation({
     },
     enabled: !['false', '0', 'no'].includes(String(process.env.BACKUP_EVIDENCE_COLLECTION_ENABLED || 'true').toLowerCase()),
     intervalMs: process.env.BACKUP_EVIDENCE_COLLECTION_INTERVAL_MS || (6 * 60 * 60 * 1000),
-    startupDelayMs: process.env.BACKUP_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (75 * 1000)
+    startupDelayMs: process.env.BACKUP_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (13 * 60 * 1000)
 });
 applicationsEvidenceService = createApplicationsEvidenceStore({ pool });
 const applicationsEvidenceSchemaReady = applicationsEvidenceService.ensureSchema().catch(error => {
@@ -12105,7 +12116,7 @@ const applicationsEvidenceAutomation = createApplicationsEvidenceAutomation({
     },
     enabled: !['false', '0', 'no'].includes(String(process.env.APPLICATIONS_EVIDENCE_COLLECTION_ENABLED || 'true').toLowerCase()),
     intervalMs: process.env.APPLICATIONS_EVIDENCE_COLLECTION_INTERVAL_MS || (60 * 60 * 1000),
-    startupDelayMs: process.env.APPLICATIONS_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (90 * 1000)
+    startupDelayMs: process.env.APPLICATIONS_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (15 * 60 * 1000)
 });
 securityEvidenceService = createSecurityEvidenceStore({ pool });
 const securityEvidenceSchemaReady = securityEvidenceService.ensureSchema().catch(error => {
@@ -12120,7 +12131,7 @@ const securityEvidenceAutomation = createSecurityEvidenceAutomation({
     },
     enabled: !['false', '0', 'no'].includes(String(process.env.SECURITY_EVIDENCE_COLLECTION_ENABLED || 'true').toLowerCase()),
     intervalMs: process.env.SECURITY_EVIDENCE_COLLECTION_INTERVAL_MS || (60 * 60 * 1000),
-    startupDelayMs: process.env.SECURITY_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (105 * 1000)
+    startupDelayMs: process.env.SECURITY_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (17 * 60 * 1000)
 });
 governanceEvidenceService = createGovernanceEvidenceStore({ pool });
 const governanceEvidenceSchemaReady = governanceEvidenceService.ensureSchema().catch(error => {
@@ -12135,7 +12146,7 @@ const governanceEvidenceAutomation = createGovernanceEvidenceAutomation({
     },
     enabled: !['false', '0', 'no'].includes(String(process.env.GOVERNANCE_EVIDENCE_COLLECTION_ENABLED || 'true').toLowerCase()),
     intervalMs: process.env.GOVERNANCE_EVIDENCE_COLLECTION_INTERVAL_MS || (30 * 60 * 1000),
-    startupDelayMs: process.env.GOVERNANCE_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (120 * 1000)
+    startupDelayMs: process.env.GOVERNANCE_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (19 * 60 * 1000)
 });
 complianceEvidenceService = createComplianceEvidenceStore({ pool });
 const complianceEvidenceSchemaReady = complianceEvidenceService.ensureSchema().catch(error => {
@@ -12150,7 +12161,7 @@ const complianceEvidenceAutomation = createComplianceEvidenceAutomation({
     },
     enabled: !['false', '0', 'no'].includes(String(process.env.COMPLIANCE_EVIDENCE_COLLECTION_ENABLED || 'true').toLowerCase()),
     intervalMs: process.env.COMPLIANCE_EVIDENCE_COLLECTION_INTERVAL_MS || (30 * 60 * 1000),
-    startupDelayMs: process.env.COMPLIANCE_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (150 * 1000)
+    startupDelayMs: process.env.COMPLIANCE_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (21 * 60 * 1000)
 });
 operationsEvidenceService = createOperationsEvidenceStore({ pool });
 const operationsEvidenceSchemaReady = operationsEvidenceService.ensureSchema().catch(error => {
@@ -12165,7 +12176,7 @@ const operationsEvidenceAutomation = createOperationsEvidenceAutomation({
     },
     enabled: !['false', '0', 'no'].includes(String(process.env.OPERATIONS_EVIDENCE_COLLECTION_ENABLED || 'true').toLowerCase()),
     intervalMs: process.env.OPERATIONS_EVIDENCE_COLLECTION_INTERVAL_MS || (30 * 60 * 1000),
-    startupDelayMs: process.env.OPERATIONS_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (180 * 1000)
+    startupDelayMs: process.env.OPERATIONS_EVIDENCE_COLLECTION_STARTUP_DELAY_MS || (23 * 60 * 1000)
 });
 const stackCTRLIntelligenceService = createStackCTRLIntelligenceService({
     pool,

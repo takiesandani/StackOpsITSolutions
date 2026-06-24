@@ -18,26 +18,14 @@ const DOMAIN_BY_KEY = Object.freeze(Object.fromEntries(ENTERPRISE_DOMAINS.map(do
 const LOWER_PERIOD = Object.freeze({ weekly: 'daily', monthly: 'weekly', yearly: 'monthly' });
 const DEFAULT_DOMAIN_DELAY_MS = 60000;
 const LARGE_DOMAIN_INPUT_TOKEN_THRESHOLD = 50000;
-const SECURITY_ALERTS_BATCH_THRESHOLD_TOKENS = 90000;
-const SECURITY_ALERTS_BATCH_MIN_TOKENS = 100000;
 const SECURITY_ALERTS_DOMAIN_DELAY_MS = 90000;
 const ENTITY_EVIDENCE_LIMITS = Object.freeze({ maxDepth: 8, maxArray: 50, maxString: 1200, maxObjectKeys: 100 });
-const DOMAIN_OUTPUT_LIMITS = Object.freeze({
-    findings: 8,
-    risks: 5,
-    recommendations: 10,
-    actions: 10,
-    trends: 10,
-    entityReferences: 10,
-    explanationCharacters: 500,
-    narrativeCharacters: 1200
-});
-const DEFAULT_MAX_INPUT_BYTES = 350000;
-const DEFAULT_MAX_ITEMS_PER_BATCH = 750;
-const DEFAULT_HEAVY_DOMAIN_MAX_ITEMS_PER_BATCH = 250;
-const DEFAULT_THRESHOLD_BATCH_MAX_ITEMS = 100;
+const DEFAULT_MAX_INPUT_BYTES = 150000;
+const DEFAULT_MAX_ITEMS_PER_BATCH = 100;
+const DEFAULT_HEAVY_DOMAIN_MAX_ITEMS_PER_BATCH = 50;
+const DEFAULT_THRESHOLD_BATCH_MAX_ITEMS = 50;
 const DEFAULT_MAX_TOTAL_TOKENS = 200000;
-const DEFAULT_DOMAIN_OUTPUT_TOKENS = 5000;
+const DEFAULT_DOMAIN_OUTPUT_TOKENS = 8000;
 const DEFAULT_SYNTHESIS_OUTPUT_TOKENS = 8000;
 const ENTERPRISE_RATE_LIMIT_RETRY_DELAYS_MS = Object.freeze([300000, 300000, 600000]);
 const ENTERPRISE_RATE_LIMIT_RETRY_MAX_MS = 15 * 60 * 1000;
@@ -526,47 +514,36 @@ function compactReference(value) {
     );
 }
 
-function compactReferences(values, maximum = DOMAIN_OUTPUT_LIMITS.entityReferences) {
-    return [...new Set(array(values).map(compactReference).filter(Boolean))].slice(0, maximum);
-}
-
-function compactNarrative(value) {
-    const fields = ['domainExecutiveSummary', 'technicalSummary', 'businessImpact', 'currentPosture', 'scoreJustification'];
-    let remaining = DOMAIN_OUTPUT_LIMITS.narrativeCharacters;
-    const output = {};
-    for (const field of fields) {
-        const text = textOrNull(value?.[field], Math.min(DOMAIN_OUTPUT_LIMITS.explanationCharacters, remaining));
-        output[field] = text;
-        remaining = Math.max(0, remaining - String(text || '').length);
-    }
-    return output;
+function compactReferences(values, maximum = Number.POSITIVE_INFINITY) {
+    const references = [...new Set(array(values).map(compactReference).filter(Boolean))];
+    return Number.isFinite(maximum) ? references.slice(0, maximum) : references;
 }
 
 function normalizeEvidenceBackedItem(item, domain, snapshotId) {
     const value = item && typeof item === 'object' && !Array.isArray(item) ? item : { title: String(item || '') };
-    const affectedEntities = compactReferences([
-        ...array(value.affectedEntityIds),
-        ...array(value.affectedEntities)
-    ]);
-    const evidenceRows = compactReferences([
-        ...array(value.recordIds),
+    const affectedEntities = array(value.affectedEntities).map(entity => typeof entity === 'string'
+        ? textOrNull(entity, 500)
+        : safeEvidenceEntity(entity, { ...ENTITY_EVIDENCE_LIMITS, maxArray: 20, maxObjectKeys: 40 }));
+    const evidenceRows = [
         ...array(value.evidenceRows),
-        ...array(value.sourceAlertIds)
-    ]);
+    ].map(row => typeof row === 'string'
+        ? textOrNull(row, 500)
+        : safeEvidenceEntity(row, { ...ENTITY_EVIDENCE_LIMITS, maxArray: 20, maxObjectKeys: 40 }));
     return {
+        ...value,
         title: textOrNull(value.title || value.name || value.metricName, 255),
-        description: textOrNull(value.description || value.detail || value.explanation, DOMAIN_OUTPUT_LIMITS.explanationCharacters),
+        description: textOrNull(value.description || value.detail || value.explanation, 1200),
         severity: textOrNull(value.severity, 50),
         status: textOrNull(value.status, 50),
         likelihood: textOrNull(value.likelihood, 80),
         impact: textOrNull(value.impact, 120),
         priority: textOrNull(value.priority, 50),
         category: textOrNull(value.category, 120),
-        businessImpact: textOrNull(value.businessImpact || value.businessReason, DOMAIN_OUTPUT_LIMITS.explanationCharacters),
-        businessReason: textOrNull(value.businessReason || value.businessImpact, DOMAIN_OUTPUT_LIMITS.explanationCharacters),
-        evidenceSummary: textOrNull(value.evidenceSummary, DOMAIN_OUTPUT_LIMITS.explanationCharacters),
-        recommendation: textOrNull(value.recommendation || value.detail, DOMAIN_OUTPUT_LIMITS.explanationCharacters),
-        detail: textOrNull(value.detail || value.recommendation, DOMAIN_OUTPUT_LIMITS.explanationCharacters),
+        businessImpact: textOrNull(value.businessImpact || value.businessReason, 1200),
+        businessReason: textOrNull(value.businessReason || value.businessImpact, 1200),
+        evidenceSummary: textOrNull(value.evidenceSummary, 1200),
+        recommendation: textOrNull(value.recommendation || value.detail, 1200),
+        detail: textOrNull(value.detail || value.recommendation, 1200),
         suggestedOwner: textOrNull(value.suggestedOwner || value.owner, 180),
         owner: textOrNull(value.owner || value.suggestedOwner, 180),
         suggestedDueDate: normalizeMysqlDate(value.suggestedDueDate || value.dueDate),
@@ -574,16 +551,16 @@ function normalizeEvidenceBackedItem(item, domain, snapshotId) {
         sourceMetric: textOrNull(value.sourceMetric, 120),
         snapshotId: numberOrNull(value.snapshotId ?? snapshotId),
         affectedEntities,
-        affectedEntityIds: affectedEntities,
+        affectedEntityIds: compactReferences([...array(value.affectedEntityIds), ...affectedEntities]),
         evidenceRows,
-        recordIds: evidenceRows,
+        recordIds: compactReferences([...array(value.recordIds), ...evidenceRows]),
         sourceAlertIds: compactReferences(value.sourceAlertIds),
-        sourceMetrics: [...new Set(array(value.sourceMetrics).map(metric => textOrNull(metric, 120)).filter(Boolean))].slice(0, 10),
+        sourceMetrics: [...new Set(array(value.sourceMetrics).map(metric => textOrNull(metric, 120)).filter(Boolean))],
         evidenceSource: textOrNull(value.evidenceSource || value.sourceLabel || 'stackctrl_dashboard_evidence', 255),
-        whatHappened: textOrNull(value.whatHappened || value.description, DOMAIN_OUTPUT_LIMITS.explanationCharacters),
-        whyItMatters: textOrNull(value.whyItMatters || value.businessImpact, DOMAIN_OUTPUT_LIMITS.explanationCharacters),
-        recommendedAction: textOrNull(value.recommendedAction || value.recommendation || value.detail, DOMAIN_OUTPUT_LIMITS.explanationCharacters),
-        recommendedActions: array(value.recommendedActions).map(action => textOrNull(action, DOMAIN_OUTPUT_LIMITS.explanationCharacters)).filter(Boolean).slice(0, 10),
+        whatHappened: textOrNull(value.whatHappened || value.description, 1200),
+        whyItMatters: textOrNull(value.whyItMatters || value.businessImpact, 1200),
+        recommendedAction: textOrNull(value.recommendedAction || value.recommendation || value.detail, 1200),
+        recommendedActions: array(value.recommendedActions).map(action => textOrNull(action, 1200)).filter(Boolean),
         metricName: textOrNull(value.metricName, 120),
         direction: textOrNull(value.direction, 50),
         currentValue: numberOrNull(value.currentValue),
@@ -602,18 +579,21 @@ function ensureItemEvidence(item, domain, snapshotId, availableEvidence = []) {
             .some(value => String(value || '').toLowerCase() === requestedMetric))
         : [];
     const selected = matching.length ? matching : availableEvidence;
-    const recordIds = compactReferences(selected.map(row => ({
-        ...(row?.data && typeof row.data === 'object' ? row.data : {}),
-        entityKey: row?.entityKey,
-        recordId: row?.sourcePath
-    })));
+    const rows = selected.map(row => safeEvidenceEntity({
+        sourcePath: row?.sourcePath || null,
+        sourceMetric: row?.sourceMetric || null,
+        evidenceType: row?.evidenceType || null,
+        entityKey: row?.entityKey || null,
+        data: row?.data ?? row
+    }, { ...ENTITY_EVIDENCE_LIMITS, maxArray: 20, maxObjectKeys: 50 }));
+    const recordIds = compactReferences(selected.map(row => ({ ...(row?.data || {}), entityKey: row?.entityKey, recordId: row?.sourcePath })));
     const first = selected[0] || {};
     if (!normalized.sourceMetric) normalized.sourceMetric = textOrNull(first.sourceMetric || first.sourceLabel || first.evidenceType, 120);
     if (!normalized.evidenceSource || normalized.evidenceSource === 'stackctrl_dashboard_evidence') {
         normalized.evidenceSource = textOrNull(first.sourcePath || first.sourceLabel || 'stackctrl_dashboard_evidence', 255);
     }
-    if (!normalized.evidenceRows.length) normalized.evidenceRows = recordIds;
-    if (!normalized.affectedEntities.length) normalized.affectedEntities = recordIds;
+    if (!normalized.evidenceRows.length) normalized.evidenceRows = rows;
+    if (!normalized.affectedEntities.length) normalized.affectedEntities = rows.map(row => row.data ?? row);
     normalized.recordIds = compactReferences([...normalized.recordIds, ...normalized.evidenceRows, ...recordIds]);
     normalized.affectedEntityIds = compactReferences([...normalized.affectedEntityIds, ...normalized.affectedEntities, ...recordIds]);
     const sourceAlertIds = selected.map(row => {
@@ -621,24 +601,24 @@ function ensureItemEvidence(item, domain, snapshotId, availableEvidence = []) {
         return data?.sourceAlertId || data?.alertId || data?.SourceID || data?.id || row?.entityKey || null;
     }).filter(Boolean).map(String);
     normalized.sourceAlertIds = compactReferences([...array(item?.sourceAlertIds), ...sourceAlertIds]);
-    normalized.sourceMetrics = [...new Set([...array(item?.sourceMetrics).map(String), normalized.sourceMetric].filter(Boolean))].slice(0, 10);
+    normalized.sourceMetrics = [...new Set([...array(item?.sourceMetrics).map(String), normalized.sourceMetric].filter(Boolean))];
     normalized.recommendedActions = array(item?.recommendedActions).length
         ? array(item.recommendedActions)
         : [normalized.recommendedAction].filter(Boolean);
-    if (!normalized.evidenceSummary) normalized.evidenceSummary = `${selected.length} StackCTRL entity evidence row(s) support this item; full rows remain in the raw evidence endpoint.`;
+    if (!normalized.evidenceSummary) normalized.evidenceSummary = `${selected.length} readable StackCTRL entity evidence row(s) support this item; complete source data remains available in the raw evidence endpoint.`;
     return normalized;
 }
 
 function normalizeControlAssessment(value, domain, snapshotId, availableEvidence) {
-    if (Array.isArray(value)) return value.slice(0, DOMAIN_OUTPUT_LIMITS.findings).map(item => ensureItemEvidence(item, domain, snapshotId, availableEvidence));
+    if (Array.isArray(value)) return value.map(item => ensureItemEvidence(item, domain, snapshotId, availableEvidence));
     if (!value || typeof value !== 'object') return value || {};
     if (value.title || value.name || value.control || value.description || value.detail) {
         return ensureItemEvidence(value, domain, snapshotId, availableEvidence);
     }
-    return Object.fromEntries(Object.entries(value).slice(0, DOMAIN_OUTPUT_LIMITS.findings).map(([key, nested]) => [
+    return Object.fromEntries(Object.entries(value).map(([key, nested]) => [
         key,
         Array.isArray(nested)
-            ? nested.slice(0, DOMAIN_OUTPUT_LIMITS.findings).map(item => ensureItemEvidence(item, domain, snapshotId, availableEvidence))
+            ? nested.map(item => ensureItemEvidence(item, domain, snapshotId, availableEvidence))
             : (nested && typeof nested === 'object'
                 ? normalizeControlAssessment(nested, domain, snapshotId, availableEvidence)
                 : nested)
@@ -721,25 +701,13 @@ function sourceStaleFailure(sourceHealth, domainName) {
     const age = sourceHealth.freshness?.ageMinutes;
     const lastUpdated = sourceHealth.freshness?.lastUpdated;
     const ageDisplay = age != null ? `(${age} minutes old)` : '';
-    const warnings = sourceHealth.warnings || [];
-    const refreshFailedWarning = warnings.find(w => /refresh failed|stored evidence retained/i.test(w));
-    if (refreshFailedWarning) {
-        return {
-            status: 'blocked_stale_source',
-            isStale: true,
-            ageMinutes: age,
-            lastUpdated,
-            errorMessage: `${domainName} source is stale ${ageDisplay}. Refresh ${domainName.toLowerCase()} dashboard/source before running Azure analysis.`,
-            reason: 'refresh_failed_stale_cache'
-        };
-    }
     return {
-        status: 'blocked_stale_source',
+        status: 'source_stale',
         isStale: true,
         ageMinutes: age,
         lastUpdated,
-        errorMessage: `${domainName} source is stale ${ageDisplay}. Refresh ${domainName.toLowerCase()} dashboard/source before running Azure analysis.`,
-        reason: 'source_too_old'
+        errorMessage: `${domainName} source_stale ${ageDisplay}; using latest stored evidence from ${lastUpdated || 'unknown refresh time'} and continuing analysis.`,
+        reason: 'stored_evidence_fallback'
     };
 }
 
@@ -992,11 +960,10 @@ function repairTruncatedJson(text) {
 
 // Request repair of truncated JSON from Azure
 function createJsonRepairPrompt(invalidJson) {
-    return `Repair the supplied response into compact valid JSON only.
-Keep at most 8 findings, 5 risks, 10 recommendations, 10 actions, and 10 trends.
-Keep each explanation below 500 characters and all top-level narrative below 1200 characters.
-Use evidence IDs only in evidenceRows, affectedEntityIds, sourceAlertIds, and recordIds. Never repeat raw evidence objects.
-Discard incomplete trailing prose. No markdown, code fences, or text outside JSON.
+    return `Repair the supplied response into valid JSON only.
+Preserve readable alert names, user emails, device names, source metrics, findings, risks, recommendations, business impact, and evidence references already present.
+Keep internal IDs alongside readable entity names, never as replacements for them.
+If the response was truncated, discard only the incomplete trailing value and close the JSON structure. No markdown, code fences, or text outside JSON.
 
 INVALID RESPONSE:
 ${safeResponsePreview(invalidJson, 24000)}`;
@@ -1020,10 +987,10 @@ function createEnterpriseIntelligenceService({
         domainDelayMs: Math.max(0, Number.isFinite(configuredDomainDelayMs) ? configuredDomainDelayMs : DEFAULT_DOMAIN_DELAY_MS),
         maxRetries: Math.max(0, Number.isFinite(configuredMaxRetries) ? configuredMaxRetries : 3),
         concurrency: 1,
-        maxInputBytes: Math.max(50000, Number(config.maxInputBytes ?? process.env.ENTERPRISE_AI_MAX_INPUT_BYTES_PER_DOMAIN) || DEFAULT_MAX_INPUT_BYTES),
-        maxItemsPerBatch: Math.max(1, Number(config.maxItemsPerBatch ?? process.env.ENTERPRISE_AI_MAX_ITEMS_PER_BATCH) || DEFAULT_MAX_ITEMS_PER_BATCH),
-        heavyDomainMaxItemsPerBatch: Math.max(1, Number(config.heavyDomainMaxItemsPerBatch ?? process.env.ENTERPRISE_AI_HEAVY_MAX_ITEMS_PER_BATCH) || DEFAULT_HEAVY_DOMAIN_MAX_ITEMS_PER_BATCH),
-        thresholdBatchMaxItems: Math.max(1, Number(config.thresholdBatchMaxItems ?? process.env.ENTERPRISE_AI_THRESHOLD_MAX_ITEMS_PER_BATCH) || DEFAULT_THRESHOLD_BATCH_MAX_ITEMS),
+        maxInputBytes: Math.min(DEFAULT_MAX_INPUT_BYTES, Math.max(50000, Number(config.maxInputBytes ?? process.env.ENTERPRISE_AI_MAX_INPUT_BYTES_PER_DOMAIN) || DEFAULT_MAX_INPUT_BYTES)),
+        maxItemsPerBatch: Math.min(DEFAULT_MAX_ITEMS_PER_BATCH, Math.max(1, Number(config.maxItemsPerBatch ?? process.env.ENTERPRISE_AI_MAX_ITEMS_PER_BATCH) || DEFAULT_MAX_ITEMS_PER_BATCH)),
+        heavyDomainMaxItemsPerBatch: Math.min(DEFAULT_HEAVY_DOMAIN_MAX_ITEMS_PER_BATCH, Math.max(1, Number(config.heavyDomainMaxItemsPerBatch ?? process.env.ENTERPRISE_AI_HEAVY_MAX_ITEMS_PER_BATCH) || DEFAULT_HEAVY_DOMAIN_MAX_ITEMS_PER_BATCH)),
+        thresholdBatchMaxItems: Math.min(DEFAULT_THRESHOLD_BATCH_MAX_ITEMS, Math.max(1, Number(config.thresholdBatchMaxItems ?? process.env.ENTERPRISE_AI_THRESHOLD_MAX_ITEMS_PER_BATCH) || DEFAULT_THRESHOLD_BATCH_MAX_ITEMS)),
         maxDomainOutputTokens: Math.max(1000, Number(config.maxDomainOutputTokens ?? process.env.ENTERPRISE_AI_MAX_OUTPUT_TOKENS_PER_DOMAIN) || DEFAULT_DOMAIN_OUTPUT_TOKENS),
         maxSynthesisOutputTokens: Math.max(2000, Number(config.maxSynthesisOutputTokens ?? process.env.ENTERPRISE_AI_MAX_OUTPUT_TOKENS_SYNTHESIS) || DEFAULT_SYNTHESIS_OUTPUT_TOKENS),
         maxTotalTokens: Math.max(10000, Number(config.maxTotalTokens ?? process.env.ENTERPRISE_AI_MAX_TOTAL_TOKENS) || DEFAULT_MAX_TOTAL_TOKENS),
@@ -1365,15 +1332,13 @@ function createEnterpriseIntelligenceService({
     }
 
     function securityAlertsBatchPrompt(packageValue) {
-        return `Analyse this Security Alerts evidence batch. Return compact JSON only; no markdown and no narrative report.
-Process every supplied evidence row and keep exact batch accounting. Group repeated alert patterns and use compact representative IDs; full rows remain in StackCTRL raw evidence storage.
+        return `Analyse this Security Alerts evidence batch. Return valid JSON only; no markdown.
+Process every supplied evidence row and keep exact batch accounting. Group repeated alert patterns without losing the human-readable alert, user, or device details that explain the evidence.
 Each finding, risk, recommendation, and management action must use these fields:
 title, severity, category, status, sourceDomain, sourceMetric, sourceMetrics, snapshotId, evidenceSource,
-sourceAlertIds, affectedEntityIds, evidenceRows, recordIds, whatHappened, whyItMatters, businessImpact,
+sourceAlertIds, affectedEntities, affectedEntityIds, evidenceRows, recordIds, whatHappened, whyItMatters, businessImpact,
 recommendedAction, recommendedActions, suggestedOwner, suggestedDueDate.
-Evidence reference arrays contain IDs only, never full alert, incident, sign-in, indicator, user, or device objects.
-Hard limits: 8 findings, 5 risks, 10 recommendations, 10 management actions, 10 trends, and 10 affected entity IDs per item.
-Keep every explanation below 500 characters and all top-level narrative below 1200 characters. Use arrays instead of paragraphs.
+affectedEntities and evidenceRows must include readable names where present: alert display name/title, userPrincipalName/email, device display name, application/control name, severity/status, plus the internal evidence ID. IDs may supplement readable evidence but must never replace it.
 Return exactly:
 {
   "domainExecutiveSummary": "one compact sentence",
@@ -1390,7 +1355,7 @@ Return exactly:
   "confidenceScore": null,
   "evidenceLimitations": {}
 }
-Prioritize sourceAlertIds, affectedEntityIds, recordIds, source metrics, severity, and recommended actions over prose.
+Prioritize accurate evidence, clear findings, risks, recommendations, business impact, and exact source references. Do not invent entities.
 
 STACKCTRL SECURITY ALERTS BATCH:
 ${JSON.stringify(packageValue)}`;
@@ -1411,7 +1376,7 @@ Use BOTH summary metrics and entity-level evidence:
 - evidenceCatalog.categories contains categorized dashboard entity rows tied to sourceMetric keys.
 - evidence[] contains individual entity rows from the StackCTRL dashboard table for this batch.
 Every finding, risk, and recommendation MUST be evidence-backed. Do not state a gap without naming affected users, devices, apps, controls, policies, alerts, or other entities from the supplied evidence.
-Reference those entities by ID only. Never repeat full evidence rows or raw objects in the Azure output; those remain in StackCTRL raw evidence storage.
+Visible output must be human-readable. Include userPrincipalName/email, device display name, alert title/display name, application/control/policy name, or another useful entity label whenever supplied. Keep internal IDs as evidence references alongside those names; never return an ID as the only description of an affected entity.
 
 Return valid JSON only. No markdown. No code fences. No explanations outside JSON.
 Return exactly these fields:
@@ -1440,17 +1405,16 @@ Return exactly these fields:
   "evidenceLimitations": {}
 }
 
-Finding fields: title, description, severity, status, whatHappened, whyItMatters, businessImpact, evidenceSummary, affectedEntityIds, evidenceRows, recordIds, sourceDomain, sourceMetric, snapshotId, evidenceSource, suggestedOwner, suggestedDueDate.
-Risk fields: title, description, severity, likelihood, impact, whatHappened, whyItMatters, businessImpact, evidenceSummary, affectedEntityIds, evidenceRows, recordIds, sourceDomain, sourceMetric, snapshotId, evidenceSource, recommendation, suggestedOwner, suggestedDueDate.
-Recommendation/action fields: title, detail, priority, whatHappened, whyItMatters, businessImpact, recommendedAction, affectedEntityIds, evidenceRows, recordIds, sourceDomain, sourceMetric, snapshotId, evidenceSource, suggestedOwner, suggestedDueDate.
-Control assessment items and trend fields must use compact IDs in evidenceRows, affectedEntityIds, and recordIds whenever evidence exists.
+Finding fields: title, description, severity, status, whatHappened, whyItMatters, businessImpact, evidenceSummary, affectedEntities, affectedEntityIds, evidenceRows, recordIds, sourceDomain, sourceMetric, snapshotId, evidenceSource, suggestedOwner, suggestedDueDate.
+Risk fields: title, description, severity, likelihood, impact, whatHappened, whyItMatters, businessImpact, evidenceSummary, affectedEntities, affectedEntityIds, evidenceRows, recordIds, sourceDomain, sourceMetric, snapshotId, evidenceSource, recommendation, suggestedOwner, suggestedDueDate.
+Recommendation/action fields: title, detail, priority, whatHappened, whyItMatters, businessImpact, recommendedAction, affectedEntities, affectedEntityIds, evidenceRows, recordIds, sourceDomain, sourceMetric, snapshotId, evidenceSource, suggestedOwner, suggestedDueDate.
+Control assessment items and trend fields must retain readable entity labels and the matching IDs whenever evidence exists.
 Trend fields additionally include: metricName, currentValue, previousValue, changePercent, direction, comparisonPeriod, explanation.
 evidenceUsed items: label, sourceMetric, entityCount, snapshotId, evidenceSource.
 evidenceGaps items: gap, reason, omittedCount, sourceMetric.
 evidenceLimitations: recordsSent, recordsOmitted, batchNumber, totalBatches, complete, omittedReasons.
 Use empty arrays, objects, or null when evidence is unavailable. Clearly state limitations instead of filling gaps with assumptions.
-Hard limits: 8 findings, 5 risks, 10 recommendations, 10 management actions, 10 trends, and 10 affected entity IDs per item.
-Cap each explanation at 500 characters and all top-level narrative at 1200 characters. Prefer structured references over prose. Do not use markdown.
+Keep explanations clear and concise enough to return valid JSON for this smaller batch. Do not use markdown.
 
 STACKCTRL DOMAIN PACKAGE:
 ${JSON.stringify(packageValue)}`;
@@ -1690,7 +1654,7 @@ ${JSON.stringify(packageValue)}`;
                     try {
                         repairResponse = await azureOpenAI.createJsonCompletion({
                             messages: [
-                                { role: 'system', content: 'Return compact valid JSON only. Keep structured conclusions and evidence IDs; discard repeated raw objects and incomplete trailing prose.' },
+                                { role: 'system', content: 'Return valid JSON only. Preserve readable evidence names and their matching IDs; discard only incomplete trailing prose.' },
                                 { role: 'user', content: createJsonRepairPrompt(response.data) }
                             ],
                             temperature: 0,
@@ -1860,6 +1824,58 @@ ${JSON.stringify(packageValue)}`;
         }
     }
 
+    function mergeCompletedBatchAnalyses({ results, domain, packageResult, snapshotId, totalBatches }) {
+        const completed = results.filter(result => isSuccessfulDomainStatus(result.status) && result.analysis);
+        const flatten = field => completed.flatMap(result => array(result.analysis?.[field]));
+        const controlAssessment = completed.flatMap(result => {
+            const value = result.analysis?.controlAssessment;
+            return Array.isArray(value) ? value : value && typeof value === 'object' ? [value] : [];
+        });
+        const processedItems = completed.reduce((total, result) => total + Number(result.batchItemCount || 0), 0);
+        return normalizedDomainResult({
+            status: 'running',
+            domainExecutiveSummary: completed.map(result => result.analysis.domainExecutiveSummary).filter(Boolean).join(' '),
+            technicalSummary: completed.map(result => result.analysis.technicalSummary).filter(Boolean).join(' '),
+            businessImpact: completed.map(result => result.analysis.businessImpact).filter(Boolean).join(' '),
+            currentPosture: completed.map(result => result.analysis.currentPosture).filter(Boolean).join(' '),
+            scoreJustification: completed.map(result => result.analysis.scoreJustification).filter(Boolean).join(' '),
+            evidenceUsed: flatten('evidenceUsed'),
+            evidenceGaps: flatten('evidenceGaps'),
+            controlAssessment,
+            keyFindings: flatten('keyFindings'),
+            risks: flatten('risks'),
+            recommendations: flatten('recommendations'),
+            trendAnalysis: flatten('trendAnalysis'),
+            whatImproved: flatten('whatImproved'),
+            whatDeteriorated: flatten('whatDeteriorated'),
+            whatStayedTheSame: flatten('whatStayedTheSame'),
+            missingDataWarnings: [
+                ...array(packageResult.package.limitations?.missingDataWarnings),
+                ...flatten('missingDataWarnings')
+            ],
+            assumptions: flatten('assumptions'),
+            managementActions: flatten('managementActions'),
+            confidenceScore: completed.length
+                ? completed.reduce((total, result) => total + Number(result.analysis.confidenceScore || 0), 0) / completed.length
+                : null,
+            powerBiSummary: completed.reduce((merged, result) => ({ ...merged, ...(result.analysis.powerBiSummary || {}) }), {}),
+            evidenceLimitations: {
+                recordsPrepared: packageResult.allEvidence.length,
+                recordsSent: processedItems,
+                recordsOmitted: 0,
+                complete: completed.length === totalBatches,
+                omittedReasons: array(packageResult.package.limitations?.missingDataWarnings)
+            },
+            batchInfo: {
+                completedBatches: completed.length,
+                totalBatches,
+                processedItems,
+                remainingItems: Math.max(0, packageResult.allEvidence.length - processedItems),
+                complete: completed.length === totalBatches
+            }
+        }, domain, packageResult.current, snapshotId, packageResult.allEvidence);
+    }
+
     // Process all batches for a domain and aggregate results
     async function processDomainBatches({ companyId, snapshot, run, domain, packageResult, allEvidence, historicalContext, thresholdReached = false }) {
         if (domain.key === 'security_alerts') {
@@ -1880,37 +1896,15 @@ ${JSON.stringify(packageValue)}`;
             )
         };
         
-        // For security_alerts: only batch if estimated tokens exceed 100K, allow up to 90K in single batch
         let batches;
         if (domain.key === 'security_alerts') {
-            // Check if single batch would exceed 100K tokens
             const singleBatchEstimate = estimateDomainRequestBytes(
                 domain,
                 buildDomainBatchPackage(packageResult.package, allEvidence, 1, 1)
             );
-            const singleBatchTokens = Math.ceil(singleBatchEstimate / 4); // rough token estimate from bytes
-            
-            if (singleBatchTokens >= SECURITY_ALERTS_BATCH_MIN_TOKENS) {
-                // Over 100K: allow batching
-                batches = splitSecurityAlertsIntoBatches(allEvidence, batchOptions);
-                logger.info?.(`[StackCTRL Enterprise] Security Alerts evidence (${allEvidence.length} items, ~${singleBatchTokens} tokens) exceeds 100K threshold - splitting into ${batches.length} batches for analysis`);
-            } else if (singleBatchTokens > SECURITY_ALERTS_BATCH_THRESHOLD_TOKENS) {
-                // Between 90K-100K: single batch with warning
-                batches = [{
-                    number: 1,
-                    items: allEvidence,
-                    semanticGrouping: null
-                }];
-                logger.warn?.(`[StackCTRL Enterprise] Security Alerts evidence is at high token usage (~${singleBatchTokens} tokens, threshold 90K) but below batching minimum (100K) - processing as single batch`);
-            } else {
-                // Below 90K: single batch
-                batches = [{
-                    number: 1,
-                    items: allEvidence,
-                    semanticGrouping: null
-                }];
-                logger.info?.(`[StackCTRL Enterprise] Security Alerts evidence (~${singleBatchTokens} tokens) is within safe single-batch limit (90K) - processing as one batch`);
-            }
+            const singleBatchTokens = Math.ceil(singleBatchEstimate / 4);
+            batches = splitSecurityAlertsIntoBatches(allEvidence, batchOptions);
+            logger.info?.(`[StackCTRL Enterprise] Security Alerts evidence (${allEvidence.length} items, ~${singleBatchTokens} tokens) planned as ${batches.length} safe batch(es) with at most ${maxItems} records each.`);
         } else {
             batches = splitIntoBatches(allEvidence, batchOptions);
         }
@@ -1961,6 +1955,28 @@ ${JSON.stringify(packageValue)}`;
             }
             for (const key of Object.keys(totals)) {
                 totals[key] += result.usage?.[key] || 0;
+            }
+
+            if (isSuccessfulDomainStatus(result.status)) {
+                const progressiveAnalysis = mergeCompletedBatchAnalyses({
+                    results,
+                    domain,
+                    packageResult,
+                    snapshotId: snapshot.ID,
+                    totalBatches: batches.length
+                });
+                packageResult.audit.sentToAzureCount = progressiveAnalysis.evidenceLimitations.recordsSent;
+                await storeDomain({
+                    run,
+                    companyId,
+                    snapshot,
+                    domain,
+                    packageResult,
+                    analysis: progressiveAnalysis,
+                    usage: totals,
+                    status: 'running',
+                    persistItems: false
+                });
             }
 
             if (result.status === 'failed_rate_limited') {
@@ -2284,37 +2300,41 @@ ${JSON.stringify(packageValue)}`;
     function normalizedDomainResult(data, domain, current, snapshotId = null, availableEvidence = []) {
         const value = data && typeof data === 'object' && !Array.isArray(data) ? data : {};
         const resolvedSnapshotId = snapshotId ?? current?.snapshotId ?? null;
-        const narrative = compactNarrative(value);
-        const normalizeItems = (items, maximum) => array(items).slice(0, maximum)
+        const normalizeItems = items => array(items)
             .map(item => ensureItemEvidence(item, domain, resolvedSnapshotId, availableEvidence));
         return {
-            domainKey: domain.key,
+            ...value,
+            domainKey: value.domainKey || domain.key,
             status: textOrNull(value.status, 80),
             warningType: textOrNull(value.warningType, 120),
             snapshotId: numberOrNull(value.snapshotId ?? resolvedSnapshotId),
             recordsPrepared: numberOrNull(value.recordsPrepared),
             recordsSent: numberOrNull(value.recordsSent),
             recordsOmitted: numberOrNull(value.recordsOmitted),
-            omittedReasons: array(value.omittedReasons).map(reason => textOrNull(reason, DOMAIN_OUTPUT_LIMITS.explanationCharacters)).filter(Boolean).slice(0, 20),
+            omittedReasons: array(value.omittedReasons).map(reason => textOrNull(reason, 1200)).filter(Boolean),
             evidenceAvailable: value.evidenceAvailable == null ? null : Boolean(value.evidenceAvailable),
-            message: textOrNull(value.message, DOMAIN_OUTPUT_LIMITS.explanationCharacters),
+            message: textOrNull(value.message, 1200),
             rawAzureResponseStored: Boolean(value.rawAzureResponseStored),
-            ...narrative,
-            evidenceUsed: array(value.evidenceUsed).slice(0, 20),
-            evidenceGaps: array(value.evidenceGaps).slice(0, 20),
+            domainExecutiveSummary: textOrNull(value.domainExecutiveSummary, 4000),
+            technicalSummary: textOrNull(value.technicalSummary, 4000),
+            businessImpact: textOrNull(value.businessImpact, 4000),
+            currentPosture: textOrNull(value.currentPosture, 4000),
+            scoreJustification: textOrNull(value.scoreJustification, 4000),
+            evidenceUsed: array(value.evidenceUsed),
+            evidenceGaps: array(value.evidenceGaps),
             controlAssessment: normalizeControlAssessment(value.controlAssessment || {}, domain, resolvedSnapshotId, availableEvidence),
-            keyFindings: normalizeItems(value.keyFindings, DOMAIN_OUTPUT_LIMITS.findings),
-            risks: normalizeItems(value.risks, DOMAIN_OUTPUT_LIMITS.risks),
-            recommendations: normalizeItems(value.recommendations, DOMAIN_OUTPUT_LIMITS.recommendations),
-            trendAnalysis: normalizeItems(value.trendAnalysis, DOMAIN_OUTPUT_LIMITS.trends),
+            keyFindings: normalizeItems(value.keyFindings),
+            risks: normalizeItems(value.risks),
+            recommendations: normalizeItems(value.recommendations),
+            trendAnalysis: normalizeItems(value.trendAnalysis),
             yesterdayVsToday: value.yesterdayVsToday || {},
-            whatImproved: array(value.whatImproved).slice(0, DOMAIN_OUTPUT_LIMITS.findings),
-            whatDeteriorated: array(value.whatDeteriorated).slice(0, DOMAIN_OUTPUT_LIMITS.findings),
-            whatStayedTheSame: array(value.whatStayedTheSame).slice(0, DOMAIN_OUTPUT_LIMITS.findings),
-            missingDataWarnings: array(value.missingDataWarnings).map(warning => textOrNull(warning, DOMAIN_OUTPUT_LIMITS.explanationCharacters)).filter(Boolean).slice(0, 30),
-            assumptions: array(value.assumptions).map(assumption => textOrNull(assumption, DOMAIN_OUTPUT_LIMITS.explanationCharacters)).filter(Boolean).slice(0, 20),
+            whatImproved: array(value.whatImproved),
+            whatDeteriorated: array(value.whatDeteriorated),
+            whatStayedTheSame: array(value.whatStayedTheSame),
+            missingDataWarnings: array(value.missingDataWarnings).map(warning => textOrNull(warning, 1200)).filter(Boolean),
+            assumptions: array(value.assumptions).map(assumption => textOrNull(assumption, 1200)).filter(Boolean),
             confidenceScore: numberOrNull(value.confidenceScore),
-            managementActions: normalizeItems(value.managementActions, DOMAIN_OUTPUT_LIMITS.actions),
+            managementActions: normalizeItems(value.managementActions),
             powerBiSummary: value.powerBiSummary || {},
             evidenceLimitations: value.evidenceLimitations || {},
             evidenceCatalog: value.evidenceCatalog || null,
@@ -2387,7 +2407,7 @@ ${JSON.stringify(packageValue)}`;
         }
     }
 
-    async function storeDomain({ run, companyId, snapshot, domain, packageResult, analysis, usage, status = 'completed', errorMessage = null }) {
+    async function storeDomain({ run, companyId, snapshot, domain, packageResult, analysis, usage, status = 'completed', errorMessage = null, persistItems = true }) {
         const evidenceSummary = analysis ? textOrNull(analysis.evidenceUsed) : null;
         const [result] = await pool.query(
             `INSERT INTO StackCTRLTenantDomainIntelligence
@@ -2426,7 +2446,7 @@ ${JSON.stringify(packageValue)}`;
                 analysis?.confidenceScore ?? null, errorMessage ? String(errorMessage).slice(0, 5000) : null
             ]
         );
-        if (analysis) await storeItems({ companyId, snapshotId: snapshot.ID, runId: run.id, domain, period: run, analysis });
+        if (analysis && persistItems) await storeItems({ companyId, snapshotId: snapshot.ID, runId: run.id, domain, period: run, analysis });
         return result.insertId || result.affectedRows;
     }
 
@@ -2577,39 +2597,32 @@ ${JSON.stringify(packageValue)}`;
 
         const staleFailure = sourceStaleFailure(packageResult.package.sourceHealth, domain.name);
         if (staleFailure) {
-            const usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: 0, responseBytes: 0, retries: 0 };
-            packageResult.audit.sentToAzureCount = 0;
-            await storeDomain({
-                run, companyId, snapshot, domain, packageResult, analysis: null, usage,
-                status: staleFailure.status, errorMessage: staleFailure.errorMessage
-            });
-            await storeAudit({
-                run, companyId, snapshot, domain, packageResult, analysis: null, usage,
-                status: staleFailure.status
-            });
-            if (domain.key === 'security_alerts') {
-                await updateRunStageProgress(run.id, { stage: 'failed_terminal', lastSuccessfulStage: 'snapshot_collection:complete', failureReason: staleFailure.errorMessage });
-            }
-            return {
-                status: staleFailure.status, domain, usage, audit: packageResult.audit,
-                errorMessage: staleFailure.errorMessage, sourceHealth: packageResult.package.sourceHealth
+            packageResult.package.sourceHealth = {
+                ...packageResult.package.sourceHealth,
+                source_stale: true,
+                ageMinutes: staleFailure.ageMinutes,
+                lastRefreshTime: staleFailure.lastUpdated,
+                warnings: [...new Set([...array(packageResult.package.sourceHealth?.warnings), staleFailure.errorMessage])]
             };
+            packageResult.package.limitations.missingDataWarnings = [
+                ...new Set([...array(packageResult.package.limitations?.missingDataWarnings), staleFailure.errorMessage])
+            ];
+            logger.warn?.(`[StackCTRL Enterprise] ${staleFailure.errorMessage}`);
         }
 
         if (domain.key === 'security_alerts') {
             const expectedSourceRecords = Number(packageResult.current.source?.sourceLineage?.evidenceRecordCount ?? packageResult.audit.preparedForAzureCount);
             const preparedRecords = Number(packageResult.audit.preparedForAzureCount || 0);
             if (expectedSourceRecords !== preparedRecords) {
-                const usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: 0, responseBytes: 0, retries: 0 };
                 const errorMessage = `Security Alerts evidence validation failed: ${expectedSourceRecords} stored source record(s) were expected but ${preparedRecords} record(s) were prepared for Azure.`;
-                packageResult.audit.sentToAzureCount = 0;
                 packageResult.audit.evidenceOmittedCount = Math.max(0, expectedSourceRecords - preparedRecords);
                 packageResult.package.limitations.missingDataWarnings.push(errorMessage);
-                await storeDomain({ run, companyId, snapshot, domain, packageResult, analysis: null, usage, status: 'failed_evidence_validation', errorMessage });
-                await storeAudit({ run, companyId, snapshot, domain, packageResult, analysis: null, usage, status: 'failed_evidence_validation' });
-                logger.error?.(`[security_alerts:complete_or_completed_with_warnings_or_failed] failed_terminal: ${errorMessage}`);
-                await updateRunStageProgress(run.id, { stage: 'failed_terminal', lastSuccessfulStage: 'evidence_prepare:complete', failureReason: errorMessage });
-                return { status: 'failed_evidence_validation', domain, usage, audit: packageResult.audit, errorMessage };
+                logger.warn?.(`[security_alerts:evidence_prepare:warning] ${errorMessage} Continuing with all prepared evidence and preserving the discrepancy in limitations.`);
+                await updateRunStageProgress(run.id, {
+                    stage: 'evidence_prepare:warning',
+                    lastSuccessfulStage: 'evidence_prepare:complete',
+                    warning: errorMessage
+                });
             }
         }
 
@@ -2761,6 +2774,7 @@ ${JSON.stringify(packageValue)}`;
                 whatDeteriorated: completedBatches.flatMap(b => b.analysis?.whatDeteriorated || []),
                 whatStayedTheSame: completedBatches.flatMap(b => b.analysis?.whatStayedTheSame || []),
                 missingDataWarnings: [
+                    ...array(packageResult.package.limitations?.missingDataWarnings),
                     ...completedBatches.flatMap(b => b.analysis?.missingDataWarnings || []),
                     ...(batchResults.omittedItems > 0 ? [`${batchResults.omittedItems} evidence row(s) were not analysed because ${failedBatches.length} batch(es) failed.`] : []),
                     ...(batchResults.complete ? [] : ['Domain analysis is incomplete; do not treat this output as fully complete.'])
@@ -3230,7 +3244,10 @@ ${JSON.stringify(packageValue)}`;
         const invalid = selectedKeys.filter(key => !DOMAIN_BY_KEY[key]);
         if (invalid.length) throw new Error(`Unsupported enterprise domains: ${invalid.join(', ')}`);
         const isSingleDomainRun = selectedKeys.length === 1;
-        const shouldRefreshSnapshot = refreshSnapshot ?? !isSingleDomainRun;
+        // Enterprise analysis is read-first: use the latest stored evidence snapshot unless a caller
+        // explicitly requests a refresh. This prevents a deep report from launching every live
+        // collector at once and competing for Graph tokens and Secret Manager reads.
+        const shouldRefreshSnapshot = refreshSnapshot === true;
         let resolvedSnapshotId = snapshotId;
         let snapshotRefresh = null;
         if (shouldRefreshSnapshot) {
