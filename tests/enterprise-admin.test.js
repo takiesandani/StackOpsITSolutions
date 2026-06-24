@@ -6,6 +6,7 @@ const path = require('node:path');
 const html = fs.readFileSync(path.join(__dirname, '..', 'admin-intelligence.html'), 'utf8');
 const javascript = fs.readFileSync(path.join(__dirname, '..', 'js', 'admin-intelligence.js'), 'utf8');
 const stylesheet = fs.readFileSync(path.join(__dirname, '..', 'css', 'admin-intelligence.css'), 'utf8');
+const adminRoutes = fs.readFileSync(path.join(__dirname, '..', 'routes', 'admin-intelligence.js'), 'utf8');
 
 test('admin control center includes every enterprise audit action', () => {
     for (const phrase of [
@@ -129,4 +130,16 @@ test('admin enterprise actions render stored failure statuses instead of uncondi
     assert.match(javascript, /Azure rate limit reached/);
     assert.match(javascript, /completed with warnings/);
     assert.match(javascript, /Retry failed domain/);
+});
+
+test('admin polling uses lightweight progress and heavy enterprise content is loaded on demand', () => {
+    assert.match(adminRoutes, /getAdminProgress/);
+    for (const pathPart of ['enterprise/domain/:domainKey', 'enterprise/audit/:domainKey', 'enterprise/batches/:domainKey', 'enterprise/synthesis/:runId']) {
+        assert.match(adminRoutes, new RegExp(pathPart.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    }
+    assert.match(javascript, /View batch diagnostics/);
+    assert.match(javascript, /enterprise\/audit\/\$\{encodeURIComponent/);
+    assert.match(javascript, /enterprise\/domain\/\$\{encodeURIComponent/);
+    assert.match(javascript, /Enterprise progress polling stopped/);
+    assert.doesNotMatch(javascript, /loadEnterprise\(\)\.catch\(\(\) => \{\}\)/);
 });

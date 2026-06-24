@@ -479,7 +479,8 @@ function buildEvidenceBatchPlan(allEvidence, batches) {
         batches: batches.map(batch => ({
             batchNumber: batch.number,
             itemCount: batch.items.length,
-            evidenceTypes: [...new Set(batch.items.map(item => item.evidenceType))]
+            evidenceTypes: [...new Set(batch.items.map(item => item.evidenceType))],
+            semanticGrouping: batch.semanticGrouping || null
         }))
     };
 }
@@ -520,10 +521,10 @@ function normalizeEvidenceBackedItem(item, domain, snapshotId) {
         sourceDomain: textOrNull(value.sourceDomain || domain.key, 80),
         sourceMetric: textOrNull(value.sourceMetric, 120),
         snapshotId: numberOrNull(value.snapshotId ?? snapshotId),
-        affectedEntities: array(value.affectedEntities).slice(0, 100).map(entity =>
+        affectedEntities: array(value.affectedEntities).map(entity =>
             typeof entity === 'string' ? textOrNull(entity, 500) : safeEvidenceEntity(entity, { ...ENTITY_EVIDENCE_LIMITS, maxArray: 20, maxObjectKeys: 40 })
         ),
-        evidenceRows: array(value.evidenceRows).slice(0, 100).map(row =>
+        evidenceRows: array(value.evidenceRows).map(row =>
             typeof row === 'string' ? textOrNull(row, 500) : safeEvidenceEntity(row, { ...ENTITY_EVIDENCE_LIMITS, maxArray: 20, maxObjectKeys: 40 })
         ),
         evidenceSource: textOrNull(value.evidenceSource || value.sourceLabel || 'stackctrl_dashboard_evidence', 255),
@@ -541,7 +542,7 @@ function ensureItemEvidence(item, domain, snapshotId, availableEvidence = []) {
         ? availableEvidence.filter(row => [row.sourceMetric, row.sourceLabel, row.evidenceCategory, row.evidenceType]
             .some(value => String(value || '').toLowerCase() === requestedMetric))
         : [];
-    const selected = (matching.length ? matching : availableEvidence).slice(0, 100);
+    const selected = matching.length ? matching : availableEvidence;
     const rows = selected.map(row => safeEvidenceEntity(row.data ?? row));
     const first = selected[0] || {};
     if (!normalized.sourceMetric) normalized.sourceMetric = textOrNull(first.sourceMetric || first.sourceLabel || first.evidenceType, 120);
@@ -550,6 +551,15 @@ function ensureItemEvidence(item, domain, snapshotId, availableEvidence = []) {
     }
     if (!normalized.evidenceRows.length) normalized.evidenceRows = rows;
     if (!normalized.affectedEntities.length) normalized.affectedEntities = rows;
+    const sourceAlertIds = selected.map(row => {
+        const data = row?.data ?? row;
+        return data?.sourceAlertId || data?.alertId || data?.SourceID || data?.id || row?.entityKey || null;
+    }).filter(Boolean).map(String);
+    normalized.sourceAlertIds = [...new Set([...array(item?.sourceAlertIds).map(String), ...sourceAlertIds])];
+    normalized.sourceMetrics = [...new Set([...array(item?.sourceMetrics).map(String), normalized.sourceMetric].filter(Boolean))];
+    normalized.recommendedActions = array(item?.recommendedActions).length
+        ? array(item.recommendedActions)
+        : [normalized.recommendedAction].filter(Boolean);
     if (!normalized.evidenceSummary) normalized.evidenceSummary = `${rows.length} StackCTRL entity evidence row(s) support this item.`;
     return normalized;
 }
@@ -799,6 +809,50 @@ function splitIntoBatches(evidence, { maxItems = DEFAULT_MAX_ITEMS_PER_BATCH, ma
     }
     if (current.length || !batches.length) batches.push({ number: batches.length + 1, items: current });
     return batches;
+}
+
+function securityAlertSemantics(item) {
+    const data = item?.data && typeof item.data === 'object' ? item.data : (item || {});
+    const text = value => String(value || '').trim().toLowerCase();
+    const severity = text(data.severity || data.alertSeverity || item?.severity || 'unknown');
+    const category = text(data.category || data.alertCategory || data.classification || data.type || item?.evidenceType || 'uncategorized');
+    const incidentType = text(data.incidentType || data.detectionSource || data.eventType || data.kind || item?.evidenceType || 'unknown');
+    const source = text(data.source || data.sourceSystem || data.provider || data.serviceSource || item?.sourceLabel || 'stackctrl');
+    const affectedEntity = text(
+        data.affectedEntity || data.userPrincipalName || data.user || data.userName || data.deviceName ||
+        data.device || data.hostName || data.ipAddress || item?.entityKey || 'unassigned'
+    );
+    const patternSource = text(data.title || data.displayName || data.alertName || data.description || category);
+    const repeatedPattern = patternSource
+        .replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/gi, '<id>')
+        .replace(/\b\d+\b/g, '<n>')
+        .replace(/\s+/g, ' ')
+        .slice(0, 160);
+    return { severity, category, incidentType, source, affectedEntity, repeatedPattern };
+}
+
+function splitSecurityAlertsIntoBatches(evidence, options = {}) {
+    const severityRank = { critical: 0, high: 1, medium: 2, low: 3, informational: 4, unknown: 5 };
+    const ordered = array(evidence).map((item, originalIndex) => ({ item, originalIndex, semantics: securityAlertSemantics(item) }))
+        .sort((left, right) => {
+            const severityDifference = (severityRank[left.semantics.severity] ?? 5) - (severityRank[right.semantics.severity] ?? 5);
+            if (severityDifference) return severityDifference;
+            const leftKey = [left.semantics.category, left.semantics.incidentType, left.semantics.source, left.semantics.repeatedPattern, left.semantics.affectedEntity].join('|');
+            const rightKey = [right.semantics.category, right.semantics.incidentType, right.semantics.source, right.semantics.repeatedPattern, right.semantics.affectedEntity].join('|');
+            return leftKey.localeCompare(rightKey) || left.originalIndex - right.originalIndex;
+        });
+    const batches = splitIntoBatches(ordered.map(entry => entry.item), options);
+    return batches.map(batch => {
+        const semantics = batch.items.map(securityAlertSemantics);
+        const values = key => [...new Set(semantics.map(item => item[key]).filter(Boolean))];
+        return {
+            ...batch,
+            semanticGrouping: {
+                severities: values('severity'), categories: values('category'), incidentTypes: values('incidentType'),
+                sources: values('source'), affectedEntities: values('affectedEntity'), repeatedAlertPatterns: values('repeatedPattern')
+            }
+        };
+    });
 }
 
 // Safely parse JSON with error diagnostics
@@ -1241,7 +1295,40 @@ function createEnterpriseIntelligenceService({
         };
     }
 
+    function securityAlertsBatchPrompt(packageValue) {
+        return `Analyse this Security Alerts evidence batch. Return compact JSON only; no markdown and no narrative report.
+Do not omit, generalize away, or invent evidence. Group repeated alert patterns while retaining every supplied source alert ID and affected entity reference.
+Each finding, risk, recommendation, and management action must use these fields:
+title, severity, category, status, sourceDomain, sourceMetric, sourceMetrics, snapshotId, evidenceSource,
+sourceAlertIds, affectedEntities, evidenceRows, whatHappened, whyItMatters, businessImpact,
+recommendedAction, recommendedActions, suggestedOwner, suggestedDueDate.
+Keep descriptive fields below 400 characters. Use arrays and structured values instead of paragraphs.
+Return exactly:
+{
+  "domainExecutiveSummary": "one compact sentence",
+  "keyFindings": [],
+  "risks": [],
+  "recommendations": [],
+  "controlAssessment": [],
+  "managementActions": [],
+  "trendAnalysis": [],
+  "evidenceUsed": [],
+  "evidenceGaps": [],
+  "missingDataWarnings": [],
+  "assumptions": [],
+  "confidenceScore": null,
+  "evidenceLimitations": {}
+}
+Prioritize sourceAlertIds, affectedEntities, evidenceRows, source metrics, severity, and recommended actions over prose.
+
+STACKCTRL SECURITY ALERTS BATCH:
+${JSON.stringify(packageValue)}`;
+    }
+
     function domainPrompt(domain, packageValue) {
+        if (domain.key === 'security_alerts' && packageValue?.batchMetadata) {
+            return securityAlertsBatchPrompt(packageValue);
+        }
         return `You are StackCTRL Enterprise Intelligence. Analyse only the supplied frozen StackCTRL ${domain.name} package.
 Azure builds structured enterprise intelligence; Power BI builds the final report. Do not create layouts, visuals, HTML, dashboard instructions, or Power BI files.
 Do not claim direct access to Microsoft Graph, Cloudflare, or another vendor. Do not invent missing controls or evidence.
@@ -1330,12 +1417,17 @@ ${JSON.stringify(packageValue)}`;
     }
 
     // Build a domain analysis package for a specific batch of evidence
-    function buildDomainBatchPackage(basePackage, batchEvidence, batchNumber, totalBatches) {
+    function buildDomainBatchPackage(basePackage, batchEvidence, batchNumber, totalBatches, semanticGrouping = null) {
         const categoryMap = new Map();
         for (const item of batchEvidence) {
             const key = String(item?.evidenceCategory || item?.sourceLabel || item?.evidenceType || 'evidenceRows');
             if (!categoryMap.has(key)) categoryMap.set(key, []);
-            categoryMap.get(key).push(safeEvidenceEntity(item?.data ?? item));
+            const data = item?.data ?? item;
+            categoryMap.get(key).push({
+                entityKey: item?.entityKey || entityRecordKey(data),
+                sourcePath: item?.sourcePath || null,
+                sourceAlertId: data?.sourceAlertId || data?.alertId || data?.SourceID || data?.id || null
+            });
         }
         const batchCategories = [...categoryMap.entries()].map(([key, entities]) => ({
             key,
@@ -1376,7 +1468,8 @@ ${JSON.stringify(packageValue)}`;
                 totalBatches,
                 batchEvidentItemCount: batchEvidence.length,
                 recordsSent: batchEvidence.length,
-                evidenceRowsIncluded: batchEvidence.length
+                evidenceRowsIncluded: batchEvidence.length,
+                semanticGrouping
             },
             limitations: {
                 ...basePackage.limitations,
@@ -1413,7 +1506,7 @@ ${JSON.stringify(packageValue)}`;
         companyId, snapshotId, runId, domain, batchNumber, totalBatches, batchEvidence, analysis, usage, status,
         errorMessage = null, failureReason = null, rawResponsePreview = null, azureFinishReason = null,
         jsonRepaired = false, jsonRepairMethod = null, recommendedRetryAfterMs = null, stackCTRLDataCount = 0,
-        recordsRemaining: suppliedRecordsRemaining = null
+        recordsRemaining: suppliedRecordsRemaining = null, semanticGrouping = null
     }) {
         const batchItemCount = batchEvidence.length;
         const recordsRemaining = suppliedRecordsRemaining == null
@@ -1445,6 +1538,7 @@ ${JSON.stringify(packageValue)}`;
             thresholdUsed: settings.maxTotalTokens,
             retryCount: usage.retries || 0,
             retryOrCooldownOccurred: Boolean((usage.retries || 0) > 0 || recommendedRetryAfterMs),
+            semanticGrouping,
             evidenceTypes: [...new Set(batchEvidence.map(item => item?.evidenceType).filter(Boolean))],
             firstEvidenceNumber: batchEvidence.length ? 1 : 0,
             lastEvidencePath: batchEvidence.at(-1)?.sourcePath || null
@@ -1490,8 +1584,8 @@ ${JSON.stringify(packageValue)}`;
     }
 
     // Analyze a single domain batch with JSON error handling and repair
-    async function analyzeDomainBatch({ companyId, snapshot, run, domain, packageResult, batchEvidence, batchNumber, totalBatches, historicalContext, recordsRemaining = null }) {
-        const batchPackage = buildDomainBatchPackage(packageResult.package, batchEvidence, batchNumber, totalBatches);
+    async function analyzeDomainBatch({ companyId, snapshot, run, domain, packageResult, batchEvidence, batchNumber, totalBatches, historicalContext, recordsRemaining = null, semanticGrouping = null }) {
+        const batchPackage = buildDomainBatchPackage(packageResult.package, batchEvidence, batchNumber, totalBatches, semanticGrouping);
         let usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: estimateDomainRequestBytes(domain, batchPackage), responseBytes: 0, retries: 0 };
         
         try {
@@ -1563,7 +1657,7 @@ ${JSON.stringify(packageValue)}`;
                             stackCTRLDataCount: packageResult.audit.stackCTRLDataCount,
                             status: 'failed_invalid_json',
                             errorMessage: `JSON parse failed: ${jsonResult.error}. Repair attempt also failed: ${repairResult.error}`,
-                            failureReason, rawResponsePreview, azureFinishReason: finishReason, recordsRemaining
+                            failureReason, rawResponsePreview, azureFinishReason: finishReason, recordsRemaining, semanticGrouping
                         });
                         return {
                             status: 'failed_invalid_json', batchNumber, batchItemCount: batchEvidence.length, domain, usage,
@@ -1597,7 +1691,7 @@ ${JSON.stringify(packageValue)}`;
                 companyId, snapshotId: snapshot.ID, runId: run.id, domain,
                 batchNumber, totalBatches, batchEvidence, analysis, usage, status: batchStatus,
                 stackCTRLDataCount: packageResult.audit.stackCTRLDataCount,
-                rawResponsePreview, azureFinishReason: finishReason, jsonRepaired, jsonRepairMethod, recordsRemaining
+                rawResponsePreview, azureFinishReason: finishReason, jsonRepaired, jsonRepairMethod, recordsRemaining, semanticGrouping
             });
             
             return { status: batchStatus, batchNumber, batchItemCount: batchEvidence.length, domain, analysis, usage, jsonRepaired, jsonRepairMethod };
@@ -1629,7 +1723,8 @@ ${JSON.stringify(packageValue)}`;
                     rawResponsePreview: safeResponsePreview(metadata.rawResponse || metadata.responseText || ''),
                     azureFinishReason: metadata.finishReason || null,
                     recommendedRetryAfterMs,
-                    recordsRemaining
+                    recordsRemaining,
+                    semanticGrouping
                 });
             }
             
@@ -1645,15 +1740,21 @@ ${JSON.stringify(packageValue)}`;
             : HEAVY_DOMAINS.has(domain.key)
                 ? Math.min(settings.maxItemsPerBatch, settings.heavyDomainMaxItemsPerBatch)
                 : settings.maxItemsPerBatch;
-        const batches = splitIntoBatches(allEvidence, {
+        const batchOptions = {
             maxItems,
             maxBytes: settings.maxInputBytes,
             estimateBytes: items => estimateDomainRequestBytes(
                 domain,
                 buildDomainBatchPackage(packageResult.package, items, 1, Math.max(1, Math.ceil(allEvidence.length / maxItems)))
             )
-        });
+        };
+        const batches = domain.key === 'security_alerts'
+            ? splitSecurityAlertsIntoBatches(allEvidence, batchOptions)
+            : splitIntoBatches(allEvidence, batchOptions);
         packageResult.audit.batchPlan = buildEvidenceBatchPlan(allEvidence, batches);
+        if (domain.key === 'security_alerts' && batches.length > 10 && allEvidence.length < 1000) {
+            logger.warn?.(`[StackCTRL Enterprise] Security Alerts required ${batches.length} safe batches because the complete evidence payload exceeded the configured byte budget.`);
+        }
         const results = [];
         const totals = { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: 0, responseBytes: 0, retries: 0 };
         
@@ -1663,11 +1764,19 @@ ${JSON.stringify(packageValue)}`;
             const recordsRemaining = Math.max(0, allEvidence.length - batches
                 .slice(0, batch.number)
                 .reduce((count, plannedBatch) => count + plannedBatch.items.length, 0));
+            await updateRunBatchProgress(run.id, {
+                domainKey: domain.key,
+                batchNumber: batch.number,
+                batchCount: batches.length,
+                recordsPrepared: allEvidence.length,
+                recordsRemaining: recordsRemaining + batch.items.length
+            });
             const result = await analyzeDomainBatch({
                 companyId, snapshot, run, domain, packageResult,
                 batchEvidence: batch.items, batchNumber: batch.number, totalBatches: batches.length,
                 historicalContext,
-                recordsRemaining
+                recordsRemaining,
+                semanticGrouping: batch.semanticGrouping || null
             });
             
             results.push(result);
@@ -1677,6 +1786,10 @@ ${JSON.stringify(packageValue)}`;
 
             if (result.status === 'failed_rate_limited') {
                 logger.warn?.(`[StackCTRL Enterprise] Stopping ${domain.name} after an exhausted Azure 429 retry budget.`);
+                break;
+            }
+            if (!isSuccessfulDomainStatus(result.status)) {
+                logger.error?.(`[StackCTRL Enterprise] Stopping ${domain.name} after batch ${batch.number} failed with ${result.status}; remaining evidence is retained and recorded as omitted for this attempt.`);
                 break;
             }
             
@@ -1797,6 +1910,18 @@ ${JSON.stringify(packageValue)}`;
                 [totals.inputTokens, totals.outputTokens, totals.totalTokens, totals.requestBytes, totals.responseBytes, totals.retries, Number(runId)]
             );
         }
+    }
+
+    async function updateRunBatchProgress(runId, { domainKey, batchNumber, batchCount, recordsPrepared, recordsRemaining }) {
+        await pool.query(
+            `UPDATE StackCTRLEnterpriseReportRuns
+             SET ProgressJson = JSON_SET(
+                 COALESCE(ProgressJson, JSON_OBJECT()),
+                 '$.currentDomainKey', ?, '$.currentBatch', ?, '$.batchCount', ?,
+                 '$.recordsPrepared', ?, '$.recordsRemaining', ?, '$.updatedAt', ?
+             ) WHERE ID = ?`,
+            [domainKey, Number(batchNumber), Number(batchCount), Number(recordsPrepared), Number(recordsRemaining), new Date().toISOString(), Number(runId)]
+        );
     }
 
     async function storeSkippedDomain({ run, companyId, snapshot, domain, status, errorMessage }) {
@@ -2103,6 +2228,21 @@ ${JSON.stringify(packageValue)}`;
                 errorMessage: staleFailure.errorMessage, sourceHealth: packageResult.package.sourceHealth
             };
         }
+
+        if (domain.key === 'security_alerts') {
+            const expectedSourceRecords = Number(packageResult.current.source?.sourceLineage?.evidenceRecordCount ?? packageResult.audit.preparedForAzureCount);
+            const preparedRecords = Number(packageResult.audit.preparedForAzureCount || 0);
+            if (expectedSourceRecords !== preparedRecords) {
+                const usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: 0, responseBytes: 0, retries: 0 };
+                const errorMessage = `Security Alerts evidence validation failed: ${expectedSourceRecords} stored source record(s) were expected but ${preparedRecords} record(s) were prepared for Azure.`;
+                packageResult.audit.sentToAzureCount = 0;
+                packageResult.audit.evidenceOmittedCount = Math.max(0, expectedSourceRecords - preparedRecords);
+                packageResult.package.limitations.missingDataWarnings.push(errorMessage);
+                await storeDomain({ run, companyId, snapshot, domain, packageResult, analysis: null, usage, status: 'failed_evidence_validation', errorMessage });
+                await storeAudit({ run, companyId, snapshot, domain, packageResult, analysis: null, usage, status: 'failed_evidence_validation' });
+                return { status: 'failed_evidence_validation', domain, usage, audit: packageResult.audit, errorMessage };
+            }
+        }
         
         try {
             // Process domain in batches instead of reducing evidence
@@ -2144,22 +2284,49 @@ ${JSON.stringify(packageValue)}`;
             }
             
             // Aggregate batch results into domain-level analysis
-            const dedupeByTitle = items => {
-                const seen = new Set();
-                return array(items).filter(item => {
+            const mergeByTitle = items => {
+                const merged = new Map();
+                const uniqueValues = values => {
+                    const seen = new Set();
+                    return array(values).filter(value => {
+                        const key = typeof value === 'string' ? value : JSON.stringify(value);
+                        if (seen.has(key)) return false;
+                        seen.add(key);
+                        return true;
+                    });
+                };
+                for (const item of array(items)) {
                     const key = `${item?.title || ''}|${item?.sourceMetric || ''}|${item?.severity || ''}`;
-                    if (seen.has(key)) return false;
-                    seen.add(key);
-                    return true;
-                });
+                    if (!merged.has(key)) {
+                        merged.set(key, { ...item });
+                        continue;
+                    }
+                    const current = merged.get(key);
+                    merged.set(key, {
+                        ...current,
+                        ...item,
+                        affectedEntities: uniqueValues([...array(current.affectedEntities), ...array(item.affectedEntities)]),
+                        evidenceRows: uniqueValues([...array(current.evidenceRows), ...array(item.evidenceRows)]),
+                        sourceAlertIds: uniqueValues([...array(current.sourceAlertIds), ...array(item.sourceAlertIds)]),
+                        sourceMetrics: uniqueValues([...array(current.sourceMetrics), ...array(item.sourceMetrics)]),
+                        recommendedActions: uniqueValues([...array(current.recommendedActions), ...array(item.recommendedActions)])
+                    });
+                }
+                return [...merged.values()];
             };
-            const mergedControlAssessment = completedBatches.reduce((merged, batch) => ({
-                ...merged,
-                ...(batch.analysis?.controlAssessment || {})
-            }), {});
+            const controlAssessments = completedBatches.map(batch => batch.analysis?.controlAssessment).filter(Boolean);
+            const mergedControlAssessment = controlAssessments.some(Array.isArray)
+                ? mergeByTitle(controlAssessments.flatMap(value => array(value)))
+                : controlAssessments.reduce((merged, value) => ({ ...merged, ...value }), {});
             const confidenceScores = completedBatches
                 .map(batch => numberOrNull(batch.analysis?.confidenceScore))
                 .filter(score => score != null);
+            const recordsPrepared = Number(packageResult.audit.preparedForAzureCount || packageResult.audit.stackCTRLDataCount || 0);
+            const recordsSent = Number(batchResults.processedItems || 0);
+            const batchRecordsOmitted = Number(batchResults.omittedItems || 0);
+            const sourceRecordsOmitted = Number(packageResult.audit.evidenceOmittedCount || 0);
+            const batchAccountingComplete = recordsSent + batchRecordsOmitted === recordsPrepared;
+            const batchFailureReasons = failedBatches.map(batch => batch.failureReason || batch.errorMessage).filter(Boolean);
             const aggregatedAnalysis = {
                 domainExecutiveSummary: completedBatches.map(b => b.analysis?.domainExecutiveSummary).filter(Boolean).join(' '),
                 technicalSummary: completedBatches.map(b => b.analysis?.technicalSummary).filter(Boolean).join(' '),
@@ -2169,10 +2336,10 @@ ${JSON.stringify(packageValue)}`;
                 evidenceGaps: completedBatches.flatMap(b => b.analysis?.evidenceGaps || []),
                 scoreJustification: completedBatches.map(b => b.analysis?.scoreJustification).filter(Boolean).join(' '),
                 controlAssessment: mergedControlAssessment,
-                keyFindings: dedupeByTitle(completedBatches.flatMap(b => b.analysis?.keyFindings || [])).slice(0, 100),
-                risks: dedupeByTitle(completedBatches.flatMap(b => b.analysis?.risks || [])).slice(0, 100),
-                recommendations: dedupeByTitle(completedBatches.flatMap(b => b.analysis?.recommendations || [])).slice(0, 100),
-                trendAnalysis: dedupeByTitle(completedBatches.flatMap(b => b.analysis?.trendAnalysis || [])).slice(0, 100),
+                keyFindings: mergeByTitle(completedBatches.flatMap(b => b.analysis?.keyFindings || [])),
+                risks: mergeByTitle(completedBatches.flatMap(b => b.analysis?.risks || [])),
+                recommendations: mergeByTitle(completedBatches.flatMap(b => b.analysis?.recommendations || [])),
+                trendAnalysis: mergeByTitle(completedBatches.flatMap(b => b.analysis?.trendAnalysis || [])),
                 yesterdayVsToday: completedBatches[0]?.analysis?.yesterdayVsToday || {},
                 whatImproved: completedBatches.flatMap(b => b.analysis?.whatImproved || []),
                 whatDeteriorated: completedBatches.flatMap(b => b.analysis?.whatDeteriorated || []),
@@ -2186,19 +2353,21 @@ ${JSON.stringify(packageValue)}`;
                 confidenceScore: confidenceScores.length
                     ? Number((confidenceScores.reduce((total, score) => total + score, 0) / confidenceScores.length).toFixed(2))
                     : completedBatches[0]?.analysis?.confidenceScore ?? null,
-                managementActions: dedupeByTitle(completedBatches.flatMap(b => b.analysis?.managementActions || [])),
+                managementActions: mergeByTitle(completedBatches.flatMap(b => b.analysis?.managementActions || [])),
                 powerBiSummary: completedBatches.reduce((merged, batch) => ({ ...merged, ...(batch.analysis?.powerBiSummary || {}) }), {}),
                 evidenceCatalog: packageResult.evidenceCatalog,
                 evidenceLimitations: {
-                    recordsSent: batchResults.processedItems,
-                    recordsOmitted: batchResults.omittedItems + packageResult.audit.evidenceOmittedCount,
+                    recordsPrepared,
+                    recordsSent,
+                    recordsOmitted: batchRecordsOmitted + sourceRecordsOmitted,
                     totalEntityRows: packageResult.audit.stackCTRLDataCount,
                     catalogEntityCount: packageResult.audit.catalogEntityCount,
                     catalogCategoryCount: packageResult.audit.catalogCategoryCount,
                     completedBatches: completedBatches.length,
                     totalBatches: batchResults.batchCount,
-                    complete: batchResults.complete && packageResult.audit.evidenceOmittedCount === 0,
-                    omittedReasons: array(packageResult.package.limitations?.missingDataWarnings).slice(0, 20)
+                    accountingComplete: batchAccountingComplete,
+                    complete: batchResults.complete && sourceRecordsOmitted === 0 && batchAccountingComplete,
+                    omittedReasons: [...array(packageResult.package.limitations?.missingDataWarnings), ...batchFailureReasons]
                 },
                 authoritativeScores: { healthScore: packageResult.current.healthScore, riskScore: packageResult.current.riskScore, riskLevel: packageResult.current.riskLevel },
                 domain: { key: domain.key, name: domain.name },
@@ -2220,12 +2389,18 @@ ${JSON.stringify(packageValue)}`;
             }).rows;
             
             const recoveredBatches = completedBatches.filter(batch => batch.status === 'completed_with_warnings');
-            const finalStatus = failedBatches.length > 0
+            const securityAccountingFailure = domain.key === 'security_alerts' && !batchAccountingComplete;
+            const finalStatus = securityAccountingFailure
+                ? 'failed_evidence_validation'
+                : failedBatches.length > 0
                 ? 'partial'
                 : recoveredBatches.length > 0 ? 'completed_with_warnings' : 'completed';
             const successfullyAnalysedCount = completedBatches.reduce((total, batch) => total + Number(batch.batchItemCount || 0), 0);
             packageResult.audit.sentToAzureCount = successfullyAnalysedCount;
-            const partialErrorMessage = failedBatches.length
+            packageResult.audit.evidenceOmittedCount = sourceRecordsOmitted + batchRecordsOmitted;
+            const partialErrorMessage = securityAccountingFailure
+                ? `Security Alerts batch accounting failed: ${recordsPrepared} prepared, ${recordsSent} sent, ${batchRecordsOmitted} omitted.`
+                : failedBatches.length
                 ? `${failedBatches.length} of ${batchResults.batchCount} batch(es) failed. ${failedBatches.map(batch => batch.errorMessage).filter(Boolean).join(' | ')}`.slice(0, 5000)
                 : null;
             const domainIntelligenceId = await storeDomain({
@@ -2260,7 +2435,7 @@ ${JSON.stringify(packageValue)}`;
             };
         } catch (error) {
             logger.error(`[StackCTRL Enterprise] ${domain.name} analysis failed:`, error.message);
-            const failureStatus = classifyFailureStatus(error);
+            const failureStatus = error.enterpriseStatus || classifyFailureStatus(error);
             packageResult.audit.sentToAzureCount = 0;
             await storeDomain({
                 run, companyId, snapshot, domain, packageResult,
@@ -2505,6 +2680,7 @@ ${JSON.stringify(packageValue)}`;
         const results = [];
         const totals = { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: 0, responseBytes: 0, retries: 0 };
         let rateLimit = null;
+        let terminalError = null;
 
         await updateRunProgress(run.id, buildRunProgress({
             run,
@@ -2562,6 +2738,24 @@ ${JSON.stringify(packageValue)}`;
                 break;
             }
 
+            if (['failed', 'failed_invalid_json', 'failed_storage', 'failed_evidence_validation'].includes(String(result.status || ''))) {
+                terminalError = {
+                    domainKey: result.domain.key,
+                    status: result.status,
+                    errorMessage: result.errorMessage || `${result.domain.name} failed and the enterprise pipeline was stopped.`
+                };
+                for (let pendingIndex = index + 1; pendingIndex < selected.length; pendingIndex += 1) {
+                    results.push({
+                        status: 'skipped_pipeline_stop',
+                        domain: selected[pendingIndex],
+                        usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: 0, responseBytes: 0, retries: 0 },
+                        audit: null,
+                        errorMessage: `Pipeline stopped after ${result.domain.name}: ${terminalError.errorMessage}`
+                    });
+                }
+                break;
+            }
+
             if (index < selected.length - 1) {
                 const nextDomain = selected[index + 1];
                 const delayMs = Math.max(
@@ -2576,12 +2770,12 @@ ${JSON.stringify(packageValue)}`;
             run,
             domainKeys,
             results,
-            phase: rateLimit ? 'rate_limited' : 'domains_complete',
+            phase: rateLimit ? 'rate_limited' : terminalError ? 'failed' : 'domains_complete',
             rateLimit,
             snapshot
         }), totals);
 
-        return { results, totals, rateLimited: Boolean(rateLimit), rateLimit };
+        return { results, totals, rateLimited: Boolean(rateLimit), rateLimit, terminalError };
     }
 
     async function runEnterpriseReport({ companyId, snapshotId = null, periodType = 'daily', referenceDate = new Date(), domainKeys = null, includeSynthesis = true, deduplicationKey = null, refreshSnapshot = null, user = null } = {}) {
@@ -2610,6 +2804,7 @@ ${JSON.stringify(packageValue)}`;
             let synthesis = null;
             const canSynthesize = includeSynthesis
                 && !domains.rateLimited
+                && !domains.terminalError
                 && allDomainsStored
                 && successfulDomains.length > 0;
             if (canSynthesize) {
@@ -2640,6 +2835,8 @@ ${JSON.stringify(packageValue)}`;
                 const incompleteCount = domains.results.filter(result => !isSuccessfulDomainStatus(result.status)).length;
                 const errorMessage = domains.rateLimited
                     ? `Azure rate limit reached at ${domains.rateLimit?.domainKey || 'unknown domain'}. Completed domains were stored; synthesis was not run.`
+                    : domains.terminalError
+                        ? `Enterprise pipeline stopped at ${domains.terminalError.domainKey}: ${domains.terminalError.errorMessage}`
                     : runStatusBeforeSynthesis === 'completed'
                         ? null
                         : `${incompleteCount} domain analysis request(s) did not complete successfully.`;
@@ -2655,7 +2852,7 @@ ${JSON.stringify(packageValue)}`;
                     run,
                     domainKeys: selectedKeys,
                     results: domains.results,
-                    phase: domains.rateLimited ? 'rate_limited' : 'domains_complete',
+                    phase: domains.rateLimited ? 'rate_limited' : domains.terminalError ? 'failed' : 'domains_complete',
                     synthesisStatus: includeSynthesis ? 'skipped' : 'not_requested',
                     rateLimit: domains.rateLimit,
                     snapshot
@@ -2688,10 +2885,11 @@ ${JSON.stringify(packageValue)}`;
                 })),
                 domainRunSummary,
                 synthesisId: synthesis?.synthesisId || null,
-                synthesisStatus: synthesis?.status || (includeSynthesis ? (domains.rateLimited ? 'skipped_rate_limited' : (successfulDomains.length ? 'skipped' : 'skipped_no_successful_domains')) : 'not_requested'),
+                synthesisStatus: synthesis?.status || (includeSynthesis ? (domains.rateLimited ? 'skipped_rate_limited' : domains.terminalError ? 'skipped_pipeline_stop' : (successfulDomains.length ? 'skipped' : 'skipped_no_successful_domains')) : 'not_requested'),
                 totals: domains.totals,
                 rateLimited: domains.rateLimited,
-                rateLimit: domains.rateLimit
+                rateLimit: domains.rateLimit,
+                terminalError: domains.terminalError
             };
         } catch (error) {
             captureRateLimit(error);
@@ -2844,6 +3042,143 @@ ${JSON.stringify(packageValue)}`;
                 MissingDataWarningsJson: parseJson(row.MissingDataWarningsJson, [])
             }))
         };
+    }
+
+    async function getAdminProgress(companyId, runId = null) {
+        const numericCompanyId = Number(companyId);
+        const params = [numericCompanyId];
+        const runFilter = runId ? ' AND RunID = ?' : '';
+        if (runId) params.push(Number(runId));
+        const [[runs], [domains], [audits], [synthesis], [batches]] = await Promise.all([
+            pool.query(`SELECT ID, CompanyID, SnapshotID, PeriodType, PeriodStart, PeriodEnd, Status, Mode,
+                               StartedAt, CompletedAt, TotalInputTokens, TotalOutputTokens, TotalTokens,
+                               TotalRequestBytes, TotalResponseBytes, RetryCount, ErrorMessage, ProgressJson
+                        FROM StackCTRLEnterpriseReportRuns WHERE CompanyID = ? ORDER BY ID DESC LIMIT 50`, [numericCompanyId]),
+            pool.query(`SELECT ID, CompanyID, SnapshotID, RunID, DomainKey, DomainName, PeriodType, PeriodStart,
+                               PeriodEnd, HealthScore, RiskScore, RiskLevel, InputSizeBytes, ResponseSizeBytes,
+                               InputTokens, OutputTokens, TotalTokens, RetryCount, Status, ErrorMessage, CreatedAt
+                        FROM StackCTRLTenantDomainIntelligence WHERE CompanyID = ?${runFilter}
+                        ORDER BY RunID DESC, ID DESC LIMIT 200`, params),
+            pool.query(`SELECT ID, CompanyID, SnapshotID, RunID, DomainKey, StackCTRLDataCount, SentToAzureCount,
+                               OmittedCount, MetricsIncludedCount, EvidenceIncludedCount, EvidenceOmittedCount,
+                               HistoricalComparisonsIncluded, RisksReturnedCount, RecommendationsReturnedCount,
+                               TrendsReturnedCount, InputSizeBytes, OutputSizeBytes, InputTokens, OutputTokens,
+                               RetryCount, Status, CreatedAt
+                        FROM StackCTRLIntelligenceEvidenceAudit WHERE CompanyID = ?${runFilter}
+                        ORDER BY RunID DESC, ID DESC LIMIT 200`, params),
+            pool.query(`SELECT ID, CompanyID, SnapshotID, RunID, PeriodType, PeriodStart, PeriodEnd, Status,
+                               InputSizeBytes, ResponseSizeBytes, InputTokens, OutputTokens, TotalTokens,
+                               RetryCount, CreatedAt
+                        FROM StackCTRLEnterpriseSynthesis WHERE CompanyID = ?${runFilter} ORDER BY ID DESC LIMIT 50`, params),
+            pool.query(`SELECT CompanyID, SnapshotID, RunID, DomainKey, MAX(DomainName) AS DomainName,
+                               MAX(BatchCount) AS BatchCount, MAX(BatchNumber) AS BatchNumber,
+                               SUM(Status IN ('completed', 'completed_with_warnings')) AS CompletedBatches,
+                               SUM(Status NOT IN ('completed', 'completed_with_warnings')) AS FailedBatches,
+                               CASE
+                                   WHEN SUM(Status NOT IN ('completed', 'completed_with_warnings')) > 0
+                                       AND SUM(Status IN ('completed', 'completed_with_warnings')) > 0 THEN 'partial'
+                                   WHEN SUM(Status NOT IN ('completed', 'completed_with_warnings')) > 0 THEN 'failed'
+                                   WHEN SUM(Status = 'completed_with_warnings') > 0 THEN 'completed_with_warnings'
+                                   ELSE 'completed'
+                               END AS Status,
+                               SUM(BatchItemCount) AS BatchItemCount, SUM(SentToAzureCount) AS SentToAzureCount,
+                               SUM(OmittedFromThisBatch) AS OmittedFromThisBatch,
+                               MIN(RemainingAfterBatch) AS RemainingAfterBatch,
+                               SUM(InputTokens) AS InputTokens, SUM(OutputTokens) AS OutputTokens,
+                               SUM(TotalTokens) AS TotalTokens, SUM(RetryCount) AS RetryCount,
+                               MAX(Status = 'completed_with_warnings' OR AzureFinishReason = 'length') AS JsonRecoveryWarning,
+                               MAX(CASE WHEN Status NOT IN ('completed', 'completed_with_warnings') THEN ErrorMessage END) AS ErrorMessage,
+                               MAX(CASE WHEN Status NOT IN ('completed', 'completed_with_warnings') THEN FailureReason END) AS FailureReason
+                        FROM StackCTRLTenantDomainIntelligenceBatches WHERE CompanyID = ?${runFilter}
+                        GROUP BY CompanyID, SnapshotID, RunID, DomainKey ORDER BY RunID DESC, DomainKey LIMIT 200`, params)
+        ]);
+        const normalizedRuns = runs.map(row => ({ ...row, ProgressJson: parseJson(row.ProgressJson, {}) }));
+        const latestRun = normalizedRuns[0] || null;
+        const latestRunId = latestRun?.ID == null ? null : Number(latestRun.ID);
+        const latestDomains = latestRunId ? domains.filter(row => Number(row.RunID) === latestRunId) : [];
+        const latestAudits = latestRunId ? audits.filter(row => Number(row.RunID) === latestRunId) : [];
+        const latestBatches = latestRunId ? batches.filter(row => Number(row.RunID) === latestRunId) : [];
+        const progress = latestRun?.ProgressJson || {};
+        return {
+            payloadType: 'enterprise_progress_only',
+            companyId: numericCompanyId,
+            settings: {
+                domainDelayMs: settings.domainDelayMs,
+                maxTotalTokens: settings.maxTotalTokens,
+                maxItemsPerBatch: settings.maxItemsPerBatch,
+                heavyDomainMaxItemsPerBatch: settings.heavyDomainMaxItemsPerBatch
+            },
+            domains: ENTERPRISE_DOMAINS.map(domain => ({ key: domain.key, name: domain.name, mode: domain.mode })),
+            runs: normalizedRuns,
+            domainIntelligence: domains,
+            evidenceAudit: audits,
+            synthesis,
+            batches,
+            progressSummary: latestRun ? {
+                runId: latestRunId,
+                snapshotId: latestRun.SnapshotID == null ? null : Number(latestRun.SnapshotID),
+                companyId: numericCompanyId,
+                currentDomain: progress.currentDomainKey || null,
+                domainStatuses: latestDomains.map(row => ({ domainKey: row.DomainKey, status: row.Status, errorMessage: row.ErrorMessage || null })),
+                counts: progress.counts || {},
+                recordsPrepared: latestAudits.reduce((total, row) => total + Number(row.EvidenceIncludedCount || 0), 0),
+                recordsSent: latestAudits.reduce((total, row) => total + Number(row.SentToAzureCount || 0), 0),
+                recordsOmitted: latestAudits.reduce((total, row) => total + Number(row.OmittedCount || 0) + Number(row.EvidenceOmittedCount || 0), 0),
+                batchCount: latestBatches.reduce((total, row) => total + Number(row.BatchCount || 0), 0),
+                currentDomainBatchCount: progress.batchCount || latestBatches.find(row => row.DomainKey === progress.currentDomainKey)?.BatchCount || null,
+                currentBatch: progress.currentBatch || latestBatches.find(row => row.DomainKey === progress.currentDomainKey)?.BatchNumber || null,
+                tokenSummary: {
+                    inputTokens: Number(latestRun.TotalInputTokens || 0), outputTokens: Number(latestRun.TotalOutputTokens || 0),
+                    totalTokens: Number(latestRun.TotalTokens || 0), retryCount: Number(latestRun.RetryCount || 0)
+                },
+                evidenceCountSummary: latestAudits.map(row => ({
+                    domainKey: row.DomainKey, recordsPrepared: Number(row.EvidenceIncludedCount || 0),
+                    recordsSent: Number(row.SentToAzureCount || 0),
+                    recordsOmitted: Number(row.OmittedCount || 0) + Number(row.EvidenceOmittedCount || 0)
+                })),
+                jsonRecoveryWarning: latestBatches.some(row => Boolean(Number(row.JsonRecoveryWarning))),
+                finalSynthesisReady: synthesis.some(row => Number(row.RunID) === latestRunId && ['completed', 'completed_with_warnings'].includes(row.Status))
+            } : null
+        };
+    }
+
+    async function latestRunIdForCompany(companyId, requestedRunId = null) {
+        if (requestedRunId) return Number(requestedRunId);
+        const [rows] = await pool.query('SELECT ID FROM StackCTRLEnterpriseReportRuns WHERE CompanyID = ? ORDER BY ID DESC LIMIT 1', [Number(companyId)]);
+        if (!rows[0]) { const error = new Error('Enterprise intelligence run not found'); error.statusCode = 404; throw error; }
+        return Number(rows[0].ID);
+    }
+
+    async function getAdminDomainDetail(companyId, domainKey, runId = null) {
+        if (!DOMAIN_BY_KEY[domainKey]) { const error = new Error(`Unsupported enterprise domain: ${domainKey}`); error.statusCode = 400; throw error; }
+        const resolvedRunId = await latestRunIdForCompany(companyId, runId);
+        const [rows] = await pool.query('SELECT * FROM StackCTRLTenantDomainIntelligence WHERE CompanyID = ? AND RunID = ? AND DomainKey = ? ORDER BY ID DESC LIMIT 1', [Number(companyId), resolvedRunId, domainKey]);
+        if (!rows[0]) { const error = new Error('Domain intelligence detail not found'); error.statusCode = 404; throw error; }
+        return { ...rows[0], AnalysisJson: parseJson(rows[0].AnalysisJson, {}) };
+    }
+
+    async function getAdminAuditDetail(companyId, domainKey, runId = null) {
+        const resolvedRunId = await latestRunIdForCompany(companyId, runId);
+        const [rows] = await pool.query('SELECT * FROM StackCTRLIntelligenceEvidenceAudit WHERE CompanyID = ? AND RunID = ? AND DomainKey = ? ORDER BY ID DESC LIMIT 1', [Number(companyId), resolvedRunId, domainKey]);
+        if (!rows[0]) { const error = new Error('Enterprise evidence audit detail not found'); error.statusCode = 404; throw error; }
+        return { ...rows[0], AzureInputSummaryJson: parseJson(rows[0].AzureInputSummaryJson, {}), OmittedSummaryJson: parseJson(rows[0].OmittedSummaryJson, {}) };
+    }
+
+    async function getAdminBatchDetails(companyId, domainKey, runId = null) {
+        const resolvedRunId = await latestRunIdForCompany(companyId, runId);
+        const [rows] = await pool.query('SELECT * FROM StackCTRLTenantDomainIntelligenceBatches WHERE CompanyID = ? AND RunID = ? AND DomainKey = ? ORDER BY BatchNumber', [Number(companyId), resolvedRunId, domainKey]);
+        return rows.map(row => ({
+            ...row, BatchSummaryJson: parseJson(row.BatchSummaryJson, {}), FindingsJson: parseJson(row.FindingsJson, []),
+            RisksJson: parseJson(row.RisksJson, []), RecommendationsJson: parseJson(row.RecommendationsJson, []),
+            TrendsJson: parseJson(row.TrendsJson, []), MissingDataWarningsJson: parseJson(row.MissingDataWarningsJson, [])
+        }));
+    }
+
+    async function getAdminSynthesisDetail(companyId, runId = null) {
+        const resolvedRunId = await latestRunIdForCompany(companyId, runId);
+        const [rows] = await pool.query('SELECT * FROM StackCTRLEnterpriseSynthesis WHERE CompanyID = ? AND RunID = ? ORDER BY ID DESC LIMIT 1', [Number(companyId), resolvedRunId]);
+        if (!rows[0]) { const error = new Error('Enterprise synthesis detail not found'); error.statusCode = 404; throw error; }
+        return powerBISynthesisRow(rows[0]);
     }
 
     function powerBIDomainRow(row) {
@@ -3098,6 +3433,11 @@ ${JSON.stringify(packageValue)}`;
         runRollupReport,
         runScheduledTick,
         getAdminData,
+        getAdminProgress,
+        getAdminDomainDetail,
+        getAdminAuditDetail,
+        getAdminBatchDetails,
+        getAdminSynthesisDetail,
         getPowerBIIntelligenceRun,
         getPowerBIDomain,
         getPowerBIFinal,
@@ -3130,6 +3470,8 @@ module.exports = {
     buildEvidenceCatalog,
     repairTruncatedJson,
     splitIntoBatches,
+    securityAlertSemantics,
+    splitSecurityAlertsIntoBatches,
     computeInterBatchDelayMs,
     computeInterDomainDelayMs,
     periodWindow,

@@ -125,10 +125,42 @@ function createAdminIntelligenceRouter({ authenticateToken, adminIntelligenceSer
             const companyId = companyIdFrom(req, res);
             if (!companyId) return;
             const runId = req.query.runId ? Number(req.query.runId) : null;
-            res.json({ success: true, ...(await enterpriseIntelligenceService.getAdminData(companyId, runId)) });
+            res.json({ success: true, ...(await enterpriseIntelligenceService.getAdminProgress(companyId, runId)) });
         } catch (error) {
             sendError(res, error, 'Enterprise intelligence lookup failed');
         }
+    });
+
+    router.get('/tenant/:companyId/enterprise/domain/:domainKey', async (req, res) => {
+        try {
+            if (!requireEnterprise(res)) return;
+            const companyId = companyIdFrom(req, res); if (!companyId) return;
+            res.json({ success: true, domain: await enterpriseIntelligenceService.getAdminDomainDetail(companyId, req.params.domainKey, req.query.runId || null) });
+        } catch (error) { sendError(res, error, 'Enterprise domain detail lookup failed'); }
+    });
+
+    router.get('/tenant/:companyId/enterprise/audit/:domainKey', async (req, res) => {
+        try {
+            if (!requireEnterprise(res)) return;
+            const companyId = companyIdFrom(req, res); if (!companyId) return;
+            res.json({ success: true, audit: await enterpriseIntelligenceService.getAdminAuditDetail(companyId, req.params.domainKey, req.query.runId || null) });
+        } catch (error) { sendError(res, error, 'Enterprise audit detail lookup failed'); }
+    });
+
+    router.get('/tenant/:companyId/enterprise/batches/:domainKey', async (req, res) => {
+        try {
+            if (!requireEnterprise(res)) return;
+            const companyId = companyIdFrom(req, res); if (!companyId) return;
+            res.json({ success: true, batches: await enterpriseIntelligenceService.getAdminBatchDetails(companyId, req.params.domainKey, req.query.runId || null) });
+        } catch (error) { sendError(res, error, 'Enterprise batch detail lookup failed'); }
+    });
+
+    router.get('/tenant/:companyId/enterprise/synthesis/:runId', async (req, res) => {
+        try {
+            if (!requireEnterprise(res)) return;
+            const companyId = companyIdFrom(req, res); if (!companyId) return;
+            res.json({ success: true, synthesis: await enterpriseIntelligenceService.getAdminSynthesisDetail(companyId, Number(req.params.runId)) });
+        } catch (error) { sendError(res, error, 'Enterprise synthesis detail lookup failed'); }
     });
 
     router.get('/powerbi/intelligence/latest/:companyId', async (req, res) => {
