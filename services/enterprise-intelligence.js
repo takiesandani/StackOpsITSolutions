@@ -6,9 +6,9 @@ const ENTERPRISE_DOMAINS = Object.freeze([
     { key: 'devices', name: 'Device Protection', sourceKey: 'devices', mode: 'enterprise_domain_devices', riskKey: 'devices', healthKey: 'deviceHealth', focus: ['compliance rate', 'stale devices', 'non-compliant devices', 'unmanaged indicators', 'endpoint security risk', 'remediation actions'] },
     { key: 'email_security', name: 'Email Security', sourceKey: 'email_security', mode: 'enterprise_domain_email_security', riskKey: 'email', healthKey: 'emailHealth', focus: ['active threats', 'unresolved threats', 'phishing and malware indicators', 'response posture', 'resolution rate', 'user exposure'] },
     { key: 'cloudflare_network_security', name: 'Network Security / Cloudflare', sourceKey: 'cloudflare_network_security', mode: 'enterprise_domain_cloudflare_network_security', riskKey: 'network', healthKey: null, focus: ['network posture', 'WAF and firewall controls', 'DNS posture', 'SSL/TLS posture', 'bot protection', 'rate limiting', 'security events', 'unknown controls'] },
+    { key: 'security_alerts', name: 'Security Alerts', sourceKey: 'security_alerts', mode: 'enterprise_domain_security_alerts', riskKey: 'security', healthKey: 'securityHealth', focus: ['alert severity', 'high-severity alerts', 'anonymous IP sign-ins', 'active incidents', 'incident response posture', 'containment actions'] },
     { key: 'applications', name: 'Applications', sourceKey: 'applications', mode: 'enterprise_domain_applications', riskKey: 'applications', healthKey: 'applicationsHealth', focus: ['external publishers', 'broad permissions', 'high-risk applications', 'shadow IT', 'consent risk', 'application governance'] },
     { key: 'backup', name: 'Backup and Recovery', sourceKey: 'backup', mode: 'enterprise_domain_backup', riskKey: 'backup', healthKey: 'backupHealth', focus: ['backup coverage', 'third-party backup', 'immutable storage', 'restore testing', 'ransomware recovery readiness', 'business continuity'] },
-    { key: 'security_alerts', name: 'Security Alerts', sourceKey: 'security_alerts', mode: 'enterprise_domain_security_alerts', riskKey: 'security', healthKey: 'securityHealth', focus: ['alert severity', 'high-severity alerts', 'anonymous IP sign-ins', 'active incidents', 'incident response posture', 'containment actions'] },
     { key: 'governance', name: 'Governance', sourceKey: 'governance', mode: 'enterprise_domain_governance', riskKey: 'governance', healthKey: 'governanceHealth', focus: ['access reviews', 'admin reviews', 'policy reviews', 'governance maturity', 'manual review needs', 'evidence gaps'] },
     { key: 'operations', name: 'Operations', sourceKey: 'operations', mode: 'enterprise_domain_operations', riskKey: 'operations', healthKey: 'operationsHealth', focus: ['data freshness', 'stale operational evidence', 'failed tasks', 'service health', 'operational risk', 'process gaps'] },
     { key: 'compliance', name: 'Compliance Validation', sourceKey: 'compliance', mode: 'enterprise_domain_compliance', riskKey: 'compliance', healthKey: 'complianceHealth', focus: ['control status', 'failed controls', 'partial controls', 'manual-review controls', 'compliance readiness', 'evidence gaps'] }
@@ -689,7 +689,7 @@ function sourceMissingFailure(sourceHealth, domainName) {
     const warning = array(sourceHealth?.warnings).find(Boolean);
     return {
         status: 'blocked_missing_source',
-        errorMessage: warning || `${domainName} has no complete saved evidence snapshot. Azure analysis is blocked until evidence collection succeeds.`,
+        errorMessage: warning || `${domainName} has no complete saved evidence snapshot. Enterprise Deep Reporting continued with limited-data warnings and no Azure call for this domain.`,
         reason: status
     };
 }
@@ -964,7 +964,8 @@ function createEnterpriseIntelligenceService({
         maxDomainOutputTokens: Math.max(1000, Number(config.maxDomainOutputTokens ?? process.env.ENTERPRISE_AI_MAX_OUTPUT_TOKENS_PER_DOMAIN) || DEFAULT_DOMAIN_OUTPUT_TOKENS),
         maxSynthesisOutputTokens: Math.max(2000, Number(config.maxSynthesisOutputTokens ?? process.env.ENTERPRISE_AI_MAX_OUTPUT_TOKENS_SYNTHESIS) || DEFAULT_SYNTHESIS_OUTPUT_TOKENS),
         maxTotalTokens: Math.max(10000, Number(config.maxTotalTokens ?? process.env.ENTERPRISE_AI_MAX_TOTAL_TOKENS) || DEFAULT_MAX_TOTAL_TOKENS),
-        requestTimeoutMs: Math.max(60000, Number(config.requestTimeoutMs ?? process.env.ENTERPRISE_AI_REQUEST_TIMEOUT_MS) || 180000)
+        requestTimeoutMs: Math.max(60000, Number(config.requestTimeoutMs ?? process.env.ENTERPRISE_AI_REQUEST_TIMEOUT_MS) || 180000),
+        terminalStaleMs: Math.max(5 * 60 * 1000, Number(config.terminalStaleMs ?? process.env.ENTERPRISE_AI_TERMINAL_STALE_MS) || (30 * 60 * 1000))
     });
     let rateLimitCircuitOpenUntil = 0;
 
@@ -1740,6 +1741,10 @@ ${JSON.stringify(packageValue)}`;
 
     // Process all batches for a domain and aggregate results
     async function processDomainBatches({ companyId, snapshot, run, domain, packageResult, allEvidence, historicalContext, thresholdReached = false }) {
+        if (domain.key === 'security_alerts') {
+            logger.info?.('[security_alerts:azure_batch_plan:start] Building semantic Azure batch plan');
+            await updateRunStageProgress(run.id, { stage: 'azure_batch_plan:start', lastSuccessfulStage: 'evidence_prepare:complete' });
+        }
         const maxItems = thresholdReached
             ? Math.min(settings.maxItemsPerBatch, settings.thresholdBatchMaxItems)
             : HEAVY_DOMAINS.has(domain.key)
@@ -1790,6 +1795,10 @@ ${JSON.stringify(packageValue)}`;
         }
         
         packageResult.audit.batchPlan = buildEvidenceBatchPlan(allEvidence, batches);
+        if (domain.key === 'security_alerts') {
+            logger.info?.(`[security_alerts:azure_batch_plan:complete] ${batches.length} batch(es) planned for ${allEvidence.length} evidence record(s)`);
+            await updateRunStageProgress(run.id, { stage: 'azure_analysis:start', lastSuccessfulStage: 'azure_batch_plan:complete' });
+        }
         if (domain.key === 'security_alerts' && batches.length > 10 && allEvidence.length < 1000) {
             logger.warn?.(`[StackCTRL Enterprise] Security Alerts required ${batches.length} safe batches because the complete evidence payload exceeded the configured byte budget.`);
         }
@@ -1809,6 +1818,7 @@ ${JSON.stringify(packageValue)}`;
                 recordsPrepared: allEvidence.length,
                 recordsRemaining: recordsRemaining + batch.items.length
             });
+            if (domain.key === 'security_alerts') logger.info?.(`[security_alerts:azure_analysis:start] Batch ${batch.number}/${batches.length}`);
             const result = await analyzeDomainBatch({
                 companyId, snapshot, run, domain, packageResult,
                 batchEvidence: batch.items, batchNumber: batch.number, totalBatches: batches.length,
@@ -1818,6 +1828,16 @@ ${JSON.stringify(packageValue)}`;
             });
             
             results.push(result);
+            if (domain.key === 'security_alerts') {
+                const warning = result.status === 'completed_with_warnings' ? (result.jsonRepairMethod || 'azure_analysis_warning') : null;
+                logger.info?.(`[security_alerts:azure_analysis:complete] Batch ${batch.number}/${batches.length} ${result.status}`);
+                await updateRunStageProgress(run.id, {
+                    stage: result.status,
+                    lastSuccessfulStage: isSuccessfulDomainStatus(result.status) ? `azure_analysis:complete:batch_${batch.number}` : `azure_analysis:batch_${batch.number - 1}`,
+                    warning,
+                    failureReason: isSuccessfulDomainStatus(result.status) ? null : (result.failureReason || result.errorMessage || result.status)
+                });
+            }
             for (const key of Object.keys(totals)) {
                 totals[key] += result.usage?.[key] || 0;
             }
@@ -1962,6 +1982,18 @@ ${JSON.stringify(packageValue)}`;
         );
     }
 
+    async function updateRunStageProgress(runId, { stage, lastSuccessfulStage = null, warning = null, failureReason = null }) {
+        await pool.query(
+            `UPDATE StackCTRLEnterpriseReportRuns
+             SET ProgressJson = JSON_SET(
+                 COALESCE(ProgressJson, JSON_OBJECT()),
+                 '$.currentStage', ?, '$.lastSuccessfulStage', ?, '$.stageWarning', ?,
+                 '$.stageFailureReason', ?, '$.updatedAt', ?
+             ) WHERE ID = ?`,
+            [stage, lastSuccessfulStage, warning, failureReason, new Date().toISOString(), Number(runId)]
+        );
+    }
+
     async function storeSkippedDomain({ run, companyId, snapshot, domain, status, errorMessage }) {
         const usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: 0, responseBytes: 0, retries: 0 };
         const packageResult = await buildDomainPackage({ companyId, snapshot, runId: run.id, domain, historicalContext: { comparisons: {} } });
@@ -1980,6 +2012,79 @@ ${JSON.stringify(packageValue)}`;
             usage,
             audit: packageResult.audit,
             errorMessage
+        };
+    }
+
+    function buildLimitedDataAnalysis({ domain, packageResult, reason }) {
+        const warning = reason || `${domain.name} source data is limited or unavailable. Enterprise Deep Reporting continued with warning-only evidence.`;
+        const warnings = [...new Set([
+            ...array(packageResult.package.limitations?.missingDataWarnings),
+            warning
+        ].filter(Boolean))];
+        return {
+            domainExecutiveSummary: `${domain.name} could not be fully analysed because StackCTRL has limited source evidence for this snapshot.`,
+            technicalSummary: 'No entity-level evidence was available for Azure analysis in this domain package.',
+            businessImpact: 'This domain should be treated as unverified until the source connector produces a complete evidence snapshot.',
+            currentPosture: 'limited evidence',
+            evidenceUsed: [],
+            evidenceGaps: [warning],
+            scoreJustification: 'Authoritative StackCTRL scores were retained where available; no replacement score was calculated from missing evidence.',
+            controlAssessment: [],
+            keyFindings: [],
+            risks: [{
+                title: `${domain.name} evidence gap`,
+                severity: 'medium',
+                status: 'open',
+                sourceDomain: domain.key,
+                sourceMetric: 'sourceHealth',
+                evidenceSummary: warning,
+                businessImpact: 'Management reporting may understate this domain until evidence collection is restored.',
+                recommendation: 'Refresh the source connector and rerun Enterprise Deep Reporting.'
+            }],
+            recommendations: [{
+                title: `Refresh ${domain.name} evidence`,
+                priority: 'medium',
+                sourceDomain: domain.key,
+                sourceMetric: 'sourceHealth',
+                detail: 'Restore source collection, confirm a complete saved evidence snapshot, and rerun the enterprise report.',
+                recommendedAction: 'Restore source collection, confirm a complete saved evidence snapshot, and rerun the enterprise report.'
+            }],
+            trendAnalysis: [],
+            yesterdayVsToday: {},
+            whatImproved: [],
+            whatDeteriorated: [],
+            whatStayedTheSame: [],
+            missingDataWarnings: warnings,
+            assumptions: ['No control gap was inferred beyond the missing source evidence.'],
+            confidenceScore: 0,
+            managementActions: [{
+                title: `Confirm ${domain.name} data collection`,
+                priority: 'medium',
+                sourceDomain: domain.key,
+                sourceMetric: 'sourceHealth',
+                detail: 'Check connector credentials, permissions, and latest evidence snapshot status.'
+            }],
+            powerBiSummary: { status: 'limited_data', warning },
+            evidenceCatalog: packageResult.evidenceCatalog,
+            evidenceLimitations: {
+                recordsPrepared: 0,
+                recordsSent: 0,
+                recordsOmitted: Number(packageResult.audit.evidenceOmittedCount || 0),
+                totalEntityRows: Number(packageResult.audit.stackCTRLDataCount || 0),
+                catalogEntityCount: Number(packageResult.audit.catalogEntityCount || 0),
+                catalogCategoryCount: Number(packageResult.audit.catalogCategoryCount || 0),
+                completedBatches: 0,
+                totalBatches: 0,
+                accountingComplete: true,
+                complete: false,
+                omittedReasons: warnings
+            },
+            authoritativeScores: {
+                healthScore: packageResult.current.healthScore,
+                riskScore: packageResult.current.riskScore,
+                riskLevel: packageResult.current.riskLevel
+            },
+            domain: { key: domain.key, name: domain.name }
         };
     }
 
@@ -2211,24 +2316,48 @@ ${JSON.stringify(packageValue)}`;
     }
 
     async function analyseDomain({ companyId, snapshot, run, domain, historicalContext, thresholdReached = false }) {
+        if (domain.key === 'security_alerts') {
+            logger.info?.('[security_alerts:start] Security Alerts enterprise domain processing starting');
+            logger.info?.('[security_alerts:evidence_prepare:start] Preparing stored Security Alerts evidence for Azure');
+            await updateRunStageProgress(run.id, { stage: 'evidence_prepare:start', lastSuccessfulStage: 'snapshot_collection:complete' });
+        }
         const packageResult = await buildDomainPackage({ companyId, snapshot, runId: run.id, domain, historicalContext });
+        if (domain.key === 'security_alerts') {
+            logger.info?.(`[security_alerts:evidence_prepare:complete] Prepared ${packageResult.audit.preparedForAzureCount} stored evidence record(s)`);
+            await updateRunStageProgress(run.id, { stage: 'evidence_prepare:complete', lastSuccessfulStage: 'evidence_prepare:complete' });
+        }
         const missingFailure = DASHBOARD_BACKED_ENTERPRISE_DOMAINS.includes(domain.key)
             ? sourceMissingFailure(packageResult.package.sourceHealth, domain.name)
             : null;
         if (missingFailure) {
             const usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: 0, responseBytes: 0, retries: 0 };
             packageResult.audit.sentToAzureCount = 0;
+            const limitedAnalysis = buildLimitedDataAnalysis({ domain, packageResult, reason: missingFailure.errorMessage });
             await storeDomain({
-                run, companyId, snapshot, domain, packageResult, analysis: null, usage,
-                status: missingFailure.status, errorMessage: missingFailure.errorMessage
+                run, companyId, snapshot, domain, packageResult, analysis: limitedAnalysis, usage,
+                status: 'completed_with_warnings', errorMessage: missingFailure.errorMessage
             });
             await storeAudit({
-                run, companyId, snapshot, domain, packageResult, analysis: null, usage,
-                status: missingFailure.status
+                run, companyId, snapshot, domain, packageResult, analysis: limitedAnalysis, usage,
+                status: 'completed_with_warnings'
             });
+            if (domain.key === 'security_alerts') {
+                logger.warn?.(`[security_alerts:complete_or_completed_with_warnings_or_failed] completed_with_warnings: ${missingFailure.errorMessage}`);
+                await updateRunStageProgress(run.id, {
+                    stage: 'completed_with_warnings',
+                    lastSuccessfulStage: 'evidence_prepare:complete',
+                    warning: missingFailure.errorMessage
+                });
+            }
             return {
-                status: missingFailure.status, domain, usage, audit: packageResult.audit,
-                errorMessage: missingFailure.errorMessage, sourceHealth: packageResult.package.sourceHealth
+                status: 'completed_with_warnings',
+                domain,
+                usage,
+                audit: packageResult.audit,
+                analysis: limitedAnalysis,
+                errorMessage: missingFailure.errorMessage,
+                sourceHealth: packageResult.package.sourceHealth,
+                limitedData: true
             };
         }
         const alignmentFailure = sourceAlignmentFailure(packageResult.sourceAlignment, domain.name);
@@ -2243,6 +2372,9 @@ ${JSON.stringify(packageValue)}`;
                 run, companyId, snapshot, domain, packageResult, analysis: null, usage,
                 status: alignmentFailure.status
             });
+            if (domain.key === 'security_alerts') {
+                await updateRunStageProgress(run.id, { stage: 'failed_terminal', lastSuccessfulStage: 'evidence_prepare:complete', failureReason: alignmentFailure.errorMessage });
+            }
             return {
                 status: alignmentFailure.status, domain, usage, audit: packageResult.audit,
                 errorMessage: alignmentFailure.errorMessage, sourceAlignment: packageResult.sourceAlignment
@@ -2261,6 +2393,9 @@ ${JSON.stringify(packageValue)}`;
                 run, companyId, snapshot, domain, packageResult, analysis: null, usage,
                 status: staleFailure.status
             });
+            if (domain.key === 'security_alerts') {
+                await updateRunStageProgress(run.id, { stage: 'failed_terminal', lastSuccessfulStage: 'snapshot_collection:complete', failureReason: staleFailure.errorMessage });
+            }
             return {
                 status: staleFailure.status, domain, usage, audit: packageResult.audit,
                 errorMessage: staleFailure.errorMessage, sourceHealth: packageResult.package.sourceHealth
@@ -2278,8 +2413,43 @@ ${JSON.stringify(packageValue)}`;
                 packageResult.package.limitations.missingDataWarnings.push(errorMessage);
                 await storeDomain({ run, companyId, snapshot, domain, packageResult, analysis: null, usage, status: 'failed_evidence_validation', errorMessage });
                 await storeAudit({ run, companyId, snapshot, domain, packageResult, analysis: null, usage, status: 'failed_evidence_validation' });
+                logger.error?.(`[security_alerts:complete_or_completed_with_warnings_or_failed] failed_terminal: ${errorMessage}`);
+                await updateRunStageProgress(run.id, { stage: 'failed_terminal', lastSuccessfulStage: 'evidence_prepare:complete', failureReason: errorMessage });
                 return { status: 'failed_evidence_validation', domain, usage, audit: packageResult.audit, errorMessage };
             }
+        }
+
+        if (!array(packageResult.allEvidence).length) {
+            const usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: 0, responseBytes: 0, retries: 0 };
+            const warning = `${domain.name} has no entity-level evidence rows in this snapshot. Enterprise Deep Reporting continued with warning-only output for this domain.`;
+            packageResult.audit.sentToAzureCount = 0;
+            packageResult.package.limitations.missingDataWarnings.push(warning);
+            const limitedAnalysis = buildLimitedDataAnalysis({ domain, packageResult, reason: warning });
+            await storeDomain({
+                run, companyId, snapshot, domain, packageResult, analysis: limitedAnalysis, usage,
+                status: 'completed_with_warnings', errorMessage: warning
+            });
+            await storeAudit({
+                run, companyId, snapshot, domain, packageResult, analysis: limitedAnalysis, usage,
+                status: 'completed_with_warnings'
+            });
+            if (domain.key === 'security_alerts') {
+                logger.warn?.(`[security_alerts:complete_or_completed_with_warnings_or_failed] completed_with_warnings: ${warning}`);
+                await updateRunStageProgress(run.id, {
+                    stage: 'completed_with_warnings',
+                    lastSuccessfulStage: 'evidence_prepare:complete',
+                    warning
+                });
+            }
+            return {
+                status: 'completed_with_warnings',
+                domain,
+                usage,
+                audit: packageResult.audit,
+                analysis: limitedAnalysis,
+                errorMessage: warning,
+                limitedData: true
+            };
         }
         
         try {
@@ -2459,6 +2629,20 @@ ${JSON.stringify(packageValue)}`;
                 analysis: aggregatedAnalysis, usage: batchResults.totals,
                 status: finalStatus
             });
+            if (domain.key === 'security_alerts') {
+                logger.info?.(`[security_alerts:storage:complete] Stored Security Alerts domain intelligence ${domainIntelligenceId}`);
+                logger.info?.(`[security_alerts:complete_or_completed_with_warnings_or_failed] ${finalStatus}`, {
+                    recordsPrepared, recordsSent, recordsOmitted: batchRecordsOmitted + sourceRecordsOmitted,
+                    batchCount: batchResults.batchCount, warnings: aggregatedAnalysis.missingDataWarnings
+                });
+                await updateRunStageProgress(run.id, {
+                    stage: finalStatus,
+                    lastSuccessfulStage: 'storage:complete',
+                    warning: finalStatus === 'completed_with_warnings' || finalStatus === 'partial'
+                        ? aggregatedAnalysis.missingDataWarnings.join(' | ').slice(0, 2000) : null,
+                    failureReason: finalStatus.startsWith('failed') ? partialErrorMessage : null
+                });
+            }
             
             return {
                 status: finalStatus,
@@ -2485,6 +2669,10 @@ ${JSON.stringify(packageValue)}`;
                 analysis: null, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: 0, responseBytes: 0, retries: 0 },
                 status: failureStatus
             });
+            if (domain.key === 'security_alerts') {
+                logger.error?.(`[security_alerts:complete_or_completed_with_warnings_or_failed] failed_terminal: ${error.message}`);
+                await updateRunStageProgress(run.id, { stage: 'failed_terminal', lastSuccessfulStage: 'evidence_prepare:complete', failureReason: error.message }).catch(() => {});
+            }
             return { status: failureStatus, domain, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: 0, responseBytes: 0, retries: 0 }, audit: packageResult.audit, errorMessage: error.message };
         }
     }
@@ -3094,7 +3282,8 @@ ${JSON.stringify(packageValue)}`;
                         FROM StackCTRLEnterpriseReportRuns WHERE CompanyID = ? ORDER BY ID DESC LIMIT 50`, [numericCompanyId]),
             pool.query(`SELECT ID, CompanyID, SnapshotID, RunID, DomainKey, DomainName, PeriodType, PeriodStart,
                                PeriodEnd, HealthScore, RiskScore, RiskLevel, InputSizeBytes, ResponseSizeBytes,
-                               InputTokens, OutputTokens, TotalTokens, RetryCount, Status, ErrorMessage, CreatedAt
+                               InputTokens, OutputTokens, TotalTokens, RetryCount, Status, ErrorMessage,
+                               MissingDataWarningsJson, CreatedAt
                         FROM StackCTRLTenantDomainIntelligence WHERE CompanyID = ?${runFilter}
                         ORDER BY RunID DESC, ID DESC LIMIT 200`, params),
             pool.query(`SELECT ID, CompanyID, SnapshotID, RunID, DomainKey, StackCTRLDataCount, SentToAzureCount,
@@ -3130,10 +3319,45 @@ ${JSON.stringify(packageValue)}`;
                         FROM StackCTRLTenantDomainIntelligenceBatches WHERE CompanyID = ?${runFilter}
                         GROUP BY CompanyID, SnapshotID, RunID, DomainKey ORDER BY RunID DESC, DomainKey LIMIT 200`, params)
         ]);
+        if (runs[0] && ['running', 'queued'].includes(String(runs[0].Status || ''))) {
+            const progress = parseJson(runs[0].ProgressJson, {});
+            const lastProgressAt = new Date(progress.updatedAt || runs[0].StartedAt || 0).getTime();
+            if (lastProgressAt && Date.now() - lastProgressAt > settings.terminalStaleMs) {
+                const stuckStage = progress.currentStage || progress.phase || progress.currentDomainKey || 'unknown_stage';
+                const lastSuccessfulStage = progress.lastSuccessfulStage || 'unknown';
+                const reason = `No enterprise progress for ${Math.ceil((Date.now() - lastProgressAt) / 60000)} minute(s). Stuck stage: ${stuckStage}. Last successful stage: ${lastSuccessfulStage}.`;
+                await pool.query(
+                    `UPDATE StackCTRLEnterpriseReportRuns SET Status = 'failed_terminal', CompletedAt = NOW(), ErrorMessage = ?,
+                     ProgressJson = JSON_SET(COALESCE(ProgressJson, JSON_OBJECT()), '$.phase', 'failed_terminal', '$.stageFailureReason', ?, '$.updatedAt', ?)
+                     WHERE ID = ? AND Status IN ('running', 'queued')`,
+                    [reason, reason, new Date().toISOString(), runs[0].ID]
+                );
+                runs[0].Status = 'failed_terminal';
+                runs[0].ErrorMessage = reason;
+                runs[0].ProgressJson = { ...progress, phase: 'failed_terminal', stageFailureReason: reason, updatedAt: new Date().toISOString() };
+            }
+        }
+        const classifyWarning = warning => {
+            const text = String(warning || '');
+            if (/permission|forbidden|unauthori[sz]ed|403/i.test(text)) return 'missing_api_permissions';
+            if (/cloudflare.*field|missing.*field|unknown control/i.test(text)) return 'missing_cloudflare_fields';
+            if (/recovered|closing json|truncated json/i.test(text)) return 'azure_recovered_json';
+            if (/partial|omitted|incomplete/i.test(text)) return 'partial_evidence';
+            if (/optional|unavailable|not configured/i.test(text)) return 'optional_source_unavailable';
+            return 'other_warning';
+        };
         const normalizedRuns = runs.map(row => ({ ...row, ProgressJson: parseJson(row.ProgressJson, {}) }));
+        const lightweightDomains = domains.map(row => {
+            const warningReasons = array(parseJson(row.MissingDataWarningsJson, [])).map(String);
+            return {
+                ...row,
+                WarningReasons: warningReasons,
+                WarningCategories: [...new Set(warningReasons.map(classifyWarning))]
+            };
+        });
         const latestRun = normalizedRuns[0] || null;
         const latestRunId = latestRun?.ID == null ? null : Number(latestRun.ID);
-        const latestDomains = latestRunId ? domains.filter(row => Number(row.RunID) === latestRunId) : [];
+        const latestDomains = latestRunId ? lightweightDomains.filter(row => Number(row.RunID) === latestRunId) : [];
         const latestAudits = latestRunId ? audits.filter(row => Number(row.RunID) === latestRunId) : [];
         const latestBatches = latestRunId ? batches.filter(row => Number(row.RunID) === latestRunId) : [];
         const progress = latestRun?.ProgressJson || {};
@@ -3148,7 +3372,7 @@ ${JSON.stringify(packageValue)}`;
             },
             domains: ENTERPRISE_DOMAINS.map(domain => ({ key: domain.key, name: domain.name, mode: domain.mode })),
             runs: normalizedRuns,
-            domainIntelligence: domains,
+            domainIntelligence: lightweightDomains,
             evidenceAudit: audits,
             synthesis,
             batches,
@@ -3157,6 +3381,9 @@ ${JSON.stringify(packageValue)}`;
                 snapshotId: latestRun.SnapshotID == null ? null : Number(latestRun.SnapshotID),
                 companyId: numericCompanyId,
                 currentDomain: progress.currentDomainKey || null,
+                currentStage: progress.currentStage || progress.phase || null,
+                lastSuccessfulStage: progress.lastSuccessfulStage || null,
+                stuckReason: progress.stageFailureReason || latestRun.ErrorMessage || null,
                 domainStatuses: latestDomains.map(row => ({ domainKey: row.DomainKey, status: row.Status, errorMessage: row.ErrorMessage || null })),
                 counts: progress.counts || {},
                 recordsPrepared: latestAudits.reduce((total, row) => total + Number(row.EvidenceIncludedCount || 0), 0),

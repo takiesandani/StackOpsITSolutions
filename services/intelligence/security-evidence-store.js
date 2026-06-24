@@ -103,16 +103,28 @@ function deriveSecurityEvidence(payload = {}) {
         }))
     ];
     const isComplete = Boolean(payload.success !== false);
+    const warnings = Array.isArray(payload.warnings) ? payload.warnings : [];
+    const accounting = payload.collection?.accounting || {};
+    const omittedRecordCount = Math.max(0, Number(accounting.recordsOmitted || payload.summary?.recordsOmitted || 0));
+    const expectedRecordCount = Math.max(evidenceRows.length, Number(accounting.recordsFetched || payload.summary?.recordsFetched || evidenceRows.length));
+    const collectionStatus = isComplete
+        ? (warnings.length || payload.collectionStatus === 'completed_with_warnings' ? 'completed_with_warnings' : 'complete')
+        : 'failed_terminal';
     return {
         evidenceRows,
         dashboardMetrics,
         stackctrlRiskScore,
         stackctrlHealthScore,
-        expectedRecordCount: evidenceRows.length,
-        omittedRecordCount: 0,
-        completenessPercent: evidenceRows.length > 0 || isComplete ? 100 : 0,
+        expectedRecordCount,
+        omittedRecordCount,
+        completenessPercent: expectedRecordCount ? Number(((evidenceRows.length / expectedRecordCount) * 100).toFixed(2)) : (isComplete ? 100 : 0),
         isComplete,
-        incompleteReason: isComplete ? null : 'The processed Security Alerts dashboard did not complete successfully.'
+        collectionStatus,
+        warnings,
+        sourceAudit: payload.collection || null,
+        incompleteReason: isComplete
+            ? (warnings.length ? warnings.join('; ') : null)
+            : 'The processed Security Alerts dashboard did not complete successfully.'
     };
 }
 
@@ -144,13 +156,13 @@ function createSecurityEvidenceStore({ pool, logger = console, now = () => new D
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     numericCompanyId, tenantKey, collectionTrigger, sourceEndpoint,
-                    evidence.isComplete ? 'complete' : 'incomplete', evidence.isComplete ? 1 : 0,
+                    evidence.collectionStatus, evidence.isComplete ? 1 : 0,
                     mysqlDateTime(collectedAt), mysqlDateTime(payload?.fetchedAt || collectedAt),
-                    evidence.evidenceRows.length, evidence.expectedRecordCount, 0, evidence.completenessPercent,
+                    evidence.evidenceRows.length, evidence.expectedRecordCount, evidence.omittedRecordCount, evidence.completenessPercent,
                     metrics.totalAlerts, metrics.highSeverityAlerts, metrics.activeIncidents, metrics.threatIndicators,
                     metrics.usersUnderAttack, metrics.securityScore, metrics.suspiciousSignIns, metrics.recommendationsCount,
                     evidence.stackctrlRiskScore, evidence.stackctrlHealthScore, JSON.stringify(metrics),
-                    JSON.stringify({ source: 'stackctrl_processed_security_dashboard', collectionTrigger, sourceEndpoint, credentialSource: 'environment', credentialPath: 'MICROSOFT_CLIENT_SECRET (Azure Key Vault, shared with dashboard)' }),
+                    JSON.stringify({ source: 'stackctrl_processed_security_dashboard', collectionTrigger, sourceEndpoint, credentialSource: 'cached_secret_or_environment', credentialPath: 'MICROSOFT_CLIENT_SECRET (Azure Key Vault or environment)', warnings: evidence.warnings, collection: evidence.sourceAudit }),
                     crypto.createHash('sha256').update(JSON.stringify({ rows: evidence.evidenceRows, dashboardMetrics: metrics })).digest('hex'),
                     evidence.incompleteReason
                 ]
@@ -172,17 +184,17 @@ function createSecurityEvidenceStore({ pool, logger = console, now = () => new D
             if (ownsConnection && typeof connection.release === 'function') connection.release();
         }
         logger.log(`[Security Evidence] Stored snapshot ${snapshotId} with ${evidence.evidenceRows.length} processed security records.`);
-        return { snapshotId, companyId: numericCompanyId, collectedAt: collectedAt.toISOString(), recordCount: evidence.evidenceRows.length, isComplete: evidence.isComplete, dashboardMetrics: evidence.dashboardMetrics };
+        return { snapshotId, companyId: numericCompanyId, collectedAt: collectedAt.toISOString(), recordCount: evidence.evidenceRows.length, expectedRecordCount: evidence.expectedRecordCount, omittedRecordCount: evidence.omittedRecordCount, isComplete: evidence.isComplete, collectionStatus: evidence.collectionStatus, warnings: evidence.warnings, dashboardMetrics: evidence.dashboardMetrics };
     }
     async function recordCollectionFailure({ companyId, tenantKey = 'sunbird', collectionTrigger = 'scheduled_hourly', sourceEndpoint, error } = {}) {
         const [result] = await pool.query(
             `INSERT INTO StackCTRLSecurityEvidenceSnapshots
              (CompanyID, TenantKey, CollectionTrigger, SourceEndpoint, CollectionStatus, IsComplete, CollectedAt,
               EvidenceRecordCount, ExpectedRecordCount, OmittedRecordCount, CompletenessPercent, DashboardMetricsJson, SourceAuditJson, IncompleteReason, ErrorMessage)
-             VALUES (?, ?, ?, ?, 'failed', 0, ?, 0, 0, 0, 0, ?, ?, ?, ?)`,
-            [Number(companyId), tenantKey, collectionTrigger, sourceEndpoint || 'Microsoft Graph processed by StackCTRL Security Alerts', mysqlDateTime(now()), JSON.stringify({}), JSON.stringify({ credentialSource: 'environment' }), 'Security evidence collection did not complete.', String(error?.message || error).slice(0, 5000)]
+             VALUES (?, ?, ?, ?, 'failed_terminal', 0, ?, 0, 0, 0, 0, ?, ?, ?, ?)`,
+            [Number(companyId), tenantKey, collectionTrigger, sourceEndpoint || 'Microsoft Graph processed by StackCTRL Security Alerts', mysqlDateTime(now()), JSON.stringify({}), JSON.stringify({ credentialSource: 'cached_secret_or_environment', terminalStage: error?.securityAlertsStage || null, stages: error?.securityAlertsStages || [] }), `Security evidence collection stopped at ${error?.securityAlertsStage || 'unknown_stage'}.`, String(error?.message || error).slice(0, 5000)]
         );
-        return { snapshotId: result.insertId, companyId: Number(companyId), status: 'failed' };
+        return { snapshotId: result.insertId, companyId: Number(companyId), status: 'failed_terminal', stage: error?.securityAlertsStage || null };
     }
     return { ensureSchema, persistProcessedEvidence, recordCollectionFailure, deriveSecurityEvidence };
 }

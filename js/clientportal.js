@@ -2677,7 +2677,14 @@ async function fetchFreshSunbirdIdentityDashboardData() {
         
         // Provide detailed error feedback for authorization or other issues
         if (response.status === 403) {
-            throw new Error('Access denied: This feature is only available for Sunbird clients');
+            const error = new Error('Access denied: This feature is only available for Sunbird clients');
+            error.statusCode = 403;
+            throw error;
+        }
+        if (response.status === 401) {
+            const error = new Error('Identity Protection authentication expired');
+            error.statusCode = 401;
+            throw error;
         }
         
         throw new Error(result.message || `Identity Dashboard endpoint failed (${response.status})`);
@@ -9747,6 +9754,10 @@ function stopIdentityDashboardUpdates() {
 
 // Fetch updated data silently
 async function fetchUpdatedIdentityData() {
+    if (!isSunbirdUser()) {
+        stopIdentityDashboardUpdates();
+        return;
+    }
     try {
         const data = await fetchFreshSunbirdIdentityDashboardData();
         sunbirdDashboardData = normalizeSunbirdDashboardData(data);
@@ -9761,7 +9772,12 @@ async function fetchUpdatedIdentityData() {
         renderSunbirdIdentitySignIns(buildSunbirdIdentityModel());
         displayCurrentProject();
     } catch (error) {
-        console.error('[Identity Dashboard] Failed to fetch update:', error);
+        if ([401, 403].includes(Number(error.statusCode))) {
+            stopIdentityDashboardUpdates();
+            console.warn(`[Identity Dashboard] Background updates stopped: ${error.message}`);
+            return;
+        }
+        console.warn('[Identity Dashboard] Background update warning:', error.message);
     }
 }
 

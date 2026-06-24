@@ -65,3 +65,34 @@ test('security evidence stores alerts, incidents, sign-ins, and indicators', () 
     assert.equal(evidence.dashboardMetrics.highSeverityAlerts, 1);
     assert.equal(evidence.isComplete, true);
 });
+
+test('partial Security Alerts collection preserves rows and exposes auditable omissions', () => {
+    const evidence = deriveSecurityEvidence({
+        success: true,
+        collectionStatus: 'completed_with_warnings',
+        warnings: ['Microsoft Graph incidents timed out; continuing with alerts and sign-ins.'],
+        summary: { totalAlerts: 2, highSeverityAlerts: 1, activeIncidents: 0, threatIndicators: 1 },
+        alerts: [{ id: 'a1', severity: 'high' }, { id: 'a2', severity: 'low' }],
+        incidents: [],
+        threats: [{ id: 't1', indicator: '1.1.1.1' }],
+        signIns: { suspicious: [] },
+        collection: {
+            status: 'completed_with_warnings',
+            sources: {
+                alerts: { status: 'complete', recordsFetched: 2 },
+                incidents: { status: 'timeout', recordsFetched: 0 },
+                threatIndicators: { status: 'complete', recordsFetched: 1 },
+                signIns: { status: 'complete', recordsFetched: 4, recordsPrepared: 0, recordsOmitted: 4, omissionReason: 'Only suspicious sign-ins are Security Alerts evidence.' }
+            },
+            accounting: { recordsFetched: 7, recordsPrepared: 3, recordsOmitted: 4 }
+        }
+    });
+
+    assert.equal(evidence.evidenceRows.length, 3);
+    assert.equal(evidence.collectionStatus, 'completed_with_warnings');
+    assert.equal(evidence.expectedRecordCount, 7);
+    assert.equal(evidence.omittedRecordCount, 4);
+    assert.match(evidence.warnings.join(' '), /incidents timed out/i);
+    assert.equal(evidence.isComplete, true);
+    assert.equal(evidence.completenessPercent, 42.86);
+});

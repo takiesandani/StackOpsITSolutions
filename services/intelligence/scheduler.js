@@ -138,10 +138,13 @@ function createStackCTRLIntelligenceScheduler({ pool, intelligenceService, logge
     if (!pool) throw new Error('StackCTRL Intelligence Scheduler requires a database pool');
     if (!intelligenceService) throw new Error('StackCTRL Intelligence Scheduler requires the intelligence service');
     let historicalComparisonWarningShown = false;
+    let missingScheduleTableWarningShown = false;
+    let disabledSchedulesWarningShown = false;
 
     async function ensureTenantSchedules(companyId) {
-        for (const schedule of DEFAULT_SCHEDULES) {
-            await pool.query(
+        try {
+            for (const schedule of DEFAULT_SCHEDULES) {
+                await pool.query(
                 `INSERT INTO StackCTRLIntelligenceSchedules
                  (CompanyID, ScheduleKey, ScheduleType, CronExpression, TimeZone,
                   BusinessDaysJson, BusinessStartTime, BusinessEndTime, IntervalMinutes,
@@ -162,14 +165,22 @@ function createStackCTRLIntelligenceScheduler({ pool, intelligenceService, logge
                     schedule.analysisHours ? JSON.stringify(schedule.analysisHours) : null,
                     schedule.outputTypes ? JSON.stringify(schedule.outputTypes) : null
                 ]
+                );
+            }
+            const [rows] = await pool.query(
+                `SELECT * FROM StackCTRLIntelligenceSchedules
+                 WHERE CompanyID = ? ORDER BY ID`,
+                [companyId]
             );
+            return rows;
+        } catch (error) {
+            if (error?.code !== 'ER_NO_SUCH_TABLE') throw error;
+            if (!missingScheduleTableWarningShown) {
+                missingScheduleTableWarningShown = true;
+                logger.warn('[StackCTRL Intelligence Scheduler] Schedule tables are not available yet. Scheduled automation is paused until ensureDatabaseSchema creates them.');
+            }
+            return [];
         }
-        const [rows] = await pool.query(
-            `SELECT * FROM StackCTRLIntelligenceSchedules
-             WHERE CompanyID = ? ORDER BY ID`,
-            [companyId]
-        );
-        return rows;
     }
 
     async function preventDuplicateScheduledRuns(companyId, scheduleKey, timeWindow) {
@@ -644,6 +655,10 @@ function createStackCTRLIntelligenceScheduler({ pool, intelligenceService, logge
         const local = localTime(now);
         const schedules = await ensureTenantSchedules(companyId);
         const enabled = new Map(schedules.filter(row => Number(row.IsEnabled) === 1).map(row => [row.ScheduleKey, row]));
+        if (schedules.length && !enabled.size && !disabledSchedulesWarningShown) {
+            disabledSchedulesWarningShown = true;
+            logger.warn('[StackCTRL Intelligence Scheduler] All intelligence schedules are disabled; scheduled collection and analysis will remain idle.');
+        }
         const results = [];
         const quarter = Math.floor(local.minute / 15) * 15;
         const collectionBucket = `${local.toFormat('yyyyLLddHH')}${String(quarter).padStart(2, '0')}`;

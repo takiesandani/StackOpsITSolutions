@@ -278,7 +278,7 @@ test('Enterprise Identity currentMetrics follow dynamic dashboard metrics and de
     assert.match(failure.errorMessage, /mfaEnabled/);
 });
 
-test('Enterprise blocks missing or stale saved Identity evidence before calling Azure', async () => {
+test('Enterprise warns on missing Identity evidence but blocks stale saved evidence before calling Azure', async () => {
     for (const sourceStatus of ['missing', 'stale']) {
         let insertId = 800;
         let azureCalls = 0;
@@ -291,7 +291,7 @@ test('Enterprise blocks missing or stale saved Identity evidence before calling 
                 : { lastUpdated: null, ageMinutes: null },
             warnings: [sourceStatus === 'stale'
                 ? 'Identity Protection evidence is stale.'
-                : 'No complete StackCTRL Identity evidence snapshot is available. Azure analysis is blocked until collection succeeds.'],
+                : 'No complete StackCTRL Identity evidence snapshot is available. Enterprise analysis continued with limited data.'],
             metrics: sourceStatus === 'stale' ? { totalUsers: 57, mfaCoverage: 81 } : {},
             dashboardMetrics: sourceStatus === 'stale' ? { totalUsers: 57, mfaCoverage: 81 } : {},
             evidence: sourceStatus === 'stale' ? [{ evidenceType: 'users', data: [{ id: 'user-1' }] }] : [],
@@ -334,11 +334,15 @@ test('Enterprise blocks missing or stale saved Identity evidence before calling 
             includeSynthesis: false
         });
         assert.equal(azureCalls, 0, sourceStatus);
-        assert.equal(result.domains[0].status, sourceStatus === 'stale' ? 'blocked_stale_source' : 'blocked_missing_source');
+        assert.equal(result.domains[0].status, sourceStatus === 'stale' ? 'blocked_stale_source' : 'completed_with_warnings');
         const auditWrite = calls.find(call => call.sql.includes('INSERT INTO StackCTRLIntelligenceEvidenceAudit'));
         assert.ok(auditWrite);
         assert.equal(auditWrite.params[5], 0);
         assert.match(result.domains[0].errorMessage, /stale|no complete/i);
+        if (sourceStatus === 'missing') {
+            assert.equal(result.status, 'completed_with_warnings');
+            assert.equal(result.domains[0].analysis.evidenceLimitations.recordsSent, 0);
+        }
     }
 });
 
@@ -1053,7 +1057,7 @@ test('Enterprise Governance, Compliance, and Operations use saved API rows and d
     }
 });
 
-test('Enterprise blocks missing or stale saved Device evidence before calling Azure', async () => {
+test('Enterprise warns on missing Device evidence but blocks stale saved Device evidence before calling Azure', async () => {
     for (const sourceStatus of ['missing', 'stale']) {
         let insertId = 900;
         let azureCalls = 0;
@@ -1066,7 +1070,7 @@ test('Enterprise blocks missing or stale saved Device evidence before calling Az
                 : { lastUpdated: null, ageMinutes: null },
             warnings: [sourceStatus === 'stale'
                 ? 'Device Protection evidence is stale.'
-                : 'No complete StackCTRL Device Protection evidence snapshot is available. Azure analysis is blocked until collection succeeds.'],
+                : 'No complete StackCTRL Device Protection evidence snapshot is available. Enterprise analysis continued with limited data.'],
             metrics: sourceStatus === 'stale' ? { totalDevices: 17, complianceRate: 76 } : {},
             dashboardMetrics: sourceStatus === 'stale' ? { totalDevices: 17, complianceRate: 76 } : {},
             evidence: sourceStatus === 'stale' ? [{ evidenceType: 'devices', data: [{ id: 'device-1' }] }] : [],
@@ -1109,12 +1113,96 @@ test('Enterprise blocks missing or stale saved Device evidence before calling Az
             includeSynthesis: false
         });
         assert.equal(azureCalls, 0, sourceStatus);
-        assert.equal(result.domains[0].status, sourceStatus === 'stale' ? 'blocked_stale_source' : 'blocked_missing_source');
+        assert.equal(result.domains[0].status, sourceStatus === 'stale' ? 'blocked_stale_source' : 'completed_with_warnings');
         const auditWrite = calls.find(call => call.sql.includes('INSERT INTO StackCTRLIntelligenceEvidenceAudit'));
         assert.ok(auditWrite);
         assert.equal(auditWrite.params[5], 0);
         assert.match(result.domains[0].errorMessage, /stale|no complete/i);
+        if (sourceStatus === 'missing') {
+            assert.equal(result.status, 'completed_with_warnings');
+            assert.equal(result.domains[0].analysis.evidenceLimitations.recordsSent, 0);
+            assert.match(result.domains[0].analysis.evidenceGaps.join(' '), /limited data|No complete/i);
+        }
     }
+});
+
+test('Enterprise pipeline continues to later domains when one domain has limited data', async () => {
+    let insertId = 950;
+    let azureCalls = 0;
+    const snapshot = {
+        ID: 950,
+        CompanyID: 1,
+        TenantKey: 'sunbird',
+        SnapshotType: 'manual',
+        CreatedAt: new Date('2026-06-24T08:00:00.000Z'),
+        DataCompletenessScore: 50,
+        MetricsJson: JSON.stringify({ stackctrl_risk: { domainRiskScores: { devices: 30, applications: 20 } } }),
+        ContextJson: JSON.stringify({
+            riskEngine: { domainHealthScores: { devices: 70, applications: 80 }, domainRiskScores: { devices: 30, applications: 20 } },
+            sources: [
+                {
+                    sourceKey: 'devices',
+                    status: 'available',
+                    isExpected: true,
+                    warnings: ['Device Protection source returned no entity rows for this snapshot.'],
+                    evidence: []
+                },
+                {
+                    sourceKey: 'applications',
+                    status: 'available',
+                    isExpected: true,
+                    metrics: { totalApplications: 2, externalApplications: 1 },
+                    dashboardMetrics: { totalApplications: 2, externalApplications: 1 },
+                    evidence: [{ evidenceType: 'applications', data: [
+                        { id: 'app-1', displayName: 'Finance Portal', publisherName: 'Contoso' },
+                        { id: 'app-2', displayName: 'External SaaS', publisherName: 'External Vendor' }
+                    ] }]
+                }
+            ]
+        })
+    };
+    const pool = {
+        async query(sql) {
+            if (sql.includes('FROM StackCTRLTenantEvidenceSnapshots WHERE')) return [[snapshot], []];
+            if (sql.includes('FROM StackCTRLKnowledgeBase')) return [[], []];
+            if (sql.includes('FROM StackCTRLTenantDomainIntelligence') && sql.includes('RunID <>')) return [[], []];
+            if (/^\s*INSERT/i.test(sql)) return [{ insertId: insertId++ }, []];
+            return [{ affectedRows: 1 }, []];
+        }
+    };
+    const service = createEnterpriseIntelligenceService({
+        pool,
+        schedulerService: { async getHistoricalSnapshotContext() { return { comparisons: {} }; } },
+        azureOpenAI: {
+            async createJsonCompletion() {
+                azureCalls += 1;
+                return {
+                    data: domainResponse('applications'),
+                    requestSizeBytes: 1000,
+                    responseSizeBytes: 1000,
+                    usage: { input_tokens: 100, output_tokens: 50, total_tokens: 150 }
+                };
+            }
+        },
+        logger: { info() {}, warn() {}, error() {} },
+        wait: async () => {},
+        config: { domainDelayMs: 0 }
+    });
+
+    const result = await service.runEnterpriseReport({
+        companyId: 1,
+        snapshotId: snapshot.ID,
+        domainKeys: ['devices', 'applications'],
+        includeSynthesis: false
+    });
+
+    assert.equal(result.status, 'completed_with_warnings');
+    assert.equal(result.domains[0].status, 'completed_with_warnings');
+    assert.equal(result.domains[0].analysis.evidenceLimitations.recordsSent, 0);
+    assert.equal(result.domains[1].status, 'completed');
+    assert.equal(result.domains[1].analysis.evidenceLimitations.recordsSent, 2);
+    assert.equal(azureCalls, 1);
+    assert.equal(result.terminalError, null);
 });
 
 test('enterprise synthesis uses stored successful domain intelligence only', async () => {

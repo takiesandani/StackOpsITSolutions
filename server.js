@@ -83,6 +83,11 @@ function getTenantByEmail(email) {
 // ===============================
 // Token cache (in production, use Redis or database)
 const microsoftTokenCache = new Map();
+let microsoftGraphCredentialsCache = null;
+let microsoftGraphCredentialsPromise = null;
+let microsoftGraphStartupWarningShown = false;
+const MICROSOFT_GRAPH_CREDENTIAL_TIMEOUT_MS = Math.max(3000, Number(process.env.MICROSOFT_GRAPH_CREDENTIAL_TIMEOUT_MS) || 12000);
+const MICROSOFT_GRAPH_TOKEN_TIMEOUT_MS = Math.max(3000, Number(process.env.MICROSOFT_GRAPH_TOKEN_TIMEOUT_MS) || 12000);
 const authMethodsCache = new Map();
 const AUTH_METHODS_CACHE_TTL_MS = 5 * 60 * 1000;
 let identityEvidenceService = null;
@@ -152,16 +157,60 @@ async function mapWithConcurrency(items, limit, worker) {
   return output;
 }
 
-async function getMicrosoftGraphToken() {
-  try {
-    const tenantId = await getSecret('MICROSOFT_TENANT_ID');
-    const clientId = await getSecret('MICROSOFT_CLIENT_ID');
-    const clientSecret = await getSecret('MICROSOFT_CLIENT_SECRET');
-    
-    if (!tenantId || !clientId || !clientSecret) {
-      throw new Error('Missing Microsoft Graph credentials');
+async function getMicrosoftGraphCredentials({ securityAlerts = false } = {}) {
+  if (microsoftGraphCredentialsCache) return { ...microsoftGraphCredentialsCache, source: 'cache' };
+  if (microsoftGraphCredentialsPromise) return microsoftGraphCredentialsPromise;
+  if (securityAlerts) console.log('[security_alerts:graph_credentials:start] Loading Microsoft Graph credentials');
+  const load = (async () => {
+    try {
+      const [tenantId, clientId, clientSecret] = await promiseWithTimeout(
+        Promise.all([
+          getSecret('MICROSOFT_TENANT_ID'),
+          getSecret('MICROSOFT_CLIENT_ID'),
+          getSecret('MICROSOFT_CLIENT_SECRET')
+        ]),
+        MICROSOFT_GRAPH_CREDENTIAL_TIMEOUT_MS,
+        'Microsoft Graph credential loading'
+      );
+      if (!tenantId || !clientId || !clientSecret) {
+        const error = new Error('Missing Microsoft Graph credentials: MICROSOFT_TENANT_ID, MICROSOFT_CLIENT_ID, and MICROSOFT_CLIENT_SECRET are required');
+        error.code = 'GRAPH_CREDENTIALS_UNAVAILABLE';
+        throw error;
+      }
+      microsoftGraphCredentialsCache = { tenantId, clientId, clientSecret };
+      if (securityAlerts) console.log('[security_alerts:graph_credentials:complete_or_failed] complete (credentials cached)');
+      return { ...microsoftGraphCredentialsCache, source: 'secret_or_environment' };
+    } catch (error) {
+      if (microsoftGraphCredentialsCache) {
+        if (securityAlerts) console.warn('[security_alerts:graph_credentials:complete_or_failed] Secret refresh failed; using cached credentials:', error.message);
+        return { ...microsoftGraphCredentialsCache, source: 'stale_cache', warning: error.message };
+      }
+      if (securityAlerts) console.error('[security_alerts:graph_credentials:complete_or_failed] failed:', error.message);
+      if (!error.code) error.code = 'GRAPH_CREDENTIALS_UNAVAILABLE';
+      throw error;
     }
+  })();
+  microsoftGraphCredentialsPromise = load;
+  try { return await load; }
+  finally { if (microsoftGraphCredentialsPromise === load) microsoftGraphCredentialsPromise = null; }
+}
 
+async function validateMicrosoftGraphCredentialsAtStartup() {
+  try {
+    await getMicrosoftGraphCredentials();
+    console.log('[Microsoft Graph] Credential startup validation completed; credentials cached.');
+    return { available: true };
+  } catch (error) {
+    if (!microsoftGraphStartupWarningShown) {
+      microsoftGraphStartupWarningShown = true;
+      console.warn(`[Microsoft Graph] Credential startup validation failed: ${error.message}`);
+    }
+    return { available: false, message: error.message };
+  }
+}
+
+async function getMicrosoftGraphToken(options = {}) {
+  try {
     // Check cache (valid for 30 minutes)
     const cacheKey = 'microsoft_graph_token';
     const cachedToken = microsoftTokenCache.get(cacheKey);
@@ -170,9 +219,12 @@ async function getMicrosoftGraphToken() {
       return cachedToken.token;
     }
 
+    const { tenantId, clientId, clientSecret } = await getMicrosoftGraphCredentials({ securityAlerts: Boolean(options.securityAlerts) });
+
     console.log('[Microsoft Graph] Requesting new token...');
     const tokenUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
-    
+    const controller = new AbortController();
+    const timeoutHandle = setTimeout(() => controller.abort(), MICROSOFT_GRAPH_TOKEN_TIMEOUT_MS);
     const response = await fetch(tokenUrl, {
       method: 'POST',
       headers: {
@@ -183,9 +235,10 @@ async function getMicrosoftGraphToken() {
         scope: 'https://graph.microsoft.com/.default',
         client_secret: clientSecret,
         grant_type: 'client_credentials'
-      }).toString()
+      }).toString(),
+      signal: controller.signal
     });
-    
+    clearTimeout(timeoutHandle);
 
     if (!response.ok) {
       const errorData = await response.json();
@@ -205,6 +258,7 @@ async function getMicrosoftGraphToken() {
     return data.access_token;
   } catch (error) {
     console.error('[Microsoft Graph] Token generation failed:', error.message);
+    if (!error.code && error.name === 'AbortError') error.code = 'GRAPH_TOKEN_TIMEOUT';
     throw error;
   }
 }
@@ -457,10 +511,15 @@ let supabase = null;
 let pool = null;
 
 if (!useSupabase) {
+    const requiredDatabaseSettings = ['DB_USER', 'DB_PASSWORD', 'DB_NAME'];
+    const missingDatabaseSettings = requiredDatabaseSettings.filter(name => !String(process.env[name] || '').trim());
+    if (missingDatabaseSettings.length) {
+        throw new Error(`Missing required database configuration: ${missingDatabaseSettings.join(', ')}`);
+    }
     const dbConfig = {
-        user: 'admin-fix',                // Hardcoded DB_USER
-        password: '@TakalaniSandani2005', // Hardcoded DB_PASSWORD
-        database: 'consultation_db',      // Hardcoded DB_NAME
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD,
+        database: process.env.DB_NAME,
         waitForConnections: true,
         connectionLimit: 10,
         queueLimit: 0,
@@ -479,10 +538,15 @@ if (!useSupabase) {
         } */
     };
 
-    const socketPath = `/cloudsql/stackops-backend-475222:us-central1:stackops-db`;
-    console.log(`\n[DB] Attempting to connect to Cloud SQL via socket: ${socketPath}`);
+    const cloudSqlConnectionName = String(process.env.CLOUD_SQL_CONNECTION_NAME || '').trim();
+    const socketPath = String(process.env.DB_SOCKET_PATH || (cloudSqlConnectionName ? `/cloudsql/${cloudSqlConnectionName}` : '')).trim();
+    if (socketPath) dbConfig.socketPath = socketPath;
+    else {
+        dbConfig.host = process.env.DB_HOST || '127.0.0.1';
+        dbConfig.port = Number(process.env.DB_PORT || 3306);
+    }
+    console.log(`\n[DB] Attempting to connect via ${socketPath ? 'Cloud SQL socket' : 'configured TCP host'}`);
     console.log('[DB] Config: connectionTimeout=30s, acquireTimeout=30s');
-    dbConfig.socketPath = socketPath;
 
     try {
         // Use mysql.createPool (promise-based) for modern Node.js
@@ -1553,11 +1617,78 @@ async function seedAvailability() {
     }
 }
 
+async function applySqlMigration(relativePath) {
+    const migrationPath = path.join(__dirname, relativePath);
+    const migrationSql = fs.readFileSync(migrationPath, 'utf8')
+        .split(/\r?\n/)
+        .filter(line => !line.trim().startsWith('--'))
+        .join('\n');
+    const statements = migrationSql.split(';').map(statement => statement.trim()).filter(Boolean);
+    for (const statement of statements) await pool.query(statement);
+}
+
 // Function to ensure database schema is up to date for automation
 async function ensureDatabaseSchema() {
     try {
         if (!pool) return;
         console.log('Ensuring database schema for automation...');
+
+        // Intelligence automation scheduler tables must exist before the one-minute tick starts.
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS StackCTRLIntelligenceSchedules (
+                ID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+                CompanyID BIGINT NOT NULL,
+                ScheduleKey VARCHAR(100) NOT NULL,
+                ScheduleType VARCHAR(50) NOT NULL,
+                CronExpression VARCHAR(100) NOT NULL,
+                TimeZone VARCHAR(100) NOT NULL DEFAULT 'Africa/Johannesburg',
+                BusinessDaysJson JSON NULL,
+                BusinessStartTime TIME NULL,
+                BusinessEndTime TIME NULL,
+                IntervalMinutes INT NULL,
+                AnalysisHoursJson JSON NULL,
+                OutputTypesJson JSON NULL,
+                IsEnabled TINYINT(1) NOT NULL DEFAULT 1,
+                LastRunAt DATETIME NULL,
+                CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UpdatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (ID),
+                UNIQUE KEY uq_stackctrl_schedule_company_key (CompanyID, ScheduleKey),
+                KEY ix_stackctrl_schedule_enabled (CompanyID, IsEnabled, ScheduleType)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS StackCTRLIntelligenceScheduleRuns (
+                ID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+                CompanyID BIGINT NOT NULL,
+                ScheduleID BIGINT UNSIGNED NULL,
+                ScheduleKey VARCHAR(100) NOT NULL,
+                RunType VARCHAR(50) NOT NULL,
+                TriggerType VARCHAR(50) NOT NULL,
+                DeduplicationKey VARCHAR(255) NOT NULL,
+                ParentRunID BIGINT UNSIGNED NULL,
+                RequestedOutputTypes JSON NULL,
+                Status VARCHAR(50) NOT NULL DEFAULT 'started',
+                SnapshotID BIGINT UNSIGNED NULL,
+                IntelligenceRunID BIGINT UNSIGNED NULL,
+                CollectionSummaryJson JSON NULL,
+                HistoricalContextJson JSON NULL,
+                ErrorMessage TEXT NULL,
+                CreatedByUserID BIGINT NULL,
+                CreatedByEmail VARCHAR(255) NULL,
+                StartedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CompletedAt DATETIME NULL,
+                CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (ID),
+                UNIQUE KEY uq_stackctrl_schedule_run_dedupe (DeduplicationKey),
+                KEY ix_stackctrl_schedule_runs_company_started (CompanyID, StartedAt),
+                KEY ix_stackctrl_schedule_runs_status (Status, StartedAt),
+                KEY ix_stackctrl_schedule_runs_schedule (ScheduleID, StartedAt)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        `);
+
+        await applySqlMigration('sql/stackctrl-enterprise-intelligence.sql');
         
         // Add PaidEmailSent column if it doesn't exist
         const [columns] = await pool.query("SHOW COLUMNS FROM Invoices LIKE 'PaidEmailSent'");
@@ -1900,6 +2031,7 @@ async function ensureDatabaseSchema() {
         }
     } catch (err) {
         console.error('ensureDatabaseSchema error:', err);
+        throw err;
     }
 }
 
@@ -9265,7 +9397,7 @@ async function verifySunbirdUser(userEmail) {
                 companyId: accessContext.companyId
             });
             return {
-                clientId: accessContext.accessType,
+                clientId: accessContext.accessType || accessContext.clientId,
                 tenantId: accessContext.tenantId,
                 companyId: accessContext.companyId
             };
@@ -9915,10 +10047,10 @@ async function fetchSecurityAlerts(token) {
 
         const data = await response.json();
         const alerts = data.value || [];
-        console.log(`[security_alerts:${stage}:complete] Retrieved ${alerts.length} alerts`);
+        console.log(`[security_alerts:${stage}:complete_or_timeout] complete - retrieved ${alerts.length} alerts`);
         return { alerts, warnings: [], recordsFetched: alerts.length };
     } catch (error) {
-        console.error(`[security_alerts:${stage}:error] ${error.message}`);
+        console.error(`[security_alerts:${stage}:complete_or_timeout] failed_or_timeout - ${error.message}`);
         return { alerts: [], warnings: [`Alerts fetch failed: ${error.message}`], recordsFetched: 0 };
     } finally {
         clearTimeout(timeoutId);
@@ -9955,10 +10087,10 @@ async function fetchSecurityIncidents(token) {
 
         const data = await response.json();
         const incidents = data.value || [];
-        console.log(`[security_alerts:${stage}:complete] Retrieved ${incidents.length} incidents`);
+        console.log(`[security_alerts:${stage}:complete_or_timeout] complete - retrieved ${incidents.length} incidents`);
         return { incidents, warnings: [], recordsFetched: incidents.length };
     } catch (error) {
-        console.error(`[security_alerts:${stage}:error] ${error.message}`);
+        console.error(`[security_alerts:${stage}:complete_or_timeout] failed_or_timeout - ${error.message}`);
         return { incidents: [], warnings: [`Incidents fetch failed: ${error.message}`], recordsFetched: 0 };
     } finally {
         clearTimeout(timeoutId);
@@ -9990,7 +10122,7 @@ async function fetchThreatIndicators(token) {
         clearTimeout(timeout);
 
         if (response.status === 400) {
-            console.log(`[security_alerts:${stage}:warning] Threat indicators returned 400 (unavailable - continuing)`);
+            console.log(`[security_alerts:${stage}:warning_or_complete] warning - threat indicators returned 400 (unavailable - continuing)`);
             return { threats: [], warnings: ['threat_indicators_unavailable'], recordsFetched: 0 };
         }
         
@@ -10001,10 +10133,10 @@ async function fetchThreatIndicators(token) {
 
         const data = await response.json();
         const threats = data.value || [];
-        console.log(`[security_alerts:${stage}:complete] Retrieved ${threats.length} threat indicators`);
+        console.log(`[security_alerts:${stage}:warning_or_complete] complete - retrieved ${threats.length} threat indicators`);
         return { threats, warnings: [], recordsFetched: threats.length };
     } catch (error) {
-        console.warn(`[security_alerts:${stage}:warning] Optional threat indicators unavailable: ${error.message}`);
+        console.warn(`[security_alerts:${stage}:warning_or_complete] warning - optional threat indicators unavailable: ${error.message}`);
         return { threats: [], warnings: [`Threat indicators unavailable: ${error.message}`], recordsFetched: 0 };
     } finally {
         clearTimeout(timeoutId);
@@ -10259,12 +10391,24 @@ async function notifySecurityAlertsViaWhatsApp(payload, options = {}) {
     };
 }
 
-async function fetchSecurityEventsPayloadFromApi(options = {}) {
+const SECURITY_ALERTS_PIPELINE_TIMEOUT_MS = Math.max(30000, Number(process.env.SECURITY_ALERTS_PIPELINE_TIMEOUT_MS) || 120000);
+async function buildSecurityEventsPayloadFromApi(options = {}) {
     console.log('[security_alerts:start] Security Alerts domain processing starting');
     const allWarnings = [];
     const allMetrics = { recordsFetched: 0, recordsStored: 0, recordsPrepared: 0, recordsSentToAzure: 0, recordsAnalysed: 0, recordsOmitted: 0, omittedReasons: [] };
-    
-    const token = options.token || await getMicrosoftGraphToken();
+    const stages = [{ stage: 'security_alerts:start', status: 'complete', at: new Date().toISOString() }];
+    let token;
+    try {
+        token = options.token || await getMicrosoftGraphToken({ securityAlerts: true });
+        stages.push({ stage: 'graph_credentials:complete_or_failed', status: 'complete', at: new Date().toISOString() });
+    } catch (error) {
+        stages.push({ stage: 'graph_credentials:complete_or_failed', status: 'failed_terminal', reason: error.message, at: new Date().toISOString() });
+        console.error('[security_alerts:complete_or_completed_with_warnings_or_failed] failed_terminal:', error.message);
+        error.securityAlertsStatus = 'failed_terminal';
+        error.securityAlertsStage = 'graph_credentials';
+        error.securityAlertsStages = stages;
+        throw error;
+    }
     
     console.log('[security_alerts:prepare_fetch:start] Preparing to fetch from 4 Microsoft Graph sources');
     const [alertsResult, incidentsResult, threatIndicatorsResult, signInsResult] = await Promise.all([
@@ -10273,12 +10417,18 @@ async function fetchSecurityEventsPayloadFromApi(options = {}) {
         fetchThreatIndicators(token),
         fetchSecuritySignIns(token)
     ]);
+    stages.push(
+        { stage: 'microsoft_graph_alerts_fetch:complete_or_timeout', status: alertsResult.warnings?.length ? 'warning' : 'complete', recordsFetched: alertsResult.recordsFetched || 0, at: new Date().toISOString() },
+        { stage: 'microsoft_graph_incidents_fetch:complete_or_timeout', status: incidentsResult.warnings?.length ? 'warning' : 'complete', recordsFetched: incidentsResult.recordsFetched || 0, at: new Date().toISOString() },
+        { stage: 'threat_indicators_fetch:warning_or_complete', status: threatIndicatorsResult.warnings?.length ? 'warning' : 'complete', recordsFetched: threatIndicatorsResult.recordsFetched || 0, at: new Date().toISOString() }
+    );
     
     // Collect warnings from each source
     if (alertsResult.warnings) allWarnings.push(...alertsResult.warnings);
     if (incidentsResult.warnings) allWarnings.push(...incidentsResult.warnings);
     if (threatIndicatorsResult.warnings) allWarnings.push(...threatIndicatorsResult.warnings);
     if (signInsResult.warnings) allWarnings.push(...signInsResult.warnings);
+    if (allWarnings.length) allWarnings.unshift('partial_source_collection');
     
     const alerts = alertsResult.alerts || [];
     const incidents = incidentsResult.incidents || [];
@@ -10288,6 +10438,7 @@ async function fetchSecurityEventsPayloadFromApi(options = {}) {
     // Track metrics from fetches
     allMetrics.recordsFetched = (alertsResult.recordsFetched || 0) + (incidentsResult.recordsFetched || 0) + (threatIndicatorsResult.recordsFetched || 0) + (signInsResult.recordsFetched || 0);
     
+    stages.push({ stage: 'evidence_prepare:start', status: 'started', at: new Date().toISOString() });
     console.log(`[security_alerts:evidence_prepare:start] Preparing evidence: ${alerts.length} alerts, ${incidents.length} incidents, ${threatIndicators.length} threats, ${signIns.length} sign-ins`);
 
     const processedAlerts = alerts.map(alert => ({
@@ -10320,7 +10471,7 @@ async function fetchSecurityEventsPayloadFromApi(options = {}) {
         const riskLevel = signIn.riskLevelDuringSignIn;
         const status = signIn.status?.errorCode === 0 ? 'Success' : 'Failed';
         return (riskLevel && riskLevel !== 'none') || status === 'Failed';
-    }).slice(0, 80).map(signIn => ({
+    }).map(signIn => ({
         id: signIn.id,
         user: signIn.userPrincipalName || 'Unknown',
         timestamp: signIn.createdDateTime || new Date().toISOString(),
@@ -10333,7 +10484,7 @@ async function fetchSecurityEventsPayloadFromApi(options = {}) {
         failureReason: signIn.status?.failureReason || (signIn.status?.errorCode ? `Sign-in error ${signIn.status.errorCode}` : 'Suspicious sign-in')
     }));
 
-    const processedThreats = threatIndicators.slice(0, 80).map(threat => ({
+    const processedThreats = threatIndicators.map(threat => ({
         id: threat.id,
         indicator: threat.networkIPv4 || threat.networkIPv6 || threat.domainName || threat.fileHashValue || 'Unknown',
         type: threat.networkIPv4 ? 'IPv4' : threat.networkIPv6 ? 'IPv6' : threat.domainName ? 'Domain' : 'FileHash',
@@ -10481,6 +10632,20 @@ async function fetchSecurityEventsPayloadFromApi(options = {}) {
     const payload = {
         success: true,
         fetchedAt: new Date().toISOString(),
+        collectionStatus: allWarnings.length ? 'completed_with_warnings' : 'complete',
+        warnings: [...new Set(allWarnings)],
+        collection: {
+            status: allWarnings.length ? 'completed_with_warnings' : 'complete',
+            warnings: [...new Set(allWarnings)],
+            stages,
+            sources: {
+                alerts: { recordsFetched: alerts.length, status: alertsResult.warnings?.length ? 'warning' : 'complete' },
+                incidents: { recordsFetched: incidents.length, status: incidentsResult.warnings?.length ? 'warning' : 'complete' },
+                threatIndicators: { recordsFetched: threatIndicators.length, status: threatIndicatorsResult.warnings?.length ? 'warning' : 'complete' },
+                signIns: { recordsFetched: signIns.length, recordsPrepared: suspiciousSignIns.length, status: signInsResult.warnings?.length ? 'warning' : 'complete' }
+            },
+            accounting: allMetrics
+        },
         summary: {
             activeIncidents: activeIncidents.length,
             highSeverityAlerts: highSeverityAlerts.length,
@@ -10508,6 +10673,16 @@ async function fetchSecurityEventsPayloadFromApi(options = {}) {
         recommendations
     };
 
+    allMetrics.recordsPrepared = processedAlerts.length + processedIncidents.length + suspiciousSignIns.length + processedThreats.length;
+    allMetrics.recordsStored = allMetrics.recordsPrepared;
+    allMetrics.recordsOmitted = Math.max(0, allMetrics.recordsFetched - allMetrics.recordsPrepared);
+    if (allMetrics.recordsOmitted > 0) allMetrics.omittedReasons.push('non_suspicious_signins_not_prepared_as_security_evidence');
+    payload.summary.recordsFetched = allMetrics.recordsFetched;
+    payload.summary.recordsPrepared = allMetrics.recordsPrepared;
+    payload.summary.recordsOmitted = allMetrics.recordsOmitted;
+    payload.collection.accounting = { ...allMetrics };
+    stages.push({ stage: 'evidence_prepare:complete', status: 'complete', recordsPrepared: allMetrics.recordsPrepared, recordsOmitted: allMetrics.recordsOmitted, at: new Date().toISOString() });
+
     console.log('[security_alerts:evidence_prepare:complete] Evidence preparation complete with accounting:', {
         totalAlerts: processedAlerts.length,
         totalIncidents: processedIncidents.length,
@@ -10532,9 +10707,28 @@ async function fetchSecurityEventsPayloadFromApi(options = {}) {
         }
     }
 
-    console.log('[security_alerts:storage:complete] Security Alerts payload ready for transmission');
-    console.log('[security_alerts:domain:complete] Security Alerts domain preparation complete');
+    console.log(`[security_alerts:complete_or_completed_with_warnings_or_failed] ${payload.collectionStatus}`, {
+        recordsFetched: allMetrics.recordsFetched,
+        recordsPrepared: allMetrics.recordsPrepared,
+        recordsOmitted: allMetrics.recordsOmitted,
+        warnings: payload.warnings
+    });
     return payload;
+}
+
+async function fetchSecurityEventsPayloadFromApi(options = {}) {
+    try {
+        return await promiseWithTimeout(
+            buildSecurityEventsPayloadFromApi(options),
+            SECURITY_ALERTS_PIPELINE_TIMEOUT_MS,
+            'Security Alerts collection pipeline'
+        );
+    } catch (error) {
+        if (!error.securityAlertsStatus) error.securityAlertsStatus = 'failed_terminal';
+        if (!error.securityAlertsStage) error.securityAlertsStage = /credential/i.test(error.message) ? 'graph_credentials' : 'security_alerts_pipeline';
+        console.error(`[security_alerts:complete_or_completed_with_warnings_or_failed] ${error.securityAlertsStatus} at ${error.securityAlertsStage}: ${error.message}`);
+        throw error;
+    }
 }
 
 app.get('/api/db/security-events', authenticateToken, async (req, res) => {
@@ -10890,19 +11084,69 @@ app.get('/api/backup-recovery', authenticateToken, async (req, res) => {
 });
 
 const secretClient = new SecretManagerServiceClient();
+const secretValueCache = new Map();
+const secretReadPromises = new Map();
+const secretWarningKeys = new Set();
+const SECRET_READ_TIMEOUT_MS = Math.max(1000, Number(process.env.SECRET_MANAGER_READ_TIMEOUT_MS) || 5000);
+const SECRET_READ_RETRY_DELAY_MS = Math.max(50, Number(process.env.SECRET_MANAGER_RETRY_DELAY_MS) || 250);
+
+function promiseWithTimeout(promise, timeoutMs, label) {
+    let timeoutHandle;
+    return Promise.race([
+        promise,
+        new Promise((_, reject) => {
+            timeoutHandle = setTimeout(() => {
+                const error = new Error(`${label} timed out after ${timeoutMs}ms`);
+                error.code = 'DEADLINE_EXCEEDED';
+                reject(error);
+            }, timeoutMs);
+        })
+    ]).finally(() => clearTimeout(timeoutHandle));
+}
 
 // Function to get secret from Google Cloud Secret Manager
 async function getSecret(secretName) {
+    if (secretValueCache.has(secretName)) return secretValueCache.get(secretName);
+    const environmentValue = String(process.env[secretName] || '').trim();
+    if (environmentValue) {
+        secretValueCache.set(secretName, environmentValue);
+        return environmentValue;
+    }
+    if (secretReadPromises.has(secretName)) return secretReadPromises.get(secretName);
+
     const projectId = 'stackops-backend-475222';
     const name = `projects/${projectId}/secrets/${secretName}/versions/latest`;
-    
+    const load = (async () => {
+        let lastError = null;
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+            try {
+                const [version] = await promiseWithTimeout(
+                    secretClient.accessSecretVersion({ name }, { timeout: SECRET_READ_TIMEOUT_MS }),
+                    SECRET_READ_TIMEOUT_MS,
+                    `Secret Manager read for ${secretName}`
+                );
+                const value = version?.payload?.data?.toString().trim() || null;
+                if (value) {
+                    secretValueCache.set(secretName, value);
+                    secretWarningKeys.delete(secretName);
+                }
+                return value;
+            } catch (error) {
+                lastError = error;
+                if (attempt === 0) await sleep(SECRET_READ_RETRY_DELAY_MS);
+            }
+        }
+        if (!secretWarningKeys.has(secretName)) {
+            secretWarningKeys.add(secretName);
+            console.warn(`[Secret Manager] ${secretName} unavailable after one retry: ${lastError?.code || lastError?.message || 'unknown error'}.`);
+        }
+        return secretValueCache.get(secretName) || null;
+    })();
+    secretReadPromises.set(secretName, load);
     try {
-        const [version] = await secretClient.accessSecretVersion({ name });
-        return version.payload.data.toString().trim();
-    } catch (error) {
-        console.error(`Error accessing secret ${secretName}:`, error);
-        // Fallback to environment variable if secret not found
-        return process.env[secretName] || null;
+        return await load;
+    } finally {
+        if (secretReadPromises.get(secretName) === load) secretReadPromises.delete(secretName);
     }
 }
 
@@ -11279,9 +11523,19 @@ async function performSecurityEvidenceCollection(companyId, collectionTrigger) {
         const payload = await fetchSecurityEventsPayloadFromApi({ skipWhatsAppAuto: true });
         const dashboardPayload = buildSecurityDashboardPayload({ tenantKey: 'sunbird', payload });
         await pool.query(`REPLACE INTO SecurityEventsPayloadCache (CompanyID, Payload, LastUpdated) VALUES (?, ?, NOW())`, [companyId, JSON.stringify(dashboardPayload)]);
-        return securityEvidenceService.persistProcessedEvidence({ companyId, tenantKey: 'sunbird', payload: dashboardPayload, collectionTrigger, sourceEndpoint });
+        const stored = await securityEvidenceService.persistProcessedEvidence({ companyId, tenantKey: 'sunbird', payload: dashboardPayload, collectionTrigger, sourceEndpoint });
+        console.log('[security_alerts:storage:complete] Security Alerts evidence stored', {
+            snapshotId: stored.snapshotId,
+            recordsFetched: dashboardPayload.collection?.accounting?.recordsFetched || 0,
+            recordsPrepared: stored.recordCount,
+            recordsOmitted: stored.omittedRecordCount || 0,
+            status: stored.collectionStatus
+        });
+        console.log(`[security_alerts:complete_or_completed_with_warnings_or_failed] ${stored.collectionStatus}`, { snapshotId: stored.snapshotId, warnings: stored.warnings || [] });
+        return stored;
     } catch (error) {
-        await securityEvidenceService.recordCollectionFailure({ companyId, tenantKey: 'sunbird', collectionTrigger, sourceEndpoint, error }).catch(() => {});
+        const terminal = await securityEvidenceService.recordCollectionFailure({ companyId, tenantKey: 'sunbird', collectionTrigger, sourceEndpoint, error }).catch(() => null);
+        console.error('[security_alerts:complete_or_completed_with_warnings_or_failed] failed_terminal', { snapshotId: terminal?.snapshotId || null, stage: error.securityAlertsStage || 'unknown', reason: error.message });
         throw error;
     }
 }
@@ -13010,6 +13264,36 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 const server = app.listen(PORT, async () => {
+    let intelligenceSchemaReady = true;
+    try {
+        await ensureDatabaseSchema();
+        console.log('[STARTUP] Intelligence schema is ready before automation startup.');
+    } catch (error) {
+        intelligenceSchemaReady = false;
+        console.error('[STARTUP] Database schema validation failed before automation startup:', error.message);
+    }
+    const evidenceSchemaResults = await Promise.all([
+        identityEvidenceSchemaReady,
+        deviceEvidenceSchemaReady,
+        emailEvidenceSchemaReady,
+        networkEvidenceSchemaReady,
+        backupEvidenceSchemaReady,
+        applicationsEvidenceSchemaReady,
+        securityEvidenceSchemaReady,
+        governanceEvidenceSchemaReady,
+        complianceEvidenceSchemaReady,
+        operationsEvidenceSchemaReady
+    ]);
+    const evidenceSchemaFailure = evidenceSchemaResults.find(result => result?.error)?.error;
+    if (evidenceSchemaFailure) {
+        intelligenceSchemaReady = false;
+        console.error('[STARTUP] Evidence schema validation failed before automation startup:', evidenceSchemaFailure.message);
+    }
+    await validateMicrosoftGraphCredentialsAtStartup();
+    if (!intelligenceSchemaReady) {
+        console.error('[STARTUP] Intelligence automations are stopped because required database schema initialization failed.');
+        return;
+    }
     identityEvidenceAutomation.start();
     deviceEvidenceAutomation.start();
     emailEvidenceAutomation.start();

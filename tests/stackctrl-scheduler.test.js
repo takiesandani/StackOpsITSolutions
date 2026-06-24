@@ -119,6 +119,36 @@ test('scheduler tick does no collection outside weekday business hours', async (
     assert.equal(queryCount, 0);
 });
 
+test('missing schedule table pauses automation and warns only once', async () => {
+    const warnings = [];
+    const scheduler = createStackCTRLIntelligenceScheduler({
+        pool: {
+            async query() {
+                const error = new Error("Table 'consultation_db.StackCTRLIntelligenceSchedules' doesn't exist");
+                error.code = 'ER_NO_SUCH_TABLE';
+                throw error;
+            }
+        },
+        intelligenceService: {},
+        logger: { warn(message) { warnings.push(message); }, error() {} }
+    });
+
+    const first = await scheduler.runScheduledTick({
+        companyId: 1,
+        now: new Date('2026-06-22T06:00:00.000Z')
+    });
+    const second = await scheduler.runScheduledTick({
+        companyId: 1,
+        now: new Date('2026-06-22T06:15:00.000Z')
+    });
+
+    assert.equal(first.status, 'completed');
+    assert.deepEqual(first.companies[0].runs, []);
+    assert.deepEqual(second.companies[0].runs, []);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /schedule tables are not available/i);
+});
+
 test('15-minute collection tick stores data without calling Azure', async () => {
     let analysisCalls = 0;
     let snapshotCalls = 0;

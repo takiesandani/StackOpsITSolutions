@@ -647,7 +647,7 @@ const definitions = {
         async load(pool, companyId, capability) {
             const tenant = await queryRows(pool, `SELECT mt.ID AS MicrosoftTenantID FROM CompanyMicrosoftMapping cm INNER JOIN MicrosoftTenants mt ON mt.ID = cm.MicrosoftTenantID WHERE cm.CompanyID = ? AND cm.IsActive = 1 LIMIT 1`, [companyId]);
             if (capability?.profileKey === 'sunbird') {
-                const snapshots = await queryRows(pool, `SELECT * FROM StackCTRLSecurityEvidenceSnapshots WHERE CompanyID = ? AND IsComplete = 1 AND CollectionStatus = 'complete' ORDER BY CollectedAt DESC, ID DESC LIMIT 1`, [companyId]);
+                const snapshots = await queryRows(pool, `SELECT * FROM StackCTRLSecurityEvidenceSnapshots WHERE CompanyID = ? AND IsComplete = 1 AND CollectionStatus IN ('complete', 'completed_with_warnings') ORDER BY CollectedAt DESC, ID DESC LIMIT 1`, [companyId]);
                 const snapshot = snapshots[0];
                 if (!snapshot) return { records: [], notConfigured: !tenant.length, metrics: {}, dashboardSourceMetrics: {}, sourceLineage: { sourceKey: 'security_alerts', sourceBuilder: 'storedStackCTRLSecurityEvidence', sourceLayer: 'StackCTRLSecurityEvidenceSnapshots', collectionStatus: 'missing' }, evidence: [], warnings: ['No complete StackCTRL Security Alerts evidence snapshot is available. Azure analysis is blocked until collection succeeds.'], rawReference: { table: this.table, recordId: null } };
                 const evidenceRows = await queryRows(pool, `SELECT * FROM StackCTRLSecurityEvidence WHERE SnapshotID = ? ORDER BY ID`, [snapshot.ID]);
@@ -661,7 +661,12 @@ const definitions = {
                     else if (row.EvidenceKind === 'threat_indicator') grouped.threatIndicators.push(item);
                 });
                 const dashboardMetrics = snapshot.DashboardMetricsJson || {};
-                return { records: snapshots, notConfigured: !tenant.length, metrics: dashboardMetrics, dashboardSourceMetrics: dashboardMetrics, sourceLineage: { sourceKey: 'security_alerts', sourceBuilder: 'storedStackCTRLSecurityEvidence', sourceLayer: 'StackCTRLSecurityEvidenceSnapshots + StackCTRLSecurityEvidence', evidenceSnapshotId: snapshot.ID, collectedAt: snapshot.CollectedAt, sourceFetchedAt: snapshot.SourceFetchedAt, sourceEndpoint: snapshot.SourceEndpoint, collectionTrigger: snapshot.CollectionTrigger, collectionStatus: snapshot.CollectionStatus, isComplete: Boolean(Number(snapshot.IsComplete)), evidenceRecordCount: Number(snapshot.EvidenceRecordCount), omittedRecordCount: Number(snapshot.OmittedRecordCount) }, evidence: Object.entries(grouped).map(([evidenceType, data]) => ({ evidenceType, data })), warnings: [], rawReference: { table: this.table, recordId: snapshot.ID } };
+                const sourceAudit = parseJsonValue(snapshot.SourceAuditJson, {});
+                const warnings = [
+                    ...(Array.isArray(sourceAudit?.warnings) ? sourceAudit.warnings : []),
+                    ...(snapshot.CollectionStatus === 'completed_with_warnings' && snapshot.IncompleteReason ? [snapshot.IncompleteReason] : [])
+                ];
+                return { records: snapshots, notConfigured: !tenant.length, metrics: dashboardMetrics, dashboardSourceMetrics: dashboardMetrics, sourceLineage: { sourceKey: 'security_alerts', sourceBuilder: 'storedStackCTRLSecurityEvidence', sourceLayer: 'StackCTRLSecurityEvidenceSnapshots + StackCTRLSecurityEvidence', evidenceSnapshotId: snapshot.ID, collectedAt: snapshot.CollectedAt, sourceFetchedAt: snapshot.SourceFetchedAt, sourceEndpoint: snapshot.SourceEndpoint, collectionTrigger: snapshot.CollectionTrigger, collectionStatus: snapshot.CollectionStatus, isComplete: Boolean(Number(snapshot.IsComplete)), evidenceRecordCount: Number(snapshot.EvidenceRecordCount), expectedRecordCount: Number(snapshot.ExpectedRecordCount), omittedRecordCount: Number(snapshot.OmittedRecordCount), incompleteReason: snapshot.IncompleteReason || null, stages: sourceAudit?.collection?.stages || sourceAudit?.stages || [] }, evidence: Object.entries(grouped).map(([evidenceType, data]) => ({ evidenceType, data })), warnings, rawReference: { table: this.table, recordId: snapshot.ID } };
             }
             const [records, configured] = await Promise.all([queryRows(pool, 'SELECT * FROM SecurityEventsPayloadCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]), hasActiveMicrosoftTenant(pool, companyId)]);
             const payload = extractPayload(records[0]);
