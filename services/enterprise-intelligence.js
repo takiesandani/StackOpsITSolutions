@@ -22,6 +22,16 @@ const SECURITY_ALERTS_BATCH_THRESHOLD_TOKENS = 90000;
 const SECURITY_ALERTS_BATCH_MIN_TOKENS = 100000;
 const SECURITY_ALERTS_DOMAIN_DELAY_MS = 90000;
 const ENTITY_EVIDENCE_LIMITS = Object.freeze({ maxDepth: 8, maxArray: 50, maxString: 1200, maxObjectKeys: 100 });
+const DOMAIN_OUTPUT_LIMITS = Object.freeze({
+    findings: 8,
+    risks: 5,
+    recommendations: 10,
+    actions: 10,
+    trends: 10,
+    entityReferences: 10,
+    explanationCharacters: 500,
+    narrativeCharacters: 1200
+});
 const DEFAULT_MAX_INPUT_BYTES = 350000;
 const DEFAULT_MAX_ITEMS_PER_BATCH = 750;
 const DEFAULT_HEAVY_DOMAIN_MAX_ITEMS_PER_BATCH = 250;
@@ -504,38 +514,82 @@ function computeInterDomainDelayMs(inputTokens, settings, domainKey = null) {
     return computeInterBatchDelayMs(inputTokens, settings, domainKey);
 }
 
+function compactReference(value) {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'string' || typeof value === 'number') return textOrNull(String(value), 255);
+    if (typeof value !== 'object' || Array.isArray(value)) return null;
+    return textOrNull(
+        value.recordId || value.entityKey || value.sourceAlertId || value.alertId || value.SourceID ||
+        value.id || value.userId || value.deviceId || value.applicationId || value.controlId ||
+        value.userPrincipalName || value.mail || value.email || value.deviceName || value.name,
+        255
+    );
+}
+
+function compactReferences(values, maximum = DOMAIN_OUTPUT_LIMITS.entityReferences) {
+    return [...new Set(array(values).map(compactReference).filter(Boolean))].slice(0, maximum);
+}
+
+function compactNarrative(value) {
+    const fields = ['domainExecutiveSummary', 'technicalSummary', 'businessImpact', 'currentPosture', 'scoreJustification'];
+    let remaining = DOMAIN_OUTPUT_LIMITS.narrativeCharacters;
+    const output = {};
+    for (const field of fields) {
+        const text = textOrNull(value?.[field], Math.min(DOMAIN_OUTPUT_LIMITS.explanationCharacters, remaining));
+        output[field] = text;
+        remaining = Math.max(0, remaining - String(text || '').length);
+    }
+    return output;
+}
+
 function normalizeEvidenceBackedItem(item, domain, snapshotId) {
     const value = item && typeof item === 'object' && !Array.isArray(item) ? item : { title: String(item || '') };
+    const affectedEntities = compactReferences([
+        ...array(value.affectedEntityIds),
+        ...array(value.affectedEntities)
+    ]);
+    const evidenceRows = compactReferences([
+        ...array(value.recordIds),
+        ...array(value.evidenceRows),
+        ...array(value.sourceAlertIds)
+    ]);
     return {
-        ...value,
         title: textOrNull(value.title || value.name || value.metricName, 255),
-        description: textOrNull(value.description || value.detail || value.explanation, 1200),
+        description: textOrNull(value.description || value.detail || value.explanation, DOMAIN_OUTPUT_LIMITS.explanationCharacters),
         severity: textOrNull(value.severity, 50),
         status: textOrNull(value.status, 50),
         likelihood: textOrNull(value.likelihood, 80),
         impact: textOrNull(value.impact, 120),
         priority: textOrNull(value.priority, 50),
-        businessImpact: textOrNull(value.businessImpact || value.businessReason, 1200),
-        businessReason: textOrNull(value.businessReason || value.businessImpact, 1200),
-        evidenceSummary: textOrNull(value.evidenceSummary, 1200),
-        recommendation: textOrNull(value.recommendation || value.detail, 1200),
-        detail: textOrNull(value.detail || value.recommendation, 1200),
+        category: textOrNull(value.category, 120),
+        businessImpact: textOrNull(value.businessImpact || value.businessReason, DOMAIN_OUTPUT_LIMITS.explanationCharacters),
+        businessReason: textOrNull(value.businessReason || value.businessImpact, DOMAIN_OUTPUT_LIMITS.explanationCharacters),
+        evidenceSummary: textOrNull(value.evidenceSummary, DOMAIN_OUTPUT_LIMITS.explanationCharacters),
+        recommendation: textOrNull(value.recommendation || value.detail, DOMAIN_OUTPUT_LIMITS.explanationCharacters),
+        detail: textOrNull(value.detail || value.recommendation, DOMAIN_OUTPUT_LIMITS.explanationCharacters),
         suggestedOwner: textOrNull(value.suggestedOwner || value.owner, 180),
         owner: textOrNull(value.owner || value.suggestedOwner, 180),
         suggestedDueDate: normalizeMysqlDate(value.suggestedDueDate || value.dueDate),
         sourceDomain: textOrNull(value.sourceDomain || domain.key, 80),
         sourceMetric: textOrNull(value.sourceMetric, 120),
         snapshotId: numberOrNull(value.snapshotId ?? snapshotId),
-        affectedEntities: array(value.affectedEntities).map(entity =>
-            typeof entity === 'string' ? textOrNull(entity, 500) : safeEvidenceEntity(entity, { ...ENTITY_EVIDENCE_LIMITS, maxArray: 20, maxObjectKeys: 40 })
-        ),
-        evidenceRows: array(value.evidenceRows).map(row =>
-            typeof row === 'string' ? textOrNull(row, 500) : safeEvidenceEntity(row, { ...ENTITY_EVIDENCE_LIMITS, maxArray: 20, maxObjectKeys: 40 })
-        ),
+        affectedEntities,
+        affectedEntityIds: affectedEntities,
+        evidenceRows,
+        recordIds: evidenceRows,
+        sourceAlertIds: compactReferences(value.sourceAlertIds),
+        sourceMetrics: [...new Set(array(value.sourceMetrics).map(metric => textOrNull(metric, 120)).filter(Boolean))].slice(0, 10),
         evidenceSource: textOrNull(value.evidenceSource || value.sourceLabel || 'stackctrl_dashboard_evidence', 255),
-        whatHappened: textOrNull(value.whatHappened || value.description, 1200),
-        whyItMatters: textOrNull(value.whyItMatters || value.businessImpact, 1200),
-        recommendedAction: textOrNull(value.recommendedAction || value.recommendation || value.detail, 1200)
+        whatHappened: textOrNull(value.whatHappened || value.description, DOMAIN_OUTPUT_LIMITS.explanationCharacters),
+        whyItMatters: textOrNull(value.whyItMatters || value.businessImpact, DOMAIN_OUTPUT_LIMITS.explanationCharacters),
+        recommendedAction: textOrNull(value.recommendedAction || value.recommendation || value.detail, DOMAIN_OUTPUT_LIMITS.explanationCharacters),
+        recommendedActions: array(value.recommendedActions).map(action => textOrNull(action, DOMAIN_OUTPUT_LIMITS.explanationCharacters)).filter(Boolean).slice(0, 10),
+        metricName: textOrNull(value.metricName, 120),
+        direction: textOrNull(value.direction, 50),
+        currentValue: numberOrNull(value.currentValue),
+        previousValue: numberOrNull(value.previousValue),
+        changePercent: numberOrNull(value.changePercent),
+        comparisonPeriod: textOrNull(value.comparisonPeriod, 80)
     };
 }
 
@@ -548,37 +602,43 @@ function ensureItemEvidence(item, domain, snapshotId, availableEvidence = []) {
             .some(value => String(value || '').toLowerCase() === requestedMetric))
         : [];
     const selected = matching.length ? matching : availableEvidence;
-    const rows = selected.map(row => safeEvidenceEntity(row.data ?? row));
+    const recordIds = compactReferences(selected.map(row => ({
+        ...(row?.data && typeof row.data === 'object' ? row.data : {}),
+        entityKey: row?.entityKey,
+        recordId: row?.sourcePath
+    })));
     const first = selected[0] || {};
     if (!normalized.sourceMetric) normalized.sourceMetric = textOrNull(first.sourceMetric || first.sourceLabel || first.evidenceType, 120);
     if (!normalized.evidenceSource || normalized.evidenceSource === 'stackctrl_dashboard_evidence') {
         normalized.evidenceSource = textOrNull(first.sourcePath || first.sourceLabel || 'stackctrl_dashboard_evidence', 255);
     }
-    if (!normalized.evidenceRows.length) normalized.evidenceRows = rows;
-    if (!normalized.affectedEntities.length) normalized.affectedEntities = rows;
+    if (!normalized.evidenceRows.length) normalized.evidenceRows = recordIds;
+    if (!normalized.affectedEntities.length) normalized.affectedEntities = recordIds;
+    normalized.recordIds = compactReferences([...normalized.recordIds, ...normalized.evidenceRows, ...recordIds]);
+    normalized.affectedEntityIds = compactReferences([...normalized.affectedEntityIds, ...normalized.affectedEntities, ...recordIds]);
     const sourceAlertIds = selected.map(row => {
         const data = row?.data ?? row;
         return data?.sourceAlertId || data?.alertId || data?.SourceID || data?.id || row?.entityKey || null;
     }).filter(Boolean).map(String);
-    normalized.sourceAlertIds = [...new Set([...array(item?.sourceAlertIds).map(String), ...sourceAlertIds])];
-    normalized.sourceMetrics = [...new Set([...array(item?.sourceMetrics).map(String), normalized.sourceMetric].filter(Boolean))];
+    normalized.sourceAlertIds = compactReferences([...array(item?.sourceAlertIds), ...sourceAlertIds]);
+    normalized.sourceMetrics = [...new Set([...array(item?.sourceMetrics).map(String), normalized.sourceMetric].filter(Boolean))].slice(0, 10);
     normalized.recommendedActions = array(item?.recommendedActions).length
         ? array(item.recommendedActions)
         : [normalized.recommendedAction].filter(Boolean);
-    if (!normalized.evidenceSummary) normalized.evidenceSummary = `${rows.length} StackCTRL entity evidence row(s) support this item.`;
+    if (!normalized.evidenceSummary) normalized.evidenceSummary = `${selected.length} StackCTRL entity evidence row(s) support this item; full rows remain in the raw evidence endpoint.`;
     return normalized;
 }
 
 function normalizeControlAssessment(value, domain, snapshotId, availableEvidence) {
-    if (Array.isArray(value)) return value.map(item => ensureItemEvidence(item, domain, snapshotId, availableEvidence));
+    if (Array.isArray(value)) return value.slice(0, DOMAIN_OUTPUT_LIMITS.findings).map(item => ensureItemEvidence(item, domain, snapshotId, availableEvidence));
     if (!value || typeof value !== 'object') return value || {};
     if (value.title || value.name || value.control || value.description || value.detail) {
         return ensureItemEvidence(value, domain, snapshotId, availableEvidence);
     }
-    return Object.fromEntries(Object.entries(value).map(([key, nested]) => [
+    return Object.fromEntries(Object.entries(value).slice(0, DOMAIN_OUTPUT_LIMITS.findings).map(([key, nested]) => [
         key,
         Array.isArray(nested)
-            ? nested.map(item => ensureItemEvidence(item, domain, snapshotId, availableEvidence))
+            ? nested.slice(0, DOMAIN_OUTPUT_LIMITS.findings).map(item => ensureItemEvidence(item, domain, snapshotId, availableEvidence))
             : (nested && typeof nested === 'object'
                 ? normalizeControlAssessment(nested, domain, snapshotId, availableEvidence)
                 : nested)
@@ -723,7 +783,7 @@ function responseFinishReason(response = {}) {
     return response.finish_reason || response.finishReason || response.data?.finish_reason || response.choices?.[0]?.finish_reason || null;
 }
 
-function safeResponsePreview(text, maximum = 60000) {
+function safeResponsePreview(text, maximum = 1000000) {
     if (text === null || text === undefined) return null;
     const value = typeof text === 'string' ? text : JSON.stringify(text);
     return value.slice(0, maximum);
@@ -932,11 +992,14 @@ function repairTruncatedJson(text) {
 
 // Request repair of truncated JSON from Azure
 function createJsonRepairPrompt(invalidJson) {
-    return `You are a JSON repair tool. Return valid JSON only. No markdown. No code fences. No explanations outside JSON.
+    return `Repair the supplied response into compact valid JSON only.
+Keep at most 8 findings, 5 risks, 10 recommendations, 10 actions, and 10 trends.
+Keep each explanation below 500 characters and all top-level narrative below 1200 characters.
+Use evidence IDs only in evidenceRows, affectedEntityIds, sourceAlertIds, and recordIds. Never repeat raw evidence objects.
+Discard incomplete trailing prose. No markdown, code fences, or text outside JSON.
 
-Repair this incomplete or invalid JSON into the required schema:
-
-${invalidJson}`;
+INVALID RESPONSE:
+${safeResponsePreview(invalidJson, 24000)}`;
 }
 
 function createEnterpriseIntelligenceService({
@@ -1303,12 +1366,14 @@ function createEnterpriseIntelligenceService({
 
     function securityAlertsBatchPrompt(packageValue) {
         return `Analyse this Security Alerts evidence batch. Return compact JSON only; no markdown and no narrative report.
-Do not omit, generalize away, or invent evidence. Group repeated alert patterns while retaining every supplied source alert ID and affected entity reference.
+Process every supplied evidence row and keep exact batch accounting. Group repeated alert patterns and use compact representative IDs; full rows remain in StackCTRL raw evidence storage.
 Each finding, risk, recommendation, and management action must use these fields:
 title, severity, category, status, sourceDomain, sourceMetric, sourceMetrics, snapshotId, evidenceSource,
-sourceAlertIds, affectedEntities, evidenceRows, whatHappened, whyItMatters, businessImpact,
+sourceAlertIds, affectedEntityIds, evidenceRows, recordIds, whatHappened, whyItMatters, businessImpact,
 recommendedAction, recommendedActions, suggestedOwner, suggestedDueDate.
-Keep descriptive fields below 400 characters. Use arrays and structured values instead of paragraphs.
+Evidence reference arrays contain IDs only, never full alert, incident, sign-in, indicator, user, or device objects.
+Hard limits: 8 findings, 5 risks, 10 recommendations, 10 management actions, 10 trends, and 10 affected entity IDs per item.
+Keep every explanation below 500 characters and all top-level narrative below 1200 characters. Use arrays instead of paragraphs.
 Return exactly:
 {
   "domainExecutiveSummary": "one compact sentence",
@@ -1325,7 +1390,7 @@ Return exactly:
   "confidenceScore": null,
   "evidenceLimitations": {}
 }
-Prioritize sourceAlertIds, affectedEntities, evidenceRows, source metrics, severity, and recommended actions over prose.
+Prioritize sourceAlertIds, affectedEntityIds, recordIds, source metrics, severity, and recommended actions over prose.
 
 STACKCTRL SECURITY ALERTS BATCH:
 ${JSON.stringify(packageValue)}`;
@@ -1346,6 +1411,7 @@ Use BOTH summary metrics and entity-level evidence:
 - evidenceCatalog.categories contains categorized dashboard entity rows tied to sourceMetric keys.
 - evidence[] contains individual entity rows from the StackCTRL dashboard table for this batch.
 Every finding, risk, and recommendation MUST be evidence-backed. Do not state a gap without naming affected users, devices, apps, controls, policies, alerts, or other entities from the supplied evidence.
+Reference those entities by ID only. Never repeat full evidence rows or raw objects in the Azure output; those remain in StackCTRL raw evidence storage.
 
 Return valid JSON only. No markdown. No code fences. No explanations outside JSON.
 Return exactly these fields:
@@ -1374,16 +1440,17 @@ Return exactly these fields:
   "evidenceLimitations": {}
 }
 
-Finding fields: title, description, severity, status, whatHappened, whyItMatters, businessImpact, evidenceSummary, affectedEntities, evidenceRows, sourceDomain, sourceMetric, snapshotId, evidenceSource, suggestedOwner, suggestedDueDate.
-Risk fields: title, description, severity, likelihood, impact, whatHappened, whyItMatters, businessImpact, evidenceSummary, affectedEntities, evidenceRows, sourceDomain, sourceMetric, snapshotId, evidenceSource, recommendation, suggestedOwner, suggestedDueDate.
-Recommendation/action fields: title, detail, priority, whatHappened, whyItMatters, businessImpact, recommendedAction, affectedEntities, evidenceRows, sourceDomain, sourceMetric, snapshotId, evidenceSource, suggestedOwner, suggestedDueDate.
-Control assessment items and trend fields must also include sourceDomain, sourceMetric, snapshotId, evidenceSource, evidenceRows, affectedEntities, whatHappened, whyItMatters, businessImpact, recommendedAction, suggestedOwner, and suggestedDueDate whenever evidence exists.
+Finding fields: title, description, severity, status, whatHappened, whyItMatters, businessImpact, evidenceSummary, affectedEntityIds, evidenceRows, recordIds, sourceDomain, sourceMetric, snapshotId, evidenceSource, suggestedOwner, suggestedDueDate.
+Risk fields: title, description, severity, likelihood, impact, whatHappened, whyItMatters, businessImpact, evidenceSummary, affectedEntityIds, evidenceRows, recordIds, sourceDomain, sourceMetric, snapshotId, evidenceSource, recommendation, suggestedOwner, suggestedDueDate.
+Recommendation/action fields: title, detail, priority, whatHappened, whyItMatters, businessImpact, recommendedAction, affectedEntityIds, evidenceRows, recordIds, sourceDomain, sourceMetric, snapshotId, evidenceSource, suggestedOwner, suggestedDueDate.
+Control assessment items and trend fields must use compact IDs in evidenceRows, affectedEntityIds, and recordIds whenever evidence exists.
 Trend fields additionally include: metricName, currentValue, previousValue, changePercent, direction, comparisonPeriod, explanation.
 evidenceUsed items: label, sourceMetric, entityCount, snapshotId, evidenceSource.
 evidenceGaps items: gap, reason, omittedCount, sourceMetric.
 evidenceLimitations: recordsSent, recordsOmitted, batchNumber, totalBatches, complete, omittedReasons.
 Use empty arrays, objects, or null when evidence is unavailable. Clearly state limitations instead of filling gaps with assumptions.
-Cap each free-text field at 1200 characters. Prefer concise structured arrays over narrative. Preserve entity and evidence fields before narrative if output space is constrained. Do not use markdown.
+Hard limits: 8 findings, 5 risks, 10 recommendations, 10 management actions, 10 trends, and 10 affected entity IDs per item.
+Cap each explanation at 500 characters and all top-level narrative at 1200 characters. Prefer structured references over prose. Do not use markdown.
 
 STACKCTRL DOMAIN PACKAGE:
 ${JSON.stringify(packageValue)}`;
@@ -1623,11 +1690,11 @@ ${JSON.stringify(packageValue)}`;
                     try {
                         repairResponse = await azureOpenAI.createJsonCompletion({
                             messages: [
-                                { role: 'system', content: 'You are a JSON repair tool. Return valid JSON only. Preserve every complete evidence field and array. No markdown. No code fences. No explanations outside JSON.' },
-                                { role: 'user', content: createJsonRepairPrompt(response.data.slice(0, 60000)) }
+                                { role: 'system', content: 'Return compact valid JSON only. Keep structured conclusions and evidence IDs; discard repeated raw objects and incomplete trailing prose.' },
+                                { role: 'user', content: createJsonRepairPrompt(response.data) }
                             ],
                             temperature: 0,
-                            maxTokens: settings.maxDomainOutputTokens,
+                            maxTokens: Math.min(settings.maxDomainOutputTokens, 2000),
                             maxRetriesOverride: 1,
                             retryDelaysMsOverride: ENTERPRISE_RATE_LIMIT_RETRY_DELAYS_MS,
                             retryMaxMsOverride: ENTERPRISE_RATE_LIMIT_RETRY_MAX_MS,
@@ -1635,7 +1702,28 @@ ${JSON.stringify(packageValue)}`;
                             allowInvalidJsonResponse: true
                         });
                     } catch (repairError) {
-                        if (!localRepair.success) throw repairError;
+                        if (!localRepair.success) {
+                            const errorMessage = `JSON parse failed: ${jsonResult.error}. Repair attempt failed: ${repairError.message}`;
+                            const fallbackAnalysis = buildInvalidJsonFallbackAnalysis({
+                                domain, snapshot, packageResult, batchEvidence, errorMessage,
+                                rawResponseStored: rawResponsePreview != null
+                            });
+                            await storeBatch({
+                                companyId, snapshotId: snapshot.ID, runId: run.id, domain,
+                                batchNumber, totalBatches, batchEvidence, analysis: fallbackAnalysis, usage,
+                                stackCTRLDataCount: packageResult.audit.stackCTRLDataCount,
+                                status: 'completed_with_warnings', errorMessage,
+                                failureReason: 'invalid_json_local_fallback', rawResponsePreview,
+                                azureFinishReason: finishReason, jsonRepaired: true,
+                                jsonRepairMethod: 'local_fallback_after_repair_error', recordsRemaining, semanticGrouping
+                            });
+                            return {
+                                status: 'completed_with_warnings', batchNumber, batchItemCount: batchEvidence.length,
+                                domain, analysis: fallbackAnalysis, usage, errorMessage,
+                                failureReason: 'invalid_json_local_fallback', jsonRepaired: true,
+                                jsonRepairMethod: 'local_fallback_after_repair_error'
+                            };
+                        }
                         logger.warn?.(`[StackCTRL Enterprise] Azure repair failed for batch ${batchNumber}; using locally recovered JSON with warnings.`);
                         jsonRepaired = true;
                         jsonRepairMethod = 'local_closure_after_azure_repair_error';
@@ -1657,18 +1745,25 @@ ${JSON.stringify(packageValue)}`;
                             : localRepair.success ? localRepair.value : null;
                     if (!recoveredValue) {
                         const failureReason = finishReason === 'length' ? 'output_truncated_unrepairable' : 'invalid_json_unrepairable';
+                        const errorMessage = `JSON parse failed: ${jsonResult.error}. Repair attempt also failed: ${repairResult.error}`;
+                        const fallbackAnalysis = buildInvalidJsonFallbackAnalysis({
+                            domain, snapshot, packageResult, batchEvidence, errorMessage,
+                            rawResponseStored: rawResponsePreview != null
+                        });
                         await storeBatch({
                             companyId, snapshotId: snapshot.ID, runId: run.id, domain,
-                            batchNumber, totalBatches, batchEvidence, analysis: null, usage,
+                            batchNumber, totalBatches, batchEvidence, analysis: fallbackAnalysis, usage,
                             stackCTRLDataCount: packageResult.audit.stackCTRLDataCount,
-                            status: 'failed_invalid_json',
-                            errorMessage: `JSON parse failed: ${jsonResult.error}. Repair attempt also failed: ${repairResult.error}`,
-                            failureReason, rawResponsePreview, azureFinishReason: finishReason, recordsRemaining, semanticGrouping
+                            status: 'completed_with_warnings', errorMessage,
+                            failureReason: 'invalid_json_local_fallback', rawResponsePreview,
+                            azureFinishReason: finishReason, jsonRepaired: true,
+                            jsonRepairMethod: 'local_fallback_after_invalid_json', recordsRemaining, semanticGrouping
                         });
                         return {
-                            status: 'failed_invalid_json', batchNumber, batchItemCount: batchEvidence.length, domain, usage,
-                            failureReason,
-                            errorMessage: `JSON parse failed: ${jsonResult.error}. Repair attempt also failed: ${repairResult.error}`
+                            status: 'completed_with_warnings', batchNumber, batchItemCount: batchEvidence.length,
+                            domain, analysis: fallbackAnalysis, usage, errorMessage,
+                            failureReason: 'invalid_json_local_fallback', jsonRepaired: true,
+                            jsonRepairMethod: 'local_fallback_after_invalid_json', originalFailureReason: failureReason
                         };
                     }
                     jsonRepaired = true;
@@ -1719,6 +1814,32 @@ ${JSON.stringify(packageValue)}`;
                 : failureReason === 'rate_limited' ? 'failed_rate_limited' : classifyFailureStatus(error);
             const recommendedRetryAfterMs = metadata.retryAfterMs ?? metadata.lastRetryDelayMs ?? null;
             if (failureReason === 'rate_limited') captureRateLimit(error);
+
+            if (status === 'failed_invalid_json') {
+                const rawResponsePreview = safeResponsePreview(metadata.rawResponse || metadata.responseText || '');
+                const errorMessage = `Azure JSON response could not be parsed: ${error.message}`;
+                const fallbackAnalysis = buildInvalidJsonFallbackAnalysis({
+                    domain, snapshot, packageResult, batchEvidence, errorMessage,
+                    rawResponseStored: rawResponsePreview != null
+                });
+                await storeBatch({
+                    companyId, snapshotId: snapshot.ID, runId: run.id, domain,
+                    batchNumber, totalBatches, batchEvidence, analysis: fallbackAnalysis, usage,
+                    stackCTRLDataCount: packageResult.audit.stackCTRLDataCount,
+                    status: 'completed_with_warnings', errorMessage,
+                    failureReason: 'invalid_json_local_fallback', rawResponsePreview,
+                    azureFinishReason: metadata.finishReason || null,
+                    jsonRepaired: true, jsonRepairMethod: 'local_fallback_after_json_exception',
+                    recordsRemaining, semanticGrouping
+                });
+                logger.warn?.(`[StackCTRL Enterprise] ${domain.name} batch ${batchNumber} used a local invalid-JSON fallback and the pipeline will continue.`);
+                return {
+                    status: 'completed_with_warnings', batchNumber, batchItemCount: batchEvidence.length,
+                    domain, analysis: fallbackAnalysis, usage, errorMessage,
+                    failureReason: 'invalid_json_local_fallback', jsonRepaired: true,
+                    jsonRepairMethod: 'local_fallback_after_json_exception'
+                };
+            }
             
             if (!alreadyStored) {
                 await storeBatch({
@@ -2088,6 +2209,69 @@ ${JSON.stringify(packageValue)}`;
         };
     }
 
+    function buildInvalidJsonFallbackAnalysis({ domain, snapshot, packageResult, batchEvidence, errorMessage, rawResponseStored }) {
+        const recordsPrepared = array(batchEvidence).length;
+        const omittedReasons = [...new Set([
+            ...array(packageResult.package.limitations?.missingDataWarnings),
+            errorMessage
+        ].filter(Boolean))];
+        const evidenceAvailable = recordsPrepared > 0;
+        return normalizedDomainResult({
+            domainKey: domain.key,
+            status: 'completed_with_warnings',
+            warningType: 'azure_invalid_json',
+            snapshotId: snapshot.ID,
+            recordsPrepared,
+            recordsSent: recordsPrepared,
+            recordsOmitted: 0,
+            omittedReasons,
+            evidenceAvailable,
+            message: errorMessage,
+            rawAzureResponseStored: Boolean(rawResponseStored),
+            domainExecutiveSummary: `${domain.name} evidence was sent to Azure, but the returned JSON was invalid. StackCTRL preserved the raw response and continued the pipeline.`,
+            technicalSummary: 'Azure returned malformed structured output after one compact repair attempt. A deterministic local warning object replaced that batch output.',
+            businessImpact: 'Domain conclusions are unavailable from this batch, but complete StackCTRL raw evidence remains available to Power BI and later domains continue processing.',
+            currentPosture: 'analysis completed with Azure JSON warning',
+            evidenceUsed: [],
+            evidenceGaps: [{ gap: 'Azure structured analysis unavailable', reason: errorMessage, omittedCount: 0, sourceMetric: 'azure_response' }],
+            scoreJustification: 'Authoritative StackCTRL scores were retained; no Azure-derived score was accepted from malformed JSON.',
+            controlAssessment: [],
+            keyFindings: [],
+            risks: [],
+            recommendations: [],
+            trendAnalysis: [],
+            yesterdayVsToday: {},
+            whatImproved: [],
+            whatDeteriorated: [],
+            whatStayedTheSame: [],
+            missingDataWarnings: omittedReasons,
+            assumptions: ['No malformed Azure content was promoted into domain findings, risks, or recommendations.'],
+            confidenceScore: 0,
+            managementActions: [],
+            powerBiSummary: {
+                domainKey: domain.key,
+                status: 'completed_with_warnings',
+                warningType: 'azure_invalid_json',
+                snapshotId: snapshot.ID,
+                recordsPrepared,
+                recordsSent: recordsPrepared,
+                recordsOmitted: 0,
+                omittedReasons,
+                evidenceAvailable,
+                message: errorMessage,
+                rawAzureResponseStored: Boolean(rawResponseStored)
+            },
+            evidenceLimitations: {
+                recordsPrepared,
+                recordsSent: recordsPrepared,
+                recordsOmitted: 0,
+                complete: false,
+                accountingComplete: true,
+                omittedReasons
+            }
+        }, domain, packageResult.current, snapshot.ID, batchEvidence);
+    }
+
     async function refreshEnterpriseSnapshot(companyId, user = {}) {
         if (!intelligenceService?.createSnapshot) return null;
         return intelligenceService.createSnapshot({
@@ -2100,31 +2284,41 @@ ${JSON.stringify(packageValue)}`;
     function normalizedDomainResult(data, domain, current, snapshotId = null, availableEvidence = []) {
         const value = data && typeof data === 'object' && !Array.isArray(data) ? data : {};
         const resolvedSnapshotId = snapshotId ?? current?.snapshotId ?? null;
-        const normalizeItems = items => array(items).map(item => ensureItemEvidence(item, domain, resolvedSnapshotId, availableEvidence));
+        const narrative = compactNarrative(value);
+        const normalizeItems = (items, maximum) => array(items).slice(0, maximum)
+            .map(item => ensureItemEvidence(item, domain, resolvedSnapshotId, availableEvidence));
         return {
-            ...value,
-            domainExecutiveSummary: textOrNull(value.domainExecutiveSummary, 1200),
-            technicalSummary: textOrNull(value.technicalSummary, 1200),
-            businessImpact: textOrNull(value.businessImpact, 1200),
-            currentPosture: textOrNull(value.currentPosture, 1200),
-            evidenceUsed: array(value.evidenceUsed),
-            evidenceGaps: array(value.evidenceGaps),
-            scoreJustification: textOrNull(value.scoreJustification, 1200),
+            domainKey: domain.key,
+            status: textOrNull(value.status, 80),
+            warningType: textOrNull(value.warningType, 120),
+            snapshotId: numberOrNull(value.snapshotId ?? resolvedSnapshotId),
+            recordsPrepared: numberOrNull(value.recordsPrepared),
+            recordsSent: numberOrNull(value.recordsSent),
+            recordsOmitted: numberOrNull(value.recordsOmitted),
+            omittedReasons: array(value.omittedReasons).map(reason => textOrNull(reason, DOMAIN_OUTPUT_LIMITS.explanationCharacters)).filter(Boolean).slice(0, 20),
+            evidenceAvailable: value.evidenceAvailable == null ? null : Boolean(value.evidenceAvailable),
+            message: textOrNull(value.message, DOMAIN_OUTPUT_LIMITS.explanationCharacters),
+            rawAzureResponseStored: Boolean(value.rawAzureResponseStored),
+            ...narrative,
+            evidenceUsed: array(value.evidenceUsed).slice(0, 20),
+            evidenceGaps: array(value.evidenceGaps).slice(0, 20),
             controlAssessment: normalizeControlAssessment(value.controlAssessment || {}, domain, resolvedSnapshotId, availableEvidence),
-            keyFindings: normalizeItems(value.keyFindings),
-            risks: normalizeItems(value.risks),
-            recommendations: normalizeItems(value.recommendations),
-            trendAnalysis: normalizeItems(value.trendAnalysis),
+            keyFindings: normalizeItems(value.keyFindings, DOMAIN_OUTPUT_LIMITS.findings),
+            risks: normalizeItems(value.risks, DOMAIN_OUTPUT_LIMITS.risks),
+            recommendations: normalizeItems(value.recommendations, DOMAIN_OUTPUT_LIMITS.recommendations),
+            trendAnalysis: normalizeItems(value.trendAnalysis, DOMAIN_OUTPUT_LIMITS.trends),
             yesterdayVsToday: value.yesterdayVsToday || {},
-            whatImproved: array(value.whatImproved),
-            whatDeteriorated: array(value.whatDeteriorated),
-            whatStayedTheSame: array(value.whatStayedTheSame),
-            missingDataWarnings: array(value.missingDataWarnings),
-            assumptions: array(value.assumptions),
+            whatImproved: array(value.whatImproved).slice(0, DOMAIN_OUTPUT_LIMITS.findings),
+            whatDeteriorated: array(value.whatDeteriorated).slice(0, DOMAIN_OUTPUT_LIMITS.findings),
+            whatStayedTheSame: array(value.whatStayedTheSame).slice(0, DOMAIN_OUTPUT_LIMITS.findings),
+            missingDataWarnings: array(value.missingDataWarnings).map(warning => textOrNull(warning, DOMAIN_OUTPUT_LIMITS.explanationCharacters)).filter(Boolean).slice(0, 30),
+            assumptions: array(value.assumptions).map(assumption => textOrNull(assumption, DOMAIN_OUTPUT_LIMITS.explanationCharacters)).filter(Boolean).slice(0, 20),
             confidenceScore: numberOrNull(value.confidenceScore),
-            managementActions: normalizeItems(value.managementActions),
+            managementActions: normalizeItems(value.managementActions, DOMAIN_OUTPUT_LIMITS.actions),
             powerBiSummary: value.powerBiSummary || {},
             evidenceLimitations: value.evidenceLimitations || {},
+            evidenceCatalog: value.evidenceCatalog || null,
+            batchInfo: value.batchInfo || null,
             authoritativeScores: { healthScore: current.healthScore, riskScore: current.riskScore, riskLevel: current.riskLevel },
             domain: { key: domain.key, name: domain.name }
         };
@@ -2535,7 +2729,21 @@ ${JSON.stringify(packageValue)}`;
             const sourceRecordsOmitted = Number(packageResult.audit.evidenceOmittedCount || 0);
             const batchAccountingComplete = recordsSent + batchRecordsOmitted === recordsPrepared;
             const batchFailureReasons = failedBatches.map(batch => batch.failureReason || batch.errorMessage).filter(Boolean);
-            const aggregatedAnalysis = {
+            const invalidJsonFallbacks = completedBatches
+                .map(batch => batch.analysis)
+                .filter(analysis => analysis?.warningType === 'azure_invalid_json');
+            const aggregatedRawAnalysis = {
+                domainKey: domain.key,
+                status: invalidJsonFallbacks.length ? 'completed_with_warnings' : null,
+                warningType: invalidJsonFallbacks.length ? 'azure_invalid_json' : null,
+                snapshotId: snapshot.ID,
+                recordsPrepared,
+                recordsSent,
+                recordsOmitted: batchRecordsOmitted + sourceRecordsOmitted,
+                omittedReasons: [...array(packageResult.package.limitations?.missingDataWarnings), ...batchFailureReasons],
+                evidenceAvailable: recordsPrepared > 0,
+                message: invalidJsonFallbacks.map(item => item.message).filter(Boolean).join(' | ') || null,
+                rawAzureResponseStored: invalidJsonFallbacks.length > 0 && invalidJsonFallbacks.every(item => item.rawAzureResponseStored),
                 domainExecutiveSummary: completedBatches.map(b => b.analysis?.domainExecutiveSummary).filter(Boolean).join(' '),
                 technicalSummary: completedBatches.map(b => b.analysis?.technicalSummary).filter(Boolean).join(' '),
                 businessImpact: completedBatches.map(b => b.analysis?.businessImpact).filter(Boolean).join(' '),
@@ -2588,6 +2796,13 @@ ${JSON.stringify(packageValue)}`;
                     complete: batchResults.complete
                 }
             };
+            const aggregatedAnalysis = normalizedDomainResult(
+                aggregatedRawAnalysis,
+                domain,
+                packageResult.current,
+                snapshot.ID,
+                packageResult.allEvidence
+            );
             aggregatedAnalysis.dataLineageComparison = buildDataLineageComparison({
                 fields: packageResult.sourceAlignment.rows.map(row => row.metric),
                 sourceValues: Object.fromEntries(packageResult.sourceAlignment.rows.map(row => [row.metric, row.stackCTRLSource])),
@@ -2610,7 +2825,9 @@ ${JSON.stringify(packageValue)}`;
                 ? `Security Alerts batch accounting failed: ${recordsPrepared} prepared, ${recordsSent} sent, ${batchRecordsOmitted} omitted.`
                 : failedBatches.length
                 ? `${failedBatches.length} of ${batchResults.batchCount} batch(es) failed. ${failedBatches.map(batch => batch.errorMessage).filter(Boolean).join(' | ')}`.slice(0, 5000)
-                : null;
+                : invalidJsonFallbacks.length
+                    ? invalidJsonFallbacks.map(item => item.message).filter(Boolean).join(' | ').slice(0, 5000)
+                    : null;
             const domainIntelligenceId = await storeDomain({
                 run, companyId, snapshot, domain, packageResult,
                 analysis: aggregatedAnalysis, usage: batchResults.totals,
@@ -2652,6 +2869,7 @@ ${JSON.stringify(packageValue)}`;
                 usage: batchResults.totals,
                 audit: updatedAudit,
                 batchInfo: { completedBatches: completedBatches.length, totalBatches: batchResults.batchCount, failedBatches: failedBatches.length },
+                errorMessage: partialErrorMessage,
                 rateLimited: batchResults.rateLimited,
                 recommendedRetryAfterMs: batchResults.recommendedRetryAfterMs
             };
@@ -2834,7 +3052,7 @@ ${JSON.stringify(packageValue)}`;
                 'Azure synthesis output ended before all closing JSON delimiters were returned. StackCTRL safely recovered the structured response; trailing narrative fields may be incomplete.'
             ];
         }
-        const finalRunStatus = synthesisJsonRecovered || finishReason === 'length' || allDomainRows.some(row => !isSuccessfulDomainStatus(row.status))
+        const finalRunStatus = synthesisJsonRecovered || finishReason === 'length' || allDomainRows.some(row => row.status !== 'completed')
             ? 'completed_with_warnings'
             : 'completed';
         const [result] = await pool.query(
@@ -2964,7 +3182,7 @@ ${JSON.stringify(packageValue)}`;
                 break;
             }
 
-            if (['failed', 'failed_invalid_json', 'failed_storage', 'failed_evidence_validation'].includes(String(result.status || ''))) {
+            if (['failed', 'failed_storage', 'failed_evidence_validation'].includes(String(result.status || ''))) {
                 terminalError = {
                     domainKey: result.domain.key,
                     status: result.status,
@@ -3341,7 +3559,8 @@ ${JSON.stringify(packageValue)}`;
             const text = String(warning || '');
             if (/permission|forbidden|unauthori[sz]ed|403/i.test(text)) return 'missing_api_permissions';
             if (/cloudflare.*field|missing.*field|unknown control/i.test(text)) return 'missing_cloudflare_fields';
-            if (/recovered|closing json|truncated json/i.test(text)) return 'azure_recovered_json';
+            if (/stale|source_too_old|refresh.*source/i.test(text)) return 'stale_source';
+            if (/recovered|closing json|truncated json|invalid json|json parse|azure_invalid_json/i.test(text)) return 'azure_recovered_json';
             if (/partial|omitted|incomplete/i.test(text)) return 'partial_evidence';
             if (/optional|unavailable|not configured/i.test(text)) return 'optional_source_unavailable';
             return 'other_warning';

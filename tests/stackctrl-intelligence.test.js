@@ -64,7 +64,8 @@ test('buildTenantAIContext uses stored tenant evidence and includes SEDFA licenc
         remainingLicences: 7
     });
     assert.equal(result.context.capabilities.profileKey, 'sedfa');
-    assert.equal(result.context.riskEngine.overallRiskLevel, 'not_scored');
+    assert.equal(result.context.riskEngine.overallRiskLevel, 'moderate');
+    assert.ok(Number.isFinite(result.context.riskEngine.overallRiskScore));
     assert.equal(result.context.sources.find(source => source.sourceKey === 'governance').status, 'not_expected');
     assert.equal(result.dataCompleteness.score, 75);
     assert.equal(calls.some(call => /duo.*admin|admin.*duo|api\.duo/i.test(call.sql)), false);

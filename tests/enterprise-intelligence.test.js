@@ -633,7 +633,7 @@ test('enterprise domain batch locally recovers a long unterminated Azure string'
     assert.match(batchWrite.params.join(' '), /"jsonRepairMethod":"azure_repair_then_local_closure"/);
 });
 
-test('enterprise invalid JSON failure stores diagnostics and failed_invalid_json status', async () => {
+test('enterprise invalid JSON fallback stores diagnostics, continues domains, and runs synthesis', async () => {
     const calls = [];
     let insertId = 400;
     let azureCalls = 0;
@@ -656,6 +656,28 @@ test('enterprise invalid JSON failure stores diagnostics and failed_invalid_json
             if (sql.includes('FROM StackCTRLTenantEvidenceSnapshots WHERE')) return [[snapshot], []];
             if (sql.includes('FROM StackCTRLKnowledgeBase')) return [[], []];
             if (sql.includes('FROM StackCTRLTenantDomainIntelligence') && sql.includes('RunID <>')) return [[], []];
+            if (sql.includes('SELECT ID, CompanyID, SnapshotID, RunID, DomainKey')) {
+                return [[
+                    {
+                        ID: 501, CompanyID: 1, SnapshotID: 78, RunID: 400, DomainKey: 'identity', DomainName: 'Identity Protection',
+                        HealthScore: 75, RiskScore: 25, RiskLevel: 'moderate', Status: 'completed_with_warnings',
+                        DomainExecutiveSummary: 'Identity Azure JSON was invalid.', TechnicalSummary: 'Local fallback stored.',
+                        BusinessImpact: 'Raw evidence remains available.', CurrentPosture: 'warning', EvidenceSummary: '',
+                        ScoreJustification: 'StackCTRL score retained.', ControlAssessment: '[]', FindingsJson: '[]', RisksJson: '[]',
+                        RecommendationsJson: '[]', TrendAnalysisJson: '[]', YesterdayVsTodayJson: '{}',
+                        MissingDataWarningsJson: '["azure_invalid_json"]', AssumptionsJson: '[]', ConfidenceScore: 0, ErrorMessage: null
+                    },
+                    {
+                        ID: 502, CompanyID: 1, SnapshotID: 78, RunID: 400, DomainKey: 'devices', DomainName: 'Device Protection',
+                        HealthScore: 80, RiskScore: 20, RiskLevel: 'low', Status: 'completed',
+                        DomainExecutiveSummary: 'Devices completed.', TechnicalSummary: 'Device evidence analysed.',
+                        BusinessImpact: 'Device posture available.', CurrentPosture: 'controlled', EvidenceSummary: '',
+                        ScoreJustification: 'StackCTRL score retained.', ControlAssessment: '[]', FindingsJson: '[]', RisksJson: '[]',
+                        RecommendationsJson: '[]', TrendAnalysisJson: '[]', YesterdayVsTodayJson: '{}',
+                        MissingDataWarningsJson: '[]', AssumptionsJson: '[]', ConfidenceScore: 0.9, ErrorMessage: null
+                    }
+                ], []];
+            }
             if (/^\s*INSERT/i.test(sql)) return [{ insertId: insertId++ }, []];
             return [{ affectedRows: 1 }, []];
         }
@@ -666,7 +688,11 @@ test('enterprise invalid JSON failure stores diagnostics and failed_invalid_json
         azureOpenAI: {
             async createJsonCompletion() {
                 azureCalls += 1;
-                return { data: '{"domainExecutiveSummary":', requestSizeBytes: 100, responseSizeBytes: 20, retryCount: 0, usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 } };
+                if (azureCalls <= 2) {
+                    return { data: '{"domainExecutiveSummary":', requestSizeBytes: 100, responseSizeBytes: 20, retryCount: 0, usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 } };
+                }
+                if (azureCalls === 3) return { data: domainResponse('devices'), usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 } };
+                return { data: synthesisResponse(), usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 } };
             }
         },
         wait: async () => {},
@@ -674,15 +700,22 @@ test('enterprise invalid JSON failure stores diagnostics and failed_invalid_json
     });
 
     const result = await service.runEnterpriseReport({ companyId: 1, snapshotId: 78, domainKeys: ['identity', 'devices'], includeSynthesis: true });
-    assert.equal(result.status, 'failed');
-    assert.equal(result.domains[0].status, 'failed_invalid_json');
-    assert.equal(result.domains[1].status, 'skipped_pipeline_stop');
-    assert.equal(result.synthesisStatus, 'skipped_pipeline_stop');
-    assert.equal(azureCalls, 2);
-    const batchWrite = calls.find(call => call.sql.includes('StackCTRLTenantDomainIntelligenceBatches'));
-    assert.ok(batchWrite.params.includes('failed_invalid_json'));
+    assert.equal(result.status, 'completed_with_warnings');
+    assert.equal(result.domains[0].status, 'completed_with_warnings');
+    assert.equal(result.domains[0].analysis.warningType, 'azure_invalid_json');
+    assert.equal(result.domains[0].analysis.rawAzureResponseStored, true);
+    assert.equal(result.domains[0].analysis.recordsPrepared, 1);
+    assert.match(result.domains[0].errorMessage, /JSON parse failed/);
+    assert.equal(result.domains[1].status, 'completed');
+    assert.equal(result.synthesisStatus, 'completed_with_warnings');
+    assert.ok(result.synthesisId);
+    assert.equal(result.terminalError, null);
+    assert.equal(azureCalls, 4);
+    const batchWrite = calls.find(call => call.sql.includes('StackCTRLTenantDomainIntelligenceBatches') && call.params[3] === 'identity');
+    assert.ok(batchWrite.params.includes('completed_with_warnings'));
     assert.ok(batchWrite.params.includes('{"domainExecutiveSummary":'));
     assert.match(batchWrite.params.join(' '), /JSON parse failed/);
+    assert.match(batchWrite.params.join(' '), /local_fallback_after_invalid_json/);
 });
 
 test('Enterprise synthesis recovers a long unterminated JSON string and completes with warnings', async () => {
@@ -1490,9 +1523,15 @@ test('Security Alerts analysis keeps all source alerts and uses compact structur
                 prompts.push(options.messages[1].content);
                 return {
                     data: {
-                        domainExecutiveSummary: 'Structured alert review completed.',
-                        keyFindings: [{ title: 'Repeated Defender alerts', severity: 'high', sourceMetric: 'alerts' }],
-                        risks: [], recommendations: [], controlAssessment: [], managementActions: [], trendAnalysis: [],
+                        domainExecutiveSummary: 'S'.repeat(700),
+                        technicalSummary: 'T'.repeat(700),
+                        businessImpact: 'B'.repeat(700),
+                        keyFindings: Array.from({ length: 12 }, (_, index) => ({ title: `Repeated Defender alerts ${index}`, description: 'D'.repeat(900), severity: 'high', sourceMetric: 'alerts' })),
+                        risks: Array.from({ length: 8 }, (_, index) => ({ title: `Alert risk ${index}`, severity: 'high', sourceMetric: 'alerts' })),
+                        recommendations: Array.from({ length: 15 }, (_, index) => ({ title: `Alert action ${index}`, priority: 'high', sourceMetric: 'alerts' })),
+                        controlAssessment: [],
+                        managementActions: Array.from({ length: 15 }, (_, index) => ({ title: `Management action ${index}`, sourceMetric: 'alerts' })),
+                        trendAnalysis: Array.from({ length: 15 }, (_, index) => ({ title: `Alert trend ${index}`, sourceMetric: 'alerts' })),
                         evidenceUsed: [], evidenceGaps: [], missingDataWarnings: [], assumptions: [], confidenceScore: 0.9
                     },
                     requestSizeBytes: 20000, responseSizeBytes: 1000, usage: { input_tokens: 5000, output_tokens: 300, total_tokens: 5300 }
@@ -1508,9 +1547,23 @@ test('Security Alerts analysis keeps all source alerts and uses compact structur
     assert.equal(result.domains[0].analysis.evidenceLimitations.recordsPrepared, 150);
     assert.equal(result.domains[0].analysis.evidenceLimitations.recordsSent, 150);
     assert.equal(result.domains[0].analysis.evidenceLimitations.recordsOmitted, 0);
-    assert.equal(finding.sourceAlertIds.length, 150);
-    assert.equal(finding.evidenceRows.length, 150);
-    assert.equal(finding.affectedEntities.length, 150);
+    assert.equal(finding.sourceAlertIds.length, 10);
+    assert.equal(finding.evidenceRows.length, 10);
+    assert.equal(finding.affectedEntities.length, 10);
+    assert.ok(finding.evidenceRows.every(row => typeof row === 'string'));
+    assert.equal(result.domains[0].analysis.keyFindings.length, 8);
+    assert.equal(result.domains[0].analysis.risks.length, 5);
+    assert.equal(result.domains[0].analysis.recommendations.length, 10);
+    assert.equal(result.domains[0].analysis.managementActions.length, 10);
+    assert.equal(result.domains[0].analysis.trendAnalysis.length, 10);
+    assert.equal(finding.description.length, 500);
+    assert.ok([
+        result.domains[0].analysis.domainExecutiveSummary,
+        result.domains[0].analysis.technicalSummary,
+        result.domains[0].analysis.businessImpact,
+        result.domains[0].analysis.currentPosture,
+        result.domains[0].analysis.scoreJustification
+    ].reduce((total, value) => total + String(value || '').length, 0) <= 1200);
     assert.ok(prompts.length <= 10);
     assert.match(prompts[0], /Return compact JSON only/);
     assert.match(prompts[0], /sourceAlertIds/);

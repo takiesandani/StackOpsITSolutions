@@ -818,6 +818,7 @@ const definitions = {
     cloudflare_network_security: {
         table: 'StackCTRLNetworkEvidenceSnapshots, StackCTRLNetworkEvidence',
         refreshWhenMissing: true,
+        continueWhenStoredEvidenceFails: true,
         async load(pool, companyId, capability) {
             if (capability?.profileKey === 'sunbird') {
                 const snapshots = await queryRows(
@@ -943,7 +944,39 @@ const definitions = {
             };
         },
         fromRefresh(refreshed, stored) {
-            return stored;
+            const overview = refreshed?.overview || {};
+            const accessLogs = Array.isArray(refreshed?.accessLogs) ? refreshed.accessLogs : [];
+            const apps = Array.isArray(refreshed?.apps) ? refreshed.apps : [];
+            const devices = Array.isArray(refreshed?.devices) ? refreshed.devices : [];
+            const deniedAccessEvents = accessLogs.filter(event => ['block', 'blocked', 'deny', 'denied']
+                .includes(String(event?.action || event?.decision || event?.status || '').toLowerCase())).length;
+            const metrics = {
+                ...overview,
+                protectedApps: Number(overview.protectedApps ?? apps.length ?? 0),
+                enrolledDevices: Number(overview.enrolledDevices ?? devices.length ?? 0),
+                recentAccessEvents: accessLogs.length,
+                deniedAccessEvents
+            };
+            const fetchedAt = refreshed?.fetchedAt || new Date().toISOString();
+            return {
+                records: [{ ...metrics, LastUpdated: fetchedAt }],
+                notConfigured: false,
+                metrics,
+                dashboardSourceMetrics: metrics,
+                sourceLineage: {
+                    sourceKey: 'cloudflare_network_security',
+                    sourceBuilder: 'liveCloudflareDashboardRefresh',
+                    sourceLayer: 'Cloudflare dashboard API',
+                    collectionStatus: refreshed?.success === false ? 'partial' : 'complete',
+                    sourceFetchedAt: fetchedAt
+                },
+                evidence: [{
+                    evidenceType: 'live_cloudflare_dashboard',
+                    data: { overview, apps, devices, accessLogs, sections: refreshed?.sections || {} }
+                }],
+                warnings: [...(stored?.warnings || []), ...(refreshed?.warnings || [])],
+                rawReference: { table: this.table, recordId: null }
+            };
         },
         metrics: records => summaryMetrics(records[0]),
         evidence: records => records
