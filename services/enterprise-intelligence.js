@@ -600,11 +600,15 @@ function compactIdentityBasePackage(basePackage) {
 function computeInterBatchDelayMs(inputTokens, settings, domainKey = null) {
     const configured = Number(settings?.domainDelayMs);
     const baseDelay = Number.isFinite(configured) ? Math.max(0, configured) : DEFAULT_DOMAIN_DELAY_MS;
+    // Take the largest applicable cooldown floor so a heavy domain with a large
+    // payload never gets a shorter cooldown than the same domain with less data.
+    let floor = 0;
     // Security Alerts gets 90 seconds between batches (heavy domain with significant data)
-    if (domainKey === 'security_alerts') return Math.max(baseDelay, SECURITY_ALERTS_DOMAIN_DELAY_MS);
-    if (inputTokens >= LARGE_DOMAIN_INPUT_TOKEN_THRESHOLD) return Math.max(baseDelay, 180000);
-    if (inputTokens >= 30000) return Math.max(baseDelay, 60000);
-    if (HEAVY_DOMAINS.has(domainKey)) return Math.max(baseDelay, 120000);
+    if (domainKey === 'security_alerts') floor = Math.max(floor, SECURITY_ALERTS_DOMAIN_DELAY_MS);
+    if (HEAVY_DOMAINS.has(domainKey)) floor = Math.max(floor, 120000);
+    if (inputTokens >= LARGE_DOMAIN_INPUT_TOKEN_THRESHOLD) floor = Math.max(floor, 180000);
+    else if (inputTokens >= 30000) floor = Math.max(floor, 60000);
+    if (floor > 0) return Math.max(baseDelay, floor);
     if (baseDelay === 0) return 0;
     return Math.max(baseDelay, DEFAULT_DOMAIN_DELAY_MS);
 }
@@ -1866,51 +1870,7 @@ ${JSON.stringify(packageValue)}`;
     }
 
     // Build a domain analysis package for a specific batch of evidence
-    function buildIdentityBatchPackage(basePackage, batchEvidence, batchNumber, totalBatches) {
-        const sharedContextIncluded = batchNumber === 1;
-        const sharedContext = sharedContextIncluded
-            ? compactIdentityBasePackage(basePackage)
-            : {
-                contextType: 'stackctrl_enterprise_identity_table_continuation',
-                schemaVersion: 2,
-                companyId: basePackage.companyId,
-                snapshotId: basePackage.snapshotId,
-                domain: { key: 'identity', name: basePackage.domain?.name || 'Identity Protection' },
-                authoritativeScores: basePackage.authoritativeScores,
-                baseContextReference: {
-                    snapshotId: basePackage.snapshotId,
-                    domainKey: 'identity',
-                    sharedContextSentInBatch: 1
-                }
-            };
-        return {
-            ...sharedContext,
-            sharedContextIncluded,
-            evidence: batchEvidence.map((item, index) => compactIdentityEvidenceRow(item, index)),
-            batchMetadata: {
-                batchNumber,
-                totalBatches,
-                recordsSent: batchEvidence.length,
-                evidenceRowsIncluded: batchEvidence.length,
-                tableStyleInput: true,
-                sharedContextIncluded
-            },
-            limitations: {
-                ...(sharedContext.limitations || {}),
-                batchProcessing: totalBatches > 1,
-                batchNumber,
-                totalBatches,
-                recordsSent: batchEvidence.length,
-                recordsOmitted: 0,
-                evidenceRowsIncluded: batchEvidence.length
-            }
-        };
-    }
-
     function buildDomainBatchPackage(basePackage, batchEvidence, batchNumber, totalBatches, semanticGrouping = null) {
-        if (basePackage?.domain?.key === 'identity') {
-            return buildIdentityBatchPackage(basePackage, batchEvidence, batchNumber, totalBatches);
-        }
         const categoryMap = new Map();
         for (const item of batchEvidence) {
             const key = String(item?.evidenceCategory || item?.sourceLabel || item?.evidenceType || 'evidenceRows');
@@ -1939,7 +1899,7 @@ ${JSON.stringify(packageValue)}`;
                 batchScoped: true
             },
             evidence: batchEvidence.map((item, index) => ({
-                evidenceNumber: (batchNumber - 1) * Math.max(batchEvidence.length, 1) + index + 1,
+                evidenceNumber: Number(evidenceStartIndex || 0) + index + 1,
                 evidenceType: item?.evidenceType || item?.type || 'stored_evidence',
                 sourceLabel: item?.sourceLabel || null,
                 internalSourcePath: item?.internalSourcePath || null,
@@ -2078,8 +2038,8 @@ ${JSON.stringify(packageValue)}`;
     }
 
     // Analyze a single domain batch with JSON error handling and repair
-    async function analyzeDomainBatch({ companyId, snapshot, run, domain, packageResult, batchEvidence, batchNumber, totalBatches, historicalContext, recordsRemaining = null, semanticGrouping = null }) {
-        const batchPackage = buildDomainBatchPackage(packageResult.package, batchEvidence, batchNumber, totalBatches, semanticGrouping);
+    async function analyzeDomainBatch({ companyId, snapshot, run, domain, packageResult, batchEvidence, batchNumber, totalBatches, historicalContext, recordsRemaining = null, semanticGrouping = null, evidenceStartIndex = 0 }) {
+        const batchPackage = buildDomainBatchPackage(packageResult.package, batchEvidence, batchNumber, totalBatches, semanticGrouping, evidenceStartIndex);
         let usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: estimateDomainRequestBytes(domain, batchPackage), responseBytes: 0, retries: 0 };
         
         try {
@@ -2353,12 +2313,12 @@ ${JSON.stringify(packageValue)}`;
     // Process all batches for a domain and aggregate results
     async function processBatchEvidenceWithRecovery({
         companyId, snapshot, run, domain, packageResult, batchEvidence, batchNumber, totalBatches,
-        historicalContext, recordsRemaining, semanticGrouping
+        historicalContext, recordsRemaining, semanticGrouping, evidenceStartIndex = 0
     }) {
         const result = await analyzeDomainBatch({
             companyId, snapshot, run, domain, packageResult,
             batchEvidence, batchNumber, totalBatches, historicalContext,
-            recordsRemaining, semanticGrouping
+            recordsRemaining, semanticGrouping, evidenceStartIndex
         });
         if (isSuccessfulDomainStatus(result.status)) return [result];
         if (isConnectionFailureResult(result) && batchEvidence.length > 1) {
@@ -2369,13 +2329,13 @@ ${JSON.stringify(packageValue)}`;
             const firstResults = await processBatchEvidenceWithRecovery({
                 companyId, snapshot, run, domain, packageResult,
                 batchEvidence: firstHalf, batchNumber, totalBatches, historicalContext,
-                recordsRemaining, semanticGrouping
+                recordsRemaining, semanticGrouping, evidenceStartIndex
             });
             const secondResults = await processBatchEvidenceWithRecovery({
                 companyId, snapshot, run, domain, packageResult,
                 batchEvidence: secondHalf, batchNumber, totalBatches, historicalContext,
                 recordsRemaining: Math.max(0, Number(recordsRemaining || 0) - firstHalf.length),
-                semanticGrouping
+                semanticGrouping, evidenceStartIndex: evidenceStartIndex + firstHalf.length
             });
             return [...firstResults, ...secondResults];
         }
@@ -2504,9 +2464,10 @@ ${JSON.stringify(packageValue)}`;
         logger.info(`[StackCTRL Enterprise] Processing ${domain.name} in ${batches.length} batch(es)`);
         
         for (const batch of batches) {
-            const recordsRemaining = Math.max(0, allEvidence.length - batches
-                .slice(0, batch.number)
-                .reduce((count, plannedBatch) => count + plannedBatch.items.length, 0));
+            const evidenceStartIndex = batches
+                .slice(0, batch.number - 1)
+                .reduce((count, plannedBatch) => count + plannedBatch.items.length, 0);
+            const recordsRemaining = Math.max(0, allEvidence.length - (evidenceStartIndex + batch.items.length));
             await updateRunBatchProgress(run.id, {
                 domainKey: domain.key,
                 batchNumber: batch.number,
@@ -2520,6 +2481,7 @@ ${JSON.stringify(packageValue)}`;
                 batchEvidence: batch.items, batchNumber: batch.number, totalBatches: batches.length,
                 historicalContext,
                 recordsRemaining,
+                evidenceStartIndex,
                 semanticGrouping: batch.semanticGrouping || null
             });
             let stopDomainBatches = false;
