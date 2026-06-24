@@ -245,3 +245,43 @@ test('uses the production fallback retry schedule', () => {
     assert.equal(getRetryDelayMs({}, 3), 60000);
     assert.equal(getRetryDelayMs({}, 4), 120000);
 });
+
+test('retries ECONNRESET with connection backoff and succeeds on the third attempt', async () => {
+    const originalPost = axios.post;
+    const delays = [];
+    let calls = 0;
+    axios.post = async () => {
+        calls += 1;
+        if (calls < 3) {
+            const error = new Error('read ECONNRESET');
+            error.code = 'ECONNRESET';
+            throw error;
+        }
+        return {
+            data: {
+                id: 'resp_connection_retry',
+                output: [{ content: [{ type: 'output_text', text: '{"status":"recovered"}' }] }]
+            }
+        };
+    };
+
+    try {
+        const service = createAzureOpenAIService({
+            getSecret: async name => azureSecrets[name] || null,
+            maxRetries: 2,
+            wait: async milliseconds => { delays.push(milliseconds); },
+            logger: { warn() {}, error() {} }
+        });
+        const result = await service.createJsonCompletion({
+            messages: [{ role: 'user', content: 'Analyse.' }],
+            connectionRetryDelaysMsOverride: [0, 10000, 30000]
+        });
+        assert.equal(calls, 3);
+        assert.equal(result.attempts, 3);
+        assert.equal(result.retryCount, 2);
+        assert.deepEqual(result.data, { status: 'recovered' });
+        assert.equal(delays.length, 2);
+    } finally {
+        axios.post = originalPost;
+    }
+});

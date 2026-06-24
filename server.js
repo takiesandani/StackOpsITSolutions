@@ -1506,8 +1506,19 @@ async function getUserAccessContextByEmail(email) {
             u.CompanyID AS companyId,
             CASE 
                 WHEN uda.user_id IS NOT NULL THEN 'duo'
-                ELSE COALESCE(ta.AccessType, 'standard')
+                WHEN EXISTS (
+                    SELECT 1 FROM TenantAccessControl taSunbird
+                    WHERE taSunbird.UserID = u.ID AND LOWER(taSunbird.AccessType) = 'sunbird'
+                ) THEN 'sunbird'
+                ELSE COALESCE(
+                    (SELECT taPrimary.AccessType FROM TenantAccessControl taPrimary WHERE taPrimary.UserID = u.ID ORDER BY taPrimary.ID ASC LIMIT 1),
+                    'standard'
+                )
             END AS accessType,
+            EXISTS (
+                SELECT 1 FROM TenantAccessControl taSunbirdFlag
+                WHERE taSunbirdFlag.UserID = u.ID AND LOWER(taSunbirdFlag.AccessType) = 'sunbird'
+            ) AS hasSunbirdAccess,
             mt.ID AS microsoftTenantPk,
             mt.TenantName AS tenantName,
             mt.TenantID AS tenantId,
@@ -1515,7 +1526,6 @@ async function getUserAccessContextByEmail(email) {
             mt.ClientSecret AS clientSecret
          FROM Users u
          LEFT JOIN user_duo_accounts uda ON uda.user_id = u.ID
-         LEFT JOIN TenantAccessControl ta ON ta.UserID = u.ID
          LEFT JOIN CompanyMicrosoftMapping cm ON cm.CompanyID = u.CompanyID AND cm.IsActive = 1
          LEFT JOIN MicrosoftTenants mt ON mt.ID = cm.MicrosoftTenantID
          WHERE LOWER(u.Email) = LOWER(?)
@@ -1523,7 +1533,11 @@ async function getUserAccessContextByEmail(email) {
         [email]
     );
 
-    return rows[0] || null;
+    const context = rows[0] || null;
+    if (context) {
+        context.hasSunbirdAccess = Boolean(Number(context.hasSunbirdAccess));
+    }
+    return context;
 }
 
 async function getAccessContextByUser(reqUser) {
@@ -4383,17 +4397,19 @@ app.post('/api/auth/verify-mfa', async (req, res) => {
         await pool.query('DELETE FROM mfa_codes WHERE user_id = ?', [user.id]);
 
         const accessContext = await getUserAccessContextByEmail(user.email);
+        const effectiveAccess = accessContext?.hasSunbirdAccess ? 'sunbird' : (accessContext?.accessType || 'standard');
         const jwtPayload = {
             id: user.id,
             email: user.email,
             role: user.role,
             companyId: accessContext?.companyId || user.companyId || null,
-            access: accessContext?.accessType || 'standard',
+            access: effectiveAccess,
+            hasSunbirdAccess: Boolean(accessContext?.hasSunbirdAccess),
             tenantId: accessContext?.tenantId || null
         };
         const accessToken = jwt.sign(jwtPayload, ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
         accessContextCache.set(String(user.email || '').toLowerCase(), {
-            accessType: jwtPayload.access,
+            accessType: effectiveAccess,
             tenantId: jwtPayload.tenantId,
             companyId: jwtPayload.companyId
         });
@@ -4414,6 +4430,7 @@ app.post('/api/auth/verify-mfa', async (req, res) => {
                 role: user.role || 'client',
                 companyId: jwtPayload.companyId,
                 access: jwtPayload.access,
+                hasSunbirdAccess: jwtPayload.hasSunbirdAccess,
                 tenantId: jwtPayload.tenantId
             }
         });
@@ -4421,6 +4438,53 @@ app.post('/api/auth/verify-mfa', async (req, res) => {
     } catch (error) {
         console.error('MFA verification error:', error);
         res.status(500).json({ success: false, message: 'An error occurred during verification. Please try again later.' });
+    }
+});
+
+app.get('/api/auth/session', authenticateToken, async (req, res) => {
+    try {
+        const accessContext = await getUserAccessContextByEmail(req.user.email);
+        if (!accessContext) {
+            return res.status(404).json({ success: false, message: 'User access context not found.' });
+        }
+        const effectiveAccess = accessContext.hasSunbirdAccess ? 'sunbird' : (accessContext.accessType || 'standard');
+        accessContextCache.set(String(req.user.email || '').toLowerCase(), {
+            accessType: effectiveAccess,
+            tenantId: accessContext.tenantId,
+            companyId: accessContext.companyId
+        });
+        const userPayload = {
+            id: req.user.id,
+            email: req.user.email,
+            role: req.user.role,
+            companyId: accessContext.companyId || req.user.companyId || null,
+            access: effectiveAccess,
+            hasSunbirdAccess: Boolean(accessContext.hasSunbirdAccess),
+            tenantId: accessContext.tenantId || null
+        };
+        const accessChanged = String(req.user.access || '') !== String(effectiveAccess)
+            || Boolean(req.user.hasSunbirdAccess) !== Boolean(accessContext.hasSunbirdAccess);
+        let accessToken = null;
+        if (accessChanged) {
+            accessToken = jwt.sign({
+                id: userPayload.id,
+                email: userPayload.email,
+                role: userPayload.role,
+                companyId: userPayload.companyId,
+                access: userPayload.access,
+                hasSunbirdAccess: userPayload.hasSunbirdAccess,
+                tenantId: userPayload.tenantId
+            }, ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
+        }
+        return res.json({
+            success: true,
+            user: userPayload,
+            accessToken,
+            accessChanged
+        });
+    } catch (error) {
+        console.error('[Auth Session] Failed to refresh access context:', error.message);
+        return res.status(500).json({ success: false, message: 'Unable to refresh session access.' });
     }
 });
 
@@ -9400,15 +9464,20 @@ async function verifySunbirdUser(userEmail) {
 
         // If not in cache, check database directly
         const accessContext = await getUserAccessContextByEmail(userEmail);
-        if (accessContext && (accessContext.accessType === 'sunbird' || accessContext.clientId === 'sunbird')) {
+        const hasSunbirdAccess = Boolean(
+            accessContext?.hasSunbirdAccess
+            || accessContext?.accessType === 'sunbird'
+            || accessContext?.clientId === 'sunbird'
+        );
+        if (accessContext && hasSunbirdAccess) {
             // Update cache for future requests
             accessContextCache.set(String(userEmail || '').toLowerCase(), {
-                accessType: accessContext.accessType,
+                accessType: 'sunbird',
                 tenantId: accessContext.tenantId,
                 companyId: accessContext.companyId
             });
             return {
-                clientId: accessContext.accessType || accessContext.clientId,
+                clientId: 'sunbird',
                 tenantId: accessContext.tenantId,
                 companyId: accessContext.companyId
             };

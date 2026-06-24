@@ -623,9 +623,36 @@ function isSunbirdUser() {
         const rawUser = localStorage.getItem('user');
         if (!rawUser) return false;
         const user = JSON.parse(rawUser);
-        return String(user?.access || '').toLowerCase() === 'sunbird';
+        return String(user?.access || '').toLowerCase() === 'sunbird' || Boolean(user?.hasSunbirdAccess);
     } catch (error) {
         return false;
+    }
+}
+
+async function refreshUserAccessFromServer() {
+    const token = localStorage.getItem('authToken');
+    if (!token || isAuthTokenExpired(token)) return null;
+    try {
+        const response = await fetch('/api/auth/session', {
+            method: 'GET',
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        if (!response.ok) return null;
+        const data = await response.json();
+        if (data?.user) {
+            localStorage.setItem('user', JSON.stringify(data.user));
+        }
+        if (data?.accessToken) {
+            localStorage.setItem('authToken', data.accessToken);
+        }
+        updateSunbirdLogoVisibility();
+        return data?.user || null;
+    } catch (error) {
+        console.warn('[Auth Session] Unable to refresh access context:', error.message);
+        return null;
     }
 }
 
@@ -635,7 +662,7 @@ function isSunbirdIdentityClient() {
         const user = rawUser ? JSON.parse(rawUser) : {};
         const email = String(user?.email || sessionStorage.getItem('userEmail') || '').toLowerCase();
         const client = String(user?.access || user?.client || '').toLowerCase();
-        return client === 'sunbird' || email.includes('@sunbird.eu') || email.includes('@stackopsit.co.za');
+        return client === 'sunbird' || Boolean(user?.hasSunbirdAccess) || email.includes('@sunbird.eu') || email.includes('@stackopsit.co.za');
     } catch (error) {
         const email = String(sessionStorage.getItem('userEmail') || '').toLowerCase();
         return email.includes('@sunbird.eu') || email.includes('@stackopsit.co.za');
@@ -1091,6 +1118,7 @@ function isSunbirdBillingViewActive(view) {
 }
 
 async function bootstrapDashboardDataAfterLogin() {
+    await refreshUserAccessFromServer();
     // Rebuild visible cards for the authenticated user immediately.
     initializeProjectsList();
     initializeGovernanceCard();

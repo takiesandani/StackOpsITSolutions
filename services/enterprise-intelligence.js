@@ -28,6 +28,7 @@ const DEFAULT_MAX_TOTAL_TOKENS = 200000;
 const DEFAULT_DOMAIN_OUTPUT_TOKENS = 8000;
 const DEFAULT_SYNTHESIS_OUTPUT_TOKENS = 8000;
 const ENTERPRISE_RATE_LIMIT_RETRY_DELAYS_MS = Object.freeze([300000, 300000, 600000]);
+const ENTERPRISE_CONNECTION_RETRY_DELAYS_MS = Object.freeze([0, 15000, 45000]);
 const ENTERPRISE_RATE_LIMIT_RETRY_MAX_MS = 15 * 60 * 1000;
 const HEAVY_DOMAINS = Object.freeze(new Set(['governance', 'operations', 'compliance']));
 const SUCCESSFUL_DOMAIN_STATUSES = Object.freeze(new Set(['completed', 'partial', 'completed_with_warnings']));
@@ -765,14 +766,65 @@ function domainFailureStatus(results = []) {
     if (statuses.length && statuses.every(status => status === 'failed_invalid_json')) return 'failed_invalid_json';
     if (statuses.includes('failed_source_mismatch') || reasons.includes('source_mismatch')) return 'failed_source_mismatch';
     if (statuses.includes('failed_rate_limited') || reasons.includes('rate_limited') || reasons.includes('429') || reasons.includes('throttl')) return 'failed_rate_limited';
+    if (statuses.includes('failed_terminal') || reasons.includes('evidence_prepare_failed')) return 'failed_terminal';
+    if (reasons.includes('econnreset') || reasons.includes('connection_reset') || statuses.includes('failed_connection')) return 'failed_terminal';
     if ((statuses.length && statuses.every(status => status === 'failed_storage')) || reasons.includes('storage')) return 'failed_storage';
     return 'failed';
+}
+
+function isConnectionFailureResult(result) {
+    const text = `${result?.failureReason || ''} ${result?.errorMessage || ''}`.toLowerCase();
+    return text.includes('econnreset')
+        || text.includes('connection_reset')
+        || text.includes('connection error')
+        || text.includes('failed_connection')
+        || result?.failureReason === 'connection_reset';
+}
+
+function buildDomainRunAudit({
+    domain,
+    companyId,
+    snapshot,
+    packageResult,
+    usage = {},
+    status,
+    batchResults = null,
+    failureReason = null,
+    warningReasons = [],
+    azureAttemptDiagnostics = [],
+    currentBatch = null
+} = {}) {
+    const preparedRecordCount = array(packageResult?.allEvidence).length || Number(packageResult?.audit?.preparedForAzureCount || 0);
+    return {
+        domainKey: domain?.key || null,
+        companyId: Number(companyId),
+        snapshotId: Number(snapshot?.ID || 0),
+        collectionStatus: packageResult?.package?.sourceHealth?.collectionStatus
+            || packageResult?.current?.source?.sourceLineage?.collectionStatus
+            || null,
+        sourceFreshness: packageResult?.current?.source?.freshness || packageResult?.package?.sourceHealth || null,
+        stackctrlRecordCount: Number(packageResult?.audit?.stackCTRLDataCount || 0),
+        preparedRecordCount,
+        analysedRecordCount: Number(packageResult?.audit?.sentToAzureCount || 0),
+        omittedRecordCount: Number(packageResult?.audit?.evidenceOmittedCount || 0) + Number(packageResult?.audit?.omittedCount || 0),
+        omittedReasons: array(packageResult?.package?.limitations?.missingDataWarnings),
+        batchCount: Number(batchResults?.batchCount || packageResult?.audit?.batchPlan?.batchCount || 0),
+        currentBatch: currentBatch ?? batchResults?.currentBatch ?? null,
+        azureAttemptCount: Number(usage?.retries || 0) + 1,
+        azureStatus: status,
+        storageStatus: status,
+        finalDomainStatus: status,
+        warningReasons: array(warningReasons),
+        failureReason: failureReason || null,
+        azureAttemptDiagnostics: array(azureAttemptDiagnostics)
+    };
 }
 
 function classifyFailureStatus(error) {
     const message = String(error?.message || '').toLowerCase();
     if (message.includes('source mismatch') || message.includes('source_mismatch')) return 'failed_source_mismatch';
     if (message.includes('json')) return 'failed_invalid_json';
+    if (error?.azureMetadata?.connectionReset || message.includes('econnreset') || error?.azureMetadata?.connectionError) return 'failed_connection';
     if (error?.azureMetadata?.rateLimited || error?.azureMetadata?.statusCode === 429 || message.includes('429') || message.includes('throttl') || message.includes('rate')) return 'failed_rate_limited';
     if (error?.code || message.includes('sql') || message.includes('mysql') || message.includes('database') || message.includes('storage')) return 'failed_storage';
     return 'failed';
@@ -1310,7 +1362,7 @@ function createEnterpriseIntelligenceService({
             sourceAlignment,
             audit: {
                 stackCTRLDataCount,
-                preparedForAzureCount: stackCTRLDataCount,
+                preparedForAzureCount: flattenedEvidence.length,
                 sentToAzureCount: 0, // Successfully analysed by Azure; updated after completed batches
                 omittedCount: manualExcludedCount,
                 metricsIncludedCount: primitiveMetricCount(base.currentMetrics) + primitiveMetricCount(base.dashboardMetrics) + primitiveMetricCount(base.calculatedIndicators),
@@ -1543,7 +1595,7 @@ ${JSON.stringify(packageValue)}`;
         companyId, snapshotId, runId, domain, batchNumber, totalBatches, batchEvidence, analysis, usage, status,
         errorMessage = null, failureReason = null, rawResponsePreview = null, azureFinishReason = null,
         jsonRepaired = false, jsonRepairMethod = null, recommendedRetryAfterMs = null, stackCTRLDataCount = 0,
-        recordsRemaining: suppliedRecordsRemaining = null, semanticGrouping = null
+        recordsRemaining: suppliedRecordsRemaining = null, semanticGrouping = null, attemptDiagnostics = null
     }) {
         const batchItemCount = batchEvidence.length;
         const recordsRemaining = suppliedRecordsRemaining == null
@@ -1575,6 +1627,7 @@ ${JSON.stringify(packageValue)}`;
             thresholdUsed: settings.maxTotalTokens,
             retryCount: usage.retries || 0,
             retryOrCooldownOccurred: Boolean((usage.retries || 0) > 0 || recommendedRetryAfterMs),
+            attemptDiagnostics: array(attemptDiagnostics),
             semanticGrouping,
             evidenceTypes: [...new Set(batchEvidence.map(item => item?.evidenceType).filter(Boolean))],
             firstEvidenceNumber: batchEvidence.length ? 1 : 0,
@@ -1634,6 +1687,7 @@ ${JSON.stringify(packageValue)}`;
                 maxRetriesOverride: settings.maxRetries,
                 retryDelaysMsOverride: ENTERPRISE_RATE_LIMIT_RETRY_DELAYS_MS,
                 retryMaxMsOverride: ENTERPRISE_RATE_LIMIT_RETRY_MAX_MS,
+                connectionRetryDelaysMsOverride: ENTERPRISE_CONNECTION_RETRY_DELAYS_MS,
                 timeoutMs: settings.requestTimeoutMs,
                 allowInvalidJsonResponse: true
             });
@@ -1661,8 +1715,9 @@ ${JSON.stringify(packageValue)}`;
                             maxTokens: Math.min(settings.maxDomainOutputTokens, 2000),
                             maxRetriesOverride: 1,
                             retryDelaysMsOverride: ENTERPRISE_RATE_LIMIT_RETRY_DELAYS_MS,
-                            retryMaxMsOverride: ENTERPRISE_RATE_LIMIT_RETRY_MAX_MS,
-                            timeoutMs: settings.requestTimeoutMs,
+                retryMaxMsOverride: ENTERPRISE_RATE_LIMIT_RETRY_MAX_MS,
+                connectionRetryDelaysMsOverride: ENTERPRISE_CONNECTION_RETRY_DELAYS_MS,
+                timeoutMs: settings.requestTimeoutMs,
                             allowInvalidJsonResponse: true
                         });
                     } catch (repairError) {
@@ -1772,10 +1827,14 @@ ${JSON.stringify(packageValue)}`;
             let failureReason = 'unknown_error';
             if (error.message.includes('finish_reason: length')) failureReason = 'output_truncated';
             else if (error.message.includes('JSON')) failureReason = 'invalid_json';
+            else if (metadata.connectionReset || String(error.message).toLowerCase().includes('econnreset')) failureReason = 'connection_reset';
+            else if (metadata.connectionError) failureReason = 'connection_reset';
             else if (metadata.rateLimited || metadata.statusCode === 429 || error.message.includes('429') || error.message.includes('throttl')) failureReason = 'rate_limited';
             const status = failureReason === 'output_truncated' || failureReason === 'invalid_json'
                 ? 'failed_invalid_json'
-                : failureReason === 'rate_limited' ? 'failed_rate_limited' : classifyFailureStatus(error);
+                : failureReason === 'rate_limited' ? 'failed_rate_limited'
+                    : failureReason === 'connection_reset' ? 'failed_connection'
+                        : classifyFailureStatus(error);
             const recommendedRetryAfterMs = metadata.retryAfterMs ?? metadata.lastRetryDelayMs ?? null;
             if (failureReason === 'rate_limited') captureRateLimit(error);
 
@@ -1814,13 +1873,19 @@ ${JSON.stringify(packageValue)}`;
                     rawResponsePreview: safeResponsePreview(metadata.rawResponse || metadata.responseText || ''),
                     azureFinishReason: metadata.finishReason || null,
                     recommendedRetryAfterMs,
+                    attemptDiagnostics: metadata.attemptDiagnostics || [],
                     recordsRemaining,
                     semanticGrouping
                 });
             }
             
             logger.error(`[StackCTRL Enterprise] ${domain.name} batch ${batchNumber} failed:`, error.message);
-            return { status, batchNumber, batchItemCount: batchEvidence.length, domain, usage, failureReason, errorMessage: error.message, recommendedRetryAfterMs };
+            return {
+                status, batchNumber, batchItemCount: batchEvidence.length, domain, usage, failureReason,
+                errorMessage: error.message, recommendedRetryAfterMs,
+                attemptDiagnostics: metadata.attemptDiagnostics || [],
+                connectionReset: Boolean(metadata.connectionReset || failureReason === 'connection_reset')
+            };
         }
     }
 
@@ -1877,6 +1942,68 @@ ${JSON.stringify(packageValue)}`;
     }
 
     // Process all batches for a domain and aggregate results
+    async function processBatchEvidenceWithRecovery({
+        companyId, snapshot, run, domain, packageResult, batchEvidence, batchNumber, totalBatches,
+        historicalContext, recordsRemaining, semanticGrouping
+    }) {
+        const result = await analyzeDomainBatch({
+            companyId, snapshot, run, domain, packageResult,
+            batchEvidence, batchNumber, totalBatches, historicalContext,
+            recordsRemaining, semanticGrouping
+        });
+        if (isSuccessfulDomainStatus(result.status)) return [result];
+        if (isConnectionFailureResult(result) && batchEvidence.length > 1) {
+            const splitAt = Math.max(1, Math.floor(batchEvidence.length / 2));
+            logger.warn?.(`[StackCTRL Enterprise] Reducing ${domain.name} batch ${batchNumber} from ${batchEvidence.length} to ${splitAt}+${batchEvidence.length - splitAt} record(s) after connection reset.`);
+            const firstHalf = batchEvidence.slice(0, splitAt);
+            const secondHalf = batchEvidence.slice(splitAt);
+            const firstResults = await processBatchEvidenceWithRecovery({
+                companyId, snapshot, run, domain, packageResult,
+                batchEvidence: firstHalf, batchNumber, totalBatches, historicalContext,
+                recordsRemaining, semanticGrouping
+            });
+            const secondResults = await processBatchEvidenceWithRecovery({
+                companyId, snapshot, run, domain, packageResult,
+                batchEvidence: secondHalf, batchNumber, totalBatches, historicalContext,
+                recordsRemaining: Math.max(0, Number(recordsRemaining || 0) - firstHalf.length),
+                semanticGrouping
+            });
+            return [...firstResults, ...secondResults];
+        }
+        if (isConnectionFailureResult(result) && batchEvidence.length === 1) {
+            const errorMessage = result.errorMessage || 'Azure connection reset after retries.';
+            const fallbackAnalysis = buildInvalidJsonFallbackAnalysis({
+                domain, snapshot, packageResult, batchEvidence: batchEvidence, errorMessage,
+                rawResponseStored: false
+            });
+            fallbackAnalysis.missingDataWarnings = [
+                ...array(fallbackAnalysis.missingDataWarnings),
+                `Azure connection reset while analysing 1 evidence row: ${errorMessage}`
+            ];
+            await storeBatch({
+                companyId, snapshotId: snapshot.ID, runId: run.id, domain,
+                batchNumber, totalBatches, batchEvidence, analysis: fallbackAnalysis, usage: result.usage || {},
+                stackCTRLDataCount: packageResult.audit.stackCTRLDataCount,
+                status: 'completed_with_warnings', errorMessage,
+                failureReason: 'connection_reset_local_fallback',
+                attemptDiagnostics: result.attemptDiagnostics || [],
+                recordsRemaining, semanticGrouping
+            });
+            return [{
+                status: 'completed_with_warnings',
+                batchNumber,
+                batchItemCount: batchEvidence.length,
+                domain,
+                analysis: fallbackAnalysis,
+                usage: result.usage || {},
+                failureReason: 'connection_reset_local_fallback',
+                errorMessage,
+                attemptDiagnostics: result.attemptDiagnostics || []
+            }];
+        }
+        return [result];
+    }
+
     async function processDomainBatches({ companyId, snapshot, run, domain, packageResult, allEvidence, historicalContext, thresholdReached = false }) {
         if (domain.key === 'security_alerts') {
             logger.info?.('[security_alerts:azure_batch_plan:start] Building semantic Azure batch plan');
@@ -1934,63 +2061,74 @@ ${JSON.stringify(packageValue)}`;
                 recordsRemaining: recordsRemaining + batch.items.length
             });
             if (domain.key === 'security_alerts') logger.info?.(`[security_alerts:azure_analysis:start] Batch ${batch.number}/${batches.length}`);
-            const result = await analyzeDomainBatch({
+            const batchResults = await processBatchEvidenceWithRecovery({
                 companyId, snapshot, run, domain, packageResult,
                 batchEvidence: batch.items, batchNumber: batch.number, totalBatches: batches.length,
                 historicalContext,
                 recordsRemaining,
                 semanticGrouping: batch.semanticGrouping || null
             });
-            
-            results.push(result);
-            if (domain.key === 'security_alerts') {
-                const warning = result.status === 'completed_with_warnings' ? (result.jsonRepairMethod || 'azure_analysis_warning') : null;
-                logger.info?.(`[security_alerts:azure_analysis:complete] Batch ${batch.number}/${batches.length} ${result.status}`);
-                await updateRunStageProgress(run.id, {
-                    stage: result.status,
-                    lastSuccessfulStage: isSuccessfulDomainStatus(result.status) ? `azure_analysis:complete:batch_${batch.number}` : `azure_analysis:batch_${batch.number - 1}`,
-                    warning,
-                    failureReason: isSuccessfulDomainStatus(result.status) ? null : (result.failureReason || result.errorMessage || result.status)
-                });
-            }
-            for (const key of Object.keys(totals)) {
-                totals[key] += result.usage?.[key] || 0;
-            }
+            let stopDomainBatches = false;
+            for (const result of batchResults) {
+                results.push(result);
+                if (domain.key === 'security_alerts') {
+                    const warning = result.status === 'completed_with_warnings'
+                        ? (result.jsonRepairMethod || result.failureReason || 'azure_analysis_warning')
+                        : null;
+                    logger.info?.(`[security_alerts:azure_analysis:complete] Batch ${batch.number}/${batches.length} ${result.status}`);
+                    await updateRunStageProgress(run.id, {
+                        stage: result.status,
+                        lastSuccessfulStage: isSuccessfulDomainStatus(result.status)
+                            ? `azure_analysis:complete:batch_${batch.number}`
+                            : `azure_analysis:batch_${batch.number - 1}`,
+                        warning,
+                        failureReason: isSuccessfulDomainStatus(result.status)
+                            ? null
+                            : (result.failureReason || result.errorMessage || result.status)
+                    });
+                }
+                for (const key of Object.keys(totals)) {
+                    totals[key] += result.usage?.[key] || 0;
+                }
 
-            if (isSuccessfulDomainStatus(result.status)) {
-                const progressiveAnalysis = mergeCompletedBatchAnalyses({
-                    results,
-                    domain,
-                    packageResult,
-                    snapshotId: snapshot.ID,
-                    totalBatches: batches.length
-                });
-                packageResult.audit.sentToAzureCount = progressiveAnalysis.evidenceLimitations.recordsSent;
-                await storeDomain({
-                    run,
-                    companyId,
-                    snapshot,
-                    domain,
-                    packageResult,
-                    analysis: progressiveAnalysis,
-                    usage: totals,
-                    status: 'running',
-                    persistItems: false
-                });
-            }
+                if (isSuccessfulDomainStatus(result.status)) {
+                    const progressiveAnalysis = mergeCompletedBatchAnalyses({
+                        results,
+                        domain,
+                        packageResult,
+                        snapshotId: snapshot.ID,
+                        totalBatches: batches.length
+                    });
+                    packageResult.audit.sentToAzureCount = progressiveAnalysis.evidenceLimitations.recordsSent;
+                    await storeDomain({
+                        run,
+                        companyId,
+                        snapshot,
+                        domain,
+                        packageResult,
+                        analysis: progressiveAnalysis,
+                        usage: totals,
+                        status: 'running',
+                        persistItems: false
+                    });
+                }
 
-            if (result.status === 'failed_rate_limited') {
-                logger.warn?.(`[StackCTRL Enterprise] Stopping ${domain.name} after an exhausted Azure 429 retry budget.`);
-                break;
+                if (result.status === 'failed_rate_limited') {
+                    logger.warn?.(`[StackCTRL Enterprise] Stopping ${domain.name} after an exhausted Azure 429 retry budget.`);
+                    stopDomainBatches = true;
+                    break;
+                }
+                if (!isSuccessfulDomainStatus(result.status) && !isConnectionFailureResult(result)) {
+                    logger.error?.(`[StackCTRL Enterprise] Stopping ${domain.name} after batch ${batch.number} failed with ${result.status}; remaining evidence is retained and recorded as omitted for this attempt.`);
+                    stopDomainBatches = true;
+                    break;
+                }
             }
-            if (!isSuccessfulDomainStatus(result.status)) {
-                logger.error?.(`[StackCTRL Enterprise] Stopping ${domain.name} after batch ${batch.number} failed with ${result.status}; remaining evidence is retained and recorded as omitted for this attempt.`);
-                break;
-            }
-            
-            // Delay between batches to avoid throttling
+            if (stopDomainBatches) break;
+
+            const lastBatchResult = batchResults.at(-1);
             if (batch.number < batches.length) {
-                const delayMs = computeInterBatchDelayMs(result.usage?.inputTokens || 0, settings, domain.key);
+                const delayMs = computeInterBatchDelayMs(lastBatchResult?.usage?.inputTokens || 0, settings, domain.key);
                 if (delayMs > 0) await wait(delayMs);
             }
         }
@@ -2450,10 +2588,24 @@ ${JSON.stringify(packageValue)}`;
         return result.insertId || result.affectedRows;
     }
 
-    async function storeAudit({ run, companyId, snapshot, domain, packageResult, analysis, usage, status }) {
+    async function storeAudit({ run, companyId, snapshot, domain, packageResult, analysis, usage, status, batchResults = null, failureReason = null, warningReasons = [], azureAttemptDiagnostics = [], currentBatch = null }) {
         const combinedText = JSON.stringify(analysis || {}).toLowerCase();
+        const domainRunAudit = buildDomainRunAudit({
+            domain,
+            companyId,
+            snapshot,
+            packageResult,
+            usage,
+            status,
+            batchResults,
+            failureReason,
+            warningReasons,
+            azureAttemptDiagnostics,
+            currentBatch
+        });
         const auditInput = JSON.stringify({
             ...packageResult.package,
+            domainRunAudit,
             evidenceBatchPlan: packageResult.audit.batchPlan,
             evidenceSample: packageResult.audit.evidenceSample,
             tokenTracking: {
@@ -2624,6 +2776,40 @@ ${JSON.stringify(packageValue)}`;
                     warning: errorMessage
                 });
             }
+        }
+
+        const preparedRecordCount = array(packageResult.allEvidence).length;
+        const stackctrlRecordCount = Number(packageResult.audit.stackCTRLDataCount || 0);
+        if (stackctrlRecordCount > 0 && preparedRecordCount === 0) {
+            const omittedReasons = array(packageResult.package.limitations?.missingDataWarnings);
+            const errorMessage = `evidence_prepare_failed: ${stackctrlRecordCount} StackCTRL source record(s) exist but 0 were prepared for Azure.${omittedReasons.length ? ` Omitted reasons: ${omittedReasons.join('; ')}` : ' No omission reason was recorded.'}`;
+            const usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: 0, responseBytes: 0, retries: 0 };
+            packageResult.audit.sentToAzureCount = 0;
+            await storeDomain({
+                run, companyId, snapshot, domain, packageResult, analysis: null, usage,
+                status: 'failed_terminal', errorMessage
+            });
+            await storeAudit({
+                run, companyId, snapshot, domain, packageResult, analysis: null, usage,
+                status: 'failed_terminal',
+                failureReason: 'evidence_prepare_failed',
+                warningReasons: omittedReasons
+            });
+            if (domain.key === 'security_alerts') {
+                await updateRunStageProgress(run.id, {
+                    stage: 'failed_terminal',
+                    lastSuccessfulStage: 'evidence_prepare:complete',
+                    failureReason: errorMessage
+                });
+            }
+            return {
+                status: 'failed_terminal',
+                domain,
+                usage,
+                audit: packageResult.audit,
+                errorMessage,
+                failureReason: 'evidence_prepare_failed'
+            };
         }
 
         if (!array(packageResult.allEvidence).length) {
@@ -2827,11 +3013,13 @@ ${JSON.stringify(packageValue)}`;
             
             const recoveredBatches = completedBatches.filter(batch => batch.status === 'completed_with_warnings');
             const securityAccountingFailure = domain.key === 'security_alerts' && !batchAccountingComplete;
-            const finalStatus = securityAccountingFailure
-                ? 'failed_evidence_validation'
-                : failedBatches.length > 0
-                ? 'partial'
-                : recoveredBatches.length > 0 ? 'completed_with_warnings' : 'completed';
+            const finalStatus = failedBatches.length > 0 && completedBatches.length === 0
+                ? (failedBatches.every(batch => isConnectionFailureResult(batch)) ? 'failed_terminal' : 'partial')
+                : securityAccountingFailure
+                    ? 'completed_with_warnings'
+                    : failedBatches.length > 0
+                        ? 'partial'
+                        : recoveredBatches.length > 0 ? 'completed_with_warnings' : 'completed';
             const successfullyAnalysedCount = completedBatches.reduce((total, batch) => total + Number(batch.batchItemCount || 0), 0);
             packageResult.audit.sentToAzureCount = successfullyAnalysedCount;
             packageResult.audit.evidenceOmittedCount = sourceRecordsOmitted + batchRecordsOmitted;
@@ -2858,7 +3046,11 @@ ${JSON.stringify(packageValue)}`;
             await storeAudit({
                 run, companyId, snapshot, domain, packageResult,
                 analysis: aggregatedAnalysis, usage: batchResults.totals,
-                status: finalStatus
+                status: finalStatus,
+                batchResults,
+                failureReason: partialErrorMessage,
+                warningReasons: array(aggregatedAnalysis.missingDataWarnings),
+                azureAttemptDiagnostics: failedBatches.flatMap(batch => batch.attemptDiagnostics || [])
             });
             if (domain.key === 'security_alerts') {
                 logger.info?.(`[security_alerts:storage:complete] Stored Security Alerts domain intelligence ${domainIntelligenceId}`);
@@ -3001,8 +3193,9 @@ ${JSON.stringify(packageValue)}`;
             maxTokens: settings.maxSynthesisOutputTokens,
             maxRetriesOverride: settings.maxRetries,
             retryDelaysMsOverride: ENTERPRISE_RATE_LIMIT_RETRY_DELAYS_MS,
-            retryMaxMsOverride: ENTERPRISE_RATE_LIMIT_RETRY_MAX_MS,
-            timeoutMs: settings.requestTimeoutMs,
+                retryMaxMsOverride: ENTERPRISE_RATE_LIMIT_RETRY_MAX_MS,
+                connectionRetryDelaysMsOverride: ENTERPRISE_CONNECTION_RETRY_DELAYS_MS,
+                timeoutMs: settings.requestTimeoutMs,
             allowInvalidJsonResponse: true
         });
         const usage = responseUsage(response);
@@ -3025,8 +3218,9 @@ ${JSON.stringify(packageValue)}`;
                     maxTokens: settings.maxSynthesisOutputTokens,
                     maxRetriesOverride: 1,
                     retryDelaysMsOverride: ENTERPRISE_RATE_LIMIT_RETRY_DELAYS_MS,
-                    retryMaxMsOverride: ENTERPRISE_RATE_LIMIT_RETRY_MAX_MS,
-                    timeoutMs: settings.requestTimeoutMs,
+                retryMaxMsOverride: ENTERPRISE_RATE_LIMIT_RETRY_MAX_MS,
+                connectionRetryDelaysMsOverride: ENTERPRISE_CONNECTION_RETRY_DELAYS_MS,
+                timeoutMs: settings.requestTimeoutMs,
                     allowInvalidJsonResponse: true
                     });
                 } catch (repairError) {
@@ -3196,7 +3390,7 @@ ${JSON.stringify(packageValue)}`;
                 break;
             }
 
-            if (['failed', 'failed_storage', 'failed_evidence_validation'].includes(String(result.status || ''))) {
+            if (['failed', 'failed_storage'].includes(String(result.status || ''))) {
                 terminalError = {
                     domainKey: result.domain.key,
                     status: result.status,
@@ -3593,10 +3787,45 @@ ${JSON.stringify(packageValue)}`;
         });
         const latestRun = normalizedRuns[0] || null;
         const latestRunId = latestRun?.ID == null ? null : Number(latestRun.ID);
-        const latestDomains = latestRunId ? lightweightDomains.filter(row => Number(row.RunID) === latestRunId) : [];
+        let latestDomains = latestRunId ? lightweightDomains.filter(row => Number(row.RunID) === latestRunId) : [];
+        const progress = latestRun?.ProgressJson || {};
+        const lastProgressAt = new Date(progress.updatedAt || latestRun?.StartedAt || 0).getTime();
+        if (latestRunId && lastProgressAt && Date.now() - lastProgressAt > settings.terminalStaleMs) {
+            for (const row of latestDomains) {
+                if (String(row.Status || '') !== 'running') continue;
+                const reason = `Domain ${row.DomainKey} remained RUNNING for ${Math.ceil((Date.now() - lastProgressAt) / 60000)} minute(s) without progress. Marked failed_terminal.`;
+                await pool.query(
+                    `UPDATE StackCTRLTenantDomainIntelligence
+                     SET Status = 'failed_terminal', ErrorMessage = ?
+                     WHERE ID = ? AND Status = 'running'`,
+                    [reason, row.ID]
+                );
+                row.Status = 'failed_terminal';
+                row.ErrorMessage = reason;
+            }
+        }
         const latestAudits = latestRunId ? audits.filter(row => Number(row.RunID) === latestRunId) : [];
         const latestBatches = latestRunId ? batches.filter(row => Number(row.RunID) === latestRunId) : [];
-        const progress = latestRun?.ProgressJson || {};
+        const domainRunAudits = latestAudits.map(row => ({
+            domainKey: row.DomainKey,
+            companyId: numericCompanyId,
+            snapshotId: row.SnapshotID,
+            collectionStatus: null,
+            sourceFreshness: null,
+            stackctrlRecordCount: row.StackCTRLDataCount,
+            preparedRecordCount: row.EvidenceIncludedCount,
+            analysedRecordCount: row.SentToAzureCount,
+            omittedRecordCount: Number(row.OmittedCount || 0) + Number(row.EvidenceOmittedCount || 0),
+            omittedReasons: [],
+            batchCount: latestBatches.find(batch => batch.DomainKey === row.DomainKey)?.BatchCount || null,
+            currentBatch: progress.currentDomainKey === row.DomainKey ? (progress.currentBatch || null) : null,
+            azureAttemptCount: Number(row.RetryCount || 0) + 1,
+            azureStatus: row.Status,
+            storageStatus: row.Status,
+            finalDomainStatus: row.Status,
+            warningReasons: [],
+            failureReason: null
+        }));
         return {
             payloadType: 'enterprise_progress_only',
             companyId: numericCompanyId,
@@ -3610,6 +3839,7 @@ ${JSON.stringify(packageValue)}`;
             runs: normalizedRuns,
             domainIntelligence: lightweightDomains,
             evidenceAudit: audits,
+            domainRunAudits,
             synthesis,
             batches,
             progressSummary: latestRun ? {
@@ -3637,6 +3867,7 @@ ${JSON.stringify(packageValue)}`;
                     recordsSent: Number(row.SentToAzureCount || 0),
                     recordsOmitted: Number(row.OmittedCount || 0) + Number(row.EvidenceOmittedCount || 0)
                 })),
+                domainRunAudits,
                 jsonRecoveryWarning: latestBatches.some(row => Boolean(Number(row.JsonRecoveryWarning))),
                 finalSynthesisReady: synthesis.some(row => Number(row.RunID) === latestRunId && ['completed', 'completed_with_warnings'].includes(row.Status))
             } : null
@@ -3662,7 +3893,12 @@ ${JSON.stringify(packageValue)}`;
         const resolvedRunId = await latestRunIdForCompany(companyId, runId);
         const [rows] = await pool.query('SELECT * FROM StackCTRLIntelligenceEvidenceAudit WHERE CompanyID = ? AND RunID = ? AND DomainKey = ? ORDER BY ID DESC LIMIT 1', [Number(companyId), resolvedRunId, domainKey]);
         if (!rows[0]) { const error = new Error('Enterprise evidence audit detail not found'); error.statusCode = 404; throw error; }
-        return { ...rows[0], AzureInputSummaryJson: parseJson(rows[0].AzureInputSummaryJson, {}), OmittedSummaryJson: parseJson(rows[0].OmittedSummaryJson, {}) };
+        return {
+            ...rows[0],
+            AzureInputSummaryJson: parseJson(rows[0].AzureInputSummaryJson, {}),
+            OmittedSummaryJson: parseJson(rows[0].OmittedSummaryJson, {}),
+            domainRunAudit: parseJson(rows[0].AzureInputSummaryJson, {}).domainRunAudit || null
+        };
     }
 
     async function getAdminBatchDetails(companyId, domainKey, runId = null) {
@@ -3964,6 +4200,7 @@ module.exports = {
     DASHBOARD_BACKED_ENTERPRISE_DOMAINS,
     DOMAIN_EVIDENCE_TYPES,
     buildDataLineageComparison,
+    buildDomainRunAudit,
     sourceAlignmentFailure,
     createEnterpriseIntelligenceService,
     flattenDomainEvidence,

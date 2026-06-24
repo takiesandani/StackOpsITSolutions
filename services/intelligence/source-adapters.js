@@ -824,7 +824,7 @@ const definitions = {
                 const snapshots = await queryRows(
                     pool,
                     `SELECT * FROM StackCTRLNetworkEvidenceSnapshots
-                     WHERE CompanyID = ? AND IsComplete = 1 AND CollectionStatus = 'complete'
+                     WHERE CompanyID = ? AND IsComplete = 1 AND CollectionStatus IN ('complete', 'completed_with_warnings')
                      ORDER BY CollectedAt DESC, ID DESC LIMIT 1`,
                     [companyId]
                 );

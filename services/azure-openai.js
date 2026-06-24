@@ -6,6 +6,30 @@ const AZURE_AI_SCOPE = 'https://ai.azure.com/.default';
 const DEFAULT_MAX_RETRIES = 5;
 const DEFAULT_RETRY_DELAYS_MS = [5000, 15000, 30000, 60000, 120000];
 const DEFAULT_RETRY_MAX_MS = 120000;
+const DEFAULT_CONNECTION_RETRY_DELAYS_MS = [0, 15000, 45000];
+const NETWORK_ERROR_CODES = new Set(['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED', 'EPIPE', 'ENOTFOUND', 'EAI_AGAIN', 'ECONNABORTED', 'ESOCKET']);
+
+function isRetryableConnectionError(error) {
+    const code = String(error?.code || '').toUpperCase();
+    if (NETWORK_ERROR_CODES.has(code)) return true;
+    const message = String(error?.message || '').toLowerCase();
+    if (/econnreset|socket hang up|network error|read econnreset|write econnreset|aborted|timeout/i.test(message)) return true;
+    const status = Number(error?.response?.status);
+    return Number.isFinite(status) && status >= 500 && status < 600 && status !== 429;
+}
+
+function getConnectionRetryDelayMs(attempt, retryDelaysMs = DEFAULT_CONNECTION_RETRY_DELAYS_MS, maxDelayMs = DEFAULT_RETRY_MAX_MS) {
+    const scheduledDelay = retryDelaysMs[Math.min(attempt, retryDelaysMs.length - 1)] ?? retryDelaysMs.at(-1) ?? 15000;
+    if (attempt === 1) {
+        const jitter = 10000 + Math.floor(Math.random() * 10000);
+        return Math.min(Math.max(jitter, scheduledDelay), maxDelayMs);
+    }
+    if (attempt === 2) {
+        const jitter = 30000 + Math.floor(Math.random() * 30000);
+        return Math.min(Math.max(jitter, scheduledDelay), maxDelayMs);
+    }
+    return Math.min(Math.max(0, scheduledDelay), maxDelayMs);
+}
 
 function headerValue(headers, name) {
     if (!headers) return null;
@@ -165,6 +189,7 @@ function createAzureOpenAIService({
         maxRetriesOverride = null,
         retryDelaysMsOverride = null,
         retryMaxMsOverride = null,
+        connectionRetryDelaysMsOverride = null,
         timeoutMs = 60000
     }) {
         const config = await loadConfig();
@@ -187,7 +212,11 @@ function createAzureOpenAIService({
             ? retryDelaysMsOverride
             : retryDelaysMs;
         const effectiveRetryMaxMs = Number(retryMaxMsOverride) > 0 ? Number(retryMaxMsOverride) : retryMaxMs;
+        const effectiveConnectionRetryDelaysMs = Array.isArray(connectionRetryDelaysMsOverride) && connectionRetryDelaysMsOverride.length
+            ? connectionRetryDelaysMsOverride
+            : DEFAULT_CONNECTION_RETRY_DELAYS_MS;
         let lastRetryDelayMs = null;
+        const attemptDiagnostics = [];
         async function reportStatus(status, metadata = {}) {
             if (typeof onStatusChange !== 'function') return;
             try {
@@ -242,21 +271,38 @@ function createAzureOpenAIService({
                 const status = error.response?.status;
                 const requestId = headerValue(error.response?.headers, 'x-request-id') || headerValue(error.response?.headers, 'apim-request-id');
                 const detail = error.response?.data?.error?.message || error.message || 'Unknown Azure OpenAI error';
-                const shouldRetry = status === 429 && attempt < retryLimit;
+                const connectionError = isRetryableConnectionError(error);
+                const rateLimited = status === 429;
+                const shouldRetry = (rateLimited || connectionError) && attempt < retryLimit;
+                attemptDiagnostics.push({
+                    attempt: attempt + 1,
+                    statusCode: status || null,
+                    errorCode: error?.code || null,
+                    message: detail,
+                    connectionError,
+                    rateLimited,
+                    requestId: requestId || null,
+                    at: new Date().toISOString()
+                });
                 if (shouldRetry) {
-                    const delayMs = getRetryDelayMs(error, attempt, effectiveRetryDelaysMs, effectiveRetryMaxMs);
+                    const delayMs = rateLimited
+                        ? getRetryDelayMs(error, attempt, effectiveRetryDelaysMs, effectiveRetryMaxMs)
+                        : getConnectionRetryDelayMs(attempt, effectiveConnectionRetryDelaysMs, effectiveRetryMaxMs);
                     lastRetryDelayMs = delayMs;
-                    await reportStatus('rate_limited', {
+                    await reportStatus(rateLimited ? 'rate_limited' : 'connection_retry', {
                         attempt: attempt + 1,
                         retryCount: attempt + 1,
                         delayMs,
-                        requestId: requestId || null
+                        requestId: requestId || null,
+                        connectionError
                     });
-                    logger.warn?.('[Azure OpenAI] Rate limited; retrying request.', {
+                    logger.warn?.(`[Azure OpenAI] ${rateLimited ? 'Rate limited' : 'Connection error'}; retrying request.`, {
                         attempt: attempt + 1,
                         maxAttempts: retryLimit + 1,
                         delayMs,
-                        requestId: requestId || null
+                        requestId: requestId || null,
+                        errorCode: error?.code || null,
+                        message: detail
                     });
                     await wait(delayMs);
                     continue;
@@ -266,14 +312,25 @@ function createAzureOpenAIService({
                     status: status || null,
                     requestId: requestId || null,
                     attempts: attempt + 1,
-                    message: detail
+                    message: detail,
+                    errorCode: error?.code || null,
+                    connectionError
                 });
                 const requestError = new Error(`Azure OpenAI request failed${status ? ` (${status})` : ''} after ${attempt + 1} attempt(s): ${detail}`);
-                const recommendedRetryDelayMs = status === 429
+                const recommendedRetryDelayMs = rateLimited
                     ? getRetryDelayMs(error, attempt, effectiveRetryDelaysMs, effectiveRetryMaxMs)
-                    : null;
-                if (status === 429) {
+                    : connectionError
+                        ? getConnectionRetryDelayMs(attempt, effectiveConnectionRetryDelaysMs, effectiveRetryMaxMs)
+                        : null;
+                if (rateLimited) {
                     await reportStatus('failed_rate_limited', {
+                        attempt: attempt + 1,
+                        retryCount: attempt,
+                        delayMs: recommendedRetryDelayMs,
+                        requestId: requestId || null
+                    });
+                } else if (connectionError) {
+                    await reportStatus('failed_connection', {
                         attempt: attempt + 1,
                         retryCount: attempt,
                         delayMs: recommendedRetryDelayMs,
@@ -284,7 +341,9 @@ function createAzureOpenAIService({
                     model: config.deployment,
                     deployment: config.deployment,
                     statusCode: status || null,
-                    rateLimited: status === 429,
+                    rateLimited,
+                    connectionError,
+                    connectionReset: connectionError && /econnreset/i.test(String(error?.code || detail)),
                     retryAfterMs: recommendedRetryDelayMs,
                     lastRetryDelayMs,
                     requestSizeBytes,
@@ -292,7 +351,8 @@ function createAzureOpenAIService({
                         ? Buffer.byteLength(JSON.stringify(error.response.data), 'utf8')
                         : null,
                     tokenUsage: null,
-                    retryCount: attempt
+                    retryCount: attempt,
+                    attemptDiagnostics
                 };
                 throw requestError;
             }
@@ -371,7 +431,10 @@ module.exports = {
     createAzureOpenAIService,
     DEFAULT_MAX_RETRIES,
     DEFAULT_RETRY_DELAYS_MS,
+    DEFAULT_CONNECTION_RETRY_DELAYS_MS,
     extractResponseText,
+    getConnectionRetryDelayMs,
     getRetryDelayMs,
+    isRetryableConnectionError,
     normalizeV1Endpoint
 };

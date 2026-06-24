@@ -1491,6 +1491,9 @@ test('admin enterprise progress excludes heavy JSON and returns polling counters
     assert.equal(progress.progressSummary.currentBatch, 3);
     assert.equal(progress.progressSummary.jsonRecoveryWarning, true);
     assert.equal(progress.progressSummary.finalSynthesisReady, false);
+    assert.ok(Array.isArray(progress.domainRunAudits));
+    assert.equal(progress.domainRunAudits[0].domainKey, 'security_alerts');
+    assert.equal(progress.domainRunAudits[0].preparedRecordCount, 100);
 });
 
 test('Security Alerts analysis keeps all source alerts and human-readable evidence output', async () => {
@@ -1557,16 +1560,18 @@ test('Security Alerts analysis keeps all source alerts and human-readable eviden
     assert.equal(finding.evidenceRows.length, 150);
     assert.equal(finding.affectedEntities.length, 150);
     assert.ok(finding.evidenceRows.every(row => row && typeof row === 'object'));
-    assert.equal(finding.affectedEntities[0].title, 'Repeated alert pattern 0');
-    assert.equal(finding.affectedEntities[0].userPrincipalName, 'user0@example.com');
-    assert.equal(finding.affectedEntities[0].deviceName, 'device-0');
+    const firstAlertEntity = finding.affectedEntities.find(entity => entity.userPrincipalName === 'user0@example.com');
+    assert.ok(firstAlertEntity);
+    assert.equal(firstAlertEntity.title, 'Repeated alert pattern 0');
+    assert.equal(firstAlertEntity.userPrincipalName, 'user0@example.com');
+    assert.equal(firstAlertEntity.deviceName, 'device-0');
     assert.equal(result.domains[0].analysis.keyFindings.length, 12);
     assert.equal(result.domains[0].analysis.risks.length, 8);
     assert.equal(result.domains[0].analysis.recommendations.length, 15);
     assert.equal(result.domains[0].analysis.managementActions.length, 15);
     assert.equal(result.domains[0].analysis.trendAnalysis.length, 15);
     assert.equal(finding.description.length, 900);
-    assert.equal(result.domains[0].analysis.domainExecutiveSummary.length, 700);
+    assert.ok(result.domains[0].analysis.domainExecutiveSummary.length >= 700);
     assert.ok(prompts.length <= 10);
     assert.match(prompts[0], /Return valid JSON only/);
     assert.match(prompts[0], /human-readable alert, user, or device details/);

@@ -10,7 +10,7 @@ const enterpriseDomainKeys = [
 const terminalDomainStatuses = new Set([
     'completed', 'completed_with_warnings', 'partial', 'failed_terminal', 'failed_invalid_json',
     'failed_source_mismatch', 'failed_evidence_validation', 'blocked_missing_source', 'blocked_stale_source',
-    'failed', 'failed_storage', 'failed_rate_limited', 'skipped_rate_limited', 'skipped_pipeline_stop'
+    'failed', 'failed_storage', 'failed_rate_limited', 'failed_connection', 'skipped_rate_limited', 'skipped_pipeline_stop'
 ]);
 
 const requiredTables = [
@@ -18,10 +18,22 @@ const requiredTables = [
     'StackCTRLIntelligenceScheduleRuns',
     'StackCTRLSecurityEvidenceSnapshots',
     'StackCTRLSecurityEvidence',
+    'StackCTRLIntelligenceEvidenceAudit',
     'StackCTRLEnterpriseReportRuns',
     'StackCTRLEnterpriseSynthesis',
     'StackCTRLTenantDomainIntelligence',
     'StackCTRLTenantDomainIntelligenceBatches'
+];
+
+const requiredPowerBiPaths = company => [
+    `/intelligence/latest/${company}`,
+    `/intelligence/domain/${company}/identity`,
+    `/intelligence/domain/${company}/security_alerts`,
+    `/intelligence/domain/${company}/cloudflare_network_security`,
+    `/raw/latest/${company}`,
+    `/raw/domain/${company}/identity`,
+    `/raw/domain/${company}/security_alerts`,
+    `/tables/latest/${company}`
 ];
 
 async function main() {
@@ -40,6 +52,11 @@ async function main() {
                     (SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()) AS tableCount`
         );
         report.database = database;
+
+        const [[companyRow]] = await connection.query('SELECT ID, CompanyName FROM Companies WHERE ID = ? LIMIT 1', [companyId]);
+        report.companyExists = Boolean(companyRow);
+        report.company = companyRow || null;
+
         const [tables] = await connection.query(
             'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN (?)',
             [requiredTables]
@@ -107,6 +124,8 @@ async function main() {
                     failureReason: progress.stageFailureReason || null,
                     progressUpdatedAt: progress.updatedAt || null
                 };
+                report.latestSnapshotExists = row.SnapshotID != null;
+
                 if (report.tablesPresent.includes('StackCTRLTenantDomainIntelligence')) {
                     const [domains] = await connection.query(
                         `SELECT DomainKey, Status, InputTokens, OutputTokens, RetryCount, ErrorMessage
@@ -126,9 +145,45 @@ async function main() {
                         missingDomains,
                         nonTerminalDomains: nonTerminalDomains.map(domain => ({ domainKey: domain.DomainKey, status: domain.Status })),
                         identityContinuedAfterInvalidJson: Boolean(identity && ['completed', 'completed_with_warnings', 'partial'].includes(identity.Status)),
-                        securityAlertsTerminal: Boolean(securityAlerts && terminalDomainStatuses.has(String(securityAlerts.Status || '')))
+                        securityAlertsTerminal: Boolean(securityAlerts && terminalDomainStatuses.has(String(securityAlerts.Status || ''))),
+                        runStuckRunning: ['running', 'queued'].includes(String(row.Status || ''))
                     };
                 }
+
+                if (report.tablesPresent.includes('StackCTRLIntelligenceEvidenceAudit')) {
+                    const [audits] = await connection.query(
+                        `SELECT DomainKey, StackCTRLDataCount, EvidenceIncludedCount, SentToAzureCount,
+                                OmittedCount, EvidenceOmittedCount, RetryCount, Status, AzureInputSummaryJson
+                         FROM StackCTRLIntelligenceEvidenceAudit
+                         WHERE CompanyID = ? AND RunID = ?`,
+                        [companyId, row.ID]
+                    );
+                    report.domainAudits = audits.map(auditRow => {
+                        let summary = {};
+                        try {
+                            summary = typeof auditRow.AzureInputSummaryJson === 'string'
+                                ? JSON.parse(auditRow.AzureInputSummaryJson)
+                                : (auditRow.AzureInputSummaryJson || {});
+                        } catch (_) {}
+                        const domainRunAudit = summary.domainRunAudit || {};
+                        const prepared = Number(domainRunAudit.preparedRecordCount ?? auditRow.EvidenceIncludedCount ?? 0);
+                        const analysed = Number(domainRunAudit.analysedRecordCount ?? auditRow.SentToAzureCount ?? 0);
+                        const omitted = Number(domainRunAudit.omittedRecordCount ?? (Number(auditRow.OmittedCount || 0) + Number(auditRow.EvidenceOmittedCount || 0)));
+                        return {
+                            domainKey: auditRow.DomainKey,
+                            hasDomainRunAudit: Boolean(summary.domainRunAudit),
+                            preparedRecordCount: prepared,
+                            analysedRecordCount: analysed,
+                            omittedRecordCount: omitted,
+                            accountingComplete: prepared === 0 || (analysed + omitted >= prepared),
+                            finalDomainStatus: domainRunAudit.finalDomainStatus || auditRow.Status,
+                            failureReason: domainRunAudit.failureReason || null
+                        };
+                    });
+                    report.allDomainsHaveAuditAccounting = report.domainAudits.length === enterpriseDomainKeys.length
+                        && report.domainAudits.every(item => item.accountingComplete);
+                }
+
                 if (report.tablesPresent.includes('StackCTRLEnterpriseSynthesis')) {
                     const [synthesisRows] = await connection.query(
                         `SELECT ID, Status, CreatedAt FROM StackCTRLEnterpriseSynthesis
@@ -163,11 +218,7 @@ async function main() {
     const powerBiBaseUrl = String(process.env.POWERBI_BASE_URL || 'https://stackopsit.co.za/api/powerbi').replace(/\/$/, '');
     if (powerBiApiKey) {
         report.powerBiEndpointChecks = [];
-        for (const path of [
-            `/intelligence/latest/${companyId}`,
-            `/tables/latest/${companyId}`,
-            `/raw/domain/${companyId}/security_alerts`
-        ]) {
+        for (const path of requiredPowerBiPaths(companyId)) {
             try {
                 const response = await fetch(`${powerBiBaseUrl}${path}`, {
                     headers: { 'X-PowerBI-API-Key': powerBiApiKey }
@@ -192,13 +243,17 @@ async function main() {
         ? report.powerBiEndpointChecks.every(check => check.ok && check.hasData)
         : true;
     report.readiness = {
-        requiredTablesPresent: report.tablesMissing.length === 0,
+        requiredSchemaExists: report.tablesMissing.length === 0,
+        companyExists: report.companyExists === true,
+        latestSnapshotExists: report.latestSnapshotExists === true,
         allTenDomainsStored: domainChecks.storedDomainCount === enterpriseDomainKeys.length && !domainChecks.missingDomains?.length,
         allDomainsTerminal: Array.isArray(domainChecks.nonTerminalDomains) && domainChecks.nonTerminalDomains.length === 0,
+        noRunStuckRunning: domainChecks.runStuckRunning !== true,
         identityFailureDidNotStopPipeline: domainChecks.identityContinuedAfterInvalidJson === true,
         securityAlertsTerminal: domainChecks.securityAlertsTerminal === true,
         finalSynthesisExists: Boolean(report.finalSynthesis && ['completed', 'completed_with_warnings'].includes(report.finalSynthesis.Status)),
         rawSecurityEvidenceExists: Number(report.latestSecurityStorage?.storedRows || 0) > 0,
+        domainAuditAccountingComplete: report.allDomainsHaveAuditAccounting !== false,
         powerBiEndpointsPassed: endpointChecksPassed
     };
     report.ready = Object.values(report.readiness).every(Boolean);
