@@ -475,9 +475,12 @@ function buildEvidenceCatalog(evidence, domain, snapshotId) {
 }
 
 function buildEvidenceBatchPlan(allEvidence, batches, diagnostics = {}) {
+    const safeTokenLimit = numberOrNull(diagnostics.safeTokenLimit ?? diagnostics.safeInputTokenLimit);
+    const identityTableTokens = numberOrNull(diagnostics.identityTableTokens ?? diagnostics.evidenceTokens);
     return {
         totalEntityRows: allEvidence.length,
         batchCount: batches.length,
+        plannedBatchCount: numberOrNull(diagnostics.plannedBatchCount) ?? batches.length,
         itemsPerBatch: batches.map(batch => batch.items.length),
         batches: batches.map(batch => ({
             batchNumber: batch.number,
@@ -487,8 +490,10 @@ function buildEvidenceBatchPlan(allEvidence, batches, diagnostics = {}) {
         })),
         basePackageTokens: numberOrNull(diagnostics.basePackageTokens),
         evidenceTokens: numberOrNull(diagnostics.evidenceTokens),
+        identityTableTokens,
         totalEstimatedTokens: numberOrNull(diagnostics.totalEstimatedTokens),
         safeInputTokenLimit: numberOrNull(diagnostics.safeInputTokenLimit),
+        safeTokenLimit,
         reasonForBatchCount: diagnostics.reasonForBatchCount || null
     };
 }
@@ -532,24 +537,47 @@ function compactIdentityEvidenceRow(item, index = 0) {
     const authMethodCount = numberOrNull(data.authMethodCount ?? data.authenticationMethodCount) ?? (Array.isArray(authMethods) ? authMethods.length : 0);
     const entityId = explicitEntityId(data);
     const userPrincipalName = firstReadableValue(data.userPrincipalName, data.upn);
+    const displayName = firstReadableValue(data.displayName, data.name, data.userDisplayName);
+    const mail = firstReadableValue(data.mail, data.email, userPrincipalName);
+    const hasAdminRole = Boolean(data.hasAdminRole || roles.some(role => /admin|global|privileged|security|directory/i.test(role)));
+    const isExternal = Boolean(data.isExternal || /guest|external/i.test(String(data.userType || data.type || '')));
+    const normalizedLastSignIn = {
+        dateTime: lastSignInValue,
+        daysSince: lastSignInDaysAgo,
+        location: typeof location === 'object' ? firstReadableValue(location.displayName, location.city, location.countryOrRegion) : firstReadableValue(location),
+        device: typeof device === 'object' ? firstReadableValue(device.displayName, device.deviceName, device.id) : firstReadableValue(device)
+    };
+    const normalizedFlags = {
+        adminWithoutMFA: Boolean(data.flags?.adminWithoutMFA || (hasAdminRole && mfaValue === false)),
+        inactiveOver30Days: Boolean(data.flags?.inactiveOver30Days || (lastSignInDaysAgo != null && lastSignInDaysAgo > 30)),
+        newLocationLogin: Boolean(data.flags?.newLocationLogin)
+    };
 
     return {
         rowNumber: index + 1,
+        id: entityId,
         entityId,
-        name: firstReadableValue(data.displayName, data.name, data.userDisplayName),
-        email: firstReadableValue(data.mail, data.email, userPrincipalName),
+        displayName,
+        name: displayName,
+        mail,
+        email: mail,
         userPrincipalName,
         jobTitle: firstReadableValue(data.jobTitle, data.title),
         roles,
+        hasAdminRole,
         type: firstReadableValue(data.userType, data.accountType, data.type, data.isExternal ? 'Guest' : 'Member'),
+        mfaEnabled: mfaValue == null ? null : Boolean(mfaValue),
         mfaStatus: mfaValue === true ? 'enabled' : mfaValue === false ? 'missing' : 'unknown',
         authMethodCount,
         riskLevel: firstReadableValue(riskLevel),
+        accountEnabled: accountEnabled == null ? null : Boolean(accountEnabled),
         accountStatus: accountEnabled === false ? 'disabled' : accountEnabled === true ? 'enabled' : 'unknown',
-        lastSignIn: lastSignInValue,
+        isExternal,
+        lastSignIn: normalizedLastSignIn,
+        flags: normalizedFlags,
         lastSignInDaysAgo,
-        location: typeof location === 'object' ? firstReadableValue(location.displayName, location.city, location.countryOrRegion) : firstReadableValue(location),
-        device: typeof device === 'object' ? firstReadableValue(device.displayName, device.deviceName, device.id) : firstReadableValue(device),
+        location: normalizedLastSignIn.location,
+        device: normalizedLastSignIn.device,
         keyFlags: [...keyFlags],
         sourceMetric: item?.sourceMetric || null,
         internalSourcePath: item?.internalSourcePath || null
@@ -569,6 +597,58 @@ function identityUserEvidenceRows(evidence) {
     return users.length ? users : rows;
 }
 
+function identityMetricsSummaryFromRows(rows, basePackage = {}) {
+    const tableRows = array(rows);
+    const totalUsers = tableRows.length;
+    const mfaEnabled = tableRows.filter(row => row.mfaEnabled === true || row.mfaStatus === 'enabled').length;
+    const activeUsers = tableRows.filter(row => row.accountEnabled === true || row.accountStatus === 'enabled').length;
+    const inactiveUsers = tableRows.filter(row => row.accountEnabled === false || row.accountStatus === 'disabled' || row.flags?.inactiveOver30Days).length;
+    const privilegedUsers = tableRows.filter(row => row.hasAdminRole || array(row.roles).some(role => /admin|global|privileged|security|directory/i.test(role))).length;
+    const adminsWithoutMfa = tableRows.filter(row => row.flags?.adminWithoutMFA || ((row.hasAdminRole || array(row.roles).some(role => /admin|global|privileged|security|directory/i.test(role))) && row.mfaEnabled === false)).length;
+    const multiplePrivilegedRoles = tableRows.filter(row => array(row.roles).filter(role => /admin|global|privileged|security|directory/i.test(role)).length > 1).length;
+    const highRiskUsers = tableRows.filter(row => /high|critical/i.test(String(row.riskLevel || ''))).length;
+    const mediumRiskUsers = tableRows.filter(row => /medium|moderate/i.test(String(row.riskLevel || ''))).length;
+    const unknownDevices = tableRows.filter(row => /unknown|no sign-in|n\/a/i.test(String(row.device || row.lastSignIn?.device || ''))).length;
+    const signInIssues = tableRows.filter(row => row.flags?.inactiveOver30Days || row.flags?.newLocationLogin || /unknown|no sign-in|n\/a/i.test(String(row.location || row.lastSignIn?.location || ''))).length;
+    const currentMetrics = basePackage.currentMetrics || {};
+    const dashboardMetrics = basePackage.dashboardMetrics || {};
+    return {
+        totalUsers: numberOrNull(currentMetrics.totalUsers ?? dashboardMetrics.totalUsers) ?? totalUsers,
+        activeUsers,
+        inactiveUsers,
+        mfaEnabled,
+        mfaMissing: Math.max(0, totalUsers - mfaEnabled),
+        mfaCoverage: totalUsers ? Math.round((mfaEnabled / totalUsers) * 1000) / 10 : null,
+        privilegedUsers,
+        adminsWithoutMfa,
+        multiplePrivilegedRoles,
+        externalUsers: tableRows.filter(row => row.isExternal).length,
+        highRiskUsers,
+        mediumRiskUsers,
+        unknownDevices,
+        signInIssues,
+        stackctrlRiskScore: basePackage.authoritativeScores?.riskScore ?? null,
+        stackctrlHealthScore: basePackage.authoritativeScores?.healthScore ?? null,
+        securityScore: numberOrNull(currentMetrics.securityScore ?? dashboardMetrics.securityScore ?? basePackage.authoritativeScores?.healthScore),
+        snapshotId: basePackage.snapshotId ?? null,
+        sourceLastUpdated: basePackage.sourceHealth?.freshness?.lastUpdated || basePackage.snapshotCreatedAt || null,
+        sourceAgeMinutes: numberOrNull(basePackage.sourceHealth?.freshness?.ageMinutes),
+        collectionWindow: compactIdentityCollectionWindow(basePackage)
+    };
+}
+
+function compactIdentityCollectionWindow(basePackage = {}) {
+    const sourceLastUpdatedAt = basePackage.sourceHealth?.freshness?.lastUpdated || basePackage.snapshotCreatedAt || null;
+    return {
+        sourceSystem: 'Microsoft Graph / StackCTRL Identity',
+        collectedAt: basePackage.snapshotCreatedAt || null,
+        snapshotCapturedAt: basePackage.snapshotCreatedAt || null,
+        sourceLastUpdatedAt,
+        sourceAgeMinutes: numberOrNull(basePackage.sourceHealth?.freshness?.ageMinutes),
+        reportingWindow: 'current tenant state, plus lastSignIn history where available'
+    };
+}
+
 function compactIdentityBasePackage(basePackage) {
     return {
         contextType: 'stackctrl_enterprise_identity_table',
@@ -579,9 +659,8 @@ function compactIdentityBasePackage(basePackage) {
         snapshotCreatedAt: basePackage.snapshotCreatedAt,
         domain: basePackage.domain,
         sourceHealth: basePackage.sourceHealth,
-        currentMetrics: basePackage.currentMetrics,
-        dashboardMetrics: basePackage.dashboardMetrics,
-        calculatedIndicators: basePackage.calculatedIndicators,
+        identityMetricsSummary: basePackage.identityMetricsSummary || identityMetricsSummaryFromRows([], basePackage),
+        collectionWindow: basePackage.collectionWindow || compactIdentityCollectionWindow(basePackage),
         authoritativeScores: basePackage.authoritativeScores,
         limitations: {
             rawVendorPayloadIncluded: false,
@@ -590,9 +669,9 @@ function compactIdentityBasePackage(basePackage) {
             missingDataWarnings: array(basePackage.limitations?.missingDataWarnings)
         },
         identityTableColumns: [
-            'entityId', 'name', 'email', 'userPrincipalName', 'jobTitle', 'roles', 'type',
-            'mfaStatus', 'authMethodCount', 'riskLevel', 'accountStatus', 'lastSignIn',
-            'lastSignInDaysAgo', 'location', 'device', 'keyFlags', 'sourceMetric', 'internalSourcePath'
+            'id', 'displayName', 'userPrincipalName', 'mail', 'jobTitle', 'roles', 'hasAdminRole',
+            'type', 'mfaEnabled', 'mfaStatus', 'authMethodCount', 'riskLevel', 'accountEnabled',
+            'accountStatus', 'isExternal', 'lastSignIn', 'flags', 'sourceMetric', 'internalSourcePath'
         ]
     };
 }
@@ -1567,6 +1646,9 @@ function createEnterpriseIntelligenceService({
         const flattenedEvidence = domain.key === 'identity'
             ? identityUserEvidenceRows(flattenedDomainEvidence)
             : flattenedDomainEvidence;
+        const compactIdentityRows = domain.key === 'identity'
+            ? flattenedEvidence.map((item, index) => compactIdentityEvidenceRow(item, index))
+            : [];
         const evidenceCatalog = buildEvidenceCatalog(current.evidence, domain, snapshot.ID);
         const stackCTRLDataCount = flattenedEvidence.length;
         const sourceEvidenceLineage = current.source.sourceLineage || {};
@@ -1620,10 +1702,19 @@ function createEnterpriseIntelligenceService({
                     ...array(current.source.warnings),
                     ...(manualExcludedCount > 0 ? [`${manualExcludedCount} manual evidence row(s) were intentionally excluded from Azure input; only API-connected evidence was prepared.`] : []),
                     ...(evidenceOmittedCount > 0 ? [`${evidenceOmittedCount} expected dashboard entity row(s) were not included in the Azure evidence payload.`] : []),
-                    ...(!knowledge.length ? [`Curated ${domain.name} best-practice references were unavailable.`] : [])
+                    ...(!knowledge.length && domain.key !== 'identity' ? [`Curated ${domain.name} best-practice references were unavailable.`] : [])
                 ]
             }
         };
+        if (domain.key === 'identity') {
+            base.identityMetricsSummary = identityMetricsSummaryFromRows(compactIdentityRows, base);
+            base.collectionWindow = compactIdentityCollectionWindow(base);
+            base.missingDataInfo = [
+                'Historical baseline not available yet for 7/30/90-day trend analysis.',
+                ...(!knowledge.length ? ['Curated Identity Protection best-practice references unavailable.'] : [])
+            ];
+            base.limitations.missingDataInfo = base.missingDataInfo;
+        }
 
         const sourceLineageValues = {
             ...(DASHBOARD_BACKED_ENTERPRISE_DOMAINS.includes(domain.key)
@@ -1869,8 +1960,70 @@ STORED STACKCTRL ENTERPRISE INTELLIGENCE:
 ${JSON.stringify(packageValue)}`;
     }
 
+    function buildIdentityBatchPackage(basePackage, batchEvidence, batchNumber, totalBatches, semanticGrouping = null, evidenceStartIndex = 0) {
+        const evidence = batchEvidence.map((item, index) => compactIdentityEvidenceRow(item, Number(evidenceStartIndex || 0) + index));
+        const common = {
+            contextType: batchNumber === 1
+                ? 'stackctrl_enterprise_identity_table'
+                : 'stackctrl_enterprise_identity_table_continuation',
+            schemaVersion: 2,
+            mode: basePackage.mode,
+            companyId: basePackage.companyId,
+            snapshotId: basePackage.snapshotId,
+            domain: basePackage.domain,
+            sourceHealth: basePackage.sourceHealth,
+            identityMetricsSummary: basePackage.identityMetricsSummary || identityMetricsSummaryFromRows(evidence, basePackage),
+            collectionWindow: basePackage.collectionWindow || compactIdentityCollectionWindow(basePackage),
+            authoritativeScores: basePackage.authoritativeScores,
+            missingDataInfo: array(basePackage.missingDataInfo),
+            identityTableColumns: compactIdentityBasePackage(basePackage).identityTableColumns,
+            evidence,
+            batchMetadata: {
+                batchNumber,
+                totalBatches,
+                recordsSent: evidence.length,
+                evidenceRowsIncluded: evidence.length,
+                semanticGrouping,
+                evidenceStartIndex: Number(evidenceStartIndex || 0)
+            },
+            limitations: {
+                rawVendorPayloadIncluded: false,
+                rawSnapshotContextIncluded: false,
+                evidenceCompleteness: basePackage.limitations?.evidenceCompleteness || null,
+                missingDataWarnings: array(basePackage.limitations?.missingDataWarnings),
+                missingDataInfo: array(basePackage.missingDataInfo),
+                batchProcessing: true,
+                batchNumber,
+                totalBatches,
+                recordsSent: evidence.length,
+                recordsOmitted: 0,
+                evidenceRowsIncluded: evidence.length
+            }
+        };
+        if (batchNumber === 1) {
+            return {
+                ...common,
+                currentMetrics: basePackage.currentMetrics || {},
+                sharedContextIncluded: true
+            };
+        }
+        return {
+            ...common,
+            sharedContextIncluded: false,
+            baseContextReference: {
+                contextType: 'stackctrl_enterprise_identity_table',
+                snapshotId: basePackage.snapshotId,
+                domainKey: basePackage.domain?.key || 'identity',
+                sharedContextSentInBatch: 1
+            }
+        };
+    }
+
     // Build a domain analysis package for a specific batch of evidence
-    function buildDomainBatchPackage(basePackage, batchEvidence, batchNumber, totalBatches, semanticGrouping = null) {
+    function buildDomainBatchPackage(basePackage, batchEvidence, batchNumber, totalBatches, semanticGrouping = null, evidenceStartIndex = 0) {
+        if (basePackage?.domain?.key === 'identity') {
+            return buildIdentityBatchPackage(basePackage, batchEvidence, batchNumber, totalBatches, semanticGrouping, evidenceStartIndex);
+        }
         const categoryMap = new Map();
         for (const item of batchEvidence) {
             const key = String(item?.evidenceCategory || item?.sourceLabel || item?.evidenceType || 'evidenceRows');
@@ -2303,8 +2456,11 @@ ${JSON.stringify(packageValue)}`;
                 complete: completed.length === totalBatches,
                 basePackageTokens: packageResult.audit.batchPlan?.basePackageTokens ?? null,
                 evidenceTokens: packageResult.audit.batchPlan?.evidenceTokens ?? null,
+                identityTableTokens: packageResult.audit.batchPlan?.identityTableTokens ?? packageResult.audit.batchPlan?.evidenceTokens ?? null,
                 totalEstimatedTokens: packageResult.audit.batchPlan?.totalEstimatedTokens ?? null,
                 safeInputTokenLimit: packageResult.audit.batchPlan?.safeInputTokenLimit ?? null,
+                safeTokenLimit: packageResult.audit.batchPlan?.safeTokenLimit ?? packageResult.audit.batchPlan?.safeInputTokenLimit ?? null,
+                plannedBatchCount: packageResult.audit.batchPlan?.plannedBatchCount ?? totalBatches,
                 reasonForBatchCount: packageResult.audit.batchPlan?.reasonForBatchCount || null
             }
         }, domain, packageResult.current, snapshotId, packageResult.allEvidence);
@@ -2408,8 +2564,10 @@ ${JSON.stringify(packageValue)}`;
             batches = splitIntoBatches(allEvidence, batchOptions);
             const basePackageTokens = Math.ceil(emptyRequestBytes / 4);
             const totalEstimatedTokens = Math.ceil(combinedRequestBytes / 4);
-            const evidenceTokens = Math.max(0, totalEstimatedTokens - basePackageTokens);
-            const safeInputTokenLimit = Math.floor(settings.maxInputBytes / 4);
+            const identityTableTokens = Math.max(0, totalEstimatedTokens - basePackageTokens);
+            const evidenceTokens = identityTableTokens;
+            const safeTokenLimit = Math.floor(settings.maxInputBytes / 4);
+            const safeInputTokenLimit = safeTokenLimit;
             let reasonForBatchCount;
             if (!allEvidence.length) {
                 reasonForBatchCount = 'no_identity_evidence_rows';
@@ -2425,17 +2583,20 @@ ${JSON.stringify(packageValue)}`;
             batchPlanDiagnostics = {
                 basePackageTokens,
                 evidenceTokens,
+                identityTableTokens,
                 totalEstimatedTokens,
                 safeInputTokenLimit,
+                safeTokenLimit,
+                plannedBatchCount: batches.length,
                 reasonForBatchCount
             };
             logger.info?.(
-                `[StackCTRL Enterprise] Identity batch plan: basePackageTokens=${basePackageTokens}, evidenceTokens=${evidenceTokens}, totalEstimatedTokens=${totalEstimatedTokens}, safeInputTokenLimit=${safeInputTokenLimit}, batchCount=${batches.length}, reasonForBatchCount=${reasonForBatchCount}`
+                `[StackCTRL Enterprise] Identity batch plan: basePackageTokens=${basePackageTokens}, evidenceTokens=${evidenceTokens}, identityTableTokens=${identityTableTokens}, totalEstimatedTokens=${totalEstimatedTokens}, safeTokenLimit=${safeTokenLimit}, plannedBatchCount=${batches.length}, reasonForBatchCount=${reasonForBatchCount}`
             );
             if (batches.length > 5) {
                 logger.warn?.(
                     `[StackCTRL Enterprise] Identity required ${batches.length} batches for ${allEvidence.length} users. ` +
-                    `Reason: ${reasonForBatchCount}; estimated ${totalEstimatedTokens} tokens versus safe limit ${safeInputTokenLimit}.`
+                    `Reason: ${reasonForBatchCount}; estimated ${totalEstimatedTokens} tokens versus safe limit ${safeTokenLimit}.`
                 );
             }
         } else if (domain.key === 'security_alerts') {
@@ -2856,6 +3017,24 @@ ${JSON.stringify(packageValue)}`;
         const resolvedSnapshotId = snapshotId ?? current?.snapshotId ?? null;
         const normalizeItems = items => array(items)
             .map(item => ensureItemEvidence(item, domain, resolvedSnapshotId, availableEvidence));
+        const collectionWindow = domain.key === 'identity'
+            ? (value.collectionWindow || {
+                sourceSystem: 'Microsoft Graph / StackCTRL Identity',
+                collectedAt: current?.source?.collectedAt || current?.source?.freshness?.lastUpdated || null,
+                snapshotCapturedAt: current?.source?.snapshotCapturedAt || null,
+                sourceLastUpdatedAt: current?.source?.freshness?.lastUpdated || current?.source?.lastUpdatedAt || null,
+                sourceAgeMinutes: numberOrNull(current?.source?.freshness?.ageMinutes),
+                reportingWindow: 'current tenant state, plus lastSignIn history where available'
+            })
+            : (value.collectionWindow || null);
+        const missingDataInfo = [...new Set([
+            ...array(value.missingDataInfo).map(info => visibleTextOrNull(info, 1200)).filter(Boolean),
+            ...(domain.key === 'identity' ? ['Historical baseline not available yet for 7/30/90-day trend analysis.'] : [])
+        ])];
+        const missingDataWarnings = [...new Set(array(value.missingDataWarnings)
+            .map(warning => visibleTextOrNull(warning, 1200))
+            .filter(Boolean)
+            .filter(warning => !(domain.key === 'identity' && /historical baseline|7\/30\/90|best-practice references/i.test(warning))))];
         return {
             ...value,
             domainKey: value.domainKey || domain.key,
@@ -2880,17 +3059,25 @@ ${JSON.stringify(packageValue)}`;
             keyFindings: normalizeItems(value.keyFindings),
             risks: normalizeItems(value.risks),
             recommendations: normalizeItems(value.recommendations),
+            affectedEntities: uniqueEntities(array(value.affectedEntities)
+                .map(entity => canonicalEntity(entity, domain, resolvedSnapshotId, {
+                    businessReason: entity?.reason || entity?.businessReason || value.businessImpact || value.currentPosture,
+                    recommendation: entity?.recommendation || value.recommendation || value.recommendedAction
+                }))
+                .filter(Boolean)),
             trendAnalysis: normalizeItems(value.trendAnalysis),
             yesterdayVsToday: value.yesterdayVsToday || {},
             whatImproved: array(value.whatImproved),
             whatDeteriorated: array(value.whatDeteriorated),
             whatStayedTheSame: array(value.whatStayedTheSame),
-            missingDataWarnings: array(value.missingDataWarnings).map(warning => visibleTextOrNull(warning, 1200)).filter(Boolean),
+            missingDataWarnings,
+            missingDataInfo,
             assumptions: array(value.assumptions).map(assumption => visibleTextOrNull(assumption, 1200)).filter(Boolean),
             confidenceScore: numberOrNull(value.confidenceScore),
             managementActions: normalizeItems(value.managementActions),
             powerBiSummary: value.powerBiSummary || {},
             evidenceLimitations: value.evidenceLimitations || {},
+            collectionWindow,
             evidenceCatalog: value.evidenceCatalog || null,
             batchInfo: value.batchInfo || null,
             authoritativeScores: { healthScore: current.healthScore, riskScore: current.riskScore, riskLevel: current.riskLevel },
@@ -3412,8 +3599,11 @@ ${JSON.stringify(packageValue)}`;
                     complete: batchResults.complete,
                     basePackageTokens: packageResult.audit.batchPlan?.basePackageTokens ?? null,
                     evidenceTokens: packageResult.audit.batchPlan?.evidenceTokens ?? null,
+                    identityTableTokens: packageResult.audit.batchPlan?.identityTableTokens ?? packageResult.audit.batchPlan?.evidenceTokens ?? null,
                     totalEstimatedTokens: packageResult.audit.batchPlan?.totalEstimatedTokens ?? null,
                     safeInputTokenLimit: packageResult.audit.batchPlan?.safeInputTokenLimit ?? null,
+                    safeTokenLimit: packageResult.audit.batchPlan?.safeTokenLimit ?? packageResult.audit.batchPlan?.safeInputTokenLimit ?? null,
+                    plannedBatchCount: packageResult.audit.batchPlan?.plannedBatchCount ?? batchResults.batchCount,
                     reasonForBatchCount: packageResult.audit.batchPlan?.reasonForBatchCount || null
                 }
             };
@@ -3501,8 +3691,11 @@ ${JSON.stringify(packageValue)}`;
                     failedBatches: failedBatches.length,
                     basePackageTokens: packageResult.audit.batchPlan?.basePackageTokens ?? null,
                     evidenceTokens: packageResult.audit.batchPlan?.evidenceTokens ?? null,
+                    identityTableTokens: packageResult.audit.batchPlan?.identityTableTokens ?? packageResult.audit.batchPlan?.evidenceTokens ?? null,
                     totalEstimatedTokens: packageResult.audit.batchPlan?.totalEstimatedTokens ?? null,
                     safeInputTokenLimit: packageResult.audit.batchPlan?.safeInputTokenLimit ?? null,
+                    safeTokenLimit: packageResult.audit.batchPlan?.safeTokenLimit ?? packageResult.audit.batchPlan?.safeInputTokenLimit ?? null,
+                    plannedBatchCount: packageResult.audit.batchPlan?.plannedBatchCount ?? batchResults.batchCount,
                     reasonForBatchCount: packageResult.audit.batchPlan?.reasonForBatchCount || null
                 },
                 errorMessage: partialErrorMessage,
