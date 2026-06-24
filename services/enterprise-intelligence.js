@@ -6,9 +6,9 @@ const ENTERPRISE_DOMAINS = Object.freeze([
     { key: 'devices', name: 'Device Protection', sourceKey: 'devices', mode: 'enterprise_domain_devices', riskKey: 'devices', healthKey: 'deviceHealth', focus: ['compliance rate', 'stale devices', 'non-compliant devices', 'unmanaged indicators', 'endpoint security risk', 'remediation actions'] },
     { key: 'email_security', name: 'Email Security', sourceKey: 'email_security', mode: 'enterprise_domain_email_security', riskKey: 'email', healthKey: 'emailHealth', focus: ['active threats', 'unresolved threats', 'phishing and malware indicators', 'response posture', 'resolution rate', 'user exposure'] },
     { key: 'cloudflare_network_security', name: 'Network Security / Cloudflare', sourceKey: 'cloudflare_network_security', mode: 'enterprise_domain_cloudflare_network_security', riskKey: 'network', healthKey: null, focus: ['network posture', 'WAF and firewall controls', 'DNS posture', 'SSL/TLS posture', 'bot protection', 'rate limiting', 'security events', 'unknown controls'] },
-    { key: 'security_alerts', name: 'Security Alerts', sourceKey: 'security_alerts', mode: 'enterprise_domain_security_alerts', riskKey: 'security', healthKey: 'securityHealth', focus: ['alert severity', 'high-severity alerts', 'anonymous IP sign-ins', 'active incidents', 'incident response posture', 'containment actions'] },
     { key: 'applications', name: 'Applications', sourceKey: 'applications', mode: 'enterprise_domain_applications', riskKey: 'applications', healthKey: 'applicationsHealth', focus: ['external publishers', 'broad permissions', 'high-risk applications', 'shadow IT', 'consent risk', 'application governance'] },
     { key: 'backup', name: 'Backup and Recovery', sourceKey: 'backup', mode: 'enterprise_domain_backup', riskKey: 'backup', healthKey: 'backupHealth', focus: ['backup coverage', 'third-party backup', 'immutable storage', 'restore testing', 'ransomware recovery readiness', 'business continuity'] },
+    { key: 'security_alerts', name: 'Security Alerts', sourceKey: 'security_alerts', mode: 'enterprise_domain_security_alerts', riskKey: 'security', healthKey: 'securityHealth', focus: ['alert severity', 'high-severity alerts', 'anonymous IP sign-ins', 'active incidents', 'incident response posture', 'containment actions'] },
     { key: 'governance', name: 'Governance', sourceKey: 'governance', mode: 'enterprise_domain_governance', riskKey: 'governance', healthKey: 'governanceHealth', focus: ['access reviews', 'admin reviews', 'policy reviews', 'governance maturity', 'manual review needs', 'evidence gaps'] },
     { key: 'operations', name: 'Operations', sourceKey: 'operations', mode: 'enterprise_domain_operations', riskKey: 'operations', healthKey: 'operationsHealth', focus: ['data freshness', 'stale operational evidence', 'failed tasks', 'service health', 'operational risk', 'process gaps'] },
     { key: 'compliance', name: 'Compliance Validation', sourceKey: 'compliance', mode: 'enterprise_domain_compliance', riskKey: 'compliance', healthKey: 'complianceHealth', focus: ['control status', 'failed controls', 'partial controls', 'manual-review controls', 'compliance readiness', 'evidence gaps'] }
@@ -18,6 +18,9 @@ const DOMAIN_BY_KEY = Object.freeze(Object.fromEntries(ENTERPRISE_DOMAINS.map(do
 const LOWER_PERIOD = Object.freeze({ weekly: 'daily', monthly: 'weekly', yearly: 'monthly' });
 const DEFAULT_DOMAIN_DELAY_MS = 60000;
 const LARGE_DOMAIN_INPUT_TOKEN_THRESHOLD = 50000;
+const SECURITY_ALERTS_BATCH_THRESHOLD_TOKENS = 90000;
+const SECURITY_ALERTS_BATCH_MIN_TOKENS = 100000;
+const SECURITY_ALERTS_DOMAIN_DELAY_MS = 90000;
 const ENTITY_EVIDENCE_LIMITS = Object.freeze({ maxDepth: 8, maxArray: 50, maxString: 1200, maxObjectKeys: 100 });
 const DEFAULT_MAX_INPUT_BYTES = 350000;
 const DEFAULT_MAX_ITEMS_PER_BATCH = 750;
@@ -488,6 +491,8 @@ function buildEvidenceBatchPlan(allEvidence, batches) {
 function computeInterBatchDelayMs(inputTokens, settings, domainKey = null) {
     const configured = Number(settings?.domainDelayMs);
     const baseDelay = Number.isFinite(configured) ? Math.max(0, configured) : DEFAULT_DOMAIN_DELAY_MS;
+    // Security Alerts gets 90 seconds between batches (heavy domain with significant data)
+    if (domainKey === 'security_alerts') return Math.max(baseDelay, SECURITY_ALERTS_DOMAIN_DELAY_MS);
     if (inputTokens >= LARGE_DOMAIN_INPUT_TOKEN_THRESHOLD) return Math.max(baseDelay, 180000);
     if (inputTokens >= 30000) return Math.max(baseDelay, 60000);
     if (HEAVY_DOMAINS.has(domainKey)) return Math.max(baseDelay, 120000);
@@ -1748,9 +1753,42 @@ ${JSON.stringify(packageValue)}`;
                 buildDomainBatchPackage(packageResult.package, items, 1, Math.max(1, Math.ceil(allEvidence.length / maxItems)))
             )
         };
-        const batches = domain.key === 'security_alerts'
-            ? splitSecurityAlertsIntoBatches(allEvidence, batchOptions)
-            : splitIntoBatches(allEvidence, batchOptions);
+        
+        // For security_alerts: only batch if estimated tokens exceed 100K, allow up to 90K in single batch
+        let batches;
+        if (domain.key === 'security_alerts') {
+            // Check if single batch would exceed 100K tokens
+            const singleBatchEstimate = estimateDomainRequestBytes(
+                domain,
+                buildDomainBatchPackage(packageResult.package, allEvidence, 1, 1)
+            );
+            const singleBatchTokens = Math.ceil(singleBatchEstimate / 4); // rough token estimate from bytes
+            
+            if (singleBatchTokens >= SECURITY_ALERTS_BATCH_MIN_TOKENS) {
+                // Over 100K: allow batching
+                batches = splitSecurityAlertsIntoBatches(allEvidence, batchOptions);
+                logger.info?.(`[StackCTRL Enterprise] Security Alerts evidence (${allEvidence.length} items, ~${singleBatchTokens} tokens) exceeds 100K threshold - splitting into ${batches.length} batches for analysis`);
+            } else if (singleBatchTokens > SECURITY_ALERTS_BATCH_THRESHOLD_TOKENS) {
+                // Between 90K-100K: single batch with warning
+                batches = [{
+                    number: 1,
+                    items: allEvidence,
+                    semanticGrouping: null
+                }];
+                logger.warn?.(`[StackCTRL Enterprise] Security Alerts evidence is at high token usage (~${singleBatchTokens} tokens, threshold 90K) but below batching minimum (100K) - processing as single batch`);
+            } else {
+                // Below 90K: single batch
+                batches = [{
+                    number: 1,
+                    items: allEvidence,
+                    semanticGrouping: null
+                }];
+                logger.info?.(`[StackCTRL Enterprise] Security Alerts evidence (~${singleBatchTokens} tokens) is within safe single-batch limit (90K) - processing as one batch`);
+            }
+        } else {
+            batches = splitIntoBatches(allEvidence, batchOptions);
+        }
+        
         packageResult.audit.batchPlan = buildEvidenceBatchPlan(allEvidence, batches);
         if (domain.key === 'security_alerts' && batches.length > 10 && allEvidence.length < 1000) {
             logger.warn?.(`[StackCTRL Enterprise] Security Alerts required ${batches.length} safe batches because the complete evidence payload exceeded the configured byte budget.`);

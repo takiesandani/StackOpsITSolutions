@@ -2651,36 +2651,40 @@ function saveSunbirdIdentitySnapshot(data) {
 async function fetchFreshSunbirdIdentityDashboardData() {
     const token = localStorage.getItem('authToken');
     if (!token) throw new Error('Authentication required');
-    const endpoints = [
-        '/api/identity-dashboard',
-        '/api/sunbird/identity-dashboard',
-        '/api/sunbird/identity-dashboard-cached',
-        '/api/db/identity-dashboard'
-    ];
-    let lastError = null;
-    for (const endpoint of endpoints) {
-        try {
-            const response = await fetch(endpoint, {
-                method: 'GET',
-                cache: 'no-store',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                    'Cache-Control': 'no-cache, no-store, must-revalidate',
-                    'Pragma': 'no-cache',
-                    'Expires': '0'
-                }
-            });
-            const result = await response.json();
-            if (response.ok && result.success) {
-                return { ...result, liveSource: endpoint };
+    
+    // Use only the production Identity Dashboard endpoint
+    const endpoint = '/api/sunbird/identity-dashboard';
+    
+    try {
+        const response = await fetch(endpoint, {
+            method: 'GET',
+            cache: 'no-store',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
             }
-            lastError = new Error(result.message || `Identity endpoint failed (${response.status})`);
-        } catch (error) {
-            lastError = error;
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok && result.success) {
+            console.log('[Sunbird Identity Dashboard] Data loaded from production endpoint');
+            return { ...result, liveSource: endpoint };
         }
+        
+        // Provide detailed error feedback for authorization or other issues
+        if (response.status === 403) {
+            throw new Error('Access denied: This feature is only available for Sunbird clients');
+        }
+        
+        throw new Error(result.message || `Identity Dashboard endpoint failed (${response.status})`);
+    } catch (error) {
+        console.error('[Sunbird Identity Dashboard] Fetch error:', error.message);
+        throw error;
     }
-    throw lastError || new Error('Identity data unavailable from all endpoints');
 }
 
 async function loadSunbirdIdentityDashboardData() {

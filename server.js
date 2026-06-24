@@ -8826,11 +8826,12 @@ app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) =
         const userEmail = req.user.email;
         console.log(`[Sunbird Dashboard] Fetching dashboard data for: ${userEmail}`);
 
-        // Verify this is Sunbird client only
-        const tenant = getTenantByEmail(userEmail);
+        // Verify this is Sunbird client only (checks cache first, then database)
+        const tenant = await verifySunbirdUser(userEmail);
         if (!tenant || tenant.clientId !== 'sunbird') {
             console.warn(`[Sunbird Dashboard] Access denied for ${userEmail}`);
             return res.status(403).json({ 
+                success: false,
                 error: 'Access denied',
                 message: 'This feature is only available for Sunbird client'
             });
@@ -9884,109 +9885,173 @@ app.get('/api/microsoft-devices', authenticateToken, async (req, res) => {
 //                         MICROSOFT GRAPH - Threat & Activity (SOC)                                //
 // ====================================================================================================//
 
-// Fetch security alerts from Microsoft Graph
+// Fetch security alerts from Microsoft Graph with timeout
+const SECURITY_ALERTS_FETCH_TIMEOUT_MS = 30000;
 async function fetchSecurityAlerts(token) {
+    const stage = 'microsoft_graph_alerts_fetch';
+    const timeoutId = setTimeout(() => {
+        console.warn(`[security_alerts:${stage}:timeout] Alerts fetch exceeded ${SECURITY_ALERTS_FETCH_TIMEOUT_MS}ms`);
+    }, SECURITY_ALERTS_FETCH_TIMEOUT_MS);
+    
     try {
-        console.log('[Security] 🔍 Fetching alerts from Microsoft Graph API...');
+        console.log(`[security_alerts:${stage}:start] Fetching alerts from Microsoft Graph API...`);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), SECURITY_ALERTS_FETCH_TIMEOUT_MS);
+        
         const response = await fetch('https://graph.microsoft.com/v1.0/security/alerts?$top=50&$orderby=createdDateTime desc', {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
-            }
+            },
+            signal: controller.signal
         });
+        clearTimeout(timeout);
 
         if (!response.ok) {
-            console.warn('[Security] ⚠️ Alerts endpoint returned status:', response.status);
-            return [];
+            console.warn(`[security_alerts:${stage}:http_error] Status ${response.status}`);
+            return { alerts: [], warnings: [`Microsoft Graph alerts returned ${response.status}`], recordsFetched: 0 };
         }
 
         const data = await response.json();
         const alerts = data.value || [];
-        console.log('[Security] ✅ Successfully retrieved %d alerts from Microsoft Graph', alerts.length);
-        return alerts;
+        console.log(`[security_alerts:${stage}:complete] Retrieved ${alerts.length} alerts`);
+        return { alerts, warnings: [], recordsFetched: alerts.length };
     } catch (error) {
-        console.error('[Security] ❌ Failed to fetch alerts:', error.message);
-        return [];
+        console.error(`[security_alerts:${stage}:error] ${error.message}`);
+        return { alerts: [], warnings: [`Alerts fetch failed: ${error.message}`], recordsFetched: 0 };
+    } finally {
+        clearTimeout(timeoutId);
     }
 }
 
-// Fetch security incidents from Microsoft Graph
+// Fetch security incidents from Microsoft Graph with timeout
+const SECURITY_INCIDENTS_FETCH_TIMEOUT_MS = 30000;
 async function fetchSecurityIncidents(token) {
+    const stage = 'microsoft_graph_incidents_fetch';
+    const timeoutId = setTimeout(() => {
+        console.warn(`[security_alerts:${stage}:timeout] Incidents fetch exceeded ${SECURITY_INCIDENTS_FETCH_TIMEOUT_MS}ms`);
+    }, SECURITY_INCIDENTS_FETCH_TIMEOUT_MS);
+    
     try {
-        console.log('[Security] 🔍 Fetching incidents from Microsoft Graph API...');
+        console.log(`[security_alerts:${stage}:start] Fetching incidents from Microsoft Graph API...`);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), SECURITY_INCIDENTS_FETCH_TIMEOUT_MS);
+        
         const response = await fetch('https://graph.microsoft.com/v1.0/security/incidents?$top=50&$orderby=createdDateTime desc', {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
-            }
+            },
+            signal: controller.signal
         });
+        clearTimeout(timeout);
 
         if (!response.ok) {
-            console.warn('[Security] ⚠️ Incidents endpoint returned status:', response.status);
-            return [];
+            console.warn(`[security_alerts:${stage}:http_error] Status ${response.status}`);
+            return { incidents: [], warnings: [`Microsoft Graph incidents returned ${response.status}`], recordsFetched: 0 };
         }
 
         const data = await response.json();
         const incidents = data.value || [];
-        console.log('[Security] ✅ Successfully retrieved %d incidents from Microsoft Graph', incidents.length);
-        return incidents;
+        console.log(`[security_alerts:${stage}:complete] Retrieved ${incidents.length} incidents`);
+        return { incidents, warnings: [], recordsFetched: incidents.length };
     } catch (error) {
-        console.error('[Security] ❌ Failed to fetch incidents:', error.message);
-        return [];
+        console.error(`[security_alerts:${stage}:error] ${error.message}`);
+        return { incidents: [], warnings: [`Incidents fetch failed: ${error.message}`], recordsFetched: 0 };
+    } finally {
+        clearTimeout(timeoutId);
     }
 }
 
-// Fetch threat indicators from Microsoft Graph
+// Fetch threat indicators from Microsoft Graph with timeout - OPTIONAL
+// 400 errors are expected and treated as unavailable (not errors)
+const THREAT_INDICATORS_FETCH_TIMEOUT_MS = 15000;
 async function fetchThreatIndicators(token) {
+    const stage = 'threat_indicators_fetch';
+    const timeoutId = setTimeout(() => {
+        console.warn(`[security_alerts:${stage}:timeout] Threat indicators exceeded ${THREAT_INDICATORS_FETCH_TIMEOUT_MS}ms`);
+    }, THREAT_INDICATORS_FETCH_TIMEOUT_MS);
+    
     try {
+        console.log(`[security_alerts:${stage}:start] Fetching threat indicators (optional)...`);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), THREAT_INDICATORS_FETCH_TIMEOUT_MS);
+        
         const response = await fetch('https://graph.microsoft.com/v1.0/security/tiIndicators?$top=50&$orderby=createdDateTime desc', {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
-            }
+            },
+            signal: controller.signal
         });
+        clearTimeout(timeout);
 
+        if (response.status === 400) {
+            console.log(`[security_alerts:${stage}:warning] Threat indicators returned 400 (unavailable - continuing)`);
+            return { threats: [], warnings: ['threat_indicators_unavailable'], recordsFetched: 0 };
+        }
+        
         if (!response.ok) {
-            console.log('[Security] Threat Indicators endpoint returned:', response.status);
-            return [];
+            console.warn(`[security_alerts:${stage}:http_error] Status ${response.status} - treating as optional unavailability`);
+            return { threats: [], warnings: [`Threat indicators returned ${response.status}`], recordsFetched: 0 };
         }
 
         const data = await response.json();
-        return data.value || [];
+        const threats = data.value || [];
+        console.log(`[security_alerts:${stage}:complete] Retrieved ${threats.length} threat indicators`);
+        return { threats, warnings: [], recordsFetched: threats.length };
     } catch (error) {
-        console.error('[Security] Failed to fetch threat indicators:', error.message);
-        return [];
+        console.warn(`[security_alerts:${stage}:warning] Optional threat indicators unavailable: ${error.message}`);
+        return { threats: [], warnings: [`Threat indicators unavailable: ${error.message}`], recordsFetched: 0 };
+    } finally {
+        clearTimeout(timeoutId);
     }
 }
 
-// Fetch sign-in logs for security correlation
+// Fetch sign-in logs for security correlation with timeout
+const SECURITY_SIGNINS_FETCH_TIMEOUT_MS = 30000;
 async function fetchSecuritySignIns(token) {
+    const stage = 'security_signins_fetch';
+    const timeoutId = setTimeout(() => {
+        console.warn(`[security_alerts:${stage}:timeout] Sign-ins fetch exceeded ${SECURITY_SIGNINS_FETCH_TIMEOUT_MS}ms`);
+    }, SECURITY_SIGNINS_FETCH_TIMEOUT_MS);
+    
     try {
+        console.log(`[security_alerts:${stage}:start] Fetching sign-in logs...`);
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
         const filter = `createdDateTime ge ${thirtyDaysAgo.toISOString().split('T')[0]}`;
+        
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), SECURITY_SIGNINS_FETCH_TIMEOUT_MS);
         
         const response = await fetch(`https://graph.microsoft.com/v1.0/auditLogs/signIns?$filter=${encodeURIComponent(filter)}&$top=100&$orderby=createdDateTime desc`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
-            }
+            },
+            signal: controller.signal
         });
+        clearTimeout(timeout);
 
         if (!response.ok) {
-            console.log('[Security] Sign-ins endpoint returned:', response.status);
-            return [];
+            console.warn(`[security_alerts:${stage}:http_error] Status ${response.status}`);
+            return { signIns: [], warnings: [`Sign-ins fetch returned ${response.status}`], recordsFetched: 0 };
         }
 
         const data = await response.json();
-        return data.value || [];
+        const signIns = data.value || [];
+        console.log(`[security_alerts:${stage}:complete] Retrieved ${signIns.length} sign-in logs`);
+        return { signIns, warnings: [], recordsFetched: signIns.length };
     } catch (error) {
-        console.error('[Security] Failed to fetch sign-ins:', error.message);
-        return [];
+        console.error(`[security_alerts:${stage}:error] ${error.message}`);
+        return { signIns: [], warnings: [`Sign-ins fetch failed: ${error.message}`], recordsFetched: 0 };
+    } finally {
+        clearTimeout(timeoutId);
     }
 }
 
@@ -10064,33 +10129,41 @@ async function readFirstWhatsAppConfigValue(names, fallback = null) {
 }
 
 async function getWhatsAppSecurityAlertConfig({ requireEnabled = false } = {}) {
-    const [
-        enabledValue,
-        token,
-        phoneNumberId,
-        recipientValue,
-        apiVersion,
-        templateName,
-        templateLanguage,
-        limitValue
-    ] = await Promise.all([
-        readWhatsAppConfigValue('WHATSAPP_SECURITY_ALERTS_ENABLED', 'false'),
-        readWhatsAppConfigValue('WHATSAPP_ACCESS_TOKEN'),
-        readWhatsAppConfigValue('WHATSAPP_PHONE_NUMBER_ID'),
-        readFirstWhatsAppConfigValue(['WHATSAPP_SECURITY_ALERT_RECIPIENT', 'WHATSAPP_RECIPIENT'], '27762609804'),
-        readWhatsAppConfigValue('WHATSAPP_GRAPH_VERSION', 'v25.0'),
-        readWhatsAppConfigValue('WHATSAPP_SECURITY_ALERT_TEMPLATE', 'security_alert'),
-        readFirstWhatsAppConfigValue(['WHATSAPP_SECURITY_ALERT_TEMPLATE_LANGUAGE', 'WHATSAPP_TEMPLATE_LANGUAGE'], 'en_US'),
-        readWhatsAppConfigValue('WHATSAPP_SECURITY_ALERT_LIMIT', '20')
-    ]);
+    try {
+        const [
+            enabledValue,
+            token,
+            phoneNumberId,
+            recipientValue,
+            apiVersion,
+            templateName,
+            templateLanguage,
+            limitValue
+        ] = await Promise.all([
+            readWhatsAppConfigValue('WHATSAPP_SECURITY_ALERTS_ENABLED', 'false'),
+            readWhatsAppConfigValue('WHATSAPP_ACCESS_TOKEN'),
+            readWhatsAppConfigValue('WHATSAPP_PHONE_NUMBER_ID'),
+            readFirstWhatsAppConfigValue(['WHATSAPP_SECURITY_ALERT_RECIPIENT', 'WHATSAPP_RECIPIENT'], '27762609804'),
+            readWhatsAppConfigValue('WHATSAPP_GRAPH_VERSION', 'v25.0'),
+            readWhatsAppConfigValue('WHATSAPP_SECURITY_ALERT_TEMPLATE', 'security_alert'),
+            readFirstWhatsAppConfigValue(['WHATSAPP_SECURITY_ALERT_TEMPLATE_LANGUAGE', 'WHATSAPP_TEMPLATE_LANGUAGE'], 'en_US'),
+            readWhatsAppConfigValue('WHATSAPP_SECURITY_ALERT_LIMIT', '20')
+        ]);
 
-    const enabled = String(enabledValue || 'false').toLowerCase() === 'true';
-    if (requireEnabled && !enabled) return { enabled: false };
+        const enabled = String(enabledValue || 'false').toLowerCase() === 'true';
+        if (!enabledValue) {
+            console.log('[security_alerts:whatsapp_security_alerts_enabled_missing_default_false] WHATSAPP_SECURITY_ALERTS_ENABLED not found, defaulting to false');
+        }
+        if (requireEnabled && !enabled) return { enabled: false };
 
-    const recipient = normalizeWhatsAppRecipient(recipientValue);
-    const limit = Math.max(1, Number(limitValue || 20));
+        const recipient = normalizeWhatsAppRecipient(recipientValue);
+        const limit = Math.max(1, Number(limitValue || 20));
 
-    return { enabled, token, phoneNumberId, recipient, apiVersion, templateName, templateLanguage, limit };
+        return { enabled, token, phoneNumberId, recipient, apiVersion, templateName, templateLanguage, limit };
+    } catch (error) {
+        console.warn('[security_alerts:whatsapp_config_error] Failed to read WhatsApp config, defaulting to disabled:', error.message);
+        return { enabled: false };
+    }
 }
 
 function getWhatsAppSecurityAlertTime(item = {}) {
@@ -10187,13 +10260,35 @@ async function notifySecurityAlertsViaWhatsApp(payload, options = {}) {
 }
 
 async function fetchSecurityEventsPayloadFromApi(options = {}) {
+    console.log('[security_alerts:start] Security Alerts domain processing starting');
+    const allWarnings = [];
+    const allMetrics = { recordsFetched: 0, recordsStored: 0, recordsPrepared: 0, recordsSentToAzure: 0, recordsAnalysed: 0, recordsOmitted: 0, omittedReasons: [] };
+    
     const token = options.token || await getMicrosoftGraphToken();
-    const [alerts, incidents, threatIndicators, signIns] = await Promise.all([
+    
+    console.log('[security_alerts:prepare_fetch:start] Preparing to fetch from 4 Microsoft Graph sources');
+    const [alertsResult, incidentsResult, threatIndicatorsResult, signInsResult] = await Promise.all([
         fetchSecurityAlerts(token),
         fetchSecurityIncidents(token),
         fetchThreatIndicators(token),
         fetchSecuritySignIns(token)
     ]);
+    
+    // Collect warnings from each source
+    if (alertsResult.warnings) allWarnings.push(...alertsResult.warnings);
+    if (incidentsResult.warnings) allWarnings.push(...incidentsResult.warnings);
+    if (threatIndicatorsResult.warnings) allWarnings.push(...threatIndicatorsResult.warnings);
+    if (signInsResult.warnings) allWarnings.push(...signInsResult.warnings);
+    
+    const alerts = alertsResult.alerts || [];
+    const incidents = incidentsResult.incidents || [];
+    const threatIndicators = threatIndicatorsResult.threats || [];
+    const signIns = signInsResult.signIns || [];
+    
+    // Track metrics from fetches
+    allMetrics.recordsFetched = (alertsResult.recordsFetched || 0) + (incidentsResult.recordsFetched || 0) + (threatIndicatorsResult.recordsFetched || 0) + (signInsResult.recordsFetched || 0);
+    
+    console.log(`[security_alerts:evidence_prepare:start] Preparing evidence: ${alerts.length} alerts, ${incidents.length} incidents, ${threatIndicators.length} threats, ${signIns.length} sign-ins`);
 
     const processedAlerts = alerts.map(alert => ({
         id: alert.id,
@@ -10413,21 +10508,32 @@ async function fetchSecurityEventsPayloadFromApi(options = {}) {
         recommendations
     };
 
+    console.log('[security_alerts:evidence_prepare:complete] Evidence preparation complete with accounting:', {
+        totalAlerts: processedAlerts.length,
+        totalIncidents: processedIncidents.length,
+        totalThreats: processedThreats.length,
+        suspiciousSignIns: suspiciousSignIns.length
+    });
+
     if (!options.skipWhatsAppAuto) {
         try {
+            console.log('[security_alerts:whatsapp_secret_check:start] Checking WhatsApp configuration...');
             const whatsappResult = await notifySecurityAlertsViaWhatsApp(payload, { requireEnabled: true });
+            console.log('[security_alerts:whatsapp_secret_check:complete] WhatsApp check complete');
             if (whatsappResult.enabled) {
-                console.log('[WhatsApp Security Alerts] Automatic send result:', {
+                console.log('[security_alerts:whatsapp_send:complete] WhatsApp sent:', {
                     sent: whatsappResult.sent,
                     skipped: whatsappResult.skipped,
                     failed: whatsappResult.failed
                 });
             }
         } catch (error) {
-            console.error('[WhatsApp Security Alerts] Automatic send failed:', error.message);
+            console.warn('[security_alerts:whatsapp_secret_check:warning] WhatsApp notification failed (non-blocking):', error.message);
         }
     }
 
+    console.log('[security_alerts:storage:complete] Security Alerts payload ready for transmission');
+    console.log('[security_alerts:domain:complete] Security Alerts domain preparation complete');
     return payload;
 }
 
