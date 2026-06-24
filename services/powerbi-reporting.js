@@ -6,6 +6,7 @@ const API_VERSION = '1.1';
 const DEFAULT_BASE_URL = 'https://stackopsit.co.za/api/powerbi';
 const API_KEY_SECRET_NAME = 'POWERBI_REPORTING_API_KEY';
 const FORBIDDEN_RESPONSE_FIELDS = new Set(['ContextJson', 'CompactContextJson', 'AuditOnlyContextJson']);
+const SOURCE_PATH_PATTERN = /\b[A-Za-z_][\w-]*(?:(?:\.[A-Za-z_][\w-]*)|\[\d+\])*\[\d+\](?:(?:\.[A-Za-z_][\w-]*)|\[\d+\])*/g;
 
 const COMMON_FILTERS = {
     companyId: 'CompanyID',
@@ -261,9 +262,46 @@ function safeApiKeyMatch(provided, expected) {
     return crypto.timingSafeEqual(providedBuffer, expectedBuffer);
 }
 
+function isSourcePathValue(value) {
+    if (typeof value !== 'string') return false;
+    SOURCE_PATH_PATTERN.lastIndex = 0;
+    return SOURCE_PATH_PATTERN.test(value.trim());
+}
+
+function sanitizeReportingValue(value, key = '') {
+    if (Array.isArray(value)) {
+        const filtered = /^(?:affectedentityids|recordids|sourcealertids)$/i.test(key)
+            ? value.filter(item => !isSourcePathValue(String(item)))
+            : value;
+        return filtered.map(item => sanitizeReportingValue(item, key));
+    }
+    if (value && typeof value === 'object') {
+        return Object.fromEntries(Object.entries(value).map(([nestedKey, nested]) => {
+            const outputKey = /^sourcepath$/i.test(nestedKey) ? 'internalSourcePath' : nestedKey;
+            return [outputKey, sanitizeReportingValue(nested, outputKey)];
+        }));
+    }
+    if (typeof value !== 'string' || /^(?:internal|debug)sourcepath$/i.test(key)) return value;
+    if (/^(?:affectedentityids|recordids|sourcealertids)$/i.test(key)) {
+        try {
+            const parsed = JSON.parse(value);
+            if (Array.isArray(parsed)) return JSON.stringify(sanitizeReportingValue(parsed, key));
+        } catch (_) {
+            if (isSourcePathValue(value)) return null;
+        }
+    }
+    SOURCE_PATH_PATTERN.lastIndex = 0;
+    return value.replace(SOURCE_PATH_PATTERN, 'internal evidence record');
+}
+
 function sanitizeRows(rows) {
     return (Array.isArray(rows) ? rows : []).map(row => Object.fromEntries(
-        Object.entries(row || {}).filter(([key]) => !FORBIDDEN_RESPONSE_FIELDS.has(key))
+        Object.entries(row || {})
+            .filter(([key]) => !FORBIDDEN_RESPONSE_FIELDS.has(key))
+            .map(([key, value]) => [
+                /^sourcepath$/i.test(key) ? 'InternalSourcePath' : key,
+                sanitizeReportingValue(value, key)
+            ])
     ));
 }
 

@@ -11,6 +11,7 @@ const {
     NETWORK_LINEAGE_FIELDS,
     ENTERPRISE_DOMAINS,
     flattenDomainEvidence,
+    normalizeEvidenceBackedItem,
     normalizeMysqlDate,
     repairTruncatedJson,
     sourceAlignmentFailure,
@@ -29,6 +30,70 @@ test('heavy domains and large inputs enforce automation-safe cooldowns', () => {
     assert.equal(computeInterDomainDelayMs(1000, { domainDelayMs: 0 }, 'governance'), 120000);
     assert.equal(computeInterDomainDelayMs(30000, { domainDelayMs: 0 }, 'identity'), 60000);
     assert.equal(computeInterDomainDelayMs(50000, { domainDelayMs: 0 }, 'identity'), 180000);
+});
+
+test('enterprise output keeps real entity IDs and readable business values while isolating source paths', () => {
+    const sourcePath = 'applications.evidence[0].data[2]';
+    const entityId = '00f5434f-47f2-40e1-ac3e-4876dab2fc3e';
+    const normalized = normalizeEvidenceBackedItem({
+        title: 'Elevated application exposure',
+        description: `Evidence from ${sourcePath} requires review.`,
+        severity: 'high',
+        sourceDomain: 'applications',
+        sourceMetric: 'highRiskApps',
+        businessReason: 'External application with elevated exposure',
+        recommendation: 'Review access, permissions, and monitoring.',
+        evidenceSource: sourcePath,
+        affectedEntities: [{
+            id: entityId,
+            displayName: 'Microsoft Intune SCCM Connector',
+            publisherName: 'Unknown',
+            sourcePath
+        }],
+        affectedEntityIds: [sourcePath, entityId],
+        recordIds: [sourcePath, entityId],
+        sourceAlertIds: [sourcePath, 'alert-123'],
+        evidenceRows: [{ sourcePath, data: { id: entityId, displayName: 'Microsoft Intune SCCM Connector', publisherName: 'Unknown' } }]
+    }, ENTERPRISE_DOMAINS.find(domain => domain.key === 'applications'), 501);
+
+    assert.deepEqual(normalized.affectedEntityIds, [entityId]);
+    assert.deepEqual(normalized.recordIds, [entityId]);
+    assert.deepEqual(normalized.sourceAlertIds, ['alert-123']);
+    assert.equal(normalized.evidenceSource, 'stackctrl_dashboard_evidence');
+    assert.deepEqual(normalized.internalSourcePaths, [sourcePath]);
+    assert.doesNotMatch(normalized.description, /applications\.evidence/);
+    assert.equal(normalized.affectedEntities[0].entityId, entityId);
+    assert.equal(normalized.affectedEntities[0].entityName, 'Microsoft Intune SCCM Connector');
+    assert.equal(normalized.affectedEntities[0].entityType, 'Application');
+    assert.equal(normalized.affectedEntities[0].publisherName, 'Unknown');
+    assert.equal(normalized.affectedEntities[0].businessReason, 'External application with elevated exposure');
+    assert.equal(normalized.affectedEntities[0].recommendation, 'Review access, permissions, and monitoring.');
+    assert.equal(normalized.affectedEntities[0].internalSourcePath, sourcePath);
+
+    const service = createEnterpriseIntelligenceService({ pool: {}, azureOpenAI: {}, schedulerService: {} });
+    const tables = service.flattenPowerBITables({
+        domains: [{
+            companyId: 1, snapshotId: 501, runId: 701, domainKey: 'applications', domainName: 'Applications',
+            periodType: 'daily', periodStart: '2026-06-25', periodEnd: '2026-06-25', tokenUsage: {},
+            intelligenceOutput: {
+                risks: [{ ...normalized, riskId: 'risk-7' }],
+                recommendations: [{ ...normalized, recommendationId: 'recommendation-9', riskId: 'risk-7' }]
+            }
+        }]
+    });
+    assert.equal(tables.RiskRegisterRows[0].riskId, 'risk-7');
+    assert.equal(tables.RiskRegisterRows[0].title, 'Elevated application exposure');
+    assert.equal(tables.RecommendationRows[0].recommendationId, 'recommendation-9');
+    assert.equal(tables.AffectedEntityRows[0].riskId, 'risk-7');
+    assert.equal(tables.AffectedEntityRows[0].entityId, entityId);
+    assert.equal(tables.AffectedEntityRows[0].entityName, 'Microsoft Intune SCCM Connector');
+    assert.equal(tables.AffectedEntityRows[0].entityDisplayName, 'Microsoft Intune SCCM Connector');
+    assert.equal(tables.AffectedEntityRows[0].entityApplicationName, 'Microsoft Intune SCCM Connector');
+    assert.equal(tables.AffectedEntityRows[0].publisherName, 'Unknown');
+    assert.equal(tables.AffectedEntityRows[0].sourceMetric, 'highRiskApps');
+    assert.equal(tables.AffectedEntityRows[0].internalSourcePath, sourcePath);
+    assert.equal(tables.EvidenceRows[0].entityName, 'Microsoft Intune SCCM Connector');
+    assert.equal(tables.EvidenceRows[0].internalSourcePath, sourcePath);
 });
 
 test('Security Alerts semantic batching preserves every record in a reasonable batch count', () => {
@@ -155,7 +220,7 @@ test('enterprise pipeline queues domain analysis, stores audit rows, then synthe
     assert.equal(result.domains[0].status, 'completed');
     assert.ok(result.synthesisId);
     assert.equal(azurePrompts.length, 2);
-    assert.match(azurePrompts[0], /stackctrl_enterprise_domain_intelligence/);
+    assert.match(azurePrompts[0], /stackctrl_enterprise_identity_table/);
     assert.match(azurePrompts[0], /evidenceUsed/);
     assert.match(azurePrompts[0], /Do not create layouts, visuals, HTML/);
     assert.match(azurePrompts[1], /synthesisUsesStoredIntelligenceOnly/);
@@ -168,6 +233,97 @@ test('enterprise pipeline queues domain analysis, stores audit rows, then synthe
     assert.equal(itemWrites.some(call => call.params.includes('Ongoing') || call.params.includes('ASAP')), false);
     assert.ok(itemWrites.some(call => call.params.includes(null)));
     assert.ok(calls.some(call => call.sql.includes('DELETE FROM StackCTRLEnterpriseIntelligenceItems WHERE RunID = ? AND DomainKey = ?')));
+});
+
+test('Identity sends 57 normal users as one compact Azure table even when the global item cap is one', async () => {
+    const users = Array.from({ length: 57 }, (_, index) => ({
+        id: `user-${index + 1}`,
+        displayName: `User ${index + 1}`,
+        mail: `user${index + 1}@example.com`,
+        userPrincipalName: `user${index + 1}@example.com`,
+        jobTitle: index % 2 ? 'Analyst' : 'Manager',
+        roles: index < 3 ? [{ name: 'Global Administrator' }] : ['Employee'],
+        userType: 'Member',
+        mfaEnabled: index % 10 !== 0,
+        authMethodCount: index % 3 + 1,
+        riskLevel: index < 2 ? 'HIGH' : 'SAFE',
+        accountEnabled: true,
+        lastSignIn: {
+            dateTime: '2026-06-24T08:00:00.000Z', daysSince: 1,
+            location: 'Johannesburg, South Africa', device: `LAPTOP-${index + 1}`, status: 'Success'
+        },
+        flags: { adminWithoutMFA: index === 0, inactiveOver30Days: false }
+    }));
+    const snapshot = {
+        ID: 570, CompanyID: 1, TenantKey: 'tenant-sunbird', SnapshotType: 'manual',
+        CreatedAt: new Date('2026-06-25T08:00:00.000Z'), DataCompletenessScore: 100,
+        MetricsJson: JSON.stringify({ stackctrl_risk: { domainRiskScores: { identity: 20 } } }),
+        ContextJson: JSON.stringify({
+            riskEngine: { domainHealthScores: { identity: 80 }, domainRiskScores: { identity: 20 } },
+            sources: [{
+                sourceKey: 'identity', status: 'available', isExpected: true, freshness: { ageMinutes: 2 },
+                sourceLineage: { evidenceRecordCount: 57, omittedRecordCount: 0 },
+                evidence: [{ evidenceType: 'users', data: users }]
+            }]
+        })
+    };
+    let insertId = 5700;
+    const azurePackages = [];
+    const logMessages = [];
+    const pool = {
+        async query(sql) {
+            if (sql.includes('FROM StackCTRLTenantEvidenceSnapshots WHERE')) return [[snapshot], []];
+            if (sql.includes('FROM StackCTRLKnowledgeBase')) return [[], []];
+            if (sql.includes('FROM StackCTRLTenantDomainIntelligence') && sql.includes('RunID <>')) return [[], []];
+            if (/^\s*INSERT/i.test(sql)) return [{ insertId: insertId++ }, []];
+            return [{ affectedRows: 1 }, []];
+        }
+    };
+    const service = createEnterpriseIntelligenceService({
+        pool,
+        schedulerService: { async getHistoricalSnapshotContext() { return { comparisons: { '24_hours': { availability: 'available', snapshot: { ID: 1 }, metricChanges: { mfaCoverage: 1 } } } }; } },
+        azureOpenAI: {
+            async createJsonCompletion(options) {
+                const prompt = options.messages[1].content;
+                azurePackages.push(JSON.parse(prompt.split('STACKCTRL DOMAIN PACKAGE:\n')[1]));
+                return {
+                    data: domainResponse('identity'), requestSizeBytes: Buffer.byteLength(prompt), responseSizeBytes: 1000,
+                    usage: { input_tokens: 4000, output_tokens: 300, total_tokens: 4300 }
+                };
+            }
+        },
+        logger: {
+            info(...values) { logMessages.push(values.join(' ')); },
+            warn(...values) { logMessages.push(values.join(' ')); },
+            error(...values) { logMessages.push(values.join(' ')); }
+        },
+        wait: async () => {},
+        config: { domainDelayMs: 0, maxItemsPerBatch: 1, thresholdBatchMaxItems: 1, maxInputBytes: 150000 }
+    });
+
+    const result = await service.runEnterpriseReport({ companyId: 1, snapshotId: 570, domainKeys: ['identity'], includeSynthesis: false });
+    const identityPackage = azurePackages[0];
+
+    assert.equal(azurePackages.length, 1);
+    assert.equal(identityPackage.evidence.length, 57);
+    assert.equal(identityPackage.sharedContextIncluded, true);
+    assert.equal(identityPackage.contextType, 'stackctrl_enterprise_identity_table');
+    assert.equal(identityPackage.evidence[0].name, 'User 1');
+    assert.equal(identityPackage.evidence[0].userPrincipalName, 'user1@example.com');
+    assert.equal(identityPackage.evidence[0].mfaStatus, 'missing');
+    assert.equal(identityPackage.evidence[0].authMethodCount, 1);
+    assert.equal(identityPackage.evidence[0].device, 'LAPTOP-1');
+    assert.ok(identityPackage.evidence[0].keyFlags.includes('adminWithoutMFA'));
+    assert.equal(Object.prototype.hasOwnProperty.call(identityPackage, 'evidenceCatalog'), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(identityPackage, 'historicalComparisons'), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(identityPackage, 'previousDomainAnalysis'), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(identityPackage, 'knowledgeGrounding'), false);
+    assert.equal(result.domains[0].batchInfo.totalBatches, 1);
+    assert.equal(result.domains[0].batchInfo.reasonForBatchCount, 'all_identity_rows_fit_safe_token_limit');
+    assert.ok(result.domains[0].batchInfo.basePackageTokens > 0);
+    assert.ok(result.domains[0].batchInfo.evidenceTokens > 0);
+    assert.ok(result.domains[0].batchInfo.totalEstimatedTokens < result.domains[0].batchInfo.safeInputTokenLimit);
+    assert.match(logMessages.join('\n'), /basePackageTokens=\d+.*evidenceTokens=\d+.*totalEstimatedTokens=\d+.*reasonForBatchCount=all_identity_rows_fit_safe_token_limit/);
 });
 
 test('normalizeMysqlDate stores only real MySQL dates for enterprise AI date fields', () => {
@@ -354,8 +510,8 @@ test('enterprise batching splits 3,590 evidence items by count and byte budget',
     assert.equal(Object.keys(evidence).length, 4);
     const flattened = flattenDomainEvidence(evidence, { rootPath: 'identity.evidence' });
     assert.equal(flattened.length, 3590);
-    assert.ok(flattened.some(item => item.sourcePath === 'identity.evidence.users[0]'));
-    assert.ok(flattened.some(item => item.sourcePath === 'identity.evidence.history.daily[89]'));
+    assert.ok(flattened.some(item => item.internalSourcePath === 'identity.evidence.users[0]'));
+    assert.ok(flattened.some(item => item.internalSourcePath === 'identity.evidence.history.daily[89]'));
 
     const groupedEvidence = Object.entries(evidence).map(([evidenceType, data]) => ({ evidenceType, data }));
     const flattenedGroups = flattenDomainEvidence(groupedEvidence, { rootPath: 'identity.evidence' });
@@ -374,7 +530,7 @@ test('enterprise batching splits 3,590 evidence items by count and byte budget',
     assert.ok(byteBatches.every(batch => Buffer.byteLength(JSON.stringify(batch.items), 'utf8') <= 50000));
 });
 
-test('enterprise domain packages flatten nested evidence and preserve slim shared context in every batch', async () => {
+test('Identity domain packages keep user rows compact and include shared context only in the first batch', async () => {
     const snapshot = {
         ID: 80, CompanyID: 1, TenantKey: 'tenant-sunbird', SnapshotType: 'manual',
         CreatedAt: new Date('2026-06-22T08:00:00.000Z'), DataCompletenessScore: 100,
@@ -421,12 +577,12 @@ test('enterprise domain packages flatten nested evidence and preserve slim share
         domain: ENTERPRISE_DOMAINS[0],
         historicalContext
     });
-    assert.equal(packageResult.audit.stackCTRLDataCount, 3590);
-    assert.equal(packageResult.audit.evidenceIncludedCount, 3590);
+    assert.equal(packageResult.audit.stackCTRLDataCount, 3000);
+    assert.equal(packageResult.audit.evidenceIncludedCount, 3000);
     assert.equal(packageResult.package.evidence.length, 0);
 
     const batches = splitIntoBatches(packageResult.allEvidence, { maxItems: 750 });
-    assert.equal(batches.length, 5);
+    assert.equal(batches.length, 4);
     const batchPackages = batches.map((batch, index) => service.buildDomainBatchPackage(
         packageResult.package,
         batch.items,
@@ -435,15 +591,25 @@ test('enterprise domain packages flatten nested evidence and preserve slim share
     ));
     for (const [index, batchPackage] of batchPackages.entries()) {
         assert.equal(batchPackage.batchMetadata.batchNumber, index + 1);
-        assert.equal(batchPackage.batchMetadata.totalBatches, 5);
+        assert.equal(batchPackage.batchMetadata.totalBatches, 4);
         assert.equal(batchPackage.evidence.length, batches[index].items.length);
-        assert.equal(batchPackage.current.healthScore, 75);
-        assert.equal(batchPackage.current.riskScore, 25);
-        assert.equal(batchPackage.current.riskLevel, 'moderate');
-        assert.equal(batchPackage.current.metrics.mfaCoverage, 91);
-        assert.equal(batchPackage.historicalComparisons['24_hours'].availability, 'available');
-        assert.equal(Object.hasOwn(batchPackage.current, 'evidence'), false);
-        assert.ok(batchPackage.evidence.every(item => item.sourcePath && item.sourceLabel));
+        assert.equal(batchPackage.authoritativeScores.healthScore, 75);
+        assert.equal(batchPackage.authoritativeScores.riskScore, 25);
+        assert.equal(batchPackage.authoritativeScores.riskLevel, 'moderate');
+        assert.equal(batchPackage.sharedContextIncluded, index === 0);
+        assert.equal(Object.hasOwn(batchPackage, 'historicalComparisons'), false);
+        assert.equal(Object.hasOwn(batchPackage, 'evidenceCatalog'), false);
+        assert.equal(Object.hasOwn(batchPackage, 'previousDomainAnalysis'), false);
+        assert.equal(Object.hasOwn(batchPackage, 'knowledgeGrounding'), false);
+        if (index === 0) {
+            assert.equal(batchPackage.currentMetrics.mfaCoverage, 91);
+            assert.equal(batchPackage.contextType, 'stackctrl_enterprise_identity_table');
+        } else {
+            assert.equal(Object.hasOwn(batchPackage, 'currentMetrics'), false);
+            assert.equal(batchPackage.contextType, 'stackctrl_enterprise_identity_table_continuation');
+            assert.equal(batchPackage.baseContextReference.sharedContextSentInBatch, 1);
+        }
+        assert.ok(batchPackage.evidence.every(item => item.internalSourcePath && !Object.hasOwn(item, 'data')));
     }
 });
 
@@ -517,16 +683,16 @@ test('enterprise rate-limit circuit stops remaining batches and records zero ana
     const batchWrite = calls.find(call => call.sql.includes('INSERT INTO StackCTRLTenantDomainIntelligenceBatches'));
     assert.ok(batchWrite);
     assert.ok(batchWrite.params[6] >= 5);
-    assert.equal(batchWrite.params[8], 3590);
+    assert.equal(batchWrite.params[8], 3000);
     assert.ok(batchWrite.params[9] > 0 && batchWrite.params[9] <= 750);
     assert.equal(batchWrite.params[10], 0);
     assert.match(batchWrite.params[19], /"recommendedRetryAfterMs":600000/);
 
     const auditWrite = calls.find(call => call.sql.includes('INSERT INTO StackCTRLIntelligenceEvidenceAudit'));
     assert.ok(auditWrite);
-    assert.equal(auditWrite.params[4], 3590);
+    assert.equal(auditWrite.params[4], 3000);
     assert.equal(auditWrite.params[5], 0);
-    assert.equal(auditWrite.params[8], 3590);
+    assert.equal(auditWrite.params[8], 3000);
 
     await assert.rejects(
         service.runEnterpriseReport({ companyId: 1, snapshotId: 79, domainKeys: ['devices'], includeSynthesis: false }),

@@ -22,6 +22,7 @@ const SECURITY_ALERTS_DOMAIN_DELAY_MS = 90000;
 const ENTITY_EVIDENCE_LIMITS = Object.freeze({ maxDepth: 8, maxArray: 50, maxString: 1200, maxObjectKeys: 100 });
 const DEFAULT_MAX_INPUT_BYTES = 150000;
 const DEFAULT_MAX_ITEMS_PER_BATCH = 100;
+const IDENTITY_MAX_ITEMS_PER_BATCH = 500;
 const DEFAULT_HEAVY_DOMAIN_MAX_ITEMS_PER_BATCH = 50;
 const DEFAULT_THRESHOLD_BATCH_MAX_ITEMS = 50;
 const DEFAULT_MAX_TOTAL_TOKENS = 200000;
@@ -324,7 +325,7 @@ function flattenDomainEvidence(evidence, { rootPath = 'evidence', domainKey = nu
             itemContext.sourceKey || itemContext.source || pathLabel(path)
         );
         flattened.push({
-            sourcePath: path,
+            internalSourcePath: path,
             sourceLabel,
             evidenceType: String(itemContext.evidenceType || itemContext.type || sourceLabel || 'stored_evidence'),
             evidenceCategory: itemContext.listName || null,
@@ -473,7 +474,7 @@ function buildEvidenceCatalog(evidence, domain, snapshotId) {
     };
 }
 
-function buildEvidenceBatchPlan(allEvidence, batches) {
+function buildEvidenceBatchPlan(allEvidence, batches, diagnostics = {}) {
     return {
         totalEntityRows: allEvidence.length,
         batchCount: batches.length,
@@ -483,7 +484,116 @@ function buildEvidenceBatchPlan(allEvidence, batches) {
             itemCount: batch.items.length,
             evidenceTypes: [...new Set(batch.items.map(item => item.evidenceType))],
             semanticGrouping: batch.semanticGrouping || null
-        }))
+        })),
+        basePackageTokens: numberOrNull(diagnostics.basePackageTokens),
+        evidenceTokens: numberOrNull(diagnostics.evidenceTokens),
+        totalEstimatedTokens: numberOrNull(diagnostics.totalEstimatedTokens),
+        safeInputTokenLimit: numberOrNull(diagnostics.safeInputTokenLimit),
+        reasonForBatchCount: diagnostics.reasonForBatchCount || null
+    };
+}
+
+function identityRoleNames(roles) {
+    const values = Array.isArray(roles)
+        ? roles
+        : typeof roles === 'string'
+            ? parseJson(roles, String(roles).split(',').map(role => role.trim()).filter(Boolean))
+            : [];
+    return array(values).map(role => typeof role === 'string'
+        ? role
+        : role?.name || role?.roleName || role?.displayName || null).filter(Boolean).slice(0, 30);
+}
+
+function compactIdentityEvidenceRow(item, index = 0) {
+    const data = item?.data && typeof item.data === 'object' && !Array.isArray(item.data) ? item.data : (item || {});
+    const lastSignIn = data.lastSignIn && typeof data.lastSignIn === 'object' ? data.lastSignIn : {};
+    const roles = identityRoleNames(data.roles || data.roleNames || data.assignedRoles);
+    const mfaValue = data.mfaEnabled ?? data.isMfaRegistered ?? data.mfaRegistered;
+    const accountEnabled = data.accountEnabled ?? data.isEnabled;
+    const riskLevel = data.riskLevel || data.risk || data.userRiskLevel || 'unknown';
+    const location = data.location || data.officeLocation || lastSignIn.location || data.lastSignInLocation || 'Unknown';
+    const device = data.deviceName || data.device || lastSignIn.device || data.lastSignInDevice || 'Unknown';
+    const lastSignInValue = data.lastSignInDateTime || data.lastSignInAt || lastSignIn.dateTime || lastSignIn.createdDateTime || null;
+    const lastSignInDaysAgo = numberOrNull(data.daysSinceSignIn ?? lastSignIn.daysSince);
+    const keyFlags = new Set();
+    if (data.flags && typeof data.flags === 'object') {
+        for (const [flag, enabled] of Object.entries(data.flags)) if (enabled) keyFlags.add(flag);
+    }
+    if (data.hasAdminRole || roles.some(role => /admin|global|privileged|security|directory/i.test(role))) keyFlags.add('privileged');
+    if (data.isExternal || /guest|external/i.test(String(data.userType || data.type || ''))) keyFlags.add('external');
+    if (mfaValue === false) keyFlags.add('mfaMissing');
+    if (accountEnabled === false) keyFlags.add('accountDisabled');
+    if (/high|critical/i.test(String(riskLevel))) keyFlags.add('highRisk');
+    if (lastSignInDaysAgo != null && lastSignInDaysAgo > 30) keyFlags.add('inactiveOver30Days');
+    if (/unknown|no sign-in|n\/a/i.test(String(location))) keyFlags.add('unknownLocation');
+    if (/unknown|no sign-in|n\/a/i.test(String(device))) keyFlags.add('unknownDevice');
+    if (/fail/i.test(String(lastSignIn.status || data.lastSignInStatus || ''))) keyFlags.add('failedSignIn');
+    const authMethods = data.authenticationMethods || data.authMethods;
+    const authMethodCount = numberOrNull(data.authMethodCount ?? data.authenticationMethodCount) ?? (Array.isArray(authMethods) ? authMethods.length : 0);
+    const entityId = explicitEntityId(data);
+    const userPrincipalName = firstReadableValue(data.userPrincipalName, data.upn);
+
+    return {
+        rowNumber: index + 1,
+        entityId,
+        name: firstReadableValue(data.displayName, data.name, data.userDisplayName),
+        email: firstReadableValue(data.mail, data.email, userPrincipalName),
+        userPrincipalName,
+        jobTitle: firstReadableValue(data.jobTitle, data.title),
+        roles,
+        type: firstReadableValue(data.userType, data.accountType, data.type, data.isExternal ? 'Guest' : 'Member'),
+        mfaStatus: mfaValue === true ? 'enabled' : mfaValue === false ? 'missing' : 'unknown',
+        authMethodCount,
+        riskLevel: firstReadableValue(riskLevel),
+        accountStatus: accountEnabled === false ? 'disabled' : accountEnabled === true ? 'enabled' : 'unknown',
+        lastSignIn: lastSignInValue,
+        lastSignInDaysAgo,
+        location: typeof location === 'object' ? firstReadableValue(location.displayName, location.city, location.countryOrRegion) : firstReadableValue(location),
+        device: typeof device === 'object' ? firstReadableValue(device.displayName, device.deviceName, device.id) : firstReadableValue(device),
+        keyFlags: [...keyFlags],
+        sourceMetric: item?.sourceMetric || null,
+        internalSourcePath: item?.internalSourcePath || null
+    };
+}
+
+function identityUserEvidenceRows(evidence) {
+    const rows = array(evidence);
+    const users = rows.filter(item => {
+        const data = item?.data && typeof item.data === 'object' ? item.data : {};
+        const label = String(item?.evidenceType || item?.evidenceCategory || item?.sourceLabel || '').toLowerCase();
+        return /^(?:users|allusers|identityusers|user)$/.test(label.replace(/[_\s-]+/g, '')) || Boolean(
+            data.userPrincipalName || data.mail || data.email || data.mfaEnabled != null ||
+            data.authMethodCount != null || data.jobTitle || data.userType
+        );
+    });
+    return users.length ? users : rows;
+}
+
+function compactIdentityBasePackage(basePackage) {
+    return {
+        contextType: 'stackctrl_enterprise_identity_table',
+        schemaVersion: 2,
+        mode: basePackage.mode,
+        companyId: basePackage.companyId,
+        snapshotId: basePackage.snapshotId,
+        snapshotCreatedAt: basePackage.snapshotCreatedAt,
+        domain: basePackage.domain,
+        sourceHealth: basePackage.sourceHealth,
+        currentMetrics: basePackage.currentMetrics,
+        dashboardMetrics: basePackage.dashboardMetrics,
+        calculatedIndicators: basePackage.calculatedIndicators,
+        authoritativeScores: basePackage.authoritativeScores,
+        limitations: {
+            rawVendorPayloadIncluded: false,
+            rawSnapshotContextIncluded: false,
+            evidenceCompleteness: basePackage.limitations?.evidenceCompleteness || null,
+            missingDataWarnings: array(basePackage.limitations?.missingDataWarnings)
+        },
+        identityTableColumns: [
+            'entityId', 'name', 'email', 'userPrincipalName', 'jobTitle', 'roles', 'type',
+            'mfaStatus', 'authMethodCount', 'riskLevel', 'accountStatus', 'lastSignIn',
+            'lastSignInDaysAgo', 'location', 'device', 'keyFlags', 'sourceMetric', 'internalSourcePath'
+        ]
     };
 }
 
@@ -503,16 +613,47 @@ function computeInterDomainDelayMs(inputTokens, settings, domainKey = null) {
     return computeInterBatchDelayMs(inputTokens, settings, domainKey);
 }
 
-function compactReference(value) {
-    if (value === null || value === undefined) return null;
-    if (typeof value === 'string' || typeof value === 'number') return textOrNull(String(value), 255);
+const ENTITY_ID_FIELDS = Object.freeze([
+    'entityId', 'recordId', 'sourceAlertId', 'alertId', 'SourceID', 'id', 'objectId',
+    'userId', 'deviceId', 'applicationId', 'appId', 'servicePrincipalId', 'policyId',
+    'controlId', 'incidentId', 'taskId', 'serialNumber'
+]);
+
+const SOURCE_PATH_PATTERN = /\b[A-Za-z_][\w-]*(?:(?:\.[A-Za-z_][\w-]*)|\[\d+\])*\[\d+\](?:(?:\.[A-Za-z_][\w-]*)|\[\d+\])*/g;
+
+function isSourcePathValue(value) {
+    if (typeof value !== 'string') return false;
+    SOURCE_PATH_PATTERN.lastIndex = 0;
+    const matches = value.match(SOURCE_PATH_PATTERN);
+    return Boolean(matches?.some(match => match === value.trim() || /(?:^|\.)(?:evidence|data|entities|rows)\[\d+\]/i.test(match)));
+}
+
+function visibleTextOrNull(value, maximum = 100000) {
+    const text = textOrNull(value, maximum);
+    if (!text) return text;
+    SOURCE_PATH_PATTERN.lastIndex = 0;
+    return text.replace(SOURCE_PATH_PATTERN, 'internal evidence record').slice(0, maximum);
+}
+
+function explicitEntityId(value) {
+    if (value === null || value === undefined || value === '') return null;
+    if (typeof value === 'string' || typeof value === 'number') {
+        const id = String(value).trim();
+        return id && !isSourcePathValue(id) ? textOrNull(id, 255) : null;
+    }
     if (typeof value !== 'object' || Array.isArray(value)) return null;
-    return textOrNull(
-        value.recordId || value.entityKey || value.sourceAlertId || value.alertId || value.SourceID ||
-        value.id || value.userId || value.deviceId || value.applicationId || value.controlId ||
-        value.userPrincipalName || value.mail || value.email || value.deviceName || value.name,
-        255
-    );
+    const data = value.data && typeof value.data === 'object' && !Array.isArray(value.data) ? value.data : value;
+    for (const field of ENTITY_ID_FIELDS) {
+        const candidate = data[field] ?? value[field];
+        if (candidate === null || candidate === undefined || candidate === '') continue;
+        const id = String(candidate).trim();
+        if (id && !isSourcePathValue(id)) return textOrNull(id, 255);
+    }
+    return null;
+}
+
+function compactReference(value) {
+    return explicitEntityId(value);
 }
 
 function compactReferences(values, maximum = Number.POSITIVE_INFINITY) {
@@ -520,48 +661,202 @@ function compactReferences(values, maximum = Number.POSITIVE_INFINITY) {
     return Number.isFinite(maximum) ? references.slice(0, maximum) : references;
 }
 
+function firstReadableValue(...values) {
+    for (const value of values) {
+        if (value === null || value === undefined || value === '') continue;
+        const text = visibleTextOrNull(value, 500)?.trim();
+        if (text && text !== 'internal evidence record' && !isSourcePathValue(text)) return text;
+    }
+    return null;
+}
+
+function isOpaqueEntityId(value) {
+    const text = String(value || '').trim();
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text) ||
+        (/^[A-Za-z0-9]+(?:[-_:][A-Za-z0-9]+)+$/.test(text) && /\d/.test(text));
+}
+
+function inferEntityType(entity, domainKey = null) {
+    const explicit = firstReadableValue(entity.entityType, entity['@odata.type'], entity.type);
+    if (explicit && !/^(?:object|record|row|evidence)$/i.test(explicit)) {
+        return explicit.replace(/^#?microsoft\.graph\./i, '').replace(/^./, character => character.toUpperCase());
+    }
+    if (entity.alertId || entity.sourceAlertId || entity.alertName || entity.incidentId || domainKey === 'security_alerts') return 'Alert';
+    if (entity.applicationId || entity.appId || entity.applicationName || entity.appDisplayName || entity.publisherName || domainKey === 'applications') return 'Application';
+    if (entity.deviceId || entity.deviceName || entity.serialNumber || domainKey === 'devices') return 'Device';
+    if (entity.policyId || entity.policyName) return 'Policy';
+    if (entity.controlId || entity.controlName || entity.control) return 'Control';
+    if (entity.userId || entity.userPrincipalName || entity.userEmail || entity.mail || entity.email || domainKey === 'identity') return 'User';
+    if (entity.taskId || domainKey === 'operations') return 'Task';
+    return 'Entity';
+}
+
+function internalSourcePathFrom(value) {
+    if (typeof value === 'string') return isSourcePathValue(value) ? textOrNull(value, 1000) : null;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    return textOrNull(
+        value.internalSourcePath || value.debugSourcePath || value.sourcePath || value.auditTrace?.sourcePath,
+        1000
+    );
+}
+
+function canonicalEntity(value, context = {}) {
+    const wrapper = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const entity = wrapper.data && typeof wrapper.data === 'object' && !Array.isArray(wrapper.data) ? wrapper.data : wrapper;
+    const entityId = explicitEntityId(entity) || explicitEntityId(wrapper) || explicitEntityId(context.entityId) ||
+        (typeof value === 'string' && isOpaqueEntityId(value) ? explicitEntityId(value) : null);
+    const entityEmail = firstReadableValue(entity.entityEmail, entity.userPrincipalName, entity.userEmail, entity.mail, entity.email, entity.upn);
+    const rawEntityDeviceName = firstReadableValue(entity.entityDeviceName, entity.deviceName, entity.managedDeviceName, entity.hostName, entity.hostname);
+    const rawEntityApplicationName = firstReadableValue(entity.entityApplicationName, entity.applicationName, entity.appDisplayName, entity.servicePrincipalName);
+    const alertName = firstReadableValue(entity.alertName, entity.alertTitle, entity.title, entity.subject);
+    const policyName = firstReadableValue(entity.policyName, entity.controlName, entity.control);
+    const explicitName = typeof value === 'string' && !isSourcePathValue(value) && !isOpaqueEntityId(value) && String(value) !== String(entityId || '')
+        ? value
+        : null;
+    let entityName = firstReadableValue(
+        entity.entityName, entity.entityDisplayName, entity.displayName, entity.userDisplayName,
+        entity.name, rawEntityApplicationName, rawEntityDeviceName, alertName, policyName, entityEmail, explicitName
+    );
+    if (entityId && entityName === String(entityId)) entityName = null;
+    const sourceDomain = firstReadableValue(entity.sourceDomain, wrapper.sourceDomain, context.sourceDomain);
+    const sourceMetric = firstReadableValue(entity.sourceMetric, wrapper.sourceMetric, context.sourceMetric);
+    const entityType = inferEntityType(entity, sourceDomain);
+    const entityDeviceName = rawEntityDeviceName || (entityType === 'Device' ? entityName : null);
+    const entityApplicationName = rawEntityApplicationName || (entityType === 'Application' ? entityName : null);
+    const publisherName = firstReadableValue(
+        entity.publisherName, entity.publisher, entity.verifiedPublisher?.displayName,
+        entity.verifiedPublisherName
+    );
+    const internalSourcePath = internalSourcePathFrom(wrapper) || internalSourcePathFrom(entity);
+    const businessReason = firstReadableValue(entity.businessReason, context.businessReason, context.businessImpact, context.whyItMatters);
+    const recommendation = firstReadableValue(entity.recommendation, entity.recommendedAction, context.recommendation, context.recommendedAction, context.detail);
+
+    if (!entityId && !entityName && !entityEmail && !entityDeviceName && !entityApplicationName) return null;
+    return {
+        entityId,
+        entityName,
+        entityType,
+        sourceDomain,
+        sourceMetric,
+        businessReason,
+        recommendation,
+        entityDisplayName: firstReadableValue(entity.entityDisplayName, entity.displayName, entityName),
+        entityEmail,
+        entityDeviceName,
+        entityApplicationName,
+        publisherName,
+        alertName,
+        policyName,
+        severity: firstReadableValue(entity.severity, context.severity),
+        status: firstReadableValue(entity.status, context.status),
+        internalSourcePath,
+        // Readable compatibility aliases retained for existing admin/report consumers.
+        displayName: firstReadableValue(entity.displayName, entityName),
+        userPrincipalName: firstReadableValue(entity.userPrincipalName, entityEmail),
+        mail: firstReadableValue(entity.mail),
+        email: firstReadableValue(entity.email),
+        deviceName: firstReadableValue(entity.deviceName, entityDeviceName),
+        applicationName: firstReadableValue(entity.applicationName, entityApplicationName),
+        title: firstReadableValue(entity.title, alertName),
+        name: firstReadableValue(entity.name)
+    };
+}
+
+function uniqueEntities(values) {
+    const seen = new Set();
+    return array(values).filter(Boolean).filter(entity => {
+        const key = entity.entityId
+            ? `id:${entity.entityId}`
+            : `name:${entity.entityType}:${entity.entityName || entity.entityEmail || entity.entityDeviceName || entity.entityApplicationName}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+}
+
+function sanitizeVisibleValue(value, path = []) {
+    if (typeof value === 'string') {
+        const namedPath = path.filter(segment => typeof segment === 'string');
+        const key = namedPath.at(-1) || '';
+        const parentKey = namedPath.at(-2) || '';
+        if (/^(?:internal|debug)sourcepaths?$/i.test(key) || (key === 'sourcePath' && parentKey === 'auditTrace')) {
+            return textOrNull(value, 1000);
+        }
+        return visibleTextOrNull(value);
+    }
+    if (Array.isArray(value)) return value.map((item, index) => sanitizeVisibleValue(item, [...path, index]));
+    if (!value || typeof value !== 'object') return value;
+    const result = {};
+    for (const [key, nested] of Object.entries(value)) {
+        if (key === 'sourcePath' && path.at(-1) !== 'auditTrace') {
+            result.internalSourcePath = textOrNull(nested, 1000);
+        } else {
+            result[key] = sanitizeVisibleValue(nested, [...path, key]);
+        }
+    }
+    return result;
+}
+
 function normalizeEvidenceBackedItem(item, domain, snapshotId) {
     const value = item && typeof item === 'object' && !Array.isArray(item) ? item : { title: String(item || '') };
-    const affectedEntities = array(value.affectedEntities).map(entity => typeof entity === 'string'
-        ? textOrNull(entity, 500)
-        : safeEvidenceEntity(entity, { ...ENTITY_EVIDENCE_LIMITS, maxArray: 20, maxObjectKeys: 40 }));
-    const evidenceRows = [
-        ...array(value.evidenceRows),
-    ].map(row => typeof row === 'string'
-        ? textOrNull(row, 500)
-        : safeEvidenceEntity(row, { ...ENTITY_EVIDENCE_LIMITS, maxArray: 20, maxObjectKeys: 40 }));
+    const sourceDomain = textOrNull(value.sourceDomain || domain.key, 80);
+    const sourceMetric = textOrNull(value.sourceMetric, 120);
+    const businessReason = visibleTextOrNull(value.businessReason || value.businessImpact || value.whyItMatters, 1200);
+    const recommendation = visibleTextOrNull(value.recommendation || value.recommendedAction || value.detail, 1200);
+    const entityContext = { ...value, sourceDomain, sourceMetric, businessReason, recommendation };
+    const suppliedEntityIds = compactReferences(value.affectedEntityIds);
+    const affectedEntities = uniqueEntities(array(value.affectedEntities)
+        .map((entity, index) => canonicalEntity(entity, { ...entityContext, entityId: suppliedEntityIds[index] })));
+    const evidenceRows = uniqueEntities(array(value.evidenceRows).map(row => canonicalEntity(row, entityContext)));
+    const internalSourcePaths = [...new Set([
+        ...array(value.internalSourcePaths), value.internalSourcePath, value.debugSourcePath,
+        value.sourcePath, value.auditTrace?.sourcePath,
+        isSourcePathValue(value.evidenceSource) ? value.evidenceSource : null,
+        ...array(value.affectedEntities).map(internalSourcePathFrom),
+        ...array(value.evidenceRows).map(internalSourcePathFrom)
+    ].map(path => textOrNull(path, 1000)).filter(Boolean))];
+    const {
+        sourcePath: _sourcePath, debugSourcePath: _debugSourcePath,
+        affectedEntities: _affectedEntities, affectedEntityIds: _affectedEntityIds,
+        evidenceRows: _evidenceRows, recordIds: _recordIds, sourceAlertIds: _sourceAlertIds,
+        internalSourcePaths: _internalSourcePaths, ...visibleValue
+    } = value;
     return {
-        ...value,
-        title: textOrNull(value.title || value.name || value.metricName, 255),
-        description: textOrNull(value.description || value.detail || value.explanation, 1200),
+        ...sanitizeVisibleValue(visibleValue),
+        title: visibleTextOrNull(value.title || value.name || value.metricName, 255),
+        description: visibleTextOrNull(value.description || value.detail || value.explanation, 1200),
         severity: textOrNull(value.severity, 50),
         status: textOrNull(value.status, 50),
         likelihood: textOrNull(value.likelihood, 80),
         impact: textOrNull(value.impact, 120),
         priority: textOrNull(value.priority, 50),
         category: textOrNull(value.category, 120),
-        businessImpact: textOrNull(value.businessImpact || value.businessReason, 1200),
-        businessReason: textOrNull(value.businessReason || value.businessImpact, 1200),
-        evidenceSummary: textOrNull(value.evidenceSummary, 1200),
-        recommendation: textOrNull(value.recommendation || value.detail, 1200),
-        detail: textOrNull(value.detail || value.recommendation, 1200),
+        businessImpact: visibleTextOrNull(value.businessImpact || value.businessReason, 1200),
+        businessReason,
+        evidenceSummary: visibleTextOrNull(value.evidenceSummary, 1200),
+        recommendation,
+        detail: visibleTextOrNull(value.detail || value.recommendation, 1200),
         suggestedOwner: textOrNull(value.suggestedOwner || value.owner, 180),
         owner: textOrNull(value.owner || value.suggestedOwner, 180),
         suggestedDueDate: normalizeMysqlDate(value.suggestedDueDate || value.dueDate),
-        sourceDomain: textOrNull(value.sourceDomain || domain.key, 80),
-        sourceMetric: textOrNull(value.sourceMetric, 120),
+        sourceDomain,
+        sourceMetric,
         snapshotId: numberOrNull(value.snapshotId ?? snapshotId),
         affectedEntities,
         affectedEntityIds: compactReferences([...array(value.affectedEntityIds), ...affectedEntities]),
         evidenceRows,
         recordIds: compactReferences([...array(value.recordIds), ...evidenceRows]),
         sourceAlertIds: compactReferences(value.sourceAlertIds),
+        internalSourcePath: internalSourcePaths[0] || null,
+        internalSourcePaths,
         sourceMetrics: [...new Set(array(value.sourceMetrics).map(metric => textOrNull(metric, 120)).filter(Boolean))],
-        evidenceSource: textOrNull(value.evidenceSource || value.sourceLabel || 'stackctrl_dashboard_evidence', 255),
-        whatHappened: textOrNull(value.whatHappened || value.description, 1200),
-        whyItMatters: textOrNull(value.whyItMatters || value.businessImpact, 1200),
-        recommendedAction: textOrNull(value.recommendedAction || value.recommendation || value.detail, 1200),
-        recommendedActions: array(value.recommendedActions).map(action => textOrNull(action, 1200)).filter(Boolean),
+        evidenceSource: isSourcePathValue(value.evidenceSource)
+            ? textOrNull(value.sourceLabel || 'stackctrl_dashboard_evidence', 255)
+            : visibleTextOrNull(value.evidenceSource || value.sourceLabel || 'stackctrl_dashboard_evidence', 255),
+        whatHappened: visibleTextOrNull(value.whatHappened || value.description, 1200),
+        whyItMatters: visibleTextOrNull(value.whyItMatters || value.businessImpact, 1200),
+        recommendedAction: visibleTextOrNull(value.recommendedAction || value.recommendation || value.detail, 1200),
+        recommendedActions: array(value.recommendedActions).map(action => visibleTextOrNull(action, 1200)).filter(Boolean),
         metricName: textOrNull(value.metricName, 120),
         direction: textOrNull(value.direction, 50),
         currentValue: numberOrNull(value.currentValue),
@@ -580,28 +875,46 @@ function ensureItemEvidence(item, domain, snapshotId, availableEvidence = []) {
             .some(value => String(value || '').toLowerCase() === requestedMetric))
         : [];
     const selected = matching.length ? matching : availableEvidence;
-    const rows = selected.map(row => safeEvidenceEntity({
-        sourcePath: row?.sourcePath || null,
+    const entityContext = {
+        ...normalized,
+        sourceDomain: normalized.sourceDomain || domain.key,
+        sourceMetric: normalized.sourceMetric,
+        businessReason: normalized.businessReason,
+        recommendation: normalized.recommendation
+    };
+    const rows = uniqueEntities(selected.map(row => canonicalEntity({
+        internalSourcePath: row?.internalSourcePath || null,
         sourceMetric: row?.sourceMetric || null,
         evidenceType: row?.evidenceType || null,
-        entityKey: row?.entityKey || null,
         data: row?.data ?? row
-    }, { ...ENTITY_EVIDENCE_LIMITS, maxArray: 20, maxObjectKeys: 50 }));
-    const recordIds = compactReferences(selected.map(row => ({ ...(row?.data || {}), entityKey: row?.entityKey, recordId: row?.sourcePath })));
+    }, entityContext)));
+    const recordIds = compactReferences(selected.map(row => row?.data || row));
     const first = selected[0] || {};
     if (!normalized.sourceMetric) normalized.sourceMetric = textOrNull(first.sourceMetric || first.sourceLabel || first.evidenceType, 120);
     if (!normalized.evidenceSource || normalized.evidenceSource === 'stackctrl_dashboard_evidence') {
-        normalized.evidenceSource = textOrNull(first.sourcePath || first.sourceLabel || 'stackctrl_dashboard_evidence', 255);
+        normalized.evidenceSource = textOrNull(first.sourceLabel || first.evidenceType || 'stackctrl_dashboard_evidence', 255);
     }
     if (!normalized.evidenceRows.length) normalized.evidenceRows = rows;
-    if (!normalized.affectedEntities.length) normalized.affectedEntities = rows.map(row => row.data ?? row);
+    const rowsById = new Map(rows.filter(row => row.entityId).map(row => [String(row.entityId), row]));
+    normalized.affectedEntities = uniqueEntities(normalized.affectedEntities.map(entity => {
+        const sourceEntity = entity.entityId ? rowsById.get(String(entity.entityId)) : null;
+        return sourceEntity ? { ...sourceEntity, ...entity, entityName: entity.entityName || sourceEntity.entityName } : entity;
+    }));
+    if (!normalized.affectedEntities.length || normalized.affectedEntities.every(entity => !entity.entityName)) {
+        normalized.affectedEntities = rows;
+    }
     normalized.recordIds = compactReferences([...normalized.recordIds, ...normalized.evidenceRows, ...recordIds]);
     normalized.affectedEntityIds = compactReferences([...normalized.affectedEntityIds, ...normalized.affectedEntities, ...recordIds]);
     const sourceAlertIds = selected.map(row => {
         const data = row?.data ?? row;
-        return data?.sourceAlertId || data?.alertId || data?.SourceID || data?.id || row?.entityKey || null;
+        return data?.sourceAlertId || data?.alertId || data?.SourceID || data?.id || null;
     }).filter(Boolean).map(String);
     normalized.sourceAlertIds = compactReferences([...array(item?.sourceAlertIds), ...sourceAlertIds]);
+    normalized.internalSourcePaths = [...new Set([
+        ...array(normalized.internalSourcePaths),
+        ...selected.map(row => row?.internalSourcePath).filter(Boolean)
+    ])];
+    normalized.internalSourcePath = normalized.internalSourcePaths[0] || null;
     normalized.sourceMetrics = [...new Set([...array(item?.sourceMetrics).map(String), normalized.sourceMetric].filter(Boolean))];
     normalized.recommendedActions = array(item?.recommendedActions).length
         ? array(item.recommendedActions)
@@ -624,6 +937,48 @@ function normalizeControlAssessment(value, domain, snapshotId, availableEvidence
                 ? normalizeControlAssessment(nested, domain, snapshotId, availableEvidence)
                 : nested)
     ]));
+}
+
+function normalizeDomainOutputForDisplay(value, domain, snapshotId) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+    const normalized = sanitizeVisibleValue(value);
+    const normalizeItems = items => array(items).map(item => normalizeEvidenceBackedItem(item, domain, snapshotId));
+    return {
+        ...normalized,
+        domainExecutiveSummary: visibleTextOrNull(value.domainExecutiveSummary, 4000),
+        technicalSummary: visibleTextOrNull(value.technicalSummary, 4000),
+        businessImpact: visibleTextOrNull(value.businessImpact, 4000),
+        currentPosture: visibleTextOrNull(value.currentPosture, 4000),
+        scoreJustification: visibleTextOrNull(value.scoreJustification, 4000),
+        controlAssessment: normalizeControlAssessment(value.controlAssessment || {}, domain, snapshotId, []),
+        keyFindings: normalizeItems(value.keyFindings),
+        risks: normalizeItems(value.risks),
+        recommendations: normalizeItems(value.recommendations),
+        trendAnalysis: normalizeItems(value.trendAnalysis),
+        managementActions: normalizeItems(value.managementActions)
+    };
+}
+
+function normalizeSynthesisOutputForDisplay(value, snapshotId = null) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    const normalizeItems = items => array(items).map(item => {
+        const domainKey = item?.domainKey || item?.sourceDomain || 'enterprise';
+        const domain = DOMAIN_BY_KEY[domainKey] || { key: domainKey, name: item?.domainName || 'Enterprise' };
+        return normalizeEvidenceBackedItem(item, domain, item?.snapshotId ?? snapshotId);
+    });
+    const managementReport = sanitizeVisibleValue(value.managementReport || {});
+    if (managementReport && typeof managementReport === 'object' && !Array.isArray(managementReport)) {
+        if (Array.isArray(value.managementReport?.managementActions)) managementReport.managementActions = normalizeItems(value.managementReport.managementActions);
+        if (Array.isArray(value.managementReport?.actions)) managementReport.actions = normalizeItems(value.managementReport.actions);
+    }
+    return {
+        ...sanitizeVisibleValue(value),
+        managementReport,
+        riskRegister: normalizeItems(value.riskRegister),
+        recommendations: normalizeItems(value.recommendations),
+        trendAnalysis: normalizeItems(value.trendAnalysis),
+        businessImpactSummary: visibleTextOrNull(value.businessImpactSummary, 100000)
+    };
 }
 
 function deepItemCount(value, depth = 0) {
@@ -1204,7 +1559,10 @@ function createEnterpriseIntelligenceService({
         current.evidence = enrichDomainEvidence(current.source, domain, current.evidence);
         const knowledge = await loadKnowledge(domain.key);
         const previousAnalysis = await loadPreviousDomain(companyId, domain.key, runId);
-        const flattenedEvidence = flattenDomainEvidence(current.evidence, { rootPath: `${domain.sourceKey}.evidence`, domainKey: domain.key });
+        const flattenedDomainEvidence = flattenDomainEvidence(current.evidence, { rootPath: `${domain.sourceKey}.evidence`, domainKey: domain.key });
+        const flattenedEvidence = domain.key === 'identity'
+            ? identityUserEvidenceRows(flattenedDomainEvidence)
+            : flattenedDomainEvidence;
         const evidenceCatalog = buildEvidenceCatalog(current.evidence, domain, snapshot.ID);
         const stackCTRLDataCount = flattenedEvidence.length;
         const sourceEvidenceLineage = current.source.sourceLineage || {};
@@ -1351,7 +1709,7 @@ function createEnterpriseIntelligenceService({
         // For batching: don't permanently reduce evidence, just use what we have
         const inputSizeBytes = bytes(base);
         const batchPlan = buildEvidenceBatchPlan(flattenedEvidence, splitIntoBatches(flattenedEvidence, {
-            maxItems: settings.maxItemsPerBatch,
+            maxItems: domain.key === 'identity' ? IDENTITY_MAX_ITEMS_PER_BATCH : settings.maxItemsPerBatch,
             maxBytes: settings.maxInputBytes
         }));
         return {
@@ -1374,7 +1732,7 @@ function createEnterpriseIntelligenceService({
                 inputSizeBytes,
                 batchPlan,
                 evidenceSample: flattenedEvidence.slice(0, 5).map(item => ({
-                    sourcePath: item.sourcePath,
+                    internalSourcePath: item.internalSourcePath,
                     sourceLabel: item.sourceLabel,
                     evidenceType: item.evidenceType,
                     entityKey: item.entityKey || null
@@ -1390,7 +1748,8 @@ Each finding, risk, recommendation, and management action must use these fields:
 title, severity, category, status, sourceDomain, sourceMetric, sourceMetrics, snapshotId, evidenceSource,
 sourceAlertIds, affectedEntities, affectedEntityIds, evidenceRows, recordIds, whatHappened, whyItMatters, businessImpact,
 recommendedAction, recommendedActions, suggestedOwner, suggestedDueDate.
-affectedEntities and evidenceRows must include readable names where present: alert display name/title, userPrincipalName/email, device display name, application/control name, severity/status, plus the internal evidence ID. IDs may supplement readable evidence but must never replace it.
+Every affectedEntities object must include entityId, entityName, entityType, sourceDomain, sourceMetric, businessReason, and recommendation. Include publisherName and readable user email, device name, application name, alert name, or policy name where present. IDs may supplement readable evidence but must never replace it.
+Use source paths only in internalSourcePath, debugSourcePath, or auditTrace.sourcePath. Never place source paths in affectedEntities, affectedEntityIds, recordIds, or sourceAlertIds.
 Return exactly:
 {
   "domainExecutiveSummary": "one compact sentence",
@@ -1425,10 +1784,11 @@ StackCTRL authoritative scores must be justified but never recalculated or repla
 
 Use BOTH summary metrics and entity-level evidence:
 - currentMetrics, dashboardMetrics, and calculatedIndicators provide executive counts and scores.
-- evidenceCatalog.categories contains categorized dashboard entity rows tied to sourceMetric keys.
+${domain.key === 'identity' ? '- Identity evidence[] is a compact table. Each row already contains the readable user, MFA, authentication, risk, account, sign-in, location, device, role, and key-flag fields needed for analysis. Do not request or infer omitted dashboard/catalog/history objects.' : '- evidenceCatalog.categories contains categorized dashboard entity rows tied to sourceMetric keys.'}
 - evidence[] contains individual entity rows from the StackCTRL dashboard table for this batch.
 Every finding, risk, and recommendation MUST be evidence-backed. Do not state a gap without naming affected users, devices, apps, controls, policies, alerts, or other entities from the supplied evidence.
 Visible output must be human-readable. Include userPrincipalName/email, device display name, alert title/display name, application/control/policy name, or another useful entity label whenever supplied. Keep internal IDs as evidence references alongside those names; never return an ID as the only description of an affected entity.
+Every affectedEntities object must include entityId, entityName, entityType, sourceDomain, sourceMetric, businessReason, and recommendation. Use source paths only in internalSourcePath, debugSourcePath, or auditTrace.sourcePath; never use them as entity IDs, record IDs, alert IDs, or visible names.
 
 Return valid JSON only. No markdown. No code fences. No explanations outside JSON.
 Return exactly these fields:
@@ -1457,9 +1817,9 @@ Return exactly these fields:
   "evidenceLimitations": {}
 }
 
-Finding fields: title, description, severity, status, whatHappened, whyItMatters, businessImpact, evidenceSummary, affectedEntities, affectedEntityIds, evidenceRows, recordIds, sourceDomain, sourceMetric, snapshotId, evidenceSource, suggestedOwner, suggestedDueDate.
-Risk fields: title, description, severity, likelihood, impact, whatHappened, whyItMatters, businessImpact, evidenceSummary, affectedEntities, affectedEntityIds, evidenceRows, recordIds, sourceDomain, sourceMetric, snapshotId, evidenceSource, recommendation, suggestedOwner, suggestedDueDate.
-Recommendation/action fields: title, detail, priority, whatHappened, whyItMatters, businessImpact, recommendedAction, affectedEntities, affectedEntityIds, evidenceRows, recordIds, sourceDomain, sourceMetric, snapshotId, evidenceSource, suggestedOwner, suggestedDueDate.
+Finding fields: title, description, severity, status, whatHappened, whyItMatters, businessImpact, businessReason, evidenceSummary, affectedEntities, affectedEntityIds, evidenceRows, recordIds, internalSourcePaths, sourceDomain, sourceMetric, snapshotId, evidenceSource, suggestedOwner, suggestedDueDate.
+Risk fields: riskId, title, description, severity, likelihood, impact, whatHappened, whyItMatters, businessImpact, businessReason, evidenceSummary, affectedEntities, affectedEntityIds, evidenceRows, recordIds, internalSourcePaths, sourceDomain, sourceMetric, snapshotId, evidenceSource, recommendation, suggestedOwner, suggestedDueDate.
+Recommendation/action fields: recommendationId, title, detail, priority, whatHappened, whyItMatters, businessImpact, businessReason, recommendedAction, affectedEntities, affectedEntityIds, evidenceRows, recordIds, internalSourcePaths, sourceDomain, sourceMetric, snapshotId, evidenceSource, suggestedOwner, suggestedDueDate.
 Control assessment items and trend fields must retain readable entity labels and the matching IDs whenever evidence exists.
 Trend fields additionally include: metricName, currentValue, previousValue, changePercent, direction, comparisonPeriod, explanation.
 evidenceUsed items: label, sourceMetric, entityCount, snapshotId, evidenceSource.
@@ -1506,7 +1866,51 @@ ${JSON.stringify(packageValue)}`;
     }
 
     // Build a domain analysis package for a specific batch of evidence
+    function buildIdentityBatchPackage(basePackage, batchEvidence, batchNumber, totalBatches) {
+        const sharedContextIncluded = batchNumber === 1;
+        const sharedContext = sharedContextIncluded
+            ? compactIdentityBasePackage(basePackage)
+            : {
+                contextType: 'stackctrl_enterprise_identity_table_continuation',
+                schemaVersion: 2,
+                companyId: basePackage.companyId,
+                snapshotId: basePackage.snapshotId,
+                domain: { key: 'identity', name: basePackage.domain?.name || 'Identity Protection' },
+                authoritativeScores: basePackage.authoritativeScores,
+                baseContextReference: {
+                    snapshotId: basePackage.snapshotId,
+                    domainKey: 'identity',
+                    sharedContextSentInBatch: 1
+                }
+            };
+        return {
+            ...sharedContext,
+            sharedContextIncluded,
+            evidence: batchEvidence.map((item, index) => compactIdentityEvidenceRow(item, index)),
+            batchMetadata: {
+                batchNumber,
+                totalBatches,
+                recordsSent: batchEvidence.length,
+                evidenceRowsIncluded: batchEvidence.length,
+                tableStyleInput: true,
+                sharedContextIncluded
+            },
+            limitations: {
+                ...(sharedContext.limitations || {}),
+                batchProcessing: totalBatches > 1,
+                batchNumber,
+                totalBatches,
+                recordsSent: batchEvidence.length,
+                recordsOmitted: 0,
+                evidenceRowsIncluded: batchEvidence.length
+            }
+        };
+    }
+
     function buildDomainBatchPackage(basePackage, batchEvidence, batchNumber, totalBatches, semanticGrouping = null) {
+        if (basePackage?.domain?.key === 'identity') {
+            return buildIdentityBatchPackage(basePackage, batchEvidence, batchNumber, totalBatches);
+        }
         const categoryMap = new Map();
         for (const item of batchEvidence) {
             const key = String(item?.evidenceCategory || item?.sourceLabel || item?.evidenceType || 'evidenceRows');
@@ -1514,7 +1918,7 @@ ${JSON.stringify(packageValue)}`;
             const data = item?.data ?? item;
             categoryMap.get(key).push({
                 entityKey: item?.entityKey || entityRecordKey(data),
-                sourcePath: item?.sourcePath || null,
+                internalSourcePath: item?.internalSourcePath || null,
                 sourceAlertId: data?.sourceAlertId || data?.alertId || data?.SourceID || data?.id || null
             });
         }
@@ -1538,7 +1942,7 @@ ${JSON.stringify(packageValue)}`;
                 evidenceNumber: (batchNumber - 1) * Math.max(batchEvidence.length, 1) + index + 1,
                 evidenceType: item?.evidenceType || item?.type || 'stored_evidence',
                 sourceLabel: item?.sourceLabel || null,
-                sourcePath: item?.sourcePath || null,
+                internalSourcePath: item?.internalSourcePath || null,
                 evidenceCategory: item?.evidenceCategory || null,
                 sourceMetric: item?.sourceMetric || null,
                 entityKey: item?.entityKey || entityRecordKey(item?.data ?? item),
@@ -1631,7 +2035,7 @@ ${JSON.stringify(packageValue)}`;
             semanticGrouping,
             evidenceTypes: [...new Set(batchEvidence.map(item => item?.evidenceType).filter(Boolean))],
             firstEvidenceNumber: batchEvidence.length ? 1 : 0,
-            lastEvidencePath: batchEvidence.at(-1)?.sourcePath || null
+            internalSourcePath: batchEvidence.at(-1)?.internalSourcePath || null
         };
         
         await pool.query(
@@ -1936,7 +2340,12 @@ ${JSON.stringify(packageValue)}`;
                 totalBatches,
                 processedItems,
                 remainingItems: Math.max(0, packageResult.allEvidence.length - processedItems),
-                complete: completed.length === totalBatches
+                complete: completed.length === totalBatches,
+                basePackageTokens: packageResult.audit.batchPlan?.basePackageTokens ?? null,
+                evidenceTokens: packageResult.audit.batchPlan?.evidenceTokens ?? null,
+                totalEstimatedTokens: packageResult.audit.batchPlan?.totalEstimatedTokens ?? null,
+                safeInputTokenLimit: packageResult.audit.batchPlan?.safeInputTokenLimit ?? null,
+                reasonForBatchCount: packageResult.audit.batchPlan?.reasonForBatchCount || null
             }
         }, domain, packageResult.current, snapshotId, packageResult.allEvidence);
     }
@@ -2009,11 +2418,13 @@ ${JSON.stringify(packageValue)}`;
             logger.info?.('[security_alerts:azure_batch_plan:start] Building semantic Azure batch plan');
             await updateRunStageProgress(run.id, { stage: 'azure_batch_plan:start', lastSuccessfulStage: 'evidence_prepare:complete' });
         }
-        const maxItems = thresholdReached
-            ? Math.min(settings.maxItemsPerBatch, settings.thresholdBatchMaxItems)
-            : HEAVY_DOMAINS.has(domain.key)
-                ? Math.min(settings.maxItemsPerBatch, settings.heavyDomainMaxItemsPerBatch)
-                : settings.maxItemsPerBatch;
+        const maxItems = domain.key === 'identity'
+            ? IDENTITY_MAX_ITEMS_PER_BATCH
+            : thresholdReached
+                ? Math.min(settings.maxItemsPerBatch, settings.thresholdBatchMaxItems)
+                : HEAVY_DOMAINS.has(domain.key)
+                    ? Math.min(settings.maxItemsPerBatch, settings.heavyDomainMaxItemsPerBatch)
+                    : settings.maxItemsPerBatch;
         const batchOptions = {
             maxItems,
             maxBytes: settings.maxInputBytes,
@@ -2024,7 +2435,50 @@ ${JSON.stringify(packageValue)}`;
         };
         
         let batches;
-        if (domain.key === 'security_alerts') {
+        let batchPlanDiagnostics = {};
+        if (domain.key === 'identity') {
+            const emptyRequestBytes = estimateDomainRequestBytes(
+                domain,
+                buildDomainBatchPackage(packageResult.package, [], 1, 1)
+            );
+            const combinedRequestBytes = estimateDomainRequestBytes(
+                domain,
+                buildDomainBatchPackage(packageResult.package, allEvidence, 1, 1)
+            );
+            batches = splitIntoBatches(allEvidence, batchOptions);
+            const basePackageTokens = Math.ceil(emptyRequestBytes / 4);
+            const totalEstimatedTokens = Math.ceil(combinedRequestBytes / 4);
+            const evidenceTokens = Math.max(0, totalEstimatedTokens - basePackageTokens);
+            const safeInputTokenLimit = Math.floor(settings.maxInputBytes / 4);
+            let reasonForBatchCount;
+            if (!allEvidence.length) {
+                reasonForBatchCount = 'no_identity_evidence_rows';
+            } else if (batches.length === 1) {
+                reasonForBatchCount = 'all_identity_rows_fit_safe_token_limit';
+            } else if (combinedRequestBytes > settings.maxInputBytes && allEvidence.length > maxItems) {
+                reasonForBatchCount = 'identity_evidence_exceeds_safe_token_limit_and_row_safety_cap';
+            } else if (combinedRequestBytes > settings.maxInputBytes) {
+                reasonForBatchCount = 'identity_evidence_exceeds_safe_token_limit';
+            } else {
+                reasonForBatchCount = `identity_evidence_exceeds_${maxItems}_row_safety_cap`;
+            }
+            batchPlanDiagnostics = {
+                basePackageTokens,
+                evidenceTokens,
+                totalEstimatedTokens,
+                safeInputTokenLimit,
+                reasonForBatchCount
+            };
+            logger.info?.(
+                `[StackCTRL Enterprise] Identity batch plan: basePackageTokens=${basePackageTokens}, evidenceTokens=${evidenceTokens}, totalEstimatedTokens=${totalEstimatedTokens}, safeInputTokenLimit=${safeInputTokenLimit}, batchCount=${batches.length}, reasonForBatchCount=${reasonForBatchCount}`
+            );
+            if (batches.length > 5) {
+                logger.warn?.(
+                    `[StackCTRL Enterprise] Identity required ${batches.length} batches for ${allEvidence.length} users. ` +
+                    `Reason: ${reasonForBatchCount}; estimated ${totalEstimatedTokens} tokens versus safe limit ${safeInputTokenLimit}.`
+                );
+            }
+        } else if (domain.key === 'security_alerts') {
             const singleBatchEstimate = estimateDomainRequestBytes(
                 domain,
                 buildDomainBatchPackage(packageResult.package, allEvidence, 1, 1)
@@ -2036,7 +2490,7 @@ ${JSON.stringify(packageValue)}`;
             batches = splitIntoBatches(allEvidence, batchOptions);
         }
         
-        packageResult.audit.batchPlan = buildEvidenceBatchPlan(allEvidence, batches);
+        packageResult.audit.batchPlan = buildEvidenceBatchPlan(allEvidence, batches, batchPlanDiagnostics);
         if (domain.key === 'security_alerts') {
             logger.info?.(`[security_alerts:azure_batch_plan:complete] ${batches.length} batch(es) planned for ${allEvidence.length} evidence record(s)`);
             await updateRunStageProgress(run.id, { stage: 'azure_analysis:start', lastSuccessfulStage: 'azure_batch_plan:complete' });
@@ -2451,15 +2905,15 @@ ${JSON.stringify(packageValue)}`;
             recordsOmitted: numberOrNull(value.recordsOmitted),
             omittedReasons: array(value.omittedReasons).map(reason => textOrNull(reason, 1200)).filter(Boolean),
             evidenceAvailable: value.evidenceAvailable == null ? null : Boolean(value.evidenceAvailable),
-            message: textOrNull(value.message, 1200),
+            message: visibleTextOrNull(value.message, 1200),
             rawAzureResponseStored: Boolean(value.rawAzureResponseStored),
-            domainExecutiveSummary: textOrNull(value.domainExecutiveSummary, 4000),
-            technicalSummary: textOrNull(value.technicalSummary, 4000),
-            businessImpact: textOrNull(value.businessImpact, 4000),
-            currentPosture: textOrNull(value.currentPosture, 4000),
-            scoreJustification: textOrNull(value.scoreJustification, 4000),
-            evidenceUsed: array(value.evidenceUsed),
-            evidenceGaps: array(value.evidenceGaps),
+            domainExecutiveSummary: visibleTextOrNull(value.domainExecutiveSummary, 4000),
+            technicalSummary: visibleTextOrNull(value.technicalSummary, 4000),
+            businessImpact: visibleTextOrNull(value.businessImpact, 4000),
+            currentPosture: visibleTextOrNull(value.currentPosture, 4000),
+            scoreJustification: visibleTextOrNull(value.scoreJustification, 4000),
+            evidenceUsed: sanitizeVisibleValue(array(value.evidenceUsed)),
+            evidenceGaps: sanitizeVisibleValue(array(value.evidenceGaps)),
             controlAssessment: normalizeControlAssessment(value.controlAssessment || {}, domain, resolvedSnapshotId, availableEvidence),
             keyFindings: normalizeItems(value.keyFindings),
             risks: normalizeItems(value.risks),
@@ -2469,8 +2923,8 @@ ${JSON.stringify(packageValue)}`;
             whatImproved: array(value.whatImproved),
             whatDeteriorated: array(value.whatDeteriorated),
             whatStayedTheSame: array(value.whatStayedTheSame),
-            missingDataWarnings: array(value.missingDataWarnings).map(warning => textOrNull(warning, 1200)).filter(Boolean),
-            assumptions: array(value.assumptions).map(assumption => textOrNull(assumption, 1200)).filter(Boolean),
+            missingDataWarnings: array(value.missingDataWarnings).map(warning => visibleTextOrNull(warning, 1200)).filter(Boolean),
+            assumptions: array(value.assumptions).map(assumption => visibleTextOrNull(assumption, 1200)).filter(Boolean),
             confidenceScore: numberOrNull(value.confidenceScore),
             managementActions: normalizeItems(value.managementActions),
             powerBiSummary: value.powerBiSummary || {},
@@ -2993,7 +3447,12 @@ ${JSON.stringify(packageValue)}`;
                     failedBatches: failedBatches.length,
                     processedItems: batchResults.processedItems,
                     omittedItems: batchResults.omittedItems,
-                    complete: batchResults.complete
+                    complete: batchResults.complete,
+                    basePackageTokens: packageResult.audit.batchPlan?.basePackageTokens ?? null,
+                    evidenceTokens: packageResult.audit.batchPlan?.evidenceTokens ?? null,
+                    totalEstimatedTokens: packageResult.audit.batchPlan?.totalEstimatedTokens ?? null,
+                    safeInputTokenLimit: packageResult.audit.batchPlan?.safeInputTokenLimit ?? null,
+                    reasonForBatchCount: packageResult.audit.batchPlan?.reasonForBatchCount || null
                 }
             };
             const aggregatedAnalysis = normalizedDomainResult(
@@ -3074,7 +3533,16 @@ ${JSON.stringify(packageValue)}`;
                 analysis: aggregatedAnalysis,
                 usage: batchResults.totals,
                 audit: updatedAudit,
-                batchInfo: { completedBatches: completedBatches.length, totalBatches: batchResults.batchCount, failedBatches: failedBatches.length },
+                batchInfo: {
+                    completedBatches: completedBatches.length,
+                    totalBatches: batchResults.batchCount,
+                    failedBatches: failedBatches.length,
+                    basePackageTokens: packageResult.audit.batchPlan?.basePackageTokens ?? null,
+                    evidenceTokens: packageResult.audit.batchPlan?.evidenceTokens ?? null,
+                    totalEstimatedTokens: packageResult.audit.batchPlan?.totalEstimatedTokens ?? null,
+                    safeInputTokenLimit: packageResult.audit.batchPlan?.safeInputTokenLimit ?? null,
+                    reasonForBatchCount: packageResult.audit.batchPlan?.reasonForBatchCount || null
+                },
                 errorMessage: partialErrorMessage,
                 rateLimited: batchResults.rateLimited,
                 recommendedRetryAfterMs: batchResults.recommendedRetryAfterMs
@@ -3260,6 +3728,7 @@ ${JSON.stringify(packageValue)}`;
                 'Azure synthesis output ended before all closing JSON delimiters were returned. StackCTRL safely recovered the structured response; trailing narrative fields may be incomplete.'
             ];
         }
+        analysis = normalizeSynthesisOutputForDisplay(analysis, snapshotId);
         const finalRunStatus = synthesisJsonRecovered || finishReason === 'length' || allDomainRows.some(row => row.status !== 'completed')
             ? 'completed_with_warnings'
             : 'completed';
@@ -3886,7 +4355,14 @@ ${JSON.stringify(packageValue)}`;
         const resolvedRunId = await latestRunIdForCompany(companyId, runId);
         const [rows] = await pool.query('SELECT * FROM StackCTRLTenantDomainIntelligence WHERE CompanyID = ? AND RunID = ? AND DomainKey = ? ORDER BY ID DESC LIMIT 1', [Number(companyId), resolvedRunId, domainKey]);
         if (!rows[0]) { const error = new Error('Domain intelligence detail not found'); error.statusCode = 404; throw error; }
-        return { ...rows[0], AnalysisJson: parseJson(rows[0].AnalysisJson, {}) };
+        return {
+            ...rows[0],
+            AnalysisJson: normalizeDomainOutputForDisplay(
+                parseJson(rows[0].AnalysisJson, {}),
+                DOMAIN_BY_KEY[domainKey],
+                rows[0].SnapshotID
+            )
+        };
     }
 
     async function getAdminAuditDetail(companyId, domainKey, runId = null) {
@@ -3904,10 +4380,15 @@ ${JSON.stringify(packageValue)}`;
     async function getAdminBatchDetails(companyId, domainKey, runId = null) {
         const resolvedRunId = await latestRunIdForCompany(companyId, runId);
         const [rows] = await pool.query('SELECT * FROM StackCTRLTenantDomainIntelligenceBatches WHERE CompanyID = ? AND RunID = ? AND DomainKey = ? ORDER BY BatchNumber', [Number(companyId), resolvedRunId, domainKey]);
+        const domain = DOMAIN_BY_KEY[domainKey] || { key: domainKey, name: domainKey };
         return rows.map(row => ({
-            ...row, BatchSummaryJson: parseJson(row.BatchSummaryJson, {}), FindingsJson: parseJson(row.FindingsJson, []),
-            RisksJson: parseJson(row.RisksJson, []), RecommendationsJson: parseJson(row.RecommendationsJson, []),
-            TrendsJson: parseJson(row.TrendsJson, []), MissingDataWarningsJson: parseJson(row.MissingDataWarningsJson, [])
+            ...row,
+            BatchSummaryJson: sanitizeVisibleValue(parseJson(row.BatchSummaryJson, {})),
+            FindingsJson: array(parseJson(row.FindingsJson, [])).map(item => normalizeEvidenceBackedItem(item, domain, row.SnapshotID)),
+            RisksJson: array(parseJson(row.RisksJson, [])).map(item => normalizeEvidenceBackedItem(item, domain, row.SnapshotID)),
+            RecommendationsJson: array(parseJson(row.RecommendationsJson, [])).map(item => normalizeEvidenceBackedItem(item, domain, row.SnapshotID)),
+            TrendsJson: array(parseJson(row.TrendsJson, [])).map(item => normalizeEvidenceBackedItem(item, domain, row.SnapshotID)),
+            MissingDataWarningsJson: sanitizeVisibleValue(parseJson(row.MissingDataWarningsJson, []))
         }));
     }
 
@@ -3919,7 +4400,8 @@ ${JSON.stringify(packageValue)}`;
     }
 
     function powerBIDomainRow(row) {
-        const intelligenceOutput = parseJson(row.AnalysisJson, null);
+        const domain = DOMAIN_BY_KEY[row.DomainKey] || { key: row.DomainKey, name: row.DomainName };
+        const intelligenceOutput = normalizeDomainOutputForDisplay(parseJson(row.AnalysisJson, null), domain, row.SnapshotID);
         return {
             companyId: Number(row.CompanyID),
             snapshotId: row.SnapshotID == null ? null : Number(row.SnapshotID),
@@ -3947,7 +4429,7 @@ ${JSON.stringify(packageValue)}`;
 
     function powerBISynthesisRow(row) {
         if (!row) return null;
-        const synthesisOutput = {
+        const synthesisOutput = normalizeSynthesisOutputForDisplay({
             enterpriseExecutiveSummary: parseJson(row.ExecutiveSummaryJson, {}),
             boardReport: parseJson(row.BoardReportJson, {}),
             managementReport: parseJson(row.ManagementReportJson, {}),
@@ -3965,7 +4447,7 @@ ${JSON.stringify(packageValue)}`;
             evidenceJustificationSummary: parseJson(row.EvidenceJustificationJson, {}),
             limitationsAndAssumptions: parseJson(row.LimitationsJson, []),
             powerBiSummary: parseJson(row.PowerBISummaryJson, {})
-        };
+        }, row.SnapshotID);
         return {
             companyId: Number(row.CompanyID), snapshotId: row.SnapshotID == null ? null : Number(row.SnapshotID),
             runId: Number(row.RunID), synthesisId: Number(row.ID), periodType: row.PeriodType,
@@ -3989,42 +4471,118 @@ ${JSON.stringify(packageValue)}`;
     }
 
     function flattenPowerBITables({ domains = [], finalSynthesis = null, audits = [], runs = [] } = {}) {
-        const DomainScorecardRows = array(finalSynthesis?.synthesisOutput?.domainScorecard);
+        const DomainScorecardRows = sanitizeVisibleValue(array(finalSynthesis?.synthesisOutput?.domainScorecard));
         const flattenControls = (value, category = null) => {
             if (Array.isArray(value)) return value.flatMap(item => flattenControls(item, category));
             if (!value || typeof value !== 'object') return [];
             if (value.title || value.name || value.control || value.description || value.detail) return [{ category, ...value }];
             return Object.entries(value).flatMap(([key, nested]) => flattenControls(nested, category ? `${category}.${key}` : key));
         };
-        const sectionRows = (section, outputKey) => domains.flatMap(domain => array(domain.intelligenceOutput?.[section]).map((item, index) => ({
+        const sectionRows = (section, itemType) => domains.flatMap(domain => array(domain.intelligenceOutput?.[section]).map((item, index) => ({
             companyId: domain.companyId, snapshotId: domain.snapshotId, runId: domain.runId,
             periodType: domain.periodType, periodStart: domain.periodStart, periodEnd: domain.periodEnd,
             domainKey: domain.domainKey, domainName: domain.domainName, rowNumber: index + 1,
-            [outputKey]: item
+            itemType, item: sanitizeVisibleValue(item)
         })));
-        const RiskRegisterRows = sectionRows('risks', 'risk');
-        const RecommendationRows = sectionRows('recommendations', 'recommendation');
+        const relationshipId = (row, type) => textOrNull(
+            row.item?.[`${type}Id`] || row.item?.id || `${row.runId}:${row.domainKey}:${type}:${row.rowNumber}`,
+            255
+        );
+        const flatItemFields = row => ({
+            title: row.item?.title || row.item?.metricName || null,
+            description: row.item?.description || row.item?.detail || null,
+            severity: row.item?.severity || null,
+            priority: row.item?.priority || null,
+            status: row.item?.status || null,
+            likelihood: row.item?.likelihood || null,
+            impact: row.item?.impact || null,
+            businessReason: row.item?.businessReason || row.item?.businessImpact || row.item?.whyItMatters || null,
+            recommendation: row.item?.recommendation || row.item?.recommendedAction || row.item?.detail || null,
+            sourceDomain: row.item?.sourceDomain || row.domainKey,
+            sourceMetric: row.item?.sourceMetric || null,
+            affectedEntityIds: compactReferences(row.item?.affectedEntityIds),
+            recordIds: compactReferences(row.item?.recordIds),
+            sourceAlertIds: compactReferences(row.item?.sourceAlertIds),
+            internalSourcePaths: array(row.item?.internalSourcePaths)
+        });
+        const riskRows = sectionRows('risks', 'risk');
+        const recommendationRows = sectionRows('recommendations', 'recommendation');
+        const RiskRegisterRows = riskRows.map(row => ({
+            ...row,
+            riskId: relationshipId(row, 'risk'),
+            ...flatItemFields(row),
+            risk: row.item
+        }));
+        const RecommendationRows = recommendationRows.map(row => ({
+            ...row,
+            recommendationId: relationshipId(row, 'recommendation'),
+            riskId: row.item?.riskId || null,
+            ...flatItemFields(row),
+            recommendationDetail: row.item
+        }));
         const ControlAssessmentRows = domains.flatMap(domain => {
             const assessment = domain.intelligenceOutput?.controlAssessment;
             const rows = flattenControls(assessment);
-            return rows.map((control, index) => ({ companyId: domain.companyId, snapshotId: domain.snapshotId, runId: domain.runId, domainKey: domain.domainKey, rowNumber: index + 1, control }));
+            return rows.map((control, index) => ({ companyId: domain.companyId, snapshotId: domain.snapshotId, runId: domain.runId, domainKey: domain.domainKey, rowNumber: index + 1, ...control, control }));
         });
-        const TrendRows = sectionRows('trendAnalysis', 'trend');
+        const TrendRows = sectionRows('trendAnalysis', 'trend').map(row => ({ ...row, trendId: relationshipId(row, 'trend'), ...flatItemFields(row), trend: row.item }));
         const evidenceBearingRows = [
-            ...sectionRows('keyFindings', 'item'), ...sectionRows('risks', 'item'),
-            ...sectionRows('recommendations', 'item'), ...sectionRows('managementActions', 'item'),
-            ...sectionRows('trendAnalysis', 'item')
+            ...sectionRows('keyFindings', 'finding'), ...riskRows,
+            ...recommendationRows, ...sectionRows('managementActions', 'managementAction'),
+            ...sectionRows('trendAnalysis', 'trend')
         ];
-        const AffectedEntityRows = evidenceBearingRows.flatMap(row => array(row.item?.affectedEntities).map((affectedEntity, index) => ({
-            companyId: row.companyId, snapshotId: row.snapshotId, runId: row.runId, domainKey: row.domainKey,
-            sourceMetric: row.item?.sourceMetric || null, itemTitle: row.item?.title || row.item?.metricName || null,
-            rowNumber: index + 1, affectedEntity
-        })));
-        const EvidenceRows = evidenceBearingRows.flatMap(row => array(row.item?.evidenceRows).map((evidenceRow, index) => ({
-            companyId: row.companyId, snapshotId: row.snapshotId, runId: row.runId, domainKey: row.domainKey,
-            sourceMetric: row.item?.sourceMetric || null, evidenceSource: row.item?.evidenceSource || null,
-            itemTitle: row.item?.title || row.item?.metricName || null, rowNumber: index + 1, evidenceRow
-        })));
+        const AffectedEntityRows = evidenceBearingRows.flatMap(row => array(row.item?.affectedEntities).map((value, index) => {
+            const affectedEntity = canonicalEntity(value, row.item) || {};
+            return {
+                companyId: row.companyId,
+                runId: row.runId,
+                snapshotId: row.snapshotId,
+                domainKey: row.domainKey,
+                riskId: row.itemType === 'risk' ? relationshipId(row, 'risk') : (row.item?.riskId || null),
+                itemType: row.itemType,
+                itemTitle: row.item?.title || row.item?.metricName || null,
+                rowNumber: index + 1,
+                entityId: affectedEntity.entityId || null,
+                entityName: affectedEntity.entityName || null,
+                entityType: affectedEntity.entityType || 'Entity',
+                entityDisplayName: affectedEntity.entityDisplayName || affectedEntity.entityName || null,
+                entityEmail: affectedEntity.entityEmail || null,
+                entityDeviceName: affectedEntity.entityDeviceName || null,
+                entityApplicationName: affectedEntity.entityApplicationName || null,
+                publisherName: affectedEntity.publisherName || null,
+                severity: affectedEntity.severity || row.item?.severity || null,
+                businessReason: affectedEntity.businessReason || row.item?.businessReason || row.item?.businessImpact || row.item?.whyItMatters || null,
+                recommendation: affectedEntity.recommendation || row.item?.recommendation || row.item?.recommendedAction || row.item?.detail || null,
+                sourceDomain: affectedEntity.sourceDomain || row.item?.sourceDomain || row.domainKey,
+                sourceMetric: affectedEntity.sourceMetric || row.item?.sourceMetric || null,
+                internalSourcePath: affectedEntity.internalSourcePath || null,
+                affectedEntity
+            };
+        }));
+        const EvidenceRows = evidenceBearingRows.flatMap(row => array(row.item?.evidenceRows).map((value, index) => {
+            const evidenceRow = canonicalEntity(value, row.item) || {};
+            return {
+                companyId: row.companyId,
+                runId: row.runId,
+                snapshotId: row.snapshotId,
+                domainKey: row.domainKey,
+                riskId: row.itemType === 'risk' ? relationshipId(row, 'risk') : (row.item?.riskId || null),
+                evidenceId: evidenceRow.entityId || `${row.runId}:${row.domainKey}:${row.itemType}:${row.rowNumber}:evidence:${index + 1}`,
+                itemType: row.itemType,
+                itemTitle: row.item?.title || row.item?.metricName || null,
+                rowNumber: index + 1,
+                entityId: evidenceRow.entityId || null,
+                entityName: evidenceRow.entityName || null,
+                entityType: evidenceRow.entityType || 'Entity',
+                evidenceSource: row.item?.evidenceSource || null,
+                sourceDomain: evidenceRow.sourceDomain || row.item?.sourceDomain || row.domainKey,
+                sourceMetric: evidenceRow.sourceMetric || row.item?.sourceMetric || null,
+                businessReason: evidenceRow.businessReason || row.item?.businessReason || row.item?.businessImpact || null,
+                recommendation: evidenceRow.recommendation || row.item?.recommendation || row.item?.recommendedAction || null,
+                internalSourcePath: evidenceRow.internalSourcePath || null,
+                evidenceRow
+            };
+        }));
         const TokenUsageRows = domains.map(domain => ({ companyId: domain.companyId, snapshotId: domain.snapshotId, runId: domain.runId, domainKey: domain.domainKey, ...domain.tokenUsage }));
         return {
             DomainScorecardRows, RiskRegisterRows, RecommendationRows, AffectedEntityRows, EvidenceRows,
