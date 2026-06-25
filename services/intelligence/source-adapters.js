@@ -22,7 +22,8 @@ function toDate(value) {
 
 function findTimestamp(value) {
     if (!value || typeof value !== 'object') return null;
-    const direct = value.CollectedAt || value.collected_at || value.SourceFetchedAt ||
+    const direct = value.sourceLastUpdated || value.SourceLastUpdated || value.sourceFetchedAt ||
+        value.SourceFetchedAt || value.CollectedAt || value.collected_at ||
         value.LastUpdated || value.last_updated || value.UpdatedAt || value.updated_at ||
         value.CreatedAt || value.fetchedAt || value.generatedAt || value.InvoiceDate || null;
     const directDate = toDate(direct);
@@ -125,6 +126,7 @@ function storedEvidenceLineage(snapshot, {
         evidenceSnapshotId: snapshot?.ID || null,
         collectedAt: snapshot?.CollectedAt || null,
         sourceFetchedAt: snapshot?.SourceFetchedAt || null,
+        sourceLastUpdated: snapshot?.SourceFetchedAt || snapshot?.CollectedAt || snapshot?.UpdatedAt || snapshot?.CreatedAt || null,
         sourceEndpoint: snapshot?.SourceEndpoint || null,
         collectionTrigger: snapshot?.CollectionTrigger || null,
         totalRows: Number(snapshot?.[totalField] || 0),
@@ -248,6 +250,7 @@ async function collectSource(context, definition) {
             warnings: loaded.warnings?.length
                 ? loaded.warnings
                 : [`${capability.displayName} has no stored evidence for this tenant.`],
+            errorMessage: loaded.sourceLineage?.errorMessage || loaded.sourceLineage?.incompleteReason || null,
             dashboardSourceMetrics: loaded.dashboardSourceMetrics || null,
             sourceLineage: loaded.sourceLineage || null,
             rawReference: loaded.rawReference || { table: definition.table || null, recordId: null }
@@ -558,20 +561,31 @@ const definitions = {
                 );
                 const snapshot = snapshots[0];
                 if (!snapshot) {
+                    const latestRows = await queryRows(
+                        pool,
+                        `SELECT * FROM StackCTRLEmailEvidenceSnapshots
+                         WHERE CompanyID = ?
+                         ORDER BY CollectedAt DESC, ID DESC LIMIT 1`,
+                        [companyId]
+                    );
+                    const latest = latestRows[0] || null;
+                    const latestMessage = latest?.ErrorMessage || latest?.IncompleteReason || 'No complete StackCTRL Email Security evidence snapshot is available.';
                     return {
                         records: [],
                         notConfigured: !tenant.length,
-                        metrics: {},
-                        dashboardSourceMetrics: {},
+                        metrics: latest?.DashboardMetricsJson || {},
+                        dashboardSourceMetrics: latest?.DashboardMetricsJson || {},
                         sourceLineage: {
-                            sourceKey: 'email_security',
-                            sourceBuilder: 'storedStackCTRLEmailEvidence',
-                            sourceLayer: 'StackCTRLEmailEvidenceSnapshots',
-                            collectionStatus: 'missing'
+                            ...storedEvidenceLineage(latest, {
+                                sourceKey: 'email_security',
+                                sourceBuilder: 'storedStackCTRLEmailEvidence',
+                                sourceLayer: 'StackCTRLEmailEvidenceSnapshots'
+                            }),
+                            collectionStatus: latest?.CollectionStatus || 'missing'
                         },
                         evidence: [],
-                        warnings: ['No complete StackCTRL Email Security evidence snapshot is available. Azure analysis is blocked until collection succeeds.'],
-                        rawReference: { table: this.table, recordId: null }
+                        warnings: [`${latestMessage} Azure analysis is blocked until Email evidence collection succeeds.`],
+                        rawReference: { table: this.table, recordId: latest?.ID || null }
                     };
                 }
                 const evidenceRows = await queryRows(
@@ -586,11 +600,14 @@ const definitions = {
                         metrics: {},
                         dashboardSourceMetrics: {},
                         sourceLineage: {
-                            sourceKey: 'email_security',
-                            sourceBuilder: 'storedStackCTRLEmailEvidence',
-                            sourceLayer: 'StackCTRLEmailEvidenceSnapshots',
+                            ...storedEvidenceLineage(snapshot, {
+                                sourceKey: 'email_security',
+                                sourceBuilder: 'storedStackCTRLEmailEvidence',
+                                sourceLayer: 'StackCTRLEmailEvidenceSnapshots'
+                            }),
                             evidenceSnapshotId: snapshot.ID,
-                            collectionStatus: 'incomplete'
+                            collectionStatus: 'incomplete',
+                            incompleteReason: `Email evidence snapshot ${snapshot.ID} expected ${snapshot.EvidenceRecordCount} rows but ${evidenceRows.length} were stored.`
                         },
                         evidence: [],
                         warnings: [`Email evidence snapshot ${snapshot.ID} expected ${snapshot.EvidenceRecordCount} rows but ${evidenceRows.length} were stored. Azure analysis is blocked.`],
@@ -619,6 +636,7 @@ const definitions = {
                         evidenceSnapshotId: snapshot.ID,
                         collectedAt: snapshot.CollectedAt,
                         sourceFetchedAt: snapshot.SourceFetchedAt,
+                        sourceLastUpdated: snapshot.SourceFetchedAt || snapshot.CollectedAt || snapshot.UpdatedAt || snapshot.CreatedAt,
                         sourceEndpoint: snapshot.SourceEndpoint,
                         collectionTrigger: snapshot.CollectionTrigger,
                         collectionStatus: snapshot.CollectionStatus,

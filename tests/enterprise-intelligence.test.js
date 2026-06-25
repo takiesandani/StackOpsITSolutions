@@ -10,14 +10,17 @@ const {
     EMAIL_LINEAGE_FIELDS,
     NETWORK_LINEAGE_FIELDS,
     ENTERPRISE_DOMAINS,
+    ensureItemEvidence,
     flattenDomainEvidence,
     normalizeEvidenceBackedItem,
+    normalizeDomainOutputForDisplay,
     normalizeMysqlDate,
     repairTruncatedJson,
     sourceAlignmentFailure,
     splitIntoBatches,
     splitSecurityAlertsIntoBatches
 } = require('../services/enterprise-intelligence');
+const { emailSecurityAdapter } = require('../services/intelligence/source-adapters');
 
 test('enterprise domain order keeps governance, operations, and compliance last', () => {
     assert.deepEqual(ENTERPRISE_DOMAINS.map(domain => domain.key), [
@@ -94,6 +97,239 @@ test('enterprise output keeps real entity IDs and readable business values while
     assert.equal(tables.AffectedEntityRows[0].internalSourcePath, sourcePath);
     assert.equal(tables.EvidenceRows[0].entityName, 'Microsoft Intune SCCM Connector');
     assert.equal(tables.EvidenceRows[0].internalSourcePath, sourcePath);
+});
+
+test('Email Security adapter freshness comes from Email evidence freshness', async () => {
+    const pool = {
+        async query(sql) {
+            if (/CompanyMicrosoftMapping/i.test(sql)) {
+                return [[{ MicrosoftTenantID: 1, TenantName: 'Sunbird', TenantID: 'tenant-1' }]];
+            }
+            if (/FROM StackCTRLEmailEvidenceSnapshots/i.test(sql)) {
+                return [[{
+                    ID: 77,
+                    CompanyID: 1,
+                    IsComplete: 1,
+                    CollectionStatus: 'complete',
+                    CollectedAt: '2026-06-24T05:16:14.000Z',
+                    SourceFetchedAt: '2026-06-25T09:30:00.000Z',
+                    CreatedAt: '2026-06-25T09:31:00.000Z',
+                    EvidenceRecordCount: 1,
+                    OmittedRecordCount: 0,
+                    DashboardMetricsJson: JSON.stringify({ activeThreats: 1 })
+                }]];
+            }
+            if (/FROM StackCTRLEmailEvidence WHERE SnapshotID/i.test(sql)) {
+                return [[{
+                    ID: 1,
+                    SnapshotID: 77,
+                    EvidenceKind: 'alert',
+                    SourceID: 'alert-1',
+                    ProcessedEvidenceJson: JSON.stringify({ id: 'alert-1', title: 'Phishing alert', severity: 'high' })
+                }]];
+            }
+            return [[]];
+        }
+    };
+    const result = await emailSecurityAdapter({
+        pool,
+        companyId: 1,
+        capability: {
+            sourceKey: 'email_security',
+            displayName: 'Email Security',
+            isExpected: true,
+            isEnabled: true,
+            profileKey: 'sunbird',
+            refreshMode: 'stored_only',
+            freshnessThresholdMinutes: 60
+        }
+    });
+
+    assert.equal(result.freshness.lastUpdated, '2026-06-25T09:30:00.000Z');
+    assert.equal(result.sourceLineage.sourceFetchedAt, '2026-06-25T09:30:00.000Z');
+    assert.equal(result.sourceLineage.sourceLastUpdated, '2026-06-25T09:30:00.000Z');
+});
+
+test('Email Security adapter surfaces latest collection error when refresh has failed', async () => {
+    const pool = {
+        async query(sql) {
+            if (/CompanyMicrosoftMapping/i.test(sql)) {
+                return [[{ MicrosoftTenantID: 1, TenantName: 'Sunbird', TenantID: 'tenant-1' }]];
+            }
+            if (/IsComplete = 1 AND CollectionStatus = 'complete'/i.test(sql)) return [[]];
+            if (/FROM StackCTRLEmailEvidenceSnapshots/i.test(sql)) {
+                return [[{
+                    ID: 88,
+                    CompanyID: 1,
+                    IsComplete: 0,
+                    CollectionStatus: 'failed',
+                    CollectedAt: '2026-06-25T10:00:00.000Z',
+                    EvidenceRecordCount: 0,
+                    DashboardMetricsJson: JSON.stringify({}),
+                    IncompleteReason: 'Email evidence collection did not complete.',
+                    ErrorMessage: 'Graph mailbox audit endpoint returned 403'
+                }]];
+            }
+            return [[]];
+        }
+    };
+    const result = await emailSecurityAdapter({
+        pool,
+        companyId: 1,
+        capability: {
+            sourceKey: 'email_security',
+            displayName: 'Email Security',
+            isExpected: true,
+            isEnabled: true,
+            profileKey: 'sunbird',
+            refreshMode: 'stored_only',
+            freshnessThresholdMinutes: 60
+        }
+    });
+
+    assert.equal(result.status, 'missing');
+    assert.match(result.errorMessage, /Graph mailbox audit endpoint returned 403/);
+    assert.match(result.warnings.join(' '), /Graph mailbox audit endpoint returned 403/);
+    assert.equal(result.sourceLineage.evidenceSnapshotId, 88);
+    assert.equal(result.sourceLineage.collectionStatus, 'failed');
+});
+
+test('selected-domain visible output removes curated warning noise, positive risks, and empty fields', () => {
+    const domain = ENTERPRISE_DOMAINS.find(item => item.key === 'applications');
+    const normalized = normalizeDomainOutputForDisplay({
+        domainExecutiveSummary: 'Applications posture is stable.',
+        keyFindings: [
+            { title: 'Curated Applications best-practice references were unavailable.', description: 'Ignore this.' },
+            { title: 'External publisher apps need owner review', sourceMetric: 'externalApps', affectedEntities: [{ appId: 'app-1', displayName: 'Vendor App' }] }
+        ],
+        risks: [
+            { title: 'No users assigned', description: 'No users assigned to this app.', sourceMetric: 'highAccessApps' },
+            {
+                title: 'Excessive permissions require review',
+                sourceMetric: 'excessivePermissionApps',
+                owner: null,
+                status: null,
+                category: '',
+                priority: null,
+                recommendedActions: [],
+                evidenceUsed: [],
+                affectedEntities: [{ appId: 'app-2', displayName: 'Mail Exporter', publisherName: 'Unknown' }],
+                evidenceRows: [{ appId: 'app-2', displayName: 'Mail Exporter', publisherName: 'Unknown' }]
+            }
+        ],
+        recommendations: [{ title: 'Curated Applications best-practice references were unavailable.' }],
+        missingDataWarnings: ['Curated Applications best-practice references were unavailable.']
+    }, domain, 501);
+
+    assert.equal(normalized.keyFindings.length, 1);
+    assert.equal(normalized.risks.length, 1);
+    assert.equal(normalized.recommendations, undefined);
+    assert.deepEqual(normalized.missingDataWarnings, []);
+    const risk = normalized.risks[0];
+    for (const field of ['owner', 'status', 'category', 'priority', 'recommendedActions', 'evidenceUsed']) {
+        assert.equal(Object.hasOwn(risk, field), false, field);
+    }
+});
+
+test('Cloudflare selected-domain entity fields are cleaned by entityType', () => {
+    const domain = ENTERPRISE_DOMAINS.find(item => item.key === 'cloudflare_network_security');
+    const normalized = normalizeDomainOutputForDisplay({
+        risks: [{
+            title: 'Cloudflare posture needs review',
+            sourceMetric: 'gatewayPolicies',
+            affectedEntities: [
+                { entityId: 'app-1', entityName: 'Finance Access', entityType: 'Application', appName: 'Finance Access', deviceName: 'Laptop-1', profileName: 'DLP' },
+                { entityId: 'dev-1', entityName: 'Laptop-1', entityType: 'Device', deviceName: 'Laptop-1', appName: 'Finance Access', policyName: 'Gateway Block' },
+                { entityId: 'pol-1', entityName: 'Gateway Block', entityType: 'Policy', policyName: 'Gateway Block', appName: 'Finance Access', deviceName: 'Laptop-1', profileName: 'DLP' },
+                { entityId: 'prof-1', entityName: 'DLP Profile', entityType: 'Profile', profileName: 'DLP Profile', appName: 'Finance Access', deviceName: 'Laptop-1', policyName: 'Gateway Block' }
+            ]
+        }]
+    }, domain, 501);
+
+    const [app, device, policy, profile] = normalized.risks[0].affectedEntities;
+    assert.equal(app.appName, 'Finance Access');
+    assert.equal(Object.hasOwn(app, 'deviceName'), false);
+    assert.equal(Object.hasOwn(device, 'appName'), false);
+    assert.equal(device.deviceName, 'Laptop-1');
+    assert.equal(policy.policyName, 'Gateway Block');
+    assert.equal(Object.hasOwn(policy, 'profileName'), false);
+    assert.equal(profile.profileName, 'DLP Profile');
+    assert.equal(Object.hasOwn(profile, 'policyName'), false);
+});
+
+test('selected-domain evidence linking keeps Backup and Applications risks on matching evidence groups', () => {
+    const backupDomain = ENTERPRISE_DOMAINS.find(item => item.key === 'backup');
+    const backupRisk = ensureItemEvidence({
+        title: 'Backup coverage validation needs review',
+        affectedEntities: [{ entityId: 'user-1', entityName: 'Large Mailbox User', entityType: 'User', sourceMetric: 'topStorageUsers' }]
+    }, backupDomain, 501, [
+        { evidenceType: 'topStorageUsers', sourceMetric: 'topStorageUsers', data: { entityId: 'user-1', entityName: 'Large Mailbox User', entityType: 'User' } },
+        { evidenceType: 'backupCoverageGaps', sourceMetric: 'backupCoverageGaps', data: { entityId: 'backupCoverageGaps', entityName: 'Backup Coverage Validation', entityType: 'CoverageSummary', backupCoverageScore: 64 } }
+    ]);
+    assert.equal(backupRisk.sourceMetric, 'backupCoverageGaps');
+    assert.equal(backupRisk.affectedEntities[0].entityId, 'backupCoverageGaps');
+    assert.equal(backupRisk.affectedEntities[0].entityType, 'CoverageSummary');
+
+    const applicationsDomain = ENTERPRISE_DOMAINS.find(item => item.key === 'applications');
+    const appRisk = ensureItemEvidence({
+        title: 'Excessive permissions require review',
+        affectedEntities: [{ entityId: 'external-1', entityName: 'External Vendor App', sourceMetric: 'externalApps' }]
+    }, applicationsDomain, 501, [
+        { evidenceType: 'externalApps', sourceMetric: 'externalApps', data: { entityId: 'external-1', entityName: 'External Vendor App', entityType: 'Application' } },
+        { evidenceType: 'excessivePermissionApps', sourceMetric: 'excessivePermissionApps', data: { entityId: 'perm-1', entityName: 'Mail Exporter', entityType: 'Application' } }
+    ]);
+    assert.equal(appRisk.sourceMetric, 'excessivePermissionApps');
+    assert.equal(appRisk.affectedEntities[0].entityId, 'perm-1');
+});
+
+test('strict selected-domain packages keep curated-reference warnings internal when evidence exists', async () => {
+    const service = createEnterpriseIntelligenceService({
+        pool: { query: async () => [[]] },
+        azureOpenAI: {},
+        schedulerService: {}
+    });
+    const cases = [
+        {
+            key: 'email_security',
+            context: {
+                sources: [{ sourceKey: 'email_security', status: 'available', isExpected: true, metrics: { activeThreats: 1 }, dashboardMetrics: { activeThreats: 1 }, evidence: [{ evidenceType: 'alerts', data: [{ id: 'alert-1', title: 'Phishing alert', severity: 'high' }] }] }],
+                riskEngine: { domainHealthScores: { email: 80 }, domainRiskScores: { email: 20 } }
+            }
+        },
+        {
+            key: 'backup',
+            context: {
+                sources: [{ sourceKey: 'backup', status: 'available', isExpected: true, metrics: { backupCoverageScore: 80 }, dashboardMetrics: { backupCoverageScore: 80 }, evidence: [{ evidenceType: 'users', data: [{ id: 'user-1', displayName: 'Storage User', totalStorageGB: 200 }] }] }],
+                riskEngine: { domainHealthScores: { backup: 80 }, domainRiskScores: { backup: 20 } }
+            }
+        },
+        {
+            key: 'applications',
+            context: {
+                sources: [{ sourceKey: 'applications', status: 'available', isExpected: true, metrics: { excessivePermissionApps: 1 }, dashboardMetrics: { excessivePermissionApps: 1 }, evidence: [{ evidenceType: 'applications', data: [{ appId: 'app-1', displayName: 'Mail Exporter', permissionSummary: 'Mail.ReadWrite' }] }] }],
+                riskEngine: { domainHealthScores: { applications: 80 }, domainRiskScores: { applications: 20 } }
+            }
+        }
+    ];
+
+    for (const item of cases) {
+        const domain = ENTERPRISE_DOMAINS.find(candidate => candidate.key === item.key);
+        const packageResult = await service.buildDomainPackage({
+            companyId: 1,
+            snapshot: {
+                ID: 501,
+                CreatedAt: '2026-06-25T10:00:00.000Z',
+                MetricsJson: JSON.stringify({ stackctrl_risk: item.context.riskEngine }),
+                ContextJson: JSON.stringify(item.context),
+                SourceFreshnessJson: JSON.stringify({ [domain.sourceKey]: { lastUpdated: '2026-06-25T09:55:00.000Z', ageMinutes: 5, status: 'available' } })
+            },
+            runId: 701,
+            domain,
+            historicalContext: null
+        });
+        assert.equal(packageResult.audit.batchPlan.batchCount, 1, item.key);
+        assert.equal(packageResult.package.limitations.missingDataWarnings.some(warning => /curated|best-practice/i.test(String(warning))), false, item.key);
+    }
 });
 
 test('Security Alerts semantic batching preserves every record in a reasonable batch count', () => {
