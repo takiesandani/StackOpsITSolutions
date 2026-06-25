@@ -23,6 +23,7 @@ const ENTITY_EVIDENCE_LIMITS = Object.freeze({ maxDepth: 8, maxArray: 50, maxStr
 const DEFAULT_MAX_INPUT_BYTES = 150000;
 const DEFAULT_MAX_ITEMS_PER_BATCH = 100;
 const IDENTITY_MAX_ITEMS_PER_BATCH = 500;
+const DEVICE_MAX_ITEMS_PER_BATCH = 500;
 const DEFAULT_HEAVY_DOMAIN_MAX_ITEMS_PER_BATCH = 50;
 const DEFAULT_THRESHOLD_BATCH_MAX_ITEMS = 50;
 const DEFAULT_MAX_TOTAL_TOKENS = 200000;
@@ -477,6 +478,7 @@ function buildEvidenceCatalog(evidence, domain, snapshotId) {
 function buildEvidenceBatchPlan(allEvidence, batches, diagnostics = {}) {
     const safeTokenLimit = numberOrNull(diagnostics.safeTokenLimit ?? diagnostics.safeInputTokenLimit);
     const identityTableTokens = numberOrNull(diagnostics.identityTableTokens ?? diagnostics.evidenceTokens);
+    const deviceTableTokens = numberOrNull(diagnostics.deviceTableTokens ?? diagnostics.evidenceTokens);
     return {
         totalEntityRows: allEvidence.length,
         batchCount: batches.length,
@@ -491,6 +493,7 @@ function buildEvidenceBatchPlan(allEvidence, batches, diagnostics = {}) {
         basePackageTokens: numberOrNull(diagnostics.basePackageTokens),
         evidenceTokens: numberOrNull(diagnostics.evidenceTokens),
         identityTableTokens,
+        deviceTableTokens,
         totalEstimatedTokens: numberOrNull(diagnostics.totalEstimatedTokens),
         safeInputTokenLimit: numberOrNull(diagnostics.safeInputTokenLimit),
         safeTokenLimit,
@@ -676,6 +679,179 @@ function compactIdentityBasePackage(basePackage) {
     };
 }
 
+function daysSinceIsoDate(value) {
+    const direct = numberOrNull(value?.daysSince ?? value?.lastSyncDaysAgo);
+    if (direct != null) return direct;
+    const dateValue = typeof value === 'object' && value ? value.dateTime : value;
+    if (!dateValue) return null;
+    const time = new Date(dateValue).getTime();
+    if (!Number.isFinite(time)) return null;
+    return Math.max(0, Math.floor((Date.now() - time) / (24 * 60 * 60 * 1000)));
+}
+
+function normalizeDeviceCompliance(value) {
+    const text = String(value || 'unknown').trim();
+    if (/^non[-_\s]?compliant$/i.test(text)) return 'nonCompliant';
+    if (/^compliant$/i.test(text)) return 'compliant';
+    return text || 'unknown';
+}
+
+function normalizeDeviceEncryption(data) {
+    const explicit = firstReadableValue(data.encryptionState, data.encryptionStatus);
+    if (explicit) return explicit;
+    if (data.isEncrypted === true || data.encrypted === true) return 'encrypted';
+    if (data.isEncrypted === false || data.encrypted === false) return 'notEncrypted';
+    return 'unknown';
+}
+
+function deviceEvidenceRows(evidence) {
+    const rows = array(evidence);
+    const devices = rows.filter(item => {
+        const data = item?.data && typeof item.data === 'object' ? item.data : {};
+        const label = String(item?.evidenceType || item?.evidenceCategory || item?.sourceLabel || '').toLowerCase();
+        return /^(?:devices|alldevices|manageddevices|device)$/.test(label.replace(/[_\s-]+/g, '')) || Boolean(
+            data.deviceName || data.managedDeviceName || data.operatingSystem || data.complianceState ||
+            data.managementAgent || data.serialNumber || data.lastSyncDateTime
+        );
+    });
+    return devices.length ? devices : rows;
+}
+
+function compactDeviceEvidenceRow(item, index = 0) {
+    const data = item?.data && typeof item.data === 'object' && !Array.isArray(item.data) ? item.data : (item || {});
+    const deviceId = explicitEntityId(data);
+    const deviceName = firstReadableValue(data.deviceName, data.managedDeviceName, data.displayName, data.name, data.hostName, data.hostname);
+    const assignedUser = firstReadableValue(data.assignedUser, data.userPrincipalName, data.primaryUser, data.userDisplayName, data.email, data.mail);
+    const complianceState = normalizeDeviceCompliance(data.complianceState || data.complianceStatus);
+    const encryptionState = normalizeDeviceEncryption(data);
+    const managementState = firstReadableValue(data.managementState, data.managementAgent, data.managementStatus) || 'unknown';
+    const lastSyncDateTime = firstReadableValue(data.lastSyncDateTime, data.lastSyncAt, data.lastSeenDateTime);
+    const lastSyncDaysAgo = numberOrNull(data.lastSyncDaysAgo ?? data.daysSinceLastSync) ?? daysSinceIsoDate(lastSyncDateTime);
+    const riskLevel = firstReadableValue(data.riskLevel, data.risk) || 'unknown';
+    const securityAlertCount = numberOrNull(data.securityAlertCount ?? data.alertCount) ?? 0;
+    const flags = new Set();
+    if (!/^compliant$/i.test(complianceState)) flags.add('nonCompliant');
+    if (/not|false|unencrypted/i.test(encryptionState)) flags.add('notEncrypted');
+    if (/unknown|none|unmanaged/i.test(managementState)) flags.add('unmanaged');
+    if (lastSyncDaysAgo != null && lastSyncDaysAgo > 30) flags.add('dead30Days');
+    else if (lastSyncDaysAgo != null && lastSyncDaysAgo > 7) flags.add('staleDevice');
+    if (/high|critical/i.test(riskLevel)) flags.add('highRisk');
+    if (securityAlertCount > 0) flags.add('securityAlerts');
+    if (data.hasPendingActions) flags.add('pendingActions');
+
+    return {
+        rowNumber: index + 1,
+        deviceId,
+        entityId: deviceId,
+        deviceName,
+        entityName: deviceName,
+        assignedUser,
+        userPrincipalName: firstReadableValue(data.userPrincipalName, assignedUser),
+        operatingSystem: firstReadableValue(data.operatingSystem, data.os),
+        osVersion: firstReadableValue(data.osVersion),
+        complianceState,
+        encryptionState,
+        managementState,
+        lastSyncDateTime,
+        lastSyncDaysAgo,
+        registrationDateTime: firstReadableValue(data.registrationDateTime, data.enrolledDateTime),
+        enrollmentType: firstReadableValue(data.enrollmentType, data.deviceEnrollmentType),
+        serialNumber: firstReadableValue(data.serialNumber),
+        riskLevel,
+        securityAlertCount,
+        issueFlags: [...flags],
+        sourceMetric: item?.sourceMetric || null,
+        internalSourcePath: item?.internalSourcePath || null
+    };
+}
+
+function compactDeviceCollectionWindow(basePackage = {}) {
+    const sourceLastUpdatedAt = basePackage.sourceHealth?.freshness?.lastUpdated || basePackage.snapshotCreatedAt || null;
+    return {
+        sourceSystem: 'Microsoft Graph / Intune / StackCTRL Devices',
+        collectedAt: basePackage.snapshotCreatedAt || null,
+        snapshotCapturedAt: basePackage.snapshotCreatedAt || null,
+        sourceLastUpdatedAt,
+        sourceAgeMinutes: numberOrNull(basePackage.sourceHealth?.freshness?.ageMinutes),
+        reportingWindow: 'current tenant device state from the frozen StackCTRL Device Protection snapshot'
+    };
+}
+
+function deviceMetricsSummaryFromRows(rows, basePackage = {}) {
+    const tableRows = array(rows);
+    const totalDevices = tableRows.length;
+    const compliantDevices = tableRows.filter(row => /^compliant$/i.test(String(row.complianceState || ''))).length;
+    const encryptedDevices = tableRows.filter(row => /encrypted/i.test(String(row.encryptionState || '')) && !/not|un/i.test(String(row.encryptionState || ''))).length;
+    const managedDevices = tableRows.filter(row => !/unknown|none|unmanaged/i.test(String(row.managementState || ''))).length;
+    const activeDevices24h = tableRows.filter(row => row.lastSyncDaysAgo != null && row.lastSyncDaysAgo <= 1).length;
+    const staleDevices = tableRows.filter(row => row.lastSyncDaysAgo != null && row.lastSyncDaysAgo > 7 && row.lastSyncDaysAgo <= 30).length;
+    const dead30Days = tableRows.filter(row => row.lastSyncDaysAgo != null && row.lastSyncDaysAgo > 30).length;
+    const highRiskDevices = tableRows.filter(row => /high|critical/i.test(String(row.riskLevel || ''))).length;
+    const securityAlerts = tableRows.reduce((sum, row) => sum + Number(row.securityAlertCount || 0), 0);
+    const osDistribution = {};
+    for (const row of tableRows) {
+        const os = row.operatingSystem || 'Unknown';
+        osDistribution[os] = (osDistribution[os] || 0) + 1;
+    }
+    const currentMetrics = basePackage.currentMetrics || {};
+    const dashboardMetrics = basePackage.dashboardMetrics || {};
+    const metric = name => numberOrNull(currentMetrics[name] ?? dashboardMetrics[name]);
+    return {
+        totalDevices: metric('totalDevices') ?? totalDevices,
+        compliantDevices: metric('compliantDevices') ?? compliantDevices,
+        nonCompliantDevices: metric('nonCompliantDevices') ?? Math.max(0, totalDevices - compliantDevices),
+        complianceRate: metric('complianceRate') ?? (totalDevices ? Math.round((compliantDevices / totalDevices) * 1000) / 10 : null),
+        encryptedDevices: metric('encryptedDevices') ?? encryptedDevices,
+        notEncryptedDevices: metric('notEncryptedDevices') ?? Math.max(0, totalDevices - encryptedDevices),
+        encryptionRate: metric('encryptionRate') ?? (totalDevices ? Math.round((encryptedDevices / totalDevices) * 1000) / 10 : null),
+        managedDevices,
+        unmanagedDevices: metric('unmanagedDevices') ?? Math.max(0, totalDevices - managedDevices),
+        activeDevices24h: metric('activeDevices24h') ?? activeDevices24h,
+        staleDevices: metric('staleDevices') ?? staleDevices,
+        dead30Days: metric('dead30Days') ?? dead30Days,
+        highRiskDevices: metric('highRiskDevices') ?? highRiskDevices,
+        securityAlerts: metric('securityAlerts') ?? securityAlerts,
+        osDistribution,
+        deviceSecurityScore: metric('deviceSecurityScore'),
+        stackctrlRiskScore: basePackage.authoritativeScores?.riskScore ?? null,
+        stackctrlHealthScore: basePackage.authoritativeScores?.healthScore ?? null,
+        snapshotId: basePackage.snapshotId ?? null,
+        sourceLastUpdated: basePackage.sourceHealth?.freshness?.lastUpdated || basePackage.snapshotCreatedAt || null,
+        sourceAgeMinutes: numberOrNull(basePackage.sourceHealth?.freshness?.ageMinutes),
+        collectionWindow: compactDeviceCollectionWindow(basePackage)
+    };
+}
+
+function compactDeviceBasePackage(basePackage) {
+    return {
+        contextType: 'stackctrl_enterprise_device_table',
+        schemaVersion: 2,
+        mode: basePackage.mode,
+        companyId: basePackage.companyId,
+        snapshotId: basePackage.snapshotId,
+        snapshotCreatedAt: basePackage.snapshotCreatedAt,
+        domain: basePackage.domain,
+        sourceHealth: basePackage.sourceHealth,
+        deviceMetricsSummary: basePackage.deviceMetricsSummary || deviceMetricsSummaryFromRows([], basePackage),
+        collectionWindow: basePackage.collectionWindow || compactDeviceCollectionWindow(basePackage),
+        authoritativeScores: basePackage.authoritativeScores,
+        limitations: {
+            rawVendorPayloadIncluded: false,
+            rawSnapshotContextIncluded: false,
+            evidenceCompleteness: basePackage.limitations?.evidenceCompleteness || null,
+            missingDataWarnings: array(basePackage.limitations?.missingDataWarnings),
+            missingDataInfo: array(basePackage.missingDataInfo)
+        },
+        deviceTableColumns: [
+            'deviceId', 'deviceName', 'assignedUser', 'userPrincipalName', 'operatingSystem',
+            'osVersion', 'complianceState', 'encryptionState', 'managementState',
+            'lastSyncDateTime', 'lastSyncDaysAgo', 'registrationDateTime', 'enrollmentType',
+            'serialNumber', 'riskLevel', 'securityAlertCount', 'issueFlags', 'sourceMetric',
+            'internalSourcePath'
+        ]
+    };
+}
+
 function computeInterBatchDelayMs(inputTokens, settings, domainKey = null) {
     const configured = Number(settings?.domainDelayMs);
     const baseDelay = Number.isFinite(configured) ? Math.max(0, configured) : DEFAULT_DOMAIN_DELAY_MS;
@@ -813,6 +989,11 @@ function canonicalEntity(value, context = {}) {
     const internalSourcePath = internalSourcePathFrom(wrapper) || internalSourcePathFrom(entity);
     const businessReason = firstReadableValue(entity.businessReason, context.businessReason, context.businessImpact, context.whyItMatters);
     const recommendation = firstReadableValue(entity.recommendation, entity.recommendedAction, context.recommendation, context.recommendedAction, context.detail);
+    const complianceState = firstReadableValue(entity.complianceState, entity.complianceStatus);
+    const encryptionState = firstReadableValue(entity.encryptionState, entity.encryptionStatus,
+        entity.isEncrypted === true ? 'encrypted' : entity.isEncrypted === false ? 'not_encrypted' : null);
+    const managementState = firstReadableValue(entity.managementState, entity.managementAgent, entity.managementStatus);
+    const assignedUser = firstReadableValue(entity.assignedUser, entity.entityUser, entity.userPrincipalName, entity.primaryUser, entity.userDisplayName, entityEmail);
 
     if (!entityId && !entityName && !entityEmail && !entityDeviceName && !entityApplicationName) return null;
     return {
@@ -832,6 +1013,19 @@ function canonicalEntity(value, context = {}) {
         policyName,
         severity: firstReadableValue(entity.severity, context.severity),
         status: firstReadableValue(entity.status, context.status),
+        assignedUser,
+        entityUser: firstReadableValue(entity.entityUser, assignedUser),
+        operatingSystem: firstReadableValue(entity.operatingSystem, entity.os),
+        osVersion: firstReadableValue(entity.osVersion),
+        complianceState,
+        encryptionState,
+        managementState,
+        lastSyncDateTime: firstReadableValue(entity.lastSyncDateTime, entity.lastSyncAt),
+        registrationDateTime: firstReadableValue(entity.registrationDateTime, entity.enrolledDateTime),
+        enrollmentType: firstReadableValue(entity.enrollmentType, entity.deviceEnrollmentType),
+        serialNumber: firstReadableValue(entity.serialNumber),
+        riskLevel: firstReadableValue(entity.riskLevel, entity.risk),
+        securityAlertCount: numberOrNull(entity.securityAlertCount ?? entity.alertCount),
         internalSourcePath,
         // Readable compatibility aliases retained for existing admin/report consumers.
         displayName: firstReadableValue(entity.displayName, entityName),
@@ -1645,9 +1839,14 @@ function createEnterpriseIntelligenceService({
         const flattenedDomainEvidence = flattenDomainEvidence(current.evidence, { rootPath: `${domain.sourceKey}.evidence`, domainKey: domain.key });
         const flattenedEvidence = domain.key === 'identity'
             ? identityUserEvidenceRows(flattenedDomainEvidence)
+            : domain.key === 'devices'
+            ? deviceEvidenceRows(flattenedDomainEvidence)
             : flattenedDomainEvidence;
         const compactIdentityRows = domain.key === 'identity'
             ? flattenedEvidence.map((item, index) => compactIdentityEvidenceRow(item, index))
+            : [];
+        const compactDeviceRows = domain.key === 'devices'
+            ? flattenedEvidence.map((item, index) => compactDeviceEvidenceRow(item, index))
             : [];
         const evidenceCatalog = buildEvidenceCatalog(current.evidence, domain, snapshot.ID);
         const stackCTRLDataCount = flattenedEvidence.length;
@@ -1702,7 +1901,7 @@ function createEnterpriseIntelligenceService({
                     ...array(current.source.warnings),
                     ...(manualExcludedCount > 0 ? [`${manualExcludedCount} manual evidence row(s) were intentionally excluded from Azure input; only API-connected evidence was prepared.`] : []),
                     ...(evidenceOmittedCount > 0 ? [`${evidenceOmittedCount} expected dashboard entity row(s) were not included in the Azure evidence payload.`] : []),
-                    ...(!knowledge.length && domain.key !== 'identity' ? [`Curated ${domain.name} best-practice references were unavailable.`] : [])
+                    ...(!knowledge.length && !['identity', 'devices'].includes(domain.key) ? [`Curated ${domain.name} best-practice references were unavailable.`] : [])
                 ]
             }
         };
@@ -1712,6 +1911,14 @@ function createEnterpriseIntelligenceService({
             base.missingDataInfo = [
                 'Historical baseline not available yet for 7/30/90-day trend analysis.',
                 ...(!knowledge.length ? ['Curated Identity Protection best-practice references unavailable.'] : [])
+            ];
+            base.limitations.missingDataInfo = base.missingDataInfo;
+        }
+        if (domain.key === 'devices') {
+            base.deviceMetricsSummary = deviceMetricsSummaryFromRows(compactDeviceRows, base);
+            base.collectionWindow = compactDeviceCollectionWindow(base);
+            base.missingDataInfo = [
+                ...(!knowledge.length ? ['Curated Device Protection references unavailable.'] : [])
             ];
             base.limitations.missingDataInfo = base.missingDataInfo;
         }
@@ -1804,7 +2011,11 @@ function createEnterpriseIntelligenceService({
         // For batching: don't permanently reduce evidence, just use what we have
         const inputSizeBytes = bytes(base);
         const batchPlan = buildEvidenceBatchPlan(flattenedEvidence, splitIntoBatches(flattenedEvidence, {
-            maxItems: domain.key === 'identity' ? IDENTITY_MAX_ITEMS_PER_BATCH : settings.maxItemsPerBatch,
+            maxItems: domain.key === 'identity'
+                ? IDENTITY_MAX_ITEMS_PER_BATCH
+                : domain.key === 'devices'
+                ? DEVICE_MAX_ITEMS_PER_BATCH
+                : settings.maxItemsPerBatch,
             maxBytes: settings.maxInputBytes
         }));
         return {
@@ -1879,7 +2090,11 @@ StackCTRL authoritative scores must be justified but never recalculated or repla
 
 Use BOTH summary metrics and entity-level evidence:
 - currentMetrics, dashboardMetrics, and calculatedIndicators provide executive counts and scores.
-${domain.key === 'identity' ? '- Identity evidence[] is a compact table. Each row already contains the readable user, MFA, authentication, risk, account, sign-in, location, device, role, and key-flag fields needed for analysis. Do not request or infer omitted dashboard/catalog/history objects.' : '- evidenceCatalog.categories contains categorized dashboard entity rows tied to sourceMetric keys.'}
+${domain.key === 'identity'
+    ? '- Identity evidence[] is a compact table. Each row already contains the readable user, MFA, authentication, risk, account, sign-in, location, device, role, and key-flag fields needed for analysis. Do not request or infer omitted dashboard/catalog/history objects.'
+    : domain.key === 'devices'
+    ? '- Device evidence[] is a compact table. Each row already contains readable device name, assigned user, OS, compliance, encryption, management, sync age, risk, alert count, and issue-flag fields. Reason over device posture patterns; do not repeat rows or request omitted catalog/history objects.'
+    : '- evidenceCatalog.categories contains categorized dashboard entity rows tied to sourceMetric keys.'}
 - evidence[] contains individual entity rows from the StackCTRL dashboard table for this batch.
 Every finding, risk, and recommendation MUST be evidence-backed. Do not state a gap without naming affected users, devices, apps, controls, policies, alerts, or other entities from the supplied evidence.
 Visible output must be human-readable. Include userPrincipalName/email, device display name, alert title/display name, application/control/policy name, or another useful entity label whenever supplied. Keep internal IDs as evidence references alongside those names; never return an ID as the only description of an affected entity.
@@ -2019,10 +2234,72 @@ ${JSON.stringify(packageValue)}`;
         };
     }
 
+    function buildDeviceBatchPackage(basePackage, batchEvidence, batchNumber, totalBatches, semanticGrouping = null, evidenceStartIndex = 0) {
+        const evidence = batchEvidence.map((item, index) => compactDeviceEvidenceRow(item, Number(evidenceStartIndex || 0) + index));
+        const common = {
+            contextType: batchNumber === 1
+                ? 'stackctrl_enterprise_device_table'
+                : 'stackctrl_enterprise_device_table_continuation',
+            schemaVersion: 2,
+            mode: basePackage.mode,
+            companyId: basePackage.companyId,
+            snapshotId: basePackage.snapshotId,
+            domain: basePackage.domain,
+            sourceHealth: basePackage.sourceHealth,
+            deviceMetricsSummary: basePackage.deviceMetricsSummary || deviceMetricsSummaryFromRows(evidence, basePackage),
+            collectionWindow: basePackage.collectionWindow || compactDeviceCollectionWindow(basePackage),
+            authoritativeScores: basePackage.authoritativeScores,
+            missingDataInfo: array(basePackage.missingDataInfo),
+            deviceTableColumns: compactDeviceBasePackage(basePackage).deviceTableColumns,
+            evidence,
+            batchMetadata: {
+                batchNumber,
+                totalBatches,
+                recordsSent: evidence.length,
+                evidenceRowsIncluded: evidence.length,
+                semanticGrouping,
+                evidenceStartIndex: Number(evidenceStartIndex || 0)
+            },
+            limitations: {
+                rawVendorPayloadIncluded: false,
+                rawSnapshotContextIncluded: false,
+                evidenceCompleteness: basePackage.limitations?.evidenceCompleteness || null,
+                missingDataWarnings: array(basePackage.limitations?.missingDataWarnings),
+                missingDataInfo: array(basePackage.missingDataInfo),
+                batchProcessing: true,
+                batchNumber,
+                totalBatches,
+                recordsSent: evidence.length,
+                recordsOmitted: 0,
+                evidenceRowsIncluded: evidence.length
+            }
+        };
+        if (batchNumber === 1) {
+            return {
+                ...common,
+                currentMetrics: basePackage.currentMetrics || {},
+                sharedContextIncluded: true
+            };
+        }
+        return {
+            ...common,
+            sharedContextIncluded: false,
+            baseContextReference: {
+                contextType: 'stackctrl_enterprise_device_table',
+                snapshotId: basePackage.snapshotId,
+                domainKey: basePackage.domain?.key || 'devices',
+                sharedContextSentInBatch: 1
+            }
+        };
+    }
+
     // Build a domain analysis package for a specific batch of evidence
     function buildDomainBatchPackage(basePackage, batchEvidence, batchNumber, totalBatches, semanticGrouping = null, evidenceStartIndex = 0) {
         if (basePackage?.domain?.key === 'identity') {
             return buildIdentityBatchPackage(basePackage, batchEvidence, batchNumber, totalBatches, semanticGrouping, evidenceStartIndex);
+        }
+        if (basePackage?.domain?.key === 'devices') {
+            return buildDeviceBatchPackage(basePackage, batchEvidence, batchNumber, totalBatches, semanticGrouping, evidenceStartIndex);
         }
         const categoryMap = new Map();
         for (const item of batchEvidence) {
@@ -2457,6 +2734,7 @@ ${JSON.stringify(packageValue)}`;
                 basePackageTokens: packageResult.audit.batchPlan?.basePackageTokens ?? null,
                 evidenceTokens: packageResult.audit.batchPlan?.evidenceTokens ?? null,
                 identityTableTokens: packageResult.audit.batchPlan?.identityTableTokens ?? packageResult.audit.batchPlan?.evidenceTokens ?? null,
+                deviceTableTokens: packageResult.audit.batchPlan?.deviceTableTokens ?? packageResult.audit.batchPlan?.evidenceTokens ?? null,
                 totalEstimatedTokens: packageResult.audit.batchPlan?.totalEstimatedTokens ?? null,
                 safeInputTokenLimit: packageResult.audit.batchPlan?.safeInputTokenLimit ?? null,
                 safeTokenLimit: packageResult.audit.batchPlan?.safeTokenLimit ?? packageResult.audit.batchPlan?.safeInputTokenLimit ?? null,
@@ -2536,6 +2814,8 @@ ${JSON.stringify(packageValue)}`;
         }
         const maxItems = domain.key === 'identity'
             ? IDENTITY_MAX_ITEMS_PER_BATCH
+            : domain.key === 'devices'
+            ? DEVICE_MAX_ITEMS_PER_BATCH
             : thresholdReached
                 ? Math.min(settings.maxItemsPerBatch, settings.thresholdBatchMaxItems)
                 : HEAVY_DOMAINS.has(domain.key)
@@ -2596,6 +2876,53 @@ ${JSON.stringify(packageValue)}`;
             if (batches.length > 5) {
                 logger.warn?.(
                     `[StackCTRL Enterprise] Identity required ${batches.length} batches for ${allEvidence.length} users. ` +
+                    `Reason: ${reasonForBatchCount}; estimated ${totalEstimatedTokens} tokens versus safe limit ${safeTokenLimit}.`
+                );
+            }
+        } else if (domain.key === 'devices') {
+            const emptyRequestBytes = estimateDomainRequestBytes(
+                domain,
+                buildDomainBatchPackage(packageResult.package, [], 1, 1)
+            );
+            const combinedRequestBytes = estimateDomainRequestBytes(
+                domain,
+                buildDomainBatchPackage(packageResult.package, allEvidence, 1, 1)
+            );
+            batches = splitIntoBatches(allEvidence, batchOptions);
+            const basePackageTokens = Math.ceil(emptyRequestBytes / 4);
+            const totalEstimatedTokens = Math.ceil(combinedRequestBytes / 4);
+            const deviceTableTokens = Math.max(0, totalEstimatedTokens - basePackageTokens);
+            const evidenceTokens = deviceTableTokens;
+            const safeTokenLimit = Math.floor(settings.maxInputBytes / 4);
+            const safeInputTokenLimit = safeTokenLimit;
+            let reasonForBatchCount;
+            if (!allEvidence.length) {
+                reasonForBatchCount = 'no_device_evidence_rows';
+            } else if (batches.length === 1) {
+                reasonForBatchCount = 'all_device_rows_fit_safe_token_limit';
+            } else if (combinedRequestBytes > settings.maxInputBytes && allEvidence.length > maxItems) {
+                reasonForBatchCount = 'device_evidence_exceeds_safe_token_limit_and_row_safety_cap';
+            } else if (combinedRequestBytes > settings.maxInputBytes) {
+                reasonForBatchCount = 'device_evidence_exceeds_safe_token_limit';
+            } else {
+                reasonForBatchCount = `device_evidence_exceeds_${maxItems}_row_safety_cap`;
+            }
+            batchPlanDiagnostics = {
+                basePackageTokens,
+                evidenceTokens,
+                deviceTableTokens,
+                totalEstimatedTokens,
+                safeInputTokenLimit,
+                safeTokenLimit,
+                plannedBatchCount: batches.length,
+                reasonForBatchCount
+            };
+            logger.info?.(
+                `[StackCTRL Enterprise] Device batch plan: basePackageTokens=${basePackageTokens}, deviceTableTokens=${deviceTableTokens}, evidenceTokens=${evidenceTokens}, totalEstimatedTokens=${totalEstimatedTokens}, safeTokenLimit=${safeTokenLimit}, plannedBatchCount=${batches.length}, reasonForBatchCount=${reasonForBatchCount}`
+            );
+            if (batches.length > 5) {
+                logger.warn?.(
+                    `[StackCTRL Enterprise] Device Protection required ${batches.length} batches for ${allEvidence.length} devices. ` +
                     `Reason: ${reasonForBatchCount}; estimated ${totalEstimatedTokens} tokens versus safe limit ${safeTokenLimit}.`
                 );
             }
@@ -3026,15 +3353,32 @@ ${JSON.stringify(packageValue)}`;
                 sourceAgeMinutes: numberOrNull(current?.source?.freshness?.ageMinutes),
                 reportingWindow: 'current tenant state, plus lastSignIn history where available'
             })
+            : domain.key === 'devices'
+            ? (value.collectionWindow || {
+                sourceSystem: 'Microsoft Graph / Intune / StackCTRL Devices',
+                collectedAt: current?.source?.sourceLineage?.collectedAt || current?.source?.freshness?.lastUpdated || null,
+                snapshotCapturedAt: current?.source?.sourceLineage?.collectedAt || null,
+                sourceLastUpdatedAt: current?.source?.freshness?.lastUpdated || current?.source?.sourceLineage?.sourceFetchedAt || null,
+                sourceAgeMinutes: numberOrNull(current?.source?.freshness?.ageMinutes),
+                reportingWindow: 'current tenant device state from the frozen StackCTRL Device Protection snapshot'
+            })
             : (value.collectionWindow || null);
         const missingDataInfo = [...new Set([
             ...array(value.missingDataInfo).map(info => visibleTextOrNull(info, 1200)).filter(Boolean),
-            ...(domain.key === 'identity' ? ['Historical baseline not available yet for 7/30/90-day trend analysis.'] : [])
+            ...(domain.key === 'identity' ? ['Historical baseline not available yet for 7/30/90-day trend analysis.'] : []),
+            ...(domain.key === 'devices' && current?.source?.status === 'stale'
+                ? [`Device Protection source is stale. Latest stored evidence was used from ${current?.source?.freshness?.lastUpdated || 'unknown refresh time'}.`]
+                : []),
+            ...(domain.key === 'devices' ? ['Curated Device Protection references unavailable.'].filter(info =>
+                array(value.missingDataInfo).some(existing => /curated device protection/i.test(String(existing))) ||
+                array(value.missingDataWarnings).some(existing => /curated device protection|best-practice/i.test(String(existing)))
+            ) : [])
         ])];
         const missingDataWarnings = [...new Set(array(value.missingDataWarnings)
             .map(warning => visibleTextOrNull(warning, 1200))
             .filter(Boolean)
-            .filter(warning => !(domain.key === 'identity' && /historical baseline|7\/30\/90|best-practice references/i.test(warning))))];
+            .filter(warning => !(domain.key === 'identity' && /historical baseline|7\/30\/90|best-practice references/i.test(warning)))
+            .filter(warning => !(domain.key === 'devices' && /source_stale|source is stale|evidence is stale|curated.*reference|best-practice references/i.test(warning))))];
         return {
             ...value,
             domainKey: value.domainKey || domain.key,
@@ -3352,17 +3696,20 @@ ${JSON.stringify(packageValue)}`;
 
         const staleFailure = sourceStaleFailure(packageResult.package.sourceHealth, domain.name);
         if (staleFailure) {
+            const staleMessage = domain.key === 'devices'
+                ? `Device Protection source is stale. Latest stored evidence was used from ${staleFailure.lastUpdated || 'unknown refresh time'}.`
+                : staleFailure.errorMessage;
             packageResult.package.sourceHealth = {
                 ...packageResult.package.sourceHealth,
                 source_stale: true,
                 ageMinutes: staleFailure.ageMinutes,
                 lastRefreshTime: staleFailure.lastUpdated,
-                warnings: [...new Set([...array(packageResult.package.sourceHealth?.warnings), staleFailure.errorMessage])]
+                warnings: [...new Set([...array(packageResult.package.sourceHealth?.warnings), staleMessage])]
             };
             packageResult.package.limitations.missingDataWarnings = [
-                ...new Set([...array(packageResult.package.limitations?.missingDataWarnings), staleFailure.errorMessage])
+                ...new Set([...array(packageResult.package.limitations?.missingDataWarnings), staleMessage])
             ];
-            logger.warn?.(`[StackCTRL Enterprise] ${staleFailure.errorMessage}`);
+            logger.warn?.(`[StackCTRL Enterprise] ${staleMessage}`);
         }
 
         if (domain.key === 'security_alerts') {
@@ -3600,6 +3947,7 @@ ${JSON.stringify(packageValue)}`;
                     basePackageTokens: packageResult.audit.batchPlan?.basePackageTokens ?? null,
                     evidenceTokens: packageResult.audit.batchPlan?.evidenceTokens ?? null,
                     identityTableTokens: packageResult.audit.batchPlan?.identityTableTokens ?? packageResult.audit.batchPlan?.evidenceTokens ?? null,
+                    deviceTableTokens: packageResult.audit.batchPlan?.deviceTableTokens ?? packageResult.audit.batchPlan?.evidenceTokens ?? null,
                     totalEstimatedTokens: packageResult.audit.batchPlan?.totalEstimatedTokens ?? null,
                     safeInputTokenLimit: packageResult.audit.batchPlan?.safeInputTokenLimit ?? null,
                     safeTokenLimit: packageResult.audit.batchPlan?.safeTokenLimit ?? packageResult.audit.batchPlan?.safeInputTokenLimit ?? null,
@@ -3692,6 +4040,7 @@ ${JSON.stringify(packageValue)}`;
                     basePackageTokens: packageResult.audit.batchPlan?.basePackageTokens ?? null,
                     evidenceTokens: packageResult.audit.batchPlan?.evidenceTokens ?? null,
                     identityTableTokens: packageResult.audit.batchPlan?.identityTableTokens ?? packageResult.audit.batchPlan?.evidenceTokens ?? null,
+                    deviceTableTokens: packageResult.audit.batchPlan?.deviceTableTokens ?? packageResult.audit.batchPlan?.evidenceTokens ?? null,
                     totalEstimatedTokens: packageResult.audit.batchPlan?.totalEstimatedTokens ?? null,
                     safeInputTokenLimit: packageResult.audit.batchPlan?.safeInputTokenLimit ?? null,
                     safeTokenLimit: packageResult.audit.batchPlan?.safeTokenLimit ?? packageResult.audit.batchPlan?.safeInputTokenLimit ?? null,
@@ -4704,6 +5053,14 @@ ${JSON.stringify(packageValue)}`;
                 entityEmail: affectedEntity.entityEmail || null,
                 entityDeviceName: affectedEntity.entityDeviceName || null,
                 entityApplicationName: affectedEntity.entityApplicationName || null,
+                assignedUser: affectedEntity.assignedUser || affectedEntity.entityUser || affectedEntity.entityEmail || null,
+                operatingSystem: affectedEntity.operatingSystem || null,
+                osVersion: affectedEntity.osVersion || null,
+                complianceState: affectedEntity.complianceState || null,
+                encryptionState: affectedEntity.encryptionState || null,
+                managementState: affectedEntity.managementState || null,
+                lastSyncDateTime: affectedEntity.lastSyncDateTime || null,
+                riskLevel: affectedEntity.riskLevel || null,
                 publisherName: affectedEntity.publisherName || null,
                 severity: affectedEntity.severity || row.item?.severity || null,
                 businessReason: affectedEntity.businessReason || row.item?.businessReason || row.item?.businessImpact || row.item?.whyItMatters || null,
@@ -4729,6 +5086,15 @@ ${JSON.stringify(packageValue)}`;
                 entityId: evidenceRow.entityId || null,
                 entityName: evidenceRow.entityName || null,
                 entityType: evidenceRow.entityType || 'Entity',
+                entityDeviceName: evidenceRow.entityDeviceName || null,
+                assignedUser: evidenceRow.assignedUser || evidenceRow.entityUser || evidenceRow.entityEmail || null,
+                operatingSystem: evidenceRow.operatingSystem || null,
+                osVersion: evidenceRow.osVersion || null,
+                complianceState: evidenceRow.complianceState || null,
+                encryptionState: evidenceRow.encryptionState || null,
+                managementState: evidenceRow.managementState || null,
+                lastSyncDateTime: evidenceRow.lastSyncDateTime || null,
+                riskLevel: evidenceRow.riskLevel || null,
                 evidenceSource: row.item?.evidenceSource || null,
                 sourceDomain: evidenceRow.sourceDomain || row.item?.sourceDomain || row.domainKey,
                 sourceMetric: evidenceRow.sourceMetric || row.item?.sourceMetric || null,

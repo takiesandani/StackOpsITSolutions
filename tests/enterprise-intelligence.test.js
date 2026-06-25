@@ -326,6 +326,179 @@ test('Identity sends 57 normal users as one compact Azure table even when the gl
     assert.match(logMessages.join('\n'), /basePackageTokens=\d+.*evidenceTokens=\d+.*totalEstimatedTokens=\d+.*reasonForBatchCount=all_identity_rows_fit_safe_token_limit/);
 });
 
+test('Device Protection sends 17 devices as one compact Azure table and keeps readable device output', async () => {
+    const sourcePath = 'devices.evidence[0].data[2]';
+    const devices = Array.from({ length: 17 }, (_, index) => ({
+        id: `device-${index + 1}`,
+        deviceName: index === 2 ? 'LAPTOP2023' : `LAPTOP-${index + 1}`,
+        userPrincipalName: index === 2 ? 'ken@sunbird.eu' : `user${index + 1}@example.com`,
+        operatingSystem: 'Windows',
+        osVersion: '11.0.22631',
+        complianceState: index === 2 ? 'nonCompliant' : 'compliant',
+        isEncrypted: true,
+        managementAgent: 'mdm',
+        lastSyncDateTime: index === 2 ? '2026-05-20T08:00:00.000Z' : '2026-06-24T08:00:00.000Z',
+        deviceEnrollmentType: 'windowsAzureADJoin',
+        serialNumber: `SN-${index + 1}`,
+        riskLevel: index === 2 ? 'High' : 'Safe',
+        securityAlertCount: index === 2 ? 2 : 0
+    }));
+    const rawEvidence = [{ evidenceType: 'devices', data: devices }];
+    const rawEvidenceBefore = JSON.stringify(rawEvidence);
+    const snapshot = {
+        ID: 617, CompanyID: 1, TenantKey: 'tenant-sunbird', SnapshotType: 'manual',
+        CreatedAt: new Date('2026-06-25T08:00:00.000Z'), DataCompletenessScore: 100,
+        MetricsJson: JSON.stringify({ stackctrl_risk: { domainRiskScores: { devices: 22 } } }),
+        ContextJson: JSON.stringify({
+            riskEngine: { domainHealthScores: { devices: 78 }, domainRiskScores: { devices: 22 } },
+            sources: [{
+                sourceKey: 'devices', status: 'stale', isExpected: true,
+                freshness: { lastUpdated: '2026-06-24T05:16:14.000Z', ageMinutes: 1600 },
+                warnings: ['Device Protection evidence is stale.', 'Device Protection evidence is stale.'],
+                dashboardMetrics: {
+                    totalDevices: 17, compliantDevices: 16, nonCompliantDevices: 1,
+                    encryptedDevices: 17, notEncryptedDevices: 0, unmanagedDevices: 0,
+                    activeDevices24h: 16, staleDevices: 0, dead30Days: 1,
+                    highRiskDevices: 1, securityAlerts: 2, deviceSecurityScore: 82
+                },
+                sourceLineage: { evidenceRecordCount: 17, omittedRecordCount: 0, collectedAt: '2026-06-24T05:16:14.000Z' },
+                evidence: rawEvidence
+            }]
+        })
+    };
+    let insertId = 6170;
+    const azurePackages = [];
+    const logMessages = [];
+    const pool = {
+        async query(sql) {
+            if (sql.includes('FROM StackCTRLTenantEvidenceSnapshots WHERE')) return [[snapshot], []];
+            if (sql.includes('FROM StackCTRLKnowledgeBase')) return [[], []];
+            if (sql.includes('FROM StackCTRLTenantDomainIntelligence') && sql.includes('RunID <>')) return [[], []];
+            if (/^\s*INSERT/i.test(sql)) return [{ insertId: insertId++ }, []];
+            return [{ affectedRows: 1 }, []];
+        }
+    };
+    const service = createEnterpriseIntelligenceService({
+        pool,
+        schedulerService: { async getHistoricalSnapshotContext() { return { comparisons: {} }; } },
+        azureOpenAI: {
+            async createJsonCompletion(options) {
+                const prompt = options.messages[1].content;
+                azurePackages.push(JSON.parse(prompt.split('STACKCTRL DOMAIN PACKAGE:\n')[1]));
+                return {
+                    data: {
+                        ...domainResponse('devices'),
+                        domainExecutiveSummary: 'Device posture is mostly healthy, with one stale non-compliant high-risk endpoint requiring priority remediation.',
+                        collectionWindow: {
+                            sourceSystem: 'Microsoft Graph / Intune / StackCTRL Devices',
+                            sourceLastUpdatedAt: '2026-06-24T05:16:14.000Z',
+                            sourceAgeMinutes: 1600,
+                            reportingWindow: 'current tenant device state from the frozen StackCTRL Device Protection snapshot'
+                        },
+                        missingDataWarnings: [
+                            'Device Protection evidence is stale.',
+                            'Device Protection evidence is stale.',
+                            'Curated Device Protection best-practice references were unavailable.'
+                        ],
+                        risks: [{
+                            riskId: 'device-risk-1',
+                            title: 'Stale non-compliant endpoint',
+                            severity: 'high',
+                            businessReason: 'Non-compliant and stale device increases endpoint compromise risk.',
+                            recommendation: 'Remediate compliance or retire the device.',
+                            affectedEntityIds: ['device-3', sourcePath],
+                            recordIds: ['device-3', sourcePath],
+                            sourceAlertIds: [sourcePath],
+                            affectedEntities: [{
+                                entityId: 'device-3',
+                                entityName: 'LAPTOP2023',
+                                entityType: 'Device',
+                                entityDeviceName: 'LAPTOP2023',
+                                entityUser: 'ken@sunbird.eu',
+                                operatingSystem: 'Windows',
+                                osVersion: '11.0.22631',
+                                complianceState: 'nonCompliant',
+                                encryptionState: 'encrypted',
+                                managementState: 'mdm',
+                                lastSyncDateTime: '2026-05-20T08:00:00.000Z',
+                                riskLevel: 'High',
+                                businessReason: 'Non-compliant and stale device increases endpoint compromise risk.',
+                                recommendation: 'Remediate compliance or retire the device.',
+                                internalSourcePath: sourcePath
+                            }]
+                        }]
+                    },
+                    requestSizeBytes: Buffer.byteLength(prompt),
+                    responseSizeBytes: 1000,
+                    usage: { input_tokens: 2000, output_tokens: 500, total_tokens: 2500 }
+                };
+            }
+        },
+        logger: {
+            info(...values) { logMessages.push(values.join(' ')); },
+            warn(...values) { logMessages.push(values.join(' ')); },
+            error(...values) { logMessages.push(values.join(' ')); }
+        },
+        wait: async () => {},
+        config: { domainDelayMs: 0, maxItemsPerBatch: 1, thresholdBatchMaxItems: 1, maxInputBytes: 150000 }
+    });
+
+    const result = await service.runEnterpriseReport({ companyId: 1, snapshotId: 617, domainKeys: ['devices'], includeSynthesis: false });
+    const devicePackage = azurePackages[0];
+
+    assert.equal(JSON.stringify(rawEvidence), rawEvidenceBefore);
+    assert.equal(azurePackages.length, 1);
+    assert.equal(devicePackage.contextType, 'stackctrl_enterprise_device_table');
+    assert.equal(devicePackage.evidence.length, 17);
+    assert.equal(devicePackage.evidence[2].deviceName, 'LAPTOP2023');
+    assert.equal(devicePackage.evidence[2].assignedUser, 'ken@sunbird.eu');
+    assert.equal(devicePackage.evidence[2].complianceState, 'nonCompliant');
+    assert.equal(devicePackage.evidence[2].encryptionState, 'encrypted');
+    assert.equal(devicePackage.evidence[2].managementState, 'mdm');
+    assert.equal(Object.hasOwn(devicePackage, 'evidenceCatalog'), false);
+    assert.equal(Object.hasOwn(devicePackage, 'historicalComparisons'), false);
+    assert.equal(Object.hasOwn(devicePackage, 'previousDomainAnalysis'), false);
+    assert.equal(Object.hasOwn(devicePackage, 'knowledgeGrounding'), false);
+    assert.equal(result.domains[0].batchInfo.totalBatches, 1);
+    assert.equal(result.domains[0].batchInfo.reasonForBatchCount, 'all_device_rows_fit_safe_token_limit');
+    assert.ok(result.domains[0].batchInfo.deviceTableTokens > 0);
+    assert.match(logMessages.join('\n'), /Device batch plan: basePackageTokens=\d+.*deviceTableTokens=\d+.*plannedBatchCount=1.*reasonForBatchCount=all_device_rows_fit_safe_token_limit/);
+
+    const risk = result.domains[0].analysis.risks[0];
+    assert.ok(risk.affectedEntityIds.includes('device-3'));
+    assert.ok(risk.recordIds.includes('device-3'));
+    assert.equal(risk.affectedEntityIds.some(value => /devices\.evidence/i.test(value)), false);
+    assert.equal(risk.recordIds.some(value => /devices\.evidence/i.test(value)), false);
+    assert.ok(risk.sourceAlertIds.includes('device-3'));
+    assert.equal(risk.sourceAlertIds.some(value => /devices\.evidence/i.test(value)), false);
+    assert.equal(risk.affectedEntities[0].entityName, 'LAPTOP2023');
+    assert.equal(risk.affectedEntities[0].entityDeviceName, 'LAPTOP2023');
+    assert.equal(risk.affectedEntities[0].assignedUser, 'ken@sunbird.eu');
+    assert.equal(risk.affectedEntities[0].complianceState, 'nonCompliant');
+    assert.equal(risk.affectedEntities[0].internalSourcePath, sourcePath);
+    assert.equal(result.domains[0].analysis.missingDataWarnings.filter(warning => /stale/i.test(warning)).length, 0);
+    assert.equal(result.domains[0].analysis.missingDataInfo.filter(info => /Device Protection source is stale/i.test(info)).length, 1);
+    assert.equal(result.domains[0].analysis.collectionWindow.sourceSystem, 'Microsoft Graph / Intune / StackCTRL Devices');
+
+    const tables = service.flattenPowerBITables({ domains: [{
+        companyId: 1,
+        snapshotId: 617,
+        runId: result.runId,
+        domainKey: 'devices',
+        domainName: 'Device Protection',
+        intelligenceOutput: result.domains[0].analysis
+    }] });
+    const deviceRow = tables.AffectedEntityRows.find(row => row.entityId === 'device-3');
+    assert.equal(deviceRow.entityName, 'LAPTOP2023');
+    assert.equal(deviceRow.entityDeviceName, 'LAPTOP2023');
+    assert.equal(deviceRow.assignedUser, 'ken@sunbird.eu');
+    assert.equal(deviceRow.operatingSystem, 'Windows');
+    assert.equal(deviceRow.complianceState, 'nonCompliant');
+    assert.equal(deviceRow.encryptionState, 'encrypted');
+    assert.equal(deviceRow.managementState, 'mdm');
+    assert.equal(deviceRow.internalSourcePath, sourcePath);
+});
+
 test('normalizeMysqlDate stores only real MySQL dates for enterprise AI date fields', () => {
     assert.equal(normalizeMysqlDate('Ongoing'), null);
     assert.equal(normalizeMysqlDate('ASAP'), null);
@@ -1325,7 +1498,8 @@ test('Enterprise warns on missing Device evidence and continues with stale saved
             assert.equal(result.domains[0].analysis.evidenceLimitations.recordsSent, 0);
             assert.match(result.domains[0].analysis.evidenceGaps.join(' '), /limited data|No complete/i);
         } else {
-            assert.match(result.domains[0].analysis.missingDataWarnings.join(' '), /source_stale.*180.*2026-06-22T05:00:00.000Z/i);
+            assert.equal(result.domains[0].analysis.missingDataWarnings.filter(warning => /source_stale|evidence is stale/i.test(warning)).length, 0);
+            assert.equal(result.domains[0].analysis.missingDataInfo.filter(info => /Device Protection source is stale.*2026-06-22T05:00:00.000Z/i.test(info)).length, 1);
             assert.equal(result.domains[0].analysis.evidenceLimitations.recordsSent, 1);
         }
     }
