@@ -717,6 +717,12 @@ test('Email Security selected-domain stops cleanly on Azure 429 without synthesi
 
     assert.equal(emailOptions.maxRetriesOverride, 0);
     assert.deepEqual(emailOptions.retryDelaysMsOverride, []);
+    assert.equal(emailPackage.contextType, 'stackctrl_enterprise_email_security_compact');
+    assert.equal(emailPackage.batchMetadata.totalBatches, 1);
+    assert.equal(emailPackage.compactEvidenceSummary.mailflowIsContextOnly, true);
+    assert.equal(Object.hasOwn(emailPackage, 'historicalComparisons'), false);
+    assert.equal(Object.hasOwn(emailPackage, 'knowledgeGrounding'), false);
+    assert.equal(Object.hasOwn(emailPackage, 'previousDomainAnalysis'), false);
     assert.equal(emailPackage.evidence.filter(row => row.evidenceType === 'securityAlerts').length, 25);
     assert.ok(emailPackage.evidence.filter(row => row.evidenceType === 'highVolumeMailboxes').length <= 10);
     assert.ok(emailPackage.evidence.filter(row => row.evidenceType === 'inactiveMailboxes').length <= 10);
@@ -743,14 +749,30 @@ test('Cloudflare selected-domain prompt and output stay readable and domain-spec
             sources: [{
                 sourceKey: 'cloudflare_network_security', status: 'available', isExpected: true, freshness: { ageMinutes: 5 },
                 dashboardMetrics: { protectedApps: 2, enrolledDevices: 3, gatewayPolicies: 2, recentAccessEvents: 10, dlpProfiles: 1, sectionErrors: 1 },
-                sourceLineage: { evidenceRecordCount: 6, omittedRecordCount: 0 },
+                sourceLineage: { evidenceRecordCount: 12, omittedRecordCount: 0 },
                 evidence: [
-                    { evidenceType: 'accessApps', data: [{ id: 'app-1', appName: 'Finance Portal', policyName: 'Finance Access Policy' }] },
-                    { evidenceType: 'devices', data: [{ id: 'cf-device-1', deviceName: 'KEN-LAPTOP', userEmail: 'ken@sunbird.eu' }] },
-                    { evidenceType: 'gatewayRules', data: [{ id: 'policy-1', gatewayPolicyName: 'Block Risky Domains' }] },
-                    { evidenceType: 'accessLogs', data: [{ id: 'log-1', applicationName: 'Finance Portal', action: 'deny' }] },
-                    { evidenceType: 'dlpProfiles', data: [{ id: 'dlp-1', dlpProfileName: 'Finance DLP' }] },
-                    { evidenceType: 'warpProfiles', data: [{ id: 'warp-1', warpProfileName: 'Default WARP' }] }
+                    { evidenceType: 'accessApps', data: [
+                        { id: 'app-1', appName: 'Finance Portal', policyName: 'Finance Access Policy' },
+                        { id: 'app-2', appName: 'HR Portal', policyName: 'HR Access Policy' }
+                    ] },
+                    { evidenceType: 'devices', data: [
+                        { id: 'cf-device-1', deviceName: 'KEN-LAPTOP', userEmail: 'ken@sunbird.eu' },
+                        { id: 'cf-device-2', deviceName: 'FINANCE-TABLET', userEmail: 'finance@sunbird.eu' }
+                    ] },
+                    { evidenceType: 'gatewayRules', data: [
+                        { id: 'policy-1', gatewayPolicyName: 'Block Risky Domains' },
+                        { id: 'policy-2', gatewayPolicyName: 'Require WARP for Finance' }
+                    ] },
+                    { evidenceType: 'accessLogs', data: [
+                        { id: 'log-1', applicationName: 'Finance Portal', action: 'deny' },
+                        { id: 'log-2', applicationName: 'HR Portal', action: 'allow' }
+                    ] },
+                    { evidenceType: 'dlpProfiles', data: [
+                        { id: 'dlp-1', dlpProfileName: 'Finance DLP' },
+                        { id: 'dlp-2', dlpProfileName: 'PII DLP' }
+                    ] },
+                    { evidenceType: 'warpProfiles', data: [{ id: 'warp-1', warpProfileName: 'Default WARP' }] },
+                    { evidenceType: 'sectionErrors', data: [{ id: 'gateway', sectionName: 'Gateway', status: 'permission_unavailable', error: 'API scope missing' }] }
                 ]
             }]
         })
@@ -758,6 +780,7 @@ test('Cloudflare selected-domain prompt and output stay readable and domain-spec
     let insertId = 6440;
     const prompts = [];
     const cloudflarePackages = [];
+    let cloudflareOptions = null;
     const pool = {
         async query(sql) {
             if (sql.includes('FROM StackCTRLTenantEvidenceSnapshots WHERE')) return [[snapshot], []];
@@ -772,6 +795,7 @@ test('Cloudflare selected-domain prompt and output stay readable and domain-spec
         schedulerService: { async getHistoricalSnapshotContext() { return { comparisons: {} }; } },
         azureOpenAI: {
             async createJsonCompletion(options) {
+                cloudflareOptions = options;
                 const prompt = options.messages[1].content;
                 prompts.push(prompt);
                 cloudflarePackages.push(JSON.parse(prompt.split('STACKCTRL DOMAIN PACKAGE:\n')[1]));
@@ -824,16 +848,36 @@ test('Cloudflare selected-domain prompt and output stay readable and domain-spec
     const risk = result.domains[0].analysis.risks[0];
     const preparedRows = cloudflarePackages[0].evidence;
 
+    assert.equal(cloudflarePackages.length, 1);
+    assert.equal(cloudflarePackages[0].contextType, 'stackctrl_enterprise_cloudflare_strict_compact');
+    assert.equal(cloudflarePackages[0].batchMetadata.totalBatches, 1);
+    assert.equal(preparedRows.length, 12);
+    assert.equal(Object.hasOwn(cloudflarePackages[0], 'historicalComparisons'), false);
+    assert.equal(Object.hasOwn(cloudflarePackages[0], 'knowledgeGrounding'), false);
+    assert.equal(Object.hasOwn(cloudflarePackages[0], 'previousDomainAnalysis'), false);
+    assert.equal(Object.hasOwn(cloudflarePackages[0], 'evidenceCatalog'), false);
+    assert.equal(Object.hasOwn(cloudflarePackages[0], 'dataLineage'), false);
+    assert.equal(Object.hasOwn(cloudflarePackages[0], 'domainRunAudit'), false);
+    assert.equal(Object.hasOwn(cloudflarePackages[0], 'tokenTracking'), false);
+    assert.equal(Object.hasOwn(cloudflarePackages[0], 'evidenceBatchPlan'), false);
+    assert.equal(cloudflareOptions.maxTokens, 6000);
+    assert.ok(Buffer.byteLength(prompts[0], 'utf8') < 40000);
+    for (const forbidden of ['previousDomainAnalysis', 'historicalComparisons', 'domainRunAudit', 'tokenTracking', 'evidenceBatchPlan', 'dataLineage']) {
+        assert.doesNotMatch(prompts[0], new RegExp(forbidden));
+    }
     assert.match(prompts[0], /protected apps, Cloudflare devices, gateway policies, access policies, access logs, DLP profiles, WARP profiles/i);
     assert.ok(preparedRows.some(row => row.evidenceType === 'accessApps' && row.data.appName === 'Finance Portal'));
     assert.ok(preparedRows.some(row => row.evidenceType === 'devices' && row.data.deviceName === 'KEN-LAPTOP'));
-    assert.ok(preparedRows.some(row => row.evidenceType === 'gatewayRules' && row.data.gatewayPolicyName === 'Block Risky Domains'));
-    assert.ok(preparedRows.some(row => row.evidenceType === 'accessLogs' && row.data.applicationName === 'Finance Portal'));
-    assert.ok(preparedRows.some(row => row.evidenceType === 'dlpProfiles' && row.data.dlpProfileName === 'Finance DLP'));
-    assert.ok(preparedRows.some(row => row.evidenceType === 'warpProfiles' && row.data.warpProfileName === 'Default WARP'));
+    assert.ok(preparedRows.some(row => row.evidenceType === 'gatewayRules' && row.data.gatewayRuleName === 'Block Risky Domains'));
+    assert.ok(preparedRows.some(row => row.evidenceType === 'accessLogs' && row.data.appName === 'Finance Portal'));
+    assert.ok(preparedRows.some(row => row.evidenceType === 'dlpProfiles' && row.data.profileName === 'Finance DLP'));
+    assert.ok(preparedRows.some(row => row.evidenceType === 'warpProfiles' && row.data.profileName === 'Default WARP'));
     assert.equal(result.domains[0].status, 'completed');
     assert.equal(risk.affectedEntities[0].entityName, 'Finance Portal');
     assert.equal(risk.affectedEntities[0].policyName, 'Finance Access Policy');
+    for (const field of ['roles', 'mfaEnabled', 'lastSignIn', 'osVersion', 'serialNumber', 'complianceState']) {
+        assert.equal(Object.hasOwn(risk.affectedEntities[0], field), false);
+    }
     assert.equal(risk.affectedEntityIds.some(value => /cloudflare_network_security\.evidence/i.test(value)), false);
     assert.equal(risk.recordIds.some(value => /cloudflare_network_security\.evidence/i.test(value)), false);
     assert.equal(risk.sourceAlertIds.some(value => /cloudflare_network_security\.evidence/i.test(value)), false);
@@ -1708,7 +1752,8 @@ test('Enterprise Network currentMetrics follow stored dashboard metrics and flat
         assert.equal(packageResult.package.currentMetrics[metric], dashboardMetrics[metric], `currentMetrics.${metric}`);
     }
     assert.equal(packageResult.package.dataLineage.sourceBuilder, 'storedStackCTRLNetworkEvidence');
-    assert.equal(packageResult.audit.stackCTRLDataCount, 42);
+    assert.equal(packageResult.audit.stackCTRLDataCount, 35);
+    assert.equal(packageResult.audit.preparedForAzureCount, 35);
     assert.equal(packageResult.sourceAlignment.mismatches.length, 0);
 });
 

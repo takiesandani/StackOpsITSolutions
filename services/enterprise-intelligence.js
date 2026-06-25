@@ -24,6 +24,8 @@ const DEFAULT_MAX_INPUT_BYTES = 150000;
 const DEFAULT_MAX_ITEMS_PER_BATCH = 100;
 const IDENTITY_MAX_ITEMS_PER_BATCH = 500;
 const DEVICE_MAX_ITEMS_PER_BATCH = 500;
+const EMAIL_SECURITY_MAX_ITEMS_PER_BATCH = 500;
+const CLOUDFLARE_MAX_ITEMS_PER_BATCH = 500;
 const DEFAULT_HEAVY_DOMAIN_MAX_ITEMS_PER_BATCH = 50;
 const DEFAULT_THRESHOLD_BATCH_MAX_ITEMS = 50;
 const DEFAULT_MAX_TOTAL_TOKENS = 200000;
@@ -34,7 +36,7 @@ const ENTERPRISE_CONNECTION_RETRY_DELAYS_MS = Object.freeze([0, 15000, 45000]);
 const ENTERPRISE_RATE_LIMIT_RETRY_MAX_MS = 15 * 60 * 1000;
 const EMAIL_SECURITY_RATE_LIMIT_RETRY_DELAYS_MS = Object.freeze([]);
 const EMAIL_SECURITY_RATE_LIMIT_RETRY_MAX_MS = 0;
-const COMPACT_SELECTED_DOMAIN_KEYS = Object.freeze(new Set(['identity', 'email_security']));
+const COMPACT_SELECTED_DOMAIN_KEYS = Object.freeze(new Set(['identity', 'email_security', 'cloudflare_network_security']));
 const HEAVY_DOMAINS = Object.freeze(new Set(['governance', 'operations', 'compliance']));
 const SUCCESSFUL_DOMAIN_STATUSES = Object.freeze(new Set(['completed', 'partial', 'completed_with_warnings']));
 const SKIPPED_DOMAIN_STATUSES = Object.freeze(new Set(['skipped_rate_limited', 'skipped_token_threshold', 'skipped_pipeline_stop']));
@@ -75,6 +77,15 @@ const DOMAIN_EVIDENCE_TYPES = Object.freeze({
     compliance: ['controls', 'dashboard_evidence_lists'],
     operations: ['tasks', 'dashboard_evidence_lists']
 });
+const CLOUDFLARE_COMPACT_EVIDENCE_TYPES = Object.freeze([
+    'accessApps',
+    'devices',
+    'gatewayRules',
+    'dlpProfiles',
+    'warpProfiles',
+    'accessLogs',
+    'sectionErrors'
+]);
 const DOMAIN_EVIDENCE_CATEGORY_METRICS = Object.freeze({
     identity: {
         allUsers: 'totalUsers',
@@ -631,10 +642,93 @@ function normalizeCloudflareEvidenceForFlatten(evidence) {
     return output;
 }
 
+function compactCloudflareText(value, maximum = 180) {
+    return visibleTextOrNull(firstReadableValue(value), maximum);
+}
+
+function compactCloudflareEntityData(type, data = {}) {
+    const id = firstReadableValue(data.entityId, data.id, data.uid, data.policyId, data.ruleId, data.profileId, data.deviceId, data.applicationId, data.appId);
+    const appName = firstReadableValue(data.appName, data.applicationName, data.protectedAppName, data.name, data.displayName);
+    const deviceName = firstReadableValue(data.deviceName, data.cloudflareDeviceName, data.hostname, data.hostName, data.name, data.displayName);
+    const gatewayRuleName = firstReadableValue(data.gatewayRuleName, data.gatewayPolicyName, data.ruleName, data.policyName, data.name);
+    const profileName = firstReadableValue(data.profileName, data.dlpProfileName, data.warpProfileName, data.name);
+    const sectionName = firstReadableValue(data.sectionName, data.section, data.controlName, data.name);
+    const entityName = firstReadableValue(
+        data.entityName,
+        type === 'accessApps' ? appName : null,
+        type === 'devices' ? deviceName : null,
+        type === 'gatewayRules' ? gatewayRuleName : null,
+        ['dlpProfiles', 'warpProfiles'].includes(type) ? profileName : null,
+        type === 'sectionErrors' ? sectionName : null,
+        appName,
+        deviceName,
+        gatewayRuleName,
+        profileName,
+        sectionName,
+        data.name,
+        data.displayName
+    );
+    const compact = {
+        entityId: id || entityName || null,
+        entityName: compactCloudflareText(entityName),
+        entityType: type === 'accessApps'
+            ? 'Application'
+            : type === 'devices'
+            ? 'Device'
+            : type === 'gatewayRules'
+            ? 'Policy'
+            : ['dlpProfiles', 'warpProfiles'].includes(type)
+            ? 'Profile'
+            : type === 'accessLogs'
+            ? 'Access Event'
+            : type === 'sectionErrors'
+            ? 'Control Section'
+            : 'Cloudflare Entity',
+        appName: compactCloudflareText(appName || data.applicationName),
+        policyName: compactCloudflareText(data.policyName || data.accessPolicyName || data.gatewayPolicyName || gatewayRuleName),
+        deviceName: compactCloudflareText(deviceName),
+        gatewayRuleName: compactCloudflareText(gatewayRuleName),
+        profileName: compactCloudflareText(profileName),
+        status: compactCloudflareText(data.status || data.action || data.decision || data.outcome),
+        riskReason: compactCloudflareText(data.riskReason || data.reason || data.error || data.message || data.description, 320),
+        recommendation: compactCloudflareText(data.recommendation || data.remediation || data.suggestedAction, 320),
+        sourceMetric: DOMAIN_EVIDENCE_CATEGORY_METRICS.cloudflare_network_security[type] || type
+    };
+    if (type === 'accessLogs') {
+        compact.action = compactCloudflareText(data.action || data.decision || data.outcome);
+        compact.userEmail = compactCloudflareText(data.userEmail || data.email || data.userPrincipalName);
+        compact.timestamp = compactCloudflareText(data.timestamp || data.createdAt || data.datetime || data.dateTime);
+    }
+    if (type === 'sectionErrors') {
+        compact.sectionName = compactCloudflareText(sectionName);
+        compact.errorCode = compactCloudflareText(data.errorCode || data.code);
+    }
+    return compactNonEmptyObject(compact);
+}
+
 function cloudflareEvidenceRows(flattenedEvidence) {
     const wanted = /accessapps|devices|gatewayrules|accesspolicies|accesslogs|dlpprofiles|warpprofiles|sectionerrors/i;
-    const rows = array(flattenedEvidence).filter(row => wanted.test(String(row.evidenceType || row.sourceLabel || row.evidenceCategory || '')));
-    return rows.length ? rows : array(flattenedEvidence);
+    const rows = array(flattenedEvidence)
+        .filter(row => wanted.test(String(row.evidenceType || row.sourceLabel || row.evidenceCategory || '')));
+    const grouped = new Map(CLOUDFLARE_COMPACT_EVIDENCE_TYPES.map(type => [type, []]));
+    for (const row of rows) {
+        const evidenceType = String(row.evidenceType || row.sourceLabel || row.evidenceCategory || '');
+        const type = CLOUDFLARE_COMPACT_EVIDENCE_TYPES.find(key => key.toLowerCase() === evidenceType.toLowerCase());
+        if (!type || grouped.get(type).length >= 10) continue;
+        const data = compactCloudflareEntityData(type, row.data || {});
+        if (!data.entityName && !data.entityId) continue;
+        grouped.get(type).push({
+            internalSourcePath: row.internalSourcePath || null,
+            sourceLabel: type,
+            evidenceType: type,
+            evidenceCategory: type,
+            sourceMetric: data.sourceMetric || DOMAIN_EVIDENCE_CATEGORY_METRICS.cloudflare_network_security[type] || type,
+            entityKey: data.entityId || data.entityName,
+            data
+        });
+    }
+    const compactRows = CLOUDFLARE_COMPACT_EVIDENCE_TYPES.flatMap(type => grouped.get(type));
+    return compactRows.length ? compactRows : [];
 }
 
 function enrichDomainEvidence(source, domain, evidence) {
@@ -731,7 +825,13 @@ function buildEvidenceBatchPlan(allEvidence, batches, diagnostics = {}) {
             semanticGrouping: batch.semanticGrouping || null
         })),
         basePackageTokens: numberOrNull(diagnostics.basePackageTokens),
+        compactPackageTokens: numberOrNull(diagnostics.compactPackageTokens),
         evidenceTokens: numberOrNull(diagnostics.evidenceTokens),
+        historicalTokens: numberOrNull(diagnostics.historicalTokens),
+        knowledgeTokens: numberOrNull(diagnostics.knowledgeTokens),
+        previousAnalysisTokens: numberOrNull(diagnostics.previousAnalysisTokens),
+        excludedHistoricalTokens: numberOrNull(diagnostics.excludedHistoricalTokens),
+        excludedPreviousAnalysisTokens: numberOrNull(diagnostics.excludedPreviousAnalysisTokens),
         identityTableTokens,
         deviceTableTokens,
         totalEstimatedTokens: numberOrNull(diagnostics.totalEstimatedTokens),
@@ -1297,6 +1397,71 @@ function canonicalEntity(value, context = {}) {
     };
 }
 
+function compactNonEmptyObject(value) {
+    return Object.fromEntries(Object.entries(value || {}).filter(([, nested]) => {
+        if (nested == null) return false;
+        if (Array.isArray(nested)) return nested.length > 0;
+        if (typeof nested === 'string') return nested.trim().length > 0;
+        return true;
+    }));
+}
+
+function cloudflareEntityForOutput(entity) {
+    if (!entity || typeof entity !== 'object') return null;
+    const appName = firstReadableValue(entity.appName, entity.entityApplicationName, entity.applicationName, entity.protectedAppName);
+    const deviceName = firstReadableValue(entity.deviceName, entity.entityDeviceName, entity.cloudflareDeviceName, entity.hostname, entity.hostName);
+    const gatewayRuleName = firstReadableValue(entity.gatewayRuleName, entity.gatewayPolicyName, entity.ruleName);
+    const policyName = firstReadableValue(entity.policyName, entity.accessPolicyName, entity.gatewayPolicyName, gatewayRuleName);
+    const profileName = firstReadableValue(entity.profileName, entity.dlpProfileName, entity.warpProfileName);
+    const entityName = firstReadableValue(
+        entity.entityName,
+        entity.entityDisplayName,
+        entity.displayName,
+        appName,
+        policyName,
+        deviceName,
+        gatewayRuleName,
+        profileName,
+        entity.name
+    );
+    const entityType = firstReadableValue(entity.entityType) || (
+        appName ? 'Application'
+            : deviceName ? 'Device'
+            : (policyName || gatewayRuleName) ? 'Policy'
+            : profileName ? 'Profile'
+            : 'Cloudflare Entity'
+    );
+    const riskReason = firstReadableValue(entity.riskReason, entity.businessReason, entity.reason, entity.reasoning, entity.whatHappened, entity.whyItMatters);
+    const cleaned = compactNonEmptyObject({
+        entityId: entity.entityId,
+        entityName,
+        entityType,
+        sourceDomain: entity.sourceDomain,
+        sourceMetric: entity.sourceMetric,
+        appName,
+        policyName,
+        deviceName,
+        gatewayRuleName,
+        profileName,
+        status: firstReadableValue(entity.status, entity.action, entity.outcome),
+        severity: firstReadableValue(entity.severity),
+        riskReason,
+        businessReason: firstReadableValue(entity.businessReason, riskReason),
+        recommendation: firstReadableValue(entity.recommendation, entity.recommendedAction),
+        internalSourcePath: entity.internalSourcePath
+    });
+    return cleaned.entityId || cleaned.entityName ? cleaned : null;
+}
+
+function cleanEntityForDomain(entity, domainKey) {
+    if (domainKey === 'cloudflare_network_security') return cloudflareEntityForOutput(entity);
+    return entity;
+}
+
+function cleanEntitiesForDomain(values, domainKey) {
+    return uniqueEntities(array(values).map(entity => cleanEntityForDomain(entity, domainKey)).filter(Boolean));
+}
+
 function uniqueEntities(values) {
     const seen = new Set();
     return array(values).filter(Boolean).filter(entity => {
@@ -1407,11 +1572,11 @@ function normalizeEvidenceBackedItem(item, domain, snapshotId) {
     const entityContext = { ...value, sourceDomain, sourceMetric, businessReason, recommendation };
 
     const suppliedEntityIds = compactReferences(value.affectedEntityIds);
-    const affectedEntities = uniqueEntities(array(value.affectedEntities)
-        .map((entity, index) => canonicalEntity(entity, { ...entityContext, entityId: suppliedEntityIds[index] })));
+    const affectedEntities = cleanEntitiesForDomain(uniqueEntities(array(value.affectedEntities)
+        .map((entity, index) => canonicalEntity(entity, { ...entityContext, entityId: suppliedEntityIds[index] }))), domain.key);
 
-    const rawEvidenceRows = uniqueEntities(array(value.evidenceRows)
-        .map(row => canonicalEntity(row, entityContext)));
+    const rawEvidenceRows = cleanEntitiesForDomain(uniqueEntities(array(value.evidenceRows)
+        .map(row => canonicalEntity(row, entityContext))), domain.key);
 
     const evidenceRows = filterRowsToAffectedEntities(rawEvidenceRows, affectedEntities);
 
@@ -1530,12 +1695,12 @@ function ensureItemEvidence(item, domain, snapshotId, availableEvidence = []) {
         recommendation: normalized.recommendation
     };
 
-    const rows = uniqueEntities(selected.map(row => canonicalEntity({
+    const rows = cleanEntitiesForDomain(uniqueEntities(selected.map(row => canonicalEntity({
         internalSourcePath: row?.internalSourcePath || null,
         sourceMetric: row?.sourceMetric || null,
         evidenceType: row?.evidenceType || null,
         data: row?.data ?? row
-    }, entityContext))).filter(Boolean);
+    }, entityContext))).filter(Boolean), domain.key);
 
     const first = selected[0] || {};
 
@@ -1587,6 +1752,17 @@ function ensureItemEvidence(item, domain, snapshotId, availableEvidence = []) {
     ])];
 
     normalized.internalSourcePath = normalized.internalSourcePaths[0] || null;
+
+    if (domain.key === 'cloudflare_network_security') {
+        normalized.affectedEntities = cleanEntitiesForDomain(normalized.affectedEntities, domain.key);
+        normalized.evidenceRows = cleanEntitiesForDomain(normalized.evidenceRows, domain.key);
+        normalized.affectedEntityIds = normalized.affectedEntities.length
+            ? compactReferences(normalized.affectedEntities)
+            : compactReferences(normalized.affectedEntityIds);
+        normalized.recordIds = normalized.evidenceRows.length
+            ? compactReferences(normalized.evidenceRows)
+            : compactReferences(normalized.recordIds);
+    }
 
     normalized.sourceMetrics = [...new Set([
         ...array(item?.sourceMetrics).map(String),
@@ -1644,9 +1820,9 @@ function normalizeDomainOutputForDisplay(value, domain, snapshotId) {
         recommendations: normalizeItems(value.recommendations),
         managementDecisionsRequired: normalizeItems(value.managementDecisionsRequired),
         whatCanWait: normalizeItems(value.whatCanWait),
-        affectedEntities: uniqueEntities(array(value.affectedEntities)
+        affectedEntities: cleanEntitiesForDomain(uniqueEntities(array(value.affectedEntities)
             .map(entity => canonicalEntity(entity, { sourceDomain: domain.key }))
-            .filter(Boolean)),
+            .filter(Boolean)), domain.key),
         trendAnalysis: normalizeItems(value.trendAnalysis),
         managementActions: normalizeItems(value.managementActions)
     }, domain);
@@ -2521,6 +2697,10 @@ function createEnterpriseIntelligenceService({
                 ? IDENTITY_MAX_ITEMS_PER_BATCH
                 : domain.key === 'devices'
                 ? DEVICE_MAX_ITEMS_PER_BATCH
+                : domain.key === 'email_security'
+                ? EMAIL_SECURITY_MAX_ITEMS_PER_BATCH
+                : domain.key === 'cloudflare_network_security'
+                ? CLOUDFLARE_MAX_ITEMS_PER_BATCH
                 : settings.maxItemsPerBatch,
             maxBytes: settings.maxInputBytes
         }));
@@ -2898,6 +3078,157 @@ ${JSON.stringify(packageValue)}`;
         };
     }
 
+    function compactSelectedDomainBatchPackage(basePackage, batchEvidence, batchNumber, totalBatches, semanticGrouping = null, evidenceStartIndex = 0) {
+        const domainKey = basePackage?.domain?.key || 'domain';
+        if (domainKey === 'cloudflare_network_security') {
+            const groupedEvidence = Object.fromEntries(CLOUDFLARE_COMPACT_EVIDENCE_TYPES.map(type => [type, []]));
+            const evidence = batchEvidence
+                .filter(item => CLOUDFLARE_COMPACT_EVIDENCE_TYPES.includes(String(item?.evidenceType || item?.sourceLabel || '')))
+                .map((item, index) => {
+                    const type = CLOUDFLARE_COMPACT_EVIDENCE_TYPES.includes(String(item?.evidenceType || ''))
+                        ? String(item.evidenceType)
+                        : String(item?.sourceLabel || 'sectionErrors');
+                    const data = compactCloudflareEntityData(type, item?.data || {});
+                    const row = {
+                        evidenceNumber: Number(evidenceStartIndex || 0) + index + 1,
+                        evidenceType: type,
+                        sourceMetric: data.sourceMetric || item?.sourceMetric || type,
+                        entityKey: data.entityId || data.entityName || item?.entityKey || null,
+                        internalSourcePath: item?.internalSourcePath || null,
+                        data
+                    };
+                    groupedEvidence[type].push(row);
+                    return row;
+                });
+            const categoryCounts = Object.fromEntries(Object.entries(groupedEvidence).map(([type, rows]) => [type, rows.length]));
+            const warningStrings = [
+                ...array(basePackage.sourceHealth?.warnings),
+                ...array(basePackage.limitations?.missingDataWarnings)
+            ].map(warning => visibleTextOrNull(warning, 240)).filter(Boolean).slice(0, 10);
+            return {
+                contextType: 'stackctrl_enterprise_cloudflare_strict_compact',
+                schemaVersion: 3,
+                mode: basePackage.mode,
+                companyId: basePackage.companyId,
+                snapshotId: basePackage.snapshotId,
+                snapshotCreatedAt: basePackage.snapshotCreatedAt,
+                domain: {
+                    key: basePackage.domain?.key || 'cloudflare_network_security',
+                    name: basePackage.domain?.name || 'Network Security / Cloudflare'
+                },
+                sourceFreshness: safeValue(basePackage.sourceHealth?.freshness || {}, 0, { maxArray: 0, maxString: 160 }),
+                sourceHealth: {
+                    status: basePackage.sourceHealth?.status || 'unknown',
+                    isExpected: basePackage.sourceHealth?.isExpected ?? true,
+                    evidenceCount: evidence.length,
+                    warnings: warningStrings
+                },
+                authoritativeScores: basePackage.authoritativeScores || {},
+                currentMetrics: safeValue(basePackage.currentMetrics || {}, 0, { maxDepth: 2, maxArray: 5, maxString: 180, maxObjectKeys: 40 }),
+                dashboardMetrics: safeValue(basePackage.dashboardMetrics || {}, 0, { maxDepth: 2, maxArray: 5, maxString: 180, maxObjectKeys: 40 }),
+                calculatedIndicators: safeValue(basePackage.calculatedIndicators || {}, 0, { maxDepth: 2, maxArray: 5, maxString: 180, maxObjectKeys: 40 }),
+                compactEvidenceSummary: {
+                    totalRows: evidence.length,
+                    categoryCounts,
+                    maxRowsPerCategory: 10,
+                    strictCompactCloudflarePackage: true
+                },
+                evidenceGroups: groupedEvidence,
+                evidence,
+                batchMetadata: {
+                    batchNumber,
+                    totalBatches,
+                    recordsSent: evidence.length,
+                    evidenceRowsIncluded: evidence.length,
+                    semanticGrouping,
+                    evidenceStartIndex: Number(evidenceStartIndex || 0),
+                    expectedSingleCompactBatch: true
+                },
+                limitations: {
+                    warnings: warningStrings,
+                    recordsSent: evidence.length,
+                    recordsOmitted: 0,
+                    complete: Boolean(basePackage.limitations?.evidenceCompleteness?.complete ?? evidence.length > 0)
+                },
+                outputInstructions: {
+                    maxRisks: 5,
+                    maxRecommendations: 5,
+                    maxAffectedEntitiesPerRisk: 5,
+                    visibleFieldsOnly: 'Use Cloudflare app, policy, device, gateway rule, profile, status, risk reason, and recommendation values. Do not expose internal source paths in visible text.'
+                }
+            };
+        }
+        const evidence = batchEvidence.map((item, index) => ({
+            evidenceNumber: Number(evidenceStartIndex || 0) + index + 1,
+            evidenceType: item?.evidenceType || item?.type || 'stored_evidence',
+            sourceLabel: item?.sourceLabel || item?.evidenceType || null,
+            evidenceCategory: item?.evidenceCategory || item?.sourceLabel || item?.evidenceType || null,
+            sourceMetric: item?.sourceMetric || null,
+            entityKey: item?.entityKey || entityRecordKey(item?.data ?? item),
+            internalSourcePath: item?.internalSourcePath || null,
+            data: safeEvidenceEntity(item?.data ?? item, { maxDepth: 4, maxArray: 10, maxString: 600, maxObjectKeys: 40 })
+        }));
+        const categoryCounts = evidence.reduce((counts, row) => {
+            const key = row.evidenceType || 'evidenceRows';
+            counts[key] = (counts[key] || 0) + 1;
+            return counts;
+        }, {});
+        const isEmail = domainKey === 'email_security';
+        return {
+            contextType: isEmail
+                ? 'stackctrl_enterprise_email_security_compact'
+                : 'stackctrl_enterprise_cloudflare_compact',
+            schemaVersion: 2,
+            mode: basePackage.mode,
+            companyId: basePackage.companyId,
+            snapshotId: basePackage.snapshotId,
+            snapshotCreatedAt: basePackage.snapshotCreatedAt,
+            domain: basePackage.domain,
+            sourceHealth: basePackage.sourceHealth,
+            currentMetrics: basePackage.currentMetrics || {},
+            dashboardMetrics: basePackage.dashboardMetrics || {},
+            calculatedIndicators: basePackage.calculatedIndicators || {},
+            authoritativeScores: basePackage.authoritativeScores,
+            collectionWindow: basePackage.collectionWindow || null,
+            compactEvidenceSummary: {
+                totalRows: evidence.length,
+                categoryCounts,
+                rowsAreCompactSelectedDomainEvidence: true,
+                mailflowIsContextOnly: isEmail ? true : undefined,
+                noSharedEnterpriseContextIncluded: true,
+                noHistoricalContextIncluded: true,
+                noPreviousAnalysisIncluded: true,
+                noKnowledgeCatalogIncluded: true
+            },
+            evidence,
+            batchMetadata: {
+                batchNumber,
+                totalBatches,
+                recordsSent: evidence.length,
+                evidenceRowsIncluded: evidence.length,
+                semanticGrouping,
+                evidenceStartIndex: Number(evidenceStartIndex || 0),
+                expectedSingleCompactBatch: true
+            },
+            limitations: {
+                rawVendorPayloadIncluded: false,
+                rawSnapshotContextIncluded: false,
+                fullHistoricalContextIncluded: false,
+                sharedEnterpriseEvidenceIncluded: false,
+                fallbackRawPayloadsIncluded: false,
+                evidenceCompleteness: basePackage.limitations?.evidenceCompleteness || null,
+                missingDataWarnings: array(basePackage.limitations?.missingDataWarnings),
+                missingDataInfo: array(basePackage.missingDataInfo),
+                batchProcessing: true,
+                batchNumber,
+                totalBatches,
+                recordsSent: evidence.length,
+                recordsOmitted: 0,
+                evidenceRowsIncluded: evidence.length
+            }
+        };
+    }
+
     // Build a domain analysis package for a specific batch of evidence
     function buildDomainBatchPackage(basePackage, batchEvidence, batchNumber, totalBatches, semanticGrouping = null, evidenceStartIndex = 0) {
         if (basePackage?.domain?.key === 'identity') {
@@ -2905,6 +3236,9 @@ ${JSON.stringify(packageValue)}`;
         }
         if (basePackage?.domain?.key === 'devices') {
             return buildDeviceBatchPackage(basePackage, batchEvidence, batchNumber, totalBatches, semanticGrouping, evidenceStartIndex);
+        }
+        if (['email_security', 'cloudflare_network_security'].includes(basePackage?.domain?.key)) {
+            return compactSelectedDomainBatchPackage(basePackage, batchEvidence, batchNumber, totalBatches, semanticGrouping, evidenceStartIndex);
         }
         const categoryMap = new Map();
         for (const item of batchEvidence) {
@@ -3086,7 +3420,9 @@ ${JSON.stringify(packageValue)}`;
             const response = await azureOpenAI.createJsonCompletion({
                 messages: domainMessages(domain, batchPackage),
                 temperature: 0.15,
-                maxTokens: settings.maxDomainOutputTokens,
+                maxTokens: domain.key === 'cloudflare_network_security'
+                    ? Math.min(settings.maxDomainOutputTokens, 6000)
+                    : settings.maxDomainOutputTokens,
                 maxRetriesOverride: domain.key === 'email_security' ? 0 : settings.maxRetries,
                 retryDelaysMsOverride: domain.key === 'email_security' ? EMAIL_SECURITY_RATE_LIMIT_RETRY_DELAYS_MS : ENTERPRISE_RATE_LIMIT_RETRY_DELAYS_MS,
                 retryMaxMsOverride: domain.key === 'email_security' ? EMAIL_SECURITY_RATE_LIMIT_RETRY_MAX_MS : ENTERPRISE_RATE_LIMIT_RETRY_MAX_MS,
@@ -3432,6 +3768,10 @@ ${JSON.stringify(packageValue)}`;
             ? IDENTITY_MAX_ITEMS_PER_BATCH
             : domain.key === 'devices'
             ? DEVICE_MAX_ITEMS_PER_BATCH
+            : domain.key === 'email_security'
+            ? EMAIL_SECURITY_MAX_ITEMS_PER_BATCH
+            : domain.key === 'cloudflare_network_security'
+            ? CLOUDFLARE_MAX_ITEMS_PER_BATCH
             : thresholdReached
                 ? Math.min(settings.maxItemsPerBatch, settings.thresholdBatchMaxItems)
                 : HEAVY_DOMAINS.has(domain.key)
@@ -3550,6 +3890,77 @@ ${JSON.stringify(packageValue)}`;
             const singleBatchTokens = Math.ceil(singleBatchEstimate / 4);
             batches = splitSecurityAlertsIntoBatches(allEvidence, batchOptions);
             logger.info?.(`[StackCTRL Enterprise] Security Alerts evidence (${allEvidence.length} items, ~${singleBatchTokens} tokens) planned as ${batches.length} safe batch(es) with at most ${maxItems} records each.`);
+        } else if (['email_security', 'cloudflare_network_security'].includes(domain.key)) {
+            const emptyRequestBytes = estimateDomainRequestBytes(
+                domain,
+                buildDomainBatchPackage(packageResult.package, [], 1, 1)
+            );
+            const combinedRequestBytes = estimateDomainRequestBytes(
+                domain,
+                buildDomainBatchPackage(packageResult.package, allEvidence, 1, 1)
+            );
+            if (domain.key === 'cloudflare_network_security' && allEvidence.length <= 100 && combinedRequestBytes <= settings.maxInputBytes) {
+                batches = [{ number: 1, items: allEvidence, bytes: combinedRequestBytes, semanticGrouping: null }];
+            } else {
+                batches = splitIntoBatches(allEvidence, batchOptions);
+            }
+            const basePackageTokens = Math.ceil(emptyRequestBytes / 4);
+            const totalEstimatedTokens = Math.ceil(combinedRequestBytes / 4);
+            const evidenceTokens = Math.max(0, totalEstimatedTokens - basePackageTokens);
+            const safeTokenLimit = Math.floor(settings.maxInputBytes / 4);
+            const safeInputTokenLimit = safeTokenLimit;
+            const historicalTokens = 0;
+            const knowledgeTokens = 0;
+            const previousAnalysisTokens = 0;
+            const compactPackageTokens = totalEstimatedTokens;
+            const excludedHistoricalTokens = Math.ceil(bytes(packageResult.package?.historicalComparisons || {}) / 4);
+            const excludedPreviousAnalysisTokens = Math.ceil(bytes(packageResult.package?.previousDomainAnalysis || {}) / 4);
+            const label = domain.key === 'email_security' ? 'Email Security' : 'Cloudflare';
+            let reasonForBatchCount;
+            if (!allEvidence.length) {
+                reasonForBatchCount = domain.key === 'email_security'
+                    ? 'no_compact_email_security_evidence_rows'
+                    : 'no_compact_cloudflare_evidence_rows';
+            } else if (batches.length === 1) {
+                reasonForBatchCount = domain.key === 'email_security'
+                    ? 'all_compact_email_security_rows_fit_safe_token_limit'
+                    : 'all_cloudflare_rows_fit_safe_token_limit';
+            } else if (combinedRequestBytes > settings.maxInputBytes && allEvidence.length > maxItems) {
+                reasonForBatchCount = domain.key === 'email_security'
+                    ? 'compact_email_security_evidence_exceeds_safe_token_limit_and_row_safety_cap'
+                    : 'compact_cloudflare_evidence_exceeds_safe_token_limit_and_row_safety_cap';
+            } else if (combinedRequestBytes > settings.maxInputBytes) {
+                reasonForBatchCount = domain.key === 'email_security'
+                    ? 'compact_email_security_evidence_exceeds_safe_token_limit'
+                    : 'compact_cloudflare_evidence_exceeds_safe_token_limit';
+            } else {
+                reasonForBatchCount = domain.key === 'email_security'
+                    ? `compact_email_security_evidence_exceeds_${maxItems}_row_safety_cap`
+                    : `compact_cloudflare_evidence_exceeds_${maxItems}_row_safety_cap`;
+            }
+            batchPlanDiagnostics = {
+                basePackageTokens,
+                compactPackageTokens,
+                evidenceTokens,
+                historicalTokens,
+                knowledgeTokens,
+                previousAnalysisTokens,
+                excludedHistoricalTokens,
+                excludedPreviousAnalysisTokens,
+                totalEstimatedTokens,
+                safeInputTokenLimit,
+                safeTokenLimit,
+                plannedBatchCount: batches.length,
+                reasonForBatchCount
+            };
+            logger.info?.(
+                domain.key === 'cloudflare_network_security'
+                    ? `[StackCTRL Enterprise] Selected domain batch plan: domainKey=${domain.key}, compactPackageTokens=${compactPackageTokens}, evidenceTokens=${evidenceTokens}, excludedHistoricalTokens=${excludedHistoricalTokens}, excludedPreviousAnalysisTokens=${excludedPreviousAnalysisTokens}, totalEstimatedTokens=${totalEstimatedTokens}, safeTokenLimit=${safeTokenLimit}, plannedBatchCount=${batches.length}, reasonForBatchCount=${reasonForBatchCount}`
+                    : `[StackCTRL Enterprise] Selected domain batch plan: domainKey=${domain.key}, basePackageTokens=${basePackageTokens}, evidenceTokens=${evidenceTokens}, historicalTokens=${historicalTokens}, knowledgeTokens=${knowledgeTokens}, previousAnalysisTokens=${previousAnalysisTokens}, totalEstimatedTokens=${totalEstimatedTokens}, safeTokenLimit=${safeTokenLimit}, plannedBatchCount=${batches.length}, reasonForBatchCount=${reasonForBatchCount}`
+            );
+            if (domain.key === 'cloudflare_network_security' && batches.length > 1) {
+                logger.warn?.(`[StackCTRL Enterprise] ${label} selected-domain package required ${batches.length} compact batches for ${allEvidence.length} row(s). Reason: ${reasonForBatchCount}.`);
+            }
         } else {
             batches = splitIntoBatches(allEvidence, batchOptions);
         }
@@ -4177,32 +4588,40 @@ ${JSON.stringify(packageValue)}`;
             azureAttemptDiagnostics,
             currentBatch
         });
-        const auditInput = JSON.stringify({
-            ...packageResult.package,
-            domainRunAudit,
-            evidenceBatchPlan: packageResult.audit.batchPlan,
-            evidenceSample: packageResult.audit.evidenceSample,
-            tokenTracking: {
-                estimatedInputTokens: Math.ceil(Number(usage.requestBytes || packageResult.audit.inputSizeBytes || 0) / 4),
-                actualInputTokens: usage.inputTokens,
-                actualOutputTokens: usage.outputTokens,
-                inputTokens: usage.inputTokens,
-                outputTokens: usage.outputTokens,
-                totalTokens: usage.totalTokens,
-                thresholdUsed: settings.maxTotalTokens,
-                retryCount: usage.retries || 0,
-                retryOrCooldownOccurred: Boolean((usage.retries || 0) > 0),
-                batchCount: packageResult.audit.batchPlan?.batchCount || 0,
-                recordsSent: packageResult.audit.sentToAzureCount,
-                recordsOmitted: packageResult.audit.evidenceOmittedCount,
-                evidenceRowsIncluded: packageResult.audit.sentToAzureCount,
-                catalogEntityCount: packageResult.audit.catalogEntityCount,
-                catalogCategoryCount: packageResult.audit.catalogCategoryCount
-            },
-            jsonStatus: analysis
-                ? (array(analysis.missingDataWarnings).some(warning => /recovered|incomplete json|closing json/i.test(String(warning))) ? 'recovered_with_warnings' : 'valid')
-                : 'not_available'
-        });
+        const auditInputValue = domain.key === 'cloudflare_network_security'
+            ? {
+                ...buildDomainBatchPackage(packageResult.package, array(packageResult.allEvidence).slice(0, 100), 1, 1),
+                jsonStatus: analysis
+                    ? (array(analysis.missingDataWarnings).some(warning => /recovered|incomplete json|closing json/i.test(String(warning))) ? 'recovered_with_warnings' : 'valid')
+                    : 'not_available'
+            }
+            : {
+                ...packageResult.package,
+                domainRunAudit,
+                evidenceBatchPlan: packageResult.audit.batchPlan,
+                evidenceSample: packageResult.audit.evidenceSample,
+                tokenTracking: {
+                    estimatedInputTokens: Math.ceil(Number(usage.requestBytes || packageResult.audit.inputSizeBytes || 0) / 4),
+                    actualInputTokens: usage.inputTokens,
+                    actualOutputTokens: usage.outputTokens,
+                    inputTokens: usage.inputTokens,
+                    outputTokens: usage.outputTokens,
+                    totalTokens: usage.totalTokens,
+                    thresholdUsed: settings.maxTotalTokens,
+                    retryCount: usage.retries || 0,
+                    retryOrCooldownOccurred: Boolean((usage.retries || 0) > 0),
+                    batchCount: packageResult.audit.batchPlan?.batchCount || 0,
+                    recordsSent: packageResult.audit.sentToAzureCount,
+                    recordsOmitted: packageResult.audit.evidenceOmittedCount,
+                    evidenceRowsIncluded: packageResult.audit.sentToAzureCount,
+                    catalogEntityCount: packageResult.audit.catalogEntityCount,
+                    catalogCategoryCount: packageResult.audit.catalogCategoryCount
+                },
+                jsonStatus: analysis
+                    ? (array(analysis.missingDataWarnings).some(warning => /recovered|incomplete json|closing json/i.test(String(warning))) ? 'recovered_with_warnings' : 'valid')
+                    : 'not_available'
+            };
+        const auditInput = JSON.stringify(auditInputValue);
         const auditOmitted = JSON.stringify({
             stackCTRLDataCount: packageResult.audit.stackCTRLDataCount,
             sentToAzureCount: packageResult.audit.sentToAzureCount,
