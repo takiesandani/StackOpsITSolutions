@@ -1089,6 +1089,72 @@ function sanitizeVisibleValue(value, path = []) {
     return result;
 }
 
+function entityMatchKeys(entity) {
+    if (!entity || typeof entity !== 'object') return [];
+
+    return [
+        entity.entityId,
+        entity.id,
+        entity.recordId,
+        entity.sourceAlertId,
+        entity.alertId,
+        entity.deviceId,
+        entity.userId,
+        entity.applicationId,
+        entity.controlId,
+        entity.taskId,
+        entity.serialNumber,
+        entity.entityName,
+        entity.entityDisplayName,
+        entity.displayName,
+        entity.name,
+        entity.entityDeviceName,
+        entity.deviceName,
+        entity.managedDeviceName,
+        entity.hostName,
+        entity.hostname,
+        entity.entityEmail,
+        entity.userPrincipalName,
+        entity.mail,
+        entity.email,
+        entity.entityApplicationName,
+        entity.applicationName,
+        entity.appDisplayName,
+        entity.publisherName,
+        entity.alertName,
+        entity.policyName
+    ]
+        .map(value => value == null ? null : String(value).trim().toLowerCase())
+        .filter(Boolean)
+        .filter(value => value !== 'internal evidence record')
+        .filter(value => !isSourcePathValue(value));
+}
+
+function evidenceRowMatchesAffectedEntity(row, affectedEntityKeys) {
+    if (!row || !affectedEntityKeys?.size) return false;
+
+    const keys = entityMatchKeys(row);
+    return keys.some(key => affectedEntityKeys.has(key));
+}
+
+function filterRowsToAffectedEntities(rows, affectedEntities) {
+    const safeRows = uniqueEntities(array(rows));
+    const safeAffectedEntities = uniqueEntities(array(affectedEntities));
+
+    if (!safeRows.length) return safeRows;
+    if (!safeAffectedEntities.length) return safeRows;
+
+    const affectedEntityKeys = new Set(
+        safeAffectedEntities.flatMap(entity => entityMatchKeys(entity))
+    );
+
+    if (!affectedEntityKeys.size) return safeRows;
+
+    const filteredRows = safeRows.filter(row => evidenceRowMatchesAffectedEntity(row, affectedEntityKeys));
+
+    return filteredRows.length ? filteredRows : safeRows;
+}
+
 function normalizeEvidenceBackedItem(item, domain, snapshotId) {
     const value = item && typeof item === 'object' && !Array.isArray(item) ? item : { title: String(item || '') };
     const sourceDomain = textOrNull(value.sourceDomain || domain.key, 80);
@@ -1096,23 +1162,47 @@ function normalizeEvidenceBackedItem(item, domain, snapshotId) {
     const businessReason = visibleTextOrNull(value.businessReason || value.businessImpact || value.whyItMatters, 1200);
     const recommendation = visibleTextOrNull(value.recommendation || value.recommendedAction || value.detail, 1200);
     const entityContext = { ...value, sourceDomain, sourceMetric, businessReason, recommendation };
+
     const suppliedEntityIds = compactReferences(value.affectedEntityIds);
     const affectedEntities = uniqueEntities(array(value.affectedEntities)
         .map((entity, index) => canonicalEntity(entity, { ...entityContext, entityId: suppliedEntityIds[index] })));
-    const evidenceRows = uniqueEntities(array(value.evidenceRows).map(row => canonicalEntity(row, entityContext)));
+
+    const rawEvidenceRows = uniqueEntities(array(value.evidenceRows)
+        .map(row => canonicalEntity(row, entityContext)));
+
+    const evidenceRows = filterRowsToAffectedEntities(rawEvidenceRows, affectedEntities);
+
     const internalSourcePaths = [...new Set([
-        ...array(value.internalSourcePaths), value.internalSourcePath, value.debugSourcePath,
-        value.sourcePath, value.auditTrace?.sourcePath,
+        ...array(value.internalSourcePaths),
+        value.internalSourcePath,
+        value.debugSourcePath,
+        value.sourcePath,
+        value.auditTrace?.sourcePath,
         isSourcePathValue(value.evidenceSource) ? value.evidenceSource : null,
         ...array(value.affectedEntities).map(internalSourcePathFrom),
         ...array(value.evidenceRows).map(internalSourcePathFrom)
     ].map(path => textOrNull(path, 1000)).filter(Boolean))];
+
     const {
-        sourcePath: _sourcePath, debugSourcePath: _debugSourcePath,
-        affectedEntities: _affectedEntities, affectedEntityIds: _affectedEntityIds,
-        evidenceRows: _evidenceRows, recordIds: _recordIds, sourceAlertIds: _sourceAlertIds,
-        internalSourcePaths: _internalSourcePaths, ...visibleValue
+        sourcePath: _sourcePath,
+        debugSourcePath: _debugSourcePath,
+        affectedEntities: _affectedEntities,
+        affectedEntityIds: _affectedEntityIds,
+        evidenceRows: _evidenceRows,
+        recordIds: _recordIds,
+        sourceAlertIds: _sourceAlertIds,
+        internalSourcePaths: _internalSourcePaths,
+        ...visibleValue
     } = value;
+
+    const cleanAffectedEntityIds = affectedEntities.length
+        ? compactReferences(affectedEntities)
+        : compactReferences([...array(value.affectedEntityIds), ...evidenceRows]);
+
+    const cleanRecordIds = evidenceRows.length
+        ? compactReferences(evidenceRows)
+        : compactReferences(array(value.recordIds));
+
     return {
         ...sanitizeVisibleValue(visibleValue),
         title: visibleTextOrNull(value.title || value.name || value.metricName, 255),
@@ -1134,21 +1224,39 @@ function normalizeEvidenceBackedItem(item, domain, snapshotId) {
         sourceDomain,
         sourceMetric,
         snapshotId: numberOrNull(value.snapshotId ?? snapshotId),
+
         affectedEntities,
-        affectedEntityIds: compactReferences([...array(value.affectedEntityIds), ...affectedEntities]),
+        affectedEntityIds: cleanAffectedEntityIds,
+
         evidenceRows,
-        recordIds: compactReferences([...array(value.recordIds), ...evidenceRows]),
+        recordIds: cleanRecordIds,
+
         sourceAlertIds: compactReferences(value.sourceAlertIds),
         internalSourcePath: internalSourcePaths[0] || null,
         internalSourcePaths,
         sourceMetrics: [...new Set(array(value.sourceMetrics).map(metric => textOrNull(metric, 120)).filter(Boolean))],
+
         evidenceSource: isSourcePathValue(value.evidenceSource)
             ? textOrNull(value.sourceLabel || 'stackctrl_dashboard_evidence', 255)
             : visibleTextOrNull(value.evidenceSource || value.sourceLabel || 'stackctrl_dashboard_evidence', 255),
+
         whatHappened: visibleTextOrNull(value.whatHappened || value.description, 1200),
         whyItMatters: visibleTextOrNull(value.whyItMatters || value.businessImpact, 1200),
         recommendedAction: visibleTextOrNull(value.recommendedAction || value.recommendation || value.detail, 1200),
         recommendedActions: array(value.recommendedActions).map(action => visibleTextOrNull(action, 1200)).filter(Boolean),
+
+        patternFound: visibleTextOrNull(value.patternFound, 1200),
+        reasoning: visibleTextOrNull(value.reasoning, 1200),
+        whyThisIsHighPriority: visibleTextOrNull(value.whyThisIsHighPriority, 1200),
+        whyThisIsWorseThanLowerPriorityIssues: visibleTextOrNull(value.whyThisIsWorseThanLowerPriorityIssues, 1200),
+        firstAction: visibleTextOrNull(value.firstAction, 1200),
+        followUpAction: visibleTextOrNull(value.followUpAction, 1200),
+        managementDecisionRequired: value.managementDecisionRequired == null
+            ? null
+            : value.managementDecisionRequired,
+        whatCanWait: visibleTextOrNull(value.whatCanWait, 1200),
+        recommendedOwner: textOrNull(value.recommendedOwner || value.suggestedOwner || value.owner, 180),
+
         metricName: textOrNull(value.metricName, 120),
         direction: textOrNull(value.direction, 50),
         currentValue: numberOrNull(value.currentValue),
@@ -1161,12 +1269,16 @@ function normalizeEvidenceBackedItem(item, domain, snapshotId) {
 function ensureItemEvidence(item, domain, snapshotId, availableEvidence = []) {
     const normalized = normalizeEvidenceBackedItem(item, domain, snapshotId);
     if (!availableEvidence.length) return normalized;
+
     const requestedMetric = String(normalized.sourceMetric || '').toLowerCase();
+
     const matching = requestedMetric
         ? availableEvidence.filter(row => [row.sourceMetric, row.sourceLabel, row.evidenceCategory, row.evidenceType]
             .some(value => String(value || '').toLowerCase() === requestedMetric))
         : [];
+
     const selected = matching.length ? matching : availableEvidence;
+
     const entityContext = {
         ...normalized,
         sourceDomain: normalized.sourceDomain || domain.key,
@@ -1174,47 +1286,80 @@ function ensureItemEvidence(item, domain, snapshotId, availableEvidence = []) {
         businessReason: normalized.businessReason,
         recommendation: normalized.recommendation
     };
+
     const rows = uniqueEntities(selected.map(row => canonicalEntity({
         internalSourcePath: row?.internalSourcePath || null,
         sourceMetric: row?.sourceMetric || null,
         evidenceType: row?.evidenceType || null,
         data: row?.data ?? row
-    }, entityContext)));
-    const recordIds = compactReferences(selected.map(row => row?.data || row));
+    }, entityContext))).filter(Boolean);
+
     const first = selected[0] || {};
-    if (!normalized.sourceMetric) normalized.sourceMetric = textOrNull(first.sourceMetric || first.sourceLabel || first.evidenceType, 120);
+
+    if (!normalized.sourceMetric) {
+        normalized.sourceMetric = textOrNull(first.sourceMetric || first.sourceLabel || first.evidenceType, 120);
+    }
+
     if (!normalized.evidenceSource || normalized.evidenceSource === 'stackctrl_dashboard_evidence') {
         normalized.evidenceSource = textOrNull(first.sourceLabel || first.evidenceType || 'stackctrl_dashboard_evidence', 255);
     }
-    if (!normalized.evidenceRows.length) normalized.evidenceRows = rows;
+
     const rowsById = new Map(rows.filter(row => row.entityId).map(row => [String(row.entityId), row]));
+
     normalized.affectedEntities = uniqueEntities(normalized.affectedEntities.map(entity => {
         const sourceEntity = entity.entityId ? rowsById.get(String(entity.entityId)) : null;
-        return sourceEntity ? { ...sourceEntity, ...entity, entityName: entity.entityName || sourceEntity.entityName } : entity;
+        return sourceEntity
+            ? { ...sourceEntity, ...entity, entityName: entity.entityName || sourceEntity.entityName }
+            : entity;
     }));
+
     if (!normalized.affectedEntities.length || normalized.affectedEntities.every(entity => !entity.entityName)) {
         normalized.affectedEntities = rows;
     }
-    normalized.recordIds = compactReferences([...normalized.recordIds, ...normalized.evidenceRows, ...recordIds]);
-    normalized.affectedEntityIds = compactReferences([...normalized.affectedEntityIds, ...normalized.affectedEntities, ...recordIds]);
-    const sourceAlertIds = selected.map(row => {
-        const data = row?.data ?? row;
-        return data?.sourceAlertId || data?.alertId || data?.SourceID || data?.id || null;
+
+    const filteredRows = filterRowsToAffectedEntities(
+        normalized.evidenceRows.length ? normalized.evidenceRows : rows,
+        normalized.affectedEntities
+    );
+
+    normalized.evidenceRows = filteredRows;
+
+    normalized.recordIds = normalized.evidenceRows.length
+        ? compactReferences(normalized.evidenceRows)
+        : compactReferences(normalized.recordIds);
+
+    normalized.affectedEntityIds = normalized.affectedEntities.length
+        ? compactReferences(normalized.affectedEntities)
+        : compactReferences(normalized.affectedEntityIds);
+
+    const sourceAlertIds = filteredRows.map(row => {
+        return row?.sourceAlertId || row?.alertId || row?.SourceID || row?.entityId || null;
     }).filter(Boolean).map(String);
+
     normalized.sourceAlertIds = compactReferences([...array(item?.sourceAlertIds), ...sourceAlertIds]);
+
     normalized.internalSourcePaths = [...new Set([
         ...array(normalized.internalSourcePaths),
-        ...selected.map(row => row?.internalSourcePath).filter(Boolean)
+        ...filteredRows.map(row => row?.internalSourcePath).filter(Boolean)
     ])];
+
     normalized.internalSourcePath = normalized.internalSourcePaths[0] || null;
-    normalized.sourceMetrics = [...new Set([...array(item?.sourceMetrics).map(String), normalized.sourceMetric].filter(Boolean))];
+
+    normalized.sourceMetrics = [...new Set([
+        ...array(item?.sourceMetrics).map(String),
+        normalized.sourceMetric
+    ].filter(Boolean))];
+
     normalized.recommendedActions = array(item?.recommendedActions).length
         ? array(item.recommendedActions)
         : [normalized.recommendedAction].filter(Boolean);
-    if (!normalized.evidenceSummary) normalized.evidenceSummary = `${selected.length} readable StackCTRL entity evidence row(s) support this item; complete source data remains available in the raw evidence endpoint.`;
+
+    if (!normalized.evidenceSummary) {
+        normalized.evidenceSummary = `${normalized.evidenceRows.length} readable StackCTRL affected evidence row(s) support this item; complete source data remains available in the raw evidence endpoint.`;
+    }
+
     return normalized;
 }
-
 function normalizeControlAssessment(value, domain, snapshotId, availableEvidence) {
     if (Array.isArray(value)) return value.map(item => ensureItemEvidence(item, domain, snapshotId, availableEvidence));
     if (!value || typeof value !== 'object') return value || {};
