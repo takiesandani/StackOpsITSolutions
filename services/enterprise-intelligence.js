@@ -32,6 +32,9 @@ const DEFAULT_SYNTHESIS_OUTPUT_TOKENS = 8000;
 const ENTERPRISE_RATE_LIMIT_RETRY_DELAYS_MS = Object.freeze([300000, 300000, 600000]);
 const ENTERPRISE_CONNECTION_RETRY_DELAYS_MS = Object.freeze([0, 15000, 45000]);
 const ENTERPRISE_RATE_LIMIT_RETRY_MAX_MS = 15 * 60 * 1000;
+const EMAIL_SECURITY_RATE_LIMIT_RETRY_DELAYS_MS = Object.freeze([]);
+const EMAIL_SECURITY_RATE_LIMIT_RETRY_MAX_MS = 0;
+const COMPACT_SELECTED_DOMAIN_KEYS = Object.freeze(new Set(['identity', 'email_security']));
 const HEAVY_DOMAINS = Object.freeze(new Set(['governance', 'operations', 'compliance']));
 const SUCCESSFUL_DOMAIN_STATUSES = Object.freeze(new Set(['completed', 'partial', 'completed_with_warnings']));
 const SKIPPED_DOMAIN_STATUSES = Object.freeze(new Set(['skipped_rate_limited', 'skipped_token_threshold', 'skipped_pipeline_stop']));
@@ -941,9 +944,10 @@ function inferEntityType(entity, domainKey = null) {
         return explicit.replace(/^#?microsoft\.graph\./i, '').replace(/^./, character => character.toUpperCase());
     }
     if (entity.alertId || entity.sourceAlertId || entity.alertName || entity.incidentId || domainKey === 'security_alerts') return 'Alert';
-    if (entity.applicationId || entity.appId || entity.applicationName || entity.appDisplayName || entity.publisherName || domainKey === 'applications') return 'Application';
+    if (entity.applicationId || entity.appId || entity.applicationName || entity.appDisplayName || entity.appName || entity.protectedAppName || entity.publisherName || domainKey === 'applications') return 'Application';
     if (entity.deviceId || entity.deviceName || entity.serialNumber || domainKey === 'devices') return 'Device';
-    if (entity.policyId || entity.policyName) return 'Policy';
+    if (entity.policyId || entity.policyName || entity.gatewayPolicyName || entity.accessPolicyName) return 'Policy';
+    if (entity.dlpProfileName || entity.warpProfileName || entity.profileName) return 'Profile';
     if (entity.controlId || entity.controlName || entity.control) return 'Control';
     if (entity.userId || entity.userPrincipalName || entity.userEmail || entity.mail || entity.email || domainKey === 'identity') return 'User';
     if (entity.taskId || domainKey === 'operations') return 'Task';
@@ -965,16 +969,17 @@ function canonicalEntity(value, context = {}) {
     const entityId = explicitEntityId(entity) || explicitEntityId(wrapper) || explicitEntityId(context.entityId) ||
         (typeof value === 'string' && isOpaqueEntityId(value) ? explicitEntityId(value) : null);
     const entityEmail = firstReadableValue(entity.entityEmail, entity.userPrincipalName, entity.userEmail, entity.mail, entity.email, entity.upn);
-    const rawEntityDeviceName = firstReadableValue(entity.entityDeviceName, entity.deviceName, entity.managedDeviceName, entity.hostName, entity.hostname);
-    const rawEntityApplicationName = firstReadableValue(entity.entityApplicationName, entity.applicationName, entity.appDisplayName, entity.servicePrincipalName);
+    const rawEntityDeviceName = firstReadableValue(entity.entityDeviceName, entity.deviceName, entity.cloudflareDeviceName, entity.managedDeviceName, entity.hostName, entity.hostname);
+    const rawEntityApplicationName = firstReadableValue(entity.entityApplicationName, entity.applicationName, entity.appDisplayName, entity.appName, entity.protectedAppName, entity.servicePrincipalName);
     const alertName = firstReadableValue(entity.alertName, entity.alertTitle, entity.title, entity.subject);
-    const policyName = firstReadableValue(entity.policyName, entity.controlName, entity.control);
+    const policyName = firstReadableValue(entity.policyName, entity.gatewayPolicyName, entity.accessPolicyName, entity.controlName, entity.control);
+    const profileName = firstReadableValue(entity.dlpProfileName, entity.warpProfileName, entity.profileName);
     const explicitName = typeof value === 'string' && !isSourcePathValue(value) && !isOpaqueEntityId(value) && String(value) !== String(entityId || '')
         ? value
         : null;
     let entityName = firstReadableValue(
         entity.entityName, entity.entityDisplayName, entity.displayName, entity.userDisplayName,
-        entity.name, rawEntityApplicationName, rawEntityDeviceName, alertName, policyName, entityEmail, explicitName
+        entity.name, rawEntityApplicationName, rawEntityDeviceName, alertName, policyName, profileName, entityEmail, explicitName
     );
     if (entityId && entityName === String(entityId)) entityName = null;
     const sourceDomain = firstReadableValue(entity.sourceDomain, wrapper.sourceDomain, context.sourceDomain);
@@ -1020,6 +1025,7 @@ function canonicalEntity(value, context = {}) {
         publisherName,
         alertName,
         policyName,
+        profileName,
         severity: firstReadableValue(entity.severity, context.severity),
         status: firstReadableValue(entity.status, context.status),
         roles,
@@ -1383,10 +1389,12 @@ function normalizeDomainOutputForDisplay(value, domain, snapshotId) {
     const normalizeReasoningSection = section => Array.isArray(section)
         ? normalizeItems(section)
         : (section && typeof section === 'object' ? sanitizeVisibleValue(section) : visibleTextOrNull(section, 8000));
-    return {
+    return compactSelectedDomainAnalysis({
         ...normalized,
         domainExecutiveSummary: visibleTextOrNull(value.domainExecutiveSummary, 4000),
-        technicalReasoning: visibleTextOrNull(value.technicalReasoning || value.technicalSummary, 8000),
+        technicalReasoning: Array.isArray(value.technicalReasoning)
+            ? sanitizeVisibleValue(value.technicalReasoning)
+            : visibleTextOrNull(value.technicalReasoning || value.technicalSummary, 8000),
         riskPrioritization: normalizeReasoningSection(value.riskPrioritization),
         technicalSummary: visibleTextOrNull(value.technicalSummary, 4000),
         businessImpact: visibleTextOrNull(value.businessImpact, 4000),
@@ -1404,6 +1412,87 @@ function normalizeDomainOutputForDisplay(value, domain, snapshotId) {
             .filter(Boolean)),
         trendAnalysis: normalizeItems(value.trendAnalysis),
         managementActions: normalizeItems(value.managementActions)
+    }, domain);
+}
+
+function compactTextField(value, maximum = 420) {
+    return visibleTextOrNull(value, maximum);
+}
+
+function compactTechnicalReasoning(value, fallback = null) {
+    const source = Array.isArray(value)
+        ? value
+        : String(fallback || value || '')
+            .split(/(?:\n+|(?<=\.)\s+(?=[A-Z]))/)
+            .map(item => item.trim())
+            .filter(Boolean);
+    return source.slice(0, 5).map((item, index) => {
+        if (item && typeof item === 'object' && !Array.isArray(item)) {
+            return {
+                title: compactTextField(item.title || item.pattern || `Reason ${index + 1}`, 140),
+                reasoning: compactTextField(item.reasoning || item.point || item.detail || item.description, 420),
+                priority: textOrNull(item.priority || item.severity, 60)
+            };
+        }
+        return {
+            title: `Reason ${index + 1}`,
+            reasoning: compactTextField(item, 420),
+            priority: null
+        };
+    }).filter(item => item.reasoning || item.title);
+}
+
+function compactReasonedItems(items, maximum = 5) {
+    return array(items).slice(0, maximum).map(item => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
+        return {
+            ...item,
+            reasoning: compactTextField(item.reasoning, 520),
+            whyThisIsHighPriority: compactTextField(item.whyThisIsHighPriority, 420),
+            whyThisIsWorseThanLowerPriorityIssues: compactTextField(item.whyThisIsWorseThanLowerPriorityIssues, 420),
+            businessImpact: compactTextField(item.businessImpact, 520),
+            managementDecisionRequired: compactTextField(item.managementDecisionRequired, 420),
+            whatCanWait: compactTextField(item.whatCanWait, 420),
+            firstAction: compactTextField(item.firstAction, 300),
+            followUpAction: compactTextField(item.followUpAction, 300),
+            affectedEntities: array(item.affectedEntities).slice(0, 5),
+            evidenceUsed: array(item.evidenceUsed).slice(0, 5).map(entry => sanitizeVisibleValue(entry)),
+            evidenceRows: array(item.evidenceRows).slice(0, 5)
+        };
+    });
+}
+
+function compactSelectedDomainAnalysis(analysis, domain) {
+    if (!analysis || typeof analysis !== 'object' || !COMPACT_SELECTED_DOMAIN_KEYS.has(domain?.key)) return analysis;
+    const riskReasoningFallback = array(analysis.risks).map(risk => ({
+        title: risk?.patternFound || risk?.title,
+        reasoning: risk?.reasoning || risk?.whyThisIsHighPriority || risk?.businessReason || risk?.businessImpact,
+        priority: risk?.severity || risk?.priority
+    })).filter(item => item.title || item.reasoning);
+    const technicalReasoningLooksGeneric = !Array.isArray(analysis.technicalReasoning) &&
+        analysis.technicalReasoning &&
+        analysis.technicalSummary &&
+        String(analysis.technicalReasoning).trim() === String(analysis.technicalSummary).trim();
+    const technicalReasoningSource = technicalReasoningLooksGeneric && riskReasoningFallback.length
+        ? riskReasoningFallback
+        : (analysis.technicalReasoning || (riskReasoningFallback.length ? riskReasoningFallback : analysis.technicalSummary));
+    return {
+        ...analysis,
+        domainExecutiveSummary: compactTextField(analysis.domainExecutiveSummary, 700),
+        technicalReasoning: compactTechnicalReasoning(technicalReasoningSource, analysis.technicalSummary),
+        riskPrioritization: compactReasonedItems(analysis.riskPrioritization, 5),
+        technicalSummary: compactTextField(analysis.technicalSummary, 700),
+        businessImpact: compactTextField(analysis.businessImpact, 700),
+        currentPosture: compactTextField(analysis.currentPosture, 700),
+        scoreJustification: compactTextField(analysis.scoreJustification, 700),
+        evidenceUsed: array(analysis.evidenceUsed).slice(0, 5).map(entry => sanitizeVisibleValue(entry)),
+        highestRiskPatterns: compactReasonedItems(analysis.highestRiskPatterns, 5),
+        keyFindings: compactReasonedItems(analysis.keyFindings, 5),
+        risks: compactReasonedItems(analysis.risks, 5),
+        recommendations: compactReasonedItems(analysis.recommendations, 5),
+        managementDecisionsRequired: compactReasonedItems(analysis.managementDecisionsRequired, 5),
+        whatCanWait: compactReasonedItems(analysis.whatCanWait, 5),
+        affectedEntities: array(analysis.affectedEntities).slice(0, 5)
     };
 }
 
@@ -2274,11 +2363,29 @@ Device Protection reasoning requirements:
 - Distinguish actions: remediate, block, retire, or investigate. Include what can wait, e.g. encrypted and MDM-managed devices are not the immediate crisis when a smaller stale non-compliant group exists.
 - Device affectedEntities must include entityId, entityName, entityType "Device", entityDeviceName, assignedUser, operatingSystem, osVersion, complianceState, encryptionState, managementState, lastSyncDateTime, lastSyncDaysAgo, riskLevel, businessReason, recommendation.`;
         }
+        if (domain.key === 'email_security') {
+            return `
+Email Security reasoning requirements:
+- Treat prepared StackCTRL email records as valid evidence. Azure rate limits are processing failures, not data failures.
+- Keep output compact: risks max 5, recommendations max 5, affectedEntities max 5 per risk, evidenceUsed max 5, technicalReasoning max 5 short bullet objects.
+- Reason from patterns such as high-severity alerts, unresolved incidents, phishing/malware/BEC clusters, affected users, repeated senders/domains, and response posture.
+- Use one to two sentences for reasoning fields. Prefer short action language over long narrative.
+- Affected entities must show readable alert names, incident names, user emails, sender/domain labels, and sourceMetric. IDs may be references only.`;
+        }
+        if (domain.key === 'cloudflare_network_security') {
+            return `
+Cloudflare Network Security reasoning requirements:
+- Produce readable business intelligence, not generic Cloudflare prose.
+- Analyse protected apps, Cloudflare devices, gateway policies, access policies, access logs, DLP profiles, WARP profiles, and section errors/missing controls when present.
+- Show real protected application names, policy names, device names, access decision labels, DLP profile names, WARP profile names, and readable risk reasons.
+- Keep affectedEntities and evidenceRows relevant only to each risk; do not attach unrelated Cloudflare rows to every finding.
+- Do not expose internal source paths visibly. Use internalSourcePath/internalSourcePaths only for traceability.`;
+        }
         return '';
     }
 
     function domainOutputSchema(domain) {
-        if (!['identity', 'devices'].includes(domain.key)) {
+        if (!['identity', 'devices', 'email_security', 'cloudflare_network_security'].includes(domain.key)) {
             return `{
   "domainExecutiveSummary": "",
   "technicalSummary": "",
@@ -2306,7 +2413,7 @@ Device Protection reasoning requirements:
         }
         return `{
   "domainExecutiveSummary": "",
-  "technicalReasoning": "",
+  "technicalReasoning": [],
   "riskPrioritization": [],
   "technicalSummary": "",
   "currentPosture": "",
@@ -2342,7 +2449,8 @@ Device Protection reasoning requirements:
         if (domain.key === 'security_alerts' && packageValue?.batchMetadata) {
             return securityAlertsBatchPrompt(packageValue);
         }
-        const richReasoning = ['identity', 'devices'].includes(domain.key);
+        const richReasoning = ['identity', 'devices', 'email_security', 'cloudflare_network_security'].includes(domain.key);
+        const compactOutput = COMPACT_SELECTED_DOMAIN_KEYS.has(domain.key);
         const reasoningContract = domainReasoningContract(domain);
         return `You are StackCTRL Enterprise Intelligence. Analyse only the supplied frozen StackCTRL ${domain.name} package.
 Azure builds structured enterprise intelligence; Power BI builds the final report. Do not create layouts, visuals, HTML, dashboard instructions, or Power BI files.
@@ -2356,6 +2464,10 @@ ${domain.key === 'identity'
     ? '- Identity evidence[] is a compact table. Each row already contains the readable user, MFA, authentication, risk, account, sign-in, location, device, role, and key-flag fields needed for analysis. Do not request or infer omitted dashboard/catalog/history objects.'
     : domain.key === 'devices'
     ? '- Device evidence[] is a compact table. Each row already contains readable device name, assigned user, OS, compliance, encryption, management, sync age, risk, alert count, and issue-flag fields. Reason over device posture patterns; do not repeat rows or request omitted catalog/history objects.'
+    : domain.key === 'email_security'
+    ? '- Email Security evidence[] contains prepared alert, incident, mail activity, and dashboard evidence rows. Analyse the 43 prepared records as valid evidence when present; rate limits are Azure processing failures, not evidence omissions.'
+    : domain.key === 'cloudflare_network_security'
+    ? '- Cloudflare evidence[] contains prepared protected apps, devices, gateway policies, access policies/logs, DLP profiles, WARP profiles, and section status/errors when present. Use readable names from each row.'
     : '- evidenceCatalog.categories contains categorized dashboard entity rows tied to sourceMetric keys.'}
 - evidence[] contains individual entity rows from the StackCTRL dashboard table for this batch.
 Every finding, risk, and recommendation MUST be evidence-backed. Do not state a gap without naming affected users, devices, apps, controls, policies, alerts, or other entities from the supplied evidence.
@@ -2363,10 +2475,12 @@ Visible output must be human-readable. Include userPrincipalName/email, device d
 Every affectedEntities object must include entityId, entityName, entityType, sourceDomain, sourceMetric, businessReason, and recommendation. Use source paths only in internalSourcePath, debugSourcePath, or auditTrace.sourcePath; never use them as entity IDs, record IDs, alert IDs, or visible names.
 ${reasoningContract}
 ${richReasoning ? `
-For Identity Protection and Device Protection, move beyond Metric -> Risk -> Recommendation. Produce: Pattern -> Reasoning -> Priority -> Evidence -> Action -> Business decision.
+For this selected-domain analysis, move beyond Metric -> Risk -> Recommendation. Produce: Pattern -> Reasoning -> Priority -> Evidence -> Action -> Business decision.
 Use these shared reasoning sections: domainExecutiveSummary, technicalReasoning, riskPrioritization, currentPosture, highestRiskPatterns, keyFindings, risks, recommendations, managementDecisionsRequired, whatCanWait, businessImpact, evidenceUsed, evidenceLimitations, scoreJustification, affectedEntities, collectionWindow, missingDataInfo.
 Every risk must include: patternFound, reasoning, whyThisIsHighPriority, whyThisIsWorseThanLowerPriorityIssues, affectedEntities, evidenceUsed, firstAction, followUpAction, businessImpact, managementDecisionRequired, whatCanWait, recommendedOwner, suggestedDueDate.
-Do not hardcode generic risks. Infer patterns and priorities from supplied compact evidence rows and summary metrics only.` : ''}
+Do not hardcode generic risks. Infer patterns and priorities from supplied evidence rows and summary metrics only.` : ''}
+${compactOutput ? `
+Compact output limits are mandatory: risks max 5; recommendations max 5; affectedEntities max 5 per risk; evidenceUsed max 5; technicalReasoning max 5 short bullet objects; no long paragraphs; reasoning fields one to two short sentences.` : ''}
 
 Return valid JSON only. No markdown. No code fences. No explanations outside JSON.
 Return exactly these fields:
@@ -2640,6 +2754,9 @@ ${JSON.stringify(packageValue)}`;
         const recordsRemaining = suppliedRecordsRemaining == null
             ? Math.max(0, Number(stackCTRLDataCount || 0) - (batchNumber * batchItemCount))
             : Math.max(0, Number(suppliedRecordsRemaining));
+        const rateLimitedFailure = failureReason === 'rate_limited' || status === 'failed_rate_limited';
+        const omittedFromThisBatch = analysis || rateLimitedFailure ? 0 : batchItemCount;
+        const sentToAzureCount = analysis ? batchItemCount : 0;
         const estimatedInputTokens = Math.ceil(Number(usage.requestBytes || 0) / 4);
         const batchSummary = {
             summary: analysis?.domainExecutiveSummary || '',
@@ -2654,8 +2771,9 @@ ${JSON.stringify(packageValue)}`;
             totalBatches,
             recordsSent: batchItemCount,
             recordsRemaining,
-            recordsOmitted: analysis ? 0 : batchItemCount,
-            omissionReason: analysis ? null : (failureReason || errorMessage || 'batch_not_completed'),
+            recordsOmitted: omittedFromThisBatch,
+            omissionReason: analysis || rateLimitedFailure ? null : (failureReason || errorMessage || 'batch_not_completed'),
+            processingBlockedReason: rateLimitedFailure ? 'azure_rate_limited_retry_later' : null,
             evidenceRowsIncluded: analysis ? batchItemCount : 0,
             estimatedInputTokens,
             actualInputTokens: usage.inputTokens,
@@ -2689,7 +2807,7 @@ ${JSON.stringify(packageValue)}`;
               RawResponsePreview = ?, AzureFinishReason = ?, UpdatedAt = NOW()`,
             [
                 companyId, snapshotId, runId, domain.key, domain.name, batchNumber, totalBatches, status,
-                stackCTRLDataCount, batchItemCount, analysis ? batchItemCount : 0, recordsRemaining, analysis ? 0 : batchItemCount,
+                stackCTRLDataCount, batchItemCount, sentToAzureCount, recordsRemaining, omittedFromThisBatch,
                 usage.requestBytes || 0, usage.responseBytes, usage.inputTokens, usage.outputTokens, usage.totalTokens, usage.retries || 0,
                 JSON.stringify(batchSummary || {}),
                 analysis ? jsonArray(analysis.keyFindings) : null,
@@ -2699,7 +2817,7 @@ ${JSON.stringify(packageValue)}`;
                 analysis ? jsonArray(analysis.missingDataWarnings) : null,
                 errorMessage, failureReason, rawResponsePreview, azureFinishReason,
                 // ON DUPLICATE KEY UPDATE values
-                status, stackCTRLDataCount, totalBatches, batchItemCount, analysis ? batchItemCount : 0, recordsRemaining, analysis ? 0 : batchItemCount, usage.requestBytes || 0, usage.responseBytes,
+                status, stackCTRLDataCount, totalBatches, batchItemCount, sentToAzureCount, recordsRemaining, omittedFromThisBatch, usage.requestBytes || 0, usage.responseBytes,
                 usage.inputTokens, usage.outputTokens, usage.totalTokens, usage.retries || 0,
                 JSON.stringify(batchSummary || {}),
                 analysis ? jsonArray(analysis.keyFindings) : null,
@@ -2723,9 +2841,9 @@ ${JSON.stringify(packageValue)}`;
                 messages: domainMessages(domain, batchPackage),
                 temperature: 0.15,
                 maxTokens: settings.maxDomainOutputTokens,
-                maxRetriesOverride: settings.maxRetries,
-                retryDelaysMsOverride: ENTERPRISE_RATE_LIMIT_RETRY_DELAYS_MS,
-                retryMaxMsOverride: ENTERPRISE_RATE_LIMIT_RETRY_MAX_MS,
+                maxRetriesOverride: domain.key === 'email_security' ? 0 : settings.maxRetries,
+                retryDelaysMsOverride: domain.key === 'email_security' ? EMAIL_SECURITY_RATE_LIMIT_RETRY_DELAYS_MS : ENTERPRISE_RATE_LIMIT_RETRY_DELAYS_MS,
+                retryMaxMsOverride: domain.key === 'email_security' ? EMAIL_SECURITY_RATE_LIMIT_RETRY_MAX_MS : ENTERPRISE_RATE_LIMIT_RETRY_MAX_MS,
                 connectionRetryDelaysMsOverride: ENTERPRISE_CONNECTION_RETRY_DELAYS_MS,
                 timeoutMs: settings.requestTimeoutMs,
                 allowInvalidJsonResponse: true
@@ -2939,7 +3057,9 @@ ${JSON.stringify(packageValue)}`;
         return normalizedDomainResult({
             status: 'running',
             domainExecutiveSummary: completed.map(result => result.analysis.domainExecutiveSummary).filter(Boolean).join(' '),
-            technicalReasoning: completed.map(result => result.analysis.technicalReasoning || result.analysis.technicalSummary).filter(Boolean).join(' '),
+            technicalReasoning: flatten('technicalReasoning').length
+                ? flatten('technicalReasoning')
+                : completed.map(result => result.analysis.technicalReasoning || result.analysis.technicalSummary).filter(Boolean).join(' '),
             riskPrioritization: flatten('riskPrioritization'),
             technicalSummary: completed.map(result => result.analysis.technicalSummary).filter(Boolean).join(' '),
             businessImpact: completed.map(result => result.analysis.businessImpact).filter(Boolean).join(' '),
@@ -3290,15 +3410,15 @@ ${JSON.stringify(packageValue)}`;
         const completedCount = results.filter(result => isSuccessfulDomainStatus(result.status)).length;
         const processedItems = results.filter(result => isSuccessfulDomainStatus(result.status))
             .reduce((total, result) => total + Number(result.batchItemCount || 0), 0);
-        const omittedItems = Math.max(0, allEvidence.length - processedItems);
         const rateLimitedBatch = results.find(result => result.status === 'failed_rate_limited');
+        const omittedItems = rateLimitedBatch ? 0 : Math.max(0, allEvidence.length - processedItems);
         return {
             results,
             batchCount: batches.length,
             totals,
             processedItems,
             omittedItems,
-            complete: completedCount === batches.length && omittedItems === 0,
+            complete: !rateLimitedBatch && completedCount === batches.length && omittedItems === 0,
             rateLimited: Boolean(rateLimitedBatch),
             recommendedRetryAfterMs: rateLimitedBatch?.recommendedRetryAfterMs || null
         };
@@ -3632,7 +3752,7 @@ ${JSON.stringify(packageValue)}`;
             .filter(Boolean)
             .filter(warning => !(domain.key === 'identity' && /historical baseline|7\/30\/90|best-practice references/i.test(warning)))
             .filter(warning => !(domain.key === 'devices' && /source_stale|source is stale|evidence is stale|curated.*reference|best-practice references/i.test(warning))))];
-        return {
+        return compactSelectedDomainAnalysis({
             ...value,
             domainKey: value.domainKey || domain.key,
             status: textOrNull(value.status, 80),
@@ -3646,7 +3766,9 @@ ${JSON.stringify(packageValue)}`;
             message: visibleTextOrNull(value.message, 1200),
             rawAzureResponseStored: Boolean(value.rawAzureResponseStored),
             domainExecutiveSummary: visibleTextOrNull(value.domainExecutiveSummary, 4000),
-            technicalReasoning: visibleTextOrNull(value.technicalReasoning || value.technicalSummary, 8000),
+            technicalReasoning: Array.isArray(value.technicalReasoning)
+                ? sanitizeVisibleValue(value.technicalReasoning)
+                : visibleTextOrNull(value.technicalReasoning || value.technicalSummary, 8000),
             riskPrioritization: normalizeReasoningSection(value.riskPrioritization),
             technicalSummary: visibleTextOrNull(value.technicalSummary, 4000),
             businessImpact: visibleTextOrNull(value.businessImpact, 4000),
@@ -3685,7 +3807,7 @@ ${JSON.stringify(packageValue)}`;
             batchInfo: value.batchInfo || null,
             authoritativeScores: { healthScore: current.healthScore, riskScore: current.riskScore, riskLevel: current.riskLevel },
             domain: { key: domain.key, name: domain.name }
-        };
+        }, domain);
     }
 
     async function insertItem({ companyId, snapshotId, runId, domainKey, domainName, period, itemType, item, source }) {
@@ -4157,10 +4279,12 @@ ${JSON.stringify(packageValue)}`;
                     .filter(Boolean)
                     .join(' '),
 
-                technicalReasoning: completedBatches
-                    .map(b => b.analysis?.technicalReasoning || b.analysis?.technicalSummary)
-                    .filter(Boolean)
-                    .join(' '),
+                technicalReasoning: completedBatches.some(b => array(b.analysis?.technicalReasoning).length)
+                    ? completedBatches.flatMap(b => array(b.analysis?.technicalReasoning))
+                    : completedBatches
+                        .map(b => b.analysis?.technicalReasoning || b.analysis?.technicalSummary)
+                        .filter(Boolean)
+                        .join(' '),
 
                 riskPrioritization: completedBatches
                     .flatMap(b => array(b.analysis?.riskPrioritization || [])),

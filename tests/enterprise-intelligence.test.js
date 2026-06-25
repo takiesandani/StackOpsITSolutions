@@ -400,10 +400,12 @@ test('Identity sends 57 normal users as one compact Azure table even when the gl
     assert.match(logMessages.join('\n'), /basePackageTokens=\d+.*evidenceTokens=\d+.*totalEstimatedTokens=\d+.*reasonForBatchCount=all_identity_rows_fit_safe_token_limit/);
     assert.match(prompts[0], /Pattern -> Reasoning -> Priority -> Evidence -> Action -> Business decision/);
     assert.match(prompts[0], /privileged MFA coverage matters more/i);
-    assert.match(result.domains[0].analysis.technicalReasoning, /Privileged users without MFA/i);
+    assert.ok(result.domains[0].analysis.technicalReasoning.length <= 5);
+    assert.equal(typeof result.domains[0].analysis.technicalReasoning[0].reasoning, 'string');
     assert.equal(result.domains[0].analysis.riskPrioritization[0].priority, 'critical');
     const risk = result.domains[0].analysis.risks[0];
     assert.equal(risk.patternFound, 'Global Administrator without MFA');
+    assert.match(risk.reasoning, /Admin role plus missing MFA/i);
     assert.equal(risk.affectedEntityIds.some(value => /identity\.evidence/i.test(value)), false);
     assert.equal(risk.recordIds.some(value => /identity\.evidence/i.test(value)), false);
     assert.equal(risk.sourceAlertIds.some(value => /identity\.evidence/i.test(value)), false);
@@ -644,6 +646,172 @@ test('Device Protection sends 17 devices as one compact Azure table and keeps re
     assert.equal(deviceRow.encryptionState, 'encrypted');
     assert.equal(deviceRow.managementState, 'mdm');
     assert.equal(deviceRow.internalSourcePath, sourcePath);
+});
+
+test('Email Security selected-domain stops cleanly on Azure 429 without synthesis or evidence omission', async () => {
+    const alerts = Array.from({ length: 43 }, (_, index) => ({
+        id: `email-alert-${index + 1}`,
+        title: `Phishing alert ${index + 1}`,
+        severity: index < 3 ? 'high' : 'medium',
+        userPrincipalName: `user${index + 1}@example.com`
+    }));
+    const snapshot = {
+        ID: 643, CompanyID: 1, TenantKey: 'tenant-sunbird', SnapshotType: 'manual',
+        CreatedAt: new Date('2026-06-25T08:00:00.000Z'), DataCompletenessScore: 100,
+        MetricsJson: JSON.stringify({ stackctrl_risk: { domainRiskScores: { email_security: 35 } } }),
+        ContextJson: JSON.stringify({
+            riskEngine: { domainHealthScores: { email_security: 65 }, domainRiskScores: { email_security: 35 } },
+            sources: [{
+                sourceKey: 'email_security', status: 'available', isExpected: true, freshness: { ageMinutes: 2 },
+                dashboardMetrics: { activeThreats: 43, highSeverityAlerts: 3, affectedUsersCount: 43 },
+                sourceLineage: { evidenceRecordCount: 43, omittedRecordCount: 0 },
+                evidence: [{ evidenceType: 'alerts', data: alerts }]
+            }]
+        })
+    };
+    let insertId = 6430;
+    let synthesisCalls = 0;
+    let emailOptions = null;
+    const pool = {
+        async query(sql) {
+            if (sql.includes('FROM StackCTRLTenantEvidenceSnapshots WHERE')) return [[snapshot], []];
+            if (sql.includes('FROM StackCTRLKnowledgeBase')) return [[], []];
+            if (sql.includes('FROM StackCTRLTenantDomainIntelligence') && sql.includes('RunID <>')) return [[], []];
+            if (/^\s*INSERT/i.test(sql)) return [{ insertId: insertId++ }, []];
+            return [{ affectedRows: 1 }, []];
+        }
+    };
+    const service = createEnterpriseIntelligenceService({
+        pool,
+        schedulerService: { async getHistoricalSnapshotContext() { return { comparisons: {} }; } },
+        azureOpenAI: {
+            async createJsonCompletion(options) {
+                if (options.messages[1].content.includes('STACKCTRL DOMAIN PACKAGE')) {
+                    emailOptions = options;
+                    const error = new Error('Azure OpenAI rate limited the request with 429');
+                    error.azureMetadata = { rateLimited: true, statusCode: 429, retryAfterMs: 90000, retryCount: 0 };
+                    throw error;
+                }
+                synthesisCalls += 1;
+                return { data: {}, usage: {} };
+            }
+        },
+        logger: { info() {}, warn() {}, error() {} },
+        wait: async () => {},
+        config: { domainDelayMs: 0, maxItemsPerBatch: 100, maxInputBytes: 150000 }
+    });
+
+    const result = await service.runEnterpriseReport({ companyId: 1, snapshotId: 643, domainKeys: ['email_security'], includeSynthesis: true });
+
+    assert.equal(emailOptions.maxRetriesOverride, 0);
+    assert.deepEqual(emailOptions.retryDelaysMsOverride, []);
+    assert.equal(result.status, 'failed_rate_limited');
+    assert.equal(result.rateLimited, true);
+    assert.equal(result.synthesisStatus, 'skipped_rate_limited');
+    assert.equal(result.domains[0].status, 'failed_rate_limited');
+    assert.equal(result.domains[0].analysis, null);
+    assert.equal(result.rateLimit.retryAfterMs, 90000);
+    assert.equal(synthesisCalls, 0);
+});
+
+test('Cloudflare selected-domain prompt and output stay readable and domain-specific', async () => {
+    const sourcePath = 'cloudflare_network_security.evidence[0].data[0]';
+    const snapshot = {
+        ID: 644, CompanyID: 1, TenantKey: 'tenant-sunbird', SnapshotType: 'manual',
+        CreatedAt: new Date('2026-06-25T08:00:00.000Z'), DataCompletenessScore: 100,
+        MetricsJson: JSON.stringify({ stackctrl_risk: { domainRiskScores: { cloudflare_network_security: 28 } } }),
+        ContextJson: JSON.stringify({
+            riskEngine: { domainHealthScores: { cloudflare_network_security: 72 }, domainRiskScores: { cloudflare_network_security: 28 } },
+            sources: [{
+                sourceKey: 'cloudflare_network_security', status: 'available', isExpected: true, freshness: { ageMinutes: 5 },
+                dashboardMetrics: { protectedApps: 2, enrolledDevices: 3, gatewayPolicies: 2, recentAccessEvents: 10, dlpProfiles: 1, sectionErrors: 1 },
+                sourceLineage: { evidenceRecordCount: 6, omittedRecordCount: 0 },
+                evidence: [
+                    { evidenceType: 'accessApps', data: [{ id: 'app-1', appName: 'Finance Portal', policyName: 'Finance Access Policy' }] },
+                    { evidenceType: 'devices', data: [{ id: 'cf-device-1', deviceName: 'KEN-LAPTOP', userEmail: 'ken@sunbird.eu' }] },
+                    { evidenceType: 'gatewayRules', data: [{ id: 'policy-1', gatewayPolicyName: 'Block Risky Domains' }] },
+                    { evidenceType: 'accessLogs', data: [{ id: 'log-1', applicationName: 'Finance Portal', action: 'deny' }] },
+                    { evidenceType: 'dlpProfiles', data: [{ id: 'dlp-1', dlpProfileName: 'Finance DLP' }] },
+                    { evidenceType: 'warpProfiles', data: [{ id: 'warp-1', warpProfileName: 'Default WARP' }] }
+                ]
+            }]
+        })
+    };
+    let insertId = 6440;
+    const prompts = [];
+    const pool = {
+        async query(sql) {
+            if (sql.includes('FROM StackCTRLTenantEvidenceSnapshots WHERE')) return [[snapshot], []];
+            if (sql.includes('FROM StackCTRLKnowledgeBase')) return [[], []];
+            if (sql.includes('FROM StackCTRLTenantDomainIntelligence') && sql.includes('RunID <>')) return [[], []];
+            if (/^\s*INSERT/i.test(sql)) return [{ insertId: insertId++ }, []];
+            return [{ affectedRows: 1 }, []];
+        }
+    };
+    const service = createEnterpriseIntelligenceService({
+        pool,
+        schedulerService: { async getHistoricalSnapshotContext() { return { comparisons: {} }; } },
+        azureOpenAI: {
+            async createJsonCompletion(options) {
+                const prompt = options.messages[1].content;
+                prompts.push(prompt);
+                return {
+                    data: {
+                        ...domainResponse('cloudflare_network_security'),
+                        technicalReasoning: [{ title: 'Access coverage', reasoning: 'Finance Portal has a named access policy and recent deny logs.' }],
+                        riskPrioritization: [{ title: 'Finance Portal policy review', priority: 'high', reasoning: 'Access logs show denied attempts against a protected app.' }],
+                        risks: [{
+                            riskId: 'cf-risk-1',
+                            title: 'Finance Portal access policy needs review',
+                            severity: 'high',
+                            patternFound: 'Protected app with access denies and named policy',
+                            reasoning: `Finance Portal and Finance Access Policy require review based on ${sourcePath}.`,
+                            affectedEntityIds: ['app-1', sourcePath],
+                            recordIds: ['app-1', sourcePath],
+                            sourceAlertIds: [sourcePath],
+                            affectedEntities: [{
+                                entityId: 'app-1',
+                                entityName: 'Finance Portal',
+                                entityType: 'Application',
+                                policyName: 'Finance Access Policy',
+                                sourceDomain: 'cloudflare_network_security',
+                                sourceMetric: 'protectedApps',
+                                businessReason: 'Protected finance app has denied access activity.',
+                                recommendation: 'Review access policy conditions.',
+                                internalSourcePath: sourcePath
+                            }]
+                        }],
+                        recommendations: [{
+                            recommendationId: 'cf-rec-1',
+                            title: 'Review Finance Access Policy',
+                            priority: 'high',
+                            recommendedAction: 'Validate Finance Portal access rules and Gateway policy alignment.',
+                            affectedEntityIds: ['app-1']
+                        }]
+                    },
+                    requestSizeBytes: Buffer.byteLength(prompt),
+                    responseSizeBytes: 900,
+                    usage: { input_tokens: 1500, output_tokens: 300, total_tokens: 1800 }
+                };
+            }
+        },
+        logger: { info() {}, warn() {}, error() {} },
+        wait: async () => {},
+        config: { domainDelayMs: 0, maxItemsPerBatch: 100, maxInputBytes: 150000 }
+    });
+
+    const result = await service.runEnterpriseReport({ companyId: 1, snapshotId: 644, domainKeys: ['cloudflare_network_security'], includeSynthesis: false });
+    const risk = result.domains[0].analysis.risks[0];
+
+    assert.match(prompts[0], /protected apps, Cloudflare devices, gateway policies, access policies, access logs, DLP profiles, WARP profiles/i);
+    assert.equal(result.domains[0].status, 'completed');
+    assert.equal(risk.affectedEntities[0].entityName, 'Finance Portal');
+    assert.equal(risk.affectedEntities[0].policyName, 'Finance Access Policy');
+    assert.equal(risk.affectedEntityIds.some(value => /cloudflare_network_security\.evidence/i.test(value)), false);
+    assert.equal(risk.recordIds.some(value => /cloudflare_network_security\.evidence/i.test(value)), false);
+    assert.equal(risk.sourceAlertIds.some(value => /cloudflare_network_security\.evidence/i.test(value)), false);
+    assert.doesNotMatch(risk.reasoning, /cloudflare_network_security\.evidence/);
+    assert.equal(risk.internalSourcePath, sourcePath);
 });
 
 test('normalizeMysqlDate stores only real MySQL dates for enterprise AI date fields', () => {
