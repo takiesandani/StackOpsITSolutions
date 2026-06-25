@@ -655,6 +655,13 @@ test('Email Security selected-domain stops cleanly on Azure 429 without synthesi
         severity: index < 3 ? 'high' : 'medium',
         userPrincipalName: `user${index + 1}@example.com`
     }));
+    const mailflowUsers = Array.from({ length: 80 }, (_, index) => ({
+        userPrincipalName: `mailbox${index + 1}@example.com`,
+        sendCount: index + 1,
+        receiveCount: 80 - index,
+        readCount: index % 3,
+        lastActivityDate: index < 70 ? '2026-06-24' : null
+    }));
     const snapshot = {
         ID: 643, CompanyID: 1, TenantKey: 'tenant-sunbird', SnapshotType: 'manual',
         CreatedAt: new Date('2026-06-25T08:00:00.000Z'), DataCompletenessScore: 100,
@@ -665,13 +672,17 @@ test('Email Security selected-domain stops cleanly on Azure 429 without synthesi
                 sourceKey: 'email_security', status: 'available', isExpected: true, freshness: { ageMinutes: 2 },
                 dashboardMetrics: { activeThreats: 43, highSeverityAlerts: 3, affectedUsersCount: 43 },
                 sourceLineage: { evidenceRecordCount: 43, omittedRecordCount: 0 },
-                evidence: [{ evidenceType: 'alerts', data: alerts }]
+                evidence: [
+                    { evidenceType: 'alerts', data: { alerts } },
+                    { evidenceType: 'mailActivityUsers', data: mailflowUsers }
+                ]
             }]
         })
     };
     let insertId = 6430;
     let synthesisCalls = 0;
     let emailOptions = null;
+    let emailPackage = null;
     const pool = {
         async query(sql) {
             if (sql.includes('FROM StackCTRLTenantEvidenceSnapshots WHERE')) return [[snapshot], []];
@@ -688,6 +699,7 @@ test('Email Security selected-domain stops cleanly on Azure 429 without synthesi
             async createJsonCompletion(options) {
                 if (options.messages[1].content.includes('STACKCTRL DOMAIN PACKAGE')) {
                     emailOptions = options;
+                    emailPackage = JSON.parse(options.messages[1].content.split('STACKCTRL DOMAIN PACKAGE:\n')[1]);
                     const error = new Error('Azure OpenAI rate limited the request with 429');
                     error.azureMetadata = { rateLimited: true, statusCode: 429, retryAfterMs: 90000, retryCount: 0 };
                     throw error;
@@ -705,6 +717,12 @@ test('Email Security selected-domain stops cleanly on Azure 429 without synthesi
 
     assert.equal(emailOptions.maxRetriesOverride, 0);
     assert.deepEqual(emailOptions.retryDelaysMsOverride, []);
+    assert.equal(emailPackage.evidence.filter(row => row.evidenceType === 'securityAlerts').length, 25);
+    assert.ok(emailPackage.evidence.filter(row => row.evidenceType === 'highVolumeMailboxes').length <= 10);
+    assert.ok(emailPackage.evidence.filter(row => row.evidenceType === 'inactiveMailboxes').length <= 10);
+    assert.equal(emailPackage.evidence.filter(row => row.evidenceType === 'mailActivityUsers').length, 0);
+    assert.equal(emailPackage.evidence.some(row => row.evidenceType === 'mailflowSummary'), true);
+    assert.equal(emailPackage.evidence.find(row => row.evidenceType === 'mailflowSummary').data.contextOnly, true);
     assert.equal(result.status, 'failed_rate_limited');
     assert.equal(result.rateLimited, true);
     assert.equal(result.synthesisStatus, 'skipped_rate_limited');
@@ -739,6 +757,7 @@ test('Cloudflare selected-domain prompt and output stay readable and domain-spec
     };
     let insertId = 6440;
     const prompts = [];
+    const cloudflarePackages = [];
     const pool = {
         async query(sql) {
             if (sql.includes('FROM StackCTRLTenantEvidenceSnapshots WHERE')) return [[snapshot], []];
@@ -755,6 +774,7 @@ test('Cloudflare selected-domain prompt and output stay readable and domain-spec
             async createJsonCompletion(options) {
                 const prompt = options.messages[1].content;
                 prompts.push(prompt);
+                cloudflarePackages.push(JSON.parse(prompt.split('STACKCTRL DOMAIN PACKAGE:\n')[1]));
                 return {
                     data: {
                         ...domainResponse('cloudflare_network_security'),
@@ -802,8 +822,15 @@ test('Cloudflare selected-domain prompt and output stay readable and domain-spec
 
     const result = await service.runEnterpriseReport({ companyId: 1, snapshotId: 644, domainKeys: ['cloudflare_network_security'], includeSynthesis: false });
     const risk = result.domains[0].analysis.risks[0];
+    const preparedRows = cloudflarePackages[0].evidence;
 
     assert.match(prompts[0], /protected apps, Cloudflare devices, gateway policies, access policies, access logs, DLP profiles, WARP profiles/i);
+    assert.ok(preparedRows.some(row => row.evidenceType === 'accessApps' && row.data.appName === 'Finance Portal'));
+    assert.ok(preparedRows.some(row => row.evidenceType === 'devices' && row.data.deviceName === 'KEN-LAPTOP'));
+    assert.ok(preparedRows.some(row => row.evidenceType === 'gatewayRules' && row.data.gatewayPolicyName === 'Block Risky Domains'));
+    assert.ok(preparedRows.some(row => row.evidenceType === 'accessLogs' && row.data.applicationName === 'Finance Portal'));
+    assert.ok(preparedRows.some(row => row.evidenceType === 'dlpProfiles' && row.data.dlpProfileName === 'Finance DLP'));
+    assert.ok(preparedRows.some(row => row.evidenceType === 'warpProfiles' && row.data.warpProfileName === 'Default WARP'));
     assert.equal(result.domains[0].status, 'completed');
     assert.equal(risk.affectedEntities[0].entityName, 'Finance Portal');
     assert.equal(risk.affectedEntities[0].policyName, 'Finance Access Policy');
@@ -1536,7 +1563,7 @@ test('Enterprise Device currentMetrics follow stored dashboard metrics and flatt
     assert.equal(packageResult.sourceAlignment.rows.find(row => row.metric === 'complianceRate').status, 'MATCH');
 });
 
-test('Enterprise Email currentMetrics follow stored dashboard metrics and flatten row-level evidence', async () => {
+test('Enterprise Email currentMetrics follow stored dashboard metrics and prepare compact threat-focused evidence', async () => {
     const pool = {
         async query(sql) {
             if (sql.includes('FROM StackCTRLKnowledgeBase')) return [[], []];
@@ -1605,7 +1632,13 @@ test('Enterprise Email currentMetrics follow stored dashboard metrics and flatte
         assert.equal(packageResult.package.currentMetrics[metric], dashboardMetrics[metric], `currentMetrics.${metric}`);
     }
     assert.equal(packageResult.package.dataLineage.sourceBuilder, 'storedStackCTRLEmailEvidence');
-    assert.equal(packageResult.audit.stackCTRLDataCount, 42);
+    assert.equal(packageResult.audit.stackCTRLDataCount, 23);
+    assert.equal(packageResult.audit.evidenceIncludedCount, 23);
+    assert.equal(packageResult.audit.evidenceOmittedCount, 0);
+    assert.equal(packageResult.allEvidence.filter(row => row.evidenceType === 'securityAlerts').length, 6);
+    assert.equal(packageResult.allEvidence.some(row => row.evidenceType === 'mailActivityUsers'), false);
+    assert.equal(packageResult.allEvidence.some(row => row.evidenceType === 'mailflowSummary'), true);
+    assert.ok(packageResult.allEvidence.filter(row => row.evidenceType === 'highVolumeMailboxes').length <= 10);
     assert.equal(packageResult.sourceAlignment.mismatches.length, 0);
 });
 

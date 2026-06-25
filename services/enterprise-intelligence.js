@@ -67,7 +67,7 @@ const DOMAIN_EVIDENCE_TYPES = Object.freeze({
     identity: ['users', 'dashboard_evidence_lists'],
     devices: ['devices', 'dashboard_evidence_lists'],
     email_security: ['alerts', 'incidents', 'mailActivityUsers', 'dashboard_evidence_lists'],
-    cloudflare_network_security: ['accessApps', 'devices', 'gatewayRules', 'accessLogs', 'dlpProfiles', 'warpProfiles', 'dashboard_evidence_lists'],
+    cloudflare_network_security: ['accessApps', 'devices', 'gatewayRules', 'accessPolicies', 'accessLogs', 'dlpProfiles', 'warpProfiles', 'sectionErrors', 'missingControls', 'dashboard_evidence_lists'],
     backup: ['users', 'sites', 'dashboard_evidence_lists'],
     applications: ['applications', 'dashboard_evidence_lists'],
     security_alerts: ['alerts', 'incidents', 'signIns', 'threatIndicators', 'dashboard_evidence_lists'],
@@ -398,6 +398,243 @@ function filterDomainEvidence(sourceEvidence, domainKey) {
     if (!allowedTypes?.length) return sourceEvidence;
     const filtered = sourceEvidence.filter(item => allowedTypes.includes(item?.evidenceType));
     return filtered.length ? filtered : sourceEvidence.filter(item => item?.evidenceType !== 'dashboard_evidence_lists');
+}
+
+function normalizeEmailAlertsPayload(alerts) {
+    if (Array.isArray(alerts)) return alerts;
+    if (Array.isArray(alerts?.alerts)) return alerts.alerts;
+    return [];
+}
+
+function emailAddressFrom(value = {}) {
+    return firstReadableValue(
+        value.userPrincipalName, value.userEmail, value.email, value.mail, value.recipient,
+        value.accountName, value.user, value.mailbox, value.displayName
+    );
+}
+
+function emailThreatType(alert = {}) {
+    const text = `${alert.title || ''} ${alert.description || ''} ${alert.category || ''}`.toLowerCase();
+    if (/business email|bec|impersonation|spoof/.test(text)) return text.includes('spoof') ? 'spoofing' : 'bec';
+    if (text.includes('phish')) return 'phishing';
+    if (/malware|attachment|ransomware|virus/.test(text)) return 'malware';
+    if (text.includes('spam')) return 'spam';
+    return 'other';
+}
+
+function collectEmailEvidenceLists(sourceEvidence = [], flattenedEvidence = []) {
+    const lists = { alerts: [], incidents: [], mailUsers: [] };
+    for (const item of array(sourceEvidence)) {
+        const type = String(item?.evidenceType || '').toLowerCase();
+        const data = item?.data;
+        if (type === 'alerts') lists.alerts.push(...normalizeEmailAlertsPayload(data));
+        else if (type === 'incidents') lists.incidents.push(...array(data));
+        else if (/mailactivity|mailflow|mailusers|mailbox/i.test(type)) lists.mailUsers.push(...array(data));
+    }
+    if (!lists.alerts.length) {
+        lists.alerts.push(...flattenedEvidence
+            .filter(row => /alert|threat/i.test(String(row.evidenceType || row.sourceLabel || '')))
+            .map(row => row.data)
+            .filter(Boolean));
+    }
+    if (!lists.mailUsers.length) {
+        lists.mailUsers.push(...flattenedEvidence
+            .filter(row => /mailactivity|mailflow|mailbox/i.test(String(row.evidenceType || row.sourceLabel || '')))
+            .map(row => row.data)
+            .filter(Boolean));
+    }
+    return lists;
+}
+
+function compactEmailSecurityEvidenceRows(sourceEvidence, flattenedEvidence, current = {}) {
+    const { alerts, incidents, mailUsers } = collectEmailEvidenceLists(sourceEvidence, flattenedEvidence);
+    const severityRank = value => ({ critical: 4, high: 3, medium: 2, low: 1 }[String(value || '').toLowerCase()] || 0);
+    const alertPathById = new Map(flattenedEvidence
+        .filter(row => /alert|threat/i.test(String(row.evidenceType || row.sourceLabel || '')))
+        .map(row => [String(row.data?.id || row.data?.alertId || row.entityKey || ''), row.internalSourcePath]));
+    const securityAlerts = alerts
+        .slice()
+        .sort((a, b) => severityRank(b.severity) - severityRank(a.severity))
+        .slice(0, 25)
+        .map((alert, index) => ({
+            internalSourcePath: alertPathById.get(String(alert.id || alert.alertId || '')) || `email_security.compact.securityAlerts[${index}]`,
+            sourceLabel: 'securityAlerts',
+            evidenceType: 'securityAlerts',
+            evidenceCategory: 'securityAlerts',
+            sourceMetric: 'activeThreats',
+            entityKey: alert.id || alert.alertId || alert.title || `email-alert-${index + 1}`,
+            data: {
+                id: alert.id || alert.alertId || null,
+                title: firstReadableValue(alert.title, alert.name, alert.subject) || 'Email security alert',
+                severity: firstReadableValue(alert.severity) || 'unknown',
+                status: firstReadableValue(alert.status) || 'unknown',
+                category: firstReadableValue(alert.category, emailThreatType(alert)),
+                threatType: emailThreatType(alert),
+                userEmail: emailAddressFrom(alert),
+                createdDateTime: firstReadableValue(alert.createdDateTime, alert.eventDateTime),
+                businessReason: 'Security alert from Microsoft email protection evidence',
+                recommendation: 'Investigate alert status, impacted users, and remediation actions.'
+            }
+        }));
+    const targeted = new Map();
+    for (const alert of alerts) {
+        const users = array(alert.userStates).length ? array(alert.userStates) : [alert];
+        for (const user of users) {
+            const email = emailAddressFrom(user);
+            if (!email) continue;
+            const item = targeted.get(email) || { userEmail: email, threatCount: 0, highSeverityCount: 0, threatTypes: new Set(), alertTitles: [] };
+            item.threatCount += 1;
+            if (severityRank(alert.severity) >= 3) item.highSeverityCount += 1;
+            item.threatTypes.add(emailThreatType(alert));
+            if (alert.title && item.alertTitles.length < 3) item.alertTitles.push(alert.title);
+            targeted.set(email, item);
+        }
+    }
+    const topTargetedUsers = [...targeted.values()]
+        .sort((a, b) => b.highSeverityCount - a.highSeverityCount || b.threatCount - a.threatCount)
+        .slice(0, 10)
+        .map((user, index) => ({
+            internalSourcePath: `email_security.compact.topTargetedUsers[${index}]`,
+            sourceLabel: 'topTargetedUsers',
+            evidenceType: 'topTargetedUsers',
+            evidenceCategory: 'topTargetedUsers',
+            sourceMetric: 'affectedUsersCount',
+            entityKey: user.userEmail,
+            data: {
+                entityId: user.userEmail,
+                entityName: user.userEmail,
+                entityEmail: user.userEmail,
+                entityType: 'User',
+                userPrincipalName: user.userEmail,
+                threatCount: user.threatCount,
+                highSeverityCount: user.highSeverityCount,
+                threatTypes: [...user.threatTypes],
+                alertTitles: user.alertTitles,
+                businessReason: 'Mailbox/user appears repeatedly in email threat evidence',
+                recommendation: 'Prioritize mailbox review and user-focused remediation.'
+            }
+        }));
+    const mailboxVolume = mailUsers.map((mailbox, index) => {
+        const send = numberOrNull(mailbox.sendCount ?? mailbox.sentCount ?? mailbox.send) || 0;
+        const receive = numberOrNull(mailbox.receiveCount ?? mailbox.receivedCount ?? mailbox.receive) || 0;
+        const read = numberOrNull(mailbox.readCount ?? mailbox.read) || 0;
+        return { mailbox, index, total: send + receive + read, send, receive, read };
+    });
+    const mailboxRow = (item, category, sourceMetric, index) => ({
+        internalSourcePath: `email_security.compact.${category}[${index}]`,
+        sourceLabel: category,
+        evidenceType: category,
+        evidenceCategory: category,
+        sourceMetric,
+        entityKey: emailAddressFrom(item.mailbox) || `mailbox-${index + 1}`,
+        data: {
+            entityId: emailAddressFrom(item.mailbox),
+            entityName: firstReadableValue(item.mailbox.displayName, emailAddressFrom(item.mailbox)),
+            entityEmail: emailAddressFrom(item.mailbox),
+            entityType: 'User',
+            sendCount: item.send,
+            receiveCount: item.receive,
+            readCount: item.read,
+            totalMailActivity: item.total,
+            lastActivityDate: firstReadableValue(item.mailbox.lastActivityDate),
+            businessReason: category === 'inactiveMailboxes' ? 'Mailbox appears inactive in mailflow context' : 'High mail volume provides context for email security triage',
+            recommendation: category === 'inactiveMailboxes' ? 'Review whether mailbox should remain active.' : 'Use as context only; investigate only if paired with threat evidence.'
+        }
+    });
+    const highVolumeMailboxes = mailboxVolume
+        .filter(item => item.total > 0)
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 10)
+        .map((item, index) => mailboxRow(item, 'highVolumeMailboxes', 'totalMailActivity', index));
+    const inactiveMailboxes = mailboxVolume
+        .filter(item => item.total === 0 || !item.mailbox.lastActivityDate)
+        .slice(0, 10)
+        .map((item, index) => mailboxRow(item, 'inactiveMailboxes', 'activeMailboxes', index));
+    const mailflowSummary = {
+        internalSourcePath: 'email_security.compact.mailflowSummary',
+        sourceLabel: 'mailflowSummary',
+        evidenceType: 'mailflowSummary',
+        evidenceCategory: 'mailflowSummary',
+        sourceMetric: 'totalMailActivity',
+        entityKey: 'mailflowSummary',
+        data: {
+            totalMailboxes: mailUsers.length,
+            activeMailboxes: current.dashboardMetrics?.activeMailboxes ?? current.metrics?.activeMailboxes ?? mailUsers.filter(user => user.lastActivityDate).length,
+            totalMailActivity: current.dashboardMetrics?.totalMailActivity ?? current.metrics?.totalMailActivity ?? mailboxVolume.reduce((sum, item) => sum + item.total, 0),
+            sendCount: current.dashboardMetrics?.sendCount ?? current.metrics?.sendCount ?? mailboxVolume.reduce((sum, item) => sum + item.send, 0),
+            receiveCount: current.dashboardMetrics?.receiveCount ?? current.metrics?.receiveCount ?? mailboxVolume.reduce((sum, item) => sum + item.receive, 0),
+            readCount: current.dashboardMetrics?.readCount ?? current.metrics?.readCount ?? mailboxVolume.reduce((sum, item) => sum + item.read, 0),
+            contextOnly: true,
+            businessReason: 'Mailflow is context for exposure and mailbox activity, not a threat record by itself.',
+            recommendation: 'Use mailflow context to prioritize threat investigation, not as standalone risk.'
+        }
+    };
+    const evidenceSamples = flattenedEvidence
+        .filter(row => !/mailactivity|mailflow|mailbox/i.test(String(row.evidenceType || row.sourceLabel || '')))
+        .slice(0, 10)
+        .map((row, index) => ({
+            ...row,
+            sourceLabel: 'evidenceSamples',
+            evidenceType: 'evidenceSamples',
+            evidenceCategory: 'evidenceSamples',
+            sourceMetric: row.sourceMetric || 'evidenceSamples',
+            internalSourcePath: row.internalSourcePath || `email_security.compact.evidenceSamples[${index}]`
+        }));
+    return [
+        ...securityAlerts,
+        ...topTargetedUsers,
+        ...highVolumeMailboxes,
+        ...inactiveMailboxes,
+        mailflowSummary,
+        ...evidenceSamples
+    ];
+}
+
+function normalizeCloudflareEvidenceForFlatten(evidence) {
+    const output = [];
+    for (const item of array(evidence)) {
+        const type = String(item?.evidenceType || '').toLowerCase();
+        const data = item?.data;
+        if (type === 'live_cloudflare_dashboard' && data && typeof data === 'object') {
+            output.push(
+                { evidenceType: 'accessApps', data: array(data.apps || data.accessApps || data.protectedApps) },
+                { evidenceType: 'devices', data: array(data.devices || data.cloudflareDevices) },
+                { evidenceType: 'gatewayRules', data: array(data.gatewayRules || data.gatewayPolicies || data.gateway_policies) },
+                { evidenceType: 'accessPolicies', data: array(data.accessPolicies || data.policies) },
+                { evidenceType: 'accessLogs', data: array(data.accessLogs || data.logs) },
+                { evidenceType: 'dlpProfiles', data: array(data.dlpProfiles || data.dlp_profiles) },
+                { evidenceType: 'warpProfiles', data: array(data.warpProfiles || data.warp_profiles) }
+            );
+            const sectionRows = Object.entries(data.sections || {})
+                .filter(([, section]) => section && typeof section === 'object' && ['error', 'permission_unavailable', 'missing'].includes(String(section.status || '').toLowerCase()))
+                .map(([sectionName, section]) => ({ id: sectionName, sectionName, ...section }));
+            if (sectionRows.length) output.push({ evidenceType: 'sectionErrors', data: sectionRows });
+        } else {
+            const aliases = {
+                accessapplications: 'accessApps',
+                applications: 'accessApps',
+                protectedapps: 'accessApps',
+                cloudflaredevices: 'devices',
+                gatewaypolicies: 'gatewayRules',
+                gatewayrules: 'gatewayRules',
+                accesspolicies: 'accessPolicies',
+                accesslogs: 'accessLogs',
+                dlpprofiles: 'dlpProfiles',
+                warpprofiles: 'warpProfiles',
+                sectionerrors: 'sectionErrors',
+                missingcontrols: 'sectionErrors'
+            };
+            const normalizedType = aliases[type.replace(/[_\s-]+/g, '')] || item?.evidenceType;
+            output.push({ ...item, evidenceType: normalizedType });
+        }
+    }
+    return output;
+}
+
+function cloudflareEvidenceRows(flattenedEvidence) {
+    const wanted = /accessapps|devices|gatewayrules|accesspolicies|accesslogs|dlpprofiles|warpprofiles|sectionerrors/i;
+    const rows = array(flattenedEvidence).filter(row => wanted.test(String(row.evidenceType || row.sourceLabel || row.evidenceCategory || '')));
+    return rows.length ? rows : array(flattenedEvidence);
 }
 
 function enrichDomainEvidence(source, domain, evidence) {
@@ -2096,11 +2333,18 @@ function createEnterpriseIntelligenceService({
         current.evidence = enrichDomainEvidence(current.source, domain, current.evidence);
         const knowledge = await loadKnowledge(domain.key);
         const previousAnalysis = await loadPreviousDomain(companyId, domain.key, runId);
-        const flattenedDomainEvidence = flattenDomainEvidence(current.evidence, { rootPath: `${domain.sourceKey}.evidence`, domainKey: domain.key });
+        const evidenceForFlattening = domain.key === 'cloudflare_network_security'
+            ? normalizeCloudflareEvidenceForFlatten(current.evidence)
+            : current.evidence;
+        const flattenedDomainEvidence = flattenDomainEvidence(evidenceForFlattening, { rootPath: `${domain.sourceKey}.evidence`, domainKey: domain.key });
         const flattenedEvidence = domain.key === 'identity'
             ? identityUserEvidenceRows(flattenedDomainEvidence)
             : domain.key === 'devices'
             ? deviceEvidenceRows(flattenedDomainEvidence)
+            : domain.key === 'email_security'
+            ? compactEmailSecurityEvidenceRows(evidenceForFlattening, flattenedDomainEvidence, current)
+            : domain.key === 'cloudflare_network_security'
+            ? cloudflareEvidenceRows(flattenedDomainEvidence)
             : flattenedDomainEvidence;
         const compactIdentityRows = domain.key === 'identity'
             ? flattenedEvidence.map((item, index) => compactIdentityEvidenceRow(item, index))
@@ -2108,12 +2352,14 @@ function createEnterpriseIntelligenceService({
         const compactDeviceRows = domain.key === 'devices'
             ? flattenedEvidence.map((item, index) => compactDeviceEvidenceRow(item, index))
             : [];
-        const evidenceCatalog = buildEvidenceCatalog(current.evidence, domain, snapshot.ID);
+        const evidenceCatalog = buildEvidenceCatalog(evidenceForFlattening, domain, snapshot.ID);
         const stackCTRLDataCount = flattenedEvidence.length;
         const sourceEvidenceLineage = current.source.sourceLineage || {};
         const manualFilteredDomain = ['governance', 'compliance', 'operations'].includes(domain.key);
         const manualExcludedCount = manualFilteredDomain ? Number(sourceEvidenceLineage.manualRowsExcluded || sourceEvidenceLineage.omittedRecordCount || 0) : 0;
-        const expectedRecordCount = Number(sourceEvidenceLineage.evidenceRecordCount || evidenceCatalog.primaryTable?.count || stackCTRLDataCount);
+        const expectedRecordCount = domain.key === 'email_security'
+            ? stackCTRLDataCount
+            : Number(sourceEvidenceLineage.evidenceRecordCount || evidenceCatalog.primaryTable?.count || stackCTRLDataCount);
         const evidenceOmittedCount = expectedRecordCount > stackCTRLDataCount
             ? expectedRecordCount - stackCTRLDataCount
             : 0;

@@ -4,7 +4,9 @@ function buildEmailSecurityDashboardContext(source) {
     const payload = payloadFromSource(source);
     const storedMetrics = source.dashboardMetrics || source.dashboardSourceMetrics || {};
     const summary = { ...(payload.summary || {}), ...storedMetrics };
-    const alerts = asArray(payload.alerts);
+    const alerts = Array.isArray(payload.alerts)
+        ? payload.alerts
+        : Array.isArray(payload.alerts?.alerts) ? payload.alerts.alerts : [];
     const incidents = asArray(payload.incidents);
     const highSeverityAlerts = alerts.filter(alert => ['critical', 'high'].includes(String(alert.severity || '').toLowerCase()));
     const activeIncidents = incidents.filter(incident => ['active', 'inprogress', 'newalert'].includes(String(incident.status || '').toLowerCase()));

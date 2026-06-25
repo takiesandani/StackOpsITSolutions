@@ -24,7 +24,14 @@ function getEmailThreatLabel(alert = {}) {
     }[getEmailThreatType(alert)] || 'Other';
 }
 
+function normalizeEmailAlertsPayload(alerts) {
+    if (Array.isArray(alerts)) return alerts;
+    if (Array.isArray(alerts?.alerts)) return alerts.alerts;
+    return [];
+}
+
 function buildEmailThreatBreakdown(alerts = []) {
+    alerts = normalizeEmailAlertsPayload(alerts);
     const byType = {};
     const bySeverity = { high: 0, medium: 0, low: 0 };
     alerts.forEach(alert => {
@@ -39,12 +46,14 @@ function buildEmailThreatBreakdown(alerts = []) {
 }
 
 function calculateEmailResolutionRate(alerts = []) {
+    alerts = normalizeEmailAlertsPayload(alerts);
     if (!alerts.length) return 100;
     const resolved = alerts.filter(alert => /resolved|dismissed|closed/i.test(String(alert.status || ''))).length;
     return Math.round((resolved / alerts.length) * 100);
 }
 
 function calculateEmailSecurityScore(alerts = [], summaryScore) {
+    alerts = normalizeEmailAlertsPayload(alerts);
     if (summaryScore != null && Number.isFinite(Number(summaryScore))) return Number(summaryScore);
     let score = 100;
     alerts.slice(0, 30).forEach(alert => {
@@ -55,6 +64,7 @@ function calculateEmailSecurityScore(alerts = [], summaryScore) {
 }
 
 function buildEmailRecommendations({ alerts = [], incidents = [], mailSummary = {}, affectedUsersCount = 0 } = {}) {
+    alerts = normalizeEmailAlertsPayload(alerts);
     const highSeverityAlerts = alerts.filter(alert => ['critical', 'high'].includes(String(alert.severity || '').toLowerCase()));
     const phishingAlerts = alerts.filter(alert => getEmailThreatType(alert) === 'phishing');
     const malwareAlerts = alerts.filter(alert => getEmailThreatType(alert) === 'malware');
@@ -92,7 +102,7 @@ function buildEmailDashboardSource({
     threats = null,
     affectedUsers = {}
 } = {}) {
-    const alerts = Array.isArray(alertsRows) ? alertsRows : [];
+    const alerts = normalizeEmailAlertsPayload(alertsRows);
     const incidents = Array.isArray(incidentsRows) ? incidentsRows : [];
     const mailUsers = Array.isArray(mailActivity.users) ? mailActivity.users : [];
     const mailSummary = mailActivity.summary || summary.mailActivity || {};
@@ -177,5 +187,6 @@ module.exports = {
     calculateEmailResolutionRate,
     calculateEmailSecurityScore,
     getEmailThreatType,
-    getEmailThreatLabel
+    getEmailThreatLabel,
+    normalizeEmailAlertsPayload
 };
