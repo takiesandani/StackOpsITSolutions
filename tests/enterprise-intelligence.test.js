@@ -269,6 +269,7 @@ test('Identity sends 57 normal users as one compact Azure table even when the gl
     };
     let insertId = 5700;
     const azurePackages = [];
+    const prompts = [];
     const logMessages = [];
     const pool = {
         async query(sql) {
@@ -285,9 +286,82 @@ test('Identity sends 57 normal users as one compact Azure table even when the gl
         azureOpenAI: {
             async createJsonCompletion(options) {
                 const prompt = options.messages[1].content;
+                prompts.push(prompt);
                 azurePackages.push(JSON.parse(prompt.split('STACKCTRL DOMAIN PACKAGE:\n')[1]));
                 return {
-                    data: domainResponse('identity'), requestSizeBytes: Buffer.byteLength(prompt), responseSizeBytes: 1000,
+                    data: {
+                        ...domainResponse('identity'),
+                        technicalReasoning: 'Privileged users without MFA create a stronger identity takeover path than normal users without MFA because role blast radius changes the business impact.',
+                        riskPrioritization: [{
+                            title: 'Privileged MFA gaps first',
+                            reasoning: 'Global Administrator without MFA outranks normal-user MFA gaps.',
+                            priority: 'critical'
+                        }],
+                        highestRiskPatterns: [{
+                            title: 'Admin role combined with missing MFA',
+                            severity: 'critical',
+                            affectedEntities: [{
+                                entityId: 'user-1',
+                                entityName: 'User 1',
+                                entityEmail: 'user1@example.com',
+                                entityType: 'User',
+                                userPrincipalName: 'user1@example.com',
+                                roles: ['Global Administrator'],
+                                hasAdminRole: true,
+                                mfaEnabled: false,
+                                riskLevel: 'HIGH',
+                                accountStatus: 'enabled',
+                                lastSignIn: { dateTime: '2026-06-24T08:00:00.000Z', device: 'LAPTOP-1' },
+                                businessReason: 'Privileged account lacks MFA.',
+                                recommendation: 'Require MFA before privileged access continues.'
+                            }]
+                        }],
+                        risks: [{
+                            riskId: 'identity-risk-1',
+                            title: 'Privileged account without MFA',
+                            severity: 'critical',
+                            patternFound: 'Global Administrator without MFA',
+                            reasoning: 'Admin role plus missing MFA is higher risk than a normal user without MFA.',
+                            whyThisIsHighPriority: 'The account can change tenant-wide security settings.',
+                            whyThisIsWorseThanLowerPriorityIssues: 'Normal users without MFA have narrower blast radius.',
+                            evidenceUsed: ['User 1 has Global Administrator and missing MFA.'],
+                            firstAction: 'Block privileged sign-in until MFA is registered.',
+                            followUpAction: 'Review all privileged role assignments.',
+                            businessImpact: 'Tenant-wide compromise risk.',
+                            managementDecisionRequired: 'Should privileged accounts without MFA be blocked until MFA is enforced?',
+                            whatCanWait: 'Normal-user MFA gaps can be grouped after privileged gaps.',
+                            recommendedOwner: 'Identity Administrator',
+                            suggestedDueDate: '2026-07-01',
+                            affectedEntityIds: ['user-1', 'identity.evidence[0].data[0]'],
+                            recordIds: ['user-1', 'identity.evidence[0].data[0]'],
+                            sourceAlertIds: ['identity.evidence[0].data[0]'],
+                            affectedEntities: [{
+                                entityId: 'user-1',
+                                entityName: 'User 1',
+                                entityEmail: 'user1@example.com',
+                                entityType: 'User',
+                                userPrincipalName: 'user1@example.com',
+                                roles: ['Global Administrator'],
+                                hasAdminRole: true,
+                                mfaEnabled: false,
+                                riskLevel: 'HIGH',
+                                accountStatus: 'enabled',
+                                lastSignIn: { dateTime: '2026-06-24T08:00:00.000Z', device: 'LAPTOP-1' },
+                                businessReason: 'Privileged account lacks MFA.',
+                                recommendation: 'Require MFA before privileged access continues.',
+                                internalSourcePath: 'identity.evidence[0].data[0]'
+                            }]
+                        }],
+                        managementDecisionsRequired: [{
+                            title: 'Block privileged users without MFA',
+                            recommendedAction: 'Require MFA before privileged access continues.',
+                            affectedEntityIds: ['user-1']
+                        }],
+                        whatCanWait: [{
+                            title: 'Normal-user MFA cleanup',
+                            detail: 'Normal users without MFA can be grouped after privileged remediation.'
+                        }]
+                    }, requestSizeBytes: Buffer.byteLength(prompt), responseSizeBytes: 1000,
                     usage: { input_tokens: 4000, output_tokens: 300, total_tokens: 4300 }
                 };
             }
@@ -324,6 +398,22 @@ test('Identity sends 57 normal users as one compact Azure table even when the gl
     assert.ok(result.domains[0].batchInfo.evidenceTokens > 0);
     assert.ok(result.domains[0].batchInfo.totalEstimatedTokens < result.domains[0].batchInfo.safeInputTokenLimit);
     assert.match(logMessages.join('\n'), /basePackageTokens=\d+.*evidenceTokens=\d+.*totalEstimatedTokens=\d+.*reasonForBatchCount=all_identity_rows_fit_safe_token_limit/);
+    assert.match(prompts[0], /Pattern -> Reasoning -> Priority -> Evidence -> Action -> Business decision/);
+    assert.match(prompts[0], /privileged MFA coverage matters more/i);
+    assert.match(result.domains[0].analysis.technicalReasoning, /Privileged users without MFA/i);
+    assert.equal(result.domains[0].analysis.riskPrioritization[0].priority, 'critical');
+    const risk = result.domains[0].analysis.risks[0];
+    assert.equal(risk.patternFound, 'Global Administrator without MFA');
+    assert.equal(risk.affectedEntityIds.some(value => /identity\.evidence/i.test(value)), false);
+    assert.equal(risk.recordIds.some(value => /identity\.evidence/i.test(value)), false);
+    assert.equal(risk.sourceAlertIds.some(value => /identity\.evidence/i.test(value)), false);
+    assert.equal(risk.affectedEntities[0].entityName, 'User 1');
+    assert.equal(risk.affectedEntities[0].entityEmail, 'user1@example.com');
+    assert.equal(risk.affectedEntities[0].userPrincipalName, 'user1@example.com');
+    assert.equal(risk.affectedEntities[0].roles[0], 'Global Administrator');
+    assert.equal(risk.affectedEntities[0].hasAdminRole, true);
+    assert.equal(risk.affectedEntities[0].mfaEnabled, false);
+    assert.equal(risk.affectedEntities[0].internalSourcePath, 'identity.evidence[0].data[0]');
 });
 
 test('Device Protection sends 17 devices as one compact Azure table and keeps readable device output', async () => {
@@ -368,6 +458,7 @@ test('Device Protection sends 17 devices as one compact Azure table and keeps re
     };
     let insertId = 6170;
     const azurePackages = [];
+    const prompts = [];
     const logMessages = [];
     const pool = {
         async query(sql) {
@@ -384,11 +475,39 @@ test('Device Protection sends 17 devices as one compact Azure table and keeps re
         azureOpenAI: {
             async createJsonCompletion(options) {
                 const prompt = options.messages[1].content;
+                prompts.push(prompt);
                 azurePackages.push(JSON.parse(prompt.split('STACKCTRL DOMAIN PACKAGE:\n')[1]));
                 return {
                     data: {
                         ...domainResponse('devices'),
                         domainExecutiveSummary: 'Device posture is mostly healthy, with one stale non-compliant high-risk endpoint requiring priority remediation.',
+                        technicalReasoning: 'Non-compliant stale devices with assigned users are higher priority than encrypted, managed, recently synced devices.',
+                        riskPrioritization: [{
+                            title: 'Stale non-compliant assigned endpoint',
+                            reasoning: 'Non-compliant plus dead sync age and assigned user creates direct business exposure.',
+                            priority: 'critical'
+                        }],
+                        highestRiskPatterns: [{
+                            title: 'Non-compliant stale assigned device',
+                            severity: 'critical',
+                            affectedEntities: [{
+                                entityId: 'device-3',
+                                entityName: 'LAPTOP2023',
+                                entityType: 'Device',
+                                entityDeviceName: 'LAPTOP2023',
+                                assignedUser: 'ken@sunbird.eu',
+                                operatingSystem: 'Windows',
+                                osVersion: '11.0.22631',
+                                complianceState: 'nonCompliant',
+                                encryptionState: 'encrypted',
+                                managementState: 'mdm',
+                                lastSyncDateTime: '2026-05-20T08:00:00.000Z',
+                                lastSyncDaysAgo: 36,
+                                riskLevel: 'High',
+                                businessReason: 'Assigned stale non-compliant endpoint increases compromise exposure.',
+                                recommendation: 'Remediate, block, or retire the device.'
+                            }]
+                        }],
                         collectionWindow: {
                             sourceSystem: 'Microsoft Graph / Intune / StackCTRL Devices',
                             sourceLastUpdatedAt: '2026-06-24T05:16:14.000Z',
@@ -404,8 +523,20 @@ test('Device Protection sends 17 devices as one compact Azure table and keeps re
                             riskId: 'device-risk-1',
                             title: 'Stale non-compliant endpoint',
                             severity: 'high',
+                            patternFound: 'Non-compliant device stale over 30 days with assigned user',
+                            reasoning: 'Non-compliant plus stale/dead sync is higher risk than non-compliance alone because policies may no longer be applying.',
+                            whyThisIsHighPriority: 'The device is assigned to a user and has not synced recently.',
+                            whyThisIsWorseThanLowerPriorityIssues: 'Compliant encrypted managed devices can wait because they are still receiving policy.',
                             businessReason: 'Non-compliant and stale device increases endpoint compromise risk.',
                             recommendation: 'Remediate compliance or retire the device.',
+                            evidenceUsed: ['LAPTOP2023 is non-compliant, assigned, and stale.'],
+                            firstAction: 'Investigate the device owner and current device state.',
+                            followUpAction: 'Remediate, block, or retire the device.',
+                            businessImpact: 'Endpoint compromise and policy drift exposure.',
+                            managementDecisionRequired: 'Should stale non-compliant devices be remediated, blocked, or retired?',
+                            whatCanWait: 'Encrypted MDM-managed devices with recent sync can wait.',
+                            recommendedOwner: 'Endpoint Administrator',
+                            suggestedDueDate: '2026-07-01',
                             affectedEntityIds: ['device-3', sourcePath],
                             recordIds: ['device-3', sourcePath],
                             sourceAlertIds: [sourcePath],
@@ -421,11 +552,21 @@ test('Device Protection sends 17 devices as one compact Azure table and keeps re
                                 encryptionState: 'encrypted',
                                 managementState: 'mdm',
                                 lastSyncDateTime: '2026-05-20T08:00:00.000Z',
+                                lastSyncDaysAgo: 36,
                                 riskLevel: 'High',
                                 businessReason: 'Non-compliant and stale device increases endpoint compromise risk.',
                                 recommendation: 'Remediate compliance or retire the device.',
                                 internalSourcePath: sourcePath
                             }]
+                        }],
+                        managementDecisionsRequired: [{
+                            title: 'Decide stale endpoint treatment',
+                            recommendedAction: 'Choose remediate, block, or retire for LAPTOP2023.',
+                            affectedEntityIds: ['device-3']
+                        }],
+                        whatCanWait: [{
+                            title: 'Encryption coverage',
+                            detail: 'Most devices are encrypted and MDM-managed, so encryption is not the immediate crisis.'
                         }]
                     },
                     requestSizeBytes: Buffer.byteLength(prompt),
@@ -463,8 +604,13 @@ test('Device Protection sends 17 devices as one compact Azure table and keeps re
     assert.equal(result.domains[0].batchInfo.reasonForBatchCount, 'all_device_rows_fit_safe_token_limit');
     assert.ok(result.domains[0].batchInfo.deviceTableTokens > 0);
     assert.match(logMessages.join('\n'), /Device batch plan: basePackageTokens=\d+.*deviceTableTokens=\d+.*plannedBatchCount=1.*reasonForBatchCount=all_device_rows_fit_safe_token_limit/);
+    assert.match(prompts[0], /Pattern -> Reasoning -> Priority -> Evidence -> Action -> Business decision/);
+    assert.match(prompts[0], /non-compliant \+ stale\/dead/i);
+    assert.match(result.domains[0].analysis.technicalReasoning, /Non-compliant stale devices/i);
+    assert.equal(result.domains[0].analysis.riskPrioritization[0].priority, 'critical');
 
     const risk = result.domains[0].analysis.risks[0];
+    assert.equal(risk.patternFound, 'Non-compliant device stale over 30 days with assigned user');
     assert.ok(risk.affectedEntityIds.includes('device-3'));
     assert.ok(risk.recordIds.includes('device-3'));
     assert.equal(risk.affectedEntityIds.some(value => /devices\.evidence/i.test(value)), false);
@@ -475,6 +621,7 @@ test('Device Protection sends 17 devices as one compact Azure table and keeps re
     assert.equal(risk.affectedEntities[0].entityDeviceName, 'LAPTOP2023');
     assert.equal(risk.affectedEntities[0].assignedUser, 'ken@sunbird.eu');
     assert.equal(risk.affectedEntities[0].complianceState, 'nonCompliant');
+    assert.equal(risk.affectedEntities[0].lastSyncDaysAgo, 36);
     assert.equal(risk.affectedEntities[0].internalSourcePath, sourcePath);
     assert.equal(result.domains[0].analysis.missingDataWarnings.filter(warning => /stale/i.test(warning)).length, 0);
     assert.equal(result.domains[0].analysis.missingDataInfo.filter(info => /Device Protection source is stale/i.test(info)).length, 1);

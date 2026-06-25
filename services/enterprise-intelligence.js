@@ -994,6 +994,15 @@ function canonicalEntity(value, context = {}) {
         entity.isEncrypted === true ? 'encrypted' : entity.isEncrypted === false ? 'not_encrypted' : null);
     const managementState = firstReadableValue(entity.managementState, entity.managementAgent, entity.managementStatus);
     const assignedUser = firstReadableValue(entity.assignedUser, entity.entityUser, entity.userPrincipalName, entity.primaryUser, entity.userDisplayName, entityEmail);
+    const roles = array(entity.roles).map(role => firstReadableValue(role?.name, role?.displayName, role?.roleName, role)).filter(Boolean);
+    const hasAdminRole = entity.hasAdminRole == null
+        ? (roles.length ? roles.some(role => /admin|privileged|owner/i.test(role)) : null)
+        : Boolean(entity.hasAdminRole);
+    const mfaEnabled = entity.mfaEnabled == null ? null : Boolean(entity.mfaEnabled);
+    const accountStatus = firstReadableValue(entity.accountStatus, entity.accountEnabled === true ? 'enabled' : entity.accountEnabled === false ? 'disabled' : null, entity.status);
+    const lastSignIn = entity.lastSignIn && typeof entity.lastSignIn === 'object'
+        ? sanitizeVisibleValue(entity.lastSignIn)
+        : firstReadableValue(entity.lastSignIn, entity.lastSignInDateTime);
 
     if (!entityId && !entityName && !entityEmail && !entityDeviceName && !entityApplicationName) return null;
     return {
@@ -1013,6 +1022,12 @@ function canonicalEntity(value, context = {}) {
         policyName,
         severity: firstReadableValue(entity.severity, context.severity),
         status: firstReadableValue(entity.status, context.status),
+        roles,
+        hasAdminRole,
+        mfaEnabled,
+        riskLevel: firstReadableValue(entity.riskLevel, entity.risk),
+        accountStatus,
+        lastSignIn,
         assignedUser,
         entityUser: firstReadableValue(entity.entityUser, assignedUser),
         operatingSystem: firstReadableValue(entity.operatingSystem, entity.os),
@@ -1024,7 +1039,7 @@ function canonicalEntity(value, context = {}) {
         registrationDateTime: firstReadableValue(entity.registrationDateTime, entity.enrolledDateTime),
         enrollmentType: firstReadableValue(entity.enrollmentType, entity.deviceEnrollmentType),
         serialNumber: firstReadableValue(entity.serialNumber),
-        riskLevel: firstReadableValue(entity.riskLevel, entity.risk),
+        lastSyncDaysAgo: numberOrNull(entity.lastSyncDaysAgo ?? entity.daysSinceLastSync),
         securityAlertCount: numberOrNull(entity.securityAlertCount ?? entity.alertCount),
         internalSourcePath,
         // Readable compatibility aliases retained for existing admin/report consumers.
@@ -1220,17 +1235,28 @@ function normalizeDomainOutputForDisplay(value, domain, snapshotId) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
     const normalized = sanitizeVisibleValue(value);
     const normalizeItems = items => array(items).map(item => normalizeEvidenceBackedItem(item, domain, snapshotId));
+    const normalizeReasoningSection = section => Array.isArray(section)
+        ? normalizeItems(section)
+        : (section && typeof section === 'object' ? sanitizeVisibleValue(section) : visibleTextOrNull(section, 8000));
     return {
         ...normalized,
         domainExecutiveSummary: visibleTextOrNull(value.domainExecutiveSummary, 4000),
+        technicalReasoning: visibleTextOrNull(value.technicalReasoning || value.technicalSummary, 8000),
+        riskPrioritization: normalizeReasoningSection(value.riskPrioritization),
         technicalSummary: visibleTextOrNull(value.technicalSummary, 4000),
         businessImpact: visibleTextOrNull(value.businessImpact, 4000),
         currentPosture: visibleTextOrNull(value.currentPosture, 4000),
         scoreJustification: visibleTextOrNull(value.scoreJustification, 4000),
         controlAssessment: normalizeControlAssessment(value.controlAssessment || {}, domain, snapshotId, []),
+        highestRiskPatterns: normalizeItems(value.highestRiskPatterns),
         keyFindings: normalizeItems(value.keyFindings),
         risks: normalizeItems(value.risks),
         recommendations: normalizeItems(value.recommendations),
+        managementDecisionsRequired: normalizeItems(value.managementDecisionsRequired),
+        whatCanWait: normalizeItems(value.whatCanWait),
+        affectedEntities: uniqueEntities(array(value.affectedEntities)
+            .map(entity => canonicalEntity(entity, { sourceDomain: domain.key }))
+            .filter(Boolean)),
         trendAnalysis: normalizeItems(value.trendAnalysis),
         managementActions: normalizeItems(value.managementActions)
     };
@@ -2078,31 +2104,37 @@ STACKCTRL SECURITY ALERTS BATCH:
 ${JSON.stringify(packageValue)}`;
     }
 
-    function domainPrompt(domain, packageValue) {
-        if (domain.key === 'security_alerts' && packageValue?.batchMetadata) {
-            return securityAlertsBatchPrompt(packageValue);
+function domainReasoningContract(domain) {
+        if (domain.key === 'identity') {
+            return `
+Identity Protection reasoning requirements:
+- Reason about combinations of evidence, not only user counts. Explain why privileged MFA gaps outrank normal-user MFA gaps.
+- Critical: Global Admin/privileged/break-glass account without MFA; privileged user with risky sign-in signals.
+- High: multiple privileged roles; external user without MFA; active user without MFA and recent sign-in activity.
+- Medium: normal user without MFA; inactive account needing review; unknown sign-in/device information.
+- Low: MFA enabled, active, no privileged role, no risk signals.
+- Explicitly compare admin role + no MFA; admin role + no MFA + inactive account; privileged account + unknown location/device; external user + missing MFA; multiple privileged roles; disabled/inactive users with or without privileged access.
+- Separate normal users without MFA from privileged users without MFA. State that MFA coverage matters, but privileged MFA coverage matters more.
+- Identity affectedEntities must include entityId, entityName, entityEmail, entityType "User", userPrincipalName, roles, hasAdminRole, mfaEnabled, riskLevel, accountStatus, lastSignIn, businessReason, recommendation.`;
         }
-        return `You are StackCTRL Enterprise Intelligence. Analyse only the supplied frozen StackCTRL ${domain.name} package.
-Azure builds structured enterprise intelligence; Power BI builds the final report. Do not create layouts, visuals, HTML, dashboard instructions, or Power BI files.
-Do not claim direct access to Microsoft Graph, Cloudflare, or another vendor. Do not invent missing controls or evidence.
-Every posture claim must identify supporting evidence, assessed areas, confirmed controls, unknown controls, gaps, movement, business impact, and recommended action.
-StackCTRL authoritative scores must be justified but never recalculated or replaced.
+        if (domain.key === 'devices') {
+            return `
+Device Protection reasoning requirements:
+- Reason about combinations of device evidence, not only device counts. Separate compliance risk from encryption coverage.
+- Critical: non-compliant + stale/dead over 30 days + assigned user; unmanaged device with active user or unknown compliance.
+- High: non-compliant but recently synced; high-risk device with user assignment; device with security alerts.
+- Medium: compliant but stale; missing encryption status; unknown owner/user.
+- Low: compliant, encrypted, managed, recently synced.
+- Explicitly compare non-compliant + stale/dead versus non-compliant alone; non-compliant + assigned user business exposure; stale but compliant hygiene risk; encrypted + managed + recently synced lower priority; unmanaged or unknown management state; old sync dates showing policies may not apply.
+- Distinguish actions: remediate, block, retire, or investigate. Include what can wait, e.g. encrypted and MDM-managed devices are not the immediate crisis when a smaller stale non-compliant group exists.
+- Device affectedEntities must include entityId, entityName, entityType "Device", entityDeviceName, assignedUser, operatingSystem, osVersion, complianceState, encryptionState, managementState, lastSyncDateTime, lastSyncDaysAgo, riskLevel, businessReason, recommendation.`;
+        }
+        return '';
+    }
 
-Use BOTH summary metrics and entity-level evidence:
-- currentMetrics, dashboardMetrics, and calculatedIndicators provide executive counts and scores.
-${domain.key === 'identity'
-    ? '- Identity evidence[] is a compact table. Each row already contains the readable user, MFA, authentication, risk, account, sign-in, location, device, role, and key-flag fields needed for analysis. Do not request or infer omitted dashboard/catalog/history objects.'
-    : domain.key === 'devices'
-    ? '- Device evidence[] is a compact table. Each row already contains readable device name, assigned user, OS, compliance, encryption, management, sync age, risk, alert count, and issue-flag fields. Reason over device posture patterns; do not repeat rows or request omitted catalog/history objects.'
-    : '- evidenceCatalog.categories contains categorized dashboard entity rows tied to sourceMetric keys.'}
-- evidence[] contains individual entity rows from the StackCTRL dashboard table for this batch.
-Every finding, risk, and recommendation MUST be evidence-backed. Do not state a gap without naming affected users, devices, apps, controls, policies, alerts, or other entities from the supplied evidence.
-Visible output must be human-readable. Include userPrincipalName/email, device display name, alert title/display name, application/control/policy name, or another useful entity label whenever supplied. Keep internal IDs as evidence references alongside those names; never return an ID as the only description of an affected entity.
-Every affectedEntities object must include entityId, entityName, entityType, sourceDomain, sourceMetric, businessReason, and recommendation. Use source paths only in internalSourcePath, debugSourcePath, or auditTrace.sourcePath; never use them as entity IDs, record IDs, alert IDs, or visible names.
-
-Return valid JSON only. No markdown. No code fences. No explanations outside JSON.
-Return exactly these fields:
-{
+    function domainOutputSchema(domain) {
+        if (!['identity', 'devices'].includes(domain.key)) {
+            return `{
   "domainExecutiveSummary": "",
   "technicalSummary": "",
   "businessImpact": "",
@@ -2125,11 +2157,79 @@ Return exactly these fields:
   "managementActions": [],
   "powerBiSummary": {},
   "evidenceLimitations": {}
-}
+}`;
+        }
+        return `{
+  "domainExecutiveSummary": "",
+  "technicalReasoning": "",
+  "riskPrioritization": [],
+  "technicalSummary": "",
+  "currentPosture": "",
+  "highestRiskPatterns": [],
+  "keyFindings": [],
+  "risks": [],
+  "recommendations": [],
+  "managementDecisionsRequired": [],
+  "whatCanWait": [],
+  "businessImpact": "",
+  "evidenceUsed": [],
+  "evidenceGaps": [],
+  "evidenceLimitations": {},
+  "scoreJustification": "",
+  "affectedEntities": [],
+  "collectionWindow": {},
+  "missingDataInfo": [],
+  "missingDataWarnings": [],
+  "controlAssessment": {},
+  "trendAnalysis": [],
+  "yesterdayVsToday": {},
+  "whatImproved": [],
+  "whatDeteriorated": [],
+  "whatStayedTheSame": [],
+  "assumptions": [],
+  "confidenceScore": null,
+  "managementActions": [],
+  "powerBiSummary": {}
+}`;
+    }
+
+    function domainPrompt(domain, packageValue) {
+        if (domain.key === 'security_alerts' && packageValue?.batchMetadata) {
+            return securityAlertsBatchPrompt(packageValue);
+        }
+        const richReasoning = ['identity', 'devices'].includes(domain.key);
+        const reasoningContract = domainReasoningContract(domain);
+        return `You are StackCTRL Enterprise Intelligence. Analyse only the supplied frozen StackCTRL ${domain.name} package.
+Azure builds structured enterprise intelligence; Power BI builds the final report. Do not create layouts, visuals, HTML, dashboard instructions, or Power BI files.
+Do not claim direct access to Microsoft Graph, Cloudflare, or another vendor. Do not invent missing controls or evidence.
+Every posture claim must identify supporting evidence, assessed areas, confirmed controls, unknown controls, gaps, movement, business impact, and recommended action.
+StackCTRL authoritative scores must be justified but never recalculated or replaced.
+
+Use BOTH summary metrics and entity-level evidence:
+- currentMetrics, dashboardMetrics, and calculatedIndicators provide executive counts and scores.
+${domain.key === 'identity'
+    ? '- Identity evidence[] is a compact table. Each row already contains the readable user, MFA, authentication, risk, account, sign-in, location, device, role, and key-flag fields needed for analysis. Do not request or infer omitted dashboard/catalog/history objects.'
+    : domain.key === 'devices'
+    ? '- Device evidence[] is a compact table. Each row already contains readable device name, assigned user, OS, compliance, encryption, management, sync age, risk, alert count, and issue-flag fields. Reason over device posture patterns; do not repeat rows or request omitted catalog/history objects.'
+    : '- evidenceCatalog.categories contains categorized dashboard entity rows tied to sourceMetric keys.'}
+- evidence[] contains individual entity rows from the StackCTRL dashboard table for this batch.
+Every finding, risk, and recommendation MUST be evidence-backed. Do not state a gap without naming affected users, devices, apps, controls, policies, alerts, or other entities from the supplied evidence.
+Visible output must be human-readable. Include userPrincipalName/email, device display name, alert title/display name, application/control/policy name, or another useful entity label whenever supplied. Keep internal IDs as evidence references alongside those names; never return an ID as the only description of an affected entity.
+Every affectedEntities object must include entityId, entityName, entityType, sourceDomain, sourceMetric, businessReason, and recommendation. Use source paths only in internalSourcePath, debugSourcePath, or auditTrace.sourcePath; never use them as entity IDs, record IDs, alert IDs, or visible names.
+${reasoningContract}
+${richReasoning ? `
+For Identity Protection and Device Protection, move beyond Metric -> Risk -> Recommendation. Produce: Pattern -> Reasoning -> Priority -> Evidence -> Action -> Business decision.
+Use these shared reasoning sections: domainExecutiveSummary, technicalReasoning, riskPrioritization, currentPosture, highestRiskPatterns, keyFindings, risks, recommendations, managementDecisionsRequired, whatCanWait, businessImpact, evidenceUsed, evidenceLimitations, scoreJustification, affectedEntities, collectionWindow, missingDataInfo.
+Every risk must include: patternFound, reasoning, whyThisIsHighPriority, whyThisIsWorseThanLowerPriorityIssues, affectedEntities, evidenceUsed, firstAction, followUpAction, businessImpact, managementDecisionRequired, whatCanWait, recommendedOwner, suggestedDueDate.
+Do not hardcode generic risks. Infer patterns and priorities from supplied compact evidence rows and summary metrics only.` : ''}
+
+Return valid JSON only. No markdown. No code fences. No explanations outside JSON.
+Return exactly these fields:
+${domainOutputSchema(domain)}
 
 Finding fields: title, description, severity, status, whatHappened, whyItMatters, businessImpact, businessReason, evidenceSummary, affectedEntities, affectedEntityIds, evidenceRows, recordIds, internalSourcePaths, sourceDomain, sourceMetric, snapshotId, evidenceSource, suggestedOwner, suggestedDueDate.
-Risk fields: riskId, title, description, severity, likelihood, impact, whatHappened, whyItMatters, businessImpact, businessReason, evidenceSummary, affectedEntities, affectedEntityIds, evidenceRows, recordIds, internalSourcePaths, sourceDomain, sourceMetric, snapshotId, evidenceSource, recommendation, suggestedOwner, suggestedDueDate.
-Recommendation/action fields: recommendationId, title, detail, priority, whatHappened, whyItMatters, businessImpact, businessReason, recommendedAction, affectedEntities, affectedEntityIds, evidenceRows, recordIds, internalSourcePaths, sourceDomain, sourceMetric, snapshotId, evidenceSource, suggestedOwner, suggestedDueDate.
+Risk fields: riskId, title, description, severity, likelihood, impact, patternFound, reasoning, whyThisIsHighPriority, whyThisIsWorseThanLowerPriorityIssues, whatHappened, whyItMatters, businessImpact, businessReason, evidenceUsed, evidenceSummary, affectedEntities, affectedEntityIds, evidenceRows, recordIds, internalSourcePaths, sourceDomain, sourceMetric, snapshotId, evidenceSource, recommendation, firstAction, followUpAction, managementDecisionRequired, whatCanWait, recommendedOwner, suggestedOwner, suggestedDueDate.
+Recommendation/action fields: recommendationId, title, detail, priority, reasoning, whatHappened, whyItMatters, businessImpact, businessReason, recommendedAction, firstAction, followUpAction, managementDecisionRequired, whatCanWait, recommendedOwner, affectedEntities, affectedEntityIds, evidenceRows, recordIds, internalSourcePaths, sourceDomain, sourceMetric, snapshotId, evidenceSource, suggestedOwner, suggestedDueDate.
 Control assessment items and trend fields must retain readable entity labels and the matching IDs whenever evidence exists.
 Trend fields additionally include: metricName, currentValue, previousValue, changePercent, direction, comparisonPeriod, explanation.
 evidenceUsed items: label, sourceMetric, entityCount, snapshotId, evidenceSource.
@@ -2694,6 +2794,8 @@ ${JSON.stringify(packageValue)}`;
         return normalizedDomainResult({
             status: 'running',
             domainExecutiveSummary: completed.map(result => result.analysis.domainExecutiveSummary).filter(Boolean).join(' '),
+            technicalReasoning: completed.map(result => result.analysis.technicalReasoning || result.analysis.technicalSummary).filter(Boolean).join(' '),
+            riskPrioritization: flatten('riskPrioritization'),
             technicalSummary: completed.map(result => result.analysis.technicalSummary).filter(Boolean).join(' '),
             businessImpact: completed.map(result => result.analysis.businessImpact).filter(Boolean).join(' '),
             currentPosture: completed.map(result => result.analysis.currentPosture).filter(Boolean).join(' '),
@@ -2701,9 +2803,12 @@ ${JSON.stringify(packageValue)}`;
             evidenceUsed: flatten('evidenceUsed'),
             evidenceGaps: flatten('evidenceGaps'),
             controlAssessment,
+            highestRiskPatterns: flatten('highestRiskPatterns'),
             keyFindings: flatten('keyFindings'),
             risks: flatten('risks'),
             recommendations: flatten('recommendations'),
+            managementDecisionsRequired: flatten('managementDecisionsRequired'),
+            whatCanWait: flatten('whatCanWait'),
             trendAnalysis: flatten('trendAnalysis'),
             whatImproved: flatten('whatImproved'),
             whatDeteriorated: flatten('whatDeteriorated'),
@@ -3344,6 +3449,9 @@ ${JSON.stringify(packageValue)}`;
         const resolvedSnapshotId = snapshotId ?? current?.snapshotId ?? null;
         const normalizeItems = items => array(items)
             .map(item => ensureItemEvidence(item, domain, resolvedSnapshotId, availableEvidence));
+        const normalizeReasoningSection = section => Array.isArray(section)
+            ? normalizeItems(section)
+            : (section && typeof section === 'object' ? sanitizeVisibleValue(section) : visibleTextOrNull(section, 8000));
         const collectionWindow = domain.key === 'identity'
             ? (value.collectionWindow || {
                 sourceSystem: 'Microsoft Graph / StackCTRL Identity',
@@ -3393,6 +3501,8 @@ ${JSON.stringify(packageValue)}`;
             message: visibleTextOrNull(value.message, 1200),
             rawAzureResponseStored: Boolean(value.rawAzureResponseStored),
             domainExecutiveSummary: visibleTextOrNull(value.domainExecutiveSummary, 4000),
+            technicalReasoning: visibleTextOrNull(value.technicalReasoning || value.technicalSummary, 8000),
+            riskPrioritization: normalizeReasoningSection(value.riskPrioritization),
             technicalSummary: visibleTextOrNull(value.technicalSummary, 4000),
             businessImpact: visibleTextOrNull(value.businessImpact, 4000),
             currentPosture: visibleTextOrNull(value.currentPosture, 4000),
@@ -3400,11 +3510,13 @@ ${JSON.stringify(packageValue)}`;
             evidenceUsed: sanitizeVisibleValue(array(value.evidenceUsed)),
             evidenceGaps: sanitizeVisibleValue(array(value.evidenceGaps)),
             controlAssessment: normalizeControlAssessment(value.controlAssessment || {}, domain, resolvedSnapshotId, availableEvidence),
+            highestRiskPatterns: normalizeItems(value.highestRiskPatterns),
             keyFindings: normalizeItems(value.keyFindings),
             risks: normalizeItems(value.risks),
             recommendations: normalizeItems(value.recommendations),
             affectedEntities: uniqueEntities(array(value.affectedEntities)
-                .map(entity => canonicalEntity(entity, domain, resolvedSnapshotId, {
+                .map(entity => canonicalEntity(entity, {
+                    sourceDomain: domain.key,
                     businessReason: entity?.reason || entity?.businessReason || value.businessImpact || value.currentPosture,
                     recommendation: entity?.recommendation || value.recommendation || value.recommendedAction
                 }))
@@ -3419,6 +3531,8 @@ ${JSON.stringify(packageValue)}`;
             assumptions: array(value.assumptions).map(assumption => visibleTextOrNull(assumption, 1200)).filter(Boolean),
             confidenceScore: numberOrNull(value.confidenceScore),
             managementActions: normalizeItems(value.managementActions),
+            managementDecisionsRequired: normalizeItems(value.managementDecisionsRequired),
+            whatCanWait: normalizeItems(value.whatCanWait),
             powerBiSummary: value.powerBiSummary || {},
             evidenceLimitations: value.evidenceLimitations || {},
             collectionWindow,
@@ -3893,10 +4007,45 @@ ${JSON.stringify(packageValue)}`;
                 evidenceAvailable: recordsPrepared > 0,
                 message: invalidJsonFallbacks.map(item => item.message).filter(Boolean).join(' | ') || null,
                 rawAzureResponseStored: invalidJsonFallbacks.length > 0 && invalidJsonFallbacks.every(item => item.rawAzureResponseStored),
-                domainExecutiveSummary: completedBatches.map(b => b.analysis?.domainExecutiveSummary).filter(Boolean).join(' '),
-                technicalSummary: completedBatches.map(b => b.analysis?.technicalSummary).filter(Boolean).join(' '),
-                businessImpact: completedBatches.map(b => b.analysis?.businessImpact).filter(Boolean).join(' '),
-                currentPosture: completedBatches.map(b => b.analysis?.currentPosture).filter(Boolean).join(' '),
+                domainExecutiveSummary: completedBatches
+                    .map(b => b.analysis?.domainExecutiveSummary)
+                    .filter(Boolean)
+                    .join(' '),
+
+                technicalReasoning: completedBatches
+                    .map(b => b.analysis?.technicalReasoning || b.analysis?.technicalSummary)
+                    .filter(Boolean)
+                    .join(' '),
+
+                riskPrioritization: completedBatches
+                    .flatMap(b => array(b.analysis?.riskPrioritization || [])),
+
+                technicalSummary: completedBatches
+                    .map(b => b.analysis?.technicalSummary)
+                    .filter(Boolean)
+                    .join(' '),
+
+                businessImpact: completedBatches
+                    .map(b => b.analysis?.businessImpact)
+                    .filter(Boolean)
+                    .join(' '),
+
+                currentPosture: completedBatches
+                    .map(b => b.analysis?.currentPosture)
+                    .filter(Boolean)
+                    .join(' '),
+
+                highestRiskPatterns: mergeByTitle(
+                    completedBatches.flatMap(b => b.analysis?.highestRiskPatterns || [])
+                ),
+
+                managementDecisionsRequired: mergeByTitle(
+                    completedBatches.flatMap(b => b.analysis?.managementDecisionsRequired || [])
+                ),
+
+                whatCanWait: mergeByTitle(
+                    completedBatches.flatMap(b => b.analysis?.whatCanWait || [])
+                ),
                 evidenceUsed: completedBatches.flatMap(b => b.analysis?.evidenceUsed || []),
                 evidenceGaps: completedBatches.flatMap(b => b.analysis?.evidenceGaps || []),
                 scoreJustification: completedBatches.map(b => b.analysis?.scoreJustification).filter(Boolean).join(' '),
