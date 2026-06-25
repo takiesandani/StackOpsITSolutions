@@ -425,7 +425,7 @@ const definitions = {
                 const snapshots = await queryRows(
                     pool,
                     `SELECT * FROM StackCTRLDeviceEvidenceSnapshots
-                     WHERE CompanyID = ? AND IsComplete = 1 AND CollectionStatus = 'complete'
+                     WHERE CompanyID = ? AND IsComplete = 1 AND CollectionStatus IN ('complete', 'completed_with_warnings')
                      ORDER BY CollectedAt DESC, ID DESC LIMIT 1`,
                     [companyId]
                 );
@@ -472,6 +472,11 @@ const definitions = {
                     };
                 }
                 const dashboardMetrics = snapshot.DashboardMetricsJson || {};
+                const sourceAudit = parseJsonValue(snapshot.SourceAuditJson, {});
+                const warnings = [
+                    ...(Array.isArray(sourceAudit?.warnings) ? sourceAudit.warnings : []),
+                    ...(snapshot.CollectionStatus === 'completed_with_warnings' && snapshot.IncompleteReason ? [snapshot.IncompleteReason] : [])
+                ];
                 const devices = deviceRows.map(row => row.ProcessedEvidenceJson || ({
                     id: row.DeviceSourceID,
                     deviceName: row.DeviceName,
@@ -502,7 +507,7 @@ const definitions = {
                         omittedRecordCount: Number(snapshot.OmittedRecordCount)
                     },
                     evidence: [{ evidenceType: 'devices', data: devices }],
-                    warnings: [],
+                    warnings: [...new Set(warnings)],
                     rawReference: { table: this.table, recordId: snapshot.ID }
                 };
             }
@@ -513,15 +518,23 @@ const definitions = {
             return { records, notConfigured: !configured, metrics: records[0] ? primitiveMetrics(records[0]) : {}, evidence: records };
         },
         fromRefresh(refreshed, stored) {
+            const lastUpdated = refreshed.lastUpdated || refreshed.collectedAt || new Date().toISOString();
+            const metrics = refreshed.dashboardMetrics || refreshed.metrics || {};
+            const warnings = [...new Set([...(Array.isArray(refreshed.warnings) ? refreshed.warnings : [])])];
             const record = {
-                ...(refreshed.metrics || refreshed),
-                LastUpdated: refreshed.lastUpdated || new Date().toISOString()
+                ...metrics,
+                LastUpdated: lastUpdated,
+                CollectedAt: lastUpdated,
+                SourceFetchedAt: lastUpdated,
+                CollectionStatus: refreshed.status || refreshed.collectionStatus || (warnings.length ? 'completed_with_warnings' : 'complete')
             };
             return {
                 ...stored,
                 records: [record],
-                metrics: refreshed.metrics || primitiveMetrics(record, ['devices']),
-                evidence: refreshed.evidence || refreshed.devices || [record]
+                metrics: Object.keys(metrics).length ? metrics : primitiveMetrics(record, ['devices']),
+                dashboardSourceMetrics: Object.keys(metrics).length ? metrics : stored.dashboardSourceMetrics || null,
+                evidence: refreshed.evidence || (Array.isArray(refreshed.devices) ? [{ evidenceType: 'devices', data: refreshed.devices }] : stored.evidence || []),
+                warnings
             };
         },
         metrics: records => primitiveMetrics(records[0]),

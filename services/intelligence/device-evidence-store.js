@@ -85,6 +85,7 @@ function mysqlDateTime(value) {
 function deriveDeviceEvidence(payload = {}) {
     const devicesInput = Array.isArray(payload.devices) ? payload.devices : [];
     const alertsInput = Array.isArray(payload.alerts) ? payload.alerts : [];
+    const warnings = [...new Set(Array.isArray(payload.warnings) ? payload.warnings : [])];
     const dashboardSource = buildDeviceDashboardSource({
         devicesRows: devicesInput,
         alertsRows: alertsInput,
@@ -130,6 +131,8 @@ function deriveDeviceEvidence(payload = {}) {
         omittedRecordCount,
         completenessPercent,
         isComplete,
+        warnings,
+        collectionStatus: isComplete ? (warnings.length ? 'completed_with_warnings' : 'complete') : 'incomplete',
         incompleteReason: isComplete
             ? null
             : !devices.length ? 'The processed Device Protection dashboard contained no device evidence.'
@@ -181,7 +184,7 @@ function createDeviceEvidenceStore({ pool, logger = console, now = () => new Dat
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     numericCompanyId, tenantKey, collectionTrigger, sourceEndpoint,
-                    evidence.isComplete ? 'complete' : 'incomplete', evidence.isComplete ? 1 : 0,
+                    evidence.collectionStatus, evidence.isComplete ? 1 : 0,
                     mysqlDateTime(collectedAt), mysqlDateTime(sourceFetchedAt), evidence.devices.length,
                     evidence.expectedRecordCount, evidence.omittedRecordCount, evidence.completenessPercent,
                     metrics.totalDevices, metrics.compliantDevices, metrics.nonCompliantDevices, metrics.unknownDevices,
@@ -195,6 +198,7 @@ function createDeviceEvidenceStore({ pool, logger = console, now = () => new Dat
                         dashboardFetchedAt: payload?.fetchedAt || null,
                         collectionTrigger,
                         sourceEndpoint,
+                        warnings: evidence.warnings,
                         credentialSource: 'environment',
                         credentialPath: 'MICROSOFT_CLIENT_SECRET (Azure Key Vault, shared with dashboard)'
                     }),
@@ -238,6 +242,8 @@ function createDeviceEvidenceStore({ pool, logger = console, now = () => new Dat
             recordCount: evidence.devices.length,
             omittedCount: evidence.omittedRecordCount,
             isComplete: evidence.isComplete,
+            status: evidence.collectionStatus,
+            warnings: evidence.warnings,
             dashboardMetrics: evidence.dashboardMetrics
         };
     }

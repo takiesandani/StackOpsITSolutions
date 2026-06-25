@@ -26,7 +26,7 @@ const { buildIdentityDashboardSource } = require('./services/intelligence/identi
 const { buildIdentityDashboardPayload } = require('./services/intelligence/identity-dashboard-processor');
 const { createIdentityEvidenceStore } = require('./services/intelligence/identity-evidence-store');
 const { createIdentityEvidenceAutomation } = require('./services/intelligence/identity-evidence-automation');
-const { buildDeviceDashboardPayload } = require('./services/intelligence/device-dashboard-processor');
+const { buildDeviceDashboardPayload, normalizeDeviceAlertsPayload } = require('./services/intelligence/device-dashboard-processor');
 const { createDeviceEvidenceStore } = require('./services/intelligence/device-evidence-store');
 const { createDeviceEvidenceAutomation } = require('./services/intelligence/device-evidence-automation');
 const { buildEmailDashboardPayload } = require('./services/intelligence/email-dashboard-processor');
@@ -10028,8 +10028,9 @@ app.get('/api/microsoft-devices', authenticateToken, async (req, res) => {
             (registeredPercent * 0.25)
         );
 
-        // Process security alerts (limit to 20)
-        const processedAlerts = alerts.slice(0, 20).map(alert => ({
+        // Process optional security alerts (limit to 20). Alerts support device context but must not block device refresh.
+        const normalizedAlertPayload = normalizeDeviceAlertsPayload(alerts, { logger: console });
+        const processedAlerts = normalizedAlertPayload.alerts.slice(0, 20).map(alert => ({
             id: alert.id,
             title: alert.title || 'Unknown Alert',
             description: alert.description || '',
@@ -10066,7 +10067,8 @@ app.get('/api/microsoft-devices', authenticateToken, async (req, res) => {
             activityBreakdown,
             highRiskDevices: highRiskDevices.slice(0, 10),
             alerts: processedAlerts,
-            policies: policies.slice(0, 10)
+            policies: policies.slice(0, 10),
+            warnings: [...new Set(normalizedAlertPayload.warnings)]
         };
 
         if (deviceEvidenceService && tenant.companyId) {
@@ -11311,10 +11313,14 @@ async function performDeviceEvidenceCollection(companyId, collectionTrigger) {
     const sourceEndpoint = 'Microsoft Graph processed by StackCTRL Device Protection';
     try {
         const token = await getMicrosoftGraphToken();
+        const alertsPromise = fetchSecurityAlerts(token).catch(error => {
+            console.warn('[Device Evidence] Device security alerts unavailable; continuing device refresh:', error.message);
+            return { alerts: [], warnings: ['device_security_alerts_unavailable'], recordsFetched: 0 };
+        });
         const [devices, policies, alerts] = await Promise.all([
             fetchMicrosoftDevices(token),
             fetchCompliancePolicies(token),
-            fetchSecurityAlerts(token)
+            alertsPromise
         ]);
         const payload = buildDeviceDashboardPayload({
             tenantKey: 'sunbird',
