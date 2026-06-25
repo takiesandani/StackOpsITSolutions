@@ -84,7 +84,7 @@ body {
     height: 100%;
     z-index: -1;
     background: linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.158)),
-        url('Images/adsds.png') no-repeat center center;
+        url('Images/Website.png') no-repeat center center;
     background-size: cover;
 }
 

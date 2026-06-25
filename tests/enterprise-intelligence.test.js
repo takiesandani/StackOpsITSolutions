@@ -717,12 +717,17 @@ test('Email Security selected-domain stops cleanly on Azure 429 without synthesi
 
     assert.equal(emailOptions.maxRetriesOverride, 0);
     assert.deepEqual(emailOptions.retryDelaysMsOverride, []);
-    assert.equal(emailPackage.contextType, 'stackctrl_enterprise_email_security_compact');
+    assert.equal(emailPackage.contextType, 'stackctrl_enterprise_email_security_strict_compact');
     assert.equal(emailPackage.batchMetadata.totalBatches, 1);
     assert.equal(emailPackage.compactEvidenceSummary.mailflowIsContextOnly, true);
     assert.equal(Object.hasOwn(emailPackage, 'historicalComparisons'), false);
     assert.equal(Object.hasOwn(emailPackage, 'knowledgeGrounding'), false);
     assert.equal(Object.hasOwn(emailPackage, 'previousDomainAnalysis'), false);
+    assert.equal(Object.hasOwn(emailPackage, 'dataLineage'), false);
+    assert.equal(Object.hasOwn(emailPackage, 'domainRunAudit'), false);
+    assert.equal(Object.hasOwn(emailPackage, 'tokenTracking'), false);
+    assert.equal(Object.hasOwn(emailPackage, 'evidenceBatchPlan'), false);
+    assert.equal(emailOptions.maxTokens, 6000);
     assert.equal(emailPackage.evidence.filter(row => row.evidenceType === 'securityAlerts').length, 25);
     assert.ok(emailPackage.evidence.filter(row => row.evidenceType === 'highVolumeMailboxes').length <= 10);
     assert.ok(emailPackage.evidence.filter(row => row.evidenceType === 'inactiveMailboxes').length <= 10);
@@ -802,6 +807,7 @@ test('Cloudflare selected-domain prompt and output stay readable and domain-spec
                 return {
                     data: {
                         ...domainResponse('cloudflare_network_security'),
+                        missingDataWarnings: ['Curated Network Security / Cloudflare best-practice references were unavailable.'],
                         technicalReasoning: [{ title: 'Access coverage', reasoning: 'Finance Portal has a named access policy and recent deny logs.' }],
                         riskPrioritization: [{ title: 'Finance Portal policy review', priority: 'high', reasoning: 'Access logs show denied attempts against a protected app.' }],
                         risks: [{
@@ -873,6 +879,7 @@ test('Cloudflare selected-domain prompt and output stay readable and domain-spec
     assert.ok(preparedRows.some(row => row.evidenceType === 'dlpProfiles' && row.data.profileName === 'Finance DLP'));
     assert.ok(preparedRows.some(row => row.evidenceType === 'warpProfiles' && row.data.profileName === 'Default WARP'));
     assert.equal(result.domains[0].status, 'completed');
+    assert.equal(result.domains[0].analysis.missingDataWarnings.some(warning => /curated.*cloudflare|best-practice references/i.test(String(warning))), false);
     assert.equal(risk.affectedEntities[0].entityName, 'Finance Portal');
     assert.equal(risk.affectedEntities[0].policyName, 'Finance Access Policy');
     for (const field of ['roles', 'mfaEnabled', 'lastSignIn', 'osVersion', 'serialNumber', 'complianceState']) {
@@ -883,6 +890,133 @@ test('Cloudflare selected-domain prompt and output stay readable and domain-spec
     assert.equal(risk.sourceAlertIds.some(value => /cloudflare_network_security\.evidence/i.test(value)), false);
     assert.doesNotMatch(risk.reasoning, /cloudflare_network_security\.evidence/);
     assert.equal(risk.internalSourcePath, sourcePath);
+});
+
+test('Backup selected-domain preparation uses one strict compact exposure package', async () => {
+    const pool = {
+        async query(sql) {
+            if (sql.includes('FROM StackCTRLKnowledgeBase')) return [[], []];
+            if (sql.includes('FROM StackCTRLTenantDomainIntelligence') && sql.includes('RunID <>')) return [[], []];
+            throw new Error(`Unexpected query: ${sql}`);
+        }
+    };
+    const service = createEnterpriseIntelligenceService({
+        pool,
+        azureOpenAI: { async createJsonCompletion() { throw new Error('Azure should not be called'); } },
+        schedulerService: { async getHistoricalSnapshotContext() { return {}; } },
+        config: { domainDelayMs: 0 }
+    });
+    const snapshot = {
+        ID: 645, CompanyID: 1, TenantKey: 'tenant-sunbird', SnapshotType: 'manual',
+        CreatedAt: new Date('2026-06-25T08:00:00.000Z'), DataCompletenessScore: 100,
+        MetricsJson: JSON.stringify({ stackctrl_risk: { domainRiskScores: { backup: 32 } } }),
+        ContextJson: JSON.stringify({
+            riskEngine: { domainHealthScores: { backup: 68 }, domainRiskScores: { backup: 32 } },
+            sources: [{
+                sourceKey: 'backup', status: 'available', isExpected: true, freshness: { ageMinutes: 2 },
+                dashboardMetrics: {
+                    totalStorageGB: 900, oneDriveStorageGB: 300, sharePointStorageGB: 500, exchangeStorageGB: 100,
+                    activeUsersCount: 50, inactiveUsersCount: 12, servicesCovered: 3,
+                    backupCoverageScore: 64, exposureRiskScore: 36, recommendationsCount: 4
+                },
+                evidence: [
+                    { evidenceType: 'users', data: Array.from({ length: 60 }, (_, index) => ({
+                        id: `backup-user-${index + 1}`,
+                        userPrincipalName: `backup${index + 1}@example.com`,
+                        displayName: `Backup User ${index + 1}`,
+                        totalStorageGB: 60 - index,
+                        accountStatus: index < 12 ? 'inactive' : 'active',
+                        daysSinceActivity: index < 20 ? 45 : 5
+                    })) },
+                    { evidenceType: 'sites', data: Array.from({ length: 25 }, (_, index) => ({
+                        id: `site-${index + 1}`,
+                        siteName: `Project Site ${index + 1}`,
+                        storageGB: 100 - index
+                    })) }
+                ]
+            }]
+        })
+    };
+    const packageResult = await service.buildDomainPackage({
+        companyId: 1,
+        snapshot,
+        runId: 6450,
+        domain: ENTERPRISE_DOMAINS.find(domain => domain.key === 'backup'),
+        historicalContext: { comparisons: {} }
+    });
+    const batchPackage = service.buildDomainBatchPackage(packageResult.package, packageResult.allEvidence, 1, 1);
+    assert.equal(batchPackage.contextType, 'stackctrl_enterprise_backup_strict_compact');
+    assert.equal(batchPackage.batchMetadata.totalBatches, 1);
+    assert.ok(batchPackage.evidence.length <= 100);
+    assert.ok(batchPackage.evidenceGroups.topStorageUsers.length <= 10);
+    assert.ok(batchPackage.evidenceGroups.inactiveDataHolders.length <= 10);
+    assert.ok(batchPackage.evidenceGroups.staleActivityUsers.length <= 10);
+    assert.ok(batchPackage.evidenceGroups.topSharePointSites.length <= 10);
+    for (const forbidden of ['previousDomainAnalysis', 'historicalComparisons', 'dataLineage', 'domainRunAudit', 'tokenTracking', 'evidenceBatchPlan']) {
+        assert.equal(Object.hasOwn(batchPackage, forbidden), false);
+    }
+});
+
+test('Applications selected-domain preparation uses one strict compact governance package', async () => {
+    const pool = {
+        async query(sql) {
+            if (sql.includes('FROM StackCTRLKnowledgeBase')) return [[], []];
+            if (sql.includes('FROM StackCTRLTenantDomainIntelligence') && sql.includes('RunID <>')) return [[], []];
+            throw new Error(`Unexpected query: ${sql}`);
+        }
+    };
+    const service = createEnterpriseIntelligenceService({
+        pool,
+        azureOpenAI: { async createJsonCompletion() { throw new Error('Azure should not be called'); } },
+        schedulerService: { async getHistoricalSnapshotContext() { return {}; } },
+        config: { domainDelayMs: 0 }
+    });
+    const snapshot = {
+        ID: 646, CompanyID: 1, TenantKey: 'tenant-sunbird', SnapshotType: 'manual',
+        CreatedAt: new Date('2026-06-25T08:00:00.000Z'), DataCompletenessScore: 100,
+        MetricsJson: JSON.stringify({ stackctrl_risk: { domainRiskScores: { applications: 34 } } }),
+        ContextJson: JSON.stringify({
+            riskEngine: { domainHealthScores: { applications: 66 }, domainRiskScores: { applications: 34 } },
+            sources: [{
+                sourceKey: 'applications', status: 'available', isExpected: true, freshness: { ageMinutes: 2 },
+                dashboardMetrics: {
+                    totalApplications: 80, externalApplications: 25, highRiskApps: 12, highAccessApps: 18,
+                    excessivePermissionApps: 14, groupAssignedApps: 11, applicationGovernanceScore: 62,
+                    userCount: 200, groupCount: 20, recommendationsCount: 5
+                },
+                evidence: [{ evidenceType: 'applications', data: Array.from({ length: 80 }, (_, index) => ({
+                    id: `app-${index + 1}`,
+                    appName: `Application ${index + 1}`,
+                    publisherName: index % 2 === 0 ? 'Unknown External Publisher' : 'Contoso',
+                    riskLevel: index < 12 ? 'high' : 'medium',
+                    permissionSummary: index < 14 ? 'Directory.ReadWrite.All Mail.ReadWrite' : 'User.Read',
+                    assignedUserCount: index < 18 ? 50 : 2,
+                    assignedGroupCount: index < 11 ? 2 : 0,
+                    reviewStatus: index < 10 ? 'unreviewed' : 'reviewed'
+                })) }]
+            }]
+        })
+    };
+    const packageResult = await service.buildDomainPackage({
+        companyId: 1,
+        snapshot,
+        runId: 6460,
+        domain: ENTERPRISE_DOMAINS.find(domain => domain.key === 'applications'),
+        historicalContext: { comparisons: {} }
+    });
+    const batchPackage = service.buildDomainBatchPackage(packageResult.package, packageResult.allEvidence, 1, 1);
+    assert.equal(batchPackage.contextType, 'stackctrl_enterprise_applications_strict_compact');
+    assert.equal(batchPackage.batchMetadata.totalBatches, 1);
+    assert.ok(batchPackage.evidence.length <= 100);
+    assert.ok(batchPackage.evidenceGroups.highRiskApps.length <= 10);
+    assert.ok(batchPackage.evidenceGroups.externalApps.length <= 10);
+    assert.ok(batchPackage.evidenceGroups.excessivePermissionApps.length <= 10);
+    assert.ok(batchPackage.evidenceGroups.highAccessApps.length <= 10);
+    assert.ok(batchPackage.evidenceGroups.groupAssignedApps.length <= 10);
+    assert.ok(batchPackage.evidenceGroups.staleOrUnreviewedApps.length <= 10);
+    for (const forbidden of ['previousDomainAnalysis', 'historicalComparisons', 'dataLineage', 'domainRunAudit', 'tokenTracking', 'evidenceBatchPlan']) {
+        assert.equal(Object.hasOwn(batchPackage, forbidden), false);
+    }
 });
 
 test('normalizeMysqlDate stores only real MySQL dates for enterprise AI date fields', () => {
