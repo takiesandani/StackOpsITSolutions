@@ -278,6 +278,7 @@ async function collectSource(context, definition) {
             : 'CompanyMicrosoftMapping (per-company database)',
         refreshFailed,
         refreshErrorMessage,
+        errorMessage: refreshErrorMessage || loaded.errorMessage || loaded.sourceLineage?.errorMessage || loaded.sourceLineage?.incompleteReason || null,
         metrics: loaded.metrics || definition.metrics(records),
         dashboardSourceMetrics: loaded.dashboardSourceMetrics || null,
         sourceLineage: loaded.sourceLineage || null,
@@ -680,9 +681,49 @@ const definitions = {
             if (capability?.profileKey === 'sunbird') {
                 const snapshots = await queryRows(pool, `SELECT * FROM StackCTRLSecurityEvidenceSnapshots WHERE CompanyID = ? AND IsComplete = 1 AND CollectionStatus IN ('complete', 'completed_with_warnings') ORDER BY CollectedAt DESC, ID DESC LIMIT 1`, [companyId]);
                 const snapshot = snapshots[0];
-                if (!snapshot) return { records: [], notConfigured: !tenant.length, metrics: {}, dashboardSourceMetrics: {}, sourceLineage: { sourceKey: 'security_alerts', sourceBuilder: 'storedStackCTRLSecurityEvidence', sourceLayer: 'StackCTRLSecurityEvidenceSnapshots', collectionStatus: 'missing' }, evidence: [], warnings: ['No complete StackCTRL Security Alerts evidence snapshot is available. Azure analysis is blocked until collection succeeds.'], rawReference: { table: this.table, recordId: null } };
+                const lineageOptions = { sourceKey: 'security_alerts', sourceBuilder: 'storedStackCTRLSecurityEvidence', sourceLayer: 'StackCTRLSecurityEvidenceSnapshots' };
+                if (!snapshot) {
+                    const latestRows = await queryRows(pool, `SELECT * FROM StackCTRLSecurityEvidenceSnapshots WHERE CompanyID = ? ORDER BY CollectedAt DESC, ID DESC LIMIT 1`, [companyId]);
+                    const latest = latestRows[0];
+                    const storedError = latest?.ErrorMessage || latest?.IncompleteReason || 'No complete StackCTRL Security Alerts evidence snapshot is available. Azure analysis is blocked until collection succeeds.';
+                    const metrics = latest?.DashboardMetricsJson || {};
+                    return {
+                        records: latest ? latestRows : [],
+                        notConfigured: !tenant.length,
+                        metrics,
+                        dashboardSourceMetrics: metrics,
+                        sourceLineage: {
+                            ...storedEvidenceLineage(latest, lineageOptions),
+                            collectionStatus: latest?.CollectionStatus || 'missing',
+                            isComplete: latest ? Boolean(Number(latest.IsComplete)) : false,
+                            incompleteReason: latest?.IncompleteReason || storedError,
+                            errorMessage: storedError
+                        },
+                        evidence: [],
+                        warnings: [storedError],
+                        rawReference: { table: this.table, recordId: latest?.ID || null }
+                    };
+                }
                 const evidenceRows = await queryRows(pool, `SELECT * FROM StackCTRLSecurityEvidence WHERE SnapshotID = ? ORDER BY ID`, [snapshot.ID]);
-                if (evidenceRows.length !== Number(snapshot.EvidenceRecordCount)) return { records: [], notConfigured: !tenant.length, metrics: {}, dashboardSourceMetrics: {}, sourceLineage: { sourceKey: 'security_alerts', sourceBuilder: 'storedStackCTRLSecurityEvidence', evidenceSnapshotId: snapshot.ID, collectionStatus: 'incomplete' }, evidence: [], warnings: [`Security evidence snapshot ${snapshot.ID} expected ${snapshot.EvidenceRecordCount} rows but ${evidenceRows.length} were stored. Azure analysis is blocked.`], rawReference: { table: this.table, recordId: snapshot.ID } };
+                if (evidenceRows.length !== Number(snapshot.EvidenceRecordCount)) {
+                    const errorMessage = `Security evidence snapshot ${snapshot.ID} expected ${snapshot.EvidenceRecordCount} rows but ${evidenceRows.length} were stored.`;
+                    return {
+                        records: [],
+                        notConfigured: !tenant.length,
+                        metrics: snapshot.DashboardMetricsJson || {},
+                        dashboardSourceMetrics: snapshot.DashboardMetricsJson || {},
+                        sourceLineage: {
+                            ...storedEvidenceLineage(snapshot, lineageOptions),
+                            collectionStatus: 'incomplete',
+                            isComplete: false,
+                            incompleteReason: errorMessage,
+                            errorMessage
+                        },
+                        evidence: [],
+                        warnings: [`${errorMessage} Azure analysis is blocked.`],
+                        rawReference: { table: this.table, recordId: snapshot.ID }
+                    };
+                }
                 const grouped = { alerts: [], incidents: [], signIns: [], threatIndicators: [] };
                 evidenceRows.forEach(row => {
                     const item = row.ProcessedEvidenceJson || {};
@@ -697,7 +738,7 @@ const definitions = {
                     ...(Array.isArray(sourceAudit?.warnings) ? sourceAudit.warnings : []),
                     ...(snapshot.CollectionStatus === 'completed_with_warnings' && snapshot.IncompleteReason ? [snapshot.IncompleteReason] : [])
                 ];
-                return { records: snapshots, notConfigured: !tenant.length, metrics: dashboardMetrics, dashboardSourceMetrics: dashboardMetrics, sourceLineage: { sourceKey: 'security_alerts', sourceBuilder: 'storedStackCTRLSecurityEvidence', sourceLayer: 'StackCTRLSecurityEvidenceSnapshots + StackCTRLSecurityEvidence', evidenceSnapshotId: snapshot.ID, collectedAt: snapshot.CollectedAt, sourceFetchedAt: snapshot.SourceFetchedAt, sourceEndpoint: snapshot.SourceEndpoint, collectionTrigger: snapshot.CollectionTrigger, collectionStatus: snapshot.CollectionStatus, isComplete: Boolean(Number(snapshot.IsComplete)), evidenceRecordCount: Number(snapshot.EvidenceRecordCount), expectedRecordCount: Number(snapshot.ExpectedRecordCount), omittedRecordCount: Number(snapshot.OmittedRecordCount), incompleteReason: snapshot.IncompleteReason || null, stages: sourceAudit?.collection?.stages || sourceAudit?.stages || [] }, evidence: Object.entries(grouped).map(([evidenceType, data]) => ({ evidenceType, data })), warnings, rawReference: { table: this.table, recordId: snapshot.ID } };
+                return { records: snapshots, notConfigured: !tenant.length, metrics: dashboardMetrics, dashboardSourceMetrics: dashboardMetrics, sourceLineage: { sourceKey: 'security_alerts', sourceBuilder: 'storedStackCTRLSecurityEvidence', sourceLayer: 'StackCTRLSecurityEvidenceSnapshots + StackCTRLSecurityEvidence', evidenceSnapshotId: snapshot.ID, collectedAt: snapshot.CollectedAt, sourceFetchedAt: snapshot.SourceFetchedAt, sourceLastUpdated: snapshot.SourceFetchedAt || snapshot.CollectedAt || snapshot.UpdatedAt || snapshot.CreatedAt, sourceEndpoint: snapshot.SourceEndpoint, collectionTrigger: snapshot.CollectionTrigger, collectionStatus: snapshot.CollectionStatus, isComplete: Boolean(Number(snapshot.IsComplete)), evidenceRecordCount: Number(snapshot.EvidenceRecordCount), expectedRecordCount: Number(snapshot.ExpectedRecordCount), omittedRecordCount: Number(snapshot.OmittedRecordCount), incompleteReason: snapshot.IncompleteReason || null, stages: sourceAudit?.collection?.stages || sourceAudit?.stages || [] }, evidence: Object.entries(grouped).map(([evidenceType, data]) => ({ evidenceType, data })), warnings, rawReference: { table: this.table, recordId: snapshot.ID } };
             }
             const [records, configured] = await Promise.all([queryRows(pool, 'SELECT * FROM SecurityEventsPayloadCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]), hasActiveMicrosoftTenant(pool, companyId)]);
             const payload = extractPayload(records[0]);

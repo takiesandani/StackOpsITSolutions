@@ -37,7 +37,7 @@ const ENTERPRISE_RATE_LIMIT_RETRY_MAX_MS = 15 * 60 * 1000;
 const EMAIL_SECURITY_RATE_LIMIT_RETRY_DELAYS_MS = Object.freeze([]);
 const EMAIL_SECURITY_RATE_LIMIT_RETRY_MAX_MS = 0;
 const STRICT_COMPACT_SELECTED_DOMAIN_KEYS = Object.freeze(new Set(['email_security', 'cloudflare_network_security', 'backup', 'applications']));
-const COMPACT_SELECTED_DOMAIN_KEYS = Object.freeze(new Set(['identity', ...STRICT_COMPACT_SELECTED_DOMAIN_KEYS]));
+const COMPACT_SELECTED_DOMAIN_KEYS = Object.freeze(new Set(['identity', 'security_alerts', ...STRICT_COMPACT_SELECTED_DOMAIN_KEYS]));
 const HEAVY_DOMAINS = Object.freeze(new Set(['governance', 'operations', 'compliance']));
 const SUCCESSFUL_DOMAIN_STATUSES = Object.freeze(new Set(['completed', 'partial', 'completed_with_warnings']));
 const SKIPPED_DOMAIN_STATUSES = Object.freeze(new Set(['skipped_rate_limited', 'skipped_token_threshold', 'skipped_pipeline_stop']));
@@ -103,6 +103,20 @@ const APPLICATIONS_COMPACT_EVIDENCE_TYPES = Object.freeze([
     'highAccessApps',
     'groupAssignedApps',
     'staleOrUnreviewedApps',
+    'recommendations'
+]);
+const SECURITY_ALERTS_COMPACT_EVIDENCE_TYPES = Object.freeze([
+    'summaryMetrics',
+    'criticalAlerts',
+    'highSeverityAlerts',
+    'activeIncidents',
+    'suspiciousSignIns',
+    'anonymousIpEvents',
+    'repeatedAlertPatterns',
+    'affectedUsers',
+    'affectedDevices',
+    'unresolvedAlerts',
+    'recentResolvedAlerts',
     'recommendations'
 ]);
 const DOMAIN_EVIDENCE_CATEGORY_METRICS = Object.freeze({
@@ -617,6 +631,257 @@ function compactEmailSecurityEvidenceRows(sourceEvidence, flattenedEvidence, cur
         ...inactiveMailboxes,
         mailflowSummary,
         ...evidenceSamples
+    ];
+}
+
+function securitySeverityRank(value) {
+    return { critical: 5, high: 4, medium: 3, low: 2, informational: 1, info: 1 }[String(value || '').toLowerCase()] || 0;
+}
+
+function securityAlertStatus(value = {}) {
+    return firstReadableValue(value.status, value.incidentStatus, value.alertStatus, value.state) || 'unknown';
+}
+
+function securityEntityName(value = {}) {
+    return firstReadableValue(
+        value.entityName, value.displayName, value.title, value.alertName, value.incidentName,
+        value.userPrincipalName, value.userEmail, value.mail, value.email,
+        value.deviceName, value.hostName, value.hostname, value.ipAddress, value.name
+    );
+}
+
+function securityEventTimestamp(value = {}) {
+    return firstReadableValue(
+        value.createdDateTime, value.createdAt, value.eventDateTime, value.eventTime,
+        value.lastUpdatedDateTime, value.updatedDateTime, value.updatedAt, value.resolvedDateTime,
+        value.lastActivityDateTime, value.timeGenerated, value.timestamp
+    );
+}
+
+function securityPatternKey(value = {}) {
+    return String(firstReadableValue(value.title, value.alertName, value.displayName, value.category, value.classification, 'security alert') || '')
+        .replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/gi, '<id>')
+        .replace(/\b\d+\b/g, '<n>')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 160);
+}
+
+function securityAlertRowData(value = {}, type = 'alerts') {
+    const userPrincipalName = firstReadableValue(value.userPrincipalName, value.userEmail, value.mail, value.email, value.user, value.accountName);
+    const deviceName = firstReadableValue(value.deviceName, value.hostName, value.hostname, value.machineName, value.computerName);
+    const ipAddress = firstReadableValue(value.ipAddress, value.clientIpAddress, value.sourceIpAddress, value.ip);
+    const alertName = firstReadableValue(value.alertName, value.title, value.displayName, value.name, value.subject) || 'Security alert';
+    return compactNonEmptyObject({
+        entityId: firstReadableValue(value.entityId, value.id, value.alertId, value.sourceAlertId, value.incidentId, userPrincipalName, deviceName, ipAddress, alertName),
+        entityName: securityEntityName(value) || alertName,
+        entityType: type === 'activeIncidents' ? 'Incident' : ipAddress && /sign/i.test(type) ? 'SignInEvent' : deviceName ? 'Device' : userPrincipalName ? 'User' : 'Alert',
+        alertName,
+        incidentName: firstReadableValue(value.incidentName),
+        userPrincipalName,
+        deviceName,
+        ipAddress,
+        severity: firstReadableValue(value.severity, value.alertSeverity) || 'unknown',
+        status: securityAlertStatus(value),
+        category: firstReadableValue(value.category, value.classification, value.detectionSource, value.serviceSource),
+        timestamp: securityEventTimestamp(value),
+        alertCount: numberOrNull(value.alertCount ?? value.count),
+        sourceAlertId: firstReadableValue(value.sourceAlertId, value.alertId, value.id),
+        riskReason: firstReadableValue(value.riskReason, value.description, value.reason),
+        businessReason: 'Security operations evidence requires investigation or response decision.',
+        recommendation: type === 'recentResolvedAlerts'
+            ? 'Confirm resolution quality and recurring pattern suppression.'
+            : 'Triage severity, affected entity, and containment status.'
+    });
+}
+
+function securitySignInRowData(value = {}, type = 'suspiciousSignIns') {
+    const userPrincipalName = firstReadableValue(value.userPrincipalName, value.userEmail, value.mail, value.email, value.userDisplayName, value.user);
+    const ipAddress = firstReadableValue(value.ipAddress, value.clientIpAddress, value.sourceIpAddress, value.ip);
+    const location = firstReadableValue(value.location, value.city, value.countryOrRegion, value.country);
+    return compactNonEmptyObject({
+        entityId: firstReadableValue(value.entityId, value.id, value.signInId, ipAddress, userPrincipalName),
+        entityName: firstReadableValue(userPrincipalName, ipAddress, value.displayName, 'Suspicious sign-in'),
+        entityType: type === 'anonymousIpEvents' || ipAddress ? 'IPAddress' : 'SignInEvent',
+        userPrincipalName,
+        ipAddress,
+        location,
+        riskLevel: firstReadableValue(value.riskLevel, value.riskState, value.riskDetail),
+        status: firstReadableValue(value.status, value.result, value.resultDescription, value.failureReason),
+        timestamp: securityEventTimestamp(value),
+        alertCount: numberOrNull(value.alertCount ?? value.count),
+        sourceAlertId: firstReadableValue(value.sourceAlertId, value.alertId, value.id, value.signInId),
+        riskReason: type === 'anonymousIpEvents' ? 'Anonymous or suspicious IP sign-in evidence.' : firstReadableValue(value.riskReason, value.riskDetail, value.description),
+        businessReason: 'Suspicious sign-in activity can indicate credential compromise.',
+        recommendation: 'Review sign-in, user risk, conditional access outcome, and containment status.'
+    });
+}
+
+function securityEvidenceRow(row, type, data, index, sourceMetric = type) {
+    const compactData = type === 'suspiciousSignIns' || type === 'anonymousIpEvents'
+        ? securitySignInRowData(data, type)
+        : securityAlertRowData(data, type);
+    return {
+        internalSourcePath: row?.internalSourcePath || `security_alerts.compact.${type}[${index}]`,
+        sourceLabel: type,
+        evidenceType: type,
+        evidenceCategory: type,
+        sourceMetric,
+        entityKey: compactData.entityId || compactData.entityName || `${type}-${index + 1}`,
+        data: compactData
+    };
+}
+
+function collectSecurityEvidenceRows(flattenedEvidence = []) {
+    const rows = array(flattenedEvidence);
+    return {
+        alerts: rows.filter(row => /alert/i.test(String(row.evidenceType || row.sourceLabel || row.evidenceCategory || ''))),
+        incidents: rows.filter(row => /incident/i.test(String(row.evidenceType || row.sourceLabel || row.evidenceCategory || ''))),
+        signIns: rows.filter(row => /sign/i.test(String(row.evidenceType || row.sourceLabel || row.evidenceCategory || ''))),
+        recommendations: rows.filter(row => /recommend/i.test(String(row.evidenceType || row.sourceLabel || row.evidenceCategory || '')))
+    };
+}
+
+function compactSecurityAlertsEvidenceRows(flattenedEvidence, current = {}) {
+    const { alerts, incidents, signIns, recommendations } = collectSecurityEvidenceRows(flattenedEvidence);
+    const metricSource = { ...(current.metrics || {}), ...(current.dashboardMetrics || {}), ...(current.calculatedIndicators || {}) };
+    const alertData = alerts.map(row => ({ row, data: row.data || {} }));
+    const signInData = signIns.map(row => ({ row, data: row.data || {} }));
+    const sortedAlerts = alertData.slice().sort((left, right) =>
+        securitySeverityRank(right.data?.severity) - securitySeverityRank(left.data?.severity) ||
+        String(securityEventTimestamp(right.data) || '').localeCompare(String(securityEventTimestamp(left.data) || ''))
+    );
+    const unresolvedStatuses = /active|new|open|inprogress|in_progress|investigating|unresolved/i;
+    const resolvedStatuses = /resolved|closed|dismissed|remediated|completed/i;
+    const activeIncidents = incidents
+        .filter(item => unresolvedStatuses.test(securityAlertStatus(item.data || item)))
+        .slice(0, 10)
+        .map((row, index) => securityEvidenceRow(row, 'activeIncidents', row.data || {}, index, 'activeIncidents'));
+    const criticalAlerts = sortedAlerts
+        .filter(({ data }) => /^critical$/i.test(String(data.severity || data.alertSeverity || '')))
+        .slice(0, 10)
+        .map(({ row, data }, index) => securityEvidenceRow(row, 'criticalAlerts', data, index, 'highSeverityAlerts'));
+    const highSeverityAlerts = sortedAlerts
+        .filter(({ data }) => /^high$/i.test(String(data.severity || data.alertSeverity || '')))
+        .slice(0, 10)
+        .map(({ row, data }, index) => securityEvidenceRow(row, 'highSeverityAlerts', data, index, 'highSeverityAlerts'));
+    const unresolvedAlerts = sortedAlerts
+        .filter(({ data }) => unresolvedStatuses.test(securityAlertStatus(data)))
+        .slice(0, 10)
+        .map(({ row, data }, index) => securityEvidenceRow(row, 'unresolvedAlerts', data, index, 'totalAlerts'));
+    const recentResolvedAlerts = sortedAlerts
+        .filter(({ data }) => resolvedStatuses.test(securityAlertStatus(data)))
+        .slice(0, 10)
+        .map(({ row, data }, index) => securityEvidenceRow(row, 'recentResolvedAlerts', data, index, 'totalAlerts'));
+    const suspiciousSignIns = signInData
+        .filter(({ data }) => /risk|suspicious|failure|blocked|compromis|anonymous/i.test(itemSearchText(data)))
+        .slice(0, 10)
+        .map(({ row, data }, index) => securityEvidenceRow(row, 'suspiciousSignIns', data, index, 'suspiciousSignIns'));
+    const anonymousIpEvents = signInData
+        .filter(({ data }) => /anonymous|tor|proxy|vpn|risky ip|anonym/i.test(itemSearchText(data)))
+        .slice(0, 10)
+        .map(({ row, data }, index) => securityEvidenceRow(row, 'anonymousIpEvents', data, index, 'anonymousIpEvents'));
+    const patterns = new Map();
+    for (const { row, data } of alertData) {
+        const key = securityPatternKey(data);
+        if (!key) continue;
+        const item = patterns.get(key) || { pattern: key, count: 0, highSeverityCount: 0, users: new Set(), devices: new Set(), latestTimestamp: null, row, data };
+        item.count += 1;
+        if (securitySeverityRank(data.severity) >= 4) item.highSeverityCount += 1;
+        const user = firstReadableValue(data.userPrincipalName, data.userEmail, data.email, data.mail);
+        const device = firstReadableValue(data.deviceName, data.hostName, data.hostname);
+        if (user) item.users.add(user);
+        if (device) item.devices.add(device);
+        const timestamp = securityEventTimestamp(data);
+        if (timestamp && (!item.latestTimestamp || String(timestamp) > String(item.latestTimestamp))) item.latestTimestamp = timestamp;
+        patterns.set(key, item);
+    }
+    const repeatedAlertPatterns = [...patterns.values()]
+        .filter(item => item.count > 1)
+        .sort((left, right) => right.highSeverityCount - left.highSeverityCount || right.count - left.count)
+        .slice(0, 10)
+        .map((item, index) => securityEvidenceRow(item.row, 'repeatedAlertPatterns', {
+            id: item.pattern,
+            title: item.pattern,
+            severity: item.highSeverityCount ? 'high' : 'medium',
+            status: 'repeated',
+            alertCount: item.count,
+            userPrincipalName: [...item.users].slice(0, 3).join(', '),
+            deviceName: [...item.devices].slice(0, 3).join(', '),
+            createdDateTime: item.latestTimestamp,
+            category: 'Repeated alert pattern',
+            riskReason: `${item.count} alert rows matched this repeated pattern.`
+        }, index, 'repeatedAlertPatterns'));
+    const aggregateEntity = (rows, keyFn, type) => {
+        const map = new Map();
+        for (const { row, data } of rows) {
+            const key = keyFn(data);
+            if (!key) continue;
+            const item = map.get(key) || { key, count: 0, highSeverityCount: 0, latestTimestamp: null, row, data };
+            item.count += 1;
+            if (securitySeverityRank(data.severity) >= 4) item.highSeverityCount += 1;
+            const timestamp = securityEventTimestamp(data);
+            if (timestamp && (!item.latestTimestamp || String(timestamp) > String(item.latestTimestamp))) item.latestTimestamp = timestamp;
+            map.set(key, item);
+        }
+        return [...map.values()]
+            .sort((left, right) => right.highSeverityCount - left.highSeverityCount || right.count - left.count)
+            .slice(0, 10)
+            .map((item, index) => securityEvidenceRow(item.row, type, {
+                ...item.data,
+                entityId: item.key,
+                entityName: item.key,
+                title: item.key,
+                alertCount: item.count,
+                severity: item.highSeverityCount ? 'high' : firstReadableValue(item.data.severity, 'medium'),
+                createdDateTime: item.latestTimestamp,
+                riskReason: `${item.count} related security alert/sign-in row(s).`
+            }, index, type));
+    };
+    const affectedUsers = aggregateEntity([...alertData, ...signInData], data => firstReadableValue(data.userPrincipalName, data.userEmail, data.email, data.mail, data.user), 'affectedUsers');
+    const affectedDevices = aggregateEntity(alertData, data => firstReadableValue(data.deviceName, data.hostName, data.hostname, data.machineName), 'affectedDevices');
+    const recommendationRows = recommendations.slice(0, 10).map((row, index) => securityEvidenceRow(row, 'recommendations', row.data || {}, index, 'recommendations'));
+    const summaryMetrics = {
+        internalSourcePath: 'security_alerts.compact.summaryMetrics',
+        sourceLabel: 'summaryMetrics',
+        evidenceType: 'summaryMetrics',
+        evidenceCategory: 'summaryMetrics',
+        sourceMetric: 'summaryMetrics',
+        entityKey: 'summaryMetrics',
+        data: compactNonEmptyObject({
+            totalAlerts: numberOrNull(metricSource.totalAlerts) ?? alerts.length,
+            criticalAlerts: criticalAlerts.length,
+            highSeverityAlerts: numberOrNull(metricSource.highSeverityAlerts) ?? highSeverityAlerts.length + criticalAlerts.length,
+            activeIncidents: numberOrNull(metricSource.activeIncidents) ?? activeIncidents.length,
+            suspiciousSignIns: numberOrNull(metricSource.suspiciousSignIns) ?? suspiciousSignIns.length,
+            anonymousIpEvents: anonymousIpEvents.length,
+            repeatedAlertPatterns: repeatedAlertPatterns.length,
+            affectedUsers: affectedUsers.length,
+            affectedDevices: affectedDevices.length,
+            unresolvedAlerts: unresolvedAlerts.length,
+            recentResolvedAlerts: recentResolvedAlerts.length,
+            threatIndicators: numberOrNull(metricSource.threatIndicators),
+            usersUnderAttack: numberOrNull(metricSource.usersUnderAttack),
+            securityScore: numberOrNull(metricSource.securityScore),
+            healthScore: numberOrNull(current.healthScore),
+            riskScore: numberOrNull(current.riskScore),
+            recommendationsCount: numberOrNull(metricSource.recommendationsCount) ?? recommendationRows.length,
+            sourceLastUpdated: current.source?.freshness?.lastUpdated || sourceLineageLastUpdated(current.source)
+        })
+    };
+    return [
+        summaryMetrics,
+        ...criticalAlerts,
+        ...highSeverityAlerts,
+        ...activeIncidents,
+        ...suspiciousSignIns,
+        ...anonymousIpEvents,
+        ...repeatedAlertPatterns,
+        ...affectedUsers,
+        ...affectedDevices,
+        ...unresolvedAlerts,
+        ...recentResolvedAlerts,
+        ...recommendationRows
     ];
 }
 
@@ -1532,6 +1797,13 @@ function inferEntityType(entity, domainKey = null) {
     if (explicit && !/^(?:object|record|row|evidence)$/i.test(explicit)) {
         return explicit.replace(/^#?microsoft\.graph\./i, '').replace(/^./, character => character.toUpperCase());
     }
+    if (domainKey === 'security_alerts') {
+        if (entity.incidentId || entity.incidentName) return 'Incident';
+        if (entity.signInId || entity.ipAddress || entity.clientIpAddress || entity.sourceIpAddress) return entity.ipAddress || entity.clientIpAddress || entity.sourceIpAddress ? 'IPAddress' : 'SignInEvent';
+        if (entity.deviceId || entity.deviceName || entity.hostName || entity.hostname) return 'Device';
+        if (entity.userId || entity.userPrincipalName || entity.userEmail || entity.mail || entity.email) return 'User';
+        return 'Alert';
+    }
     if (entity.alertId || entity.sourceAlertId || entity.alertName || entity.incidentId || domainKey === 'security_alerts') return 'Alert';
     if (entity.applicationId || entity.appId || entity.applicationName || entity.appDisplayName || entity.appName || entity.protectedAppName || entity.publisherName || domainKey === 'applications') return 'Application';
     if (entity.deviceId || entity.deviceName || entity.serialNumber || domainKey === 'devices') return 'Device';
@@ -1636,6 +1908,8 @@ function canonicalEntity(value, context = {}) {
         serialNumber: firstReadableValue(entity.serialNumber),
         lastSyncDaysAgo: numberOrNull(entity.lastSyncDaysAgo ?? entity.daysSinceLastSync),
         securityAlertCount: numberOrNull(entity.securityAlertCount ?? entity.alertCount),
+        signInId: firstReadableValue(entity.signInId),
+        ipAddress: firstReadableValue(entity.ipAddress, entity.clientIpAddress, entity.sourceIpAddress, entity.ip),
         internalSourcePath,
         // Readable compatibility aliases retained for existing admin/report consumers.
         displayName: firstReadableValue(entity.displayName, entityName),
@@ -1798,11 +2072,68 @@ function applicationEntityForOutput(entity) {
     return cleaned.entityId || cleaned.entityName ? cleaned : null;
 }
 
+function securityAlertEntityForOutput(entity) {
+    if (!entity || typeof entity !== 'object') return null;
+    const userPrincipalName = firstReadableValue(entity.userPrincipalName, entity.entityEmail, entity.userEmail, entity.mail, entity.email, entity.user);
+    const deviceName = firstReadableValue(entity.deviceName, entity.entityDeviceName, entity.hostName, entity.hostname, entity.machineName);
+    const ipAddress = firstReadableValue(entity.ipAddress, entity.clientIpAddress, entity.sourceIpAddress, entity.ip);
+    const incidentName = firstReadableValue(entity.incidentName, entity.incidentTitle);
+    const alertName = firstReadableValue(entity.alertName, entity.title, entity.entityName, entity.displayName, entity.name);
+    const sourceMetric = firstReadableValue(entity.sourceMetric);
+    const explicitType = firstReadableValue(entity.entityType);
+    const inferredType = explicitType && !/alert|entity/i.test(explicitType)
+        ? explicitType
+        : /incident/i.test(String(sourceMetric)) || entity.incidentId || incidentName
+        ? 'Incident'
+        : /anonymousip|ipaddress/i.test(String(sourceMetric)) || ipAddress
+        ? 'IPAddress'
+        : /signin/i.test(String(sourceMetric)) || entity.signInId
+        ? 'SignInEvent'
+        : deviceName
+        ? 'Device'
+        : userPrincipalName
+        ? 'User'
+        : 'Alert';
+    const entityName = firstReadableValue(
+        entity.entityName,
+        inferredType === 'User' ? userPrincipalName : null,
+        inferredType === 'Device' ? deviceName : null,
+        inferredType === 'IPAddress' ? ipAddress : null,
+        inferredType === 'Incident' ? incidentName : null,
+        alertName,
+        userPrincipalName,
+        deviceName,
+        ipAddress
+    );
+    const cleaned = compactNonEmptyObject({
+        entityId: entity.entityId || entity.incidentId || entity.signInId || entity.sourceAlertId || entity.alertId || userPrincipalName || deviceName || ipAddress || entityName,
+        entityName,
+        entityType: inferredType,
+        userPrincipalName,
+        deviceName,
+        ipAddress,
+        incidentName,
+        alertName,
+        alertCount: numberOrNull(entity.alertCount ?? entity.securityAlertCount),
+        severity: firstReadableValue(entity.severity),
+        status: firstReadableValue(entity.status),
+        riskLevel: firstReadableValue(entity.riskLevel),
+        lastAlertTime: firstReadableValue(entity.lastAlertTime, entity.timestamp, entity.createdDateTime, entity.eventDateTime),
+        sourceMetric,
+        sourceDomain: firstReadableValue(entity.sourceDomain) || 'security_alerts',
+        businessReason: firstReadableValue(entity.businessReason, entity.riskReason, entity.reason, entity.whyItMatters),
+        recommendation: firstReadableValue(entity.recommendation, entity.recommendedAction),
+        internalSourcePath: entity.internalSourcePath
+    });
+    return cleaned.entityId || cleaned.entityName ? cleaned : null;
+}
+
 function cleanEntityForDomain(entity, domainKey) {
     if (domainKey === 'email_security') return emailEntityForOutput(entity);
     if (domainKey === 'cloudflare_network_security') return cloudflareEntityForOutput(entity);
     if (domainKey === 'backup') return backupEntityForOutput(entity);
     if (domainKey === 'applications') return applicationEntityForOutput(entity);
+    if (domainKey === 'security_alerts') return securityAlertEntityForOutput(entity);
     return entity;
 }
 
@@ -1931,6 +2262,18 @@ function itemSearchText(item) {
 
 function inferSelectedDomainSourceMetric(item, domainKey) {
     const text = itemSearchText(item);
+    if (domainKey === 'security_alerts') {
+        if (/anonymous|tor|proxy|vpn|ip address|risky ip|anonymous ip/.test(text)) return 'anonymousIpEvents';
+        if (/sign[-\s]?in|credential|login/.test(text)) return 'suspiciousSignIns';
+        if (/incident/.test(text)) return 'activeIncidents';
+        if (/critical/.test(text)) return 'criticalAlerts';
+        if (/high[-\s]?severity|high severity|high alert/.test(text)) return 'highSeverityAlerts';
+        if (/repeat|pattern|recurring/.test(text)) return 'repeatedAlertPatterns';
+        if (/unresolved|active|open|new alert/.test(text)) return 'unresolvedAlerts';
+        if (/resolved|closed|remediated/.test(text)) return 'recentResolvedAlerts';
+        if (/device|host|endpoint/.test(text)) return 'affectedDevices';
+        if (/user|account|mail|upn/.test(text)) return 'affectedUsers';
+    }
     if (domainKey === 'backup') {
         if (/coverage|external backup|restore|immutab/.test(text)) return 'backupCoverageGaps';
         if (/inactive|disabled/.test(text)) return 'inactiveDataHolders';
@@ -2109,7 +2452,7 @@ function ensureItemEvidence(item, domain, snapshotId, availableEvidence = []) {
             : entity;
     }));
 
-    const enforceMetricMatchedEntities = STRICT_COMPACT_SELECTED_DOMAIN_KEYS.has(domain.key) && requestedMetric && rows.length;
+    const enforceMetricMatchedEntities = (STRICT_COMPACT_SELECTED_DOMAIN_KEYS.has(domain.key) || domain.key === 'security_alerts') && requestedMetric && rows.length;
     if (enforceMetricMatchedEntities && normalized.affectedEntities.length) {
         const affectedEntityKeys = new Set(normalized.affectedEntities.flatMap(entity => entityMatchKeys(entity)));
         const hasMetricMatchedAffectedEntity = rows.some(row => evidenceRowMatchesAffectedEntity(row, affectedEntityKeys));
@@ -2150,7 +2493,7 @@ function ensureItemEvidence(item, domain, snapshotId, availableEvidence = []) {
 
     normalized.internalSourcePath = normalized.internalSourcePaths[0] || null;
 
-    if (domain.key === 'cloudflare_network_security') {
+    if (domain.key === 'cloudflare_network_security' || domain.key === 'security_alerts') {
         normalized.affectedEntities = cleanEntitiesForDomain(normalized.affectedEntities, domain.key);
         normalized.evidenceRows = cleanEntitiesForDomain(normalized.evidenceRows, domain.key);
         normalized.affectedEntityIds = normalized.affectedEntities.length
@@ -2286,6 +2629,7 @@ function isPositiveOrNeutralRisk(item, domainKey) {
     if (isCuratedReferenceWarning(text)) return true;
     if (domainKey === 'backup' && /backup coverage score is 100|coverage score is 100|100%\s+coverage|coverage is 100/.test(text)) return true;
     if (domainKey === 'applications' && /no users assigned|no group[-\s]?assigned|no high[-\s]?access|no .*applications detected|none detected/.test(text)) return true;
+    if (domainKey === 'security_alerts' && /no critical alerts|no high[-\s]?severity alerts|no active incidents|all alerts resolved|most alerts resolved|nothing critical|no suspicious sign[-\s]?ins|none detected/.test(text)) return true;
     return false;
 }
 
@@ -2294,6 +2638,10 @@ function compactReasonedItems(items, maximum = 5) {
         if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
         return stripEmptyVisibleFields({
             ...item,
+            description: compactTextField(item.description, 520),
+            detail: compactTextField(item.detail, 520),
+            whatHappened: compactTextField(item.whatHappened, 520),
+            whyItMatters: compactTextField(item.whyItMatters, 520),
             reasoning: compactTextField(item.reasoning, 520),
             whyThisIsHighPriority: compactTextField(item.whyThisIsHighPriority, 420),
             whyThisIsWorseThanLowerPriorityIssues: compactTextField(item.whyThisIsWorseThanLowerPriorityIssues, 420),
@@ -2447,12 +2795,15 @@ function sourceStaleFailure(sourceHealth, domainName) {
     const age = sourceHealth.freshness?.ageMinutes;
     const lastUpdated = sourceHealth.freshness?.lastUpdated;
     const ageDisplay = age != null ? `(${age} minutes old)` : '';
+    const isSecurityAlerts = String(domainName || '').toLowerCase() === 'security alerts';
     return {
         status: 'source_stale',
         isStale: true,
         ageMinutes: age,
         lastUpdated,
-        errorMessage: `${domainName} source_stale ${ageDisplay}; using latest stored evidence from ${lastUpdated || 'unknown refresh time'} and continuing analysis.`,
+        errorMessage: isSecurityAlerts
+            ? `Security Alerts evidence is stale; latest stored evidence was used from ${lastUpdated || 'unknown refresh time'}.`
+            : `${domainName} source_stale ${ageDisplay}; using latest stored evidence from ${lastUpdated || 'unknown refresh time'} and continuing analysis.`,
         reason: 'stored_evidence_fallback'
     };
 }
@@ -2902,13 +3253,13 @@ function createEnterpriseIntelligenceService({
             };
             if (snapshotFreshness.status) source.status = snapshotFreshness.status;
         }
-        if (domain.key === 'email_security') {
-            const emailLastUpdated = sourceLineageLastUpdated(source);
-            if (emailLastUpdated && !source.freshness?.lastUpdated) {
-                const updatedAt = new Date(emailLastUpdated).getTime();
+        if (domain.key === 'email_security' || domain.key === 'security_alerts') {
+            const actualSourceLastUpdated = sourceLineageLastUpdated(source);
+            if (actualSourceLastUpdated && !source.freshness?.lastUpdated) {
+                const updatedAt = new Date(actualSourceLastUpdated).getTime();
                 source.freshness = {
                     ...(source.freshness || {}),
-                    lastUpdated: emailLastUpdated,
+                    lastUpdated: actualSourceLastUpdated,
                     ageMinutes: Number.isFinite(updatedAt) ? Math.max(0, Math.floor((Date.now() - updatedAt) / 60000)) : null
                 };
             }
@@ -2970,6 +3321,7 @@ function createEnterpriseIntelligenceService({
         const current = domainFromSnapshot(snapshot, domain);
         current.evidence = enrichDomainEvidence(current.source, domain, current.evidence);
         const useStrictCompactPackage = strictCompactSelectedDomain && STRICT_COMPACT_SELECTED_DOMAIN_KEYS.has(domain.key);
+        const useSecurityAlertsCompactPackage = strictCompactSelectedDomain && domain.key === 'security_alerts';
         const knowledge = await loadKnowledge(domain.key);
         const previousAnalysis = await loadPreviousDomain(companyId, domain.key, runId);
         const evidenceForFlattening = domain.key === 'cloudflare_network_security'
@@ -2988,6 +3340,8 @@ function createEnterpriseIntelligenceService({
             ? compactBackupEvidenceRows(flattenedDomainEvidence, current)
             : useStrictCompactPackage && domain.key === 'applications'
             ? compactApplicationsEvidenceRows(flattenedDomainEvidence, current)
+            : useSecurityAlertsCompactPackage
+            ? compactSecurityAlertsEvidenceRows(flattenedDomainEvidence, current)
             : flattenedDomainEvidence;
         const compactIdentityRows = domain.key === 'identity'
             ? flattenedEvidence.map((item, index) => compactIdentityEvidenceRow(item, index))
@@ -3000,7 +3354,7 @@ function createEnterpriseIntelligenceService({
         const sourceEvidenceLineage = current.source.sourceLineage || {};
         const manualFilteredDomain = ['governance', 'compliance', 'operations'].includes(domain.key);
         const manualExcludedCount = manualFilteredDomain ? Number(sourceEvidenceLineage.manualRowsExcluded || sourceEvidenceLineage.omittedRecordCount || 0) : 0;
-        const expectedRecordCount = useStrictCompactPackage
+        const expectedRecordCount = useStrictCompactPackage || useSecurityAlertsCompactPackage
             ? stackCTRLDataCount
             : Number(sourceEvidenceLineage.evidenceRecordCount || evidenceCatalog.primaryTable?.count || stackCTRLDataCount);
         const evidenceOmittedCount = expectedRecordCount > stackCTRLDataCount
@@ -3010,6 +3364,7 @@ function createEnterpriseIntelligenceService({
         const base = {
             contextType: 'stackctrl_enterprise_domain_intelligence',
             strictCompactSelectedDomain: useStrictCompactPackage,
+            securityAlertsCompactPackage: useSecurityAlertsCompactPackage,
             schemaVersion: 1,
             mode: domain.mode,
             companyId,
@@ -3051,7 +3406,7 @@ function createEnterpriseIntelligenceService({
                     ...array(current.source.warnings),
                     ...(manualExcludedCount > 0 ? [`${manualExcludedCount} manual evidence row(s) were intentionally excluded from Azure input; only API-connected evidence was prepared.`] : []),
                     ...(evidenceOmittedCount > 0 ? [`${evidenceOmittedCount} expected dashboard entity row(s) were not included in the Azure evidence payload.`] : []),
-                    ...(!knowledge.length && !['identity', 'devices'].includes(domain.key) && !(STRICT_COMPACT_SELECTED_DOMAIN_KEYS.has(domain.key) && stackCTRLDataCount > 0)
+                    ...(!knowledge.length && !['identity', 'devices'].includes(domain.key) && !(COMPACT_SELECTED_DOMAIN_KEYS.has(domain.key) && stackCTRLDataCount > 0)
                         ? [`Curated ${domain.name} best-practice references were unavailable.`]
                         : [])
                 ]
@@ -3083,7 +3438,7 @@ function createEnterpriseIntelligenceService({
             riskScore: current.riskScore,
             'sourceHealth.evidenceCount': stackCTRLDataCount,
             snapshotId: Number(snapshot.ID),
-            sourceLastUpdated: current.source.freshness?.lastUpdated || (domain.key === 'email_security' ? sourceLineageLastUpdated(current.source) : snapshot.CreatedAt) || null
+            sourceLastUpdated: current.source.freshness?.lastUpdated || (['email_security', 'security_alerts'].includes(domain.key) ? sourceLineageLastUpdated(current.source) : snapshot.CreatedAt) || null
         };
         const inputLineageValues = {
             ...base.currentMetrics,
@@ -3091,7 +3446,7 @@ function createEnterpriseIntelligenceService({
             riskScore: base.authoritativeScores.riskScore,
             'sourceHealth.evidenceCount': base.sourceHealth.evidenceCount,
             snapshotId: base.snapshotId,
-            sourceLastUpdated: base.sourceHealth.freshness?.lastUpdated || (domain.key === 'email_security' ? sourceLineageLastUpdated(current.source) : base.snapshotCreatedAt) || null
+            sourceLastUpdated: base.sourceHealth.freshness?.lastUpdated || (['email_security', 'security_alerts'].includes(domain.key) ? sourceLineageLastUpdated(current.source) : base.snapshotCreatedAt) || null
         };
         const lineageFields = domain.key === 'identity'
             ? IDENTITY_LINEAGE_FIELDS
@@ -3167,7 +3522,7 @@ function createEnterpriseIntelligenceService({
                 ? IDENTITY_MAX_ITEMS_PER_BATCH
                 : domain.key === 'devices'
                 ? DEVICE_MAX_ITEMS_PER_BATCH
-                : useStrictCompactPackage
+                : useStrictCompactPackage || useSecurityAlertsCompactPackage
                 ? CLOUDFLARE_MAX_ITEMS_PER_BATCH
                 : settings.maxItemsPerBatch,
             maxBytes: settings.maxInputBytes
@@ -3202,31 +3557,45 @@ function createEnterpriseIntelligenceService({
     }
 
     function securityAlertsBatchPrompt(packageValue) {
-        return `Analyse this Security Alerts evidence batch. Return valid JSON only; no markdown.
-Process every supplied evidence row and keep exact batch accounting. Group repeated alert patterns without losing the human-readable alert, user, or device details that explain the evidence.
-Each finding, risk, recommendation, and management action must use these fields:
+        return `Analyse this compact Security Alerts selected-domain package. Return valid JSON only; no markdown.
+Use only the supplied compact evidence groups: summaryMetrics, criticalAlerts, highSeverityAlerts, activeIncidents, suspiciousSignIns, anonymousIpEvents, repeatedAlertPatterns, affectedUsers, affectedDevices, unresolvedAlerts, recentResolvedAlerts, recommendations.
+Do not request omitted raw alerts and do not echo raw full JSON. Each compact row is already readable and Power BI-ready.
+Return only real operational/security risks in risks[]. Put positive observations, such as no critical alerts or resolved alerts, in keyFindings[], currentPosture, or scoreJustification.
+Keep output compact: risks max 5, recommendations max 5, affectedEntities max 5 per risk, evidenceRows max 5 per item, evidenceUsed max 5, technicalReasoning max 5 short objects.
+Affected entities must match the risk's sourceMetric and evidence group. Use entityType User, Device, Incident, SignInEvent, or IPAddress where the evidence supports it. Do not attach the same unrelated users/devices to every risk.
+Each finding, risk, recommendation, and management action should use these fields when relevant:
 title, severity, category, status, sourceDomain, sourceMetric, sourceMetrics, snapshotId, evidenceSource,
 sourceAlertIds, affectedEntities, affectedEntityIds, evidenceRows, recordIds, whatHappened, whyItMatters, businessImpact,
-recommendedAction, recommendedActions, suggestedOwner, suggestedDueDate.
-Every affectedEntities object must include entityId, entityName, entityType, sourceDomain, sourceMetric, businessReason, and recommendation. Include publisherName and readable user email, device name, application name, alert name, or policy name where present. IDs may supplement readable evidence but must never replace it.
+recommendedAction, recommendedActions, suggestedOwner, suggestedDueDate, patternFound, reasoning, firstAction, followUpAction, managementDecisionRequired, whatCanWait.
+Every affectedEntities object must include entityId, entityName, entityType, sourceDomain, sourceMetric, businessReason, and recommendation. Include readable user email, device name, incident name, alert name, or IP address where present. IDs may supplement readable evidence but must never replace it.
 Use source paths only in internalSourcePath, debugSourcePath, or auditTrace.sourcePath. Never place source paths in affectedEntities, affectedEntityIds, recordIds, or sourceAlertIds.
 Return exactly:
 {
   "domainExecutiveSummary": "one compact sentence",
+  "technicalReasoning": [],
+  "riskPrioritization": [],
+  "technicalSummary": "",
+  "currentPosture": "",
+  "highestRiskPatterns": [],
   "keyFindings": [],
   "risks": [],
   "recommendations": [],
+  "managementDecisionsRequired": [],
+  "whatCanWait": [],
+  "businessImpact": "",
   "controlAssessment": [],
   "managementActions": [],
   "trendAnalysis": [],
   "evidenceUsed": [],
   "evidenceGaps": [],
+  "scoreJustification": "",
+  "affectedEntities": [],
   "missingDataWarnings": [],
   "assumptions": [],
   "confidenceScore": null,
   "evidenceLimitations": {}
 }
-Prioritize accurate evidence, clear findings, risks, recommendations, business impact, and exact source references. Do not invent entities.
+Prioritize accurate evidence, clear findings, risks, recommendations, business impact, and exact source references. Do not invent entities or convert healthy posture into risks. Omit null and empty visible fields.
 
 STACKCTRL SECURITY ALERTS BATCH:
 ${JSON.stringify(packageValue)}`;
@@ -3657,6 +4026,98 @@ ${JSON.stringify(packageValue)}`;
                 }
             };
         }
+        if (domainKey === 'security_alerts') {
+            const groupedEvidence = Object.fromEntries(SECURITY_ALERTS_COMPACT_EVIDENCE_TYPES.map(type => [type, []]));
+            const evidence = batchEvidence
+                .filter(item => SECURITY_ALERTS_COMPACT_EVIDENCE_TYPES.includes(String(item?.evidenceType || item?.sourceLabel || '')))
+                .map((item, index) => {
+                    const type = SECURITY_ALERTS_COMPACT_EVIDENCE_TYPES.includes(String(item?.evidenceType || ''))
+                        ? String(item.evidenceType)
+                        : String(item?.sourceLabel || 'summaryMetrics');
+                    const row = {
+                        evidenceNumber: Number(evidenceStartIndex || 0) + index + 1,
+                        evidenceType: type,
+                        sourceMetric: item?.sourceMetric || type,
+                        entityKey: item?.entityKey || entityRecordKey(item?.data ?? item),
+                        internalSourcePath: item?.internalSourcePath || null,
+                        data: safeEvidenceEntity(item?.data ?? item, { maxDepth: 3, maxArray: 8, maxString: 420, maxObjectKeys: 28 })
+                    };
+                    groupedEvidence[type].push(row);
+                    return row;
+                });
+            const categoryCounts = Object.fromEntries(Object.entries(groupedEvidence).map(([type, rows]) => [type, rows.length]));
+            const metricSource = { ...(basePackage.currentMetrics || {}), ...(basePackage.dashboardMetrics || {}), ...(basePackage.calculatedIndicators || {}) };
+            const summaryKeys = [
+                'totalAlerts', 'criticalAlerts', 'highSeverityAlerts', 'activeIncidents', 'suspiciousSignIns',
+                'anonymousIpEvents', 'repeatedAlertPatterns', 'affectedUsers', 'affectedDevices', 'unresolvedAlerts',
+                'recentResolvedAlerts', 'threatIndicators', 'usersUnderAttack', 'securityScore', 'recommendationsCount'
+            ];
+            const summaryMetrics = Object.fromEntries(summaryKeys
+                .map(key => [key, numberOrNull(metricSource[key]) ?? groupedEvidence.summaryMetrics?.[0]?.data?.[key] ?? null])
+                .filter(([, value]) => value != null));
+            const warningStrings = [
+                ...array(basePackage.sourceHealth?.warnings),
+                ...array(basePackage.limitations?.missingDataWarnings)
+            ]
+                .map(warning => visibleTextOrNull(warning, 240))
+                .filter(Boolean)
+                .filter(warning => !isCuratedReferenceWarning(warning))
+                .slice(0, 10);
+            return {
+                contextType: 'stackctrl_enterprise_security_alerts_strict_compact',
+                schemaVersion: 3,
+                mode: basePackage.mode,
+                companyId: basePackage.companyId,
+                snapshotId: basePackage.snapshotId,
+                snapshotCreatedAt: basePackage.snapshotCreatedAt,
+                domain: {
+                    key: 'security_alerts',
+                    name: basePackage.domain?.name || 'Security Alerts'
+                },
+                sourceFreshness: safeValue(basePackage.sourceHealth?.freshness || {}, 0, { maxArray: 0, maxString: 160 }),
+                sourceHealth: {
+                    status: basePackage.sourceHealth?.status || 'unknown',
+                    isExpected: basePackage.sourceHealth?.isExpected ?? true,
+                    evidenceCount: evidence.length,
+                    warnings: warningStrings,
+                    errorMessage: basePackage.sourceHealth?.errorMessage || null
+                },
+                authoritativeScores: basePackage.authoritativeScores || {},
+                summaryMetrics,
+                compactEvidenceSummary: {
+                    totalRows: evidence.length,
+                    categoryCounts,
+                    strictCompactSecurityAlertsPackage: true,
+                    maxRowsPerCategory: 10,
+                    rawFullJsonIncluded: false
+                },
+                evidenceGroups: groupedEvidence,
+                evidence,
+                batchMetadata: {
+                    batchNumber,
+                    totalBatches,
+                    recordsSent: evidence.length,
+                    evidenceRowsIncluded: evidence.length,
+                    semanticGrouping,
+                    evidenceStartIndex: Number(evidenceStartIndex || 0),
+                    expectedSingleCompactBatch: true
+                },
+                limitations: {
+                    warnings: warningStrings,
+                    recordsSent: evidence.length,
+                    recordsOmitted: 0,
+                    complete: Boolean(basePackage.limitations?.evidenceCompleteness?.complete ?? evidence.length > 0)
+                },
+                outputInstructions: {
+                    maxRisks: 5,
+                    maxRecommendations: 5,
+                    maxAffectedEntitiesPerRisk: 5,
+                    maxEvidenceUsed: 5,
+                    allowedGroups: SECURITY_ALERTS_COMPACT_EVIDENCE_TYPES,
+                    requiredEntityTypes: ['User', 'Device', 'Incident', 'SignInEvent', 'IPAddress']
+                }
+            };
+        }
         if (STRICT_COMPACT_SELECTED_DOMAIN_KEYS.has(domainKey)) {
             const typeList = domainKey === 'backup'
                 ? BACKUP_COMPACT_EVIDENCE_TYPES
@@ -3834,7 +4295,7 @@ ${JSON.stringify(packageValue)}`;
         if (basePackage?.domain?.key === 'devices') {
             return buildDeviceBatchPackage(basePackage, batchEvidence, batchNumber, totalBatches, semanticGrouping, evidenceStartIndex);
         }
-        if (basePackage?.strictCompactSelectedDomain) {
+        if (basePackage?.strictCompactSelectedDomain || basePackage?.securityAlertsCompactPackage) {
             return compactSelectedDomainBatchPackage(basePackage, batchEvidence, batchNumber, totalBatches, semanticGrouping, evidenceStartIndex);
         }
         const categoryMap = new Map();
@@ -4478,13 +4939,34 @@ ${JSON.stringify(packageValue)}`;
                 );
             }
         } else if (domain.key === 'security_alerts') {
-            const singleBatchEstimate = estimateDomainRequestBytes(
+            const emptyRequestBytes = estimateDomainRequestBytes(
+                domain,
+                buildDomainBatchPackage(packageResult.package, [], 1, 1)
+            );
+            const combinedRequestBytes = estimateDomainRequestBytes(
                 domain,
                 buildDomainBatchPackage(packageResult.package, allEvidence, 1, 1)
             );
-            const singleBatchTokens = Math.ceil(singleBatchEstimate / 4);
-            batches = splitSecurityAlertsIntoBatches(allEvidence, batchOptions);
-            logger.info?.(`[StackCTRL Enterprise] Security Alerts evidence (${allEvidence.length} items, ~${singleBatchTokens} tokens) planned as ${batches.length} safe batch(es) with at most ${maxItems} records each.`);
+            if (packageResult.package?.securityAlertsCompactPackage && allEvidence.length <= 120 && combinedRequestBytes <= settings.maxInputBytes) {
+                batches = [{ number: 1, items: allEvidence, bytes: combinedRequestBytes, semanticGrouping: null }];
+            } else {
+                batches = splitSecurityAlertsIntoBatches(allEvidence, batchOptions);
+            }
+            const basePackageTokens = Math.ceil(emptyRequestBytes / 4);
+            const totalEstimatedTokens = Math.ceil(combinedRequestBytes / 4);
+            batchPlanDiagnostics = {
+                basePackageTokens,
+                compactPackageTokens: totalEstimatedTokens,
+                evidenceTokens: Math.max(0, totalEstimatedTokens - basePackageTokens),
+                totalEstimatedTokens,
+                safeInputTokenLimit: Math.floor(settings.maxInputBytes / 4),
+                safeTokenLimit: Math.floor(settings.maxInputBytes / 4),
+                plannedBatchCount: batches.length,
+                reasonForBatchCount: batches.length === 1
+                    ? 'all_compact_security_alerts_rows_fit_safe_token_limit'
+                    : 'compact_security_alerts_evidence_exceeds_safe_limit'
+            };
+            logger.info?.(`[StackCTRL Enterprise] Security Alerts evidence (${allEvidence.length} compact items, ~${totalEstimatedTokens} tokens) planned as ${batches.length} safe batch(es).`);
         } else if (packageResult.package?.strictCompactSelectedDomain) {
             const emptyRequestBytes = estimateDomainRequestBytes(
                 domain,
@@ -5180,7 +5662,7 @@ ${JSON.stringify(packageValue)}`;
             azureAttemptDiagnostics,
             currentBatch
         });
-            const auditInputValue = packageResult.package?.strictCompactSelectedDomain
+            const auditInputValue = packageResult.package?.strictCompactSelectedDomain || packageResult.package?.securityAlertsCompactPackage
                 ? {
                 ...buildDomainBatchPackage(packageResult.package, array(packageResult.allEvidence).slice(0, 100), 1, 1),
                 jsonStatus: analysis
@@ -5350,7 +5832,7 @@ ${JSON.stringify(packageValue)}`;
             logger.warn?.(`[StackCTRL Enterprise] ${staleMessage}`);
         }
 
-        if (domain.key === 'security_alerts') {
+        if (domain.key === 'security_alerts' && !packageResult.package?.securityAlertsCompactPackage) {
             const expectedSourceRecords = Number(packageResult.current.source?.sourceLineage?.evidenceRecordCount ?? packageResult.audit.preparedForAzureCount);
             const preparedRecords = Number(packageResult.audit.preparedForAzureCount || 0);
             if (expectedSourceRecords !== preparedRecords) {

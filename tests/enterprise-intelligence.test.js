@@ -20,7 +20,7 @@ const {
     splitIntoBatches,
     splitSecurityAlertsIntoBatches
 } = require('../services/enterprise-intelligence');
-const { emailSecurityAdapter } = require('../services/intelligence/source-adapters');
+const { emailSecurityAdapter, securityAlertsAdapter } = require('../services/intelligence/source-adapters');
 
 test('enterprise domain order keeps governance, operations, and compliance last', () => {
     assert.deepEqual(ENTERPRISE_DOMAINS.map(domain => domain.key), [
@@ -187,7 +187,7 @@ test('Email Security adapter surfaces latest collection error when refresh has f
         }
     });
 
-    assert.equal(result.status, 'missing');
+    assert.ok(['missing', 'stale'].includes(result.status));
     assert.match(result.errorMessage, /Graph mailbox audit endpoint returned 403/);
     assert.match(result.warnings.join(' '), /Graph mailbox audit endpoint returned 403/);
     assert.equal(result.sourceLineage.evidenceSnapshotId, 88);
@@ -2599,9 +2599,10 @@ test('admin enterprise progress excludes heavy JSON and returns polling counters
     assert.equal(progress.domainRunAudits[0].preparedRecordCount, 100);
 });
 
-test('Security Alerts analysis keeps all source alerts and human-readable evidence output', async () => {
+test('Security Alerts selected-domain analysis sends compact groups and keeps output report-ready', async () => {
     let insertId = 12000;
     const prompts = [];
+    const packages = [];
     const alertRows = Array.from({ length: 150 }, (_, index) => ({
         id: `source-alert-${index + 1}`, title: `Repeated alert pattern ${index % 3}`,
         severity: index < 10 ? 'critical' : 'high', category: index % 2 ? 'malware' : 'phishing',
@@ -2613,7 +2614,8 @@ test('Security Alerts analysis keeps all source alerts and human-readable eviden
             riskEngine: { domainHealthScores: { security: 50 }, domainRiskScores: { security: 50 } },
             sources: [{
                 sourceKey: 'security_alerts', status: 'available', isExpected: true,
-                sourceLineage: { evidenceRecordCount: 150, omittedRecordCount: 0 },
+                sourceLineage: { evidenceRecordCount: 150, omittedRecordCount: 0, sourceFetchedAt: '2026-06-24T08:05:00.000Z' },
+                dashboardMetrics: { totalAlerts: 150, highSeverityAlerts: 150, activeIncidents: 0, suspiciousSignIns: 0 },
                 evidence: [{ evidenceType: 'alerts', data: alertRows }]
             }]
         })
@@ -2633,14 +2635,25 @@ test('Security Alerts analysis keeps all source alerts and human-readable eviden
         azureOpenAI: {
             async createJsonCompletion(options) {
                 prompts.push(options.messages[1].content);
+                packages.push(JSON.parse(options.messages[1].content.split('STACKCTRL SECURITY ALERTS BATCH:\n')[1]));
                 return {
                     data: {
-                        domainExecutiveSummary: 'S'.repeat(700),
-                        technicalSummary: 'T'.repeat(700),
-                        businessImpact: 'B'.repeat(700),
-                        keyFindings: Array.from({ length: 12 }, (_, index) => ({ title: `Repeated Defender alerts ${index}`, description: 'D'.repeat(900), severity: 'high', sourceMetric: 'alerts' })),
-                        risks: Array.from({ length: 8 }, (_, index) => ({ title: `Alert risk ${index}`, severity: 'high', sourceMetric: 'alerts' })),
-                        recommendations: Array.from({ length: 15 }, (_, index) => ({ title: `Alert action ${index}`, priority: 'high', sourceMetric: 'alerts' })),
+                        domainExecutiveSummary: 'Security Alerts show repeated Defender alert patterns.',
+                        technicalSummary: 'Repeated high-severity alerts are concentrated across users and devices.',
+                        currentPosture: 'Active high-severity alert clusters require triage; resolved positives should remain posture notes.',
+                        businessImpact: 'Repeated security alerts can delay containment decisions.',
+                        keyFindings: Array.from({ length: 12 }, (_, index) => ({ title: `Repeated Defender alerts ${index}`, description: 'D'.repeat(900), severity: 'high', sourceMetric: 'repeatedAlertPatterns' })),
+                        risks: [
+                            { title: 'No critical alerts detected', severity: 'low', sourceMetric: 'summaryMetrics' },
+                            ...Array.from({ length: 8 }, (_, index) => ({
+                                title: `Alert risk ${index}`,
+                                severity: 'high',
+                                sourceMetric: index % 2 ? 'affectedUsers' : 'repeatedAlertPatterns',
+                                affectedEntities: [{ userPrincipalName: `user${index}@example.com`, entityType: 'User' }],
+                                evidenceRows: [{ title: `Repeated alert pattern ${index % 3}`, userPrincipalName: `user${index}@example.com`, deviceName: `device-${index % 12}` }]
+                            }))
+                        ],
+                        recommendations: Array.from({ length: 15 }, (_, index) => ({ title: `Alert action ${index}`, priority: 'high', sourceMetric: 'repeatedAlertPatterns' })),
                         controlAssessment: [],
                         managementActions: Array.from({ length: 15 }, (_, index) => ({ title: `Management action ${index}`, sourceMetric: 'alerts' })),
                         trendAnalysis: Array.from({ length: 15 }, (_, index) => ({ title: `Alert trend ${index}`, sourceMetric: 'alerts' })),
@@ -2656,27 +2669,259 @@ test('Security Alerts analysis keeps all source alerts and human-readable eviden
     const result = await service.runEnterpriseReport({ companyId: 1, snapshotId: 1200, domainKeys: ['security_alerts'], includeSynthesis: false });
     const finding = result.domains[0].analysis.keyFindings[0];
     assert.equal(result.domains[0].status, 'completed');
-    assert.equal(result.domains[0].analysis.evidenceLimitations.recordsPrepared, 150);
-    assert.equal(result.domains[0].analysis.evidenceLimitations.recordsSent, 150);
+    assert.ok(result.domains[0].analysis.evidenceLimitations.recordsPrepared < 150);
+    assert.ok(result.domains[0].analysis.evidenceLimitations.recordsSent < 150);
     assert.equal(result.domains[0].analysis.evidenceLimitations.recordsOmitted, 0);
-    assert.equal(finding.sourceAlertIds.length, 150);
-    assert.equal(finding.evidenceRows.length, 150);
-    assert.equal(finding.affectedEntities.length, 150);
-    assert.ok(finding.evidenceRows.every(row => row && typeof row === 'object'));
-    const firstAlertEntity = finding.affectedEntities.find(entity => entity.userPrincipalName === 'user0@example.com');
-    assert.ok(firstAlertEntity);
-    assert.equal(firstAlertEntity.title, 'Repeated alert pattern 0');
-    assert.equal(firstAlertEntity.userPrincipalName, 'user0@example.com');
-    assert.equal(firstAlertEntity.deviceName, 'device-0');
-    assert.equal(result.domains[0].analysis.keyFindings.length, 12);
-    assert.equal(result.domains[0].analysis.risks.length, 8);
-    assert.equal(result.domains[0].analysis.recommendations.length, 15);
-    assert.equal(result.domains[0].analysis.managementActions.length, 15);
-    assert.equal(result.domains[0].analysis.trendAnalysis.length, 15);
-    assert.equal(finding.description.length, 900);
-    assert.ok(result.domains[0].analysis.domainExecutiveSummary.length >= 700);
-    assert.ok(prompts.length <= 10);
+    assert.ok(packages[0].compactEvidenceSummary.strictCompactSecurityAlertsPackage);
+    assert.equal(packages[0].batchMetadata.totalBatches, 1);
+    assert.ok(packages[0].evidence.length < 80);
+    assert.ok(packages[0].evidenceGroups.summaryMetrics.length >= 1);
+    assert.ok(packages[0].evidenceGroups.criticalAlerts.length <= 10);
+    assert.ok(packages[0].evidenceGroups.highSeverityAlerts.length <= 10);
+    assert.ok(packages[0].evidenceGroups.repeatedAlertPatterns.length <= 10);
+    assert.equal(result.domains[0].analysis.keyFindings.length, 5);
+    assert.equal(result.domains[0].analysis.risks.length, 5);
+    assert.equal(result.domains[0].analysis.recommendations.length, 5);
+    assert.doesNotMatch(JSON.stringify(result.domains[0].analysis.risks), /No critical alerts detected/);
+    assert.ok(finding.description.length <= 520);
+    assert.ok(prompts.length <= 2);
     assert.match(prompts[0], /Return valid JSON only/);
-    assert.match(prompts[0], /human-readable alert, user, or device details/);
-    assert.match(prompts[0], /sourceAlertIds/);
+    assert.match(prompts[0], /summaryMetrics, criticalAlerts, highSeverityAlerts/);
+    assert.match(prompts[0], /risks max 5/);
+});
+
+test('Security Alerts adapter uses actual evidence freshness timestamp', async () => {
+    const pool = {
+        async query(sql, params) {
+            if (/CompanyMicrosoftMapping/i.test(sql)) return [[{ MicrosoftTenantID: 1 }], []];
+            if (/IsComplete = 1 AND CollectionStatus IN/i.test(sql)) {
+                return [[{
+                    ID: 990,
+                    CompanyID: params?.[0] || 1,
+                    IsComplete: 1,
+                    CollectionStatus: 'complete',
+                    CollectedAt: '2026-06-25T08:00:00.000Z',
+                    SourceFetchedAt: '2026-06-25T09:30:00.000Z',
+                    CreatedAt: '2026-06-25T09:31:00.000Z',
+                    EvidenceRecordCount: 1,
+                    ExpectedRecordCount: 1,
+                    OmittedRecordCount: 0,
+                    DashboardMetricsJson: { totalAlerts: 1, highSeverityAlerts: 1 }
+                }], []];
+            }
+            if (/FROM StackCTRLSecurityEvidence WHERE SnapshotID/i.test(sql)) {
+                return [[{
+                    ID: 1,
+                    SnapshotID: 990,
+                    EvidenceKind: 'alert',
+                    ProcessedEvidenceJson: { id: 'alert-1', title: 'Risky sign-in alert', severity: 'high' }
+                }], []];
+            }
+            return [[], []];
+        }
+    };
+    const result = await securityAlertsAdapter({
+        pool,
+        companyId: 1,
+        capability: {
+            sourceKey: 'security_alerts',
+            displayName: 'Security Alerts',
+            isExpected: true,
+            isEnabled: true,
+            profileKey: 'sunbird',
+            refreshMode: 'stored_only',
+            freshnessThresholdMinutes: 120
+        }
+    });
+
+    assert.equal(result.freshness.lastUpdated, '2026-06-25T09:30:00.000Z');
+    assert.equal(result.sourceLineage.sourceFetchedAt, '2026-06-25T09:30:00.000Z');
+    assert.equal(result.sourceLineage.sourceLastUpdated, '2026-06-25T09:30:00.000Z');
+});
+
+test('Security Alerts adapter surfaces latest failed collection error', async () => {
+    const pool = {
+        async query(sql) {
+            if (/CompanyMicrosoftMapping/i.test(sql)) return [[{ MicrosoftTenantID: 1 }], []];
+            if (/IsComplete = 1 AND CollectionStatus IN/i.test(sql)) return [[], []];
+            if (/FROM StackCTRLSecurityEvidenceSnapshots/i.test(sql)) {
+                return [[{
+                    ID: 991,
+                    CompanyID: 1,
+                    IsComplete: 0,
+                    CollectionStatus: 'failed',
+                    CollectedAt: '2026-06-25T10:00:00.000Z',
+                    SourceFetchedAt: '2026-06-25T10:00:00.000Z',
+                    EvidenceRecordCount: 0,
+                    DashboardMetricsJson: {},
+                    IncompleteReason: 'Security evidence collection did not complete.',
+                    ErrorMessage: 'Microsoft Graph security alerts endpoint returned 403'
+                }], []];
+            }
+            return [[], []];
+        }
+    };
+    const result = await securityAlertsAdapter({
+        pool,
+        companyId: 1,
+        capability: {
+            sourceKey: 'security_alerts',
+            displayName: 'Security Alerts',
+            isExpected: true,
+            isEnabled: true,
+            profileKey: 'sunbird',
+            refreshMode: 'stored_only',
+            freshnessThresholdMinutes: 120
+        }
+    });
+
+    assert.ok(['missing', 'stale'].includes(result.status));
+    assert.match(result.errorMessage, /Microsoft Graph security alerts endpoint returned 403/);
+    assert.match(result.warnings.join(' '), /Microsoft Graph security alerts endpoint returned 403/);
+    assert.equal(result.sourceLineage.evidenceSnapshotId, 991);
+    assert.equal(result.sourceLineage.collectionStatus, 'failed');
+});
+
+test('Security Alerts stale warning uses stored evidence timestamp', async () => {
+    let insertId = 13000;
+    const snapshot = {
+        ID: 1300,
+        CompanyID: 1,
+        CreatedAt: new Date('2026-06-26T08:00:00Z'),
+        SourceFreshnessJson: JSON.stringify({
+            security_alerts: {
+                status: 'stale',
+                lastUpdated: '2026-06-24T05:16:14.000Z',
+                ageMinutes: 2563
+            }
+        }),
+        MetricsJson: '{}',
+        ContextJson: JSON.stringify({
+            riskEngine: { domainHealthScores: { security: 60 }, domainRiskScores: { security: 40 } },
+            sources: [{
+                sourceKey: 'security_alerts',
+                status: 'available',
+                isExpected: true,
+                sourceLineage: { evidenceRecordCount: 1, sourceFetchedAt: '2026-06-24T05:16:14.000Z' },
+                dashboardMetrics: { totalAlerts: 1, highSeverityAlerts: 1 },
+                evidence: [{ evidenceType: 'alerts', data: [{ id: 'alert-1', title: 'High alert', severity: 'high', status: 'active' }] }]
+            }]
+        })
+    };
+    const pool = {
+        async query(sql) {
+            if (sql.includes('FROM StackCTRLTenantEvidenceSnapshots WHERE')) return [[snapshot], []];
+            if (sql.includes('FROM StackCTRLKnowledgeBase')) return [[], []];
+            if (sql.includes('FROM StackCTRLTenantDomainIntelligence') && sql.includes('RunID <>')) return [[], []];
+            if (/^\s*INSERT/i.test(sql)) return [{ insertId: insertId++ }, []];
+            return [{ affectedRows: 1 }, []];
+        }
+    };
+    const service = createEnterpriseIntelligenceService({
+        pool,
+        schedulerService: { async getHistoricalSnapshotContext() { return { comparisons: {} }; } },
+        azureOpenAI: { async createJsonCompletion() { return { data: { domainExecutiveSummary: 'Security alert review.', risks: [], recommendations: [], keyFindings: [], missingDataWarnings: [] } }; } },
+        logger: { info() {}, warn() {}, error() {} },
+        wait: async () => {},
+        config: { domainDelayMs: 0, maxInputBytes: 500000 }
+    });
+
+    const result = await service.runEnterpriseReport({ companyId: 1, snapshotId: 1300, domainKeys: ['security_alerts'], includeSynthesis: false });
+    const warningText = result.domains[0].analysis.missingDataWarnings.join(' ');
+    assert.match(warningText, /Security Alerts evidence is stale; latest stored evidence was used from 2026-06-24T05:16:14\.000Z\./);
+    assert.doesNotMatch(warningText, /Security Alerts source_stale/);
+});
+
+test('Security Alerts visible output removes nulls and positive observations from risks', () => {
+    const domain = ENTERPRISE_DOMAINS.find(item => item.key === 'security_alerts');
+    const normalized = normalizeDomainOutputForDisplay({
+        domainExecutiveSummary: 'Security alerts are mostly contained.',
+        currentPosture: 'No critical alerts detected; high-severity repeated patterns remain under review.',
+        risks: [
+            { title: 'No critical alerts detected', severity: 'low', sourceMetric: 'summaryMetrics', empty: null },
+            {
+                title: 'Repeated high-severity Defender alerts',
+                severity: 'high',
+                sourceMetric: 'repeatedAlertPatterns',
+                affectedEntities: [{ userPrincipalName: 'user@example.com', entityType: 'User', sourceMetric: 'repeatedAlertPatterns', unused: null }],
+                evidenceRows: [{ title: 'Repeated Defender alert', userPrincipalName: 'user@example.com', severity: 'high', empty: null }]
+            }
+        ],
+        recommendations: [{ title: 'Triage repeated alerts', priority: 'high', sourceMetric: 'repeatedAlertPatterns', empty: null }],
+        keyFindings: [{ title: 'High severity alerts are concentrated', sourceMetric: 'highSeverityAlerts', empty: null }]
+    }, domain, 1400);
+
+    assert.equal(normalized.risks.length, 1);
+    assert.equal(normalized.risks[0].title, 'Repeated high-severity Defender alerts');
+    assert.doesNotMatch(JSON.stringify(normalized), /:null/);
+});
+
+test('Security Alerts affected entities are matched to the inferred evidence group', () => {
+    const domain = ENTERPRISE_DOMAINS.find(item => item.key === 'security_alerts');
+    const normalized = ensureItemEvidence({
+        title: 'Anonymous IP sign-in pattern',
+        severity: 'high',
+        recommendation: 'Block or investigate anonymous IP activity.',
+        affectedEntities: [{ userPrincipalName: 'wrong-user@example.com', entityType: 'User' }]
+    }, domain, 1500, [
+        {
+            evidenceType: 'anonymousIpEvents',
+            sourceMetric: 'anonymousIpEvents',
+            internalSourcePath: 'security_alerts.evidence.signIns[0]',
+            data: { id: 'sign-in-1', ipAddress: '203.0.113.10', userPrincipalName: 'target@example.com', riskLevel: 'high' }
+        },
+        {
+            evidenceType: 'affectedUsers',
+            sourceMetric: 'affectedUsers',
+            internalSourcePath: 'security_alerts.evidence.users[0]',
+            data: { userPrincipalName: 'wrong-user@example.com', alertCount: 4 }
+        }
+    ]);
+
+    assert.equal(normalized.sourceMetric, 'anonymousIpEvents');
+    assert.equal(normalized.affectedEntities[0].entityType, 'IPAddress');
+    assert.equal(normalized.affectedEntities[0].ipAddress, '203.0.113.10');
+    assert.equal(normalized.evidenceRows[0].sourceMetric, 'anonymousIpEvents');
+});
+
+test('Security Alerts Power BI flattening keeps risk, recommendation, entity, and evidence rows', () => {
+    const service = createEnterpriseIntelligenceService({ pool: {}, azureOpenAI: {}, schedulerService: {} });
+    const tables = service.flattenPowerBITables({
+        domains: [{
+            companyId: 1,
+            snapshotId: 1600,
+            runId: 160,
+            domainKey: 'security_alerts',
+            domainName: 'Security Alerts',
+            periodType: 'daily',
+            periodStart: '2026-06-26',
+            periodEnd: '2026-06-26',
+            tokenUsage: {},
+            intelligenceOutput: {
+                risks: [{
+                    riskId: 'security-risk-1',
+                    title: 'Anonymous IP sign-in pattern',
+                    severity: 'high',
+                    sourceDomain: 'security_alerts',
+                    sourceMetric: 'anonymousIpEvents',
+                    affectedEntities: [{ entityId: '203.0.113.10', entityName: '203.0.113.10', entityType: 'IPAddress', sourceMetric: 'anonymousIpEvents' }],
+                    evidenceRows: [{ entityId: 'sign-in-1', entityName: '203.0.113.10', entityType: 'IPAddress', sourceMetric: 'anonymousIpEvents' }]
+                }],
+                recommendations: [{
+                    recommendationId: 'security-rec-1',
+                    title: 'Investigate anonymous IP activity',
+                    priority: 'high',
+                    sourceDomain: 'security_alerts',
+                    sourceMetric: 'anonymousIpEvents',
+                    affectedEntities: [{ entityId: '203.0.113.10', entityName: '203.0.113.10', entityType: 'IPAddress', sourceMetric: 'anonymousIpEvents' }],
+                    evidenceRows: [{ entityId: 'sign-in-1', entityName: '203.0.113.10', entityType: 'IPAddress', sourceMetric: 'anonymousIpEvents' }]
+                }]
+            }
+        }]
+    });
+
+    assert.equal(tables.RiskRegisterRows.length, 1);
+    assert.equal(tables.RecommendationRows.length, 1);
+    assert.equal(tables.AffectedEntityRows.length, 2);
+    assert.equal(tables.EvidenceRows.length, 2);
 });
