@@ -24,7 +24,7 @@ const {
 } = require('../services/enterprise-intelligence');
 const { emailSecurityAdapter, securityAlertsAdapter } = require('../services/intelligence/source-adapters');
 
-test('enterprise domain order keeps governance active and operations/compliance disabled', () => {
+test('enterprise domain order keeps governance and compliance active with operations disabled', () => {
     assert.deepEqual(ENTERPRISE_DOMAINS.map(domain => domain.key), [
         'identity',
         'devices',
@@ -46,16 +46,16 @@ test('enterprise domain order keeps governance active and operations/compliance 
         'security_alerts',
         'applications',
         'backup',
-        'governance'
+        'governance',
+        'compliance'
     ]);
 
     assert.deepEqual(TEMPORARILY_DISABLED_DOMAIN_KEYS, [
-        'operations',
-        'compliance'
+        'operations'
     ]);
 });
 
-test('operations and compliance remain visible but cannot be selected or run while governance is active', async () => {
+test('operations remains visible but cannot be selected while governance and compliance are active', async () => {
     const service = createEnterpriseIntelligenceService({
         pool: {},
         azureOpenAI: {},
@@ -63,18 +63,22 @@ test('operations and compliance remain visible but cannot be selected or run whi
     });
 
     const governance = service.domains.find(domain => domain.key === 'governance');
+    const compliance = service.domains.find(domain => domain.key === 'compliance');
 
     assert.equal(governance.status, 'available');
     assert.equal(governance.selectable, true);
     assert.equal(governance.includedInCurrentPhase, true);
+
+    assert.equal(compliance.status, 'available');
+    assert.equal(compliance.selectable, true);
+    assert.equal(compliance.includedInCurrentPhase, true);
 
     const disabled = service.domains.filter(domain =>
         TEMPORARILY_DISABLED_DOMAIN_KEYS.includes(domain.key)
     );
 
     assert.deepEqual(disabled.map(domain => domain.key), [
-        'operations',
-        'compliance'
+        'operations'
     ]);
 
     assert.ok(disabled.every(domain => domain.status === 'temporarily_disabled'));
@@ -353,32 +357,115 @@ test('strict selected-domain packages keep curated-reference warnings internal w
         azureOpenAI: {},
         schedulerService: {}
     });
+
+    const complianceMetrics = {
+        totalControls: 4,
+        apiControls: 3,
+        manualControlsExcluded: 1,
+        failingControls: 1,
+        partialControls: 1,
+        passingControls: 1,
+        manualReviewControls: 0,
+        complianceScore: 58
+    };
+
     const cases = [
         {
             key: 'email_security',
             context: {
-                sources: [{ sourceKey: 'email_security', status: 'available', isExpected: true, metrics: { activeThreats: 1 }, dashboardMetrics: { activeThreats: 1 }, evidence: [{ evidenceType: 'alerts', data: [{ id: 'alert-1', title: 'Phishing alert', severity: 'high' }] }] }],
+                sources: [{
+                    sourceKey: 'email_security',
+                    status: 'available',
+                    isExpected: true,
+                    metrics: { activeThreats: 1 },
+                    dashboardMetrics: { activeThreats: 1 },
+                    evidence: [{ evidenceType: 'alerts', data: [{ id: 'alert-1', title: 'Phishing alert', severity: 'high' }] }]
+                }],
                 riskEngine: { domainHealthScores: { email: 80 }, domainRiskScores: { email: 20 } }
             }
         },
         {
             key: 'backup',
             context: {
-                sources: [{ sourceKey: 'backup', status: 'available', isExpected: true, metrics: { backupCoverageScore: 80 }, dashboardMetrics: { backupCoverageScore: 80 }, evidence: [{ evidenceType: 'users', data: [{ id: 'user-1', displayName: 'Storage User', totalStorageGB: 200 }] }] }],
+                sources: [{
+                    sourceKey: 'backup',
+                    status: 'available',
+                    isExpected: true,
+                    metrics: { backupCoverageScore: 80 },
+                    dashboardMetrics: { backupCoverageScore: 80 },
+                    evidence: [{ evidenceType: 'users', data: [{ id: 'user-1', displayName: 'Storage User', totalStorageGB: 200 }] }]
+                }],
                 riskEngine: { domainHealthScores: { backup: 80 }, domainRiskScores: { backup: 20 } }
             }
         },
         {
             key: 'applications',
             context: {
-                sources: [{ sourceKey: 'applications', status: 'available', isExpected: true, metrics: { excessivePermissionApps: 1 }, dashboardMetrics: { excessivePermissionApps: 1 }, evidence: [{ evidenceType: 'applications', data: [{ appId: 'app-1', displayName: 'Mail Exporter', permissionSummary: 'Mail.ReadWrite' }] }] }],
+                sources: [{
+                    sourceKey: 'applications',
+                    status: 'available',
+                    isExpected: true,
+                    metrics: { excessivePermissionApps: 1 },
+                    dashboardMetrics: { excessivePermissionApps: 1 },
+                    evidence: [{ evidenceType: 'applications', data: [{ appId: 'app-1', displayName: 'Mail Exporter', permissionSummary: 'Mail.ReadWrite' }] }]
+                }],
                 riskEngine: { domainHealthScores: { applications: 80 }, domainRiskScores: { applications: 20 } }
+            }
+        },
+        {
+            key: 'compliance',
+            context: {
+                sources: [{
+                    sourceKey: 'compliance',
+                    status: 'available',
+                    isExpected: true,
+                    metrics: complianceMetrics,
+                    dashboardMetrics: complianceMetrics,
+                    sourceLineage: {
+                        sourceBuilder: 'storedStackCTRLComplianceEvidence',
+                        evidenceSnapshotId: 1201,
+                        evidenceRecordCount: 3,
+                        omittedRecordCount: 1,
+                        manualRowsExcluded: 1
+                    },
+                    evidence: [{
+                        evidenceType: 'controls',
+                        data: [
+                            {
+                                controlId: 'compliance-control-1',
+                                controlName: 'MFA coverage validation',
+                                area: 'Identity',
+                                status: 'Failed',
+                                insight: '🔴 Failed',
+                                evidenceSource: 'StackCTRL API Evidence'
+                            },
+                            {
+                                controlId: 'compliance-control-2',
+                                controlName: 'Device compliance validation',
+                                area: 'Devices',
+                                status: 'Partial',
+                                insight: '🟡 Partial',
+                                evidenceSource: 'StackCTRL API Evidence'
+                            },
+                            {
+                                controlId: 'compliance-control-3',
+                                controlName: 'Backup evidence validation',
+                                area: 'Backup',
+                                status: 'Passed',
+                                insight: '🟢 Passing',
+                                evidenceSource: 'StackCTRL API Evidence'
+                            }
+                        ]
+                    }]
+                }],
+                riskEngine: { domainHealthScores: { compliance: 58 }, domainRiskScores: { compliance: 42 } }
             }
         }
     ];
 
     for (const item of cases) {
         const domain = ENTERPRISE_DOMAINS.find(candidate => candidate.key === item.key);
+
         const packageResult = await service.buildDomainPackage({
             companyId: 1,
             snapshot: {
@@ -386,14 +473,27 @@ test('strict selected-domain packages keep curated-reference warnings internal w
                 CreatedAt: '2026-06-25T10:00:00.000Z',
                 MetricsJson: JSON.stringify({ stackctrl_risk: item.context.riskEngine }),
                 ContextJson: JSON.stringify(item.context),
-                SourceFreshnessJson: JSON.stringify({ [domain.sourceKey]: { lastUpdated: '2026-06-25T09:55:00.000Z', ageMinutes: 5, status: 'available' } })
+                SourceFreshnessJson: JSON.stringify({
+                    [domain.sourceKey]: {
+                        lastUpdated: '2026-06-25T09:55:00.000Z',
+                        ageMinutes: 5,
+                        status: 'available'
+                    }
+                })
             },
             runId: 701,
             domain,
             historicalContext: null
         });
+
         assert.equal(packageResult.audit.batchPlan.batchCount, 1, item.key);
-        assert.equal(packageResult.package.limitations.missingDataWarnings.some(warning => /curated|best-practice/i.test(String(warning))), false, item.key);
+        assert.equal(
+            packageResult.package.limitations.missingDataWarnings.some(warning =>
+                /curated|best-practice/i.test(String(warning))
+            ),
+            false,
+            item.key
+        );
     }
 });
 
@@ -2244,7 +2344,13 @@ test('Enterprise Governance, Compliance, and Operations use saved API rows and d
             metrics: {
                 totalControls: 8,
                 apiControls: 5,
-                manualControlsExcluded: 3
+                manualControlsExcluded: 3,
+                failingControls: 2,
+                partialControls: 1,
+                passingControls: 2,
+                manualReviewControls: 0,
+                complianceScore: 58,
+                auditReadinessStatus: 'not_ready'
             }
         },
         {
@@ -2262,22 +2368,51 @@ test('Enterprise Governance, Compliance, and Operations use saved API rows and d
     ];
 
     for (const [index, item] of cases.entries()) {
-        const rows = Array.from({ length: item.apiRows }, (_, rowIndex) => ({
-            id: `${item.key}-${rowIndex + 1}`,
-            area: item.key === 'governance'
-                ? (rowIndex % 2 === 0 ? 'Privileged Access' : 'Policy Review')
-                : undefined,
-            activity: item.key === 'governance'
-                ? (rowIndex % 2 === 0 ? 'Admin access review' : 'Security policy review')
-                : undefined,
-            status: item.key === 'governance'
-                ? (rowIndex < 2 ? 'Attention Required' : 'Connected')
-                : undefined,
-            owner: item.key === 'governance' && rowIndex === 0 ? '' : 'Security Manager',
-            entityName: item.key === 'governance' ? `Governance Item ${rowIndex + 1}` : undefined,
-            entityType: item.key === 'governance' ? 'GovernanceItem' : undefined,
-            dataSource: 'StackCTRL API Evidence'
-        }));
+        const rows = Array.from({ length: item.apiRows }, (_, rowIndex) => {
+            if (item.key === 'governance') {
+                return {
+                    id: `${item.key}-${rowIndex + 1}`,
+                    area: rowIndex % 2 === 0 ? 'Privileged Access' : 'Policy Review',
+                    activity: rowIndex % 2 === 0 ? 'Admin access review' : 'Security policy review',
+                    status: rowIndex < 2 ? 'Attention Required' : 'Connected',
+                    owner: rowIndex === 0 ? '' : 'Security Manager',
+                    entityName: `Governance Item ${rowIndex + 1}`,
+                    entityType: 'GovernanceItem',
+                    dataSource: 'StackCTRL API Evidence'
+                };
+            }
+
+            if (item.key === 'compliance') {
+                const statuses = ['Failed', 'Failed', 'Partial', 'Passed', 'Passed'];
+                const insights = ['🔴 Failed', '🔴 Failed', '🟡 Partial', '🟢 Passing', '🟢 Passing'];
+
+                return {
+                    id: `${item.key}-${rowIndex + 1}`,
+                    controlId: `compliance-control-${rowIndex + 1}`,
+                    controlName: `Compliance Control ${rowIndex + 1}`,
+                    name: `Compliance Control ${rowIndex + 1}`,
+                    area: rowIndex < 2 ? 'Identity' : rowIndex === 2 ? 'Devices' : 'Backup',
+                    controlCategory: rowIndex < 2 ? 'Identity' : rowIndex === 2 ? 'Devices' : 'Backup',
+                    status: statuses[rowIndex],
+                    insight: insights[rowIndex],
+                    evidenceSource: 'StackCTRL API Evidence',
+                    validationReason: `Compliance Control ${rowIndex + 1} has API-connected validation evidence.`,
+                    remediationAction: statuses[rowIndex] === 'Passed'
+                        ? 'Maintain evidence for the next review cycle.'
+                        : 'Remediate the control and collect closure evidence.',
+                    auditImpact: statuses[rowIndex] === 'Passed'
+                        ? 'Passing control supports audit readiness.'
+                        : 'Control gap reduces audit readiness.'
+                };
+            }
+
+            return {
+                id: `${item.key}-${rowIndex + 1}`,
+                title: `Operations Task ${rowIndex + 1}`,
+                status: 'open',
+                dataSource: 'StackCTRL API Evidence'
+            };
+        });
 
         const snapshot = {
             ID: 920 + index,
@@ -2351,20 +2486,9 @@ test('Enterprise Governance, Compliance, and Operations use saved API rows and d
         );
 
         if (item.key === 'governance') {
-            assert.ok(
-                packageResult.audit.stackCTRLDataCount >= item.apiRows,
-                item.key
-            );
-
-            assert.ok(
-                packageResult.audit.preparedForAzureCount >= item.apiRows,
-                item.key
-            );
-
-            assert.ok(
-                packageResult.allEvidence.length >= item.apiRows,
-                item.key
-            );
+            assert.ok(packageResult.audit.stackCTRLDataCount >= item.apiRows, item.key);
+            assert.ok(packageResult.audit.preparedForAzureCount >= item.apiRows, item.key);
+            assert.ok(packageResult.allEvidence.length >= item.apiRows, item.key);
 
             assert.ok(
                 packageResult.allEvidence.some(row => row.evidenceType === 'summaryMetrics'),
@@ -2384,6 +2508,40 @@ test('Enterprise Governance, Compliance, and Operations use saved API rows and d
             assert.ok(
                 packageResult.allEvidence.some(row => row.evidenceType === 'reviewGaps'),
                 'Governance should include reviewGaps evidence'
+            );
+        } else if (item.key === 'compliance') {
+            assert.ok(packageResult.audit.stackCTRLDataCount >= item.apiRows, item.key);
+            assert.ok(packageResult.audit.preparedForAzureCount >= item.apiRows, item.key);
+            assert.ok(packageResult.allEvidence.length >= item.apiRows, item.key);
+
+            assert.ok(
+                packageResult.allEvidence.some(row => row.evidenceType === 'summaryMetrics'),
+                'Compliance should include summaryMetrics evidence'
+            );
+
+            assert.ok(
+                packageResult.allEvidence.some(row => row.evidenceType === 'failedControls'),
+                'Compliance should include failedControls evidence'
+            );
+
+            assert.ok(
+                packageResult.allEvidence.some(row => row.evidenceType === 'partialControls'),
+                'Compliance should include partialControls evidence'
+            );
+
+            assert.ok(
+                packageResult.allEvidence.some(row => row.evidenceType === 'passedControls'),
+                'Compliance should include passedControls evidence'
+            );
+
+            assert.ok(
+                packageResult.allEvidence.some(row => row.evidenceType === 'remediationActions'),
+                'Compliance should include remediationActions evidence'
+            );
+
+            assert.ok(
+                packageResult.allEvidence.every(row => !Array.isArray(row.data?.rawEvidence)),
+                'Compliance compact evidence must not include rawEvidence arrays'
             );
         } else {
             assert.equal(packageResult.audit.stackCTRLDataCount, item.apiRows, item.key);
@@ -2965,11 +3123,10 @@ test('Power BI read model returns full domain outputs, synthesis, raw labels, an
 
     const intelligence = await service.getPowerBIIntelligenceRun(1);
     const raw = await service.getPowerBIRaw(1, 'identity');
-
     assert.equal(intelligence.dataClassification, 'intelligent_azure_output');
     assert.equal(intelligence.domains.length, 10);
-    assert.equal(intelligence.completeness.expectedDomains, 8);
-    assert.equal(intelligence.completeness.disabledDomainCount, 2);
+    assert.equal(intelligence.completeness.expectedDomains, 9);
+    assert.equal(intelligence.completeness.disabledDomainCount, 1);
     assert.deepEqual(intelligence.completeness.activeDomainKeys, ACTIVE_ENTERPRISE_DOMAIN_KEYS);
 
     const finalSummary =
@@ -2991,7 +3148,7 @@ test('Power BI read model returns full domain outputs, synthesis, raw labels, an
         ACTIVE_ENTERPRISE_DOMAIN_KEYS.length * 2
     );
 
-    assert.equal(intelligence.tables.disabled_domains.length, 2);
+    assert.equal(intelligence.tables.disabled_domains.length, 1);
     assert.equal(intelligence.tables.domain_status.length, 10);
 
     assert.equal(
@@ -3016,7 +3173,17 @@ test('Power BI read model returns full domain outputs, synthesis, raw labels, an
 
     assert.equal(
         intelligence.tables.domain_status.find(row => row.domainKey === 'compliance').domainStatus,
-        'temporarily_disabled'
+        'completed'
+    );
+
+    assert.equal(
+        intelligence.tables.domain_status.find(row => row.domainKey === 'compliance').includedInCurrentPhase,
+        true
+    );
+
+    assert.equal(
+        intelligence.tables.domain_status.find(row => row.domainKey === 'compliance').selectable,
+        true
     );
 
     assert.equal(
@@ -3032,9 +3199,10 @@ test('Power BI read model returns full domain outputs, synthesis, raw labels, an
     assert.equal(operationsDomain.domain.status, 'temporarily_disabled');
     assert.equal(operationsDomain.domain.selectable, false);
 
-    const complianceDomain = await service.getPowerBIDomain(1, 'compliance');
-    assert.equal(complianceDomain.domain.status, 'temporarily_disabled');
-    assert.equal(complianceDomain.domain.selectable, false);
+const complianceDomain = await service.getPowerBIDomain(1, 'compliance');
+assert.equal(complianceDomain.domain.domainKey, 'compliance');
+assert.equal(complianceDomain.domain.status, 'completed');
+assert.equal(complianceDomain.domain.selectable, true);
 
     assert.equal(raw.dataClassification, 'raw_non_intelligent_stackctrl');
     assert.match(raw.warning, /not been analysed/i);

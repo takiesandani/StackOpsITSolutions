@@ -1263,29 +1263,182 @@ async load(pool, companyId, capability) {
     compliance: {
         table: 'StackCTRLComplianceEvidenceSnapshots, StackCTRLComplianceEvidence',
         refreshWhenMissing: true,
+
         async load(pool, companyId, capability) {
-            const tenant = await queryRows(pool, `SELECT mt.ID AS MicrosoftTenantID FROM CompanyMicrosoftMapping cm INNER JOIN MicrosoftTenants mt ON mt.ID = cm.MicrosoftTenantID WHERE cm.CompanyID = ? AND cm.IsActive = 1 LIMIT 1`, [companyId]);
+            const tenant = await queryRows(
+                pool,
+                `SELECT mt.ID AS MicrosoftTenantID
+                 FROM CompanyMicrosoftMapping cm
+                 INNER JOIN MicrosoftTenants mt ON mt.ID = cm.MicrosoftTenantID
+                 WHERE cm.CompanyID = ? AND cm.IsActive = 1
+                 LIMIT 1`,
+                [companyId]
+            );
+
+            const lineageOptions = {
+                sourceKey: 'compliance',
+                sourceBuilder: 'storedStackCTRLComplianceEvidence',
+                sourceLayer: 'StackCTRLComplianceEvidenceSnapshots',
+                totalField: 'TotalControls',
+                apiField: 'ApiControls',
+                manualField: 'ManualControlsExcluded'
+            };
+
             if (capability?.profileKey === 'sunbird') {
-                const snapshots = await queryRows(pool, `SELECT * FROM StackCTRLComplianceEvidenceSnapshots WHERE CompanyID = ? ORDER BY CollectedAt DESC, ID DESC LIMIT 1`, [companyId]);
+                const snapshots = await queryRows(
+                    pool,
+                    `SELECT *
+                     FROM StackCTRLComplianceEvidenceSnapshots
+                     WHERE CompanyID = ?
+                       AND IsComplete = 1
+                       AND CollectionStatus IN ('complete', 'completed_with_warnings')
+                     ORDER BY CollectedAt DESC, ID DESC
+                     LIMIT 1`,
+                    [companyId]
+                );
+
                 const snapshot = snapshots[0];
-                const lineageOptions = { sourceKey: 'compliance', sourceBuilder: 'storedStackCTRLComplianceEvidence', sourceLayer: 'StackCTRLComplianceEvidenceSnapshots', totalField: 'TotalControls', apiField: 'ApiControls', manualField: 'ManualControlsExcluded' };
-                if (!snapshot || !Number(snapshot.IsComplete) || snapshot.CollectionStatus !== 'complete') {
-                    return blockedStoredEvidenceResult({ snapshot, tenantConfigured: tenant.length > 0, table: this.table, displayName: 'Compliance Validation', lineageOptions });
+
+                if (!snapshot) {
+                    const latestRows = await queryRows(
+                        pool,
+                        `SELECT *
+                         FROM StackCTRLComplianceEvidenceSnapshots
+                         WHERE CompanyID = ?
+                         ORDER BY CollectedAt DESC, ID DESC
+                         LIMIT 1`,
+                        [companyId]
+                    );
+
+                    return blockedStoredEvidenceResult({
+                        snapshot: latestRows[0],
+                        tenantConfigured: tenant.length > 0,
+                        table: this.table,
+                        displayName: 'Compliance Validation',
+                        lineageOptions
+                    });
                 }
-                const evidenceRows = await queryRows(pool, `SELECT * FROM StackCTRLComplianceEvidence WHERE SnapshotID = ? ORDER BY ID`, [snapshot.ID]);
+
+                const evidenceRows = await queryRows(
+                    pool,
+                    `SELECT *
+                     FROM StackCTRLComplianceEvidence
+                     WHERE SnapshotID = ?
+                     ORDER BY ID`,
+                    [snapshot.ID]
+                );
+
                 if (evidenceRows.length !== Number(snapshot.EvidenceRecordCount)) {
                     const errorMessage = `Compliance evidence snapshot ${snapshot.ID} expected ${snapshot.EvidenceRecordCount} rows but ${evidenceRows.length} were stored.`;
-                    return { records: [], notConfigured: !tenant.length, metrics: snapshot.DashboardMetricsJson || {}, dashboardSourceMetrics: snapshot.DashboardMetricsJson || {}, sourceLineage: { ...storedEvidenceLineage(snapshot, lineageOptions), collectionStatus: 'incomplete', isComplete: false, incompleteReason: errorMessage, errorMessage }, evidence: [], warnings: [`${errorMessage} Azure analysis is blocked.`], rawReference: { table: this.table, recordId: snapshot.ID } };
+
+                    return {
+                        records: [],
+                        notConfigured: !tenant.length,
+                        metrics: snapshot.DashboardMetricsJson || {},
+                        dashboardSourceMetrics: snapshot.DashboardMetricsJson || {},
+                        sourceLineage: {
+                            ...storedEvidenceLineage(snapshot, lineageOptions),
+                            collectionStatus: 'incomplete',
+                            isComplete: false,
+                            incompleteReason: errorMessage,
+                            errorMessage
+                        },
+                        evidence: [],
+                        warnings: [`${errorMessage} Azure analysis is blocked.`],
+                        rawReference: {
+                            table: this.table,
+                            recordId: snapshot.ID
+                        },
+                        errorMessage
+                    };
                 }
-                const controls = evidenceRows.map(row => row.ProcessedEvidenceJson || {});
+
+                const controls = evidenceRows.map(row => ({
+                    ...(row.ProcessedEvidenceJson || {}),
+                    evidenceKind: row.EvidenceKind,
+                    sourceId: row.SourceID,
+                    title: row.Title,
+                    area: row.Area,
+                    status: row.Status,
+                    evidenceRowId: row.ID
+                }));
+
                 const dashboardMetrics = snapshot.DashboardMetricsJson || {};
-                return { records: snapshots, notConfigured: !tenant.length, metrics: dashboardMetrics, dashboardSourceMetrics: dashboardMetrics, sourceLineage: storedEvidenceLineage(snapshot, { ...lineageOptions, sourceLayer: 'StackCTRLComplianceEvidenceSnapshots + StackCTRLComplianceEvidence' }), evidence: [{ evidenceType: 'controls', data: controls }], warnings: [], rawReference: { table: this.table, recordId: snapshot.ID } };
+                const sourceAudit = snapshot.SourceAuditJson || {};
+
+                const warnings = [
+                    ...(Array.isArray(sourceAudit?.warnings) ? sourceAudit.warnings : []),
+                    ...(snapshot.CollectionStatus === 'completed_with_warnings' && snapshot.IncompleteReason
+                        ? String(snapshot.IncompleteReason).split(';').map(item => item.trim()).filter(Boolean)
+                        : [])
+                ].filter(Boolean);
+
+                const sourceTimestamp = snapshot.SourceFetchedAt || snapshot.CollectedAt || snapshot.CreatedAt || null;
+
+                return {
+                    records: [{
+                        ...snapshot,
+                        SourceLastUpdated: sourceTimestamp,
+                        sourceLastUpdated: sourceTimestamp,
+                        sourceFetchedAt: snapshot.SourceFetchedAt || null
+                    }],
+                    notConfigured: !tenant.length,
+                    metrics: dashboardMetrics,
+                    dashboardSourceMetrics: dashboardMetrics,
+                    sourceLineage: {
+                        ...storedEvidenceLineage(snapshot, {
+                            ...lineageOptions,
+                            sourceLayer: 'StackCTRLComplianceEvidenceSnapshots + StackCTRLComplianceEvidence'
+                        }),
+                        sourceLastUpdated: sourceTimestamp,
+                        sourceFetchedAt: snapshot.SourceFetchedAt || null,
+                        evidenceSnapshotId: snapshot.ID,
+                        collectionStatus: snapshot.CollectionStatus,
+                        isComplete: Boolean(Number(snapshot.IsComplete)),
+                        evidenceRecordCount: Number(snapshot.EvidenceRecordCount || 0),
+                        expectedRecordCount: Number(snapshot.ExpectedRecordCount || 0),
+                        omittedRecordCount: Number(snapshot.OmittedRecordCount || 0),
+                        manualRowsExcluded: Number(snapshot.ManualControlsExcluded || 0),
+                        totalControls: Number(snapshot.TotalControls || 0),
+                        apiControls: Number(snapshot.ApiControls || 0),
+                        incompleteReason: warnings.length ? warnings.join('; ') : null,
+                        errorMessage: snapshot.ErrorMessage || null
+                    },
+                    evidence: [{
+                        evidenceType: 'controls',
+                        data: controls
+                    }],
+                    warnings,
+                    rawReference: {
+                        table: this.table,
+                        recordId: snapshot.ID
+                    }
+                };
             }
-            const [records, configured] = await Promise.all([queryRows(pool, 'SELECT * FROM SunbirdComplianceControlsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]), hasActiveMicrosoftTenant(pool, companyId)]);
+
+            const [records, configured] = await Promise.all([
+                queryRows(
+                    pool,
+                    'SELECT * FROM SunbirdComplianceControlsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1',
+                    [companyId]
+                ),
+                hasActiveMicrosoftTenant(pool, companyId)
+            ]);
+
             const payload = extractPayload(records[0]);
-            return { records, notConfigured: !configured, metrics: summaryMetrics(payload), evidence: payload ? [payload] : [] };
+
+            return {
+                records,
+                notConfigured: !configured,
+                metrics: summaryMetrics(payload),
+                evidence: payload ? [payload] : []
+            };
         },
-        fromRefresh(refreshed, stored) { return stored; },
+
+        fromRefresh(refreshed, stored) {
+            return stored;
+        },
+
         metrics: records => summaryMetrics(extractPayload(records[0])),
         evidence: records => records
     },

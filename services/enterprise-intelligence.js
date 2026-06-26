@@ -15,7 +15,7 @@ const ENTERPRISE_DOMAINS = Object.freeze([
 ]);
 
 const DOMAIN_BY_KEY = Object.freeze(Object.fromEntries(ENTERPRISE_DOMAINS.map(domain => [domain.key, domain])));
-const TEMPORARILY_DISABLED_DOMAIN_KEYS = Object.freeze(['operations', 'compliance']);
+const TEMPORARILY_DISABLED_DOMAIN_KEYS = Object.freeze(['operations']);
 const TEMPORARILY_DISABLED_DOMAIN_SET = Object.freeze(new Set(TEMPORARILY_DISABLED_DOMAIN_KEYS));
 const ACTIVE_ENTERPRISE_DOMAIN_KEYS = Object.freeze(ENTERPRISE_DOMAINS.map(domain => domain.key).filter(key => !TEMPORARILY_DISABLED_DOMAIN_SET.has(key)));
 const ACTIVE_ENTERPRISE_DOMAIN_SET = Object.freeze(new Set(ACTIVE_ENTERPRISE_DOMAIN_KEYS));
@@ -93,7 +93,8 @@ const STRICT_COMPACT_SELECTED_DOMAIN_KEYS = Object.freeze(new Set([
     'cloudflare_network_security',
     'backup',
     'applications',
-    'governance'
+    'governance',
+    'compliance'
 ]));
 
 const COMPACT_SELECTED_DOMAIN_KEYS = Object.freeze(new Set([
@@ -101,6 +102,7 @@ const COMPACT_SELECTED_DOMAIN_KEYS = Object.freeze(new Set([
     'security_alerts',
     ...STRICT_COMPACT_SELECTED_DOMAIN_KEYS
 ]));
+
 const HEAVY_DOMAINS = Object.freeze(new Set(['governance', 'operations', 'compliance']));
 const SUCCESSFUL_DOMAIN_STATUSES = Object.freeze(new Set(['completed', 'partial', 'completed_with_warnings']));
 const SKIPPED_DOMAIN_STATUSES = Object.freeze(new Set(['skipped_rate_limited', 'skipped_token_threshold', 'skipped_pipeline_stop']));
@@ -182,6 +184,16 @@ const SECURITY_ALERTS_COMPACT_EVIDENCE_TYPES = Object.freeze([
     'unresolvedAlerts',
     'recentResolvedAlerts',
     'recommendations'
+]);
+const COMPLIANCE_COMPACT_EVIDENCE_TYPES = Object.freeze([
+    'summaryMetrics',
+    'failedControls',
+    'partialControls',
+    'manualReviewControls',
+    'passedControls',
+    'controlValidationEvidence',
+    'remediationActions',
+    'evidenceReferences'
 ]);
 const DOMAIN_EVIDENCE_CATEGORY_METRICS = Object.freeze({
     identity: {
@@ -1681,6 +1693,325 @@ function compactGovernanceEvidenceRows(flattenedEvidence = [], current = {}) {
     return compactRows.length
         ? compactRows
         : normalizedRows.slice(0, 25).map(item => item.compact);
+}
+
+function complianceStatusFromControl(value = {}, fallbackStatus = null) {
+    const text = [
+        value.status,
+        value.insight,
+        value.result,
+        value.validationStatus,
+        value.state,
+        fallbackStatus
+    ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+    if (/🔴|critical|failed|fail|failing|non.?compliant|not met|attention|required|blocked|overdue|open/.test(text)) {
+        return 'failed';
+    }
+
+    if (/🟡|partial|warning|review|needs follow.?up|needs review|in progress|unknown|insufficient/.test(text)) {
+        return 'partial';
+    }
+
+    if (/🟢|passing|passed|pass|compliant|met|healthy|ok|complete|connected/.test(text)) {
+        return 'passed';
+    }
+
+    if (/manual|attestation|not verified|not supplied|missing evidence/.test(text)) {
+        return 'manual_review_required';
+    }
+
+    return 'manual_review_required';
+}
+
+function complianceSeverityForStatus(status) {
+    if (status === 'failed') return 'high';
+    if (status === 'partial') return 'medium';
+    if (status === 'manual_review_required') return 'medium';
+    return 'low';
+}
+
+function complianceMetricForStatus(status) {
+    if (status === 'failed') return 'failingControls';
+    if (status === 'partial') return 'partialControls';
+    if (status === 'passed') return 'passingControls';
+    return 'manualReviewControls';
+}
+
+function compactComplianceEvidenceRows(flattenedEvidence = [], current = {}) {
+    const rows = array(flattenedEvidence)
+        .filter(row => /compliance|control|validation|evidence|policy|mfa|device|backup|identity|security|application/i.test(
+            String(row.evidenceType || row.sourceLabel || row.evidenceCategory || '')
+        ));
+
+    const metrics = current?.dashboardMetrics || current?.metrics || {};
+    const sourceLineage = current?.source?.sourceLineage || current?.sourceLineage || {};
+
+    const normalizedRows = rows.map((row, index) => {
+        const data = row?.data || row || {};
+
+        const controlName = firstReadableValue(
+            data.controlName,
+            data.name,
+            data.title,
+            data.requirement,
+            data.activity,
+            data.policyName
+        ) || 'Compliance control';
+
+        const controlCategory = firstReadableValue(
+            data.controlCategory,
+            data.area,
+            data.category,
+            data.domain,
+            data.group
+        ) || 'Compliance';
+
+        const rawStatus = firstReadableValue(
+            data.status,
+            data.insight,
+            data.result,
+            data.validationStatus,
+            data.state
+        ) || 'unknown';
+
+        const status = firstReadableValue(data.complianceStatus) || complianceStatusFromControl(data, rawStatus);
+
+        const controlId = firstReadableValue(
+            data.controlId,
+            data.id,
+            data.sourceId,
+            data.policyId,
+            data.requirementId,
+            `${controlCategory}:${controlName}`
+        );
+
+        const evidenceSource = firstReadableValue(
+            data.evidenceSource,
+            data.dataSource,
+            data.source,
+            data.sourceSystem,
+            data.system
+        ) || 'StackCTRL compliance evidence';
+
+        const owner = firstReadableValue(
+            data.owner,
+            data.assignedTo,
+            data.responsibleOwner,
+            data.ownerName,
+            data.ownerEmail
+        );
+
+        const severity = firstReadableValue(data.severity) || complianceSeverityForStatus(status);
+        const sourceMetric = complianceMetricForStatus(status);
+
+        const validationReason = firstReadableValue(
+            data.validationReason,
+            data.reason,
+            data.description,
+            data.detail
+        ) || (
+            status === 'failed'
+                ? `${controlName} is failing based on API-connected StackCTRL compliance evidence.`
+                : status === 'partial'
+                ? `${controlName} is partially satisfied and requires follow-up validation.`
+                : status === 'passed'
+                ? `${controlName} has API-connected evidence supporting a passing status.`
+                : `${controlName} requires manual review because evidence is incomplete, unknown, or not fully API-validated.`
+        );
+
+        const remediationAction = firstReadableValue(
+            data.remediationAction,
+            data.recommendation,
+            data.recommendedAction,
+            data.managementAction
+        ) || (
+            status === 'failed'
+                ? 'Remediate the failed control, collect evidence, and confirm closure.'
+                : status === 'partial'
+                ? 'Review the partial control, close evidence gaps, and confirm final status.'
+                : status === 'passed'
+                ? 'Maintain evidence and validate during the next compliance review cycle.'
+                : 'Assign an owner and complete manual evidence validation.'
+        );
+
+        const auditImpact = firstReadableValue(
+            data.auditImpact,
+            data.businessImpact,
+            data.impact
+        ) || (
+            status === 'failed'
+                ? 'Failed controls can reduce audit readiness and increase compliance exposure.'
+                : status === 'partial'
+                ? 'Partial controls may require auditor explanation and remediation evidence.'
+                : status === 'passed'
+                ? 'Passing controls support audit readiness.'
+                : 'Manual review controls require supporting evidence before audit reliance.'
+        );
+
+        const compact = {
+            internalSourcePath: row?.internalSourcePath || `compliance.compact.controls[${index}]`,
+            sourceLabel: 'controls',
+            evidenceType: 'controls',
+            evidenceCategory: 'controls',
+            sourceMetric,
+            entityKey: controlId || `compliance-control-${index + 1}`,
+            data: compactNonEmptyObject({
+                entityId: controlId || `compliance-control-${index + 1}`,
+                entityName: controlName,
+                entityType: 'ComplianceControl',
+                controlId,
+                controlName,
+                controlCategory,
+                status,
+                rawStatus,
+                severity,
+                owner,
+                ownerStatus: owner ? 'assigned' : 'missing_or_not_supplied',
+                evidenceSource,
+                validationReason,
+                remediationAction,
+                auditImpact,
+                dueDateRecommendation: status === 'failed'
+                    ? 'within 14 days'
+                    : status === 'partial' || status === 'manual_review_required'
+                    ? 'within 30 days'
+                    : 'next review cycle',
+                businessReason: status === 'passed'
+                    ? 'Control has supporting API-connected evidence.'
+                    : 'Control requires compliance management attention based on API-connected evidence.',
+                sourceMetric,
+                evidenceReference: row?.entityKey || controlId || row?.internalSourcePath || null
+            })
+        };
+
+        return {
+            row,
+            status,
+            compact
+        };
+    });
+
+    const failedControls = normalizedRows
+        .filter(item => item.status === 'failed')
+        .slice(0, 20)
+        .map(item => ({
+            ...item.compact,
+            evidenceType: 'failedControls',
+            evidenceCategory: 'failedControls',
+            sourceLabel: 'failedControls',
+            sourceMetric: 'failingControls'
+        }));
+
+    const partialControls = normalizedRows
+        .filter(item => item.status === 'partial')
+        .slice(0, 20)
+        .map(item => ({
+            ...item.compact,
+            evidenceType: 'partialControls',
+            evidenceCategory: 'partialControls',
+            sourceLabel: 'partialControls',
+            sourceMetric: 'partialControls'
+        }));
+
+    const manualReviewControls = normalizedRows
+        .filter(item => item.status === 'manual_review_required')
+        .slice(0, 20)
+        .map(item => ({
+            ...item.compact,
+            evidenceType: 'manualReviewControls',
+            evidenceCategory: 'manualReviewControls',
+            sourceLabel: 'manualReviewControls',
+            sourceMetric: 'manualReviewControls'
+        }));
+
+    const passedControls = normalizedRows
+        .filter(item => item.status === 'passed')
+        .slice(0, 10)
+        .map(item => ({
+            ...item.compact,
+            evidenceType: 'passedControls',
+            evidenceCategory: 'passedControls',
+            sourceLabel: 'passedControls',
+            sourceMetric: 'passingControls'
+        }));
+
+    const remediationActions = normalizedRows
+        .filter(item => ['failed', 'partial', 'manual_review_required'].includes(item.status))
+        .slice(0, 20)
+        .map((item, index) => ({
+            ...item.compact,
+            internalSourcePath: item.compact.internalSourcePath || `compliance.compact.remediationActions[${index}]`,
+            evidenceType: 'remediationActions',
+            evidenceCategory: 'remediationActions',
+            sourceLabel: 'remediationActions',
+            sourceMetric: item.compact.sourceMetric,
+            data: {
+                ...item.compact.data,
+                entityType: 'ComplianceRemediationAction',
+                remediationAction: item.compact.data.remediationAction,
+                managementAction: item.compact.data.remediationAction,
+                auditImpact: item.compact.data.auditImpact
+            }
+        }));
+
+    const evidenceReferences = normalizedRows
+        .slice(0, 25)
+        .map((item, index) => ({
+            ...item.compact,
+            internalSourcePath: item.compact.internalSourcePath || `compliance.compact.evidenceReferences[${index}]`,
+            evidenceType: 'evidenceReferences',
+            evidenceCategory: 'evidenceReferences',
+            sourceLabel: 'evidenceReferences',
+            sourceMetric: item.compact.sourceMetric
+        }));
+
+    const summaryRow = {
+        internalSourcePath: 'compliance.compact.summaryMetrics',
+        sourceLabel: 'summaryMetrics',
+        evidenceType: 'summaryMetrics',
+        evidenceCategory: 'summaryMetrics',
+        sourceMetric: 'complianceScore',
+        entityKey: 'compliance-summary',
+        data: compactNonEmptyObject({
+            entityId: 'compliance-summary',
+            entityName: 'Compliance Validation Summary',
+            entityType: 'ComplianceSummary',
+            totalControls: numberOrNull(metrics.totalControls),
+            apiControls: numberOrNull(metrics.apiControls),
+            manualControlsExcluded: numberOrNull(metrics.manualControlsExcluded),
+            failingControls: numberOrNull(metrics.failingControls),
+            partialControls: numberOrNull(metrics.partialControls),
+            passingControls: numberOrNull(metrics.passingControls),
+            manualReviewControls: numberOrNull(metrics.manualReviewControls),
+            complianceScore: numberOrNull(metrics.complianceScore),
+            auditReadinessStatus: numberOrNull(metrics.failingControls) > 0
+                ? 'not_ready'
+                : numberOrNull(metrics.partialControls) > 0 || numberOrNull(metrics.manualReviewControls) > 0
+                ? 'partially_ready'
+                : 'ready',
+            stackctrlRiskScore: numberOrNull(metrics.stackctrlRiskScore),
+            stackctrlHealthScore: numberOrNull(metrics.stackctrlHealthScore),
+            evidenceSnapshotId: sourceLineage.evidenceSnapshotId || null,
+            sourceFetchedAt: sourceLineage.sourceFetchedAt || sourceLineage.sourceLastUpdated || null,
+            collectionStatus: sourceLineage.collectionStatus || null,
+            validationReason: 'Compliance summary provides audit-readiness context across API-connected compliance controls.',
+            remediationAction: 'Use failed, partial, and manual-review controls to drive remediation and audit evidence collection.'
+        })
+    };
+
+    return [
+        summaryRow,
+        ...failedControls,
+        ...partialControls,
+        ...manualReviewControls,
+        ...remediationActions,
+        ...evidenceReferences,
+        ...passedControls
+    ];
 }
 
 function enrichDomainEvidence(source, domain, evidence) {
@@ -3777,6 +4108,8 @@ function createEnterpriseIntelligenceService({
             ? compactApplicationsEvidenceRows(flattenedDomainEvidence)
             : useStrictCompactPackage && domain.key === 'governance'
             ? compactGovernanceEvidenceRows(flattenedDomainEvidence, current)
+            : useStrictCompactPackage && domain.key === 'compliance'
+            ? compactComplianceEvidenceRows(flattenedDomainEvidence, current)
             : useSecurityAlertsCompactPackage
             ? compactSecurityAlertsEvidenceRows(flattenedDomainEvidence, current)
             : flattenedDomainEvidence;
@@ -4113,7 +4446,8 @@ Applications reasoning requirements:
             - Do not create generic governance advice without evidence. If evidence is missing or stale, report it as a limitation or manual-review item.
             - Put positive observations in keyFindings[] or currentPosture, not risks[].
             - Keep output compact: risks max 5, recommendations max 5, managementActions max 5, affectedEntities max 5 per risk.`;
-            }
+        }
+        domainReasoningContract
         return '';
 }
 
@@ -4205,6 +4539,10 @@ ${domain.key === 'identity'
     ? '- Backup evidence[] contains compact exposure groups: top storage users, inactive data holders, stale activity users, top SharePoint sites, service storage summary, coverage gaps, and recommendations. Do not request omitted raw storage/activity rows.'
     : domain.key === 'applications'
     ? '- Applications evidence[] contains compact governance groups: high-risk, external, excessive-permission, high-access, group-assigned, stale/unreviewed apps, and recommendations. Do not request omitted raw application rows.'
+    : domain.key === 'governance'
+    ? '- Governance evidence[] contains compact management, ownership, review, escalation, and accountability rows. Treat it as a management-control layer, not a raw technical scan.'
+    : domain.key === 'compliance'
+    ? '- Compliance evidence[] contains compact control-validation rows: summary metrics, failed controls, partial controls, manual-review controls, passed controls, remediation actions, and evidence references. Treat missing or weak evidence as partial/manual-review, not as passed.'
     : '- evidenceCatalog.categories contains categorized dashboard entity rows tied to sourceMetric keys.'}
 - evidence[] contains individual entity rows from the StackCTRL dashboard table for this batch.
 Every finding, risk, and recommendation MUST be evidence-backed. Do not state a gap without naming affected users, devices, apps, controls, policies, alerts, or other entities from the supplied evidence.
