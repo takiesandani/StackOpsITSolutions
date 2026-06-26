@@ -320,7 +320,7 @@ async function collectSource(context, definition) {
     return statusResult(capability, status, {
         freshness: {
             lastUpdated: freshness.lastUpdated,
-            ageMinutes: freshness.ageMinutes
+            ageMinutes: freshness.ageMinutes 
         },
         credentialSource: ['identity', 'devices', 'email_security', 'security_alerts', 'backup', 'applications'].includes(capability.sourceKey)
             || capability.sourceKey === 'cloudflare_network_security' ? 'environment' : 'database',
@@ -342,7 +342,7 @@ async function collectSource(context, definition) {
             recordId: records[0]?.ID || records[0]?.id || null
         }
     });
-}
+} 
 
 const definitions = {
     identity: {

@@ -7202,67 +7202,281 @@ function normalizeGraphCollectionPayload(value, preferredKey = null) {
 }
 
 async function fetchEmailSecurityPayloadFromApi(tokenOverride = null) {
-    const token = tokenOverride || await getMicrosoftGraphToken();
-    const [alertsPayload, incidentsPayload, mailActivity] = await Promise.all([
-        fetchSecurityAlerts(token),
-        fetchSecurityIncidents(token),
-        fetchEmailActivityReport(token)
-    ]);
-    const alerts = normalizeGraphCollectionPayload(alertsPayload, 'alerts');
-    const incidents = normalizeGraphCollectionPayload(incidentsPayload, 'incidents');
+    const token = tokenOverride || await getMicrosoftGraphToken({ securityAlerts: true });
+    const fetchedAt = new Date().toISOString();
 
-    const emailKeywords = ['phishing', 'malware', 'spam', 'email', 'attachment', 'suspicious mail', 'ransomware', 'spoof', 'impersonation'];
+    function cleanWarning(value) {
+        return String(value || '').trim();
+    }
+
+    function uniqueWarnings(items = []) {
+        return [...new Set(items.map(cleanWarning).filter(Boolean))];
+    }
+
+    function normalizeCollection(value, preferredKey = null) {
+        return normalizeGraphCollectionPayload(value, preferredKey);
+    }
+
+    async function fetchEmailAlertsSafe() {
+        try {
+            if (typeof fetchSecurityAlertRows === 'function') {
+                const result = await fetchSecurityAlertRows(token);
+                return {
+                    records: normalizeCollection(result?.alerts || result, 'alerts'),
+                    warnings: Array.isArray(result?.warnings) ? result.warnings : [],
+                    recordsFetched: Number(result?.recordsFetched || 0),
+                    ok: result?.ok !== false,
+                    sourceFunction: 'fetchSecurityAlertRows'
+                };
+            }
+
+            if (typeof fetchSecurityAlerts === 'function') {
+                const result = await fetchSecurityAlerts(token);
+                return {
+                    records: normalizeCollection(result, 'alerts'),
+                    warnings: [],
+                    recordsFetched: normalizeCollection(result, 'alerts').length,
+                    ok: true,
+                    sourceFunction: 'fetchSecurityAlerts'
+                };
+            }
+
+            return {
+                records: [],
+                warnings: ['Email Security alerts unavailable: no alert fetch function is defined.'],
+                recordsFetched: 0,
+                ok: false,
+                sourceFunction: null
+            };
+        } catch (error) {
+            return {
+                records: [],
+                warnings: [`Email Security alerts fetch failed: ${error.message || error}`],
+                recordsFetched: 0,
+                ok: false,
+                sourceFunction: 'alerts_fetch_failed'
+            };
+        }
+    }
+
+    async function fetchEmailIncidentsSafe() {
+        try {
+            if (typeof fetchSecurityIncidentRows === 'function') {
+                const result = await fetchSecurityIncidentRows(token);
+                return {
+                    records: normalizeCollection(result?.incidents || result, 'incidents'),
+                    warnings: Array.isArray(result?.warnings) ? result.warnings : [],
+                    recordsFetched: Number(result?.recordsFetched || 0),
+                    ok: result?.ok !== false,
+                    sourceFunction: 'fetchSecurityIncidentRows'
+                };
+            }
+
+            if (typeof fetchSecurityIncidents === 'function') {
+                const result = await fetchSecurityIncidents(token);
+                return {
+                    records: normalizeCollection(result?.incidents || result, 'incidents'),
+                    warnings: Array.isArray(result?.warnings) ? result.warnings : [],
+                    recordsFetched: normalizeCollection(result?.incidents || result, 'incidents').length,
+                    ok: true,
+                    sourceFunction: 'fetchSecurityIncidents'
+                };
+            }
+
+            return {
+                records: [],
+                warnings: ['Email Security incidents unavailable: no incident fetch function is defined.'],
+                recordsFetched: 0,
+                ok: false,
+                sourceFunction: null
+            };
+        } catch (error) {
+            return {
+                records: [],
+                warnings: [`Email Security incidents fetch failed: ${error.message || error}`],
+                recordsFetched: 0,
+                ok: false,
+                sourceFunction: 'incidents_fetch_failed'
+            };
+        }
+    }
+
+    async function fetchEmailActivitySafe() {
+        try {
+            const result = await fetchEmailActivityReport(token);
+            const users = Array.isArray(result?.users) ? result.users : [];
+
+            return {
+                users,
+                summary: result?.summary || {},
+                warnings: Array.isArray(result?.warnings) ? result.warnings : [],
+                recordsFetched: users.length,
+                ok: true,
+                sourceFunction: 'fetchEmailActivityReport'
+            };
+        } catch (error) {
+            return {
+                users: [],
+                summary: {},
+                warnings: [`Email activity report failed: ${error.message || error}`],
+                recordsFetched: 0,
+                ok: false,
+                sourceFunction: 'fetchEmailActivityReport'
+            };
+        }
+    }
+
+    const [alertsSettled, incidentsSettled, activitySettled] = await Promise.allSettled([
+        fetchEmailAlertsSafe(),
+        fetchEmailIncidentsSafe(),
+        fetchEmailActivitySafe()
+    ]);
+
+    const alertsResult = alertsSettled.status === 'fulfilled'
+        ? alertsSettled.value
+        : {
+            records: [],
+            warnings: [`Email Security alerts fetch failed: ${alertsSettled.reason?.message || alertsSettled.reason}`],
+            recordsFetched: 0,
+            ok: false,
+            sourceFunction: 'alerts_settled_failure'
+        };
+
+    const incidentsResult = incidentsSettled.status === 'fulfilled'
+        ? incidentsSettled.value
+        : {
+            records: [],
+            warnings: [`Email Security incidents fetch failed: ${incidentsSettled.reason?.message || incidentsSettled.reason}`],
+            recordsFetched: 0,
+            ok: false,
+            sourceFunction: 'incidents_settled_failure'
+        };
+
+    const mailActivity = activitySettled.status === 'fulfilled'
+        ? activitySettled.value
+        : {
+            users: [],
+            summary: {},
+            warnings: [`Email activity report failed: ${activitySettled.reason?.message || activitySettled.reason}`],
+            recordsFetched: 0,
+            ok: false,
+            sourceFunction: 'activity_settled_failure'
+        };
+
+    const alerts = normalizeCollection(alertsResult.records, 'alerts');
+    const incidents = normalizeCollection(incidentsResult.records, 'incidents');
+
+    const emailKeywords = [
+        'phishing',
+        'malware',
+        'spam',
+        'email',
+        'mail',
+        'exchange',
+        'attachment',
+        'suspicious mail',
+        'ransomware',
+        'spoof',
+        'impersonation',
+        'business email',
+        'bec',
+        'safe links',
+        'safe attachments',
+        'quarantine'
+    ];
+
     const emailAlerts = alerts.filter(isEmailSecuritySignal);
+
     const emailIncidents = incidents.filter(incident => {
-        const text = `${incident.displayName || ''} ${incident.description || ''}`.toLowerCase();
+        const text = [
+            incident.displayName,
+            incident.title,
+            incident.description,
+            incident.category,
+            incident.classification,
+            incident.determination
+        ].filter(Boolean).join(' ').toLowerCase();
+
         return emailKeywords.some(keyword => text.includes(keyword));
     });
 
-    const processedAlerts = emailAlerts.map(alert => ({
-        id: alert.id,
-        title: alert.title || 'Unknown Alert',
-        description: alert.description || '',
-        severity: String(alert.severity || 'medium').toLowerCase(),
-        status: String(alert.status || 'newAlert').toLowerCase(),
-        created: alert.createdDateTime || new Date().toISOString(),
-        category: alert.category || 'Security Alert',
-        sender: 'Unknown sender',
-        recipient: (alert.userStates || [])[0]?.accountName || 'Unknown user',
-        source: alert.serviceSource || alert.vendorInformation?.provider || 'Microsoft Security',
-        vendorInformation: alert.vendorInformation?.provider || 'Microsoft Security',
-        userStates: (alert.userStates || []).map(user => ({
-            aadUserId: user.aadUserId,
-            accountName: user.accountName || 'Unknown'
-        }))
-    }));
+    const processedAlerts = emailAlerts.map((alert, index) => {
+        const userStates = Array.isArray(alert.userStates) ? alert.userStates : [];
+        const firstUser = userStates[0] || {};
 
-    const processedIncidents = emailIncidents.map(incident => ({
-        id: incident.id,
-        displayName: incident.displayName || 'Unknown Incident',
+        return {
+            id: alert.id || `email-alert-${index + 1}`,
+            title: alert.title || alert.alertName || alert.displayName || 'Unknown Email Alert',
+            description: alert.description || '',
+            severity: String(alert.severity || 'medium').toLowerCase(),
+            status: String(alert.status || 'newAlert').toLowerCase(),
+            created: alert.createdDateTime || alert.eventDateTime || alert.lastModifiedDateTime || fetchedAt,
+            updated: alert.lastModifiedDateTime || alert.resolvedDateTime || alert.createdDateTime || fetchedAt,
+            category: alert.category || alert.serviceSource || 'Email Security Alert',
+            sender: alert.senderAddress || alert.senderEmail || alert.fromAddress || alert.mailFrom || 'Unknown sender',
+            recipient: firstUser.accountName || alert.userPrincipalName || alert.userEmail || alert.recipientEmailAddress || 'Unknown user',
+            source: alert.serviceSource || alert.vendorInformation?.provider || 'Microsoft Security',
+            vendorInformation: alert.vendorInformation?.provider || 'Microsoft Security',
+            detectionSource: alert.detectionSource || null,
+            userStates: userStates.map(user => ({
+                aadUserId: user.aadUserId || user.userId || null,
+                accountName: user.accountName || user.userPrincipalName || 'Unknown'
+            }))
+        };
+    });
+
+    const processedIncidents = emailIncidents.map((incident, index) => ({
+        id: incident.id || `email-incident-${index + 1}`,
+        displayName: incident.displayName || incident.title || 'Unknown Email Incident',
         description: incident.description || '',
-        severity: (incident.severity || 'medium').toLowerCase(),
-        status: (incident.status || 'active').toLowerCase(),
-        created: incident.createdDateTime || new Date().toISOString(),
-        updated: incident.lastUpdateDateTime || new Date().toISOString(),
-        assignedTo: incident.assignedTo || 'Unassigned'
+        severity: String(incident.severity || 'medium').toLowerCase(),
+        status: String(incident.status || 'active').toLowerCase(),
+        created: incident.createdDateTime || fetchedAt,
+        updated: incident.lastUpdateDateTime || incident.lastUpdatedDateTime || incident.createdDateTime || fetchedAt,
+        assignedTo: incident.assignedTo || 'Unassigned',
+        classification: incident.classification || null,
+        determination: incident.determination || null
     }));
 
-    const activeThreats = processedAlerts.filter(alert => ['newalert', 'inprogress'].includes(alert.status)).length;
-    const highSeverityAlerts = processedAlerts.filter(alert => ['high', 'critical'].includes(alert.severity)).length;
-    const activeIncidents = processedIncidents.filter(incident => ['active', 'inprogress'].includes(incident.status)).length;
-    const resolvedAlerts = processedAlerts.filter(alert => ['resolved', 'dismissed'].includes(alert.status)).length;
-    const threatResolutionRate = processedAlerts.length ? Math.round((resolvedAlerts / processedAlerts.length) * 100) : 100;
+    const activeThreats = processedAlerts.filter(alert =>
+        ['newalert', 'new', 'inprogress', 'active'].includes(String(alert.status || '').toLowerCase())
+    ).length;
+
+    const highSeverityAlerts = processedAlerts.filter(alert =>
+        ['critical', 'high'].includes(String(alert.severity || '').toLowerCase())
+    ).length;
+
+    const activeIncidents = processedIncidents.filter(incident =>
+        ['active', 'inprogress', 'new', 'open'].includes(String(incident.status || '').toLowerCase())
+    ).length;
+
+    const resolvedAlerts = processedAlerts.filter(alert =>
+        ['resolved', 'dismissed', 'closed'].includes(String(alert.status || '').toLowerCase())
+    ).length;
+
+    const threatResolutionRate = processedAlerts.length
+        ? Math.round((resolvedAlerts / processedAlerts.length) * 100)
+        : 100;
 
     const affectedUsersSet = new Set();
     const userThreatCount = {};
+
     processedAlerts.forEach(alert => {
-        alert.userStates.forEach(user => {
-            affectedUsersSet.add(user.accountName);
-            userThreatCount[user.accountName] = (userThreatCount[user.accountName] || 0) + 1;
+        const users = Array.isArray(alert.userStates) && alert.userStates.length
+            ? alert.userStates
+            : [{ accountName: alert.recipient }];
+
+        users.forEach(user => {
+            const name = user.accountName || user.userPrincipalName || alert.recipient;
+            if (!name || name === 'Unknown user') return;
+
+            affectedUsersSet.add(name);
+            userThreatCount[name] = (userThreatCount[name] || 0) + 1;
         });
     });
 
     const affectedUsers = Array.from(affectedUsersSet);
+
     const mostTargeted = Object.entries(userThreatCount)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 10)
@@ -7270,36 +7484,108 @@ async function fetchEmailSecurityPayloadFromApi(tokenOverride = null) {
 
     const byType = {};
     const bySeverity = { high: 0, medium: 0, low: 0 };
+
     processedAlerts.forEach(alert => {
         const text = `${alert.title || ''} ${alert.description || ''} ${alert.category || ''}`.toLowerCase();
+
         let type = 'Other';
         if (text.includes('phish')) type = 'Phishing';
         else if (text.includes('malware') || text.includes('attachment') || text.includes('ransomware')) type = 'Malware';
         else if (text.includes('spam')) type = 'Spam';
         else if (text.includes('spoof')) type = 'Spoofing';
-        else if (text.includes('impersonation') || text.includes('business email')) type = 'BEC';
+        else if (text.includes('impersonation') || text.includes('business email') || text.includes('bec')) type = 'BEC';
+
         byType[type] = (byType[type] || 0) + 1;
-        if (alert.severity === 'critical' || alert.severity === 'high') bySeverity.high++;
-        else if (alert.severity === 'medium') bySeverity.medium++;
-        else bySeverity.low++;
+
+        if (alert.severity === 'critical' || alert.severity === 'high') bySeverity.high += 1;
+        else if (alert.severity === 'medium') bySeverity.medium += 1;
+        else bySeverity.low += 1;
     });
 
     let securityScore = 100;
     const severityScores = { critical: 18, high: 12, medium: 5, low: 2 };
+
     processedAlerts.slice(0, 30).forEach(alert => {
         securityScore -= severityScores[alert.severity] || 2;
     });
+
     securityScore = Math.max(0, Math.min(100, securityScore));
 
+    const mailUsers = Array.isArray(mailActivity.users) ? mailActivity.users : [];
+    const mailSummary = mailActivity.summary || {};
+
+    const warnings = uniqueWarnings([
+        ...(Array.isArray(alertsResult.warnings) ? alertsResult.warnings : []),
+        ...(Array.isArray(incidentsResult.warnings) ? incidentsResult.warnings : []),
+        ...(Array.isArray(mailActivity.warnings) ? mailActivity.warnings : [])
+    ]);
+
+    const recordsFetched =
+        Number(alertsResult.recordsFetched || alerts.length || 0) +
+        Number(incidentsResult.recordsFetched || incidents.length || 0) +
+        Number(mailActivity.recordsFetched || mailUsers.length || 0);
+
+    const recordsPrepared = processedAlerts.length + processedIncidents.length + mailUsers.length;
+
+    const hasUsableEvidence = Boolean(recordsPrepared > 0 || mailUsers.length > 0);
+
+    if (!hasUsableEvidence) {
+        const error = new Error(
+            warnings.length
+                ? `Email evidence refresh failed: ${warnings.join('; ')}`
+                : 'Email evidence refresh failed: no usable Email Security evidence was returned.'
+        );
+
+        error.isRefreshError = true;
+        error.emailSecurityStage = 'email_security_source_collection';
+        error.emailSecurityWarnings = warnings;
+
+        throw error;
+    }
+
     const insights = [];
-    if (highSeverityAlerts > 0) insights.push({ type: 'critical', message: `${highSeverityAlerts} high-severity email threat(s) detected`, action: 'Review Alerts', count: highSeverityAlerts });
-    if (affectedUsers.length > 0) insights.push({ type: 'info', message: `${affectedUsers.length} user(s) affected by email threats`, action: 'View Users', count: affectedUsers.length });
-    if (activeIncidents > 0) insights.push({ type: 'critical', message: `${activeIncidents} unresolved incident(s) requiring attention`, action: 'View Incidents', count: activeIncidents });
-    if (threatResolutionRate < 50) insights.push({ type: 'warning', message: `Only ${threatResolutionRate}% of threats have been resolved`, action: 'Improve Response', count: threatResolutionRate });
+
+    if (highSeverityAlerts > 0) {
+        insights.push({
+            type: 'critical',
+            message: `${highSeverityAlerts} high-severity email threat(s) detected`,
+            action: 'Review Alerts',
+            count: highSeverityAlerts
+        });
+    }
+
+    if (affectedUsers.length > 0) {
+        insights.push({
+            type: 'info',
+            message: `${affectedUsers.length} user(s) affected by email threats`,
+            action: 'View Users',
+            count: affectedUsers.length
+        });
+    }
+
+    if (activeIncidents > 0) {
+        insights.push({
+            type: 'critical',
+            message: `${activeIncidents} unresolved email incident(s) requiring attention`,
+            action: 'View Incidents',
+            count: activeIncidents
+        });
+    }
+
+    if (threatResolutionRate < 50) {
+        insights.push({
+            type: 'warning',
+            message: `Only ${threatResolutionRate}% of email threats have been resolved`,
+            action: 'Improve Response',
+            count: threatResolutionRate
+        });
+    }
 
     return {
         success: true,
-        fetchedAt: new Date().toISOString(),
+        fetchedAt,
+        collectionStatus: warnings.length ? 'completed_with_warnings' : 'complete',
+        warnings,
         summary: {
             activeThreats,
             highSeverityAlerts,
@@ -7307,14 +7593,40 @@ async function fetchEmailSecurityPayloadFromApi(tokenOverride = null) {
             affectedUsersCount: affectedUsers.length,
             threatResolutionRate,
             securityScore,
-            mailActivity: mailActivity.summary || {}
+            phishingCount: processedAlerts.filter(alert => /phish/i.test(`${alert.title} ${alert.description} ${alert.category}`)).length,
+            malwareCount: processedAlerts.filter(alert => /malware|ransomware|virus|trojan|attachment/i.test(`${alert.title} ${alert.description} ${alert.category}`)).length,
+            spamCount: processedAlerts.filter(alert => /spam/i.test(`${alert.title} ${alert.description} ${alert.category}`)).length,
+            becCount: processedAlerts.filter(alert => /business email|bec|impersonation|spoof/i.test(`${alert.title} ${alert.description} ${alert.category}`)).length,
+            activeMailboxes: mailSummary.activeMailboxes || 0,
+            totalMailActivity: mailSummary.totalMailActivity || 0,
+            sendCount: mailSummary.sendCount || 0,
+            receiveCount: mailSummary.receiveCount || 0,
+            readCount: mailSummary.readCount || 0,
+            recordsFetched,
+            recordsPrepared,
+            recordsOmitted: Math.max(0, alerts.length + incidents.length - processedAlerts.length - processedIncidents.length),
+            mailActivity: mailSummary
         },
         alerts: processedAlerts,
         incidents: processedIncidents,
         threats: { byType, bySeverity },
         affectedUsers: { all: affectedUsers, mostTargeted },
-        mailActivity,
-        insights
+        mailActivity: {
+            users: mailUsers,
+            summary: mailSummary
+        },
+        insights,
+        sourceAudit: {
+            source: 'stackctrl_email_security_graph_collection',
+            fetchedAt,
+            alertsFunction: alertsResult.sourceFunction,
+            incidentsFunction: incidentsResult.sourceFunction,
+            mailActivityFunction: mailActivity.sourceFunction,
+            alertsOk: alertsResult.ok !== false,
+            incidentsOk: incidentsResult.ok !== false,
+            mailActivityOk: mailActivity.ok !== false,
+            warnings
+        }
     };
 }
 
