@@ -95,6 +95,30 @@ test('saved Email evidence metrics match the visible dashboard email model', () 
     assert.equal(evidence.isComplete, true);
 });
 
+test('Email evidence derivation accepts object-shaped alerts payloads', () => {
+    const evidence = deriveEmailEvidence({
+        success: true,
+        fetchedAt: NOW.toISOString(),
+        alerts: {
+            alerts: [{
+                id: 'alert-object-1',
+                title: 'Phishing email detected',
+                severity: 'high',
+                status: 'newalert',
+                userStates: [{ accountName: 'user@example.com' }]
+            }]
+        },
+        incidents: [],
+        mailActivity: { users: [], summary: {} },
+        affectedUsers: { all: ['user@example.com'] }
+    });
+
+    assert.equal(evidence.dashboardMetrics.activeThreats, 1);
+    assert.equal(evidence.dashboardMetrics.highSeverityAlerts, 1);
+    assert.equal(evidence.dashboardMetrics.phishingCount, 1);
+    assert.equal(evidence.evidenceRows.length, 1);
+});
+
 test('Email evidence storage writes one readable row per alert, incident, and mailbox activity record', async () => {
     const calls = [];
     const connection = {

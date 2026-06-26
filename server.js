@@ -7190,13 +7190,26 @@ function isEmailSecuritySignal(item = {}) {
     return /(email|mail|exchange|phish|spam|spoof|malware|attachment|safe links|safe attachments|impersonation|business email|quarantine)/.test(text);
 }
 
+function normalizeGraphCollectionPayload(value, preferredKey = null) {
+    if (Array.isArray(value)) return value;
+    if (!value || typeof value !== 'object') return [];
+    if (preferredKey && Array.isArray(value[preferredKey])) return value[preferredKey];
+    if (Array.isArray(value.alerts)) return value.alerts;
+    if (Array.isArray(value.incidents)) return value.incidents;
+    if (Array.isArray(value.value)) return value.value;
+    if (Array.isArray(value.data)) return value.data;
+    return [];
+}
+
 async function fetchEmailSecurityPayloadFromApi(tokenOverride = null) {
     const token = tokenOverride || await getMicrosoftGraphToken();
-    const [alerts, incidents, mailActivity] = await Promise.all([
+    const [alertsPayload, incidentsPayload, mailActivity] = await Promise.all([
         fetchSecurityAlerts(token),
         fetchSecurityIncidents(token),
         fetchEmailActivityReport(token)
     ]);
+    const alerts = normalizeGraphCollectionPayload(alertsPayload, 'alerts');
+    const incidents = normalizeGraphCollectionPayload(incidentsPayload, 'incidents');
 
     const emailKeywords = ['phishing', 'malware', 'spam', 'email', 'attachment', 'suspicious mail', 'ransomware', 'spoof', 'impersonation'];
     const emailAlerts = alerts.filter(isEmailSecuritySignal);
