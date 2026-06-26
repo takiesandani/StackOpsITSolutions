@@ -68,48 +68,107 @@ function mysqlDateTime(value) {
 }
 
 function deriveSecurityEvidence(payload = {}) {
+    const rawWarnings = [
+        ...(Array.isArray(payload.warnings) ? payload.warnings : []),
+        ...(Array.isArray(payload.collection?.warnings) ? payload.collection.warnings : []),
+        ...(payload.collection?.incompleteReason ? [payload.collection.incompleteReason] : []),
+        ...(payload.incompleteReason ? [payload.incompleteReason] : [])
+    ];
+
     const dashboardSource = buildSecurityDashboardSource({
         alertsRows: payload.alerts || [],
         incidentsRows: payload.incidents || [],
-        threatsRows: payload.threats || [],
-        suspiciousSignInsRows: payload.signIns?.suspicious || [],
+        threatsRows: payload.threats || payload.threatIndicators || [],
+        suspiciousSignInsRows: payload.signIns?.suspicious || payload.suspiciousSignIns || [],
         summary: payload.summary || payload.dashboardMetrics || {},
-        recommendations: payload.recommendations
+        recommendations: payload.recommendations,
+        warnings: rawWarnings
     });
+
     const metrics = dashboardSource.dashboardMetrics;
+
     const riskEngine = buildRiskEngine({
-        sources: [{ sourceKey: 'security_alerts', status: 'available', isExpected: true, metrics, dashboardMetrics: metrics }],
-        dataCompleteness: { score: 100 }
+        sources: [{
+            sourceKey: 'security_alerts',
+            status: dashboardSource.warnings.length ? 'partial' : 'available',
+            isExpected: true,
+            metrics,
+            dashboardMetrics: metrics
+        }],
+        dataCompleteness: { score: dashboardSource.warnings.length ? 85 : 100 }
     });
+
     const stackctrlHealthScore = riskEngine.domainHealthScores.security;
     const stackctrlRiskScore = riskEngine.domainRiskScores.security;
     const dashboardMetrics = { ...metrics, stackctrlRiskScore, stackctrlHealthScore };
+
     const evidenceRows = [
         ...dashboardSource.alerts.map((alert, index) => ({
-            kind: 'alert', sourceId: String(alert.id || `alert-${index + 1}`).slice(0, 255),
-            title: alert.title || 'Unknown Alert', severity: alert.severity || 'medium', status: alert.status || 'newalert', processed: alert
+            kind: 'alert',
+            sourceId: String(alert.id || alert.alertId || `alert-${index + 1}`).slice(0, 255),
+            title: alert.title || alert.alertName || alert.displayName || 'Unknown Alert',
+            severity: alert.severity || 'medium',
+            status: alert.status || 'newalert',
+            processed: alert
         })),
         ...dashboardSource.incidents.map((incident, index) => ({
-            kind: 'incident', sourceId: String(incident.id || `incident-${index + 1}`).slice(0, 255),
-            title: incident.displayName || 'Unknown Incident', severity: incident.severity || 'medium', status: incident.status || 'active', processed: incident
+            kind: 'incident',
+            sourceId: String(incident.id || incident.incidentId || `incident-${index + 1}`).slice(0, 255),
+            title: incident.displayName || incident.title || incident.incidentName || 'Unknown Incident',
+            severity: incident.severity || 'medium',
+            status: incident.status || 'active',
+            processed: incident
         })),
         ...dashboardSource.suspiciousSignIns.map((signIn, index) => ({
-            kind: 'sign_in', sourceId: String(signIn.id || `signin-${index + 1}`).slice(0, 255),
-            title: signIn.user || 'Suspicious sign-in', severity: signIn.status === 'Failed' ? 'medium' : 'low', status: signIn.status || 'Success', processed: signIn
+            kind: 'sign_in',
+            sourceId: String(signIn.id || signIn.signInId || `signin-${index + 1}`).slice(0, 255),
+            title: signIn.user || signIn.userPrincipalName || signIn.userEmail || 'Suspicious sign-in',
+            severity: signIn.severity || (String(signIn.status || '').toLowerCase() === 'failed' ? 'medium' : 'low'),
+            status: signIn.status || signIn.result || 'unknown',
+            processed: signIn
         })),
         ...dashboardSource.threats.map((threat, index) => ({
-            kind: 'threat_indicator', sourceId: String(threat.id || `threat-${index + 1}`).slice(0, 255),
-            title: threat.indicator || 'Threat indicator', severity: threat.severity || 'medium', status: threat.action || 'Block', processed: threat
+            kind: 'threat_indicator',
+            sourceId: String(threat.id || threat.indicator || threat.value || `threat-${index + 1}`).slice(0, 255),
+            title: threat.indicator || threat.value || threat.indicatorValue || 'Threat indicator',
+            severity: threat.severity || 'medium',
+            status: threat.action || threat.status || 'Review',
+            processed: threat
         }))
     ];
-    const isComplete = Boolean(payload.success !== false);
-    const warnings = Array.isArray(payload.warnings) ? payload.warnings : [];
+
+    const hasPrimaryEvidence = Boolean(
+        dashboardSource.alerts.length ||
+        dashboardSource.incidents.length ||
+        dashboardSource.suspiciousSignIns.length
+    );
+
+    const hasAnyEvidence = Boolean(evidenceRows.length);
+    const isComplete = hasPrimaryEvidence && dashboardSource.warnings.length === 0;
+    const isPartial = hasPrimaryEvidence && dashboardSource.warnings.length > 0;
+
     const accounting = payload.collection?.accounting || {};
-    const omittedRecordCount = Math.max(0, Number(accounting.recordsOmitted || payload.summary?.recordsOmitted || 0));
-    const expectedRecordCount = Math.max(evidenceRows.length, Number(accounting.recordsFetched || payload.summary?.recordsFetched || evidenceRows.length));
+    const omittedRecordCount = Math.max(0, Number(
+        accounting.recordsOmitted ||
+        payload.summary?.recordsOmitted ||
+        0
+    ));
+
+    const expectedRecordCount = Math.max(
+        evidenceRows.length,
+        Number(
+            accounting.recordsFetched ||
+            payload.summary?.recordsFetched ||
+            evidenceRows.length
+        )
+    );
+
     const collectionStatus = isComplete
-        ? (warnings.length || payload.collectionStatus === 'completed_with_warnings' ? 'completed_with_warnings' : 'complete')
-        : 'failed_terminal';
+        ? 'complete'
+        : isPartial
+            ? 'completed_with_warnings'
+            : 'failed_terminal';
+
     return {
         evidenceRows,
         dashboardMetrics,
@@ -117,14 +176,22 @@ function deriveSecurityEvidence(payload = {}) {
         stackctrlHealthScore,
         expectedRecordCount,
         omittedRecordCount,
-        completenessPercent: expectedRecordCount ? Number(((evidenceRows.length / expectedRecordCount) * 100).toFixed(2)) : (isComplete ? 100 : 0),
-        isComplete,
+        completenessPercent: expectedRecordCount
+            ? Number(((evidenceRows.length / expectedRecordCount) * 100).toFixed(2))
+            : (hasAnyEvidence ? 100 : 0),
+        isComplete: isComplete || isPartial,
         collectionStatus,
-        warnings,
-        sourceAudit: payload.collection || null,
-        incompleteReason: isComplete
-            ? (warnings.length ? warnings.join('; ') : null)
-            : 'The processed Security Alerts dashboard did not complete successfully.'
+        warnings: dashboardSource.warnings,
+        sourceAudit: {
+            ...(payload.collection || {}),
+            warnings: dashboardSource.warnings,
+            internalThreatIndicatorsExtracted: dashboardSource.internalThreatIndicators?.length || 0,
+            hasPrimaryEvidence,
+            hasAnyEvidence
+        },
+        incompleteReason: dashboardSource.warnings.length
+            ? dashboardSource.warnings.join('; ')
+            : null
     };
 }
 

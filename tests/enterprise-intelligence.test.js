@@ -10,6 +10,8 @@ const {
     EMAIL_LINEAGE_FIELDS,
     NETWORK_LINEAGE_FIELDS,
     ENTERPRISE_DOMAINS,
+    ACTIVE_ENTERPRISE_DOMAIN_KEYS,
+    TEMPORARILY_DISABLED_DOMAIN_KEYS,
     ensureItemEvidence,
     flattenDomainEvidence,
     normalizeEvidenceBackedItem,
@@ -27,6 +29,28 @@ test('enterprise domain order keeps governance, operations, and compliance last'
         'identity', 'devices', 'email_security', 'cloudflare_network_security', 'security_alerts',
         'applications', 'backup', 'governance', 'operations', 'compliance'
     ]);
+    assert.deepEqual(ACTIVE_ENTERPRISE_DOMAIN_KEYS, [
+        'identity', 'devices', 'email_security', 'cloudflare_network_security', 'security_alerts',
+        'applications', 'backup'
+    ]);
+    assert.deepEqual(TEMPORARILY_DISABLED_DOMAIN_KEYS, ['governance', 'operations', 'compliance']);
+});
+
+test('temporarily disabled enterprise domains remain visible but cannot be selected or run', async () => {
+    const service = createEnterpriseIntelligenceService({ pool: {}, azureOpenAI: {}, schedulerService: {} });
+    const disabled = service.domains.filter(domain => TEMPORARILY_DISABLED_DOMAIN_KEYS.includes(domain.key));
+
+    assert.deepEqual(disabled.map(domain => domain.key), ['governance', 'operations', 'compliance']);
+    assert.ok(disabled.every(domain => domain.status === 'temporarily_disabled'));
+    assert.ok(disabled.every(domain => domain.selectable === false));
+    assert.ok(disabled.every(domain => domain.includedInCurrentPhase === false));
+
+    const result = await service.runEnterpriseReport({ companyId: 1, domainKeys: ['governance'], includeSynthesis: true });
+    assert.equal(result.status, 'temporarily_disabled');
+    assert.equal(result.runId, null);
+    assert.equal(result.synthesisStatus, 'not_requested');
+    assert.equal(result.domains[0].status, 'temporarily_disabled');
+    assert.equal(result.domainRunSummary.failedDomains.length, 0);
 });
 
 test('heavy domains and large inputs enforce automation-safe cooldowns', () => {
@@ -2557,9 +2581,19 @@ test('Power BI read model returns full domain outputs, synthesis, raw labels, an
 
     assert.equal(intelligence.dataClassification, 'intelligent_azure_output');
     assert.equal(intelligence.domains.length, 10);
+    assert.equal(intelligence.completeness.expectedDomains, 7);
+    assert.equal(intelligence.completeness.disabledDomainCount, 3);
+    assert.deepEqual(intelligence.completeness.activeDomainKeys, ACTIVE_ENTERPRISE_DOMAIN_KEYS);
     assert.equal(intelligence.finalSynthesis.synthesisOutput.enterpriseExecutiveSummary.summary, 'Full synthesis');
-    assert.equal(intelligence.tables.AffectedEntityRows.length, 20);
-    assert.equal(intelligence.tables.EvidenceRows.length, 20);
+    assert.equal(intelligence.tables.AffectedEntityRows.length, ACTIVE_ENTERPRISE_DOMAIN_KEYS.length * 2);
+    assert.equal(intelligence.tables.EvidenceRows.length, ACTIVE_ENTERPRISE_DOMAIN_KEYS.length * 2);
+    assert.equal(intelligence.tables.disabled_domains.length, 3);
+    assert.equal(intelligence.tables.domain_status.length, 10);
+    assert.equal(intelligence.tables.domain_status.find(row => row.domainKey === 'governance').domainStatus, 'temporarily_disabled');
+    assert.equal(intelligence.tables.risk_register.some(row => TEMPORARILY_DISABLED_DOMAIN_KEYS.includes(row.domainKey)), false);
+    const disabledDomain = await service.getPowerBIDomain(1, 'governance');
+    assert.equal(disabledDomain.domain.status, 'temporarily_disabled');
+    assert.equal(disabledDomain.domain.selectable, false);
     assert.equal(raw.dataClassification, 'raw_non_intelligent_stackctrl');
     assert.match(raw.warning, /not been analysed/i);
 });
@@ -2606,7 +2640,7 @@ test('Security Alerts selected-domain analysis sends compact groups and keeps ou
     const alertRows = Array.from({ length: 150 }, (_, index) => ({
         id: `source-alert-${index + 1}`, title: `Repeated alert pattern ${index % 3}`,
         severity: index < 10 ? 'critical' : 'high', category: index % 2 ? 'malware' : 'phishing',
-        status: 'active', source: 'Microsoft Defender', deviceName: `device-${index % 12}`, userPrincipalName: `user${index % 20}@example.com`
+        status: 'active', source: 'Microsoft Defender', deviceName: `device-${index % 12}`, userPrincipalName: `user${index % 20}@example.com`, ipAddress: `198.51.100.${index % 40 + 1}`, url: `https://evil${index % 3}.example-threat.test/path`, fileHash: 'a'.repeat(64), location: index % 2 ? 'Cape Town, ZA' : 'Johannesburg, ZA'
     }));
     const snapshot = {
         ID: 1200, CompanyID: 1, CreatedAt: new Date('2026-06-24T08:00:00Z'), MetricsJson: '{}',
@@ -2614,6 +2648,7 @@ test('Security Alerts selected-domain analysis sends compact groups and keeps ou
             riskEngine: { domainHealthScores: { security: 50 }, domainRiskScores: { security: 50 } },
             sources: [{
                 sourceKey: 'security_alerts', status: 'available', isExpected: true,
+                warnings: ['threat_indicators_unavailable: external threat indicator enrichment failed'],
                 sourceLineage: { evidenceRecordCount: 150, omittedRecordCount: 0, sourceFetchedAt: '2026-06-24T08:05:00.000Z' },
                 dashboardMetrics: { totalAlerts: 150, highSeverityAlerts: 150, activeIncidents: 0, suspiciousSignIns: 0 },
                 evidence: [{ evidenceType: 'alerts', data: alertRows }]
@@ -2679,6 +2714,9 @@ test('Security Alerts selected-domain analysis sends compact groups and keeps ou
     assert.ok(packages[0].evidenceGroups.criticalAlerts.length <= 10);
     assert.ok(packages[0].evidenceGroups.highSeverityAlerts.length <= 10);
     assert.ok(packages[0].evidenceGroups.repeatedAlertPatterns.length <= 10);
+    assert.ok(packages[0].evidenceGroups.threatIndicators.length > 0);
+    assert.ok(packages[0].evidenceGroups.threatIndicators.some(row => row.data?.internalOnly === true));
+    assert.doesNotMatch(JSON.stringify(packages[0].sourceHealth.warnings), /threat_indicators_unavailable/);
     assert.equal(result.domains[0].analysis.keyFindings.length, 5);
     assert.equal(result.domains[0].analysis.risks.length, 5);
     assert.equal(result.domains[0].analysis.recommendations.length, 5);
@@ -2694,7 +2732,7 @@ test('Security Alerts adapter uses actual evidence freshness timestamp', async (
     const pool = {
         async query(sql, params) {
             if (/CompanyMicrosoftMapping/i.test(sql)) return [[{ MicrosoftTenantID: 1 }], []];
-            if (/IsComplete = 1 AND CollectionStatus IN/i.test(sql)) {
+            if (/IsComplete\s*=\s*1[\s\S]*CollectionStatus\s+IN/i.test(sql)) {
                 return [[{
                     ID: 990,
                     CompanyID: params?.[0] || 1,
@@ -2709,7 +2747,7 @@ test('Security Alerts adapter uses actual evidence freshness timestamp', async (
                     DashboardMetricsJson: { totalAlerts: 1, highSeverityAlerts: 1 }
                 }], []];
             }
-            if (/FROM StackCTRLSecurityEvidence WHERE SnapshotID/i.test(sql)) {
+            if (/FROM StackCTRLSecurityEvidence\s+WHERE SnapshotID/i.test(sql)) {
                 return [[{
                     ID: 1,
                     SnapshotID: 990,
@@ -2743,7 +2781,7 @@ test('Security Alerts adapter surfaces latest failed collection error', async ()
     const pool = {
         async query(sql) {
             if (/CompanyMicrosoftMapping/i.test(sql)) return [[{ MicrosoftTenantID: 1 }], []];
-            if (/IsComplete = 1 AND CollectionStatus IN/i.test(sql)) return [[], []];
+            if (/IsComplete\s*=\s*1[\s\S]*CollectionStatus\s+IN/i.test(sql)) return [[], []];
             if (/FROM StackCTRLSecurityEvidenceSnapshots/i.test(sql)) {
                 return [[{
                     ID: 991,

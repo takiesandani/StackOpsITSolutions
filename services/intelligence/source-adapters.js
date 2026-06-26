@@ -50,6 +50,53 @@ function getFreshness(records, thresholdMinutes) {
     };
 }
 
+
+function getLoadedFreshness(loaded, records, thresholdMinutes) {
+    const recordFreshness = getFreshness(records, thresholdMinutes);
+
+    if (recordFreshness.lastUpdated) {
+        return recordFreshness;
+    }
+
+    const lineageTimestamp =
+        loaded?.sourceLineage?.sourceLastUpdated ||
+        loaded?.sourceLineage?.sourceFetchedAt ||
+        loaded?.sourceLineage?.collectedAt ||
+        loaded?.sourceLineage?.SourceLastUpdated ||
+        loaded?.sourceLineage?.SourceFetchedAt ||
+        loaded?.sourceLineage?.CollectedAt ||
+        null;
+
+    const lineageDate = toDate(lineageTimestamp);
+
+    if (!lineageDate) {
+        return recordFreshness;
+    }
+
+    const ageMinutes = Math.max(0, Math.floor((Date.now() - lineageDate.getTime()) / 60000));
+
+    return {
+        lastUpdated: lineageDate.toISOString(),
+        ageMinutes,
+        stale: thresholdMinutes != null && ageMinutes > thresholdMinutes
+    };
+}
+
+function normalizeSourceLineage(sourceLineage, freshness = {}) {
+    if (!sourceLineage) return null;
+
+    return {
+        ...sourceLineage,
+        sourceLastUpdated: sourceLineage.sourceLastUpdated ||
+            sourceLineage.sourceFetchedAt ||
+            sourceLineage.collectedAt ||
+            sourceLineage.updatedAt ||
+            sourceLineage.createdAt ||
+            freshness.lastUpdated ||
+            null
+    };
+}
+
 function statusResult(capability, status, overrides = {}) {
     return {
         sourceKey: capability.sourceKey,
@@ -189,7 +236,7 @@ async function collectSource(context, definition) {
     }
 
     let records = loaded.records || [];
-    let freshness = getFreshness(records, capability.freshnessThresholdMinutes);
+    let freshness = getLoadedFreshness(loaded, records, capability.freshnessThresholdMinutes);
     const shouldRefresh = capability.refreshMode !== 'stored_only' && (
         (refresh && (!records.length || freshness.stale)) ||
         (definition.refreshWhenMissing && !records.length)
@@ -203,7 +250,7 @@ async function collectSource(context, definition) {
                     ? definition.fromRefresh(refreshed, loaded)
                     : { ...loaded, ...refreshed };
                 records = loaded.records || [];
-                freshness = getFreshness(records, capability.freshnessThresholdMinutes);
+                freshness = getLoadedFreshness(loaded, records, capability.freshnessThresholdMinutes);
                 // Clear any previous refresh error since it succeeded
                 refreshFailed = false;
                 refreshErrorMessage = null;
@@ -211,7 +258,7 @@ async function collectSource(context, definition) {
                 // Refresh returned null - reload from storage
                 loaded = await definition.load(pool, companyId, capability);
                 records = loaded.records || [];
-                freshness = getFreshness(records, capability.freshnessThresholdMinutes);
+                freshness = getLoadedFreshness(loaded, records, capability.freshnessThresholdMinutes);
             }
         } catch (error) {
             refreshFailed = true;
@@ -228,6 +275,8 @@ async function collectSource(context, definition) {
                 hasStoredData: records.length > 0
             });
             
+            const normalizedSourceLineage = normalizeSourceLineage(loaded.sourceLineage, freshness);
+
             if (!records.length) {
                 // No stored data - must fail
                 return statusResult(capability, notConfigured ? 'not_configured' : 'error', {
@@ -235,7 +284,10 @@ async function collectSource(context, definition) {
                         ...(supplementalLoadWarning ? [supplementalLoadWarning] : []),
                         `${capability.displayName} refresh failed: ${error.message}`
                     ],
-                    errorMessage: error.message
+                    errorMessage: error.message,
+                    sourceLineage: normalizedSourceLineage,
+                    dashboardSourceMetrics: loaded.dashboardSourceMetrics || null,
+                    rawReference: loaded.rawReference || { table: definition.table || null, recordId: null }
                 });
             }
             
@@ -244,6 +296,7 @@ async function collectSource(context, definition) {
         }
     }
 
+    const normalizedSourceLineage = normalizeSourceLineage(loaded.sourceLineage, freshness);
     if (!records.length) {
         const missingStatus = loaded.notConfigured ? 'not_configured' : 'missing';
         return statusResult(capability, missingStatus, {
@@ -252,7 +305,7 @@ async function collectSource(context, definition) {
                 : [`${capability.displayName} has no stored evidence for this tenant.`],
             errorMessage: loaded.sourceLineage?.errorMessage || loaded.sourceLineage?.incompleteReason || null,
             dashboardSourceMetrics: loaded.dashboardSourceMetrics || null,
-            sourceLineage: loaded.sourceLineage || null,
+            sourceLineage: normalizedSourceLineage,
             rawReference: loaded.rawReference || { table: definition.table || null, recordId: null }
         });
     }
@@ -281,7 +334,7 @@ async function collectSource(context, definition) {
         errorMessage: refreshErrorMessage || loaded.errorMessage || loaded.sourceLineage?.errorMessage || loaded.sourceLineage?.incompleteReason || null,
         metrics: loaded.metrics || definition.metrics(records),
         dashboardSourceMetrics: loaded.dashboardSourceMetrics || null,
-        sourceLineage: loaded.sourceLineage || null,
+        sourceLineage: normalizedSourceLineage,
         evidence: loaded.evidence || definition.evidence(records),
         warnings,
         rawReference: loaded.rawReference || {
@@ -676,76 +729,301 @@ const definitions = {
     security_alerts: {
         table: 'StackCTRLSecurityEvidenceSnapshots, StackCTRLSecurityEvidence',
         refreshWhenMissing: true,
-        async load(pool, companyId, capability) {
-            const tenant = await queryRows(pool, `SELECT mt.ID AS MicrosoftTenantID FROM CompanyMicrosoftMapping cm INNER JOIN MicrosoftTenants mt ON mt.ID = cm.MicrosoftTenantID WHERE cm.CompanyID = ? AND cm.IsActive = 1 LIMIT 1`, [companyId]);
-            if (capability?.profileKey === 'sunbird') {
-                const snapshots = await queryRows(pool, `SELECT * FROM StackCTRLSecurityEvidenceSnapshots WHERE CompanyID = ? AND IsComplete = 1 AND CollectionStatus IN ('complete', 'completed_with_warnings') ORDER BY CollectedAt DESC, ID DESC LIMIT 1`, [companyId]);
-                const snapshot = snapshots[0];
-                const lineageOptions = { sourceKey: 'security_alerts', sourceBuilder: 'storedStackCTRLSecurityEvidence', sourceLayer: 'StackCTRLSecurityEvidenceSnapshots' };
-                if (!snapshot) {
-                    const latestRows = await queryRows(pool, `SELECT * FROM StackCTRLSecurityEvidenceSnapshots WHERE CompanyID = ? ORDER BY CollectedAt DESC, ID DESC LIMIT 1`, [companyId]);
-                    const latest = latestRows[0];
-                    const storedError = latest?.ErrorMessage || latest?.IncompleteReason || 'No complete StackCTRL Security Alerts evidence snapshot is available. Azure analysis is blocked until collection succeeds.';
-                    const metrics = latest?.DashboardMetricsJson || {};
-                    return {
-                        records: latest ? latestRows : [],
-                        notConfigured: !tenant.length,
-                        metrics,
-                        dashboardSourceMetrics: metrics,
-                        sourceLineage: {
-                            ...storedEvidenceLineage(latest, lineageOptions),
-                            collectionStatus: latest?.CollectionStatus || 'missing',
-                            isComplete: latest ? Boolean(Number(latest.IsComplete)) : false,
-                            incompleteReason: latest?.IncompleteReason || storedError,
-                            errorMessage: storedError
-                        },
-                        evidence: [],
-                        warnings: [storedError],
-                        rawReference: { table: this.table, recordId: latest?.ID || null }
-                    };
-                }
-                const evidenceRows = await queryRows(pool, `SELECT * FROM StackCTRLSecurityEvidence WHERE SnapshotID = ? ORDER BY ID`, [snapshot.ID]);
-                if (evidenceRows.length !== Number(snapshot.EvidenceRecordCount)) {
-                    const errorMessage = `Security evidence snapshot ${snapshot.ID} expected ${snapshot.EvidenceRecordCount} rows but ${evidenceRows.length} were stored.`;
-                    return {
-                        records: [],
-                        notConfigured: !tenant.length,
-                        metrics: snapshot.DashboardMetricsJson || {},
-                        dashboardSourceMetrics: snapshot.DashboardMetricsJson || {},
-                        sourceLineage: {
-                            ...storedEvidenceLineage(snapshot, lineageOptions),
-                            collectionStatus: 'incomplete',
-                            isComplete: false,
-                            incompleteReason: errorMessage,
-                            errorMessage
-                        },
-                        evidence: [],
-                        warnings: [`${errorMessage} Azure analysis is blocked.`],
-                        rawReference: { table: this.table, recordId: snapshot.ID }
-                    };
-                }
-                const grouped = { alerts: [], incidents: [], signIns: [], threatIndicators: [] };
-                evidenceRows.forEach(row => {
-                    const item = row.ProcessedEvidenceJson || {};
-                    if (row.EvidenceKind === 'alert') grouped.alerts.push(item);
-                    else if (row.EvidenceKind === 'incident') grouped.incidents.push(item);
-                    else if (row.EvidenceKind === 'sign_in') grouped.signIns.push(item);
-                    else if (row.EvidenceKind === 'threat_indicator') grouped.threatIndicators.push(item);
-                });
-                const dashboardMetrics = snapshot.DashboardMetricsJson || {};
-                const sourceAudit = parseJsonValue(snapshot.SourceAuditJson, {});
-                const warnings = [
-                    ...(Array.isArray(sourceAudit?.warnings) ? sourceAudit.warnings : []),
-                    ...(snapshot.CollectionStatus === 'completed_with_warnings' && snapshot.IncompleteReason ? [snapshot.IncompleteReason] : [])
-                ];
-                return { records: snapshots, notConfigured: !tenant.length, metrics: dashboardMetrics, dashboardSourceMetrics: dashboardMetrics, sourceLineage: { sourceKey: 'security_alerts', sourceBuilder: 'storedStackCTRLSecurityEvidence', sourceLayer: 'StackCTRLSecurityEvidenceSnapshots + StackCTRLSecurityEvidence', evidenceSnapshotId: snapshot.ID, collectedAt: snapshot.CollectedAt, sourceFetchedAt: snapshot.SourceFetchedAt, sourceLastUpdated: snapshot.SourceFetchedAt || snapshot.CollectedAt || snapshot.UpdatedAt || snapshot.CreatedAt, sourceEndpoint: snapshot.SourceEndpoint, collectionTrigger: snapshot.CollectionTrigger, collectionStatus: snapshot.CollectionStatus, isComplete: Boolean(Number(snapshot.IsComplete)), evidenceRecordCount: Number(snapshot.EvidenceRecordCount), expectedRecordCount: Number(snapshot.ExpectedRecordCount), omittedRecordCount: Number(snapshot.OmittedRecordCount), incompleteReason: snapshot.IncompleteReason || null, stages: sourceAudit?.collection?.stages || sourceAudit?.stages || [] }, evidence: Object.entries(grouped).map(([evidenceType, data]) => ({ evidenceType, data })), warnings, rawReference: { table: this.table, recordId: snapshot.ID } };
+
+async load(pool, companyId, capability) {
+    const tenant = await queryRows(
+        pool,
+        `SELECT mt.ID AS MicrosoftTenantID
+         FROM CompanyMicrosoftMapping cm
+         INNER JOIN MicrosoftTenants mt ON mt.ID = cm.MicrosoftTenantID
+         WHERE cm.CompanyID = ? AND cm.IsActive = 1
+         LIMIT 1`,
+        [companyId]
+    );
+
+    if (capability?.profileKey === 'sunbird') {
+        const lineageOptions = {
+            sourceKey: 'security_alerts',
+            sourceBuilder: 'storedStackCTRLSecurityEvidence',
+            sourceLayer: 'StackCTRLSecurityEvidenceSnapshots'
+        };
+
+        const toIso = value => {
+            if (!value) return null;
+            const date = value instanceof Date ? value : new Date(value);
+            return Number.isNaN(date.getTime()) ? null : date.toISOString();
+        };
+
+        const sourceTimestamp = snapshot => toIso(
+            snapshot?.SourceFetchedAt ||
+            snapshot?.sourceFetchedAt ||
+            snapshot?.SourceLastUpdated ||
+            snapshot?.sourceLastUpdated ||
+            snapshot?.CollectedAt ||
+            snapshot?.UpdatedAt ||
+            snapshot?.CreatedAt
+        );
+
+        const latestRows = await queryRows(
+            pool,
+            `SELECT *
+             FROM StackCTRLSecurityEvidenceSnapshots
+             WHERE CompanyID = ?
+             ORDER BY CollectedAt DESC, ID DESC
+             LIMIT 1`,
+            [companyId]
+        );
+
+        const latest = latestRows[0] || null;
+
+        const completeRows = await queryRows(
+            pool,
+            `SELECT *
+             FROM StackCTRLSecurityEvidenceSnapshots
+             WHERE CompanyID = ?
+               AND IsComplete = 1
+               AND CollectionStatus IN ('complete', 'completed_with_warnings')
+             ORDER BY CollectedAt DESC, ID DESC
+             LIMIT 1`,
+            [companyId]
+        );
+
+        const snapshot = completeRows[0] || null;
+
+        const latestError =
+            latest?.ErrorMessage ||
+            latest?.IncompleteReason ||
+            null;
+
+        const latestIsFailed = latest && (
+            Number(latest.IsComplete || 0) !== 1 ||
+            ['failed_terminal', 'failed', 'error'].includes(String(latest.CollectionStatus || '').toLowerCase())
+        );
+
+        const latestIsNewerThanComplete = latestIsFailed && snapshot
+            ? new Date(latest.CollectedAt || latest.CreatedAt || 0).getTime() >=
+              new Date(snapshot.CollectedAt || snapshot.CreatedAt || 0).getTime()
+            : Boolean(latestIsFailed && !snapshot);
+
+        if (!snapshot) {
+            const storedError =
+                latestError ||
+                'No complete StackCTRL Security Alerts evidence snapshot is available. Azure analysis is blocked until collection succeeds.';
+
+            const latestTimestamp = sourceTimestamp(latest);
+
+            return {
+                records: [],
+                notConfigured: !tenant.length,
+                metrics: latest?.DashboardMetricsJson || {},
+                dashboardSourceMetrics: latest?.DashboardMetricsJson || {},
+                sourceLineage: {
+                    ...storedEvidenceLineage(latest, lineageOptions),
+                    collectionStatus: latest?.CollectionStatus || 'missing',
+                    isComplete: latest ? Boolean(Number(latest.IsComplete)) : false,
+                    evidenceSnapshotId: latest?.ID || null,
+                    collectedAt: latest?.CollectedAt || null,
+                    sourceFetchedAt: latestTimestamp,
+                    sourceLastUpdated: latestTimestamp,
+                    incompleteReason: latest?.IncompleteReason || storedError,
+                    errorMessage: storedError
+                },
+                evidence: [],
+                warnings: [storedError],
+                rawReference: {
+                    table: this.table,
+                    recordId: latest?.ID || null
+                },
+                errorMessage: storedError
+            };
+        }
+
+        const evidenceRows = await queryRows(
+            pool,
+            `SELECT *
+             FROM StackCTRLSecurityEvidence
+             WHERE SnapshotID = ?
+             ORDER BY ID`,
+            [snapshot.ID]
+        );
+
+        if (evidenceRows.length !== Number(snapshot.EvidenceRecordCount)) {
+            const errorMessage = `Security evidence snapshot ${snapshot.ID} expected ${snapshot.EvidenceRecordCount} rows but ${evidenceRows.length} were stored.`;
+            const timestamp = sourceTimestamp(snapshot);
+
+            return {
+                records: [],
+                notConfigured: !tenant.length,
+                metrics: snapshot.DashboardMetricsJson || {},
+                dashboardSourceMetrics: snapshot.DashboardMetricsJson || {},
+                sourceLineage: {
+                    ...storedEvidenceLineage(snapshot, lineageOptions),
+                    collectionStatus: 'incomplete',
+                    isComplete: false,
+                    evidenceSnapshotId: snapshot.ID,
+                    collectedAt: snapshot.CollectedAt || null,
+                    sourceFetchedAt: timestamp,
+                    sourceLastUpdated: timestamp,
+                    incompleteReason: errorMessage,
+                    errorMessage
+                },
+                evidence: [],
+                warnings: [`${errorMessage} Azure analysis is blocked.`],
+                rawReference: {
+                    table: this.table,
+                    recordId: snapshot.ID
+                },
+                errorMessage
+            };
+        }
+
+        const grouped = {
+            alerts: [],
+            incidents: [],
+            signIns: [],
+            threatIndicators: []
+        };
+
+        evidenceRows.forEach(row => {
+            const item = row.ProcessedEvidenceJson || {};
+
+            if (row.EvidenceKind === 'alert') grouped.alerts.push(item);
+            else if (row.EvidenceKind === 'incident') grouped.incidents.push(item);
+            else if (row.EvidenceKind === 'sign_in') grouped.signIns.push(item);
+            else if (row.EvidenceKind === 'threat_indicator') grouped.threatIndicators.push(item);
+        });
+
+        const dashboardMetrics = snapshot.DashboardMetricsJson || {};
+        const sourceAudit = parseJsonValue(snapshot.SourceAuditJson, {});
+        const auditWarnings = Array.isArray(sourceAudit?.warnings) ? sourceAudit.warnings : [];
+
+        const hasPrimaryEvidence = Boolean(
+            grouped.alerts.length ||
+            grouped.incidents.length ||
+            grouped.signIns.length
+        );
+
+        const hasThreatIndicators = grouped.threatIndicators.length > 0;
+
+        const rawWarnings = [
+            ...(latestIsNewerThanComplete && latestError ? [latestError] : []),
+            ...auditWarnings,
+            ...(snapshot.CollectionStatus === 'completed_with_warnings' && snapshot.IncompleteReason
+                ? String(snapshot.IncompleteReason).split(';').map(item => item.trim()).filter(Boolean)
+                : [])
+        ];
+
+        const warnings = [...new Set(rawWarnings)].filter(warning => {
+            const lower = String(warning || '').toLowerCase();
+
+            if (!warning) return false;
+
+            if (lower.includes('threat indicators') || lower.includes('threat_indicators_unavailable')) {
+                return !hasThreatIndicators;
             }
-            const [records, configured] = await Promise.all([queryRows(pool, 'SELECT * FROM SecurityEventsPayloadCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]), hasActiveMicrosoftTenant(pool, companyId)]);
-            const payload = extractPayload(records[0]);
-            return { records, notConfigured: !configured, metrics: summaryMetrics(payload), evidence: payload ? [payload] : [] };
+
+            if (lower.includes('alerts fetch failed') || lower.includes('alerts_unavailable')) {
+                return grouped.alerts.length === 0;
+            }
+
+            if (lower.includes('incidents fetch failed') || lower.includes('incidents_unavailable')) {
+                return grouped.incidents.length === 0;
+            }
+
+            if (lower.includes('sign-ins fetch failed') || lower.includes('signins_unavailable')) {
+                return grouped.signIns.length === 0;
+            }
+
+            if (lower.includes('partial_source_collection')) {
+                return !hasPrimaryEvidence;
+            }
+
+            return true;
+        });
+
+        const timestamp = sourceTimestamp(snapshot);
+
+        const records = [{
+            ...snapshot,
+            SourceFetchedAt: timestamp,
+            sourceFetchedAt: timestamp,
+            SourceLastUpdated: timestamp,
+            sourceLastUpdated: timestamp,
+            LastUpdated: timestamp,
+            last_updated: timestamp,
+            UpdatedAt: timestamp
+        }];
+
+        return {
+            records,
+            notConfigured: !tenant.length,
+            metrics: dashboardMetrics,
+            dashboardSourceMetrics: dashboardMetrics,
+            sourceLineage: {
+                sourceKey: 'security_alerts',
+                sourceBuilder: 'storedStackCTRLSecurityEvidence',
+                sourceLayer: 'StackCTRLSecurityEvidenceSnapshots + StackCTRLSecurityEvidence',
+                evidenceSnapshotId: snapshot.ID,
+                collectedAt: snapshot.CollectedAt || null,
+                sourceFetchedAt: timestamp,
+                sourceLastUpdated: timestamp,
+                sourceEndpoint: snapshot.SourceEndpoint,
+                collectionTrigger: snapshot.CollectionTrigger,
+                collectionStatus: snapshot.CollectionStatus,
+                isComplete: Boolean(Number(snapshot.IsComplete)),
+                evidenceRecordCount: Number(snapshot.EvidenceRecordCount),
+                expectedRecordCount: Number(snapshot.ExpectedRecordCount),
+                omittedRecordCount: Number(snapshot.OmittedRecordCount),
+                incompleteReason: warnings.length ? warnings.join('; ') : null,
+                errorMessage: latestIsNewerThanComplete && latestError ? latestError : (snapshot.ErrorMessage || null),
+                latestCollectionFailure: latestIsNewerThanComplete && latestError ? {
+                    snapshotId: latest.ID,
+                    collectionStatus: latest.CollectionStatus,
+                    errorMessage: latestError,
+                    collectedAt: latest.CollectedAt || latest.CreatedAt || null
+                } : null,
+                stages: sourceAudit?.collection?.stages || sourceAudit?.stages || [],
+                internalThreatIndicatorsAvailable: hasThreatIndicators,
+                hasPrimaryEvidence
+            },
+            evidence: Object.entries(grouped).map(([evidenceType, data]) => ({
+                evidenceType,
+                data
+            })),
+            warnings,
+            rawReference: {
+                table: this.table,
+                recordId: snapshot.ID
+            },
+            errorMessage: latestIsNewerThanComplete && latestError ? latestError : null
+        };
+    }
+
+    const [records, configured] = await Promise.all([
+        queryRows(
+            pool,
+            'SELECT * FROM SecurityEventsPayloadCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1',
+            [companyId]
+        ),
+        hasActiveMicrosoftTenant(pool, companyId)
+    ]);
+
+    const payload = extractPayload(records[0]);
+
+    return {
+        records,
+        notConfigured: !configured,
+        metrics: summaryMetrics(payload),
+        evidence: payload ? [payload] : []
+    };
+},
+
+        fromRefresh(refreshed, stored) {
+            return stored;
         },
-        fromRefresh(refreshed, stored) { return stored; },
+
         metrics: records => summaryMetrics(extractPayload(records[0])),
+
         evidence: records => records
     },
     backup: {

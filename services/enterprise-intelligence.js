@@ -15,6 +15,58 @@ const ENTERPRISE_DOMAINS = Object.freeze([
 ]);
 
 const DOMAIN_BY_KEY = Object.freeze(Object.fromEntries(ENTERPRISE_DOMAINS.map(domain => [domain.key, domain])));
+const TEMPORARILY_DISABLED_DOMAIN_KEYS = Object.freeze(['governance', 'operations', 'compliance']);
+const TEMPORARILY_DISABLED_DOMAIN_SET = Object.freeze(new Set(TEMPORARILY_DISABLED_DOMAIN_KEYS));
+const ACTIVE_ENTERPRISE_DOMAIN_KEYS = Object.freeze(ENTERPRISE_DOMAINS.map(domain => domain.key).filter(key => !TEMPORARILY_DISABLED_DOMAIN_SET.has(key)));
+const ACTIVE_ENTERPRISE_DOMAIN_SET = Object.freeze(new Set(ACTIVE_ENTERPRISE_DOMAIN_KEYS));
+const CURRENT_REPORTING_PHASE = Object.freeze({
+    key: 'selected_domain_intelligence_phase',
+    status: 'domain_intelligence_active',
+    activeDomainCount: ACTIVE_ENTERPRISE_DOMAIN_KEYS.length,
+    totalDomainCount: ENTERPRISE_DOMAINS.length,
+    message: 'Current reporting phase focuses on validated selected-domain intelligence. Final enterprise synthesis is pending until all domains are approved.'
+});
+const TEMPORARILY_DISABLED_DOMAIN_MESSAGE = 'This domain is temporarily disabled and will be enabled in a later reporting phase.';
+const TEMPORARILY_DISABLED_DOMAIN_STATUS_MESSAGE = 'Temporarily disabled — will be enabled in a later reporting phase.';
+
+function isTemporarilyDisabledDomain(domainKey) {
+    return TEMPORARILY_DISABLED_DOMAIN_SET.has(String(domainKey || ''));
+}
+
+function disabledDomainState(domainKey) {
+    const domain = DOMAIN_BY_KEY[domainKey] || { key: domainKey, name: domainKey, mode: null };
+    return {
+        domainKey: domain.key,
+        key: domain.key,
+        domainName: domain.name,
+        name: domain.name,
+        mode: domain.mode || null,
+        status: 'temporarily_disabled',
+        selectable: false,
+        includedInCurrentPhase: false,
+        message: TEMPORARILY_DISABLED_DOMAIN_MESSAGE
+    };
+}
+
+function enterpriseDomainDescriptor(domain) {
+    const disabled = isTemporarilyDisabledDomain(domain.key);
+    return {
+        key: domain.key,
+        domainKey: domain.key,
+        name: domain.name,
+        domainName: domain.name,
+        mode: domain.mode,
+        selectable: !disabled,
+        includedInCurrentPhase: !disabled,
+        status: disabled ? 'temporarily_disabled' : 'available',
+        message: disabled ? TEMPORARILY_DISABLED_DOMAIN_STATUS_MESSAGE : null
+    };
+}
+
+function disabledDomainStates(keys = TEMPORARILY_DISABLED_DOMAIN_KEYS) {
+    return [...new Set((Array.isArray(keys) ? keys : []).filter(isTemporarilyDisabledDomain))].map(disabledDomainState);
+}
+
 const LOWER_PERIOD = Object.freeze({ weekly: 'daily', monthly: 'weekly', yearly: 'monthly' });
 const DEFAULT_DOMAIN_DELAY_MS = 60000;
 const LARGE_DOMAIN_INPUT_TOKEN_THRESHOLD = 50000;
@@ -950,13 +1002,42 @@ function compactSecurityAlertsEvidenceRows(flattenedEvidence, current = {}) {
     };
     const affectedUsers = aggregateEntity([...alertData, ...signInData], data => firstReadableValue(data.userPrincipalName, data.userEmail, data.email, data.mail, data.user), 'affectedUsers');
     const affectedDevices = aggregateEntity(alertData, data => firstReadableValue(data.deviceName, data.hostName, data.hostname, data.machineName), 'affectedDevices');
-    const externalThreatIndicators = threatIndicators.slice(0, 10).map((row, index) => securityEvidenceRow(row, 'threatIndicators', {
-        ...(row.data || {}),
-        source: 'external_threat_indicators',
-        internalOnly: false
-    }, index, 'threatIndicators'));
+    const externalThreatIndicators = threatIndicators.slice(0, 10).map((row, index) => {
+        const data = row.data || {};
+        const indicatorType = firstReadableValue(data.indicatorType, data.type, data.category, 'ExternalIndicator');
+        const indicatorValue = firstReadableValue(data.indicatorValue, data.value, data.url, data.domain, data.ipAddress, data.fileHash, data.name, data.title);
+        return {
+            internalSourcePath: row?.internalSourcePath || `security_alerts.compact.threatIndicators.external[${index}]`,
+            sourceLabel: 'threatIndicators',
+            evidenceType: 'threatIndicators',
+            evidenceCategory: 'threatIndicators',
+            sourceMetric: 'threatIndicators',
+            entityKey: `${indicatorType}:${indicatorValue || index + 1}`,
+            data: compactNonEmptyObject({
+                ...safeEvidenceEntity(data, { maxDepth: 2, maxArray: 5, maxString: 320, maxObjectKeys: 20 }),
+                entityId: `${indicatorType}:${indicatorValue || index + 1}`,
+                entityName: indicatorValue || firstReadableValue(data.title, data.name, 'External threat indicator'),
+                entityType: 'ThreatIndicator',
+                indicatorType,
+                indicatorValue,
+                source: 'external_threat_indicators',
+                internalOnly: false,
+                businessReason: 'External threat indicator enrichment is available for Security Alerts correlation.',
+                recommendation: 'Correlate this indicator with affected alerts, sign-ins, users, and devices.'
+            })
+        };
+    });
     const internalThreatIndicators = extractSecurityThreatIndicators(flattenedEvidence);
-    const threatIndicatorRows = externalThreatIndicators.length ? externalThreatIndicators : internalThreatIndicators;
+    const seenThreatIndicators = new Set(externalThreatIndicators.map(row => threatIndicatorKey(row.data?.indicatorType, row.data?.indicatorValue || row.data?.entityName)));
+    const threatIndicatorRows = [
+        ...externalThreatIndicators,
+        ...internalThreatIndicators.filter(row => {
+            const key = threatIndicatorKey(row.data?.indicatorType, row.data?.indicatorValue || row.data?.entityName);
+            if (seenThreatIndicators.has(key)) return false;
+            seenThreatIndicators.add(key);
+            return true;
+        })
+    ].slice(0, 25);
     const recommendationRows = recommendations.slice(0, 10).map((row, index) => securityEvidenceRow(row, 'recommendations', row.data || {}, index, 'recommendations'));
     const summaryMetrics = {
         internalSourcePath: 'security_alerts.compact.summaryMetrics',
@@ -3679,7 +3760,7 @@ function createEnterpriseIntelligenceService({
 
     function securityAlertsBatchPrompt(packageValue) {
         return `Analyse this compact Security Alerts selected-domain package. Return valid JSON only; no markdown.
-Use only the supplied compact evidence groups: summaryMetrics, criticalAlerts, highSeverityAlerts, activeIncidents, suspiciousSignIns, anonymousIpEvents, repeatedAlertPatterns, affectedUsers, affectedDevices, unresolvedAlerts, recentResolvedAlerts, recommendations.
+Use only the supplied compact evidence groups: summaryMetrics, criticalAlerts, highSeverityAlerts, activeIncidents, suspiciousSignIns, anonymousIpEvents, threatIndicators, repeatedAlertPatterns, affectedUsers, affectedDevices, unresolvedAlerts, recentResolvedAlerts, recommendations.
 Do not request omitted raw alerts and do not echo raw full JSON. Each compact row is already readable and Power BI-ready.
 Return only real operational/security risks in risks[]. Put positive observations, such as no critical alerts or resolved alerts, in keyFindings[], currentPosture, or scoreJustification.
 Keep output compact: risks max 5, recommendations max 5, affectedEntities max 5 per risk, evidenceRows max 5 per item, evidenceUsed max 5, technicalReasoning max 5 short objects.
@@ -4176,6 +4257,8 @@ ${JSON.stringify(packageValue)}`;
             const summaryMetrics = Object.fromEntries(summaryKeys
                 .map(key => [key, numberOrNull(metricSource[key]) ?? groupedEvidence.summaryMetrics?.[0]?.data?.[key] ?? null])
                 .filter(([, value]) => value != null));
+            const hasSecurityEvidence = evidence.some(row => row.evidenceType && row.evidenceType !== 'summaryMetrics');
+            const hasUsableThreatIndicators = groupedEvidence.threatIndicators.length > 0;
             const warningStrings = [
                 ...array(basePackage.sourceHealth?.warnings),
                 ...array(basePackage.limitations?.missingDataWarnings)
@@ -4183,6 +4266,12 @@ ${JSON.stringify(packageValue)}`;
                 .map(warning => visibleTextOrNull(warning, 240))
                 .filter(Boolean)
                 .filter(warning => !isCuratedReferenceWarning(warning))
+                .filter(warning => {
+                    const text = String(warning || '').toLowerCase();
+                    const threatIndicatorWarning = text.includes('threat_indicators_unavailable') || text.includes('threat indicators');
+                    if (!threatIndicatorWarning) return true;
+                    return hasSecurityEvidence && !hasUsableThreatIndicators;
+                })
                 .slice(0, 10);
             return {
                 contextType: 'stackctrl_enterprise_security_alerts_strict_compact',
@@ -5302,7 +5391,8 @@ ${JSON.stringify(packageValue)}`;
         phase = 'domains',
         synthesisStatus = null,
         rateLimit = null,
-        snapshot = null
+        snapshot = null,
+        disabledDomainKeys = TEMPORARILY_DISABLED_DOMAIN_KEYS
     } = {}) {
         const completed = results.filter(result => result.status === 'completed').length;
         const partial = results.filter(result => result.status === 'partial').length;
@@ -5310,12 +5400,18 @@ ${JSON.stringify(packageValue)}`;
         const blocked = results.filter(result => String(result.status || '').startsWith('blocked')).length;
         const skipped = results.filter(result => SKIPPED_DOMAIN_STATUSES.has(String(result.status || ''))).length;
         const successful = results.filter(result => isSuccessfulDomainStatus(result.status)).length;
-        const queue = domainKeys.map(key => ({
-            domainKey: key,
-            domainName: DOMAIN_BY_KEY[key]?.name || key,
-            status: results.find(result => result.domain?.key === key)?.status || (currentDomainKey === key ? 'running' : 'queued'),
-            errorMessage: results.find(result => result.domain?.key === key)?.errorMessage || null
-        }));
+        const disabledDomains = disabledDomainStates(disabledDomainKeys);
+        const queue = domainKeys.map(key => {
+            const result = results.find(item => item.domain?.key === key);
+            return {
+                domainKey: key,
+                domainName: DOMAIN_BY_KEY[key]?.name || key,
+                status: result?.status || (currentDomainKey === key ? 'running' : 'queued'),
+                selectable: true,
+                includedInCurrentPhase: true,
+                errorMessage: result?.errorMessage || null
+            };
+        });
         return {
             phase,
             runId: run?.id || null,
@@ -5325,8 +5421,12 @@ ${JSON.stringify(packageValue)}`;
             currentDomainKey,
             currentDomainName: currentDomainKey ? (DOMAIN_BY_KEY[currentDomainKey]?.name || currentDomainKey) : null,
             domainQueue: queue,
+            disabledDomains,
+            reportingPhase: CURRENT_REPORTING_PHASE,
             counts: {
                 total: domainKeys.length,
+                active: domainKeys.length,
+                disabled: disabledDomains.length,
                 completed,
                 partial,
                 successful,
@@ -6421,7 +6521,7 @@ ${JSON.stringify(packageValue)}`;
             snapshotId: snapshotId || null,
             period: { type: run.periodType, start: run.periodStart, end: run.periodEnd },
             domainIntelligence: domainRows,
-            domainRunSummary,
+            domainRunSummary: { ...domainRunSummary, disabledDomains: disabledDomainStates() },
             lowerPeriodReports: rollups,
             sourceHealthSummary: domainRows.map(row => ({ domainKey: row.domainKey, status: row.status, healthScore: row.healthScore, riskScore: row.riskScore, riskLevel: row.riskLevel })),
             missingDataWarnings: domainRows.flatMap(row => array(row.missingDataWarnings)),
@@ -6429,6 +6529,8 @@ ${JSON.stringify(packageValue)}`;
                 rawSnapshotIncluded: false,
                 rawVendorPayloadIncluded: false,
                 synthesisUsesStoredIntelligenceOnly: true,
+                disabledDomains: disabledDomainStates(),
+                currentPhaseLimitation: 'Governance, Operations, and Compliance are temporarily disabled in this reporting phase.',
                 excludedDomainStatuses: allDomainRows
                     .filter(row => !isSuccessfulDomainStatus(row.status))
                     .map(row => ({ domainKey: row.domainKey, status: row.status, errorMessage: row.errorMessage || null }))
@@ -6577,7 +6679,7 @@ ${JSON.stringify(packageValue)}`;
         return { synthesisId: result.insertId || run.id, status: finalRunStatus, analysis, usage };
     }
 
-    async function processDomains({ companyId, snapshot, run, domainKeys, isSingleDomainRun = false }) {
+    async function processDomains({ companyId, snapshot, run, domainKeys, disabledDomainKeys = TEMPORARILY_DISABLED_DOMAIN_KEYS, isSingleDomainRun = false }) {
         const historicalContext = await schedulerService.getHistoricalSnapshotContext(companyId, snapshot.ID);
         const selected = domainKeys.map(key => DOMAIN_BY_KEY[key]).filter(Boolean);
         const results = [];
@@ -6588,6 +6690,7 @@ ${JSON.stringify(packageValue)}`;
         await updateRunProgress(run.id, buildRunProgress({
             run,
             domainKeys,
+            disabledDomainKeys,
             results,
             phase: 'domains',
             snapshot
@@ -6598,6 +6701,7 @@ ${JSON.stringify(packageValue)}`;
             await updateRunProgress(run.id, buildRunProgress({
                 run,
                 domainKeys,
+                disabledDomainKeys,
                 results,
                 currentDomainKey: domain.key,
                 phase: 'domain',
@@ -6616,6 +6720,7 @@ ${JSON.stringify(packageValue)}`;
             await updateRunProgress(run.id, buildRunProgress({
                 run,
                 domainKeys,
+                disabledDomainKeys,
                 results,
                 currentDomainKey: null,
                 phase: 'domain',
@@ -6672,6 +6777,7 @@ ${JSON.stringify(packageValue)}`;
         await updateRunProgress(run.id, buildRunProgress({
             run,
             domainKeys,
+            disabledDomainKeys,
             results,
             phase: rateLimit ? 'rate_limited' : terminalError ? 'failed' : 'domains_complete',
             rateLimit,
@@ -6681,13 +6787,37 @@ ${JSON.stringify(packageValue)}`;
         return { results, totals, rateLimited: Boolean(rateLimit), rateLimit, terminalError };
     }
 
-    async function runEnterpriseReport({ companyId, snapshotId = null, periodType = 'daily', referenceDate = new Date(), domainKeys = null, includeSynthesis = true, deduplicationKey = null, refreshSnapshot = null, user = null } = {}) {
+    async function runEnterpriseReport({ companyId, snapshotId = null, periodType = 'daily', referenceDate = new Date(), domainKeys = null, includeSynthesis = false, deduplicationKey = null, refreshSnapshot = null, user = null } = {}) {
         const numericCompanyId = Number(companyId);
         if (!Number.isInteger(numericCompanyId) || numericCompanyId <= 0) throw new Error('A valid companyId is required');
         assertRateLimitCircuitClosed();
-        const selectedKeys = Array.isArray(domainKeys) && domainKeys.length ? [...new Set(domainKeys)] : ENTERPRISE_DOMAINS.map(domain => domain.key);
-        const invalid = selectedKeys.filter(key => !DOMAIN_BY_KEY[key]);
+        const requestedKeys = Array.isArray(domainKeys) && domainKeys.length ? [...new Set(domainKeys)] : [...ACTIVE_ENTERPRISE_DOMAIN_KEYS];
+        const invalid = requestedKeys.filter(key => !DOMAIN_BY_KEY[key]);
         if (invalid.length) throw new Error(`Unsupported enterprise domains: ${invalid.join(', ')}`);
+        const disabledSelectedKeys = requestedKeys.filter(isTemporarilyDisabledDomain);
+        const selectedKeys = requestedKeys.filter(key => ACTIVE_ENTERPRISE_DOMAIN_SET.has(key));
+        const disabledDomains = disabledDomainStates(disabledSelectedKeys.length ? disabledSelectedKeys : TEMPORARILY_DISABLED_DOMAIN_KEYS);
+        if (!selectedKeys.length) {
+            return {
+                status: 'temporarily_disabled',
+                runId: null,
+                snapshotId: snapshotId || null,
+                snapshotRefresh: null,
+                periodType,
+                mode: 'enterprise_domain_temporarily_disabled',
+                reportingPhase: CURRENT_REPORTING_PHASE,
+                domains: disabledSelectedKeys.map(key => disabledDomainState(key)),
+                disabledDomains,
+                domainRunSummary: { ...buildDomainRunSummary([], []), disabledDomains },
+                synthesisId: null,
+                synthesisStatus: 'not_requested',
+                totals: { inputTokens: 0, outputTokens: 0, totalTokens: 0, requestBytes: 0, responseBytes: 0, retries: 0 },
+                rateLimited: false,
+                rateLimit: null,
+                terminalError: null,
+                message: TEMPORARILY_DISABLED_DOMAIN_MESSAGE
+            };
+        }
         const isSingleDomainRun = selectedKeys.length === 1;
         // Enterprise analysis is read-first: use the latest stored evidence snapshot unless a caller
         // explicitly requests a refresh. This prevents a deep report from launching every live
@@ -6703,7 +6833,7 @@ ${JSON.stringify(packageValue)}`;
         const run = await createRun({ companyId: numericCompanyId, snapshotId: snapshot.ID, periodType, referenceDate, mode: isSingleDomainRun ? DOMAIN_BY_KEY[selectedKeys[0]].mode : 'enterprise_deep_reporting', deduplicationKey });
         if (run.duplicate) return { status: 'duplicate', runId: run.id, snapshotId: snapshot.ID, periodType: run.periodType };
         try {
-            const domains = await processDomains({ companyId: numericCompanyId, snapshot, run, domainKeys: selectedKeys, isSingleDomainRun });
+            const domains = await processDomains({ companyId: numericCompanyId, snapshot, run, domainKeys: selectedKeys, disabledDomainKeys: disabledDomains.map(domain => domain.domainKey), isSingleDomainRun });
             const runStatusBeforeSynthesis = rollupRunStatus(domains.results);
             const successfulDomains = domains.results.filter(result => isSuccessfulDomainStatus(result.status));
             const allDomainsStored = domains.results.length === selectedKeys.length;
@@ -6717,6 +6847,7 @@ ${JSON.stringify(packageValue)}`;
                 await updateRunProgress(run.id, buildRunProgress({
                     run,
                     domainKeys: selectedKeys,
+                    disabledDomainKeys: disabledDomains.map(domain => domain.domainKey),
                     results: domains.results,
                     phase: 'synthesis',
                     synthesisStatus: 'running',
@@ -6732,6 +6863,7 @@ ${JSON.stringify(packageValue)}`;
                 await updateRunProgress(run.id, buildRunProgress({
                     run,
                     domainKeys: selectedKeys,
+                    disabledDomainKeys: disabledDomains.map(domain => domain.domainKey),
                     results: domains.results,
                     phase: 'complete',
                     synthesisStatus: synthesis.status,
@@ -6757,6 +6889,7 @@ ${JSON.stringify(packageValue)}`;
                 await updateRunProgress(run.id, buildRunProgress({
                     run,
                     domainKeys: selectedKeys,
+                    disabledDomainKeys: disabledDomains.map(domain => domain.domainKey),
                     results: domains.results,
                     phase: domains.rateLimited ? 'rate_limited' : domains.terminalError ? 'failed' : 'domains_complete',
                     synthesisStatus: includeSynthesis ? 'skipped' : 'not_requested',
@@ -6780,6 +6913,10 @@ ${JSON.stringify(packageValue)}`;
                 snapshotRefresh,
                 periodType: run.periodType,
                 mode: run.mode,
+                requestedDomainKeys: requestedKeys,
+                activeDomainKeys: selectedKeys,
+                disabledDomains,
+                reportingPhase: CURRENT_REPORTING_PHASE,
                 domains: domains.results.map(result => ({
                     domainKey: result.domain.key,
                     domainName: result.domain.name,
@@ -6789,7 +6926,7 @@ ${JSON.stringify(packageValue)}`;
                     errorMessage: result.errorMessage || null,
                     batchInfo: result.batchInfo || null
                 })),
-                domainRunSummary,
+            domainRunSummary: { ...domainRunSummary, disabledDomains },
                 synthesisId: synthesis?.synthesisId || null,
                 synthesisStatus: synthesis?.status || (includeSynthesis ? (domains.rateLimited ? 'skipped_rate_limited' : domains.terminalError ? 'skipped_pipeline_stop' : (successfulDomains.length ? 'skipped' : 'skipped_no_successful_domains')) : 'not_requested'),
                 totals: domains.totals,
@@ -6910,7 +7047,7 @@ ${JSON.stringify(packageValue)}`;
         ]);
         return {
             settings: { ...settings },
-            domains: ENTERPRISE_DOMAINS.map(domain => ({ key: domain.key, name: domain.name, mode: domain.mode })),
+            domains: ENTERPRISE_DOMAINS.map(enterpriseDomainDescriptor),
             runs: runs.map(row => ({ ...row, ProgressJson: parseJson(row.ProgressJson, {}) })),
             domainIntelligence: domains.map(row => ({ ...row, AnalysisJson: parseJson(row.AnalysisJson, {}) })),
             evidenceAudit: audits.map(row => ({
@@ -7086,7 +7223,7 @@ ${JSON.stringify(packageValue)}`;
                 maxItemsPerBatch: settings.maxItemsPerBatch,
                 heavyDomainMaxItemsPerBatch: settings.heavyDomainMaxItemsPerBatch
             },
-            domains: ENTERPRISE_DOMAINS.map(domain => ({ key: domain.key, name: domain.name, mode: domain.mode })),
+            domains: ENTERPRISE_DOMAINS.map(enterpriseDomainDescriptor),
             runs: normalizedRuns,
             domainIntelligence: lightweightDomains,
             evidenceAudit: audits,
@@ -7254,13 +7391,14 @@ ${JSON.stringify(packageValue)}`;
 
     function flattenPowerBITables({ domains = [], finalSynthesis = null, audits = [], runs = [] } = {}) {
         const DomainScorecardRows = sanitizeVisibleValue(array(finalSynthesis?.synthesisOutput?.domainScorecard));
+        const reportableDomains = domains.filter(domain => ACTIVE_ENTERPRISE_DOMAIN_SET.has(domain.domainKey));
         const flattenControls = (value, category = null) => {
             if (Array.isArray(value)) return value.flatMap(item => flattenControls(item, category));
             if (!value || typeof value !== 'object') return [];
             if (value.title || value.name || value.control || value.description || value.detail) return [{ category, ...value }];
             return Object.entries(value).flatMap(([key, nested]) => flattenControls(nested, category ? `${category}.${key}` : key));
         };
-        const sectionRows = (section, itemType) => domains.flatMap(domain => array(domain.intelligenceOutput?.[section]).map((item, index) => ({
+        const sectionRows = (section, itemType) => reportableDomains.flatMap(domain => array(domain.intelligenceOutput?.[section]).map((item, index) => ({
             companyId: domain.companyId, snapshotId: domain.snapshotId, runId: domain.runId,
             periodType: domain.periodType, periodStart: domain.periodStart, periodEnd: domain.periodEnd,
             domainKey: domain.domainKey, domainName: domain.domainName, rowNumber: index + 1,
@@ -7302,7 +7440,7 @@ ${JSON.stringify(packageValue)}`;
             ...flatItemFields(row),
             recommendationDetail: row.item
         }));
-        const ControlAssessmentRows = domains.flatMap(domain => {
+        const ControlAssessmentRows = reportableDomains.flatMap(domain => {
             const assessment = domain.intelligenceOutput?.controlAssessment;
             const rows = flattenControls(assessment);
             return rows.map((control, index) => ({ companyId: domain.companyId, snapshotId: domain.snapshotId, runId: domain.runId, domainKey: domain.domainKey, rowNumber: index + 1, ...control, control }));
@@ -7382,11 +7520,180 @@ ${JSON.stringify(packageValue)}`;
                 evidenceRow
             };
         }));
-        const TokenUsageRows = domains.map(domain => ({ companyId: domain.companyId, snapshotId: domain.snapshotId, runId: domain.runId, domainKey: domain.domainKey, ...domain.tokenUsage }));
+        const TokenUsageRows = reportableDomains.map(domain => ({ companyId: domain.companyId, snapshotId: domain.snapshotId, runId: domain.runId, domainKey: domain.domainKey, ...domain.tokenUsage }));
+        const domainRowsByKey = new Map(domains.map(domain => [domain.domainKey, domain]));
+        const activeDomainRows = ACTIVE_ENTERPRISE_DOMAIN_KEYS.map(key => domainRowsByKey.get(key)).filter(Boolean);
+        const latestRunForDomain = domain => domain?.createdAt || domain?.periodEnd || domain?.periodStart || null;
+        const warningValues = domain => [
+            ...array(domain?.intelligenceOutput?.missingDataWarnings),
+            ...array(domain?.evidenceLimitations?.missingDataWarnings),
+            ...(domain?.errorMessage ? [domain.errorMessage] : [])
+        ].map(String).filter(Boolean);
+        const domainCounts = domain => {
+            const output = domain?.intelligenceOutput || {};
+            const limitations = output.evidenceLimitations || domain?.evidenceLimitations || {};
+            const batch = output.batchInfo || domain?.batchInfo || {};
+            const warnings = warningValues(domain);
+            return {
+                totalStackCTRLRows: numberOrNull(limitations.totalStackCTRLRows ?? limitations.stackctrlRows ?? limitations.recordsPrepared),
+                preparedRows: numberOrNull(limitations.recordsPrepared ?? limitations.preparedRows),
+                analysedRows: numberOrNull(limitations.recordsSent ?? limitations.analysedRows),
+                omittedRows: numberOrNull(limitations.recordsOmitted ?? limitations.omittedRows),
+                affectedEntityCount: AffectedEntityRows.filter(row => row.domainKey === domain?.domainKey).length,
+                riskCount: array(output.risks).length,
+                recommendationCount: array(output.recommendations).length,
+                evidenceRowCount: EvidenceRows.filter(row => row.domainKey === domain?.domainKey).length,
+                warningCount: warnings.length,
+                batchCount: numberOrNull(batch.totalBatches ?? batch.batchCount),
+                completedBatchCount: numberOrNull(batch.completedBatches ?? batch.completedBatchCount),
+                failedBatchCount: numberOrNull(batch.failedBatches ?? batch.failedBatchCount),
+                jsonStatus: batch.jsonStatus || (batch.jsonRecoveryWarning ? 'recovered' : null)
+            };
+        };
+        const sourceFreshnessForDomain = domain => {
+            const sourceHealth = domain?.intelligenceOutput?.sourceHealth || {};
+            const lineage = domain?.intelligenceOutput?.sourceLineage || {};
+            return {
+                sourceFreshnessStatus: sourceHealth.status || sourceHealth.freshnessStatus || null,
+                sourceLastUpdated: sourceHealth.sourceLastUpdated || sourceHealth.lastUpdated || lineage.sourceLastUpdated || lineage.sourceFetchedAt || null
+            };
+        };
+        const DomainStatusRows = ENTERPRISE_DOMAINS.map(domainDef => {
+            if (isTemporarilyDisabledDomain(domainDef.key)) {
+                return compactNonEmptyObject({
+                    domainKey: domainDef.key,
+                    domainName: domainDef.name,
+                    domainStatus: 'temporarily_disabled',
+                    selectable: false,
+                    includedInCurrentPhase: false,
+                    message: TEMPORARILY_DISABLED_DOMAIN_MESSAGE
+                });
+            }
+            const domain = domainRowsByKey.get(domainDef.key);
+            const counts = domainCounts(domain);
+            const freshness = sourceFreshnessForDomain(domain);
+            return compactNonEmptyObject({
+                companyId: domain?.companyId,
+                snapshotId: domain?.snapshotId,
+                runId: domain?.runId,
+                domainKey: domainDef.key,
+                domainName: domainDef.name,
+                domainStatus: domain?.status || 'pending',
+                selectable: true,
+                includedInCurrentPhase: true,
+                healthScore: numberOrNull(domain?.intelligenceOutput?.healthScore ?? domain?.intelligenceOutput?.score ?? domain?.intelligenceOutput?.scoreSummary?.healthScore),
+                riskScore: numberOrNull(domain?.intelligenceOutput?.riskScore ?? domain?.intelligenceOutput?.scoreSummary?.riskScore),
+                maturityScore: numberOrNull(domain?.intelligenceOutput?.maturityScore ?? domain?.intelligenceOutput?.maturityAssessment?.score),
+                ...counts,
+                ...freshness,
+                inputTokens: numberOrNull(domain?.tokenUsage?.inputTokens),
+                outputTokens: numberOrNull(domain?.tokenUsage?.outputTokens),
+                totalTokens: numberOrNull(domain?.tokenUsage?.totalTokens),
+                latestRunId: domain?.runId,
+                latestSnapshotId: domain?.snapshotId,
+                latestRunTime: latestRunForDomain(domain)
+            });
+        });
+        const DomainCompletenessRows = DomainStatusRows.map(row => compactNonEmptyObject({
+            domainKey: row.domainKey,
+            domainName: row.domainName,
+            domainStatus: row.domainStatus,
+            includedInCurrentPhase: row.includedInCurrentPhase,
+            preparedRows: row.preparedRows,
+            analysedRows: row.analysedRows,
+            omittedRows: row.omittedRows,
+            riskCount: row.riskCount,
+            recommendationCount: row.recommendationCount,
+            evidenceRowCount: row.evidenceRowCount,
+            complete: row.domainStatus === 'completed' || row.domainStatus === 'completed_with_warnings' || row.domainStatus === 'partial' || row.domainStatus === 'temporarily_disabled'
+        }));
+        const SourceFreshnessRows = activeDomainRows.map(domain => compactNonEmptyObject({
+            companyId: domain.companyId,
+            snapshotId: domain.snapshotId,
+            runId: domain.runId,
+            domainKey: domain.domainKey,
+            domainName: domain.domainName,
+            ...sourceFreshnessForDomain(domain)
+        }));
+        const WarningSummaryRows = activeDomainRows.flatMap(domain => warningValues(domain).map((warning, index) => compactNonEmptyObject({
+            companyId: domain.companyId,
+            snapshotId: domain.snapshotId,
+            runId: domain.runId,
+            domainKey: domain.domainKey,
+            domainName: domain.domainName,
+            warningNumber: index + 1,
+            warning
+        })));
+        const BatchTelemetryRows = activeDomainRows.map(domain => {
+            const batch = domain.intelligenceOutput?.batchInfo || domain.batchInfo || {};
+            return compactNonEmptyObject({
+                companyId: domain.companyId,
+                snapshotId: domain.snapshotId,
+                runId: domain.runId,
+                domainKey: domain.domainKey,
+                domainName: domain.domainName,
+                batchCount: numberOrNull(batch.totalBatches ?? batch.batchCount),
+                completedBatchCount: numberOrNull(batch.completedBatches ?? batch.completedBatchCount),
+                failedBatchCount: numberOrNull(batch.failedBatches ?? batch.failedBatchCount),
+                jsonStatus: batch.jsonStatus || (batch.jsonRecoveryWarning ? 'recovered' : null),
+                inputTokens: numberOrNull(domain.tokenUsage?.inputTokens),
+                outputTokens: numberOrNull(domain.tokenUsage?.outputTokens),
+                totalTokens: numberOrNull(domain.tokenUsage?.totalTokens)
+            });
+        });
+        const DomainLimitationsRows = activeDomainRows.flatMap(domain => array(domain.intelligenceOutput?.limitationsAndAssumptions || domain.evidenceLimitations?.limitations || domain.evidenceLimitations?.missingDataWarnings).map((limitation, index) => compactNonEmptyObject({
+            companyId: domain.companyId,
+            snapshotId: domain.snapshotId,
+            runId: domain.runId,
+            domainKey: domain.domainKey,
+            domainName: domain.domainName,
+            limitationNumber: index + 1,
+            limitation: typeof limitation === 'string' ? limitation : JSON.stringify(sanitizeVisibleValue(limitation))
+        })));
+        const DomainScorecardPhaseRows = DomainStatusRows.map(row => compactNonEmptyObject({
+            domainKey: row.domainKey,
+            domainName: row.domainName,
+            domainStatus: row.domainStatus,
+            healthScore: row.healthScore,
+            riskScore: row.riskScore,
+            maturityScore: row.maturityScore,
+            includedInCurrentPhase: row.includedInCurrentPhase,
+            selectable: row.selectable,
+            message: row.message
+        }));
+        const DisabledDomainRows = disabledDomainStates().map(domain => compactNonEmptyObject(domain));
         return {
-            DomainScorecardRows, RiskRegisterRows, RecommendationRows, AffectedEntityRows, EvidenceRows,
-            ControlAssessmentRows, TrendRows, AuditCompletenessRows: audits.map(powerBIAuditRow),
-            TokenUsageRows, RunHistoryRows: runs
+            DomainScorecardRows,
+            DomainStatusRows,
+            DomainCompletenessRows,
+            RiskRegisterRows,
+            RecommendationRows,
+            AffectedEntityRows,
+            EvidenceRows,
+            SourceFreshnessRows,
+            WarningSummaryRows,
+            BatchTelemetryRows,
+            TokenUsageRows,
+            RunHistoryRows: runs,
+            DisabledDomainRows,
+            DomainLimitationsRows,
+            ControlAssessmentRows,
+            TrendRows,
+            AuditCompletenessRows: audits.map(powerBIAuditRow),
+            domain_scorecard: DomainScorecardPhaseRows,
+            domain_status: DomainStatusRows,
+            domain_completeness: DomainCompletenessRows,
+            risk_register: RiskRegisterRows,
+            recommendations: RecommendationRows,
+            affected_entities: AffectedEntityRows,
+            evidence_rows: EvidenceRows,
+            source_freshness: SourceFreshnessRows,
+            warning_summary: WarningSummaryRows,
+            batch_telemetry: BatchTelemetryRows,
+            token_usage: TokenUsageRows,
+            run_history: runs,
+            disabled_domains: DisabledDomainRows,
+            domain_limitations: DomainLimitationsRows
         };
     }
 
@@ -7399,18 +7706,14 @@ ${JSON.stringify(packageValue)}`;
             params.push(Number(runId));
         } else {
             where += ` AND runs.Status IN ('completed', 'completed_with_warnings')
-                       AND EXISTS (
-                           SELECT 1 FROM StackCTRLEnterpriseSynthesis completedSynthesis
-                           WHERE completedSynthesis.RunID = runs.ID
-                             AND completedSynthesis.Status IN ('completed', 'completed_with_warnings')
-                       )
                        AND (
                            SELECT COUNT(DISTINCT completedDomain.DomainKey)
                            FROM StackCTRLTenantDomainIntelligence completedDomain
                            WHERE completedDomain.RunID = runs.ID
+                             AND completedDomain.DomainKey IN (${ACTIVE_ENTERPRISE_DOMAIN_KEYS.map(() => '?').join(',')})
                              AND completedDomain.Status IN ('completed', 'completed_with_warnings', 'partial')
                        ) >= ?`;
-            params.push(ENTERPRISE_DOMAINS.length);
+            params.push(...ACTIVE_ENTERPRISE_DOMAIN_KEYS, ACTIVE_ENTERPRISE_DOMAIN_KEYS.length);
         }
         if (periodType) { where += ' AND runs.PeriodType = ?'; params.push(String(periodType)); }
         const [runRows] = await pool.query(`SELECT runs.* FROM StackCTRLEnterpriseReportRuns runs WHERE ${where} ORDER BY runs.ID DESC LIMIT 1`, params);
@@ -7435,10 +7738,15 @@ ${JSON.stringify(packageValue)}`;
             latestRunId: Number(run.ID),
             periodType: run.PeriodType, periodStart: run.PeriodStart, periodEnd: run.PeriodEnd,
             createdAt: run.CreatedAt || run.StartedAt,
+            reportingPhase: CURRENT_REPORTING_PHASE,
             domains,
             finalSynthesis,
             completeness: {
-                expectedDomains: ENTERPRISE_DOMAINS.length,
+                expectedDomains: ACTIVE_ENTERPRISE_DOMAIN_KEYS.length,
+                disabledDomainCount: TEMPORARILY_DISABLED_DOMAIN_KEYS.length,
+                totalDefinedDomains: ENTERPRISE_DOMAINS.length,
+                activeDomainKeys: ACTIVE_ENTERPRISE_DOMAIN_KEYS,
+                disabledDomains: disabledDomainStates(),
                 returnedDomains: domains.length,
                 successfulDomains: domains.filter(domain => isSuccessfulDomainStatus(domain.status)).length,
                 recordsSent: audits.reduce((total, audit) => total + Number(audit.SentToAzureCount || 0), 0),
@@ -7454,6 +7762,13 @@ ${JSON.stringify(packageValue)}`;
             const error = new Error(`Unsupported enterprise domain: ${domainKey}`);
             error.statusCode = 400;
             throw error;
+        }
+        if (isTemporarilyDisabledDomain(domainKey)) {
+            return {
+                dataClassification: 'intelligent_azure_output',
+                reportingPhase: CURRENT_REPORTING_PHASE,
+                domain: disabledDomainState(domainKey)
+            };
         }
         const params = [Number(companyId), domainKey];
         let where = 'CompanyID = ? AND DomainKey = ?';
@@ -7472,8 +7787,17 @@ ${JSON.stringify(packageValue)}`;
         else where += ` AND Status IN ('completed', 'completed_with_warnings')`;
         if (periodType) { where += ' AND PeriodType = ?'; params.push(String(periodType)); }
         const [rows] = await pool.query(`SELECT * FROM StackCTRLEnterpriseSynthesis WHERE ${where} ORDER BY ID DESC LIMIT 1`, params);
-        if (!rows[0]) { const error = new Error('Enterprise synthesis output not found'); error.statusCode = 404; throw error; }
-        return { dataClassification: 'intelligent_azure_output', finalSynthesis: powerBISynthesisRow(rows[0]) };
+        if (!rows[0]) {
+            return {
+                dataClassification: 'intelligent_azure_output',
+                status: runId ? 'not_ready' : 'not_requested',
+                reportingPhase: CURRENT_REPORTING_PHASE,
+                finalSynthesis: null,
+                limitations: ['Governance, Operations, and Compliance are temporarily disabled in this reporting phase.'],
+                message: 'Final enterprise synthesis is not primary for the current reporting phase; validated per-domain intelligence is the active Power BI focus.'
+            };
+        }
+        return { dataClassification: 'intelligent_azure_output', status: rows[0].Status || 'available', reportingPhase: CURRENT_REPORTING_PHASE, limitations: ['Governance, Operations, and Compliance are temporarily disabled in this reporting phase.'], finalSynthesis: powerBISynthesisRow(rows[0]) };
     }
 
     async function getPowerBIRaw(companyId, domainKey = null) {
@@ -7503,7 +7827,7 @@ ${JSON.stringify(packageValue)}`;
         params.push(Math.min(500, Math.max(1, Number(limit) || 100)));
         const [runs] = await pool.query(`SELECT * FROM StackCTRLEnterpriseReportRuns WHERE CompanyID = ?${periodFilter} ORDER BY ID DESC LIMIT ?`, params);
         const runIds = runs.map(run => Number(run.ID)).filter(Boolean);
-        if (!runIds.length) return { dataClassification: 'intelligent_azure_output', companyId: numericCompanyId, periodType: periodType || 'all', runs: [], domains: [], finalSyntheses: [] };
+        if (!runIds.length) return { dataClassification: 'intelligent_azure_output', companyId: numericCompanyId, periodType: periodType || 'all', reportingPhase: CURRENT_REPORTING_PHASE, activeDomainKeys: ACTIVE_ENTERPRISE_DOMAIN_KEYS, disabledDomains: disabledDomainStates(), runs: [], domains: [], finalSyntheses: [] };
         const placeholders = runIds.map(() => '?').join(',');
         const [[domainRows], [synthesisRows]] = await Promise.all([
             pool.query(`SELECT * FROM StackCTRLTenantDomainIntelligence WHERE CompanyID = ? AND RunID IN (${placeholders}) ORDER BY RunID DESC, ID`, [numericCompanyId, ...runIds]),
@@ -7511,7 +7835,7 @@ ${JSON.stringify(packageValue)}`;
         ]);
         return {
             dataClassification: 'intelligent_azure_output', companyId: numericCompanyId,
-            periodType: periodType || 'all', runs,
+            periodType: periodType || 'all', reportingPhase: CURRENT_REPORTING_PHASE, activeDomainKeys: ACTIVE_ENTERPRISE_DOMAIN_KEYS, disabledDomains: disabledDomainStates(), runs,
             domains: domainRows.map(powerBIDomainRow),
             finalSyntheses: synthesisRows.map(powerBISynthesisRow)
         };
@@ -7519,7 +7843,7 @@ ${JSON.stringify(packageValue)}`;
 
     return {
         settings,
-        domains: ENTERPRISE_DOMAINS,
+        domains: ENTERPRISE_DOMAINS.map(domain => ({ ...domain, ...enterpriseDomainDescriptor(domain) })),
         buildDomainPackage,
         buildDomainBatchPackage,
         runEnterpriseReport,
@@ -7544,6 +7868,9 @@ ${JSON.stringify(packageValue)}`;
 module.exports = {
     ENTERPRISE_DOMAINS,
     DOMAIN_BY_KEY,
+    ACTIVE_ENTERPRISE_DOMAIN_KEYS,
+    TEMPORARILY_DISABLED_DOMAIN_KEYS,
+    CURRENT_REPORTING_PHASE,
     IDENTITY_LINEAGE_FIELDS,
     DEVICE_LINEAGE_FIELDS,
     EMAIL_LINEAGE_FIELDS,
