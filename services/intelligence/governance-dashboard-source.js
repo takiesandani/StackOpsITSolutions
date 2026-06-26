@@ -8,13 +8,23 @@ function numberValue(value, fallback = 0) {
 
 function buildGovernanceRecommendations(metrics) {
     const recs = [];
+
     if (numberValue(metrics.attentionRequiredRows) > 0) {
         recs.push({
             priority: 'high',
             title: 'Review governance evidence requiring attention',
-            detail: `${metrics.attentionRequiredRows} API-connected governance row(s) need review.`
+            detail: `${metrics.attentionRequiredRows} API-connected governance row(s) require management review, ownership, or escalation.`
         });
     }
+
+    if (numberValue(metrics.ownerMissingCount) > 0) {
+        recs.push({
+            priority: 'high',
+            title: 'Assign missing governance owners',
+            detail: `${metrics.ownerMissingCount} governance item(s) do not show a responsible owner in the available evidence.`
+        });
+    }
+
     if (numberValue(metrics.manualRowsExcluded) > 0) {
         recs.push({
             priority: 'medium',
@@ -22,6 +32,7 @@ function buildGovernanceRecommendations(metrics) {
             detail: `${metrics.manualRowsExcluded} manual governance item(s) are excluded from Azure analysis and remain dashboard-only.`
         });
     }
+
     if (!recs.length) {
         recs.push({
             priority: 'low',
@@ -29,37 +40,93 @@ function buildGovernanceRecommendations(metrics) {
             detail: 'No urgent API-connected governance recommendations from current evidence.'
         });
     }
+
     return recs;
 }
 
 function buildGovernanceDashboardSource({ rows = [], summary = {} } = {}) {
     const allRows = Array.isArray(rows) ? rows : [];
-    const apiRows = allRows.filter(isApiConnectedGovernanceRow);
-    const manualRowsExcluded = allRows.length - apiRows.length;
-    const attentionRequiredRows = apiRows.filter(row => /attention required/i.test(String(row.status || ''))).length;
-    const connectedRows = apiRows.filter(row => /connected/i.test(String(row.status || ''))).length;
+
+    const normalizedRows = allRows.map((row, index) => {
+        const area = row.area || row.controlArea || row.category || row.domain || 'Governance';
+        const activity = row.activity || row.title || row.name || row.controlName || 'Governance review item';
+        const status = row.status || row.state || row.result || 'unknown';
+        const owner = row.owner || row.assignedTo || row.responsibleOwner || row.ownerName || row.ownerEmail || null;
+        const dataSource = row.dataSource || row.source || row.sourceSystem || 'StackCTRL';
+        const entityName = row.entityName || row.displayName || row.name || row.userPrincipalName || row.deviceName || row.appName || activity;
+        const entityId = row.entityId || row.id || row.sourceId || row.controlId || row.policyId || row.userPrincipalName || entityName || `governance-row-${index + 1}`;
+
+        return {
+            ...row,
+            area,
+            activity,
+            status,
+            owner,
+            dataSource,
+            entityId,
+            entityName,
+            entityType: row.entityType || row.type || 'GovernanceItem',
+            ownerStatus: owner ? 'assigned' : 'missing_or_not_supplied',
+            evidenceReference: row.evidenceReference || row.sourceId || entityId,
+            governanceIssue: row.governanceIssue || (/attention required|failed|missing|overdue|blocked/i.test(String(status))
+                ? `${area} requires management review.`
+                : `${area} governance evidence is available.`),
+            managementAction: row.managementAction || (/attention required|failed|missing|overdue|blocked/i.test(String(status))
+                ? 'Assign an owner, review evidence, document the decision, and track remediation.'
+                : 'Maintain governance evidence and include it in the next review cycle.')
+        };
+    });
+
+    const apiRows = normalizedRows.filter(isApiConnectedGovernanceRow);
+    const manualRowsExcluded = normalizedRows.length - apiRows.length;
+
+    const attentionRequiredRows = apiRows.filter(row =>
+        /attention required|failed|fail|missing|overdue|blocked|partial|review/i.test(String(row.status || ''))
+    ).length;
+
+    const connectedRows = apiRows.filter(row =>
+        /connected|complete|passed|pass|healthy|ok/i.test(String(row.status || ''))
+    ).length;
+
+    const ownerMissingCount = apiRows.filter(row =>
+        !row.owner || /missing_or_not_supplied/i.test(String(row.ownerStatus || ''))
+    ).length;
+
     const governanceScore = numberValue(
         summary.score ?? summary.governanceScore,
         apiRows.length
-            ? Math.max(0, Math.min(100, Math.round((connectedRows / apiRows.length) * 100) - (attentionRequiredRows * 8)))
+            ? Math.max(
+                0,
+                Math.min(
+                    100,
+                    Math.round((Math.max(connectedRows, apiRows.length - attentionRequiredRows) / apiRows.length) * 100)
+                        - (attentionRequiredRows * 6)
+                        - (ownerMissingCount * 2)
+                )
+            )
             : 0
     );
+
     const recommendations = buildGovernanceRecommendations({
         attentionRequiredRows,
-        manualRowsExcluded
+        manualRowsExcluded,
+        ownerMissingCount
     });
+
     const dashboardMetrics = {
-        totalRows: allRows.length,
+        totalRows: normalizedRows.length,
         apiConnectedRows: apiRows.length,
         manualRowsExcluded,
         attentionRequiredRows,
         connectedRows,
+        ownerMissingCount,
         governanceScore,
         recommendationsCount: recommendations.length
     };
+
     return {
         rows: apiRows,
-        allRows,
+        allRows: normalizedRows,
         recommendations,
         dashboardMetrics
     };

@@ -15,7 +15,7 @@ const ENTERPRISE_DOMAINS = Object.freeze([
 ]);
 
 const DOMAIN_BY_KEY = Object.freeze(Object.fromEntries(ENTERPRISE_DOMAINS.map(domain => [domain.key, domain])));
-const TEMPORARILY_DISABLED_DOMAIN_KEYS = Object.freeze(['governance', 'operations', 'compliance']);
+const TEMPORARILY_DISABLED_DOMAIN_KEYS = Object.freeze(['operations', 'compliance']);
 const TEMPORARILY_DISABLED_DOMAIN_SET = Object.freeze(new Set(TEMPORARILY_DISABLED_DOMAIN_KEYS));
 const ACTIVE_ENTERPRISE_DOMAIN_KEYS = Object.freeze(ENTERPRISE_DOMAINS.map(domain => domain.key).filter(key => !TEMPORARILY_DISABLED_DOMAIN_SET.has(key)));
 const ACTIVE_ENTERPRISE_DOMAIN_SET = Object.freeze(new Set(ACTIVE_ENTERPRISE_DOMAIN_KEYS));
@@ -88,8 +88,19 @@ const ENTERPRISE_CONNECTION_RETRY_DELAYS_MS = Object.freeze([0, 15000, 45000]);
 const ENTERPRISE_RATE_LIMIT_RETRY_MAX_MS = 15 * 60 * 1000;
 const EMAIL_SECURITY_RATE_LIMIT_RETRY_DELAYS_MS = Object.freeze([]);
 const EMAIL_SECURITY_RATE_LIMIT_RETRY_MAX_MS = 0;
-const STRICT_COMPACT_SELECTED_DOMAIN_KEYS = Object.freeze(new Set(['email_security', 'cloudflare_network_security', 'backup', 'applications']));
-const COMPACT_SELECTED_DOMAIN_KEYS = Object.freeze(new Set(['identity', 'security_alerts', ...STRICT_COMPACT_SELECTED_DOMAIN_KEYS]));
+const STRICT_COMPACT_SELECTED_DOMAIN_KEYS = Object.freeze(new Set([
+    'email_security',
+    'cloudflare_network_security',
+    'backup',
+    'applications',
+    'governance'
+]));
+
+const COMPACT_SELECTED_DOMAIN_KEYS = Object.freeze(new Set([
+    'identity',
+    'security_alerts',
+    ...STRICT_COMPACT_SELECTED_DOMAIN_KEYS
+]));
 const HEAVY_DOMAINS = Object.freeze(new Set(['governance', 'operations', 'compliance']));
 const SUCCESSFUL_DOMAIN_STATUSES = Object.freeze(new Set(['completed', 'partial', 'completed_with_warnings']));
 const SKIPPED_DOMAIN_STATUSES = Object.freeze(new Set(['skipped_rate_limited', 'skipped_token_threshold', 'skipped_pipeline_stop']));
@@ -1448,6 +1459,228 @@ function compactApplicationsEvidenceRows(flattenedEvidence) {
         ...compactRecommendations
     ];
     return compactRows.length ? compactRows : fallback;
+}
+
+function governanceStatusRank(value) {
+    const text = String(value || '').toLowerCase();
+
+    if (/critical|failed|fail|overdue|attention|required|missing|blocked/.test(text)) return 5;
+    if (/high|risk|partial|warning|review/.test(text)) return 4;
+    if (/medium|manual|unknown|not verified/.test(text)) return 3;
+    if (/connected|passed|complete|healthy|ok|good/.test(text)) return 1;
+
+    return 2;
+}
+
+function compactGovernanceEvidenceRows(flattenedEvidence = [], current = {}) {
+    const rows = array(flattenedEvidence)
+        .filter(row => /governance|review|owner|policy|risk|control|evidence/i.test(
+            String(row.evidenceType || row.sourceLabel || row.evidenceCategory || '')
+        ));
+
+    const metrics = current?.dashboardMetrics || current?.metrics || {};
+    const sourceLineage = current?.source?.sourceLineage || current?.sourceLineage || {};
+
+    const normalizedRows = rows.map((row, index) => {
+        const data = row?.data || row || {};
+
+        const area = firstReadableValue(
+            data.area,
+            data.controlArea,
+            data.category,
+            data.domain,
+            data.group
+        ) || 'Governance';
+
+        const activity = firstReadableValue(
+            data.activity,
+            data.title,
+            data.name,
+            data.controlName,
+            data.requirement
+        ) || 'Governance review item';
+
+        const status = firstReadableValue(
+            data.status,
+            data.state,
+            data.result,
+            data.validationStatus
+        ) || 'unknown';
+
+        const owner = firstReadableValue(
+            data.owner,
+            data.assignedTo,
+            data.responsibleOwner,
+            data.ownerName,
+            data.ownerEmail
+        );
+
+        const source = firstReadableValue(
+            data.dataSource,
+            data.source,
+            data.sourceSystem,
+            data.system
+        ) || 'StackCTRL evidence';
+
+        const entityName = firstReadableValue(
+            data.entityName,
+            data.displayName,
+            data.name,
+            data.userPrincipalName,
+            data.deviceName,
+            data.appName,
+            activity
+        );
+
+        const entityId = firstReadableValue(
+            data.entityId,
+            data.id,
+            data.sourceId,
+            data.controlId,
+            data.policyId,
+            data.userPrincipalName,
+            data.deviceId,
+            data.appId,
+            entityName
+        );
+
+        const entityType = firstReadableValue(
+            data.entityType,
+            data.type,
+            data.recordType
+        ) || 'GovernanceItem';
+
+        const rank = governanceStatusRank(status);
+
+        return {
+            row,
+            rank,
+            compact: {
+                internalSourcePath: row?.internalSourcePath || `governance.compact.governanceRows[${index}]`,
+                sourceLabel: 'governanceRows',
+                evidenceType: 'governanceRows',
+                evidenceCategory: 'governanceRows',
+                sourceMetric: rank >= 4 ? 'attentionRequiredRows' : 'connectedRows',
+                entityKey: entityId || `governance-row-${index + 1}`,
+                data: compactNonEmptyObject({
+                    entityId: entityId || `governance-row-${index + 1}`,
+                    entityName,
+                    entityType,
+                    area,
+                    activity,
+                    status,
+                    owner,
+                    source,
+                    ownerStatus: owner ? 'assigned' : 'missing_or_not_supplied',
+                    governanceIssue: rank >= 4
+                        ? `${area} requires management review: ${activity}`
+                        : `${area} governance evidence is available for review.`,
+                    businessReason: rank >= 4
+                        ? 'Governance item is marked attention-required, failed, blocked, overdue, partial, or missing ownership.'
+                        : 'Governance evidence supports the current management/control posture.',
+                    managementAction: rank >= 4
+                        ? 'Assign an owner, review the evidence, document the decision, and track remediation.'
+                        : 'Maintain evidence and include in the next governance review cycle.',
+                    dueDateRecommendation: rank >= 4 ? 'within 14 days' : 'next review cycle',
+                    sourceMetric: rank >= 4 ? 'attentionRequiredRows' : 'connectedRows',
+                    evidenceReference: row?.entityKey || entityId || row?.internalSourcePath || null,
+                    rawStatus: status
+                })
+            }
+        };
+    });
+
+    const attentionRequired = normalizedRows
+        .filter(item => item.rank >= 4)
+        .sort((a, b) => b.rank - a.rank)
+        .slice(0, 20)
+        .map(item => ({
+            ...item.compact,
+            evidenceType: 'attentionRequiredGovernance',
+            evidenceCategory: 'attentionRequiredGovernance',
+            sourceLabel: 'attentionRequiredGovernance',
+            sourceMetric: 'attentionRequiredRows'
+        }));
+
+    const ownershipGaps = normalizedRows
+        .filter(item => /missing_or_not_supplied/i.test(String(item.compact.data.ownerStatus || '')))
+        .slice(0, 15)
+        .map(item => ({
+            ...item.compact,
+            evidenceType: 'riskOwnershipGaps',
+            evidenceCategory: 'riskOwnershipGaps',
+            sourceLabel: 'riskOwnershipGaps',
+            sourceMetric: 'ownerMissingCount',
+            data: {
+                ...item.compact.data,
+                governanceIssue: 'Governance evidence does not show a responsible owner.',
+                managementAction: 'Assign accountable owner and document responsibility.'
+            }
+        }));
+
+    const reviewItems = normalizedRows
+        .filter(item => /review|policy|access|admin|control/i.test(
+            `${item.compact.data.area} ${item.compact.data.activity}`
+        ))
+        .slice(0, 15)
+        .map(item => ({
+            ...item.compact,
+            evidenceType: 'reviewGaps',
+            evidenceCategory: 'reviewGaps',
+            sourceLabel: 'reviewGaps',
+            sourceMetric: item.rank >= 4 ? 'attentionRequiredRows' : 'connectedRows'
+        }));
+
+    const connectedEvidence = normalizedRows
+        .filter(item => item.rank <= 2)
+        .slice(0, 10)
+        .map(item => ({
+            ...item.compact,
+            evidenceType: 'connectedGovernanceEvidence',
+            evidenceCategory: 'connectedGovernanceEvidence',
+            sourceLabel: 'connectedGovernanceEvidence',
+            sourceMetric: 'connectedRows'
+        }));
+
+    const summaryRow = {
+        internalSourcePath: 'governance.compact.summaryMetrics',
+        sourceLabel: 'summaryMetrics',
+        evidenceType: 'summaryMetrics',
+        evidenceCategory: 'summaryMetrics',
+        sourceMetric: 'governanceScore',
+        entityKey: 'governance-summary',
+        data: compactNonEmptyObject({
+            entityId: 'governance-summary',
+            entityName: 'Governance Validation Summary',
+            entityType: 'GovernanceSummary',
+            totalRows: numberOrNull(metrics.totalRows),
+            apiConnectedRows: numberOrNull(metrics.apiConnectedRows),
+            manualRowsExcluded: numberOrNull(metrics.manualRowsExcluded),
+            attentionRequiredRows: numberOrNull(metrics.attentionRequiredRows),
+            connectedRows: numberOrNull(metrics.connectedRows),
+            ownerMissingCount: numberOrNull(metrics.ownerMissingCount),
+            governanceScore: numberOrNull(metrics.governanceScore),
+            stackctrlRiskScore: numberOrNull(metrics.stackctrlRiskScore),
+            stackctrlHealthScore: numberOrNull(metrics.stackctrlHealthScore),
+            evidenceSnapshotId: sourceLineage.evidenceSnapshotId || null,
+            sourceFetchedAt: sourceLineage.sourceFetchedAt || sourceLineage.sourceLastUpdated || null,
+            collectionStatus: sourceLineage.collectionStatus || null,
+            governanceIssue: 'Governance summary provides management/accountability context across API-connected evidence.',
+            managementAction: 'Use detailed findings to assign owners, schedule reviews, and record management decisions.'
+        })
+    };
+
+    const compactRows = [
+        summaryRow,
+        ...attentionRequired,
+        ...ownershipGaps,
+        ...reviewItems,
+        ...connectedEvidence
+    ];
+
+    return compactRows.length
+        ? compactRows
+        : normalizedRows.slice(0, 25).map(item => item.compact);
 }
 
 function enrichDomainEvidence(source, domain, evidence) {
@@ -3541,7 +3774,9 @@ function createEnterpriseIntelligenceService({
             : useStrictCompactPackage && domain.key === 'backup'
             ? compactBackupEvidenceRows(flattenedDomainEvidence, current)
             : useStrictCompactPackage && domain.key === 'applications'
-            ? compactApplicationsEvidenceRows(flattenedDomainEvidence, current)
+            ? compactApplicationsEvidenceRows(flattenedDomainEvidence)
+            : useStrictCompactPackage && domain.key === 'governance'
+            ? compactGovernanceEvidenceRows(flattenedDomainEvidence, current)
             : useSecurityAlertsCompactPackage
             ? compactSecurityAlertsEvidenceRows(flattenedDomainEvidence, current)
             : flattenedDomainEvidence;
@@ -3867,8 +4102,20 @@ Applications reasoning requirements:
 - Do not create risks for positive or neutral observations such as no users assigned, no group-assigned or high-access apps detected, or missing curated references; place useful positives in keyFindings[], currentPosture, or scoreJustification.
 - Keep output compact: risks max 5, recommendations max 5, affectedEntities max 5 per risk, evidenceUsed max 5, and one to two sentences per reasoning field.`;
         }
+        if (domain.key === 'governance') {
+                return `
+            Governance reasoning requirements:
+            - Governance is a management, accountability, ownership, review, escalation, and decision layer. Do not treat it as a raw technical scan.
+            - Use only supplied StackCTRL Governance evidence. Do not invent owners, policies, control names, review dates, management decisions, or entities.
+            - Focus on risk ownership, missing owners, overdue/attention-required items, admin/access review evidence, policy review gaps, unresolved issues requiring escalation, and decisions required by management.
+            - Every governance finding must cite a real sourceDomain/sourceMetric and at least one affected entity where supplied.
+            - Every risk must include entityId, entityName, entityType, ownerStatus, governanceIssue, businessImpact, managementAction, evidenceReference, sourceDomain, sourceMetric, and suggestedDueDate where possible.
+            - Do not create generic governance advice without evidence. If evidence is missing or stale, report it as a limitation or manual-review item.
+            - Put positive observations in keyFindings[] or currentPosture, not risks[].
+            - Keep output compact: risks max 5, recommendations max 5, managementActions max 5, affectedEntities max 5 per risk.`;
+            }
         return '';
-    }
+}
 
     function domainOutputSchema(domain) {
         if (!['identity', 'devices', ...STRICT_COMPACT_SELECTED_DOMAIN_KEYS].includes(domain.key)) {

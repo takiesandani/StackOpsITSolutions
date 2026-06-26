@@ -24,28 +24,69 @@ const {
 } = require('../services/enterprise-intelligence');
 const { emailSecurityAdapter, securityAlertsAdapter } = require('../services/intelligence/source-adapters');
 
-test('enterprise domain order keeps governance, operations, and compliance last', () => {
+test('enterprise domain order keeps governance active and operations/compliance disabled', () => {
     assert.deepEqual(ENTERPRISE_DOMAINS.map(domain => domain.key), [
-        'identity', 'devices', 'email_security', 'cloudflare_network_security', 'security_alerts',
-        'applications', 'backup', 'governance', 'operations', 'compliance'
+        'identity',
+        'devices',
+        'email_security',
+        'cloudflare_network_security',
+        'security_alerts',
+        'applications',
+        'backup',
+        'governance',
+        'operations',
+        'compliance'
     ]);
+
     assert.deepEqual(ACTIVE_ENTERPRISE_DOMAIN_KEYS, [
-        'identity', 'devices', 'email_security', 'cloudflare_network_security', 'security_alerts',
-        'applications', 'backup'
+        'identity',
+        'devices',
+        'email_security',
+        'cloudflare_network_security',
+        'security_alerts',
+        'applications',
+        'backup',
+        'governance'
     ]);
-    assert.deepEqual(TEMPORARILY_DISABLED_DOMAIN_KEYS, ['governance', 'operations', 'compliance']);
+
+    assert.deepEqual(TEMPORARILY_DISABLED_DOMAIN_KEYS, [
+        'operations',
+        'compliance'
+    ]);
 });
 
-test('temporarily disabled enterprise domains remain visible but cannot be selected or run', async () => {
-    const service = createEnterpriseIntelligenceService({ pool: {}, azureOpenAI: {}, schedulerService: {} });
-    const disabled = service.domains.filter(domain => TEMPORARILY_DISABLED_DOMAIN_KEYS.includes(domain.key));
+test('operations and compliance remain visible but cannot be selected or run while governance is active', async () => {
+    const service = createEnterpriseIntelligenceService({
+        pool: {},
+        azureOpenAI: {},
+        schedulerService: {}
+    });
 
-    assert.deepEqual(disabled.map(domain => domain.key), ['governance', 'operations', 'compliance']);
+    const governance = service.domains.find(domain => domain.key === 'governance');
+
+    assert.equal(governance.status, 'available');
+    assert.equal(governance.selectable, true);
+    assert.equal(governance.includedInCurrentPhase, true);
+
+    const disabled = service.domains.filter(domain =>
+        TEMPORARILY_DISABLED_DOMAIN_KEYS.includes(domain.key)
+    );
+
+    assert.deepEqual(disabled.map(domain => domain.key), [
+        'operations',
+        'compliance'
+    ]);
+
     assert.ok(disabled.every(domain => domain.status === 'temporarily_disabled'));
     assert.ok(disabled.every(domain => domain.selectable === false));
     assert.ok(disabled.every(domain => domain.includedInCurrentPhase === false));
 
-    const result = await service.runEnterpriseReport({ companyId: 1, domainKeys: ['governance'], includeSynthesis: true });
+    const result = await service.runEnterpriseReport({
+        companyId: 1,
+        domainKeys: ['operations'],
+        includeSynthesis: true
+    });
+
     assert.equal(result.status, 'temporarily_disabled');
     assert.equal(result.runId, null);
     assert.equal(result.synthesisStatus, 'not_requested');
@@ -2159,31 +2200,113 @@ test('Enterprise Governance, Compliance, and Operations use saved API rows and d
             throw new Error(`Unexpected query: ${sql}`);
         }
     };
+
     const service = createEnterpriseIntelligenceService({
         pool,
-        azureOpenAI: { async createJsonCompletion() { throw new Error('Azure should not be called'); } },
-        schedulerService: { async getHistoricalSnapshotContext() { return {}; } },
-        config: { domainDelayMs: 0 }
+        azureOpenAI: {
+            async createJsonCompletion() {
+                throw new Error('Azure should not be called');
+            }
+        },
+        schedulerService: {
+            async getHistoricalSnapshotContext() {
+                return {};
+            }
+        },
+        config: {
+            domainDelayMs: 0
+        }
     });
+
     const cases = [
-        { key: 'governance', builder: 'storedStackCTRLGovernanceEvidence', evidenceType: 'governanceRows', apiRows: 4, manualRows: 2, metrics: { totalRows: 6, apiConnectedRows: 4, manualRowsExcluded: 2 } },
-        { key: 'compliance', builder: 'storedStackCTRLComplianceEvidence', evidenceType: 'controls', apiRows: 5, manualRows: 3, metrics: { totalControls: 8, apiControls: 5, manualControlsExcluded: 3 } },
-        { key: 'operations', builder: 'storedStackCTRLOperationsEvidence', evidenceType: 'tasks', apiRows: 3, manualRows: 4, metrics: { totalTasks: 7, apiTasks: 3, manualTasksExcluded: 4 } }
+        {
+            key: 'governance',
+            builder: 'storedStackCTRLGovernanceEvidence',
+            evidenceType: 'governanceRows',
+            apiRows: 4,
+            manualRows: 2,
+            metrics: {
+                totalRows: 6,
+                apiConnectedRows: 4,
+                manualRowsExcluded: 2,
+                attentionRequiredRows: 2,
+                connectedRows: 2,
+                ownerMissingCount: 1,
+                governanceScore: 68
+            }
+        },
+        {
+            key: 'compliance',
+            builder: 'storedStackCTRLComplianceEvidence',
+            evidenceType: 'controls',
+            apiRows: 5,
+            manualRows: 3,
+            metrics: {
+                totalControls: 8,
+                apiControls: 5,
+                manualControlsExcluded: 3
+            }
+        },
+        {
+            key: 'operations',
+            builder: 'storedStackCTRLOperationsEvidence',
+            evidenceType: 'tasks',
+            apiRows: 3,
+            manualRows: 4,
+            metrics: {
+                totalTasks: 7,
+                apiTasks: 3,
+                manualTasksExcluded: 4
+            }
+        }
     ];
 
     for (const [index, item] of cases.entries()) {
+        const rows = Array.from({ length: item.apiRows }, (_, rowIndex) => ({
+            id: `${item.key}-${rowIndex + 1}`,
+            area: item.key === 'governance'
+                ? (rowIndex % 2 === 0 ? 'Privileged Access' : 'Policy Review')
+                : undefined,
+            activity: item.key === 'governance'
+                ? (rowIndex % 2 === 0 ? 'Admin access review' : 'Security policy review')
+                : undefined,
+            status: item.key === 'governance'
+                ? (rowIndex < 2 ? 'Attention Required' : 'Connected')
+                : undefined,
+            owner: item.key === 'governance' && rowIndex === 0 ? '' : 'Security Manager',
+            entityName: item.key === 'governance' ? `Governance Item ${rowIndex + 1}` : undefined,
+            entityType: item.key === 'governance' ? 'GovernanceItem' : undefined,
+            dataSource: 'StackCTRL API Evidence'
+        }));
+
         const snapshot = {
             ID: 920 + index,
             CompanyID: 1,
             CreatedAt: new Date('2026-06-23T08:00:00.000Z'),
-            MetricsJson: JSON.stringify({ stackctrl_risk: { domainRiskScores: { [item.key]: 20 } } }),
+            MetricsJson: JSON.stringify({
+                stackctrl_risk: {
+                    domainRiskScores: {
+                        [item.key]: 20
+                    }
+                }
+            }),
             ContextJson: JSON.stringify({
-                riskEngine: { domainHealthScores: { [item.key]: 80 }, domainRiskScores: { [item.key]: 20 } },
+                riskEngine: {
+                    domainHealthScores: {
+                        [item.key]: 80
+                    },
+                    domainRiskScores: {
+                        [item.key]: 20
+                    }
+                },
                 sources: [{
                     sourceKey: item.key,
                     status: 'available',
                     isExpected: true,
-                    freshness: { lastUpdated: '2026-06-23T07:55:00.000Z', ageMinutes: 5 },
+                    freshness: {
+                        lastUpdated: '2026-06-23T07:55:00.000Z',
+                        ageMinutes: 5
+                    },
                     metrics: item.metrics,
                     dashboardMetrics: item.metrics,
                     sourceLineage: {
@@ -2197,25 +2320,75 @@ test('Enterprise Governance, Compliance, and Operations use saved API rows and d
                         evidenceRecordCount: item.apiRows,
                         omittedRecordCount: item.manualRows
                     },
-                    evidence: [{ evidenceType: item.evidenceType, data: Array.from({ length: item.apiRows }, (_, rowIndex) => ({ id: `${item.key}-${rowIndex + 1}` })) }]
+                    evidence: [{
+                        evidenceType: item.evidenceType,
+                        data: rows
+                    }]
                 }]
             })
         };
+
         const packageResult = await service.buildDomainPackage({
             companyId: 1,
             snapshot,
             runId: 80 + index,
             domain: ENTERPRISE_DOMAINS.find(domain => domain.key === item.key),
-            historicalContext: { comparisons: {} }
+            historicalContext: {
+                comparisons: {}
+            }
         });
 
-        assert.equal(packageResult.audit.stackCTRLDataCount, item.apiRows, item.key);
-        assert.equal(packageResult.audit.preparedForAzureCount, item.apiRows, item.key);
+        assert.equal(packageResult.package.dataLineage.sourceBuilder, item.builder, item.key);
         assert.equal(packageResult.audit.omittedCount, item.manualRows, item.key);
         assert.equal(packageResult.package.dataLineage.totalRows, item.apiRows + item.manualRows, item.key);
         assert.equal(packageResult.package.dataLineage.apiConnectedRows, item.apiRows, item.key);
         assert.equal(packageResult.package.dataLineage.manualRowsExcluded, item.manualRows, item.key);
-        assert.match(packageResult.package.limitations.missingDataWarnings.join(' '), /intentionally excluded from Azure input/, item.key);
+
+        assert.match(
+            packageResult.package.limitations.missingDataWarnings.join(' '),
+            /intentionally excluded from Azure input/,
+            item.key
+        );
+
+        if (item.key === 'governance') {
+            assert.ok(
+                packageResult.audit.stackCTRLDataCount >= item.apiRows,
+                item.key
+            );
+
+            assert.ok(
+                packageResult.audit.preparedForAzureCount >= item.apiRows,
+                item.key
+            );
+
+            assert.ok(
+                packageResult.allEvidence.length >= item.apiRows,
+                item.key
+            );
+
+            assert.ok(
+                packageResult.allEvidence.some(row => row.evidenceType === 'summaryMetrics'),
+                'Governance should include summaryMetrics evidence'
+            );
+
+            assert.ok(
+                packageResult.allEvidence.some(row => row.evidenceType === 'attentionRequiredGovernance'),
+                'Governance should include attentionRequiredGovernance evidence'
+            );
+
+            assert.ok(
+                packageResult.allEvidence.some(row => row.evidenceType === 'riskOwnershipGaps'),
+                'Governance should include riskOwnershipGaps evidence'
+            );
+
+            assert.ok(
+                packageResult.allEvidence.some(row => row.evidenceType === 'reviewGaps'),
+                'Governance should include reviewGaps evidence'
+            );
+        } else {
+            assert.equal(packageResult.audit.stackCTRLDataCount, item.apiRows, item.key);
+            assert.equal(packageResult.audit.preparedForAzureCount, item.apiRows, item.key);
+        }
     }
 });
 
@@ -2545,55 +2718,324 @@ test('enterprise token threshold switches later domains to safe batches instead 
 });
 
 test('Power BI read model returns full domain outputs, synthesis, raw labels, and evidence tables', async () => {
-    const run = { ID: 700, CompanyID: 1, SnapshotID: 500, PeriodType: 'weekly', PeriodStart: '2026-06-15', PeriodEnd: '2026-06-21', Status: 'completed', StartedAt: '2026-06-21T18:00:00Z' };
-    const domainRows = ENTERPRISE_DOMAINS.map((domain, index) => ({
-        ID: index + 1, CompanyID: 1, SnapshotID: 500, RunID: 700, DomainKey: domain.key, DomainName: domain.name,
-        PeriodType: 'weekly', PeriodStart: run.PeriodStart, PeriodEnd: run.PeriodEnd, Status: 'completed',
-        InputTokens: 100, OutputTokens: 50, TotalTokens: 150, RetryCount: 0, CreatedAt: run.StartedAt,
-        AnalysisJson: JSON.stringify({
-            domain: { key: domain.key, name: domain.name }, evidenceCatalog: { categories: [{ categoryKey: 'all', entities: [{ id: `${domain.key}-1` }] }] },
-            risks: [{ title: `${domain.name} risk`, sourceMetric: 'all', affectedEntities: [{ id: `${domain.key}-1` }], evidenceRows: [{ id: `${domain.key}-1` }] }],
-            recommendations: [{ title: 'Fix it', sourceMetric: 'all', affectedEntities: [{ id: `${domain.key}-1` }], evidenceRows: [{ id: `${domain.key}-1` }] }],
-            controlAssessment: [], trendAnalysis: [], batchInfo: { complete: true }, evidenceLimitations: { recordsSent: 1, recordsOmitted: 0 }
-        })
-    }));
-    const synthesis = {
-        ID: 800, CompanyID: 1, SnapshotID: 500, RunID: 700, PeriodType: 'weekly', PeriodStart: run.PeriodStart, PeriodEnd: run.PeriodEnd,
-        Status: 'completed', CreatedAt: run.StartedAt, ExecutiveSummaryJson: '{"summary":"Full synthesis"}', BoardReportJson: '{}', ManagementReportJson: '{}',
-        RiskRegisterJson: '[]', RecommendationsJson: '[]', TrendAnalysisJson: '[]', ComplianceReviewJson: '{}', GovernanceReviewJson: '{}',
-        DomainScorecardJson: '[]', MaturityAssessmentJson: '{}', TopDecisionsRequiredJson: '[]', Next30DaysPlanJson: '[]', Next90DaysPlanJson: '[]',
-        EvidenceJustificationJson: '{}', LimitationsJson: '[]', PowerBISummaryJson: '{}'
+    const run = {
+        ID: 700,
+        CompanyID: 1,
+        SnapshotID: 500,
+        PeriodType: 'weekly',
+        PeriodStart: '2026-06-15',
+        PeriodEnd: '2026-06-21',
+        Status: 'completed',
+        StartedAt: '2026-06-21T18:00:00Z'
     };
-    const snapshot = { ID: 500, CompanyID: 1, SnapshotType: 'weekly', CreatedAt: run.StartedAt, MetricsJson: '{"identity":{"totalUsers":1}}', ContextJson: JSON.stringify({ sources: [{ sourceKey: 'identity', evidence: [{ id: 'user-1' }] }] }) };
+
+    const domainRows = ENTERPRISE_DOMAINS.map((domain, index) => {
+        const disabled = TEMPORARILY_DISABLED_DOMAIN_KEYS.includes(domain.key);
+
+        const riskRows = disabled
+            ? []
+            : [{
+                riskId: `${domain.key}-risk-1`,
+                title: `${domain.name} risk`,
+                severity: 'medium',
+                sourceDomain: domain.key,
+                sourceMetric: 'all',
+                affectedEntities: [{
+                    entityId: `${domain.key}-entity-1`,
+                    entityName: `${domain.name} Entity 1`,
+                    entityType: 'TestEntity',
+                    sourceDomain: domain.key,
+                    sourceMetric: 'all',
+                    businessReason: `${domain.name} entity requires review.`,
+                    recommendation: `Review ${domain.name} entity.`
+                }],
+                evidenceRows: [{
+                    entityId: `${domain.key}-evidence-1`,
+                    entityName: `${domain.name} Evidence 1`,
+                    entityType: 'EvidenceRow',
+                    sourceDomain: domain.key,
+                    sourceMetric: 'all'
+                }]
+            }];
+
+        const recommendationRows = disabled
+            ? []
+            : [{
+                recommendationId: `${domain.key}-rec-1`,
+                title: `${domain.name} recommendation`,
+                priority: 'medium',
+                sourceDomain: domain.key,
+                sourceMetric: 'all',
+                affectedEntities: [{
+                    entityId: `${domain.key}-entity-2`,
+                    entityName: `${domain.name} Entity 2`,
+                    entityType: 'TestEntity',
+                    sourceDomain: domain.key,
+                    sourceMetric: 'all',
+                    businessReason: `${domain.name} recommendation needs action.`,
+                    recommendation: `Complete ${domain.name} recommendation.`
+                }],
+                evidenceRows: [{
+                    entityId: `${domain.key}-evidence-2`,
+                    entityName: `${domain.name} Evidence 2`,
+                    entityType: 'EvidenceRow',
+                    sourceDomain: domain.key,
+                    sourceMetric: 'all'
+                }]
+            }];
+
+        const analysis = {
+            domain: {
+                key: domain.key,
+                name: domain.name
+            },
+            domainExecutiveSummary: disabled
+                ? `${domain.name} is temporarily disabled.`
+                : `${domain.name} summary`,
+            technicalSummary: disabled
+                ? null
+                : `${domain.name} technical summary`,
+            businessImpact: disabled
+                ? null
+                : `${domain.name} business impact`,
+            currentPosture: disabled
+                ? 'temporarily disabled'
+                : 'managed',
+            evidenceCatalog: {
+                categories: [{
+                    categoryKey: 'all',
+                    entities: [{
+                        id: `${domain.key}-1`,
+                        name: `${domain.name} Entity`
+                    }]
+                }]
+            },
+            keyFindings: disabled
+                ? []
+                : [{
+                    title: `${domain.name} finding`,
+                    severity: 'medium',
+                    sourceDomain: domain.key,
+                    sourceMetric: 'all'
+                }],
+            risks: riskRows,
+            recommendations: recommendationRows,
+            controlAssessment: [],
+            trendAnalysis: [],
+            missingDataWarnings: [],
+            assumptions: [],
+            batchInfo: {
+                complete: true
+            },
+            evidenceLimitations: {
+                recordsSent: disabled ? 0 : 1,
+                recordsOmitted: 0
+            },
+            powerBiSummary: {}
+        };
+
+        return {
+            ID: 800 + index,
+            CompanyID: 1,
+            SnapshotID: 500,
+            RunID: 700,
+            DomainKey: domain.key,
+            DomainName: domain.name,
+            PeriodType: 'weekly',
+            PeriodStart: '2026-06-15',
+            PeriodEnd: '2026-06-21',
+            HealthScore: disabled ? null : 80,
+            RiskScore: disabled ? null : 20,
+            RiskLevel: disabled ? null : 'low',
+            Status: disabled ? 'temporarily_disabled' : 'completed',
+            InputTokens: disabled ? 0 : 100,
+            OutputTokens: disabled ? 0 : 50,
+            TotalTokens: disabled ? 0 : 150,
+            RetryCount: 0,
+            CreatedAt: run.StartedAt,
+
+            AnalysisJson: JSON.stringify(analysis),
+
+            DomainExecutiveSummary: analysis.domainExecutiveSummary,
+            TechnicalSummary: analysis.technicalSummary,
+            BusinessImpact: analysis.businessImpact,
+            CurrentPosture: analysis.currentPosture,
+            EvidenceSummary: disabled ? null : `${domain.name} evidence summary`,
+            ScoreJustification: disabled ? null : `${domain.name} score justification`,
+            ControlAssessment: JSON.stringify(analysis.controlAssessment),
+            FindingsJson: JSON.stringify(analysis.keyFindings),
+            RisksJson: JSON.stringify(riskRows),
+            RecommendationsJson: JSON.stringify(recommendationRows),
+            TrendAnalysisJson: JSON.stringify(analysis.trendAnalysis),
+            YesterdayVsTodayJson: '{}',
+            MissingDataWarningsJson: JSON.stringify(analysis.missingDataWarnings),
+            AssumptionsJson: JSON.stringify(analysis.assumptions),
+            TokenUsageJson: JSON.stringify({
+                inputTokens: disabled ? 0 : 100,
+                outputTokens: disabled ? 0 : 50,
+                totalTokens: disabled ? 0 : 150
+            }),
+            BatchInfoJson: JSON.stringify(analysis.batchInfo),
+            PowerBISummaryJson: '{}'
+        };
+    });
+    const synthesis = {
+        ID: 900,
+        CompanyID: 1,
+        SnapshotID: 500,
+        RunID: 700,
+        PeriodType: 'weekly',
+        PeriodStart: run.PeriodStart,
+        PeriodEnd: run.PeriodEnd,
+        Status: 'completed',
+        CreatedAt: run.StartedAt,
+        ExecutiveSummaryJson: JSON.stringify({
+            summary: 'Full synthesis'
+        }),
+        BoardReportJson: '{}',
+        ManagementReportJson: '{}',
+        RiskRegisterJson: '[]',
+        RecommendationsJson: '[]',
+        TrendAnalysisJson: '[]',
+        ComplianceReviewJson: '{}',
+        GovernanceReviewJson: '{}',
+        DomainScorecardJson: '[]',
+        MaturityAssessmentJson: '{}',
+        TopDecisionsRequiredJson: '[]',
+        Next30DaysPlanJson: '[]',
+        Next90DaysPlanJson: '[]',
+        EvidenceJustificationJson: '{}',
+        LimitationsJson: '[]',
+        PowerBISummaryJson: '{}'
+    };
+
+    const snapshot = {
+        ID: 500,
+        CompanyID: 1,
+        SnapshotType: 'weekly',
+        CreatedAt: run.StartedAt,
+        MetricsJson: '{"identity":{"totalUsers":1}}',
+        ContextJson: JSON.stringify({
+            sources: [{
+                sourceKey: 'identity',
+                evidence: [{ id: 'user-1' }]
+            }]
+        })
+    };
+
     const pool = {
-        async query(sql) {
-            if (sql.includes('FROM StackCTRLEnterpriseReportRuns')) return [[run], []];
-            if (sql.includes('FROM StackCTRLTenantDomainIntelligence')) return [domainRows, []];
-            if (sql.includes('FROM StackCTRLEnterpriseSynthesis')) return [[synthesis], []];
-            if (sql.includes('FROM StackCTRLIntelligenceEvidenceAudit')) return [[], []];
-            if (sql.includes('FROM StackCTRLTenantEvidenceSnapshots')) return [[snapshot], []];
+        async query(sql, params = []) {
+            if (sql.includes('FROM StackCTRLEnterpriseReportRuns')) {
+                return [[run], []];
+            }
+
+            if (sql.includes('FROM StackCTRLEnterpriseSynthesis')) {
+                return [[synthesis], []];
+            }
+
+            if (sql.includes('FROM StackCTRLIntelligenceEvidenceAudit')) {
+                return [[], []];
+            }
+
+            if (sql.includes('FROM StackCTRLTenantEvidenceSnapshots')) {
+                return [[snapshot], []];
+            }
+
+            if (sql.includes('FROM StackCTRLTenantDomainIntelligence')) {
+                const requestedDomainKey = params.find(value =>
+                    ENTERPRISE_DOMAINS.some(domain => domain.key === value)
+                );
+
+                if (requestedDomainKey) {
+                    return [[domainRows.find(row => row.DomainKey === requestedDomainKey)].filter(Boolean), []];
+                }
+
+                return [domainRows, []];
+            }
+
             throw new Error(`Unexpected query: ${sql}`);
         }
     };
-    const service = createEnterpriseIntelligenceService({ pool, azureOpenAI: {}, schedulerService: {} });
+
+    const service = createEnterpriseIntelligenceService({
+        pool,
+        azureOpenAI: {},
+        schedulerService: {}
+    });
+
     const intelligence = await service.getPowerBIIntelligenceRun(1);
     const raw = await service.getPowerBIRaw(1, 'identity');
 
     assert.equal(intelligence.dataClassification, 'intelligent_azure_output');
     assert.equal(intelligence.domains.length, 10);
-    assert.equal(intelligence.completeness.expectedDomains, 7);
-    assert.equal(intelligence.completeness.disabledDomainCount, 3);
+    assert.equal(intelligence.completeness.expectedDomains, 8);
+    assert.equal(intelligence.completeness.disabledDomainCount, 2);
     assert.deepEqual(intelligence.completeness.activeDomainKeys, ACTIVE_ENTERPRISE_DOMAIN_KEYS);
-    assert.equal(intelligence.finalSynthesis.synthesisOutput.enterpriseExecutiveSummary.summary, 'Full synthesis');
-    assert.equal(intelligence.tables.AffectedEntityRows.length, ACTIVE_ENTERPRISE_DOMAIN_KEYS.length * 2);
-    assert.equal(intelligence.tables.EvidenceRows.length, ACTIVE_ENTERPRISE_DOMAIN_KEYS.length * 2);
-    assert.equal(intelligence.tables.disabled_domains.length, 3);
+
+    const finalSummary =
+        intelligence.finalSynthesis?.synthesisOutput?.enterpriseExecutiveSummary?.summary ||
+        intelligence.finalSynthesis?.enterpriseExecutiveSummary?.summary ||
+        intelligence.finalSynthesis?.executiveSummary?.summary ||
+        intelligence.finalSynthesis?.summary ||
+        intelligence.finalSynthesis?.ExecutiveSummaryJson?.summary;
+
+    assert.equal(finalSummary, 'Full synthesis');
+
+    assert.equal(
+        intelligence.tables.AffectedEntityRows.length,
+        ACTIVE_ENTERPRISE_DOMAIN_KEYS.length * 2
+    );
+
+    assert.equal(
+        intelligence.tables.EvidenceRows.length,
+        ACTIVE_ENTERPRISE_DOMAIN_KEYS.length * 2
+    );
+
+    assert.equal(intelligence.tables.disabled_domains.length, 2);
     assert.equal(intelligence.tables.domain_status.length, 10);
-    assert.equal(intelligence.tables.domain_status.find(row => row.domainKey === 'governance').domainStatus, 'temporarily_disabled');
-    assert.equal(intelligence.tables.risk_register.some(row => TEMPORARILY_DISABLED_DOMAIN_KEYS.includes(row.domainKey)), false);
-    const disabledDomain = await service.getPowerBIDomain(1, 'governance');
-    assert.equal(disabledDomain.domain.status, 'temporarily_disabled');
-    assert.equal(disabledDomain.domain.selectable, false);
+
+    assert.equal(
+        intelligence.tables.domain_status.find(row => row.domainKey === 'governance').domainStatus,
+        'completed'
+    );
+
+    assert.equal(
+        intelligence.tables.domain_status.find(row => row.domainKey === 'governance').includedInCurrentPhase,
+        true
+    );
+
+    assert.equal(
+        intelligence.tables.domain_status.find(row => row.domainKey === 'governance').selectable,
+        true
+    );
+
+    assert.equal(
+        intelligence.tables.domain_status.find(row => row.domainKey === 'operations').domainStatus,
+        'temporarily_disabled'
+    );
+
+    assert.equal(
+        intelligence.tables.domain_status.find(row => row.domainKey === 'compliance').domainStatus,
+        'temporarily_disabled'
+    );
+
+    assert.equal(
+        intelligence.tables.risk_register.some(row => TEMPORARILY_DISABLED_DOMAIN_KEYS.includes(row.domainKey)),
+        false
+    );
+
+    const governanceDomain = await service.getPowerBIDomain(1, 'governance');
+    assert.equal(governanceDomain.domain.domainKey, 'governance');
+    assert.equal(governanceDomain.domain.status, 'completed');
+
+    const operationsDomain = await service.getPowerBIDomain(1, 'operations');
+    assert.equal(operationsDomain.domain.status, 'temporarily_disabled');
+    assert.equal(operationsDomain.domain.selectable, false);
+
+    const complianceDomain = await service.getPowerBIDomain(1, 'compliance');
+    assert.equal(complianceDomain.domain.status, 'temporarily_disabled');
+    assert.equal(complianceDomain.domain.selectable, false);
+
     assert.equal(raw.dataClassification, 'raw_non_intelligent_stackctrl');
     assert.match(raw.warning, /not been analysed/i);
 });
