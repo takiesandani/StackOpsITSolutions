@@ -112,6 +112,7 @@ const SECURITY_ALERTS_COMPACT_EVIDENCE_TYPES = Object.freeze([
     'activeIncidents',
     'suspiciousSignIns',
     'anonymousIpEvents',
+    'threatIndicators',
     'repeatedAlertPatterns',
     'affectedUsers',
     'affectedDevices',
@@ -738,12 +739,121 @@ function collectSecurityEvidenceRows(flattenedEvidence = []) {
         alerts: rows.filter(row => /alert/i.test(String(row.evidenceType || row.sourceLabel || row.evidenceCategory || ''))),
         incidents: rows.filter(row => /incident/i.test(String(row.evidenceType || row.sourceLabel || row.evidenceCategory || ''))),
         signIns: rows.filter(row => /sign/i.test(String(row.evidenceType || row.sourceLabel || row.evidenceCategory || ''))),
+        threatIndicators: rows.filter(row => /threat.?indicator|indicator/i.test(String(row.evidenceType || row.sourceLabel || row.evidenceCategory || ''))),
         recommendations: rows.filter(row => /recommend/i.test(String(row.evidenceType || row.sourceLabel || row.evidenceCategory || '')))
     };
 }
 
+function threatIndicatorKey(type, value) {
+    return `${String(type || '').toLowerCase()}:${String(value || '').trim().toLowerCase()}`;
+}
+
+function addThreatIndicator(map, type, value, sourceRow, sourceField = null, extra = {}) {
+    const cleanedValue = visibleTextOrNull(value, 320);
+    if (!cleanedValue) return;
+    const key = threatIndicatorKey(type, cleanedValue);
+    const existing = map.get(key) || {
+        indicatorType: type,
+        indicatorValue: cleanedValue,
+        occurrenceCount: 0,
+        sourceFields: new Set(),
+        internalSourcePaths: new Set(),
+        relatedUsers: new Set(),
+        relatedDevices: new Set(),
+        relatedAlerts: new Set(),
+        confidence: extra.confidence || 'medium',
+        source: extra.source || 'internal_security_alerts'
+    };
+    existing.occurrenceCount += 1;
+    if (sourceField) existing.sourceFields.add(sourceField);
+    if (sourceRow?.internalSourcePath) existing.internalSourcePaths.add(sourceRow.internalSourcePath);
+    const data = sourceRow?.data && typeof sourceRow.data === 'object' ? sourceRow.data : {};
+    const user = firstReadableValue(data.userPrincipalName, data.userEmail, data.mail, data.email, extra.userPrincipalName);
+    const device = firstReadableValue(data.deviceName, data.hostName, data.hostname, extra.deviceName);
+    const alertTitle = firstReadableValue(data.title, data.alertName, data.displayName, extra.alertTitle);
+    if (user) existing.relatedUsers.add(user);
+    if (device) existing.relatedDevices.add(device);
+    if (alertTitle) existing.relatedAlerts.add(alertTitle);
+    map.set(key, existing);
+}
+
+function extractSecurityThreatIndicators(flattenedEvidence = []) {
+    const indicatorMap = new Map();
+    const rows = array(flattenedEvidence);
+    const keywordPattern = /\b(?:malware|phishing|phish|ransomware|trojan|credential theft|credential harvesting|bec|spoof|impossible travel|anonymous ip|risky sign[-\s]?in|brute force|password spray|suspicious inbox rule)\b/gi;
+    for (const row of rows) {
+        const data = row?.data && typeof row.data === 'object' ? row.data : {};
+        const serialized = JSON.stringify(data).slice(0, 12000);
+        for (const ip of serialized.match(/\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b/g) || []) {
+            addThreatIndicator(indicatorMap, 'IPAddress', ip, row, 'text.ipAddress', { confidence: 'high' });
+        }
+        for (const url of serialized.match(/\bhttps?:\/\/[^\s"'<>]+/gi) || []) {
+            addThreatIndicator(indicatorMap, 'URL', url.replace(/[),.;]+$/g, ''), row, 'text.url', { confidence: 'high' });
+        }
+        for (const hash of serialized.match(/\b[a-f0-9]{64}\b|\b[a-f0-9]{40}\b|\b[a-f0-9]{32}\b/gi) || []) {
+            addThreatIndicator(indicatorMap, 'FileHash', hash, row, 'text.fileHash', { confidence: 'high' });
+        }
+        for (const email of serialized.match(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi) || []) {
+            const fieldType = /sender|from/i.test(serialized.slice(Math.max(0, serialized.indexOf(email) - 80), serialized.indexOf(email) + 80))
+                ? 'SenderAddress'
+                : 'UserPrincipalName';
+            addThreatIndicator(indicatorMap, fieldType, email, row, 'text.email', { confidence: 'medium' });
+        }
+        for (const domain of serialized.match(/\b(?:[a-z0-9-]+\.)+[a-z]{2,}\b/gi) || []) {
+            if (/microsoft\.com|windows\.net|example\.com|contoso\.com/i.test(domain)) continue;
+            addThreatIndicator(indicatorMap, 'Domain', domain, row, 'text.domain', { confidence: 'medium' });
+        }
+        const structuredFields = [
+            ['IPAddress', firstReadableValue(data.ipAddress, data.clientIpAddress, data.sourceIpAddress, data.ip)],
+            ['URL', firstReadableValue(data.url, data.uri, data.link, data.maliciousUrl)],
+            ['Domain', firstReadableValue(data.domain, data.senderDomain, data.urlDomain, data.hostname)],
+            ['FileHash', firstReadableValue(data.fileHash, data.sha256, data.sha1, data.md5)],
+            ['SenderAddress', firstReadableValue(data.senderAddress, data.senderEmail, data.sender, data.fromAddress, data.from)],
+            ['UserPrincipalName', firstReadableValue(data.userPrincipalName, data.userEmail, data.mail, data.email, data.user)],
+            ['DeviceName', firstReadableValue(data.deviceName, data.hostName, data.hostname, data.machineName, data.computerName)],
+            ['AlertTitle', firstReadableValue(data.title, data.alertName, data.displayName, data.name)],
+            ['RiskType', firstReadableValue(data.riskType, data.riskLevel, data.riskDetail, data.category, data.classification, data.detectionSource)],
+            ['SignInLocation', firstReadableValue(data.location, data.city, data.countryOrRegion, data.country)]
+        ];
+        for (const [type, value] of structuredFields) {
+            addThreatIndicator(indicatorMap, type, value, row, type, { confidence: ['IPAddress', 'URL', 'FileHash'].includes(type) ? 'high' : 'medium' });
+        }
+        for (const match of serialized.match(keywordPattern) || []) {
+            addThreatIndicator(indicatorMap, 'Keyword', match.toLowerCase(), row, 'text.keyword', { confidence: 'low' });
+        }
+    }
+    return [...indicatorMap.values()]
+        .sort((left, right) => right.occurrenceCount - left.occurrenceCount || String(left.indicatorType).localeCompare(String(right.indicatorType)))
+        .slice(0, 25)
+        .map((indicator, index) => ({
+            internalSourcePath: [...indicator.internalSourcePaths][0] || `security_alerts.compact.threatIndicators[${index}]`,
+            sourceLabel: 'threatIndicators',
+            evidenceType: 'threatIndicators',
+            evidenceCategory: 'threatIndicators',
+            sourceMetric: 'threatIndicators',
+            entityKey: `${indicator.indicatorType}:${indicator.indicatorValue}`,
+            data: compactNonEmptyObject({
+                entityId: `${indicator.indicatorType}:${indicator.indicatorValue}`,
+                entityName: indicator.indicatorValue,
+                entityType: 'ThreatIndicator',
+                indicatorType: indicator.indicatorType,
+                indicatorValue: indicator.indicatorValue,
+                occurrenceCount: indicator.occurrenceCount,
+                source: indicator.source,
+                confidence: indicator.confidence,
+                sourceFields: [...indicator.sourceFields].slice(0, 6),
+                relatedUsers: [...indicator.relatedUsers].slice(0, 5),
+                relatedDevices: [...indicator.relatedDevices].slice(0, 5),
+                relatedAlerts: [...indicator.relatedAlerts].slice(0, 5),
+                internalOnly: true,
+                businessReason: 'Indicator was extracted from Security Alerts evidence for internal triage context.',
+                recommendation: 'Use this indicator to correlate affected alerts, sign-ins, users, and devices before external enrichment is available.'
+            })
+        }));
+}
+
 function compactSecurityAlertsEvidenceRows(flattenedEvidence, current = {}) {
-    const { alerts, incidents, signIns, recommendations } = collectSecurityEvidenceRows(flattenedEvidence);
+    const { alerts, incidents, signIns, threatIndicators, recommendations } = collectSecurityEvidenceRows(flattenedEvidence);
     const metricSource = { ...(current.metrics || {}), ...(current.dashboardMetrics || {}), ...(current.calculatedIndicators || {}) };
     const alertData = alerts.map(row => ({ row, data: row.data || {} }));
     const signInData = signIns.map(row => ({ row, data: row.data || {} }));
@@ -840,6 +950,13 @@ function compactSecurityAlertsEvidenceRows(flattenedEvidence, current = {}) {
     };
     const affectedUsers = aggregateEntity([...alertData, ...signInData], data => firstReadableValue(data.userPrincipalName, data.userEmail, data.email, data.mail, data.user), 'affectedUsers');
     const affectedDevices = aggregateEntity(alertData, data => firstReadableValue(data.deviceName, data.hostName, data.hostname, data.machineName), 'affectedDevices');
+    const externalThreatIndicators = threatIndicators.slice(0, 10).map((row, index) => securityEvidenceRow(row, 'threatIndicators', {
+        ...(row.data || {}),
+        source: 'external_threat_indicators',
+        internalOnly: false
+    }, index, 'threatIndicators'));
+    const internalThreatIndicators = extractSecurityThreatIndicators(flattenedEvidence);
+    const threatIndicatorRows = externalThreatIndicators.length ? externalThreatIndicators : internalThreatIndicators;
     const recommendationRows = recommendations.slice(0, 10).map((row, index) => securityEvidenceRow(row, 'recommendations', row.data || {}, index, 'recommendations'));
     const summaryMetrics = {
         internalSourcePath: 'security_alerts.compact.summaryMetrics',
@@ -860,7 +977,10 @@ function compactSecurityAlertsEvidenceRows(flattenedEvidence, current = {}) {
             affectedDevices: affectedDevices.length,
             unresolvedAlerts: unresolvedAlerts.length,
             recentResolvedAlerts: recentResolvedAlerts.length,
-            threatIndicators: numberOrNull(metricSource.threatIndicators),
+            threatIndicators: numberOrNull(metricSource.threatIndicators) ?? threatIndicatorRows.length,
+            internalThreatIndicators: internalThreatIndicators.length,
+            externalThreatIndicators: externalThreatIndicators.length,
+            threatIndicatorSource: externalThreatIndicators.length ? 'external' : (internalThreatIndicators.length ? 'internal_security_alerts' : 'unavailable'),
             usersUnderAttack: numberOrNull(metricSource.usersUnderAttack),
             securityScore: numberOrNull(metricSource.securityScore),
             healthScore: numberOrNull(current.healthScore),
@@ -876,6 +996,7 @@ function compactSecurityAlertsEvidenceRows(flattenedEvidence, current = {}) {
         ...activeIncidents,
         ...suspiciousSignIns,
         ...anonymousIpEvents,
+        ...threatIndicatorRows,
         ...repeatedAlertPatterns,
         ...affectedUsers,
         ...affectedDevices,
