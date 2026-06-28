@@ -24,7 +24,7 @@ const CURRENT_REPORTING_PHASE = Object.freeze({
     status: 'domain_intelligence_active',
     activeDomainCount: ACTIVE_ENTERPRISE_DOMAIN_KEYS.length,
     totalDomainCount: ENTERPRISE_DOMAINS.length,
-    message: 'Current reporting phase focuses on validated selected-domain intelligence. Final enterprise synthesis is pending until all domains are approved.'
+    message: 'Current reporting phase runs final enterprise synthesis across validated active domains. Operations remains temporarily disabled and is reported as a known limitation.'
 });
 const TEMPORARILY_DISABLED_DOMAIN_MESSAGE = 'This domain is temporarily disabled and will be enabled in a later reporting phase.';
 const TEMPORARILY_DISABLED_DOMAIN_STATUS_MESSAGE = 'Temporarily disabled — will be enabled in a later reporting phase.';
@@ -2951,6 +2951,32 @@ function sanitizeVisibleValue(value, path = []) {
     return result;
 }
 
+function stripInternalPowerBIFields(value) {
+    if (Array.isArray(value)) return value.map(stripInternalPowerBIFields).filter(item => item !== undefined);
+    if (!value || typeof value !== 'object') return value;
+    const result = {};
+    const blockedKeys = new Set([
+        'ContextJson',
+        'CompactContextJson',
+        'AuditOnlyContextJson',
+        'contextJson',
+        'compactContextJson',
+        'auditOnlyContextJson',
+        'rawVendorPayload',
+        'rawVendorPayloads',
+        'rawStackCTRLData',
+        'internalSourcePath',
+        'internalSourcePaths',
+        'debugSourcePath'
+    ]);
+    for (const [key, nested] of Object.entries(value)) {
+        if (blockedKeys.has(key)) continue;
+        if (key === 'sourcePath' || key === 'auditTrace') continue;
+        result[key] = stripInternalPowerBIFields(nested);
+    }
+    return result;
+}
+
 function entityMatchKeys(entity) {
     if (!entity || typeof entity !== 'object') return [];
 
@@ -4447,70 +4473,128 @@ Applications reasoning requirements:
             - Put positive observations in keyFindings[] or currentPosture, not risks[].
             - Keep output compact: risks max 5, recommendations max 5, managementActions max 5, affectedEntities max 5 per risk.`;
         }
-        domainReasoningContract
+        if (domain.key === 'compliance') {
+            return `
+            Compliance Validation reasoning requirements:
+            - Compliance is a control-validation and audit-readiness layer. Do not treat it as a generic risk scan.
+            - Use only supplied StackCTRL Compliance evidence. Do not invent control names, frameworks, certification status, audit claims, owners, or evidence.
+            - Classify controls as passed, failed, partial, or manual_review_required based only on supplied evidence.
+            - Missing, stale, weak, unknown, or manually excluded evidence must become partial or manual_review_required. Never mark a control as passed without supplied API-connected evidence.
+            - Focus on failed controls, partial controls, manual-review controls, evidence gaps, audit impact, remediation actions, and evidence references.
+            - Every control result must include controlId, controlName, controlCategory, status, severity, sourceDomain, sourceMetric, evidenceReference, validationReason, remediationAction, auditImpact, and dueDateRecommendation where supplied.
+            - Every risk must be tied to failed, partial, or manual-review controls. Positive control observations belong in keyFindings[], passedControls[], or currentPosture, not risks[].
+            - Do not claim regulatory compliance, certification, or audit readiness beyond the supplied StackCTRL evidence.
+            - Keep output compact: risks max 5, recommendations max 5, remediationActions max 5, affectedEntities max 5 per risk.`;
+        }
         return '';
 }
 
-    function domainOutputSchema(domain) {
-        if (!['identity', 'devices', ...STRICT_COMPACT_SELECTED_DOMAIN_KEYS].includes(domain.key)) {
-            return `{
-  "domainExecutiveSummary": "",
-  "technicalSummary": "",
-  "businessImpact": "",
-  "currentPosture": "",
-  "evidenceUsed": [],
-  "evidenceGaps": [],
-  "scoreJustification": "",
-  "controlAssessment": {},
-  "keyFindings": [],
-  "risks": [],
-  "recommendations": [],
-  "trendAnalysis": [],
-  "yesterdayVsToday": {},
-  "whatImproved": [],
-  "whatDeteriorated": [],
-  "whatStayedTheSame": [],
-  "missingDataWarnings": [],
-  "assumptions": [],
-  "confidenceScore": null,
-  "managementActions": [],
-  "powerBiSummary": {},
-  "evidenceLimitations": {}
-}`;
-        }
+function domainOutputSchema(domain) {
+    if (domain.key === 'compliance') {
         return `{
-  "domainExecutiveSummary": "",
-  "technicalReasoning": [],
-  "riskPrioritization": [],
-  "technicalSummary": "",
-  "currentPosture": "",
-  "highestRiskPatterns": [],
-  "keyFindings": [],
-  "risks": [],
-  "recommendations": [],
-  "managementDecisionsRequired": [],
-  "whatCanWait": [],
-  "businessImpact": "",
-  "evidenceUsed": [],
-  "evidenceGaps": [],
-  "evidenceLimitations": {},
-  "scoreJustification": "",
-  "affectedEntities": [],
-  "collectionWindow": {},
-  "missingDataInfo": [],
-  "missingDataWarnings": [],
-  "controlAssessment": {},
-  "trendAnalysis": [],
-  "yesterdayVsToday": {},
-  "whatImproved": [],
-  "whatDeteriorated": [],
-  "whatStayedTheSame": [],
-  "assumptions": [],
-  "confidenceScore": null,
-  "managementActions": [],
-  "powerBiSummary": {}
-}`;
-    }
+            "domainExecutiveSummary": "",
+            "executiveComplianceSummary": "",
+            "technicalReasoning": [],
+            "riskPrioritization": [],
+            "technicalSummary": "",
+            "currentPosture": "",
+            "auditReadinessStatus": "",
+            "complianceScore": null,
+            "highestRiskPatterns": [],
+            "keyFindings": [],
+            "controlResults": [],
+            "passedControls": [],
+            "failedControls": [],
+            "partialControls": [],
+            "manualReviewControls": [],
+            "risks": [],
+            "recommendations": [],
+            "remediationActions": [],
+            "evidenceReferences": [],
+            "managementDecisionsRequired": [],
+            "whatCanWait": [],
+            "businessImpact": "",
+            "evidenceUsed": [],
+            "evidenceGaps": [],
+            "evidenceLimitations": {},
+            "scoreJustification": "",
+            "affectedEntities": [],
+            "collectionWindow": {},
+            "missingDataInfo": [],
+            "missingDataWarnings": [],
+            "controlAssessment": {},
+            "trendAnalysis": [],
+            "yesterdayVsToday": {},
+            "whatImproved": [],
+            "whatDeteriorated": [],
+            "whatStayedTheSame": [],
+            "assumptions": [],
+            "confidenceScore": null,
+            "managementActions": [],
+            "powerBiSummary": {}
+            }`;
+                }
+
+                if (!['identity', 'devices', ...STRICT_COMPACT_SELECTED_DOMAIN_KEYS].includes(domain.key)) {
+                    return `{
+            "domainExecutiveSummary": "",
+            "technicalSummary": "",
+            "businessImpact": "",
+            "currentPosture": "",
+            "evidenceUsed": [],
+            "evidenceGaps": [],
+            "scoreJustification": "",
+            "controlAssessment": {},
+            "keyFindings": [],
+            "risks": [],
+            "recommendations": [],
+            "trendAnalysis": [],
+            "yesterdayVsToday": {},
+            "whatImproved": [],
+            "whatDeteriorated": [],
+            "whatStayedTheSame": [],
+            "missingDataWarnings": [],
+            "assumptions": [],
+            "confidenceScore": null,
+            "managementActions": [],
+            "powerBiSummary": {},
+            "evidenceLimitations": {}
+            }`;
+                }
+
+                return `{
+            "domainExecutiveSummary": "",
+            "technicalReasoning": [],
+            "riskPrioritization": [],
+            "technicalSummary": "",
+            "currentPosture": "",
+            "highestRiskPatterns": [],
+            "keyFindings": [],
+            "risks": [],
+            "recommendations": [],
+            "managementDecisionsRequired": [],
+            "whatCanWait": [],
+            "businessImpact": "",
+            "evidenceUsed": [],
+            "evidenceGaps": [],
+            "evidenceLimitations": {},
+            "scoreJustification": "",
+            "affectedEntities": [],
+            "collectionWindow": {},
+            "missingDataInfo": [],
+            "missingDataWarnings": [],
+            "controlAssessment": {},
+            "trendAnalysis": [],
+            "yesterdayVsToday": {},
+            "whatImproved": [],
+            "whatDeteriorated": [],
+            "whatStayedTheSame": [],
+            "assumptions": [],
+            "confidenceScore": null,
+            "managementActions": [],
+            "powerBiSummary": {}
+            }`;
+}
 
     function domainPrompt(domain, packageValue) {
         if (domain.key === 'security_alerts' && packageValue?.batchMetadata) {
@@ -4578,38 +4662,255 @@ STACKCTRL DOMAIN PACKAGE:
 ${JSON.stringify(packageValue)}`;
     }
 
-    function synthesisPrompt(packageValue) {
-        return `You are StackCTRL Enterprise Intelligence. Create a premium enterprise cybersecurity synthesis from stored domain intelligence only.
-Azure builds the intelligence; Power BI builds the report. Do not create layouts, visuals, HTML, styling instructions, report pages, or Power BI files.
-Do not invent facts or recalculate StackCTRL scores. Reconcile conflicts, identify evidence gaps, explain business impact, and retain domain traceability.
+function synthesisPrompt(packageValue) {
+    return `You are StackCTRL Enterprise Intelligence. Create the FINAL enterprise synthesis from stored successful domain intelligence only.
+
+Azure creates structured intelligence. Power BI creates visuals. Do not create Power BI layouts, pages, styling, report files, HTML, or visual design instructions.
+
+CRITICAL RULES:
+- Do not repeat domain outputs one after another.
+- Do not invent facts, entities, controls, incidents, scores, vendors, owners, or dates.
+- Do not use raw vendor payloads.
+- Do not recalculate StackCTRL health, risk, governance, compliance, or maturity scores.
+- Use the domain outputs as ingredients and create the executive enterprise meaning.
+- Connect related risks across domains into enterprise risk themes and risk chains.
+- Governance and Compliance Validation are active if present in domainIntelligence.
+- Operations is temporarily disabled and must only appear as a limitation, not as an analysed domain.
+- Prefer concise decision-ready wording over long narrative.
+- Every row-based item must preserve domain traceability using domainKey, sourceDomain, or sourceDomains.
+- Keep the response compact enough to avoid truncation.
+
+FINAL SYNTHESIS QUALITY BAR:
+The final synthesis must answer:
+1. What is the real enterprise risk?
+2. Which risks are connected across domains?
+3. What should leadership do first?
+4. What requires management decision?
+5. What can wait?
+6. What evidence supports this?
+7. What is the audit/compliance readiness position?
+8. What should Power BI show as final report data?
 
 Return valid JSON only. No markdown. No code fences. No explanations outside JSON.
-Return exactly these fields:
-{
-  "enterpriseExecutiveSummary": {},
-  "boardReport": {},
-  "managementReport": {},
-  "riskRegister": [],
-  "recommendations": [],
-  "trendAnalysis": [],
-  "complianceReview": {},
-  "governanceReview": {},
-  "domainScorecard": [],
-  "maturityAssessment": {},
-  "businessImpactSummary": "",
-  "topDecisionsRequired": [],
-  "next30DaysPlan": [],
-  "next90DaysPlan": [],
-  "evidenceJustificationSummary": {},
-  "limitationsAndAssumptions": [],
-  "powerBiSummary": {}
-}
 
-Risk, recommendation, trend, and management action fields must follow the domain output field names. Preserve domain keys in every row-based item.
-
-STORED STACKCTRL ENTERPRISE INTELLIGENCE:
-${JSON.stringify(packageValue)}`;
+Return exactly these top-level fields:
+    {
+    "enterpriseExecutiveSummary": {},
+    "boardReport": {},
+    "managementReport": {},
+    "riskRegister": [],
+    "recommendations": [],
+    "trendAnalysis": [],
+    "complianceReview": {},
+    "governanceReview": {},
+    "domainScorecard": [],
+    "maturityAssessment": {},
+    "businessImpactSummary": "",
+    "topDecisionsRequired": [],
+    "next30DaysPlan": [],
+    "next90DaysPlan": [],
+    "evidenceJustificationSummary": {},
+    "limitationsAndAssumptions": [],
+    "powerBiSummary": {}
     }
+
+    FIELD CONTRACT:
+
+    enterpriseExecutiveSummary:
+    {
+    "summary": "Maximum 5 sentences. Board-ready final enterprise story.",
+    "enterpriseRiskNarrative": "Explain the strongest cross-domain risk pattern, not each domain separately.",
+    "overallPosture": "stable | improving | declining | exposed | critical | unknown",
+    "primaryEnterpriseConcern": "",
+    "mostImportantAction": "",
+    "confidence": "high | medium | low",
+    "activeDomainsUsed": [],
+    "knownLimitations": []
+    }
+
+    boardReport:
+    {
+    "boardSummary": "",
+    "boardRisks": [],
+    "boardActions": [],
+    "decisionsRequired": [],
+    "next30DaysFocus": [],
+    "next90DaysFocus": [],
+    "riskLevel": "",
+    "riskScore": null,
+    "messageToBoard": "Use business language, not technical dashboard wording."
+    }
+
+    managementReport:
+    {
+    "managementNarrative": "",
+    "crossDomainRiskChains": [
+        {
+        "chainId": "chain-1",
+        "title": "",
+        "enterpriseTheme": "",
+        "sourceDomains": [],
+        "linkedFindings": [],
+        "businessImpact": "",
+        "whyItMatters": "",
+        "managementDecisionRequired": "",
+        "recommendedAction": "",
+        "confidence": "high | medium | low"
+        }
+    ],
+    "managementActions": [],
+    "whatMustBeDoneNow": [],
+    "whatCanWait": [],
+    "ownershipGaps": [],
+    "escalationRequired": []
+    }
+
+    riskRegister:
+    Return maximum 8 ranked enterprise risks. Do not list every domain risk.
+    Each risk must include:
+    {
+    "riskId": "enterprise-risk-1",
+    "title": "",
+    "enterpriseTheme": "",
+    "severity": "critical | high | medium | low",
+    "likelihood": "",
+    "impact": "",
+    "priorityRank": 1,
+    "sourceDomains": [],
+    "sourceDomain": "enterprise",
+    "businessImpact": "",
+    "description": "",
+    "whyItMatters": "",
+    "managementDecisionRequired": "",
+    "recommendedAction": "",
+    "evidenceRows": [],
+    "affectedEntities": [],
+    "confidence": "high | medium | low"
+    }
+
+    recommendations:
+    Return maximum 12 recommendations. These must be final enterprise actions, not repeated domain suggestions.
+    Each recommendation must include:
+    {
+    "recommendationId": "enterprise-rec-1",
+    "title": "",
+    "priority": "critical | high | medium | low",
+    "sourceDomain": "enterprise",
+    "sourceDomains": [],
+    "businessReason": "",
+    "recommendedAction": "",
+    "suggestedOwner": "",
+    "suggestedDueDate": null,
+    "dependsOn": [],
+    "evidenceRows": [],
+    "affectedEntities": []
+    }
+
+    trendAnalysis:
+    Use historical/lower-period reports only when supplied. If not supplied, say baseline unavailable.
+    Return maximum 8 rows.
+
+    complianceReview:
+    {
+    "auditReadinessStatus": "ready | mostly_ready | needs_attention | not_ready | unknown",
+    "complianceNarrative": "",
+    "failedOrWeakControlThemes": [],
+    "manualReviewRequired": [],
+    "evidenceGaps": [],
+    "managementImpact": "",
+    "priorityComplianceActions": []
+    }
+
+    governanceReview:
+    {
+    "governanceNarrative": "",
+    "ownershipReadiness": "",
+    "decisionReadiness": "",
+    "accountabilityGaps": [],
+    "policyOrReviewGaps": [],
+    "priorityGovernanceActions": []
+    }
+
+    domainScorecard:
+    Return one row for each active domain included in domainIntelligence, plus Operations as disabled if present in disabledDomains.
+    Each row:
+    {
+    "domainKey": "",
+    "domainName": "",
+    "status": "",
+    "healthScore": null,
+    "riskScore": null,
+    "riskLevel": "",
+    "executiveInterpretation": "",
+    "contributionToEnterpriseRisk": "",
+    "priority": "critical | high | medium | low | informational",
+    "includedInFinalSynthesis": true
+    }
+
+    maturityAssessment:
+    {
+    "securityMaturityNarrative": "",
+    "maturityLevel": "",
+    "strongestCapabilities": [],
+    "weakestCapabilities": [],
+    "maturityBlockers": [],
+    "nextMaturityStep": ""
+    }
+
+    businessImpactSummary:
+    One concise final business-impact paragraph. Explain risk to operations, audit readiness, leadership accountability, resilience, and client trust.
+
+    topDecisionsRequired:
+    Return maximum 8 board/management decisions. Each decision:
+    {
+    "decisionId": "decision-1",
+    "decision": "",
+    "whyRequired": "",
+    "sourceDomains": [],
+    "riskIfDelayed": "",
+    "recommendedOwner": "",
+    "recommendedTimeline": ""
+    }
+
+    next30DaysPlan:
+    Return maximum 10 actions that must happen first.
+
+    next90DaysPlan:
+    Return maximum 10 strategic actions after urgent items are handled.
+
+    evidenceJustificationSummary:
+    {
+    "evidenceConfidence": "high | medium | low",
+    "evidenceUsed": [],
+    "sourceDomainsUsed": [],
+    "evidenceGaps": [],
+    "whyThisSynthesisIsReliable": "",
+    "knownLimitations": []
+    }
+
+    limitationsAndAssumptions:
+    Include only real limitations from the package. Include Operations disabled if applicable. Do not say Governance or Compliance are disabled if they appear in domainIntelligence.
+
+    powerBiSummary:
+    {
+    "finalReportTitle": "Enterprise Final Intelligence Report",
+    "finalReportPurpose": "",
+    "headlineKpis": [],
+    "recommendedVisuals": [],
+    "finalReportDataMap": {
+        "executivePage": [],
+        "boardPage": [],
+        "riskPage": [],
+        "complianceGovernancePage": [],
+        "actionPlanPage": []
+    },
+    "primarySlicers": ["domainKey", "riskLevel", "priority", "sourceDomains"],
+    "readyForPowerBI": true
+    }
+
+    STORED STACKCTRL ENTERPRISE INTELLIGENCE:
+    ${JSON.stringify(packageValue)}`;
+}
 
     function buildIdentityBatchPackage(basePackage, batchEvidence, batchNumber, totalBatches, semanticGrouping = null, evidenceStartIndex = 0) {
         const evidence = batchEvidence.map((item, index) => compactIdentityEvidenceRow(item, Number(evidenceStartIndex || 0) + index));
@@ -4918,10 +5219,14 @@ ${JSON.stringify(packageValue)}`;
                 ? BACKUP_COMPACT_EVIDENCE_TYPES
                 : domainKey === 'applications'
                 ? APPLICATIONS_COMPACT_EVIDENCE_TYPES
+                : domainKey === 'compliance'
+                ? COMPLIANCE_COMPACT_EVIDENCE_TYPES
                 : null;
+
             const groupedEvidence = typeList
                 ? Object.fromEntries(typeList.map(type => [type, []]))
                 : {};
+
             const evidence = batchEvidence.map((item, index) => {
                 const type = String(item?.evidenceType || item?.sourceLabel || 'evidenceRows');
                 const row = {
@@ -4935,29 +5240,48 @@ ${JSON.stringify(packageValue)}`;
                 if (groupedEvidence[type]) groupedEvidence[type].push(row);
                 return row;
             });
+
             const categoryCounts = evidence.reduce((counts, row) => {
                 counts[row.evidenceType] = (counts[row.evidenceType] || 0) + 1;
                 return counts;
             }, {});
+
             const summaryKeys = domainKey === 'email_security'
                 ? ['activeThreats', 'highSeverityAlerts', 'affectedUsersCount', 'activeIncidents', 'threatResolutionRate', 'phishingCount', 'malwareCount', 'spamCount', 'becCount', 'activeMailboxes', 'totalMailActivity', 'recommendationsCount']
                 : domainKey === 'backup'
                 ? ['totalStorageGB', 'oneDriveStorageGB', 'sharePointStorageGB', 'exchangeStorageGB', 'activeUsersCount', 'inactiveUsersCount', 'servicesCovered', 'backupCoverageScore', 'exposureRiskScore', 'dataExposureRiskScore', 'recommendationsCount']
+                : domainKey === 'compliance'
+                ? ['totalControls', 'apiControls', 'manualControlsExcluded', 'failingControls', 'partialControls', 'passingControls', 'manualReviewControls', 'complianceScore', 'auditReadinessStatus', 'recommendationsCount']
                 : ['totalApplications', 'externalApplications', 'highRiskApps', 'highAccessApps', 'excessivePermissionApps', 'groupAssignedApps', 'applicationGovernanceScore', 'userCount', 'groupCount', 'recommendationsCount'];
-            const metricSource = { ...(basePackage.currentMetrics || {}), ...(basePackage.dashboardMetrics || {}), ...(basePackage.calculatedIndicators || {}) };
+
+            const metricSource = {
+                ...(basePackage.currentMetrics || {}),
+                ...(basePackage.dashboardMetrics || {}),
+                ...(basePackage.calculatedIndicators || {})
+            };
+
             const summaryMetrics = Object.fromEntries(summaryKeys
                 .map(key => [key === 'dataExposureRiskScore' ? 'exposureRiskScore' : key, numberOrNull(metricSource[key]) ?? metricSource[key] ?? null])
                 .filter(([, value]) => value != null));
+
             const warningStrings = array(basePackage.limitations?.missingDataWarnings)
                 .map(warning => visibleTextOrNull(warning, 240))
                 .filter(Boolean)
-                .filter(warning => !(domainKey === 'cloudflare_network_security' && /curated.*best-practice|best-practice references|knowledge references/i.test(warning)))
+                .filter(warning => !isCuratedReferenceWarning(warning))
                 .slice(0, 10);
+
             const contextType = domainKey === 'email_security'
                 ? 'stackctrl_enterprise_email_security_strict_compact'
                 : domainKey === 'backup'
                 ? 'stackctrl_enterprise_backup_strict_compact'
-                : 'stackctrl_enterprise_applications_strict_compact';
+                : domainKey === 'applications'
+                ? 'stackctrl_enterprise_applications_strict_compact'
+                : domainKey === 'governance'
+                ? 'stackctrl_enterprise_governance_strict_compact'
+                : domainKey === 'compliance'
+                ? 'stackctrl_enterprise_compliance_strict_compact'
+                : 'stackctrl_enterprise_selected_domain_strict_compact';
+
             return {
                 contextType,
                 schemaVersion: 3,
@@ -5007,7 +5331,10 @@ ${JSON.stringify(packageValue)}`;
                     maxRecommendations: 5,
                     maxAffectedEntitiesPerRisk: 5,
                     maxEvidenceUsed: 5,
-                    reasoningStyle: 'Use one to two concise sentences per reasoning field.'
+                    reasoningStyle: 'Use one to two concise sentences per reasoning field.',
+                    complianceRule: domainKey === 'compliance'
+                        ? 'Only mark controls passed when supplied API-connected evidence supports passing status. Missing, weak, or manual-only evidence must be partial or manual_review_required.'
+                        : undefined
                 }
             };
         }
@@ -7099,23 +7426,94 @@ ${JSON.stringify(packageValue)}`;
         const rollups = await loadRollups(companyId, run.periodType, run.periodStart, run.periodEnd);
         if (!domainRows.length && !rollups.length) throw new Error('Enterprise synthesis requires stored domain intelligence or completed lower-period reports');
         const domainRunSummary = buildDomainRunSummary(allDomainRows, queuedDomainKeys || allDomainRows.map(row => row.domainKey));
+        const activeDomainKeys = ACTIVE_ENTERPRISE_DOMAIN_KEYS.filter(key => allDomainRows.some(row => row.domainKey === key));
+        const synthesizedDomainKeys = domainRows.map(row => row.domainKey).filter(key => ACTIVE_ENTERPRISE_DOMAIN_SET.has(key));
+        const disabledDomains = disabledDomainStates();
+        const visibleDomainIntelligence = domainRows.map(row => stripInternalPowerBIFields(safeValue({
+            domainKey: row.domainKey,
+            domainName: row.domainName,
+            status: row.status,
+            healthScore: row.healthScore,
+            riskScore: row.riskScore,
+            riskLevel: row.riskLevel,
+            confidenceScore: row.confidenceScore,
+            domainExecutiveSummary: row.domainExecutiveSummary,
+            technicalSummary: row.technicalSummary,
+            businessImpact: row.businessImpact,
+            currentPosture: row.currentPosture,
+            evidenceSummary: row.evidenceSummary,
+            scoreJustification: row.scoreJustification,
+            controlAssessment: row.controlAssessment,
+            findings: row.findings,
+            risks: row.risks,
+            recommendations: row.recommendations,
+            trends: row.trends,
+            yesterdayVsToday: row.yesterdayVsToday,
+            missingDataWarnings: row.missingDataWarnings,
+            assumptions: row.assumptions,
+            errorMessage: row.errorMessage
+        }, 0, { maxDepth: 6, maxArray: 20, maxString: 1800, maxObjectKeys: 80 })));
+        const allWarnings = [...new Set(domainRows
+            .flatMap(row => array(row.missingDataWarnings))
+            .map(warning => visibleTextOrNull(warning, 300))
+            .filter(Boolean))];
         const synthesisPackage = {
             contextType: 'stackctrl_enterprise_synthesis',
-            schemaVersion: 1,
+            schemaVersion: 2,
             companyId,
             snapshotId: snapshotId || null,
-            period: { type: run.periodType, start: run.periodStart, end: run.periodEnd },
-            domainIntelligence: domainRows,
-            domainRunSummary: { ...domainRunSummary, disabledDomains: disabledDomainStates() },
+            period: {
+                periodType: run.periodType,
+                periodStart: run.periodStart,
+                periodEnd: run.periodEnd,
+                runId: run.id
+            },
+            reportingPhase: {
+                ...CURRENT_REPORTING_PHASE,
+                activeDomainKeys,
+                synthesizedDomainKeys,
+                disabledDomains,
+                disabledDomainNote: 'Operations is disabled and must only appear as a limitation, not as an analysed risk source.'
+            },
+            synthesisObjective: {
+                useStoredSuccessfulDomainIntelligenceOnly: true,
+                doNotUseRawVendorPayloads: true,
+                doNotRecalculateStackCTRLScores: true,
+                connectDomainsIntoEnterpriseRiskThemes: true,
+                includeBoardDecisions: true,
+                includeBusinessImpact: true,
+                includeAuditReadiness: true,
+                includeManagementActions: true,
+                producePowerBIReadyFinalReportData: true,
+                avoidRepeatingDomainOutputs: true
+            },
+            domainIntelligence: visibleDomainIntelligence,
+            historicalContext: {
+                lowerPeriodReports: rollups
+            },
             lowerPeriodReports: rollups,
-            sourceHealthSummary: domainRows.map(row => ({ domainKey: row.domainKey, status: row.status, healthScore: row.healthScore, riskScore: row.riskScore, riskLevel: row.riskLevel })),
-            missingDataWarnings: domainRows.flatMap(row => array(row.missingDataWarnings)),
+            sourceHealthSummary: domainRows.map(row => ({
+                domainKey: row.domainKey,
+                domainName: row.domainName,
+                status: row.status,
+                healthScore: row.healthScore,
+                riskScore: row.riskScore,
+                riskLevel: row.riskLevel,
+                confidenceScore: row.confidenceScore,
+                warningCount: array(row.missingDataWarnings).length
+            })),
+            warnings: allWarnings,
+            disabledDomainStates: disabledDomains,
+            domainRunSummary: { ...domainRunSummary, disabledDomains },
+            missingDataWarnings: allWarnings,
             limitations: {
                 rawSnapshotIncluded: false,
                 rawVendorPayloadIncluded: false,
                 synthesisUsesStoredIntelligenceOnly: true,
-                disabledDomains: disabledDomainStates(),
-                currentPhaseLimitation: 'Governance, Operations, and Compliance are temporarily disabled in this reporting phase.',
+                disabledDomains,
+                currentPhaseLimitation: disabledDomains.length
+                    ? 'Operations is temporarily disabled in this reporting phase. Governance and Compliance Validation are active and must be included in the final synthesis when their stored domain intelligence exists.'
+                    : null,
                 excludedDomainStatuses: allDomainRows
                     .filter(row => !isSuccessfulDomainStatus(row.status))
                     .map(row => ({ domainKey: row.domainKey, status: row.status, errorMessage: row.errorMessage || null }))
@@ -7194,7 +7592,7 @@ ${JSON.stringify(packageValue)}`;
         if (synthesisJsonRecovered || finishReason === 'length') {
             analysis.limitationsAndAssumptions = [
                 ...array(analysis.limitationsAndAssumptions),
-                'Azure synthesis output ended before all closing JSON delimiters were returned. StackCTRL safely recovered the structured response; trailing narrative fields may be incomplete.'
+                'Azure response was safely recovered. Some optional narrative fields may be incomplete.'
             ];
         }
         analysis = normalizeSynthesisOutputForDisplay(analysis, snapshotId);
@@ -8247,7 +8645,153 @@ ${JSON.stringify(packageValue)}`;
             message: row.message
         }));
         const DisabledDomainRows = disabledDomainStates().map(domain => compactNonEmptyObject(domain));
+        const finalOutput = finalSynthesis?.synthesisOutput || {};
+        const finalBase = {
+            companyId: finalSynthesis?.companyId || domains[0]?.companyId || null,
+            runId: finalSynthesis?.runId || domains[0]?.runId || null,
+            snapshotId: finalSynthesis?.snapshotId || domains[0]?.snapshotId || null,
+            periodType: finalSynthesis?.periodType || domains[0]?.periodType || null,
+            createdAt: finalSynthesis?.createdAt || domains[0]?.createdAt || null
+        };
+        const asText = (value, maximum = 1200) => visibleTextOrNull(value, maximum);
+        const sourceDomainsText = item => array(item?.sourceDomains || item?.activeDomainsUsed || item?.sourceDomainsUsed)
+            .map(value => textOrNull(value, 80))
+            .filter(Boolean)
+            .join(', ') || textOrNull(item?.sourceDomain || item?.domainKey, 80);
+        const finalItemBase = (item, index) => compactNonEmptyObject({
+            ...finalBase,
+            rowNumber: index + 1,
+            domainKey: textOrNull(item?.domainKey || item?.sourceDomain, 80),
+            sourceDomains: sourceDomainsText(item),
+            priority: textOrNull(item?.priority || item?.priorityRank, 80),
+            riskLevel: textOrNull(item?.riskLevel || item?.severity, 80),
+            severity: textOrNull(item?.severity, 80),
+            title: asText(item?.title || item?.decision || item?.action || item?.metricName, 255),
+            businessImpact: asText(item?.businessImpact || item?.businessReason || item?.riskIfDelayed, 1000),
+            recommendedAction: asText(item?.recommendedAction || item?.action || item?.decision, 1000),
+            managementDecisionRequired: asText(item?.managementDecisionRequired || item?.decision || item?.whyRequired, 1000),
+            evidenceConfidence: textOrNull(item?.evidenceConfidence || item?.confidence, 80)
+        });
+        const finalRows = (items, mapper) => array(items).map((item, index) => stripInternalPowerBIFields(compactNonEmptyObject({
+            ...finalItemBase(item, index),
+            ...mapper(item, index)
+        })));
+        const FinalSummaryRows = finalSynthesis ? [stripInternalPowerBIFields(compactNonEmptyObject({
+            ...finalBase,
+            title: asText(finalOutput.enterpriseExecutiveSummary?.primaryEnterpriseConcern || finalOutput.powerBiSummary?.finalReportTitle || 'Enterprise Final Intelligence Report', 255),
+            summary: asText(finalOutput.enterpriseExecutiveSummary?.summary, 1800),
+            enterpriseRiskNarrative: asText(finalOutput.enterpriseExecutiveSummary?.enterpriseRiskNarrative, 1800),
+            overallPosture: textOrNull(finalOutput.enterpriseExecutiveSummary?.overallPosture, 80),
+            primaryEnterpriseConcern: asText(finalOutput.enterpriseExecutiveSummary?.primaryEnterpriseConcern, 1000),
+            mostImportantAction: asText(finalOutput.enterpriseExecutiveSummary?.mostImportantAction, 1000),
+            businessImpact: asText(finalOutput.businessImpactSummary, 1800),
+            evidenceConfidence: textOrNull(finalOutput.enterpriseExecutiveSummary?.confidence || finalOutput.evidenceJustificationSummary?.evidenceConfidence, 80),
+            activeDomainsUsed: array(finalOutput.enterpriseExecutiveSummary?.activeDomainsUsed).join(', ')
+        }))] : [];
+        const FinalBoardReportRows = finalSynthesis ? [stripInternalPowerBIFields(compactNonEmptyObject({
+            ...finalBase,
+            title: 'Board report',
+            summary: asText(finalOutput.boardReport?.boardSummary, 1800),
+            messageToBoard: asText(finalOutput.boardReport?.messageToBoard, 1800),
+            riskLevel: textOrNull(finalOutput.boardReport?.riskLevel, 80),
+            riskScore: numberOrNull(finalOutput.boardReport?.riskScore),
+            boardRisks: array(finalOutput.boardReport?.boardRisks).map(item => asText(item, 240)).filter(Boolean).join(' | '),
+            boardActions: array(finalOutput.boardReport?.boardActions).map(item => asText(item, 240)).filter(Boolean).join(' | '),
+            managementDecisionRequired: array(finalOutput.boardReport?.decisionsRequired).map(item => asText(item, 240)).filter(Boolean).join(' | ')
+        }))] : [];
+        const FinalEnterpriseRiskRows = finalRows(finalOutput.riskRegister, (item, index) => ({
+            riskId: textOrNull(item?.riskId || `enterprise-risk-${index + 1}`, 120),
+            priorityRank: numberOrNull(item?.priorityRank) || index + 1,
+            enterpriseTheme: asText(item?.enterpriseTheme, 255),
+            description: asText(item?.description || item?.whyItMatters, 1200),
+            impact: asText(item?.impact, 800)
+        }));
+        const FinalRecommendationRows = finalRows(finalOutput.recommendations, (item, index) => ({
+            recommendationId: textOrNull(item?.recommendationId || `enterprise-rec-${index + 1}`, 120),
+            suggestedOwner: textOrNull(item?.suggestedOwner || item?.recommendedOwner, 180),
+            suggestedDueDate: normalizeMysqlDate(item?.suggestedDueDate),
+            dependsOn: array(item?.dependsOn).join(', '),
+            businessReason: asText(item?.businessReason, 1000)
+        }));
+        const FinalCrossDomainRiskChainRows = finalRows(finalOutput.managementReport?.crossDomainRiskChains, (item, index) => ({
+            chainId: textOrNull(item?.chainId || `chain-${index + 1}`, 120),
+            enterpriseTheme: asText(item?.enterpriseTheme, 255),
+            linkedFindings: array(item?.linkedFindings).map(value => asText(value, 160)).filter(Boolean).join(' | '),
+            whyItMatters: asText(item?.whyItMatters, 1000)
+        }));
+        const FinalDecisionRows = finalRows(finalOutput.topDecisionsRequired, (item, index) => ({
+            decisionId: textOrNull(item?.decisionId || `decision-${index + 1}`, 120),
+            whyRequired: asText(item?.whyRequired, 1000),
+            riskIfDelayed: asText(item?.riskIfDelayed, 1000),
+            recommendedOwner: textOrNull(item?.recommendedOwner, 180),
+            recommendedTimeline: textOrNull(item?.recommendedTimeline, 180)
+        }));
+        const finalPlanRows = (items, planWindow) => finalRows(items, (item, index) => ({
+            planWindow,
+            actionId: textOrNull(item?.actionId || item?.planId || `${planWindow}-${index + 1}`, 120),
+            owner: textOrNull(item?.owner || item?.recommendedOwner || item?.suggestedOwner, 180),
+            timeline: textOrNull(item?.timeline || item?.recommendedTimeline, 180),
+            status: textOrNull(item?.status, 80)
+        }));
+        const Final30DayPlanRows = finalPlanRows(finalOutput.next30DaysPlan, '30_day');
+        const Final90DayPlanRows = finalPlanRows(finalOutput.next90DaysPlan, '90_day');
+        const FinalDomainScorecardRows = finalRows(finalOutput.domainScorecard, item => ({
+            domainName: textOrNull(item?.domainName, 180),
+            domainStatus: textOrNull(item?.status || item?.domainStatus, 80),
+            healthScore: numberOrNull(item?.healthScore),
+            riskScore: numberOrNull(item?.riskScore),
+            executiveInterpretation: asText(item?.executiveInterpretation, 1000),
+            contributionToEnterpriseRisk: asText(item?.contributionToEnterpriseRisk, 1000),
+            includedInFinalSynthesis: item?.includedInFinalSynthesis == null ? null : Boolean(item.includedInFinalSynthesis)
+        }));
+        const FinalComplianceGovernanceRows = finalSynthesis ? ['complianceReview', 'governanceReview'].map(section => {
+            const item = finalOutput[section] || {};
+            return stripInternalPowerBIFields(compactNonEmptyObject({
+                ...finalBase,
+                section,
+                title: section === 'complianceReview' ? 'Compliance readiness' : 'Governance readiness',
+                status: textOrNull(item.auditReadinessStatus || item.ownershipReadiness || item.decisionReadiness, 120),
+                summary: asText(item.complianceNarrative || item.governanceNarrative, 1800),
+                businessImpact: asText(item.managementImpact, 1200),
+                recommendedAction: array(item.priorityComplianceActions || item.priorityGovernanceActions).map(value => asText(value, 240)).filter(Boolean).join(' | '),
+                evidenceGaps: array(item.evidenceGaps || item.policyOrReviewGaps || item.accountabilityGaps).map(value => asText(value, 240)).filter(Boolean).join(' | ')
+            }));
+        }) : [];
+        const FinalEvidenceConfidenceRows = finalSynthesis ? [stripInternalPowerBIFields(compactNonEmptyObject({
+            ...finalBase,
+            evidenceConfidence: textOrNull(finalOutput.evidenceJustificationSummary?.evidenceConfidence, 80),
+            sourceDomains: array(finalOutput.evidenceJustificationSummary?.sourceDomainsUsed).join(', '),
+            evidenceUsed: array(finalOutput.evidenceJustificationSummary?.evidenceUsed).map(value => asText(value, 240)).filter(Boolean).join(' | '),
+            evidenceGaps: array(finalOutput.evidenceJustificationSummary?.evidenceGaps).map(value => asText(value, 240)).filter(Boolean).join(' | '),
+            summary: asText(finalOutput.evidenceJustificationSummary?.whyThisSynthesisIsReliable, 1800),
+            limitations: array(finalOutput.evidenceJustificationSummary?.knownLimitations).map(value => asText(value, 240)).filter(Boolean).join(' | ')
+        }))] : [];
+        const FinalLimitationRows = finalRows(finalOutput.limitationsAndAssumptions, (item, index) => ({
+            limitationNumber: index + 1,
+            limitation: typeof item === 'string' ? asText(item, 1000) : asText(item?.limitation || item?.assumption || JSON.stringify(stripInternalPowerBIFields(sanitizeVisibleValue(item))), 1000)
+        }));
+        const FinalPowerBISummaryRows = finalSynthesis ? [stripInternalPowerBIFields(compactNonEmptyObject({
+            ...finalBase,
+            title: asText(finalOutput.powerBiSummary?.finalReportTitle || 'Enterprise Final Intelligence Report', 255),
+            purpose: asText(finalOutput.powerBiSummary?.finalReportPurpose, 1200),
+            headlineKpis: array(finalOutput.powerBiSummary?.headlineKpis).map(value => asText(value, 240)).filter(Boolean).join(' | '),
+            primarySlicers: array(finalOutput.powerBiSummary?.primarySlicers).join(', '),
+            readyForPowerBI: finalOutput.powerBiSummary?.readyForPowerBI == null ? null : Boolean(finalOutput.powerBiSummary.readyForPowerBI)
+        }))] : [];
         return {
+            FinalSummaryRows,
+            FinalBoardReportRows,
+            FinalEnterpriseRiskRows,
+            FinalRecommendationRows,
+            FinalCrossDomainRiskChainRows,
+            FinalDecisionRows,
+            Final30DayPlanRows,
+            Final90DayPlanRows,
+            FinalDomainScorecardRows,
+            FinalComplianceGovernanceRows,
+            FinalEvidenceConfidenceRows,
+            FinalLimitationRows,
+            FinalPowerBISummaryRows,
             DomainScorecardRows,
             DomainStatusRows,
             DomainCompletenessRows,
@@ -8265,6 +8809,19 @@ ${JSON.stringify(packageValue)}`;
             ControlAssessmentRows,
             TrendRows,
             AuditCompletenessRows: audits.map(powerBIAuditRow),
+            final_summary: FinalSummaryRows,
+            final_board_report: FinalBoardReportRows,
+            final_enterprise_risks: FinalEnterpriseRiskRows,
+            final_recommendations: FinalRecommendationRows,
+            final_cross_domain_risk_chains: FinalCrossDomainRiskChainRows,
+            final_decisions_required: FinalDecisionRows,
+            final_30_day_plan: Final30DayPlanRows,
+            final_90_day_plan: Final90DayPlanRows,
+            final_domain_scorecard: FinalDomainScorecardRows,
+            final_compliance_governance_readiness: FinalComplianceGovernanceRows,
+            final_evidence_confidence: FinalEvidenceConfidenceRows,
+            final_limitations: FinalLimitationRows,
+            final_powerbi_summary: FinalPowerBISummaryRows,
             domain_scorecard: DomainScorecardPhaseRows,
             domain_status: DomainStatusRows,
             domain_completeness: DomainCompletenessRows,
@@ -8378,11 +8935,11 @@ ${JSON.stringify(packageValue)}`;
                 status: runId ? 'not_ready' : 'not_requested',
                 reportingPhase: CURRENT_REPORTING_PHASE,
                 finalSynthesis: null,
-                limitations: ['Governance, Operations, and Compliance are temporarily disabled in this reporting phase.'],
+                limitations: ['Operations is temporarily disabled in this reporting phase. Governance and Compliance Validation are active and must be included in the final synthesis when their stored domain intelligence exists.'],
                 message: 'Final enterprise synthesis is not primary for the current reporting phase; validated per-domain intelligence is the active Power BI focus.'
             };
         }
-        return { dataClassification: 'intelligent_azure_output', status: rows[0].Status || 'available', reportingPhase: CURRENT_REPORTING_PHASE, limitations: ['Governance, Operations, and Compliance are temporarily disabled in this reporting phase.'], finalSynthesis: powerBISynthesisRow(rows[0]) };
+        return { dataClassification: 'intelligent_azure_output', status: rows[0].Status || 'available', reportingPhase: CURRENT_REPORTING_PHASE, limitations: ['Operations is temporarily disabled in this reporting phase. Governance and Compliance Validation are active and must be included in the final synthesis when their stored domain intelligence exists.'], finalSynthesis: powerBISynthesisRow(rows[0]) };
     }
 
     async function getPowerBIRaw(companyId, domainKey = null) {

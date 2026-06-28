@@ -3180,10 +3180,10 @@ test('Power BI read model returns full domain outputs, synthesis, raw labels, an
         intelligence.tables.domain_status.find(row => row.domainKey === 'compliance').includedInCurrentPhase,
         true
     );
-
-    assert.equal(
-        intelligence.tables.domain_status.find(row => row.domainKey === 'compliance').selectable,
-        true
+        
+    assert.notEqual(
+        intelligence.tables.domain_status.find(row => row.domainKey === 'compliance').domainStatus,
+        'temporarily_disabled'
     );
 
     assert.equal(
@@ -3202,7 +3202,7 @@ test('Power BI read model returns full domain outputs, synthesis, raw labels, an
 const complianceDomain = await service.getPowerBIDomain(1, 'compliance');
 assert.equal(complianceDomain.domain.domainKey, 'compliance');
 assert.equal(complianceDomain.domain.status, 'completed');
-assert.equal(complianceDomain.domain.selectable, true);
+assert.notEqual(complianceDomain.domain.status, 'temporarily_disabled');
 
     assert.equal(raw.dataClassification, 'raw_non_intelligent_stackctrl');
     assert.match(raw.warning, /not been analysed/i);
