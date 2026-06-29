@@ -3595,9 +3595,29 @@ function sourceStaleFailure(sourceHealth, domainName) {
         lastUpdated,
         errorMessage: isSecurityAlerts
             ? `Security Alerts evidence is stale; latest stored evidence was used from ${lastUpdated || 'unknown refresh time'}.`
-            : `${domainName} source_stale ${ageDisplay}; using latest stored evidence from ${lastUpdated || 'unknown refresh time'} and continuing analysis.`,
+            : `${domainName} evidence is stale${ageDisplay ? ` ${ageDisplay}` : ''}; latest stored evidence was used from ${lastUpdated || 'unknown refresh time'}.`,
         reason: 'stored_evidence_fallback'
     };
+}
+
+function cleanRuntimeWarningForDisplay(warning, { domain = null, current = null, hasUsableEvidence = false } = {}) {
+    const text = visibleTextOrNull(warning, 1200);
+    if (!text) return null;
+    const lower = text.toLowerCase();
+    const domainName = domain?.name || current?.source?.displayName || 'Source';
+    const lastUpdated = current?.source?.freshness?.lastUpdated || sourceLineageLastUpdated(current?.source || {}) || 'unknown refresh time';
+    if (/^other[_\s-]?warning$/.test(lower) || lower.includes('other warning')) return null;
+    if (lower.includes('partial_source_collection')) {
+        return hasUsableEvidence
+            ? null
+            : `${domainName} source collection was partially completed; available API-connected evidence was used.`;
+    }
+    if (lower.includes('source_stale') || lower.includes('evidence is stale') || lower.includes('source is stale')) {
+        return domain?.key === 'security_alerts'
+            ? `Security Alerts evidence is stale; latest stored evidence was used from ${lastUpdated}.`
+            : `${domainName} evidence is stale; latest stored evidence was used from ${lastUpdated}.`;
+    }
+    return text;
 }
 
 function sourceMissingFailure(sourceHealth, domainName) {
@@ -4172,7 +4192,10 @@ function createEnterpriseIntelligenceService({
                 status: current.source.status || 'missing',
                 isExpected: Boolean(current.source.isExpected),
                 freshness: safeValue(current.source.freshness || {}, 0, { maxArray: 0 }),
-                warnings: array(current.source.warnings).slice(0, 20),
+                warnings: array(current.source.warnings)
+                    .map(warning => cleanRuntimeWarningForDisplay(warning, { domain, current, hasUsableEvidence: stackCTRLDataCount > 0 }))
+                    .filter(Boolean)
+                    .slice(0, 20),
                 errorMessage: current.source.errorMessage || current.source.sourceLineage?.errorMessage || current.source.sourceLineage?.incompleteReason || null,
                 evidenceCount: stackCTRLDataCount
             },
@@ -4199,7 +4222,9 @@ function createEnterpriseIntelligenceService({
                     complete: evidenceOmittedCount === 0 && stackCTRLDataCount > 0
                 },
                 missingDataWarnings: [
-                    ...array(current.source.warnings),
+                    ...array(current.source.warnings)
+                        .map(warning => cleanRuntimeWarningForDisplay(warning, { domain, current, hasUsableEvidence: stackCTRLDataCount > 0 }))
+                        .filter(Boolean),
                     ...(manualExcludedCount > 0 ? [`${manualExcludedCount} manual evidence row(s) were intentionally excluded from Azure input; only API-connected evidence was prepared.`] : []),
                     ...(evidenceOmittedCount > 0 ? [`${evidenceOmittedCount} expected dashboard entity row(s) were not included in the Azure evidence payload.`] : []),
                     ...(!knowledge.length && !['identity', 'devices'].includes(domain.key) && !(COMPACT_SELECTED_DOMAIN_KEYS.has(domain.key) && stackCTRLDataCount > 0)
@@ -5950,7 +5975,7 @@ Return exactly these top-level fields:
             ? DEVICE_MAX_ITEMS_PER_BATCH
             : thresholdReached
             ? Math.min(settings.maxItemsPerBatch, settings.thresholdBatchMaxItems)
-            : packageResult.package?.strictCompactSelectedDomain
+            : packageResult.package?.strictCompactSelectedDomain || packageResult.package?.securityAlertsCompactPackage
             ? CLOUDFLARE_MAX_ITEMS_PER_BATCH
             : HEAVY_DOMAINS.has(domain.key)
             ? Math.min(settings.maxItemsPerBatch, settings.heavyDomainMaxItemsPerBatch)
@@ -6069,7 +6094,7 @@ Return exactly these top-level fields:
                 domain,
                 buildDomainBatchPackage(packageResult.package, allEvidence, 1, 1)
             );
-            if (packageResult.package?.securityAlertsCompactPackage && allEvidence.length <= 120 && combinedRequestBytes <= settings.maxInputBytes) {
+            if (packageResult.package?.securityAlertsCompactPackage && allEvidence.length <= maxItems && combinedRequestBytes <= settings.maxInputBytes) {
                 batches = [{ number: 1, items: allEvidence, bytes: combinedRequestBytes, semanticGrouping: null }];
             } else {
                 batches = splitSecurityAlertsIntoBatches(allEvidence, batchOptions);
@@ -6611,7 +6636,7 @@ Return exactly these top-level fields:
             ) : [])
         ])];
         const missingDataWarnings = [...new Set(array(value.missingDataWarnings)
-            .map(warning => visibleTextOrNull(warning, 1200))
+            .map(warning => cleanRuntimeWarningForDisplay(warning, { domain, current, hasUsableEvidence: availableEvidence.length > 0 }))
             .filter(Boolean)
             .filter(warning => !(domain.key === 'identity' && /historical baseline|7\/30\/90|best-practice references/i.test(warning)))
             .filter(warning => !(domain.key === 'devices' && /source_stale|source is stale|evidence is stale|curated.*reference|best-practice references/i.test(warning)))
@@ -7696,7 +7721,7 @@ Return exactly these top-level fields:
                 logger.warn?.(`[StackCTRL Enterprise] Advisory token threshold reached before ${domain.name}; continuing with smaller safe evidence batches.`);
             }
 
-            const result = await analyseDomain({ companyId, snapshot, run, domain, historicalContext, thresholdReached, strictCompactSelectedDomain: isSingleDomainRun });
+            const result = await analyseDomain({ companyId, snapshot, run, domain, historicalContext, thresholdReached, strictCompactSelectedDomain: true });
             results.push(result);
             for (const key of Object.keys(totals)) totals[key] += result.usage?.[key] || 0;
 
@@ -7770,7 +7795,7 @@ Return exactly these top-level fields:
         return { results, totals, rateLimited: Boolean(rateLimit), rateLimit, terminalError };
     }
 
-    async function runEnterpriseReport({ companyId, snapshotId = null, periodType = 'daily', referenceDate = new Date(), domainKeys = null, includeSynthesis = false, deduplicationKey = null, refreshSnapshot = null, user = null } = {}) {
+    async function runEnterpriseReport({ companyId, snapshotId = null, periodType = 'daily', referenceDate = new Date(), domainKeys = null, includeSynthesis = null, deduplicationKey = null, refreshSnapshot = null, user = null } = {}) {
         const numericCompanyId = Number(companyId);
         if (!Number.isInteger(numericCompanyId) || numericCompanyId <= 0) throw new Error('A valid companyId is required');
         assertRateLimitCircuitClosed();
@@ -7802,10 +7827,9 @@ Return exactly these top-level fields:
             };
         }
         const isSingleDomainRun = selectedKeys.length === 1;
-        // Enterprise analysis is read-first: use the latest stored evidence snapshot unless a caller
-        // explicitly requests a refresh. This prevents a deep report from launching every live
-        // collector at once and competing for Graph tokens and Secret Manager reads.
-        const shouldRefreshSnapshot = refreshSnapshot === true;
+        const isEnterpriseDeepRun = selectedKeys.length > 1;
+        const shouldRefreshSnapshot = refreshSnapshot === true || (refreshSnapshot !== false && isEnterpriseDeepRun);
+        const shouldIncludeSynthesis = includeSynthesis === true || (includeSynthesis !== false && isEnterpriseDeepRun);
         let resolvedSnapshotId = snapshotId;
         let snapshotRefresh = null;
         if (shouldRefreshSnapshot) {
@@ -7821,7 +7845,7 @@ Return exactly these top-level fields:
             const successfulDomains = domains.results.filter(result => isSuccessfulDomainStatus(result.status));
             const allDomainsStored = domains.results.length === selectedKeys.length;
             let synthesis = null;
-            const canSynthesize = includeSynthesis
+            const canSynthesize = shouldIncludeSynthesis
                 && !domains.rateLimited
                 && !domains.terminalError
                 && allDomainsStored
@@ -7875,7 +7899,7 @@ Return exactly these top-level fields:
                     disabledDomainKeys: disabledDomains.map(domain => domain.domainKey),
                     results: domains.results,
                     phase: domains.rateLimited ? 'rate_limited' : domains.terminalError ? 'failed' : 'domains_complete',
-                    synthesisStatus: includeSynthesis ? 'skipped' : 'not_requested',
+                    synthesisStatus: shouldIncludeSynthesis ? 'skipped' : 'not_requested',
                     rateLimit: domains.rateLimit,
                     snapshot
                 }), domains.totals);
@@ -7896,9 +7920,20 @@ Return exactly these top-level fields:
                 snapshotRefresh,
                 periodType: run.periodType,
                 mode: run.mode,
+                enterpriseDeepRun: isEnterpriseDeepRun,
+                refreshSnapshotRequested: shouldRefreshSnapshot,
+                includeSynthesisRequested: shouldIncludeSynthesis,
                 requestedDomainKeys: requestedKeys,
                 activeDomainKeys: selectedKeys,
                 disabledDomains,
+                powerBiUrlHints: {
+                    latest: `/api/powerbi/intelligence/latest/${numericCompanyId}`,
+                    final: `/api/powerbi/intelligence/final/${numericCompanyId}`,
+                    tables: `/api/powerbi/tables/latest/${numericCompanyId}`,
+                    latestForRun: `/api/powerbi/intelligence/latest/${numericCompanyId}?runId=${run.id}`,
+                    finalForRun: `/api/powerbi/intelligence/final/${numericCompanyId}?runId=${run.id}`,
+                    tablesForRun: `/api/powerbi/tables/latest/${numericCompanyId}?runId=${run.id}`
+                },
                 reportingPhase: CURRENT_REPORTING_PHASE,
                 domains: domains.results.map(result => ({
                     domainKey: result.domain.key,
@@ -7909,9 +7944,9 @@ Return exactly these top-level fields:
                     errorMessage: result.errorMessage || null,
                     batchInfo: result.batchInfo || null
                 })),
-            domainRunSummary: { ...domainRunSummary, disabledDomains },
+                domainRunSummary: { ...domainRunSummary, disabledDomains },
                 synthesisId: synthesis?.synthesisId || null,
-                synthesisStatus: synthesis?.status || (includeSynthesis ? (domains.rateLimited ? 'skipped_rate_limited' : domains.terminalError ? 'skipped_pipeline_stop' : (successfulDomains.length ? 'skipped' : 'skipped_no_successful_domains')) : 'not_requested'),
+                synthesisStatus: synthesis?.status || (shouldIncludeSynthesis ? (domains.rateLimited ? 'skipped_rate_limited' : domains.terminalError ? 'skipped_pipeline_stop' : (successfulDomains.length ? 'skipped' : 'skipped_no_successful_domains')) : 'not_requested'),
                 totals: domains.totals,
                 rateLimited: domains.rateLimited,
                 rateLimit: domains.rateLimit,
@@ -8145,7 +8180,7 @@ Return exactly these top-level fields:
             if (/recovered|closing json|truncated json|invalid json|json parse|azure_invalid_json/i.test(text)) return 'azure_recovered_json';
             if (/partial|omitted|incomplete/i.test(text)) return 'partial_evidence';
             if (/optional|unavailable|not configured/i.test(text)) return 'optional_source_unavailable';
-            return 'other_warning';
+            return 'general_warning';
         };
         const normalizedRuns = runs.map(row => ({ ...row, ProgressJson: parseJson(row.ProgressJson, {}) }));
         const lightweightDomains = domains.map(row => {

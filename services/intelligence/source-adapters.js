@@ -1532,7 +1532,29 @@ async load(pool, companyId, capability) {
                     gatewayRules: [],
                     accessLogs: [],
                     dlpProfiles: [],
-                    warpProfiles: []
+                    warpProfiles: [],
+                    permissionMatrix: [],
+                    auditLogs: [],
+                    accountLogs: [],
+                    securityInsights: [],
+                    applicationSecurityReports: [],
+                    apiGatewayOperations: [],
+                    casbFindings: [],
+                    tunnels: [],
+                    cloudforceRequests: [],
+                    intelFeeds: [],
+                    dnsFirewallRules: [],
+                    loadBalancerPools: [],
+                    loadBalancerMonitors: [],
+                    magicWanSites: [],
+                    magicWanRoutes: [],
+                    mtlsCertificates: [],
+                    accessGroups: [],
+                    accessOrganizations: [],
+                    accessCertificates: [],
+                    warpConnectors: [],
+                    teamnetRoutes: [],
+                    teamsDexTests: []
                 };
                 evidenceRows.forEach(row => {
                     const item = row.ProcessedEvidenceJson || {};
@@ -1542,6 +1564,28 @@ async load(pool, companyId, capability) {
                     else if (row.EvidenceKind === 'access_log') grouped.accessLogs.push(item);
                     else if (row.EvidenceKind === 'dlp_profile') grouped.dlpProfiles.push(item);
                     else if (row.EvidenceKind === 'warp_profile') grouped.warpProfiles.push(item);
+                    else if (row.EvidenceKind === 'permission_family') grouped.permissionMatrix.push(item);
+                    else if (row.EvidenceKind === 'audit_log') grouped.auditLogs.push(item);
+                    else if (row.EvidenceKind === 'account_log') grouped.accountLogs.push(item);
+                    else if (row.EvidenceKind === 'security_insight') grouped.securityInsights.push(item);
+                    else if (row.EvidenceKind === 'appsec_report') grouped.applicationSecurityReports.push(item);
+                    else if (row.EvidenceKind === 'api_gateway_operation') grouped.apiGatewayOperations.push(item);
+                    else if (row.EvidenceKind === 'casb_finding') grouped.casbFindings.push(item);
+                    else if (row.EvidenceKind === 'tunnel') grouped.tunnels.push(item);
+                    else if (row.EvidenceKind === 'cloudforce_one') grouped.cloudforceRequests.push(item);
+                    else if (row.EvidenceKind === 'intel_feed') grouped.intelFeeds.push(item);
+                    else if (row.EvidenceKind === 'dns_firewall') grouped.dnsFirewallRules.push(item);
+                    else if (row.EvidenceKind === 'load_balancer_pool') grouped.loadBalancerPools.push(item);
+                    else if (row.EvidenceKind === 'load_balancer_monitor') grouped.loadBalancerMonitors.push(item);
+                    else if (row.EvidenceKind === 'magic_wan_site') grouped.magicWanSites.push(item);
+                    else if (row.EvidenceKind === 'magic_wan_route') grouped.magicWanRoutes.push(item);
+                    else if (row.EvidenceKind === 'mtls_certificate') grouped.mtlsCertificates.push(item);
+                    else if (row.EvidenceKind === 'access_group') grouped.accessGroups.push(item);
+                    else if (row.EvidenceKind === 'access_organization') grouped.accessOrganizations.push(item);
+                    else if (row.EvidenceKind === 'access_certificate') grouped.accessCertificates.push(item);
+                    else if (row.EvidenceKind === 'warp_connector') grouped.warpConnectors.push(item);
+                    else if (row.EvidenceKind === 'network_route') grouped.teamnetRoutes.push(item);
+                    else if (row.EvidenceKind === 'teams_dex_test') grouped.teamsDexTests.push(item);
                 });
                 return {
                     records: snapshots,
@@ -1628,7 +1672,7 @@ async load(pool, companyId, capability) {
                 },
                 evidence: [{
                     evidenceType: 'live_cloudflare_dashboard',
-                    data: { overview, apps, devices, accessLogs, sections: refreshed?.sections || {} }
+                    data: { ...refreshed, overview, apps, devices, accessLogs, sections: refreshed?.sections || {} }
                 }],
                 warnings: [...(stored?.warnings || []), ...(refreshed?.warnings || [])],
                 rawReference: { table: this.table, recordId: null }

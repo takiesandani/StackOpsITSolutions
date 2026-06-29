@@ -260,7 +260,7 @@ function createAdminIntelligenceRouter({ authenticateToken, adminIntelligenceSer
             if (!companyId) return;
             const domainKeys = Array.isArray(req.body?.domainKeys)
                 ? req.body.domainKeys
-                : req.body?.domainKey ? [String(req.body.domainKey)] : enterpriseIntelligenceService.domains.map(domain => domain.key);
+                : req.body?.domainKey ? [String(req.body.domainKey)] : enterpriseIntelligenceService.domains.filter(domain => domain.includedInCurrentPhase).map(domain => domain.key);
             const result = await enterpriseIntelligenceService.runEnterpriseReport({
                 companyId,
                 snapshotId: req.body?.snapshotId || null,

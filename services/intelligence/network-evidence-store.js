@@ -71,7 +71,29 @@ const NETWORK_EVIDENCE_KINDS = [
     { key: 'gatewayRules', kind: 'gateway_rule', items: payload => payload.gatewayRules || [] },
     { key: 'accessLogs', kind: 'access_log', items: payload => payload.accessLogs || [] },
     { key: 'dlpProfiles', kind: 'dlp_profile', items: payload => payload.dlpProfiles || [] },
-    { key: 'warpProfiles', kind: 'warp_profile', items: payload => payload.warpProfiles || [] }
+    { key: 'warpProfiles', kind: 'warp_profile', items: payload => payload.warpProfiles || [] },
+    { key: 'permissionMatrix', kind: 'permission_family', items: payload => payload.permissionMatrix || [] },
+    { key: 'auditLogs', kind: 'audit_log', items: payload => payload.auditLogs || [] },
+    { key: 'accountLogs', kind: 'account_log', items: payload => payload.accountLogs || [] },
+    { key: 'securityInsights', kind: 'security_insight', items: payload => payload.securityInsights || [] },
+    { key: 'applicationSecurityReports', kind: 'appsec_report', items: payload => payload.applicationSecurityReports || [] },
+    { key: 'apiGatewayOperations', kind: 'api_gateway_operation', items: payload => payload.apiGatewayOperations || [] },
+    { key: 'casbFindings', kind: 'casb_finding', items: payload => payload.casbFindings || [] },
+    { key: 'tunnels', kind: 'tunnel', items: payload => payload.tunnels || [] },
+    { key: 'cloudforceRequests', kind: 'cloudforce_one', items: payload => payload.cloudforceRequests || [] },
+    { key: 'intelFeeds', kind: 'intel_feed', items: payload => payload.intelFeeds || [] },
+    { key: 'dnsFirewallRules', kind: 'dns_firewall', items: payload => payload.dnsFirewallRules || [] },
+    { key: 'loadBalancerPools', kind: 'load_balancer_pool', items: payload => payload.loadBalancerPools || [] },
+    { key: 'loadBalancerMonitors', kind: 'load_balancer_monitor', items: payload => payload.loadBalancerMonitors || [] },
+    { key: 'magicWanSites', kind: 'magic_wan_site', items: payload => payload.magicWanSites || [] },
+    { key: 'magicWanRoutes', kind: 'magic_wan_route', items: payload => payload.magicWanRoutes || [] },
+    { key: 'mtlsCertificates', kind: 'mtls_certificate', items: payload => payload.mtlsCertificates || [] },
+    { key: 'accessGroups', kind: 'access_group', items: payload => payload.accessGroups || [] },
+    { key: 'accessOrganizations', kind: 'access_organization', items: payload => payload.accessOrganizations || [] },
+    { key: 'accessCertificates', kind: 'access_certificate', items: payload => payload.accessCertificates || [] },
+    { key: 'warpConnectors', kind: 'warp_connector', items: payload => payload.warpConnectors || [] },
+    { key: 'teamnetRoutes', kind: 'network_route', items: payload => payload.teamnetRoutes || [] },
+    { key: 'teamsDexTests', kind: 'teams_dex_test', items: payload => payload.teamsDexTests || [] }
 ];
 
 function mysqlDateTime(value) {

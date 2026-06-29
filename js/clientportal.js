@@ -10871,7 +10871,31 @@ function normalizeNetworkSecurityData(data = {}) {
             udpProxyEnabled: Boolean(overview.udpProxyEnabled),
             certificateEnabled: Boolean(overview.certificateEnabled),
             tlsDecryptEnabled: Boolean(overview.tlsDecryptEnabled),
-            zonesAvailable: Number(overview.zonesAvailable || 0)
+            zonesAvailable: Number(overview.zonesAvailable || 0),
+            endpointFamilies: Number(overview.endpointFamilies || 0),
+            endpointFamiliesAvailable: Number(overview.endpointFamiliesAvailable || 0),
+            endpointFamiliesWithGaps: Number(overview.endpointFamiliesWithGaps || 0),
+            auditLogs: Number(overview.auditLogs || 0),
+            accountLogs: Number(overview.accountLogs || 0),
+            securityInsights: Number(overview.securityInsights || 0),
+            applicationSecurityReports: Number(overview.applicationSecurityReports || 0),
+            apiGatewayOperations: Number(overview.apiGatewayOperations || 0),
+            casbFindings: Number(overview.casbFindings || 0),
+            tunnels: Number(overview.tunnels || 0),
+            cloudforceRequests: Number(overview.cloudforceRequests || 0),
+            intelFeeds: Number(overview.intelFeeds || 0),
+            dnsFirewallRules: Number(overview.dnsFirewallRules || 0),
+            loadBalancerPools: Number(overview.loadBalancerPools || 0),
+            loadBalancerMonitors: Number(overview.loadBalancerMonitors || 0),
+            magicWanSites: Number(overview.magicWanSites || 0),
+            magicWanRoutes: Number(overview.magicWanRoutes || 0),
+            mtlsCertificates: Number(overview.mtlsCertificates || 0),
+            accessGroups: Number(overview.accessGroups || 0),
+            accessOrganizations: Number(overview.accessOrganizations || 0),
+            accessCertificates: Number(overview.accessCertificates || 0),
+            warpConnectors: Number(overview.warpConnectors || 0),
+            teamnetRoutes: Number(overview.teamnetRoutes || 0),
+            teamsDexTests: Number(overview.teamsDexTests || 0)
         },
         apps: Array.isArray(data.apps) ? data.apps : [],
         identityProviders: Array.isArray(data.identityProviders) ? data.identityProviders : [],
@@ -10886,6 +10910,29 @@ function normalizeNetworkSecurityData(data = {}) {
         virtualNetworks: Array.isArray(data.virtualNetworks) ? data.virtualNetworks : [],
         gatewayAppTypes: Array.isArray(data.gatewayAppTypes) ? data.gatewayAppTypes : [],
         dlpProfiles: Array.isArray(data.dlpProfiles) ? data.dlpProfiles : [],
+        auditLogs: Array.isArray(data.auditLogs) ? data.auditLogs : [],
+        accountLogs: Array.isArray(data.accountLogs) ? data.accountLogs : [],
+        securityInsights: Array.isArray(data.securityInsights) ? data.securityInsights : [],
+        applicationSecurityReports: Array.isArray(data.applicationSecurityReports) ? data.applicationSecurityReports : [],
+        apiGatewayOperations: Array.isArray(data.apiGatewayOperations) ? data.apiGatewayOperations : [],
+        casbFindings: Array.isArray(data.casbFindings) ? data.casbFindings : [],
+        tunnels: Array.isArray(data.tunnels) ? data.tunnels : [],
+        cloudforceRequests: Array.isArray(data.cloudforceRequests) ? data.cloudforceRequests : [],
+        intelFeeds: Array.isArray(data.intelFeeds) ? data.intelFeeds : [],
+        dnsFirewallRules: Array.isArray(data.dnsFirewallRules) ? data.dnsFirewallRules : [],
+        loadBalancerPools: Array.isArray(data.loadBalancerPools) ? data.loadBalancerPools : [],
+        loadBalancerMonitors: Array.isArray(data.loadBalancerMonitors) ? data.loadBalancerMonitors : [],
+        magicWanSites: Array.isArray(data.magicWanSites) ? data.magicWanSites : [],
+        magicWanRoutes: Array.isArray(data.magicWanRoutes) ? data.magicWanRoutes : [],
+        mtlsCertificates: Array.isArray(data.mtlsCertificates) ? data.mtlsCertificates : [],
+        accessGroups: Array.isArray(data.accessGroups) ? data.accessGroups : [],
+        accessOrganizations: Array.isArray(data.accessOrganizations) ? data.accessOrganizations : [],
+        accessCertificates: Array.isArray(data.accessCertificates) ? data.accessCertificates : [],
+        warpConnectors: Array.isArray(data.warpConnectors) ? data.warpConnectors : [],
+        teamnetRoutes: Array.isArray(data.teamnetRoutes) ? data.teamnetRoutes : [],
+        teamsDexTests: Array.isArray(data.teamsDexTests) ? data.teamsDexTests : [],
+        permissionMatrix: Array.isArray(data.permissionMatrix) ? data.permissionMatrix : [],
+        endpointGroups: data.endpointGroups && typeof data.endpointGroups === 'object' ? data.endpointGroups : {},
         sections: data.sections || {}
     };
 }
@@ -10915,7 +10962,7 @@ function buildCloudflareSecuritySignals(inputData = getCurrentNetworkSecurityDat
     const hasEvidence = inputData.success === false
         || Boolean(inputData.message || inputData.fetchedAt || inputData.savedAt)
         || Object.keys(inputData.overview || {}).length > 0
-        || ['apps', 'devices', 'gatewayRules', 'accessLogs', 'dlpProfiles', 'sections'].some(key => {
+        || ['apps', 'devices', 'gatewayRules', 'accessLogs', 'dlpProfiles', 'permissionMatrix', 'sections'].some(key => {
             const value = inputData[key];
             return Array.isArray(value) ? value.length > 0 : value && Object.keys(value).length > 0;
         });
@@ -11098,6 +11145,44 @@ function buildCloudflareSecuritySignals(inputData = getCurrentNetworkSecurityDat
         });
     });
 
+
+    data.permissionMatrix
+        .filter(family => ['permission_unavailable', 'error'].includes(String(family.status || '')))
+        .slice(0, 4)
+        .forEach(family => {
+            addAlert({
+                id: `permission-${family.key || family.id}`,
+                title: `${family.module || 'Cloudflare'} evidence gap`,
+                description: `${family.endpointFamily || family.permission || 'Cloudflare API'} returned ${family.status === 'error' ? 'an error' : 'a permission gap'}.`,
+                severity: family.status === 'error' ? 'high' : 'medium',
+                category: family.module || 'Cloudflare API',
+                incident: family.status === 'error',
+                recommendation: 'Review Cloudflare API token permissions for this evidence family'
+            });
+        });
+
+    data.casbFindings.slice(0, 3).forEach((finding, index) => {
+        addAlert({
+            id: `casb-${finding.id || finding.uuid || index}`,
+            title: finding.name || finding.title || 'Cloudflare CASB finding',
+            description: finding.description || finding.status || 'CASB returned a SaaS posture finding.',
+            severity: /critical|high/i.test(String(finding.severity || finding.priority || '')) ? 'high' : 'medium',
+            category: 'CASB Dashboard',
+            incident: /critical|high/i.test(String(finding.severity || finding.priority || '')),
+            recommendation: 'Review Cloudflare CASB findings in Security Alerts'
+        });
+    });
+
+    data.securityInsights.slice(0, 3).forEach((finding, index) => {
+        addAlert({
+            id: `security-insight-${finding.id || index}`,
+            title: finding.title || finding.name || 'Cloudflare security insight',
+            description: finding.description || finding.status || 'Cloudflare Security Insights returned a posture finding.',
+            severity: /critical|high/i.test(String(finding.severity || finding.priority || '')) ? 'high' : 'medium',
+            category: 'Security Dashboard',
+            recommendation: 'Review Cloudflare Security Insights evidence'
+        });
+    });
     const highCount = alerts.filter(alert => ['critical', 'high'].includes(String(alert.severity || '').toLowerCase())).length;
     return {
         alerts,
@@ -11343,7 +11428,7 @@ function renderNetworkSecurityCardPanel(project) {
                 <div><span>WARP</span><strong>${escapeIdentityText(String(overview.registeredWarpDevices || overview.enrolledDevices))}</strong></div>
                 <div><span>Logs</span><strong>${escapeIdentityText(String(overview.recentAccessEvents))}</strong></div>
                 <div><span>DLP</span><strong>${escapeIdentityText(String(overview.dlpProfiles))}</strong></div>
-                <div><span>Catalog</span><strong>${escapeIdentityText(String(overview.appCategories))}</strong></div>
+                <div><span>APIs</span><strong>${escapeIdentityText(overview.endpointFamilies ? `${overview.endpointFamiliesAvailable}/${overview.endpointFamilies}` : String(overview.appCategories))}</strong></div>
             </div>
             <div class="network-security-signal-list">
                 <div class="network-security-signal">
@@ -11550,7 +11635,7 @@ function renderNetworkSecurityOverview(data) {
                     <div><span>Status</span><strong>${escapeIdentityText(overview.securityStatus)}</strong></div>
                     <div><span>Identity Provider</span><strong>${escapeIdentityText(overview.identityProvider)}</strong></div>
                     <div><span>Last Access Event</span><strong>${escapeIdentityText(formatNetworkSecurityDate(overview.lastAccessEvent))}</strong></div>
-                    <div><span>Private Network</span><strong>${escapeIdentityText(`${overview.virtualNetworks} virtual network(s)`)}</strong></div>
+                    <div><span>API Families</span><strong>${escapeIdentityText(overview.endpointFamilies ? `${overview.endpointFamiliesAvailable}/${overview.endpointFamilies} readable` : 'Not measured')}</strong></div>
                 </div>
             </article>
             <article class="network-dashboard-panel">
@@ -11559,7 +11644,7 @@ function renderNetworkSecurityOverview(data) {
                     <div><span>Gateway Proxy</span><strong>${networkSecurityBoolLabel(overview.gatewayProxyEnabled)}</strong></div>
                     <div><span>UDP Proxy</span><strong>${networkSecurityBoolLabel(overview.udpProxyEnabled)}</strong></div>
                     <div><span>TLS Decrypt</span><strong>${networkSecurityBoolLabel(overview.tlsDecryptEnabled)}</strong></div>
-                    <div><span>Category Catalog</span><strong>${escapeIdentityText(`${overview.appCategories} categories`)}</strong></div>
+                    <div><span>Infrastructure</span><strong>${escapeIdentityText(`${overview.tunnels || 0} tunnel(s), ${overview.loadBalancerPools || 0} pool(s)`)}</strong></div>
                 </div>
             </article>
         </div>

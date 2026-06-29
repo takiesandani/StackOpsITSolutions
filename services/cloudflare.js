@@ -2,24 +2,75 @@ const axios = require('axios');
 
 const CLOUDFLARE_BASE_URL = 'https://api.cloudflare.com/client/v4';
 
-const CLOUDFLARE_ENDPOINTS = [
-  { key: 'account', label: 'Account Information', path: accountId => `/accounts/${accountId}` },
-  { key: 'apps', label: 'Access Applications', path: accountId => `/accounts/${accountId}/access/apps` },
-  { key: 'identityProviders', label: 'Identity Providers', path: accountId => `/accounts/${accountId}/access/identity_providers` },
-  { key: 'policies', label: 'Access Policies', path: accountId => `/accounts/${accountId}/access/policies` },
-  { key: 'devices', label: 'Devices', path: accountId => `/accounts/${accountId}/devices` },
-  { key: 'deviceRegistrations', label: 'Device Registrations', path: accountId => `/accounts/${accountId}/devices/registrations` },
-  { key: 'devicePosture', label: 'Device Posture', path: accountId => `/accounts/${accountId}/devices/posture` },
-  { key: 'warpProfiles', label: 'WARP Profiles', path: accountId => `/accounts/${accountId}/devices/policies` },
-  { key: 'gatewayRules', label: 'Gateway Rules', path: accountId => `/accounts/${accountId}/gateway/rules` },
-  { key: 'gatewayConfig', label: 'Gateway Configuration', path: accountId => `/accounts/${accountId}/gateway/configuration` },
-  { key: 'gatewayAppTypes', label: 'Gateway App Categories', path: accountId => `/accounts/${accountId}/gateway/app_types` },
-  { key: 'virtualNetworks', label: 'Virtual Networks', path: accountId => `/accounts/${accountId}/teamnet/virtual_networks` },
-  { key: 'accessLogs', label: 'Access Logs', path: accountId => `/accounts/${accountId}/access/logs/access_requests` },
-  { key: 'dlpProfiles', label: 'DLP Profiles', path: accountId => `/accounts/${accountId}/dlp/profiles` },
-  { key: 'zones', label: 'Zones', path: () => '/zones' }
+const CLOUDFLARE_PERMISSION_FAMILIES = [
+  { id: 1, key: 'accountAnalytics', permission: 'Account Analytics - Read', endpointFamily: 'Account Analytics API / GraphQL Analytics', dataAvailable: 'Traffic analytics, requests, bandwidth, trends', module: 'Executive Dashboard' },
+  { id: 2, key: 'accountLogs', permission: 'Account Logs - Read', endpointFamily: 'Account Logs API', dataAvailable: 'Platform logs', module: 'Logging' },
+  { id: 3, key: 'auditLogs', permission: 'Audit Logs - Read', endpointFamily: 'Audit Logs API', dataAvailable: 'Administrative audit trail', module: 'Governance' },
+  { id: 4, key: 'securityInsights', permission: 'Account Security Insights - Read', endpointFamily: 'Security Insights API', dataAvailable: 'Security posture, findings', module: 'Security Dashboard' },
+  { id: 5, key: 'applicationSecurityReports', permission: 'Application Security Reports - Read', endpointFamily: 'Application Security Reports API', dataAvailable: 'Application security reports', module: 'Application Security' },
+  { id: 6, key: 'apiGateway', permission: 'API Gateway - Read', endpointFamily: 'API Gateway API', dataAvailable: 'API discovery, API policies', module: 'API Security' },
+  { id: 7, key: 'casb', permission: 'CASB - Read', endpointFamily: 'CASB API', dataAvailable: 'SaaS applications, findings', module: 'CASB Dashboard' },
+  { id: 8, key: 'tunnels', permission: 'Cloudflare Tunnel - Read', endpointFamily: 'Tunnel API', dataAvailable: 'Tunnels, connectors, health', module: 'Infrastructure' },
+  { id: 9, key: 'cloudforceOne', permission: 'Cloudforce One - Read', endpointFamily: 'Cloudforce One API', dataAvailable: 'Threat intelligence', module: 'Threat Intelligence' },
+  { id: 10, key: 'devicePosture', permission: 'Device Posture - Read', endpointFamily: 'Device Posture API', dataAvailable: 'Device posture rules, compliance', module: 'Device Compliance' },
+  { id: 11, key: 'dnsFirewall', permission: 'DNS Firewall - Read', endpointFamily: 'DNS Firewall API', dataAvailable: 'DNS Firewall policies', module: 'DNS Protection' },
+  { id: 12, key: 'intel', permission: 'Intel - Read', endpointFamily: 'Intelligence API', dataAvailable: 'Threat indicators', module: 'Threat Intelligence' },
+  { id: 13, key: 'loadBalancers', permission: 'Load Balancers & Monitors - Read', endpointFamily: 'Load Balancer API', dataAvailable: 'Pools, monitors, health', module: 'Infrastructure' },
+  { id: 14, key: 'magicWan', permission: 'Magic WAN - Read', endpointFamily: 'Magic WAN API', dataAvailable: 'Sites, routes, WAN topology', module: 'Network Dashboard' },
+  { id: 15, key: 'mtlsCertificates', permission: 'Mutual TLS Certificates - Read', endpointFamily: 'mTLS API', dataAvailable: 'Certificates', module: 'PKI Dashboard' },
+  { id: 16, key: 'networks', permission: 'Networks - Read', endpointFamily: 'Networks API', dataAvailable: 'Networks, locations', module: 'Network Inventory' },
+  { id: 17, key: 'teamsDex', permission: 'Teams DEX - Read', endpointFamily: 'Teams DEX API', dataAvailable: 'Device experience metrics', module: 'User Experience' },
+  { id: 18, key: 'warpConnector', permission: 'WARP Connector - Read', endpointFamily: 'WARP Connector API', dataAvailable: 'WARP connectors, connector health', module: 'WARP Dashboard' },
+  { id: 19, key: 'zeroTrust', permission: 'Zero Trust - Read', endpointFamily: 'Zero Trust API', dataAvailable: 'Tenant configuration', module: 'Zero Trust Overview' },
+  { id: 20, key: 'accessApps', permission: 'Access: Apps & Policies - Read', endpointFamily: 'Access Applications API', dataAvailable: 'Protected Applications', module: 'Applications' },
+  { id: 21, key: 'accessPolicies', permission: 'Access: Apps & Policies - Read', endpointFamily: 'Access Policies API', dataAvailable: 'Access Policies', module: 'Policy Dashboard' },
+  { id: 22, key: 'accessAuditLogs', permission: 'Access: Audit Logs - Read', endpointFamily: 'Access Audit API', dataAvailable: 'Authentication events', module: 'Authentication Logs' },
+  { id: 23, key: 'accessOrganizations', permission: 'Access: Organizations, Identity Providers & Groups - Read', endpointFamily: 'Organizations API', dataAvailable: 'Organization details', module: 'Tenant Overview' },
+  { id: 24, key: 'identityProviders', permission: 'Access: Organizations, Identity Providers & Groups - Read', endpointFamily: 'Identity Providers API', dataAvailable: 'Entra ID, Google, Okta etc.', module: 'Identity' },
+  { id: 25, key: 'accessGroups', permission: 'Access: Organizations, Identity Providers & Groups - Read', endpointFamily: 'Groups API', dataAvailable: 'Identity Groups', module: 'Identity' },
+  { id: 26, key: 'accessMtlsCertificates', permission: 'Access: Mutual TLS Certificates - Read', endpointFamily: 'mTLS Certificates API', dataAvailable: 'Client Certificates', module: 'Certificates' }
 ];
 
+const FAMILY_BY_KEY = Object.freeze(Object.fromEntries(CLOUDFLARE_PERMISSION_FAMILIES.map(family => [family.key, family])));
+
+const CLOUDFLARE_ENDPOINTS = [
+  { key: 'account', familyKey: 'zeroTrust', label: 'Account Information', path: accountId => `/accounts/${accountId}` },
+  { key: 'accountLogs', familyKey: 'accountLogs', label: 'Account Logs', path: accountId => `/accounts/${accountId}/logs/audit` },
+  { key: 'auditLogs', familyKey: 'auditLogs', label: 'Audit Logs', path: accountId => `/accounts/${accountId}/audit_logs` },
+  { key: 'securityInsights', familyKey: 'securityInsights', label: 'Security Insights', path: accountId => `/accounts/${accountId}/security-center/insights` },
+  { key: 'applicationSecurityReports', familyKey: 'applicationSecurityReports', label: 'Application Security Reports', path: accountId => `/accounts/${accountId}/security-center/insights` },
+  { key: 'apiGateway', familyKey: 'apiGateway', label: 'API Gateway Discovery', path: accountId => `/accounts/${accountId}/api_gateway/discovery/operations` },
+  { key: 'casbFindings', familyKey: 'casb', label: 'CASB Findings', path: accountId => `/accounts/${accountId}/casb/findings` },
+  { key: 'tunnels', familyKey: 'tunnels', label: 'Cloudflare Tunnels', path: accountId => `/accounts/${accountId}/cfd_tunnel` },
+  { key: 'cloudforceRequests', familyKey: 'cloudforceOne', label: 'Cloudforce One Requests', path: accountId => `/accounts/${accountId}/cloudforce-one/requests` },
+  { key: 'intelFeeds', familyKey: 'intel', label: 'Intel Indicator Feeds', path: accountId => `/accounts/${accountId}/intel/indicator-feeds` },
+  { key: 'dnsFirewall', familyKey: 'dnsFirewall', label: 'DNS Firewall', path: accountId => `/accounts/${accountId}/dns_firewall` },
+  { key: 'loadBalancerPools', familyKey: 'loadBalancers', label: 'Load Balancer Pools', path: accountId => `/accounts/${accountId}/load_balancers/pools` },
+  { key: 'loadBalancerMonitors', familyKey: 'loadBalancers', label: 'Load Balancer Monitors', path: accountId => `/accounts/${accountId}/load_balancers/monitors` },
+  { key: 'magicWanSites', familyKey: 'magicWan', label: 'Magic WAN Sites', path: accountId => `/accounts/${accountId}/magic/sites` },
+  { key: 'magicWanRoutes', familyKey: 'magicWan', label: 'Magic WAN Routes', path: accountId => `/accounts/${accountId}/magic/routes` },
+  { key: 'mtlsCertificates', familyKey: 'mtlsCertificates', label: 'Mutual TLS Certificates', path: accountId => `/accounts/${accountId}/mtls_certificates` },
+  { key: 'apps', familyKey: 'accessApps', label: 'Access Applications', path: accountId => `/accounts/${accountId}/access/apps` },
+  { key: 'identityProviders', familyKey: 'identityProviders', label: 'Identity Providers', path: accountId => `/accounts/${accountId}/access/identity_providers` },
+  { key: 'accessGroups', familyKey: 'accessGroups', label: 'Access Groups', path: accountId => `/accounts/${accountId}/access/groups` },
+  { key: 'accessOrganizations', familyKey: 'accessOrganizations', label: 'Access Organizations', path: accountId => `/accounts/${accountId}/access/organizations` },
+  { key: 'accessCertificates', familyKey: 'accessMtlsCertificates', label: 'Access mTLS Certificates', path: accountId => `/accounts/${accountId}/access/certificates` },
+  { key: 'policies', familyKey: 'accessPolicies', label: 'Access Policies', path: accountId => `/accounts/${accountId}/access/policies` },
+  { key: 'devices', familyKey: 'zeroTrust', label: 'Devices', path: accountId => `/accounts/${accountId}/devices` },
+  { key: 'deviceRegistrations', familyKey: 'warpConnector', label: 'Device Registrations', path: accountId => `/accounts/${accountId}/devices/registrations` },
+  { key: 'devicePosture', familyKey: 'devicePosture', label: 'Device Posture', path: accountId => `/accounts/${accountId}/devices/posture` },
+  { key: 'warpProfiles', familyKey: 'warpConnector', label: 'WARP Profiles', path: accountId => `/accounts/${accountId}/devices/policies` },
+  { key: 'warpConnectors', familyKey: 'warpConnector', label: 'WARP Connectors', path: accountId => `/accounts/${accountId}/warp_connector` },
+  { key: 'gatewayRules', familyKey: 'zeroTrust', label: 'Gateway Rules', path: accountId => `/accounts/${accountId}/gateway/rules` },
+  { key: 'gatewayConfig', familyKey: 'zeroTrust', label: 'Gateway Configuration', path: accountId => `/accounts/${accountId}/gateway/configuration` },
+  { key: 'gatewayAppTypes', familyKey: 'zeroTrust', label: 'Gateway App Categories', path: accountId => `/accounts/${accountId}/gateway/app_types` },
+  { key: 'virtualNetworks', familyKey: 'networks', label: 'Virtual Networks', path: accountId => `/accounts/${accountId}/teamnet/virtual_networks` },
+  { key: 'teamnetRoutes', familyKey: 'networks', label: 'Network Routes', path: accountId => `/accounts/${accountId}/teamnet/routes` },
+  { key: 'accessLogs', familyKey: 'accessAuditLogs', label: 'Access Logs', path: accountId => `/accounts/${accountId}/access/logs/access_requests` },
+  { key: 'teamsDexTests', familyKey: 'teamsDex', label: 'Teams DEX Tests', path: accountId => `/accounts/${accountId}/dex/tests` },
+  { key: 'dlpProfiles', familyKey: 'zeroTrust', label: 'DLP Profiles', path: accountId => `/accounts/${accountId}/dlp/profiles` },
+  { key: 'zones', familyKey: 'accountAnalytics', label: 'Zones', path: () => '/zones' }
+];
 function getList(result) {
   if (Array.isArray(result)) return result;
   if (Array.isArray(result?.result)) return result.result;
@@ -220,6 +271,71 @@ function countEnabled(items) {
   return items.filter(item => item.enabled !== false).length;
 }
 
+
+function endpointDefinition(key) {
+  return CLOUDFLARE_ENDPOINTS.find(endpoint => endpoint.key === key) || { key, label: key, familyKey: key };
+}
+
+function genericCloudflareRows(byKey, key) {
+  return getList(byKey[key]?.data).map(maskSensitiveObject);
+}
+
+function buildCloudflareEndpointSummaries(raw) {
+  const sectionResults = raw.map(item => {
+    const endpoint = endpointDefinition(item.key);
+    const family = FAMILY_BY_KEY[endpoint.familyKey] || {};
+    return {
+      key: item.key,
+      familyKey: endpoint.familyKey || item.key,
+      label: item.label || endpoint.label,
+      permission: family.permission || endpoint.label || item.key,
+      endpointFamily: family.endpointFamily || endpoint.label || item.key,
+      dataAvailable: family.dataAvailable || 'Cloudflare records',
+      module: family.module || 'Network Security',
+      status: item.status,
+      message: item.message,
+      count: Array.isArray(getList(item.data)) ? getList(item.data).length : null
+    };
+  });
+
+  const byFamily = new Map();
+  CLOUDFLARE_PERMISSION_FAMILIES.forEach(family => {
+    byFamily.set(family.key, { ...family, status: 'not_requested', endpointCount: 0, recordCount: 0, endpoints: [] });
+  });
+
+  sectionResults.forEach(section => {
+    const group = byFamily.get(section.familyKey) || {
+      id: null,
+      key: section.familyKey,
+      permission: section.permission,
+      endpointFamily: section.endpointFamily,
+      dataAvailable: section.dataAvailable,
+      module: section.module,
+      status: 'not_requested',
+      endpointCount: 0,
+      recordCount: 0,
+      endpoints: []
+    };
+    group.endpointCount += 1;
+    group.recordCount += Number(section.count || 0);
+    group.endpoints.push(section);
+    if (section.status === 'ok') group.status = 'available';
+    else if (section.status === 'empty' && !['available'].includes(group.status)) group.status = 'empty';
+    else if (section.status === 'permission_unavailable' && !['available', 'empty'].includes(group.status)) group.status = 'permission_unavailable';
+    else if (section.status === 'error' && !['available', 'empty', 'permission_unavailable'].includes(group.status)) group.status = 'error';
+    byFamily.set(section.familyKey, group);
+  });
+
+  const permissionMatrix = Array.from(byFamily.values()).sort((a, b) => Number(a.id || 999) - Number(b.id || 999));
+  const endpointGroups = permissionMatrix.reduce((groups, family) => {
+    const moduleName = family.module || 'Network Security';
+    if (!groups[moduleName]) groups[moduleName] = [];
+    groups[moduleName].push(family);
+    return groups;
+  }, {});
+
+  return { sectionResults, permissionMatrix, endpointGroups };
+}
 function normalizeCloudflarePayload(raw) {
   const byKey = raw.reduce((acc, item) => {
     acc[item.key] = item;
@@ -254,6 +370,27 @@ function normalizeCloudflarePayload(raw) {
     .sort((a, b) => getTimeValue(b.timestamp) - getTimeValue(a.timestamp));
   const dlpProfiles = getList(byKey.dlpProfiles?.data).map(sanitizeDlpProfile);
   const zones = getList(byKey.zones?.data).map(zone => ({ id: zone.id || null, name: zone.name || 'Zone' }));
+  const auditLogs = genericCloudflareRows(byKey, 'auditLogs');
+  const accountLogs = genericCloudflareRows(byKey, 'accountLogs');
+  const securityInsights = genericCloudflareRows(byKey, 'securityInsights');
+  const applicationSecurityReports = genericCloudflareRows(byKey, 'applicationSecurityReports');
+  const apiGatewayOperations = genericCloudflareRows(byKey, 'apiGateway');
+  const casbFindings = genericCloudflareRows(byKey, 'casbFindings');
+  const tunnels = genericCloudflareRows(byKey, 'tunnels');
+  const cloudforceRequests = genericCloudflareRows(byKey, 'cloudforceRequests');
+  const intelFeeds = genericCloudflareRows(byKey, 'intelFeeds');
+  const dnsFirewallRules = genericCloudflareRows(byKey, 'dnsFirewall');
+  const loadBalancerPools = genericCloudflareRows(byKey, 'loadBalancerPools');
+  const loadBalancerMonitors = genericCloudflareRows(byKey, 'loadBalancerMonitors');
+  const magicWanSites = genericCloudflareRows(byKey, 'magicWanSites');
+  const magicWanRoutes = genericCloudflareRows(byKey, 'magicWanRoutes');
+  const mtlsCertificates = genericCloudflareRows(byKey, 'mtlsCertificates');
+  const accessGroups = genericCloudflareRows(byKey, 'accessGroups');
+  const accessOrganizations = genericCloudflareRows(byKey, 'accessOrganizations');
+  const accessCertificates = genericCloudflareRows(byKey, 'accessCertificates');
+  const warpConnectors = genericCloudflareRows(byKey, 'warpConnectors');
+  const teamnetRoutes = genericCloudflareRows(byKey, 'teamnetRoutes');
+  const teamsDexTests = genericCloudflareRows(byKey, 'teamsDexTests');
   const account = byKey.account?.status === 'ok' ? sanitizeAccount(byKey.account.data) : {};
 
   const activeGatewayPolicies = countEnabled(gatewayRules);
@@ -282,16 +419,36 @@ function normalizeCloudflarePayload(raw) {
     udpProxyEnabled,
     certificateEnabled,
     tlsDecryptEnabled: certificateEnabled,
-    zonesAvailable: zones.length
+    zonesAvailable: zones.length,
+    endpointFamilies: CLOUDFLARE_PERMISSION_FAMILIES.length,
+    endpointFamiliesAvailable: 0,
+    endpointFamiliesWithGaps: 0,
+    auditLogs: auditLogs.length,
+    accountLogs: accountLogs.length,
+    securityInsights: securityInsights.length,
+    applicationSecurityReports: applicationSecurityReports.length,
+    apiGatewayOperations: apiGatewayOperations.length,
+    casbFindings: casbFindings.length,
+    tunnels: tunnels.length,
+    cloudforceRequests: cloudforceRequests.length,
+    intelFeeds: intelFeeds.length,
+    dnsFirewallRules: dnsFirewallRules.length,
+    loadBalancerPools: loadBalancerPools.length,
+    loadBalancerMonitors: loadBalancerMonitors.length,
+    magicWanSites: magicWanSites.length,
+    magicWanRoutes: magicWanRoutes.length,
+    mtlsCertificates: mtlsCertificates.length,
+    accessGroups: accessGroups.length,
+    accessOrganizations: accessOrganizations.length,
+    accessCertificates: accessCertificates.length,
+    warpConnectors: warpConnectors.length,
+    teamnetRoutes: teamnetRoutes.length,
+    teamsDexTests: teamsDexTests.length
   };
 
-  const sectionResults = raw.map(item => ({
-    key: item.key,
-    label: item.label,
-    status: item.status,
-    message: item.message,
-    count: Array.isArray(getList(item.data)) ? getList(item.data).length : null
-  }));
+  const { sectionResults, permissionMatrix, endpointGroups } = buildCloudflareEndpointSummaries(raw);
+  overview.endpointFamiliesAvailable = permissionMatrix.filter(item => ['available', 'empty'].includes(item.status)).length;
+  overview.endpointFamiliesWithGaps = permissionMatrix.filter(item => ['permission_unavailable', 'error', 'not_requested'].includes(item.status)).length;
 
   return {
     success: true,
@@ -312,6 +469,29 @@ function normalizeCloudflarePayload(raw) {
     gatewayAppTypes,
     dlpProfiles,
     zones,
+    auditLogs,
+    accountLogs,
+    securityInsights,
+    applicationSecurityReports,
+    apiGatewayOperations,
+    casbFindings,
+    tunnels,
+    cloudforceRequests,
+    intelFeeds,
+    dnsFirewallRules,
+    loadBalancerPools,
+    loadBalancerMonitors,
+    magicWanSites,
+    magicWanRoutes,
+    mtlsCertificates,
+    accessGroups,
+    accessOrganizations,
+    accessCertificates,
+    warpConnectors,
+    teamnetRoutes,
+    teamsDexTests,
+    permissionMatrix,
+    endpointGroups,
     sections: buildSectionStatuses(sectionResults)
   };
 }
