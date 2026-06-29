@@ -10910,6 +10910,7 @@ function normalizeNetworkSecurityData(data = {}) {
         virtualNetworks: Array.isArray(data.virtualNetworks) ? data.virtualNetworks : [],
         gatewayAppTypes: Array.isArray(data.gatewayAppTypes) ? data.gatewayAppTypes : [],
         dlpProfiles: Array.isArray(data.dlpProfiles) ? data.dlpProfiles : [],
+        zones: Array.isArray(data.zones) ? data.zones : [],
         auditLogs: Array.isArray(data.auditLogs) ? data.auditLogs : [],
         accountLogs: Array.isArray(data.accountLogs) ? data.accountLogs : [],
         securityInsights: Array.isArray(data.securityInsights) ? data.securityInsights : [],
@@ -11494,6 +11495,236 @@ function getNetworkRows(items, columns, emptyText) {
     `).join('');
 }
 
+function getNetworkEvidenceValue(item, keys = []) {
+    if (!item || typeof item !== 'object') return null;
+    for (const key of keys) {
+        const value = key.split('.').reduce((current, part) => current?.[part], item);
+        if (value !== undefined && value !== null && value !== '') return value;
+    }
+    return null;
+}
+
+function formatNetworkEvidenceValue(value) {
+    if (value === true) return 'Enabled';
+    if (value === false) return 'Disabled';
+    if (Array.isArray(value)) return `${value.length} item${value.length === 1 ? '' : 's'}`;
+    if (value && typeof value === 'object') {
+        const compact = JSON.stringify(value);
+        return compact.length > 160 ? `${compact.slice(0, 157)}...` : compact;
+    }
+    return value ?? 'N/A';
+}
+
+function renderNetworkEvidenceTable(title, items, columns, emptyText) {
+    const safeItems = Array.isArray(items) ? items : [];
+    return `
+        <article class="network-dashboard-panel network-evidence-section">
+            <div class="network-evidence-section-title">
+                <h3>${escapeIdentityText(title)}</h3>
+                <span>${escapeIdentityText(String(safeItems.length))} records</span>
+            </div>
+            <div class="network-dashboard-table-wrap">
+                <table class="network-dashboard-table network-evidence-table">
+                    <thead><tr>${columns.map(column => `<th>${escapeIdentityText(column.label)}</th>`).join('')}</tr></thead>
+                    <tbody>${getNetworkRows(safeItems, columns, emptyText)}</tbody>
+                </table>
+            </div>
+        </article>
+    `;
+}
+
+function renderNetworkGenericEvidenceTable(title, items, emptyText) {
+    return renderNetworkEvidenceTable(title, items, [
+        { label: 'Name', value: item => getNetworkEvidenceValue(item, ['name', 'title', 'display_name', 'description', 'id', 'uuid']) },
+        { label: 'Status', value: item => getNetworkEvidenceValue(item, ['status', 'state', 'enabled', 'health', 'severity', 'priority']) },
+        { label: 'Type', value: item => getNetworkEvidenceValue(item, ['type', 'family', 'kind', 'category', 'serviceMode', 'service_mode']) },
+        { label: 'Evidence', value: item => formatNetworkEvidenceValue(getNetworkEvidenceValue(item, ['domain', 'email', 'ip', 'address', 'network', 'endpoint', 'id', 'uuid'])) }
+    ], emptyText);
+}
+
+function getNetworkEvidenceGroups(data) {
+    const accountEvidence = data.account && Object.keys(data.account).length ? [data.account] : [];
+    const gatewayConfigEvidence = data.gatewayConfig && Object.keys(data.gatewayConfig).length ? [data.gatewayConfig] : [];
+    const sectionEvidence = Object.entries(data.sections || {}).map(([key, section]) => ({ key, ...section }));
+
+    return [
+        { key: 'account', title: 'Account Summary', items: accountEvidence, group: 'api', columns: [
+            { label: 'Account', value: item => item.name || item.id },
+            { label: 'Type', value: item => item.type },
+            { label: 'Created', value: item => formatNetworkSecurityDate(item.createdOn) },
+            { label: 'Evidence', value: item => item.id }
+        ] },
+        { key: 'permissionMatrix', title: 'API Permission Families', items: data.permissionMatrix, group: 'api', columns: [
+            { label: '#', value: item => item.id || item.key },
+            { label: 'Permission', value: item => item.permission },
+            { label: 'Endpoint Family', value: item => item.endpointFamily },
+            { label: 'Module', value: item => item.module },
+            { label: 'Status', value: item => item.status },
+            { label: 'Records', value: item => item.recordCount ?? 0 }
+        ] },
+        { key: 'zones', title: 'Zones', items: data.zones, group: 'api' },
+        { key: 'sections', title: 'Endpoint Section Status', items: sectionEvidence, group: 'api', columns: [
+            { label: 'Endpoint', value: item => item.label || item.key },
+            { label: 'Status', value: item => item.status },
+            { label: 'Records', value: item => item.count ?? 0 },
+            { label: 'Message', value: item => item.message || 'OK' }
+        ] },
+        { key: 'accessLogs', title: 'Access Audit Logs', items: data.accessLogs, group: 'logs', columns: [
+            { label: 'User', value: item => item.userEmail },
+            { label: 'Application', value: item => item.appName },
+            { label: 'Action', value: item => item.action },
+            { label: 'Country', value: item => item.country },
+            { label: 'IP', value: item => item.ipAddress },
+            { label: 'Time', value: item => formatNetworkSecurityDate(item.timestamp) }
+        ] },
+        { key: 'auditLogs', title: 'Account Audit Logs', items: data.auditLogs, group: 'logs' },
+        { key: 'accountLogs', title: 'Platform Logs', items: data.accountLogs, group: 'logs' },
+        { key: 'apps', title: 'Protected Applications', items: data.apps, group: 'access', columns: [
+            { label: 'Application', value: item => item.name },
+            { label: 'Type', value: item => item.type },
+            { label: 'Domain', value: item => item.domain },
+            { label: 'Policies', value: item => Array.isArray(item.policies) ? item.policies.length : 0 }
+        ] },
+        { key: 'policies', title: 'Access Policies', items: data.policies, group: 'access', columns: [
+            { label: 'Policy', value: item => item.name },
+            { label: 'Decision', value: item => item.decision },
+            { label: 'Session', value: item => item.sessionDuration },
+            { label: 'Requires', value: item => Array.isArray(item.requires) ? item.requires.length : 0 }
+        ] },
+        { key: 'identityProviders', title: 'Identity Providers', items: data.identityProviders, group: 'identity', columns: [
+            { label: 'Provider', value: item => item.name },
+            { label: 'Type', value: item => item.type },
+            { label: 'Status', value: item => item.status },
+            { label: 'Evidence', value: item => item.id }
+        ] },
+        { key: 'accessGroups', title: 'Access Groups', items: data.accessGroups, group: 'identity' },
+        { key: 'accessOrganizations', title: 'Access Organizations', items: data.accessOrganizations, group: 'identity' },
+        { key: 'mtlsCertificates', title: 'Account mTLS Certificates', items: data.mtlsCertificates, group: 'identity' },
+        { key: 'accessCertificates', title: 'Access mTLS Certificates', items: data.accessCertificates, group: 'identity' },
+        { key: 'devices', title: 'Devices', items: data.devices, group: 'devices', columns: [
+            { label: 'Device', value: item => item.name },
+            { label: 'User', value: item => item.userEmail },
+            { label: 'OS', value: item => item.os },
+            { label: 'WARP', value: item => item.warpVersion },
+            { label: 'Last Seen', value: item => formatNetworkSecurityDate(item.lastSeen) },
+            { label: 'Status', value: item => item.status }
+        ] },
+        { key: 'deviceRegistrations', title: 'Device Registrations', items: data.deviceRegistrations, group: 'devices' },
+        { key: 'devicePosture', title: 'Device Posture Rules', items: data.devicePosture, group: 'devices' },
+        { key: 'warpProfiles', title: 'WARP Profiles', items: data.warpProfiles, group: 'infrastructure', columns: [
+            { label: 'Profile', value: item => item.name },
+            { label: 'Mode', value: item => item.serviceMode },
+            { label: 'Enabled', value: item => item.enabled },
+            { label: 'Precedence', value: item => item.precedence }
+        ] },
+        { key: 'warpConnectors', title: 'WARP Connectors', items: data.warpConnectors, group: 'infrastructure' },
+        { key: 'virtualNetworks', title: 'Virtual Networks', items: data.virtualNetworks, group: 'infrastructure', columns: [
+            { label: 'Network', value: item => item.name },
+            { label: 'Default', value: item => item.isDefault },
+            { label: 'Status', value: item => item.status || 'Configured' },
+            { label: 'Evidence', value: item => item.id }
+        ] },
+        { key: 'teamnetRoutes', title: 'Network Routes', items: data.teamnetRoutes, group: 'infrastructure' },
+        { key: 'tunnels', title: 'Cloudflare Tunnels', items: data.tunnels, group: 'infrastructure' },
+        { key: 'loadBalancerPools', title: 'Load Balancer Pools', items: data.loadBalancerPools, group: 'infrastructure' },
+        { key: 'loadBalancerMonitors', title: 'Load Balancer Monitors', items: data.loadBalancerMonitors, group: 'infrastructure' },
+        { key: 'magicWanSites', title: 'Magic WAN Sites', items: data.magicWanSites, group: 'infrastructure' },
+        { key: 'magicWanRoutes', title: 'Magic WAN Routes', items: data.magicWanRoutes, group: 'infrastructure' },
+        { key: 'gatewayConfig', title: 'Gateway Configuration', items: gatewayConfigEvidence, group: 'gateway', columns: [
+            { label: 'Gateway Proxy', value: item => item.gateway_proxy_enabled },
+            { label: 'UDP Proxy', value: item => item.gateway_udp_proxy_enabled },
+            { label: 'Root Certificate', value: item => item.root_certificate_installation_enabled },
+            { label: 'Evidence', value: item => formatNetworkEvidenceValue(item) }
+        ] },
+        { key: 'gatewayRules', title: 'Gateway Rules', items: data.gatewayRules, group: 'gateway', columns: [
+            { label: 'Rule', value: item => item.name },
+            { label: 'Action', value: item => item.action },
+            { label: 'Enabled', value: item => item.enabled },
+            { label: 'Precedence', value: item => item.precedence }
+        ] },
+        { key: 'gatewayAppTypes', title: 'Gateway App Catalog', items: data.gatewayAppTypes, group: 'gateway' },
+        { key: 'dlpProfiles', title: 'DLP Profiles', items: data.dlpProfiles, group: 'gateway', columns: [
+            { label: 'Profile', value: item => item.name },
+            { label: 'Enabled', value: item => item.enabled },
+            { label: 'Entries', value: item => item.entries },
+            { label: 'Detections', value: item => item.detections }
+        ] },
+        { key: 'securityInsights', title: 'Security Insights', items: data.securityInsights, group: 'security' },
+        { key: 'applicationSecurityReports', title: 'Application Security Reports', items: data.applicationSecurityReports, group: 'security' },
+        { key: 'apiGatewayOperations', title: 'API Gateway Discovery', items: data.apiGatewayOperations, group: 'security' },
+        { key: 'casbFindings', title: 'CASB Findings', items: data.casbFindings, group: 'security' },
+        { key: 'cloudforceRequests', title: 'Cloudforce One', items: data.cloudforceRequests, group: 'security' },
+        { key: 'intelFeeds', title: 'Intel Feeds', items: data.intelFeeds, group: 'security' },
+        { key: 'dnsFirewallRules', title: 'DNS Firewall', items: data.dnsFirewallRules, group: 'security' },
+        { key: 'teamsDexTests', title: 'Teams DEX', items: data.teamsDexTests, group: 'security' }
+    ];
+}
+
+function renderNetworkEvidenceGroup(data, groupKey) {
+    return `
+        <div class="network-evidence-section-stack">
+            ${getNetworkEvidenceGroups(data)
+                .filter(group => group.group === groupKey)
+                .map(group => group.columns
+                    ? renderNetworkEvidenceTable(group.title, group.items, group.columns, `No ${group.title} evidence returned`)
+                    : renderNetworkGenericEvidenceTable(group.title, group.items, `No ${group.title} evidence returned`))
+                .join('')}
+        </div>
+    `;
+}
+
+function renderNetworkMetricsGraph(data) {
+    const overview = data.overview;
+    const apiTotal = Math.max(1, Number(overview.endpointFamilies || data.permissionMatrix.length || 1));
+    const available = Number(overview.endpointFamiliesAvailable || 0);
+    const gaps = Number(overview.endpointFamiliesWithGaps || 0);
+    const empty = Math.max(0, apiTotal - available - gaps);
+    const totalEvidenceRows = getNetworkEvidenceGroups(data).reduce((sum, group) => sum + (Array.isArray(group.items) ? group.items.length : 0), 0);
+    const totalCloudflareRecords = Math.max(1, data.permissionMatrix.reduce((sum, family) => sum + Number(family.recordCount || 0), 0), totalEvidenceRows);
+    const records = [
+        { label: 'Readable API families', value: available, total: apiTotal, evidence: 'permissionMatrix' },
+        { label: 'Families needing review', value: gaps, total: apiTotal, evidence: 'permissionMatrix' },
+        { label: 'Empty / no records', value: empty, total: apiTotal, evidence: 'permissionMatrix' },
+        { label: 'All log records', value: data.accessLogs.length + data.auditLogs.length + data.accountLogs.length, total: totalCloudflareRecords, evidence: 'accessLogs + auditLogs + accountLogs' },
+        { label: 'Infrastructure records', value: data.tunnels.length + data.warpConnectors.length + data.loadBalancerPools.length + data.loadBalancerMonitors.length + data.magicWanSites.length + data.magicWanRoutes.length + data.teamnetRoutes.length, total: totalCloudflareRecords, evidence: 'infrastructure tables' },
+        { label: 'Security intelligence records', value: data.securityInsights.length + data.applicationSecurityReports.length + data.apiGatewayOperations.length + data.casbFindings.length + data.cloudforceRequests.length + data.intelFeeds.length + data.dnsFirewallRules.length + data.teamsDexTests.length, total: totalCloudflareRecords, evidence: 'security intel tables' }
+    ];
+
+    return `
+        <div class="network-dashboard-panels network-metrics-graph-grid">
+            <article class="network-dashboard-panel network-evidence-section">
+                <div class="network-evidence-section-title">
+                    <h3>Evidence Metrics</h3>
+                    <span>${escapeIdentityText(String(data.permissionMatrix.length || overview.endpointFamilies || 0))} families</span>
+                </div>
+                <div class="network-metric-bars">
+                    ${records.map(record => {
+                        const percent = Math.max(0, Math.min(100, Math.round((Number(record.value || 0) / Math.max(1, Number(record.total || 1))) * 100)));
+                        return `
+                            <div class="network-metric-bar-row">
+                                <div><span>${escapeIdentityText(record.label)}</span><strong>${escapeIdentityText(String(record.value))}</strong></div>
+                                <i style="--network-bar:${percent}%"></i>
+                                <small>Evidence: ${escapeIdentityText(record.evidence)}</small>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </article>
+            <article class="network-dashboard-panel network-evidence-section">
+                <div class="network-evidence-section-title">
+                    <h3>Record Coverage</h3>
+                    <span>${escapeIdentityText(String(totalEvidenceRows))} rows</span>
+                </div>
+                <div class="network-dashboard-list">
+                    <div><span>Logs</span><strong>${escapeIdentityText(String(data.accessLogs.length + data.auditLogs.length + data.accountLogs.length))}</strong></div>
+                    <div><span>Access / Identity</span><strong>${escapeIdentityText(String(data.apps.length + data.policies.length + data.identityProviders.length + data.accessGroups.length + data.accessOrganizations.length))}</strong></div>
+                    <div><span>Infrastructure</span><strong>${escapeIdentityText(String(data.tunnels.length + data.warpConnectors.length + data.virtualNetworks.length + data.teamnetRoutes.length + data.loadBalancerPools.length + data.loadBalancerMonitors.length + data.magicWanSites.length + data.magicWanRoutes.length))}</strong></div>
+                    <div><span>Security Intel</span><strong>${escapeIdentityText(String(data.securityInsights.length + data.applicationSecurityReports.length + data.apiGatewayOperations.length + data.casbFindings.length + data.cloudforceRequests.length + data.intelFeeds.length + data.dnsFirewallRules.length + data.teamsDexTests.length))}</strong></div>
+                </div>
+            </article>
+        </div>
+    `;
+}
 function getNetworkEvidenceItems(data, key) {
     const pick = (items, mapper, fallback) => {
         const safeItems = Array.isArray(items) ? items : [];
@@ -11657,63 +11888,29 @@ function renderSunbirdNetworkSecurityDashboard(inputData = latestNetworkSecurity
     const content = document.getElementById('sunbird-network-security-content');
     if (!content) return;
 
-    const devicesRows = getNetworkRows(data.devices, [
-        { value: item => item.name },
-        { value: item => item.userEmail },
-        { value: item => item.os },
-        { value: item => item.warpVersion },
-        { value: item => formatNetworkSecurityDate(item.lastSeen) },
-        { value: item => item.status }
-    ], 'No enrolled devices returned');
-    const accessRows = getNetworkRows(data.accessLogs.slice(0, 12), [
-        { value: item => item.userEmail },
-        { value: item => item.appName },
-        { value: item => item.action },
-        { value: item => item.country },
-        { value: item => item.ipAddress },
-        { value: item => formatNetworkSecurityDate(item.timestamp) }
-    ], 'No access log entries returned');
-    const policyRows = getNetworkRows(data.gatewayRules, [
-        { value: item => item.name },
-        { value: item => item.action },
-        { value: item => item.enabled ? 'Enabled' : 'Disabled' },
-        { value: item => item.precedence }
-    ], 'No Gateway rules configured');
+    const tabs = [
+        { label: 'Overview', panel: renderNetworkSecurityOverview(data) },
+        { label: 'Metrics', panel: renderNetworkMetricsGraph(data) },
+        { label: 'API Families', panel: renderNetworkEvidenceGroup(data, 'api') },
+        { label: 'Logs', panel: renderNetworkEvidenceGroup(data, 'logs') },
+        { label: 'Access', panel: renderNetworkEvidenceGroup(data, 'access') },
+        { label: 'Infrastructure', panel: renderNetworkEvidenceGroup(data, 'infrastructure') },
+        { label: 'Gateway / DLP', panel: renderNetworkEvidenceGroup(data, 'gateway') },
+        { label: 'Security Intel', panel: renderNetworkEvidenceGroup(data, 'security') },
+        { label: 'Identity / Certs', panel: renderNetworkEvidenceGroup(data, 'identity') },
+        { label: 'Devices', panel: renderNetworkEvidenceGroup(data, 'devices') }
+    ];
 
     content.innerHTML = `
         ${data.success ? '' : `<div class="network-dashboard-error"><i class="fas fa-circle-exclamation"></i>${escapeIdentityText(data.message || 'Cloudflare data unavailable')}</div>`}
         <div class="network-dashboard-tabs" role="tablist">
-            ${['Overview', 'Devices', 'Access Logs', 'Policies', 'Identity', 'WARP / Gateway', 'DLP'].map((tab, index) => `
-                <button type="button" class="network-dashboard-tab ${index === 0 ? 'active' : ''}" data-network-tab="${index}">${tab}</button>
+            ${tabs.map((tab, index) => `
+                <button type="button" class="network-dashboard-tab ${index === 0 ? 'active' : ''}" data-network-tab="${index}">${escapeIdentityText(tab.label)}</button>
             `).join('')}
         </div>
-        <div class="network-dashboard-tab-panel active" data-network-panel="0">${renderNetworkSecurityOverview(data)}</div>
-        <div class="network-dashboard-tab-panel" data-network-panel="1">
-            <div class="network-dashboard-table-wrap"><table class="network-dashboard-table"><thead><tr><th>Device</th><th>User</th><th>OS</th><th>WARP</th><th>Last Seen</th><th>Status</th></tr></thead><tbody>${devicesRows}</tbody></table></div>
-        </div>
-        <div class="network-dashboard-tab-panel" data-network-panel="2">
-            <div class="network-dashboard-table-wrap"><table class="network-dashboard-table"><thead><tr><th>User</th><th>App</th><th>Action</th><th>Country</th><th>IP</th><th>Time</th></tr></thead><tbody>${accessRows}</tbody></table></div>
-        </div>
-        <div class="network-dashboard-tab-panel" data-network-panel="3">
-            <div class="network-dashboard-table-wrap"><table class="network-dashboard-table"><thead><tr><th>Rule</th><th>Action</th><th>Status</th><th>Precedence</th></tr></thead><tbody>${policyRows}</tbody></table></div>
-        </div>
-        <div class="network-dashboard-tab-panel" data-network-panel="4">
-            <div class="network-dashboard-panels">
-                ${data.identityProviders.map(provider => `<article class="network-dashboard-panel"><h3>${escapeIdentityText(provider.name)}</h3><p>${escapeIdentityText(provider.type || 'Identity provider')}</p><strong>${escapeIdentityText(provider.status || 'configured')}</strong></article>`).join('') || '<div class="sunbird-empty-row">No identity providers configured</div>'}
-                ${data.policies.map(policy => `<article class="network-dashboard-panel"><h3>${escapeIdentityText(policy.name)}</h3><p>${escapeIdentityText(policy.decision || 'Access policy')}</p><strong>${escapeIdentityText(policy.sessionDuration || 'Session policy')}</strong></article>`).join('')}
-            </div>
-        </div>
-        <div class="network-dashboard-tab-panel" data-network-panel="5">
-            <div class="network-dashboard-panels">
-                ${data.warpProfiles.map(profile => `<article class="network-dashboard-panel"><h3>${escapeIdentityText(profile.name)}</h3><p>${escapeIdentityText(profile.serviceMode || 'WARP profile')}</p><strong>${profile.enabled ? 'Enabled' : 'Disabled'}</strong></article>`).join('') || '<div class="sunbird-empty-row">No WARP profiles returned</div>'}
-                ${data.virtualNetworks.map(network => `<article class="network-dashboard-panel"><h3>${escapeIdentityText(network.name)}</h3><p>Private network readiness</p><strong>${network.isDefault ? 'Default' : 'Configured'}</strong></article>`).join('')}
-            </div>
-        </div>
-        <div class="network-dashboard-tab-panel" data-network-panel="6">
-            <div class="network-dashboard-panels">
-                ${data.dlpProfiles.map(profile => `<article class="network-dashboard-panel"><h3>${escapeIdentityText(profile.name)}</h3><p>${escapeIdentityText(`${profile.entries || 0} detector entries`)}</p><strong>${profile.enabled ? 'Enabled' : 'Configured'}</strong></article>`).join('') || '<div class="sunbird-empty-row">No DLP profiles returned</div>'}
-            </div>
-        </div>
+        ${tabs.map((tab, index) => `
+            <div class="network-dashboard-tab-panel ${index === 0 ? 'active' : ''}" data-network-panel="${index}">${tab.panel}</div>
+        `).join('')}
     `;
 
     content.querySelectorAll('[data-network-tab]').forEach(button => {
@@ -11725,7 +11922,6 @@ function renderSunbirdNetworkSecurityDashboard(inputData = latestNetworkSecurity
     });
     setupNetworkEvidenceInteractions(content);
 }
-
 function openSunbirdNetworkSecurityDashboard() {
     const dashboardView = document.getElementById('dashboard-view');
     const projectsView = document.getElementById('projects-view');

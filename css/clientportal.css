@@ -1414,6 +1414,7 @@
   cursor: pointer;
 }
 
+
 @media (max-width: 1100px) {
   .sunbird-report-hero-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4116,6 +4117,90 @@ body:not(.sunbird-client-portal) .project-card.no-interaction.non-sunbird-blur-g
   color: rgba(255, 255, 255, 0.82);
 }
 
+
+.network-evidence-section-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.network-evidence-section {
+  overflow: hidden;
+}
+
+.network-evidence-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.network-evidence-section-title h3 {
+  margin: 0;
+}
+
+.network-evidence-section-title span {
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 0.78rem;
+  font-weight: 200;
+  white-space: nowrap;
+}
+
+.network-evidence-table {
+  min-width: 920px;
+}
+
+.network-metrics-graph-grid {
+  align-items: stretch;
+}
+
+.network-metric-bars {
+  display: grid;
+  gap: 12px;
+}
+
+.network-metric-bar-row {
+  display: grid;
+  gap: 6px;
+}
+
+.network-metric-bar-row div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.network-metric-bar-row span,
+.network-metric-bar-row small {
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 0.78rem;
+  font-weight: 200;
+}
+
+.network-metric-bar-row strong {
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 200;
+}
+
+.network-metric-bar-row i {
+  display: block;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.network-metric-bar-row i::before {
+  content: "";
+  display: block;
+  width: var(--network-bar, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(249, 115, 22, 0.75), rgba(147, 197, 253, 0.78));
+  box-shadow: 0 0 16px rgba(249, 115, 22, 0.18);
+}
 @media (max-width: 1100px) {
   .network-dashboard-kpis {
     grid-template-columns: repeat(3, minmax(0, 1fr));
