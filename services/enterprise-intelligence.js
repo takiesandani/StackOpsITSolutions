@@ -144,7 +144,7 @@ const DOMAIN_EVIDENCE_TYPES = Object.freeze({
         'dnsFirewallRules', 'loadBalancerPools', 'loadBalancerMonitors', 'magicWanSites',
         'magicWanRoutes', 'mtlsCertificates', 'accessGroups', 'accessOrganizations',
         'accessCertificates', 'warpConnectors', 'teamnetRoutes', 'teamsDexTests',
-        'endpointGroups', 'sectionStatus', 'sectionErrors', 'missingControls', 'dashboard_evidence_lists'
+        'endpointGroups', 'sectionStatus', 'sectionErrors', 'coverageSummaries', 'missingControls', 'dashboard_evidence_lists'
     ],
     backup: ['users', 'sites', 'dashboard_evidence_lists'],
     applications: ['applications', 'dashboard_evidence_lists'],
@@ -189,7 +189,8 @@ const CLOUDFLARE_COMPACT_EVIDENCE_TYPES = Object.freeze([
     'teamsDexTests',
     'endpointGroups',
     'sectionStatus',
-    'sectionErrors'
+    'sectionErrors',
+    'coverageSummaries'
 ]);
 const BACKUP_COMPACT_EVIDENCE_TYPES = Object.freeze([
     'topStorageUsers',
@@ -302,7 +303,8 @@ const DOMAIN_EVIDENCE_CATEGORY_METRICS = Object.freeze({
         teamsDexTests: 'teamsDexTests',
         endpointGroups: 'endpointFamilies',
         sectionStatus: 'sectionErrors',
-        sectionErrors: 'sectionErrors'
+        sectionErrors: 'sectionErrors',
+        coverageSummaries: 'evidenceCoverage'
     },
     compliance: {
         controls: 'totalControls',
@@ -1273,7 +1275,10 @@ function normalizeCloudflareEvidenceForFlatten(evidence) {
                 endpointgroups: 'endpointGroups',
                 sectionstatus: 'sectionStatus',
                 sectionerrors: 'sectionErrors',
-                missingcontrols: 'sectionErrors'
+                missingcontrols: 'sectionErrors',
+                coveragesummaries: 'coverageSummaries',
+                evidencecoverage: 'coverageSummaries',
+                coverage: 'coverageSummaries'
             };
             const normalizedType = aliases[type.replace(/[_\s-]+/g, '')] || item?.evidenceType;
             output.push({ ...item, evidenceType: normalizedType });
@@ -1308,6 +1313,7 @@ function compactCloudflareEntityData(type, data = {}) {
         type === 'gatewayRules' ? gatewayRuleName : null,
         ['dlpProfiles', 'warpProfiles'].includes(type) ? profileName : null,
         ['permissionMatrix', 'endpointGroups', 'sectionStatus', 'sectionErrors'].includes(type) ? sectionName : null,
+        type === 'coverageSummaries' ? firstReadableValue(data.entityName, data.name, data.metricName) : null,
         ['securityInsights', 'applicationSecurityReports', 'apiGatewayOperations', 'casbFindings', 'cloudforceRequests', 'intelFeeds', 'dnsFirewallRules', 'teamsDexTests'].includes(type) ? findingName : null,
         ['tunnels', 'loadBalancerPools', 'loadBalancerMonitors', 'magicWanSites', 'magicWanRoutes', 'mtlsCertificates', 'accessGroups', 'accessOrganizations', 'accessCertificates', 'warpConnectors', 'teamnetRoutes', 'virtualNetworks', 'gatewayAppTypes', 'devicePosture'].includes(type) ? infrastructureName : null,
         appName,
@@ -1335,6 +1341,8 @@ function compactCloudflareEntityData(type, data = {}) {
             ? 'Log Event'
             : ['permissionMatrix', 'endpointGroups', 'sectionStatus', 'sectionErrors'].includes(type)
             ? 'Control Section'
+            : type === 'coverageSummaries'
+            ? 'Evidence Coverage'
             : ['securityInsights', 'applicationSecurityReports', 'apiGatewayOperations', 'casbFindings', 'cloudforceRequests', 'intelFeeds', 'dnsFirewallRules', 'teamsDexTests'].includes(type)
             ? 'Security Finding'
             : ['tunnels', 'loadBalancerPools', 'loadBalancerMonitors', 'magicWanSites', 'magicWanRoutes', 'mtlsCertificates', 'accessGroups', 'accessOrganizations', 'accessCertificates', 'warpConnectors', 'teamnetRoutes', 'virtualNetworks', 'gatewayAppTypes', 'devicePosture'].includes(type)
@@ -1357,7 +1365,7 @@ function compactCloudflareEntityData(type, data = {}) {
         recordCount: numberOrNull(data.recordCount ?? data.count ?? data.total),
         riskReason: compactCloudflareText(data.riskReason || data.reason || data.error || data.message || data.description || data.summary, 320),
         recommendation: compactCloudflareText(data.recommendation || data.remediation || data.suggestedAction, 320),
-        sourceMetric: DOMAIN_EVIDENCE_CATEGORY_METRICS.cloudflare_network_security[type] || type
+        sourceMetric: data.sourceMetric || DOMAIN_EVIDENCE_CATEGORY_METRICS.cloudflare_network_security[type] || type
     };
     if (type === 'accessLogs') {
         compact.action = compactCloudflareText(data.action || data.decision || data.outcome);
@@ -1371,10 +1379,14 @@ function compactCloudflareEntityData(type, data = {}) {
     return compactNonEmptyObject(compact);
 }
 
-function cloudflareEvidenceRows(flattenedEvidence) {
+function cloudflareEvidenceRows(flattenedEvidence, current = {}) {
     const typeByLower = new Map(CLOUDFLARE_COMPACT_EVIDENCE_TYPES.map(type => [type.toLowerCase(), type]));
     const grouped = new Map(CLOUDFLARE_COMPACT_EVIDENCE_TYPES.map(type => [type, []]));
-    const categoryLimit = type => ['permissionMatrix', 'endpointGroups', 'sectionStatus', 'sectionErrors'].includes(type) ? 30 : (['accessLogs', 'auditLogs', 'accountLogs'].includes(type) ? 12 : 8);
+    const categoryLimit = type => type === 'coverageSummaries'
+        ? 20
+        : ['permissionMatrix', 'endpointGroups', 'sectionStatus', 'sectionErrors'].includes(type)
+        ? 30
+        : (['accessLogs', 'auditLogs', 'accountLogs'].includes(type) ? 12 : 8);
     const rows = array(flattenedEvidence);
     for (const row of rows) {
         const evidenceType = String(row.evidenceType || row.sourceLabel || row.evidenceCategory || '').replace(/[_\s-]+/g, '').toLowerCase();
@@ -1392,8 +1404,83 @@ function cloudflareEvidenceRows(flattenedEvidence) {
             data
         });
     }
+
+    appendCloudflareCoverageRows(grouped, current);
+
     const compactRows = CLOUDFLARE_COMPACT_EVIDENCE_TYPES.flatMap(type => grouped.get(type));
     return compactRows.length ? compactRows : [];
+}
+
+function appendCloudflareCoverageRows(grouped, current = {}) {
+    const metricSource = {
+        ...(current.sourceMetrics || {}),
+        ...(current.dashboardMetrics || {}),
+        ...(current.metrics || {}),
+        ...(current.calculatedIndicators || {})
+    };
+    const countFor = (...keys) => {
+        for (const key of keys) {
+            const value = numberOrNull(metricSource[key]);
+            if (value != null) return value;
+        }
+        return null;
+    };
+    const rowCount = type => grouped.get(type)?.length || 0;
+    const coverageDefinitions = [
+        { type: 'auditLogs', metricKeys: ['auditLogs'], sourceMetric: 'auditLogs', entityName: 'Cloudflare audit log coverage', severity: 'medium', expectedLabel: 'audit log event(s)' },
+        { type: 'accountLogs', metricKeys: ['accountLogs'], sourceMetric: 'accountLogs', entityName: 'Cloudflare account log coverage', severity: 'medium', expectedLabel: 'account log event(s)' },
+        { type: 'accessLogs', metricKeys: ['accessLogCount', 'recentAccessEvents'], sourceMetric: 'accessLogCount', entityName: 'Cloudflare access log coverage', severity: 'medium', expectedLabel: 'access log event(s)' },
+        { type: 'permissionMatrix', metricKeys: ['endpointFamilies'], sourceMetric: 'endpointFamilies', entityName: 'Cloudflare API permission family coverage', severity: 'high', expectedLabel: 'endpoint/API family row(s)' },
+        { type: 'gatewayAppTypes', metricKeys: ['appCategories'], sourceMetric: 'appCategories', entityName: 'Cloudflare Gateway app catalog coverage', severity: 'low', expectedLabel: 'Gateway app categorisation row(s)' },
+        { type: 'securityInsights', metricKeys: ['securityInsights'], sourceMetric: 'securityInsights', entityName: 'Cloudflare security insight coverage', severity: 'medium', expectedLabel: 'security insight row(s)' },
+        { type: 'apiGatewayOperations', metricKeys: ['apiGatewayOperations'], sourceMetric: 'apiGatewayOperations', entityName: 'Cloudflare API Gateway operation coverage', severity: 'medium', expectedLabel: 'API Gateway operation row(s)' },
+        { type: 'casbFindings', metricKeys: ['casbFindings'], sourceMetric: 'casbFindings', entityName: 'Cloudflare CASB finding coverage', severity: 'medium', expectedLabel: 'CASB finding row(s)' },
+        { type: 'tunnels', metricKeys: ['tunnels'], sourceMetric: 'tunnels', entityName: 'Cloudflare tunnel coverage', severity: 'low', expectedLabel: 'tunnel row(s)' }
+    ];
+    const coverageRows = grouped.get('coverageSummaries');
+    if (!coverageRows) return;
+    for (const definition of coverageDefinitions) {
+        const expected = countFor(...definition.metricKeys);
+        if (!expected || expected <= 0) continue;
+        const included = rowCount(definition.type);
+        if (included >= expected) continue;
+        const coverageStatus = included > 0 ? 'sampled_compact_rows' : 'count_only_no_raw_rows';
+        const sourceMetric = definition.sourceMetric;
+        const entityId = 'cloudflare-coverage-' + sourceMetric;
+        const data = compactCloudflareEntityData('coverageSummaries', {
+            entityId,
+            entityName: definition.entityName,
+            sourceMetric,
+            status: coverageStatus,
+            severity: definition.severity,
+            recordCount: expected,
+            count: expected,
+            total: expected,
+            metricName: sourceMetric,
+            riskReason: included > 0
+                ? 'StackCTRL reports ' + expected + ' ' + definition.expectedLabel + '; ' + included + ' compact row(s) were included for Azure analysis to avoid overloading the model.'
+                : 'StackCTRL reports ' + expected + ' ' + definition.expectedLabel + ', but no raw ' + definition.type + ' evidence rows were available in the prepared package. Treat this as a confirmed coverage count and a raw-evidence gap; do not infer individual event details.',
+            recommendation: included > 0
+                ? 'Use the included compact samples for pattern context and use the metric count for scale; request raw evidence only for forensic review.'
+                : 'Refresh or inspect the StackCTRL Cloudflare collection for this evidence family before making event-level conclusions.'
+        });
+        coverageRows.push({
+            internalSourcePath: 'cloudflare_network_security.coverage.' + sourceMetric,
+            sourceLabel: 'coverageSummaries',
+            evidenceType: 'coverageSummaries',
+            evidenceCategory: 'coverageSummaries',
+            sourceMetric,
+            entityKey: entityId,
+            data: {
+                ...data,
+                expectedRows: expected,
+                includedRows: included,
+                missingRows: Math.max(0, expected - included),
+                coverageStatus,
+                coveredEvidenceType: definition.type
+            }
+        });
+    }
 }
 
 function storageGb(value = {}) {
@@ -3237,6 +3324,21 @@ function inferSelectedDomainSourceMetric(item, domainKey) {
         if (/stale|unreviewed|unused|review/.test(text)) return 'staleOrUnreviewedApps';
         if (/high[-\s]?risk|critical/.test(text)) return 'highRiskApps';
     }
+    if (domainKey === 'cloudflare_network_security') {
+        if (/audit log|auditlogs|audit event|admin action|administrative audit/.test(text)) return 'auditLogs';
+        if (/gateway app|app categor|app catalog/.test(text)) return 'appCategories';
+        if (/permission matrix|endpoint famil|api family|api permission/.test(text)) return 'endpointFamilies';
+        if (/device registration|registered warp/.test(text)) return 'registeredWarpDevices';
+        if (/device posture|posture check/.test(text)) return 'enrolledDevices';
+        if (/device|warp registration|enrolled/.test(text)) return 'enrolledDevices';
+        if (/gateway polic|gateway rule|private traffic|roaming|inspect/.test(text)) return 'gatewayPolicies';
+        if (/dlp|data loss|financial information|social security|identifier/.test(text)) return 'dlpProfiles';
+        if (/warp profile|warp/.test(text)) return 'warpProfiles';
+        if (/virtual network|vnet/.test(text)) return 'virtualNetworks';
+        if (/access log|access event|deny|denied|allow|blocked/.test(text)) return 'accessLogCount';
+        if (/protected app|application|sso app|login app/.test(text)) return 'protectedApps';
+        if (/tunnel/.test(text)) return 'tunnels';
+    }
     return null;
 }
 
@@ -3356,7 +3458,8 @@ function ensureItemEvidence(item, domain, snapshotId, availableEvidence = []) {
     if (!availableEvidence.length) return normalized;
 
     const inferredSourceMetric = inferSelectedDomainSourceMetric(item, domain.key);
-    if (!normalized.sourceMetric && inferredSourceMetric) normalized.sourceMetric = inferredSourceMetric;
+    const cloudflareWeakMetric = domain.key === 'cloudflare_network_security' && normalized.sourceMetric === 'protectedApps' && inferredSourceMetric && inferredSourceMetric !== 'protectedApps';
+    if ((!normalized.sourceMetric && inferredSourceMetric) || cloudflareWeakMetric) normalized.sourceMetric = inferredSourceMetric;
     const requestedMetric = String(normalized.sourceMetric || '').toLowerCase();
 
     const matching = requestedMetric
@@ -4303,7 +4406,7 @@ function createEnterpriseIntelligenceService({
             : useStrictCompactPackage && domain.key === 'email_security'
             ? compactEmailSecurityEvidenceRows(evidenceForFlattening, flattenedDomainEvidence, current)
             : useStrictCompactPackage && domain.key === 'cloudflare_network_security'
-            ? cloudflareEvidenceRows(flattenedDomainEvidence)
+            ? cloudflareEvidenceRows(flattenedDomainEvidence, current)
             : useStrictCompactPackage && domain.key === 'backup'
             ? compactBackupEvidenceRows(flattenedDomainEvidence, current)
             : useStrictCompactPackage && domain.key === 'applications'
@@ -4619,9 +4722,10 @@ Email Security reasoning requirements:
             return `
 Cloudflare Network Security reasoning requirements:
 - Produce readable business intelligence, not generic Cloudflare prose.
-- Analyse protected apps, Cloudflare devices, gateway policies, access policies, access logs, DLP profiles, WARP profiles, and section errors/missing controls when present.
+- Analyse protected apps, Cloudflare devices, gateway policies, access policies, access logs, DLP profiles, WARP profiles, endpoint/API permission families, Cloudflare audit logs, Gateway app catalog evidence, and section errors/missing controls when present.
 - Show real protected application names, policy names, device names, access decision labels, DLP profile names, WARP profile names, and readable risk reasons.
-- Keep affectedEntities and evidenceRows relevant only to each risk; do not attach unrelated Cloudflare rows to every finding.
+- Keep affectedEntities and evidenceRows relevant only to each risk; do not attach unrelated Cloudflare rows to every finding. Use sourceMetric protectedApps only for protected applications, enrolledDevices/registeredWarpDevices for devices, gatewayPolicies for gateway rules, dlpProfiles for DLP, warpProfiles for WARP, appCategories for Gateway app catalog, endpointFamilies for API permission-family coverage, and auditLogs for audit log coverage.
+- coverageSummaries rows are evidence-grade accounting rows: use them to report confirmed counts, sampling, and raw-evidence gaps. Do not invent individual audit/access/account log events when the coverage row says count_only_no_raw_rows.
 - Return only real risks in risks[]. Put positive observations in keyFindings[] or currentPosture. Do not mention missing curated references as risks, findings, recommendations, affected entities, or warnings when Cloudflare evidence exists.
 - Use affected entities only from the matching evidence group; max 5 risks, max 5 affectedEntities per risk, max 5 evidenceRows per risk, and omit null/empty visible fields.
 - Do not expose internal source paths visibly. Use internalSourcePath/internalSourcePaths only for traceability.`;
@@ -5269,7 +5373,7 @@ Return exactly these top-level fields:
                 compactEvidenceSummary: {
                     totalRows: evidence.length,
                     categoryCounts,
-                    maxRowsPerCategory: 10,
+                    maxRowsPerCategory: { default: 8, logs: 12, controls: 30, coverageSummaries: 20 },
                     strictCompactCloudflarePackage: true
                 },
                 evidenceGroups: groupedEvidence,

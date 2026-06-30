@@ -1258,7 +1258,8 @@ test('Cloudflare selected-domain prompt and output stay readable and domain-spec
     assert.equal(cloudflarePackages.length, 1);
     assert.equal(cloudflarePackages[0].contextType, 'stackctrl_enterprise_cloudflare_strict_compact');
     assert.equal(cloudflarePackages[0].batchMetadata.totalBatches, 1);
-    assert.equal(preparedRows.length, 12);
+    assert.equal(preparedRows.length, 13);
+    assert.ok(preparedRows.some(row => row.evidenceType === 'coverageSummaries' && row.sourceMetric === 'accessLogCount' && row.data.coverageStatus === 'sampled_compact_rows'));
     assert.equal(Object.hasOwn(cloudflarePackages[0], 'historicalComparisons'), false);
     assert.equal(Object.hasOwn(cloudflarePackages[0], 'knowledgeGrounding'), false);
     assert.equal(Object.hasOwn(cloudflarePackages[0], 'previousDomainAnalysis'), false);
@@ -2245,7 +2246,10 @@ test('Enterprise Network currentMetrics follow stored dashboard metrics and flat
         networkSecurityScore: 91,
         dlpProfiles: 2,
         identityProviders: 1,
-        sectionErrors: 0
+        sectionErrors: 0,
+        auditLogs: 52,
+        endpointFamilies: 26,
+        appCategories: 1574
     };
     const snapshot = {
         ID: 912,
@@ -2287,8 +2291,12 @@ test('Enterprise Network currentMetrics follow stored dashboard metrics and flat
         assert.equal(packageResult.package.currentMetrics[metric], dashboardMetrics[metric], `currentMetrics.${metric}`);
     }
     assert.equal(packageResult.package.dataLineage.sourceBuilder, 'storedStackCTRLNetworkEvidence');
-    assert.equal(packageResult.audit.stackCTRLDataCount, 35);
-    assert.equal(packageResult.audit.preparedForAzureCount, 35);
+    assert.equal(packageResult.audit.stackCTRLDataCount, 39);
+    assert.equal(packageResult.audit.preparedForAzureCount, 39);
+    assert.ok(packageResult.allEvidence.some(row => row.evidenceType === 'coverageSummaries' && row.sourceMetric === 'accessLogCount' && row.data.coverageStatus === 'sampled_compact_rows'));
+    assert.ok(packageResult.allEvidence.some(row => row.evidenceType === 'coverageSummaries' && row.sourceMetric === 'auditLogs' && row.data.coverageStatus === 'count_only_no_raw_rows' && row.data.expectedRows === 52));
+    assert.ok(packageResult.allEvidence.some(row => row.evidenceType === 'coverageSummaries' && row.sourceMetric === 'endpointFamilies' && row.data.coverageStatus === 'count_only_no_raw_rows' && row.data.expectedRows === 26));
+    assert.ok(packageResult.allEvidence.some(row => row.evidenceType === 'coverageSummaries' && row.sourceMetric === 'appCategories' && row.data.coverageStatus === 'count_only_no_raw_rows' && row.data.expectedRows === 1574));
     assert.equal(packageResult.sourceAlignment.mismatches.length, 0);
 });
 
