@@ -11328,6 +11328,7 @@ function updateNetworkSecurityProjectCard(data) {
     const permissionGaps = Object.values(normalized.sections || {}).filter(section => section.status === 'permission_unavailable').length;
     const cloudflareSignals = buildCloudflareSecuritySignals(normalized);
     const cloudflareHigh = cloudflareSignals.alerts.filter(alert => ['critical', 'high'].includes(String(alert.severity || '').toLowerCase())).length;
+    const logRecords = normalized.accessLogs.length + normalized.auditLogs.length + normalized.accountLogs.length;
 
     latestNetworkSecurityData = normalized;
     project.networkSecuritySnapshot = normalized;
@@ -11345,7 +11346,7 @@ function updateNetworkSecurityProjectCard(data) {
         { label: "Identity", value: `: ${compactNetworkIdentityProvider(overview.identityProvider)}`, icon: "fas fa-id-card" }
     ];
     project.cardFooter = normalized.success
-        ? `${cloudflareSignals.notificationCount ? `${cloudflareSignals.notificationCount} Cloudflare item(s)` : overview.securityStatus} | ${formatNetworkSecurityDate(overview.lastAccessEvent)}`
+        ? `${cloudflareSignals.notificationCount ? `${cloudflareSignals.notificationCount} Cloudflare item(s)` : overview.securityStatus} | ${logRecords} log record${logRecords === 1 ? '' : 's'}`
         : (normalized.message || 'Cloudflare data unavailable');
     project.lastUpdate = new Date().toLocaleTimeString();
     saveProjectCardToCache(project);
@@ -11424,6 +11425,7 @@ function renderNetworkSecurityCardPanel(project) {
     const udpTone = overview.udpProxyEnabled ? 'good' : 'warn';
     const tlsTone = overview.tlsDecryptEnabled ? 'good' : 'neutral';
     const cloudflareSignals = buildCloudflareSecuritySignals(data);
+    const logRecords = data.accessLogs.length + data.auditLogs.length + data.accountLogs.length;
     const notificationTone = cloudflareSignals.highCount ? 'bad' : cloudflareSignals.notificationCount ? 'warn' : 'good';
     const notificationLabel = cloudflareSignals.notificationCount
         ? `${cloudflareSignals.notificationCount} item${cloudflareSignals.notificationCount === 1 ? '' : 's'}`
@@ -11454,7 +11456,7 @@ function renderNetworkSecurityCardPanel(project) {
             </div>
             <div class="network-security-mini-grid">
                 <div><span>WARP</span><strong>${escapeIdentityText(String(overview.registeredWarpDevices || overview.enrolledDevices))}</strong></div>
-                <div><span>Logs</span><strong>${escapeIdentityText(String(overview.recentAccessEvents))}</strong></div>
+                <div><span>Logs</span><strong>${escapeIdentityText(String(logRecords))}</strong></div>
                 <div><span>DLP</span><strong>${escapeIdentityText(String(overview.dlpProfiles))}</strong></div>
                 <div><span>Data</span><strong>${escapeIdentityText(overview.endpointFamilies ? `${overview.endpointFamiliesAvailable}/${overview.endpointFamilies}` : String(overview.appCategories))}</strong></div>
             </div>
@@ -11838,7 +11840,18 @@ function renderNetworkMetricsGraph(data) {
                     <h3>Security Health Score</h3>
                     <span>${escapeIdentityText(String(healthBreakdown.score))}%</span>
                 </div>
-                <div class="network-metric-bars">
+                <div class="network-health-ring-grid">
+                    ${healthRecords.slice(0, 4).map(record => {
+                        const percent = Math.max(0, Math.min(100, Math.round((Number(record.value || 0) / Math.max(1, Number(record.total || 1))) * 100)));
+                        return `
+                            <div class="network-health-ring-card">
+                                <span class="network-health-ring" style="--network-ring:${percent}%"><b>${escapeIdentityText(String(percent))}%</b></span>
+                                <small>${escapeIdentityText(record.label)}</small>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+                <div class="network-metric-bars compact-health-bars">
                     ${healthRecords.map(record => {
                         const percent = Math.max(0, Math.min(100, Math.round((Number(record.value || 0) / Math.max(1, Number(record.total || 1))) * 100)));
                         return `
@@ -12055,6 +12068,12 @@ function renderSunbirdNetworkSecurityDashboard(inputData = latestNetworkSecurity
 
     content.innerHTML = `
         ${data.success ? '' : `<div class="network-dashboard-error"><i class="fas fa-circle-exclamation"></i>${escapeIdentityText(data.message || 'Cloudflare data unavailable')}</div>`}
+        <label class="network-dashboard-tab-select-wrap">
+            <span>View</span>
+            <select class="network-dashboard-tab-select" data-network-tab-select aria-label="Network Security section">
+                ${tabs.map((tab, index) => `<option value="${index}" ${index === 0 ? 'selected' : ''}>${escapeIdentityText(tab.label)}</option>`).join('')}
+            </select>
+        </label>
         <div class="network-dashboard-tabs" role="tablist">
             ${tabs.map((tab, index) => `
                 <button type="button" class="network-dashboard-tab ${index === 0 ? 'active' : ''}" data-network-tab="${index}">${escapeIdentityText(tab.label)}</button>
@@ -12065,13 +12084,16 @@ function renderSunbirdNetworkSecurityDashboard(inputData = latestNetworkSecurity
         `).join('')}
     `;
 
+    const activateNetworkTab = (target) => {
+        content.querySelectorAll('[data-network-tab]').forEach(tab => tab.classList.toggle('active', tab.dataset.networkTab === target));
+        content.querySelectorAll('[data-network-panel]').forEach(panel => panel.classList.toggle('active', panel.dataset.networkPanel === target));
+        const select = content.querySelector('[data-network-tab-select]');
+        if (select && select.value !== target) select.value = target;
+    };
     content.querySelectorAll('[data-network-tab]').forEach(button => {
-        button.addEventListener('click', () => {
-            const target = button.dataset.networkTab;
-            content.querySelectorAll('[data-network-tab]').forEach(tab => tab.classList.toggle('active', tab === button));
-            content.querySelectorAll('[data-network-panel]').forEach(panel => panel.classList.toggle('active', panel.dataset.networkPanel === target));
-        });
+        button.addEventListener('click', () => activateNetworkTab(button.dataset.networkTab));
     });
+    content.querySelector('[data-network-tab-select]')?.addEventListener('change', event => activateNetworkTab(event.target.value));
     setupNetworkEvidenceInteractions(content);
 }
 function openSunbirdNetworkSecurityDashboard() {
