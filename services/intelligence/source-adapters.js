@@ -1529,10 +1529,15 @@ async load(pool, companyId, capability) {
                 const grouped = {
                     accessApps: [],
                     devices: [],
+                    deviceRegistrations: [],
+                    devicePosture: [],
                     gatewayRules: [],
+                    accessPolicies: [],
                     accessLogs: [],
                     dlpProfiles: [],
                     warpProfiles: [],
+                    virtualNetworks: [],
+                    gatewayAppTypes: [],
                     permissionMatrix: [],
                     auditLogs: [],
                     accountLogs: [],
@@ -1560,10 +1565,15 @@ async load(pool, companyId, capability) {
                     const item = row.ProcessedEvidenceJson || {};
                     if (row.EvidenceKind === 'access_app') grouped.accessApps.push(item);
                     else if (row.EvidenceKind === 'device') grouped.devices.push(item);
+                    else if (row.EvidenceKind === 'device_registration') grouped.deviceRegistrations.push(item);
+                    else if (row.EvidenceKind === 'device_posture') grouped.devicePosture.push(item);
                     else if (row.EvidenceKind === 'gateway_rule') grouped.gatewayRules.push(item);
+                    else if (row.EvidenceKind === 'access_policy') grouped.accessPolicies.push(item);
                     else if (row.EvidenceKind === 'access_log') grouped.accessLogs.push(item);
                     else if (row.EvidenceKind === 'dlp_profile') grouped.dlpProfiles.push(item);
                     else if (row.EvidenceKind === 'warp_profile') grouped.warpProfiles.push(item);
+                    else if (row.EvidenceKind === 'virtual_network') grouped.virtualNetworks.push(item);
+                    else if (row.EvidenceKind === 'gateway_app_type') grouped.gatewayAppTypes.push(item);
                     else if (row.EvidenceKind === 'permission_family') grouped.permissionMatrix.push(item);
                     else if (row.EvidenceKind === 'audit_log') grouped.auditLogs.push(item);
                     else if (row.EvidenceKind === 'account_log') grouped.accountLogs.push(item);

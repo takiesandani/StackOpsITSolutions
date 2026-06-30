@@ -77,7 +77,8 @@ const DEFAULT_MAX_ITEMS_PER_BATCH = 100;
 const IDENTITY_MAX_ITEMS_PER_BATCH = 500;
 const DEVICE_MAX_ITEMS_PER_BATCH = 500;
 const EMAIL_SECURITY_MAX_ITEMS_PER_BATCH = 500;
-const CLOUDFLARE_MAX_ITEMS_PER_BATCH = 500;
+const SELECTED_DOMAIN_MAX_ITEMS_PER_BATCH = 500;
+const CLOUDFLARE_MAX_ITEMS_PER_BATCH = 100;
 const DEFAULT_HEAVY_DOMAIN_MAX_ITEMS_PER_BATCH = 50;
 const DEFAULT_THRESHOLD_BATCH_MAX_ITEMS = 50;
 const DEFAULT_MAX_TOTAL_TOKENS = 200000;
@@ -135,7 +136,16 @@ const DOMAIN_EVIDENCE_TYPES = Object.freeze({
     identity: ['users', 'dashboard_evidence_lists'],
     devices: ['devices', 'dashboard_evidence_lists'],
     email_security: ['alerts', 'incidents', 'mailActivityUsers', 'dashboard_evidence_lists'],
-    cloudflare_network_security: ['accessApps', 'devices', 'gatewayRules', 'accessPolicies', 'accessLogs', 'dlpProfiles', 'warpProfiles', 'sectionErrors', 'missingControls', 'dashboard_evidence_lists'],
+    cloudflare_network_security: [
+        'accessApps', 'applications', 'devices', 'deviceRegistrations', 'devicePosture', 'gatewayRules', 'accessPolicies',
+        'accessLogs', 'dlpProfiles', 'warpProfiles', 'virtualNetworks', 'gatewayAppTypes', 'permissionMatrix',
+        'auditLogs', 'accountLogs', 'securityInsights', 'applicationSecurityReports',
+        'apiGatewayOperations', 'casbFindings', 'tunnels', 'cloudforceRequests', 'intelFeeds',
+        'dnsFirewallRules', 'loadBalancerPools', 'loadBalancerMonitors', 'magicWanSites',
+        'magicWanRoutes', 'mtlsCertificates', 'accessGroups', 'accessOrganizations',
+        'accessCertificates', 'warpConnectors', 'teamnetRoutes', 'teamsDexTests',
+        'endpointGroups', 'sectionStatus', 'sectionErrors', 'missingControls', 'dashboard_evidence_lists'
+    ],
     backup: ['users', 'sites', 'dashboard_evidence_lists'],
     applications: ['applications', 'dashboard_evidence_lists'],
     security_alerts: ['alerts', 'incidents', 'signIns', 'threatIndicators', 'dashboard_evidence_lists'],
@@ -146,10 +156,39 @@ const DOMAIN_EVIDENCE_TYPES = Object.freeze({
 const CLOUDFLARE_COMPACT_EVIDENCE_TYPES = Object.freeze([
     'accessApps',
     'devices',
+    'deviceRegistrations',
+    'devicePosture',
     'gatewayRules',
+    'accessPolicies',
     'dlpProfiles',
     'warpProfiles',
+    'virtualNetworks',
+    'gatewayAppTypes',
     'accessLogs',
+    'permissionMatrix',
+    'auditLogs',
+    'accountLogs',
+    'securityInsights',
+    'applicationSecurityReports',
+    'apiGatewayOperations',
+    'casbFindings',
+    'tunnels',
+    'cloudforceRequests',
+    'intelFeeds',
+    'dnsFirewallRules',
+    'loadBalancerPools',
+    'loadBalancerMonitors',
+    'magicWanSites',
+    'magicWanRoutes',
+    'mtlsCertificates',
+    'accessGroups',
+    'accessOrganizations',
+    'accessCertificates',
+    'warpConnectors',
+    'teamnetRoutes',
+    'teamsDexTests',
+    'endpointGroups',
+    'sectionStatus',
     'sectionErrors'
 ]);
 const BACKUP_COMPACT_EVIDENCE_TYPES = Object.freeze([
@@ -227,14 +266,43 @@ const DOMAIN_EVIDENCE_CATEGORY_METRICS = Object.freeze({
         mailActivityUsers: 'activeMailboxes'
     },
     cloudflare_network_security: {
+        accessApps: 'protectedApps',
         applications: 'protectedApps',
         devices: 'enrolledDevices',
+        deviceRegistrations: 'registeredWarpDevices',
+        devicePosture: 'enrolledDevices',
         gatewayRules: 'gatewayPolicies',
         accessPolicies: 'protectedApps',
         accessLogs: 'recentAccessEvents',
         dlpProfiles: 'dlpProfiles',
         warpProfiles: 'enrolledDevices',
-        sectionStatus: 'sectionErrors'
+        virtualNetworks: 'virtualNetworks',
+        gatewayAppTypes: 'appCategories',
+        permissionMatrix: 'endpointFamiliesWithGaps',
+        auditLogs: 'auditLogs',
+        accountLogs: 'accountLogs',
+        securityInsights: 'securityInsights',
+        applicationSecurityReports: 'applicationSecurityReports',
+        apiGatewayOperations: 'apiGatewayOperations',
+        casbFindings: 'casbFindings',
+        tunnels: 'tunnels',
+        cloudforceRequests: 'cloudforceRequests',
+        intelFeeds: 'intelFeeds',
+        dnsFirewallRules: 'dnsFirewallRules',
+        loadBalancerPools: 'loadBalancerPools',
+        loadBalancerMonitors: 'loadBalancerMonitors',
+        magicWanSites: 'magicWanSites',
+        magicWanRoutes: 'magicWanRoutes',
+        mtlsCertificates: 'mtlsCertificates',
+        accessGroups: 'accessGroups',
+        accessOrganizations: 'accessOrganizations',
+        accessCertificates: 'accessCertificates',
+        warpConnectors: 'warpConnectors',
+        teamnetRoutes: 'teamnetRoutes',
+        teamsDexTests: 'teamsDexTests',
+        endpointGroups: 'endpointFamilies',
+        sectionStatus: 'sectionErrors',
+        sectionErrors: 'sectionErrors'
     },
     compliance: {
         controls: 'totalControls',
@@ -1119,11 +1187,38 @@ function normalizeCloudflareEvidenceForFlatten(evidence) {
             output.push(
                 { evidenceType: 'accessApps', data: array(data.apps || data.accessApps || data.protectedApps) },
                 { evidenceType: 'devices', data: array(data.devices || data.cloudflareDevices) },
+                { evidenceType: 'deviceRegistrations', data: array(data.deviceRegistrations || data.registrations) },
+                { evidenceType: 'devicePosture', data: array(data.devicePosture || data.postureChecks || data.posture) },
                 { evidenceType: 'gatewayRules', data: array(data.gatewayRules || data.gatewayPolicies || data.gateway_policies) },
                 { evidenceType: 'accessPolicies', data: array(data.accessPolicies || data.policies) },
                 { evidenceType: 'accessLogs', data: array(data.accessLogs || data.logs) },
                 { evidenceType: 'dlpProfiles', data: array(data.dlpProfiles || data.dlp_profiles) },
-                { evidenceType: 'warpProfiles', data: array(data.warpProfiles || data.warp_profiles) }
+                { evidenceType: 'warpProfiles', data: array(data.warpProfiles || data.warp_profiles) },
+                { evidenceType: 'virtualNetworks', data: array(data.virtualNetworks || data.networks) },
+                { evidenceType: 'gatewayAppTypes', data: array(data.gatewayAppTypes || data.appCategories) },
+                { evidenceType: 'permissionMatrix', data: array(data.permissionMatrix) },
+                { evidenceType: 'auditLogs', data: array(data.auditLogs) },
+                { evidenceType: 'accountLogs', data: array(data.accountLogs) },
+                { evidenceType: 'securityInsights', data: array(data.securityInsights) },
+                { evidenceType: 'applicationSecurityReports', data: array(data.applicationSecurityReports) },
+                { evidenceType: 'apiGatewayOperations', data: array(data.apiGatewayOperations || data.apiGateway) },
+                { evidenceType: 'casbFindings', data: array(data.casbFindings) },
+                { evidenceType: 'tunnels', data: array(data.tunnels) },
+                { evidenceType: 'cloudforceRequests', data: array(data.cloudforceRequests) },
+                { evidenceType: 'intelFeeds', data: array(data.intelFeeds) },
+                { evidenceType: 'dnsFirewallRules', data: array(data.dnsFirewallRules) },
+                { evidenceType: 'loadBalancerPools', data: array(data.loadBalancerPools) },
+                { evidenceType: 'loadBalancerMonitors', data: array(data.loadBalancerMonitors) },
+                { evidenceType: 'magicWanSites', data: array(data.magicWanSites) },
+                { evidenceType: 'magicWanRoutes', data: array(data.magicWanRoutes) },
+                { evidenceType: 'mtlsCertificates', data: array(data.mtlsCertificates) },
+                { evidenceType: 'accessGroups', data: array(data.accessGroups) },
+                { evidenceType: 'accessOrganizations', data: array(data.accessOrganizations) },
+                { evidenceType: 'accessCertificates', data: array(data.accessCertificates) },
+                { evidenceType: 'warpConnectors', data: array(data.warpConnectors) },
+                { evidenceType: 'teamnetRoutes', data: array(data.teamnetRoutes) },
+                { evidenceType: 'teamsDexTests', data: array(data.teamsDexTests) },
+                { evidenceType: 'endpointGroups', data: Object.entries(data.endpointGroups || {}).map(([moduleName, families]) => ({ moduleName, families: array(families) })) }
             );
             const sectionRows = Object.entries(data.sections || {})
                 .filter(([, section]) => section && typeof section === 'object' && ['error', 'permission_unavailable', 'missing'].includes(String(section.status || '').toLowerCase()))
@@ -1135,12 +1230,48 @@ function normalizeCloudflareEvidenceForFlatten(evidence) {
                 applications: 'accessApps',
                 protectedapps: 'accessApps',
                 cloudflaredevices: 'devices',
+                deviceregistrations: 'deviceRegistrations',
+                deviceposture: 'devicePosture',
+                posturechecks: 'devicePosture',
                 gatewaypolicies: 'gatewayRules',
                 gatewayrules: 'gatewayRules',
                 accesspolicies: 'accessPolicies',
                 accesslogs: 'accessLogs',
                 dlpprofiles: 'dlpProfiles',
                 warpprofiles: 'warpProfiles',
+                virtualnetworks: 'virtualNetworks',
+                gatewayapptypes: 'gatewayAppTypes',
+                appcategories: 'gatewayAppTypes',
+                permissionmatrix: 'permissionMatrix',
+                endpointfamilies: 'permissionMatrix',
+                auditlogs: 'auditLogs',
+                accountlogs: 'accountLogs',
+                securityinsights: 'securityInsights',
+                applicationsecurityreports: 'applicationSecurityReports',
+                apigateway: 'apiGatewayOperations',
+                apigatewayoperations: 'apiGatewayOperations',
+                casb: 'casbFindings',
+                casbfindings: 'casbFindings',
+                tunnels: 'tunnels',
+                cloudforceone: 'cloudforceRequests',
+                cloudforcerequests: 'cloudforceRequests',
+                intelfeeds: 'intelFeeds',
+                dnsfirewall: 'dnsFirewallRules',
+                dnsfirewallrules: 'dnsFirewallRules',
+                loadbalancerpools: 'loadBalancerPools',
+                loadbalancermonitors: 'loadBalancerMonitors',
+                magicwansites: 'magicWanSites',
+                magicwanroutes: 'magicWanRoutes',
+                mtlscertificates: 'mtlsCertificates',
+                accessgroups: 'accessGroups',
+                accessorganizations: 'accessOrganizations',
+                accesscertificates: 'accessCertificates',
+                warpconnectors: 'warpConnectors',
+                networkroutes: 'teamnetRoutes',
+                teamnetroutes: 'teamnetRoutes',
+                teamsdextests: 'teamsDexTests',
+                endpointgroups: 'endpointGroups',
+                sectionstatus: 'sectionStatus',
                 sectionerrors: 'sectionErrors',
                 missingcontrols: 'sectionErrors'
             };
@@ -1156,24 +1287,30 @@ function compactCloudflareText(value, maximum = 180) {
 }
 
 function compactCloudflareEntityData(type, data = {}) {
-    const id = firstReadableValue(data.entityId, data.id, data.uid, data.policyId, data.ruleId, data.profileId, data.deviceId, data.applicationId, data.appId);
-    const appName = firstReadableValue(data.appName, data.applicationName, data.protectedAppName, data.name, data.displayName);
-    const deviceName = firstReadableValue(data.deviceName, data.cloudflareDeviceName, data.hostname, data.hostName, data.name, data.displayName);
+    const id = firstReadableValue(data.entityId, data.id, data.uid, data.policyId, data.ruleId, data.profileId, data.deviceId, data.applicationId, data.appId, data.operation_id, data.host, data.hostname);
+    const appName = firstReadableValue(data.appName, data.applicationName, data.protectedAppName, data.name, data.displayName, data.domain);
+    const deviceName = firstReadableValue(data.deviceName, data.cloudflareDeviceName, data.hostname, data.hostName, data.host, data.name, data.displayName);
     const gatewayRuleName = firstReadableValue(data.gatewayRuleName, data.gatewayPolicyName, data.ruleName, data.policyName, data.name);
     const profileName = firstReadableValue(data.profileName, data.dlpProfileName, data.warpProfileName, data.name);
-    const sectionName = firstReadableValue(data.sectionName, data.section, data.controlName, data.name);
+    const sectionName = firstReadableValue(data.sectionName, data.section, data.controlName, data.endpointFamily, data.permission, data.moduleName, data.module, data.name);
+    const infrastructureName = firstReadableValue(data.tunnelName, data.tunnel_name, data.routeName, data.route_name, data.siteName, data.site_name, data.poolName, data.monitorName, data.certificateName, data.hostname, data.host, data.name, data.displayName);
+    const findingName = firstReadableValue(data.findingName, data.title, data.summary, data.description, data.insight, data.name, data.displayName);
     const entityName = firstReadableValue(
         data.entityName,
         type === 'accessApps' ? appName : null,
         type === 'devices' ? deviceName : null,
         type === 'gatewayRules' ? gatewayRuleName : null,
         ['dlpProfiles', 'warpProfiles'].includes(type) ? profileName : null,
-        type === 'sectionErrors' ? sectionName : null,
+        ['permissionMatrix', 'endpointGroups', 'sectionStatus', 'sectionErrors'].includes(type) ? sectionName : null,
+        ['securityInsights', 'applicationSecurityReports', 'apiGatewayOperations', 'casbFindings', 'cloudforceRequests', 'intelFeeds', 'dnsFirewallRules', 'teamsDexTests'].includes(type) ? findingName : null,
+        ['tunnels', 'loadBalancerPools', 'loadBalancerMonitors', 'magicWanSites', 'magicWanRoutes', 'mtlsCertificates', 'accessGroups', 'accessOrganizations', 'accessCertificates', 'warpConnectors', 'teamnetRoutes', 'virtualNetworks', 'gatewayAppTypes', 'devicePosture'].includes(type) ? infrastructureName : null,
         appName,
         deviceName,
         gatewayRuleName,
         profileName,
         sectionName,
+        findingName,
+        infrastructureName,
         data.name,
         data.displayName
     );
@@ -1182,24 +1319,32 @@ function compactCloudflareEntityData(type, data = {}) {
         entityName: compactCloudflareText(entityName),
         entityType: type === 'accessApps'
             ? 'Application'
-            : type === 'devices'
+            : ['devices', 'deviceRegistrations'].includes(type)
             ? 'Device'
-            : type === 'gatewayRules'
+            : ['gatewayRules', 'accessPolicies'].includes(type)
             ? 'Policy'
-            : ['dlpProfiles', 'warpProfiles'].includes(type)
+            : ['dlpProfiles', 'warpProfiles', 'devicePosture'].includes(type)
             ? 'Profile'
             : type === 'accessLogs'
             ? 'Access Event'
-            : type === 'sectionErrors'
+            : ['permissionMatrix', 'endpointGroups', 'sectionStatus', 'sectionErrors'].includes(type)
             ? 'Control Section'
+            : ['securityInsights', 'applicationSecurityReports', 'apiGatewayOperations', 'casbFindings', 'cloudforceRequests', 'intelFeeds', 'dnsFirewallRules', 'teamsDexTests'].includes(type)
+            ? 'Security Finding'
+            : ['tunnels', 'loadBalancerPools', 'loadBalancerMonitors', 'magicWanSites', 'magicWanRoutes', 'mtlsCertificates', 'accessGroups', 'accessOrganizations', 'accessCertificates', 'warpConnectors', 'teamnetRoutes', 'virtualNetworks', 'gatewayAppTypes', 'devicePosture'].includes(type)
+            ? 'Infrastructure'
             : 'Cloudflare Entity',
         appName: compactCloudflareText(appName || data.applicationName),
         policyName: compactCloudflareText(data.policyName || data.accessPolicyName || data.gatewayPolicyName || gatewayRuleName),
         deviceName: compactCloudflareText(deviceName),
         gatewayRuleName: compactCloudflareText(gatewayRuleName),
         profileName: compactCloudflareText(profileName),
-        status: compactCloudflareText(data.status || data.action || data.decision || data.outcome),
-        riskReason: compactCloudflareText(data.riskReason || data.reason || data.error || data.message || data.description, 320),
+        status: compactCloudflareText(data.status || data.action || data.decision || data.outcome || data.result || data.health),
+        severity: compactCloudflareText(data.severity || data.risk || data.priority || data.confidence),
+        moduleName: compactCloudflareText(data.moduleName || data.module),
+        endpointFamily: compactCloudflareText(data.endpointFamily || data.permission),
+        recordCount: numberOrNull(data.recordCount ?? data.count ?? data.total),
+        riskReason: compactCloudflareText(data.riskReason || data.reason || data.error || data.message || data.description || data.summary, 320),
         recommendation: compactCloudflareText(data.recommendation || data.remediation || data.suggestedAction, 320),
         sourceMetric: DOMAIN_EVIDENCE_CATEGORY_METRICS.cloudflare_network_security[type] || type
     };
@@ -1216,14 +1361,14 @@ function compactCloudflareEntityData(type, data = {}) {
 }
 
 function cloudflareEvidenceRows(flattenedEvidence) {
-    const wanted = /accessapps|devices|gatewayrules|accesspolicies|accesslogs|dlpprofiles|warpprofiles|sectionerrors/i;
-    const rows = array(flattenedEvidence)
-        .filter(row => wanted.test(String(row.evidenceType || row.sourceLabel || row.evidenceCategory || '')));
+    const typeByLower = new Map(CLOUDFLARE_COMPACT_EVIDENCE_TYPES.map(type => [type.toLowerCase(), type]));
     const grouped = new Map(CLOUDFLARE_COMPACT_EVIDENCE_TYPES.map(type => [type, []]));
+    const categoryLimit = type => ['permissionMatrix', 'endpointGroups', 'sectionStatus', 'sectionErrors'].includes(type) ? 30 : (type === 'accessLogs' ? 12 : 8);
+    const rows = array(flattenedEvidence);
     for (const row of rows) {
-        const evidenceType = String(row.evidenceType || row.sourceLabel || row.evidenceCategory || '');
-        const type = CLOUDFLARE_COMPACT_EVIDENCE_TYPES.find(key => key.toLowerCase() === evidenceType.toLowerCase());
-        if (!type || grouped.get(type).length >= 10) continue;
+        const evidenceType = String(row.evidenceType || row.sourceLabel || row.evidenceCategory || '').replace(/[_\s-]+/g, '').toLowerCase();
+        const type = typeByLower.get(evidenceType) || typeByLower.get(String(row.sourceLabel || '').replace(/[_\s-]+/g, '').toLowerCase());
+        if (!type || grouped.get(type).length >= categoryLimit(type)) continue;
         const data = compactCloudflareEntityData(type, row.data || {});
         if (!data.entityName && !data.entityId) continue;
         grouped.get(type).push({
@@ -1231,7 +1376,7 @@ function cloudflareEvidenceRows(flattenedEvidence) {
             sourceLabel: type,
             evidenceType: type,
             evidenceCategory: type,
-            sourceMetric: data.sourceMetric || DOMAIN_EVIDENCE_CATEGORY_METRICS.cloudflare_network_security[type] || type,
+            sourceMetric: data.sourceMetric || row.sourceMetric || DOMAIN_EVIDENCE_CATEGORY_METRICS.cloudflare_network_security[type] || type,
             entityKey: data.entityId || data.entityName,
             data
         });
@@ -4343,8 +4488,10 @@ function createEnterpriseIntelligenceService({
                 ? IDENTITY_MAX_ITEMS_PER_BATCH
                 : domain.key === 'devices'
                 ? DEVICE_MAX_ITEMS_PER_BATCH
-                : useStrictCompactPackage || useSecurityAlertsCompactPackage
+                : domain.key === 'cloudflare_network_security'
                 ? CLOUDFLARE_MAX_ITEMS_PER_BATCH
+                : useStrictCompactPackage || useSecurityAlertsCompactPackage
+                ? SELECTED_DOMAIN_MAX_ITEMS_PER_BATCH
                 : settings.maxItemsPerBatch,
             maxBytes: settings.maxInputBytes
         }));
@@ -5975,8 +6122,10 @@ Return exactly these top-level fields:
             ? DEVICE_MAX_ITEMS_PER_BATCH
             : thresholdReached
             ? Math.min(settings.maxItemsPerBatch, settings.thresholdBatchMaxItems)
-            : packageResult.package?.strictCompactSelectedDomain || packageResult.package?.securityAlertsCompactPackage
+            : domain.key === 'cloudflare_network_security'
             ? CLOUDFLARE_MAX_ITEMS_PER_BATCH
+            : packageResult.package?.strictCompactSelectedDomain || packageResult.package?.securityAlertsCompactPackage
+            ? SELECTED_DOMAIN_MAX_ITEMS_PER_BATCH
             : HEAVY_DOMAINS.has(domain.key)
             ? Math.min(settings.maxItemsPerBatch, settings.heavyDomainMaxItemsPerBatch)
             : settings.maxItemsPerBatch;
