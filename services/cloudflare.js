@@ -82,6 +82,26 @@ function firstDefined(...values) {
   return values.find(value => value !== undefined && value !== null && value !== '');
 }
 
+function valueAtPath(input, path) {
+  return String(path).split('.').reduce((current, part) => current?.[part], input);
+}
+
+function firstValueAtPath(input, paths = []) {
+  for (const path of paths) {
+    const value = valueAtPath(input, path);
+    if (value !== undefined && value !== null && value !== '') return value;
+  }
+  return null;
+}
+
+function boolFromCloudflareSetting(input, paths = []) {
+  const value = firstValueAtPath(input, paths);
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') return /^(true|enabled|active|on|yes|masked)$/i.test(value.trim());
+  return Boolean(value);
+}
+
 function toIso(value) {
   if (!value) return null;
   const date = new Date(value);
@@ -396,9 +416,10 @@ function normalizeCloudflarePayload(raw) {
   const activeGatewayPolicies = countEnabled(gatewayRules);
   const latestAccessEvent = accessLogs[0]?.timestamp || null;
   const identityProvider = identityProviders.find(provider => /azure/i.test(provider.name || provider.type || '')) || identityProviders[0] || null;
-  const gatewayProxyEnabled = Boolean(gatewayConfig.gateway_proxy_enabled);
-  const udpProxyEnabled = Boolean(gatewayConfig.gateway_udp_proxy_enabled);
-  const certificateEnabled = Boolean(gatewayConfig.root_certificate_installation_enabled);
+  const gatewayProxyEnabled = boolFromCloudflareSetting(gatewayConfig, ['gateway_proxy_enabled', 'settings.gateway_proxy.enabled', 'settings.gateway_proxy_enabled']);
+  const udpProxyEnabled = boolFromCloudflareSetting(gatewayConfig, ['gateway_udp_proxy_enabled', 'udp_proxy.enabled', 'settings.gateway_udp_proxy_enabled']);
+  const certificateEnabled = boolFromCloudflareSetting(gatewayConfig, ['root_certificate_installation_enabled', 'settings.root_certificate_installation_enabled', 'settings.certificate', 'certificate']);
+  const tlsDecryptEnabled = boolFromCloudflareSetting(gatewayConfig, ['tls_decrypt.enabled', 'settings.tls_decrypt.enabled']);
 
   const overview = {
     securityStatus: apps.length || devices.length || activeGatewayPolicies ? 'Active' : 'No data configured',
@@ -418,7 +439,7 @@ function normalizeCloudflarePayload(raw) {
     gatewayProxyEnabled,
     udpProxyEnabled,
     certificateEnabled,
-    tlsDecryptEnabled: certificateEnabled,
+    tlsDecryptEnabled,
     zonesAvailable: zones.length,
     endpointFamilies: CLOUDFLARE_PERMISSION_FAMILIES.length,
     endpointFamiliesAvailable: 0,
