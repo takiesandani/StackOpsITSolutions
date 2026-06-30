@@ -3262,9 +3262,9 @@ function renderSunbirdDevicesShell() {
                     <h2>Device Protection</h2>
                     <p>Devices, compliance, encryption, activity, and security evidence.</p>
                 </div>
-                <div class="sunbird-id-microsoft-badge sunbird-security-provider-badge" aria-label="Microsoft and Cloudflare security evidence">
+                <div class="sunbird-id-microsoft-badge sunbird-security-provider-badge" aria-label="Microsoft security evidence">
                     <span class="sunbird-id-ms-logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-                    <span>Microsoft + Cloudflare</span>
+                    <span>Microsoft</span>
                 </div>
             </div>
 
@@ -3624,7 +3624,7 @@ function renderSunbirdDevicesCharts(model) {
     animateSunbirdIdentityCharts();
 }
 
-function renderSunbirdDeviceBars(title, items, total) {
+function renderSunbirdDeviceBars(title, items, total, emptyText = 'No OS data available.') {
     return `
         <article class="sunbird-id-chart-card">
             <h3>${escapeIdentityText(title)}</h3>
@@ -3635,7 +3635,7 @@ function renderSunbirdDeviceBars(title, items, total) {
                         <div class="sunbird-id-bar-track"><div class="sunbird-id-bar-fill tone-${item.tone}" style="width:${Math.max(4, Math.round((item.value / Math.max(1, total)) * 100))}%"></div></div>
                         <strong>${escapeIdentityText(item.value)}</strong>
                     </div>
-                `).join('') : '<div class="sunbird-id-empty compact">No OS data available.</div>'}
+                `).join('') : `<div class="sunbird-id-empty compact">${escapeIdentityText(emptyText)}</div>`}
             </div>
         </article>
     `;
@@ -5430,7 +5430,7 @@ function renderSunbirdSecurityCharts(model) {
         ${renderSunbirdSecurityRadar(model)}
         ${renderSunbirdDeviceBars('Top targeted users', model.topTargetedUsers.slice(0, 5).map((u, index) => ({ label: (u.user || 'Unknown').split('@')[0], value: u.total || u.failedAttempts || 0, tone: index === 0 ? 'bad' : index === 1 ? 'warn' : 'neutral' })), Math.max(1, ...model.topTargetedUsers.map(u => u.total || u.failedAttempts || 0)))}
         ${renderSunbirdDeviceBars('MITRE ATT&CK Mapping', model.mitre.slice(0, 5).map(item => ({ label: item.technique || item.tactic, value: item.count || 0, tone: ['critical', 'high'].includes(String(item.severity || '').toLowerCase()) ? 'bad' : 'warn' })), Math.max(1, ...model.mitre.map(item => item.count || 0)))}
-        ${renderSunbirdDeviceBars('Threat source regions', model.regionDistribution.slice(0, 5).map((item, index) => ({ label: item.label, value: item.value, tone: index === 0 ? 'warn' : 'neutral' })), Math.max(1, ...model.regionDistribution.map(item => item.value)))}
+        ${renderSunbirdDeviceBars('Threat source regions', model.regionDistribution.filter(item => item.value > 0 && !/^unknown$/i.test(String(item.label || ''))).slice(0, 5).map((item, index) => ({ label: item.label, value: item.value, tone: index === 0 ? 'warn' : 'neutral' })), Math.max(1, ...model.regionDistribution.map(item => item.value)), 'No region evidence returned.')}
     `;
     renderSunbirdSecurityRiskTrendCanvas(model);
     animateSunbirdIdentityCharts();
@@ -11262,9 +11262,6 @@ function refreshCloudflareLinkedSecuritySurfaces() {
     if (typeof isSunbirdBillingViewActive === 'function' && isSunbirdBillingViewActive('security')) {
         renderSunbirdSecurityAlertsView(false);
     }
-    if (typeof isSunbirdBillingViewActive === 'function' && isSunbirdBillingViewActive('reports')) {
-        renderSunbirdReportsView(false);
-    }
 }
 
 function formatNetworkSecurityDate(value) {
@@ -11276,6 +11273,14 @@ function formatNetworkSecurityDate(value) {
 
 function networkSecurityBoolLabel(value) {
     return value ? 'Enabled' : 'Disabled';
+}
+
+function compactNetworkIdentityProvider(value) {
+    const text = String(value || '').trim();
+    if (!text || /not configured/i.test(text)) return 'None';
+    if (/azure\s*ad|entra/i.test(text)) return 'Azure';
+    if (/one[-\s]?time|otp/i.test(text)) return 'OTP';
+    return text.length > 10 ? text.slice(0, 9) + '...' : text;
 }
 
 function getCloudflareSecurityHealthBreakdown(data) {
@@ -11337,7 +11342,7 @@ function updateNetworkSecurityProjectCard(data) {
         { label: "Protected Apps", value: `: ${overview.protectedApps}`, icon: "fas fa-lock" },
         { label: "Devices", value: `: ${overview.enrolledDevices}`, icon: "fas fa-laptop" },
         { label: "Gateway Rules", value: `: ${overview.gatewayPolicies}`, icon: "fas fa-filter" },
-        { label: "Identity", value: `: ${overview.identityProvider}`, icon: "fas fa-id-card" }
+        { label: "Identity", value: `: ${compactNetworkIdentityProvider(overview.identityProvider)}`, icon: "fas fa-id-card" }
     ];
     project.cardFooter = normalized.success
         ? `${cloudflareSignals.notificationCount ? `${cloudflareSignals.notificationCount} Cloudflare item(s)` : overview.securityStatus} | ${formatNetworkSecurityDate(overview.lastAccessEvent)}`
@@ -11456,7 +11461,7 @@ function renderNetworkSecurityCardPanel(project) {
             <div class="network-security-signal-list">
                 <div class="network-security-signal">
                     <span><i class="fas fa-user-shield"></i> Identity</span>
-                    <strong class="${identityTone}">${escapeIdentityText(overview.identityProvider)}</strong>
+                    <strong class="${identityTone}">${escapeIdentityText(compactNetworkIdentityProvider(overview.identityProvider))}</strong>
                 </div>
                 <div class="network-security-signal">
                     <span><i class="fas fa-route"></i> Gateway Proxy</span>
@@ -11544,23 +11549,24 @@ function getNetworkEvidenceShortId(value) {
 
 function getNetworkEvidenceName(item, fallback = 'Cloudflare record') {
     const value = getNetworkEvidenceValue(item, [
-        'name', 'title', 'display_name', 'displayName', 'description', 'action', 'event.action',
-        'actor.email', 'actor.name', 'user.email', 'userEmail', 'resource.name', 'resource.type',
-        'appName', 'domain', 'hostname', 'type', 'category'
+        'name', 'title', 'display_name', 'displayName', 'description', 'deviceName', 'userEmail',
+        'policyName', 'ruleName', 'profileName', 'applicationName', 'appName', 'domain', 'hostname',
+        'action', 'event.action', 'actor.email', 'actor.name', 'user.email', 'resource.name', 'resource.type',
+        'type', 'category'
     ]);
     if (value) return value;
-    const id = getNetworkEvidenceValue(item, ['id', 'uuid', 'rayId', 'ray_id']);
-    return id ? `${fallback} ${getNetworkEvidenceShortId(id)}` : fallback;
+    return fallback;
 }
 
 function getNetworkEvidenceDetail(item) {
     const parts = [
-        getNetworkEvidenceValue(item, ['resource.name', 'resource.type', 'resource.id']),
-        getNetworkEvidenceValue(item, ['actor.email', 'actor.name', 'actor.type']),
-        getNetworkEvidenceValue(item, ['interface', 'source', 'service', 'ipAddress', 'ip', 'country']),
-        getNetworkEvidenceValue(item, ['created_at', 'createdAt', 'when', 'timestamp', 'updated_at', 'last_seen'])
+        getNetworkEvidenceValue(item, ['resource.name', 'resource.type']),
+        getNetworkEvidenceValue(item, ['deviceName', 'userEmail', 'email', 'actor.email', 'actor.name', 'actor.type']),
+        getNetworkEvidenceValue(item, ['applicationName', 'appName', 'policyName', 'ruleName', 'profileName']),
+        getNetworkEvidenceValue(item, ['interface', 'source', 'service', 'ipAddress', 'ip', 'country', 'virtualIpv4', 'virtualIpv6', 'tunnelType']),
+        getNetworkEvidenceValue(item, ['lastSeen', 'created_at', 'createdAt', 'when', 'timestamp', 'updated_at', 'last_seen'])
     ].filter(Boolean).map(formatNetworkEvidenceValue);
-    return parts.length ? parts.join(' | ') : formatNetworkEvidenceValue(getNetworkEvidenceValue(item, ['id', 'uuid', 'rayId', 'ray_id']) || 'Record returned');
+    return parts.length ? parts.join(' | ') : 'Record returned';
 }
 
 function getNetworkSectionKey(groupOrKey) {
@@ -11660,7 +11666,7 @@ function getNetworkEvidenceGroups(data) {
         { key: 'auditLogs', title: 'Account Audit Logs', items: data.auditLogs, group: 'logs', columns: [
             { label: 'Actor', value: item => getNetworkEvidenceValue(item, ['actor.email', 'actor.name', 'actor.type', 'user.email']) || getNetworkEvidenceName(item, 'Audit event') },
             { label: 'Action', value: item => getNetworkEvidenceValue(item, ['action', 'event.action', 'operation', 'type']) },
-            { label: 'Resource', value: item => getNetworkEvidenceValue(item, ['resource.name', 'resource.type', 'resource.id']) },
+            { label: 'Resource', value: item => getNetworkEvidenceValue(item, ['resource.name', 'resource.type']) },
             { label: 'Interface', value: item => getNetworkEvidenceValue(item, ['interface', 'source', 'service']) },
             { label: 'Time', value: item => formatNetworkSecurityDate(getNetworkEvidenceValue(item, ['when', 'created_at', 'createdAt', 'timestamp'])) },
             { label: 'Detail', value: item => getNetworkEvidenceDetail(item) }
@@ -11702,8 +11708,19 @@ function getNetworkEvidenceGroups(data) {
             { label: 'Last Seen', value: item => formatNetworkSecurityDate(item.lastSeen) },
             { label: 'Status', value: item => item.status }
         ] },
-        { key: 'deviceRegistrations', title: 'Device Registrations', items: data.deviceRegistrations, group: 'devices' },
-        { key: 'devicePosture', title: 'Device Posture Rules', items: data.devicePosture, group: 'devices' },
+        { key: 'deviceRegistrations', title: 'Device Registrations', items: data.deviceRegistrations, group: 'devices', columns: [
+            { label: 'User', value: item => item.userEmail || item.deviceName },
+            { label: 'Device', value: item => item.deviceName },
+            { label: 'Status', value: item => item.status },
+            { label: 'Network', value: item => getNetworkEvidenceValue(item, ['virtualIpv4', 'virtualIpv6', 'tunnelType']) },
+            { label: 'Last Seen', value: item => formatNetworkSecurityDate(item.lastSeen) }
+        ] },
+        { key: 'devicePosture', title: 'Device Posture Rules', items: data.devicePosture, group: 'devices', columns: [
+            { label: 'Rule', value: item => item.name },
+            { label: 'Type', value: item => item.type },
+            { label: 'Status', value: item => item.enabled },
+            { label: 'Schedule', value: item => getNetworkEvidenceValue(item, ['schedule', 'frequency', 'interval']) || 'Continuous' }
+        ] },
         { key: 'warpProfiles', title: 'WARP Profiles', items: data.warpProfiles, group: 'infrastructure', columns: [
             { label: 'Profile', value: item => item.name },
             { label: 'Mode', value: item => item.serviceMode },
@@ -11793,6 +11810,8 @@ function renderNetworkMetricsGraph(data) {
         { label: 'Tunnel / Connector Health', value: healthBreakdown.tunnelConnectorHealth, total: 10, evidence: 'Tunnels, WARP connectors, virtual networks' },
         { label: 'Audit / Governance Hygiene', value: healthBreakdown.auditGovernanceHygiene, total: 10, evidence: 'Audit logs + endpoint gaps' }
     ];
+    const controlTotal = Math.max(1, data.apps.length + data.gatewayRules.length + data.devices.length + data.dlpProfiles.length);
+    const activityTotal = Math.max(1, data.auditLogs.length + data.accessLogs.length + data.gatewayAppTypes.length + data.securityInsights.length + data.applicationSecurityReports.length + data.casbFindings.length + data.intelFeeds.length);
 
     return `
         <div class="network-dashboard-panels network-metrics-graph-grid">
@@ -11830,6 +11849,30 @@ function renderNetworkMetricsGraph(data) {
                             </div>
                         `;
                     }).join('')}
+                </div>
+            </article>
+            <article class="network-dashboard-panel network-evidence-section">
+                <div class="network-evidence-section-title">
+                    <h3>Control Inventory</h3>
+                    <span>${escapeIdentityText(String(controlTotal))} records</span>
+                </div>
+                <div class="network-metric-bars">
+                    <div class="network-metric-bar-row"><div><span>Protected Apps</span><strong>${escapeIdentityText(String(data.apps.length))}</strong></div><i style="--network-bar:${Math.round((data.apps.length / controlTotal) * 100)}%"></i><small>Evidence: Access applications</small></div>
+                    <div class="network-metric-bar-row"><div><span>Gateway Rules</span><strong>${escapeIdentityText(String(data.gatewayRules.length))}</strong></div><i style="--network-bar:${Math.round((data.gatewayRules.length / controlTotal) * 100)}%"></i><small>Evidence: Gateway policy rules</small></div>
+                    <div class="network-metric-bar-row"><div><span>Devices</span><strong>${escapeIdentityText(String(data.devices.length))}</strong></div><i style="--network-bar:${Math.round((data.devices.length / controlTotal) * 100)}%"></i><small>Evidence: Zero Trust devices</small></div>
+                    <div class="network-metric-bar-row"><div><span>DLP Profiles</span><strong>${escapeIdentityText(String(data.dlpProfiles.length))}</strong></div><i style="--network-bar:${Math.round((data.dlpProfiles.length / controlTotal) * 100)}%"></i><small>Evidence: DLP profiles</small></div>
+                </div>
+            </article>
+            <article class="network-dashboard-panel network-evidence-section">
+                <div class="network-evidence-section-title">
+                    <h3>Activity Volume</h3>
+                    <span>${escapeIdentityText(String(activityTotal))} records</span>
+                </div>
+                <div class="network-metric-bars">
+                    <div class="network-metric-bar-row"><div><span>Audit Events</span><strong>${escapeIdentityText(String(data.auditLogs.length))}</strong></div><i style="--network-bar:${Math.round((data.auditLogs.length / activityTotal) * 100)}%"></i><small>Evidence: Account audit logs</small></div>
+                    <div class="network-metric-bar-row"><div><span>Access Events</span><strong>${escapeIdentityText(String(data.accessLogs.length))}</strong></div><i style="--network-bar:${Math.round((data.accessLogs.length / activityTotal) * 100)}%"></i><small>Evidence: Access request logs</small></div>
+                    <div class="network-metric-bar-row"><div><span>Gateway Catalog</span><strong>${escapeIdentityText(String(data.gatewayAppTypes.length))}</strong></div><i style="--network-bar:${Math.round((data.gatewayAppTypes.length / activityTotal) * 100)}%"></i><small>Evidence: Gateway app catalog</small></div>
+                    <div class="network-metric-bar-row"><div><span>Threat Intel</span><strong>${escapeIdentityText(String(data.securityInsights.length + data.applicationSecurityReports.length + data.casbFindings.length + data.intelFeeds.length))}</strong></div><i style="--network-bar:${Math.round(((data.securityInsights.length + data.applicationSecurityReports.length + data.casbFindings.length + data.intelFeeds.length) / activityTotal) * 100)}%"></i><small>Evidence: security intel tables</small></div>
                 </div>
             </article>
         </div>
