@@ -35,14 +35,14 @@ const FAMILY_BY_KEY = Object.freeze(Object.fromEntries(CLOUDFLARE_PERMISSION_FAM
 
 const CLOUDFLARE_ENDPOINTS = [
   { key: 'account', familyKey: 'zeroTrust', label: 'Account Information', path: accountId => `/accounts/${accountId}` },
-  { key: 'accountLogs', familyKey: 'accountLogs', label: 'Account Logs', path: accountId => `/accounts/${accountId}/logs/audit` },
+  { key: 'accountLogs', familyKey: 'accountLogs', label: 'Account Logs', emptyOnStatuses: [400, 404], path: accountId => `/accounts/${accountId}/logs/audit` },
   { key: 'auditLogs', familyKey: 'auditLogs', label: 'Audit Logs', path: accountId => `/accounts/${accountId}/audit_logs` },
   { key: 'securityInsights', familyKey: 'securityInsights', label: 'Security Insights', path: accountId => `/accounts/${accountId}/security-center/insights` },
   { key: 'applicationSecurityReports', familyKey: 'applicationSecurityReports', label: 'Application Security Reports', path: accountId => `/accounts/${accountId}/security-center/insights` },
-  { key: 'apiGateway', familyKey: 'apiGateway', label: 'API Gateway Discovery', path: accountId => `/accounts/${accountId}/api_gateway/discovery/operations` },
+  { key: 'apiGateway', familyKey: 'apiGateway', label: 'API Gateway Discovery', scope: 'zone', path: zoneId => `/zones/${zoneId}/api_gateway/discovery/operations` },
   { key: 'casbFindings', familyKey: 'casb', label: 'CASB Findings', path: accountId => `/accounts/${accountId}/casb/findings` },
   { key: 'tunnels', familyKey: 'tunnels', label: 'Cloudflare Tunnels', path: accountId => `/accounts/${accountId}/cfd_tunnel` },
-  { key: 'cloudforceRequests', familyKey: 'cloudforceOne', label: 'Cloudforce One Requests', path: accountId => `/accounts/${accountId}/cloudforce-one/requests` },
+  { key: 'cloudforceRequests', familyKey: 'cloudforceOne', label: 'Cloudforce One Requests', method: 'post', path: accountId => `/accounts/${accountId}/cloudforce-one/requests`, body: {} },
   { key: 'intelFeeds', familyKey: 'intel', label: 'Intel Indicator Feeds', path: accountId => `/accounts/${accountId}/intel/indicator-feeds` },
   { key: 'dnsFirewall', familyKey: 'dnsFirewall', label: 'DNS Firewall', path: accountId => `/accounts/${accountId}/dns_firewall` },
   { key: 'loadBalancerPools', familyKey: 'loadBalancers', label: 'Load Balancer Pools', path: accountId => `/accounts/${accountId}/load_balancers/pools` },
@@ -67,7 +67,7 @@ const CLOUDFLARE_ENDPOINTS = [
   { key: 'virtualNetworks', familyKey: 'networks', label: 'Virtual Networks', path: accountId => `/accounts/${accountId}/teamnet/virtual_networks` },
   { key: 'teamnetRoutes', familyKey: 'networks', label: 'Network Routes', path: accountId => `/accounts/${accountId}/teamnet/routes` },
   { key: 'accessLogs', familyKey: 'accessAuditLogs', label: 'Access Logs', path: accountId => `/accounts/${accountId}/access/logs/access_requests` },
-  { key: 'teamsDexTests', familyKey: 'teamsDex', label: 'Teams DEX Tests', path: accountId => `/accounts/${accountId}/dex/tests` },
+  { key: 'teamsDexTests', familyKey: 'teamsDex', label: 'Teams DEX Tests', path: accountId => `/accounts/${accountId}/dex/tests/overview` },
   { key: 'dlpProfiles', familyKey: 'zeroTrust', label: 'DLP Profiles', path: accountId => `/accounts/${accountId}/dlp/profiles` },
   { key: 'zones', familyKey: 'accountAnalytics', label: 'Zones', path: () => '/zones' }
 ];
@@ -254,25 +254,39 @@ function sanitizeDlpProfile(profile) {
   };
 }
 
-function summarizeSectionError(error) {
+function summarizeSectionError(error, endpoint = {}) {
   const response = error?.response;
   const status = response?.status || 500;
   const cfErrors = Array.isArray(response?.data?.errors) ? response.data.errors : [];
   const code = cfErrors[0]?.code || null;
   const message = cfErrors[0]?.message || error.message || 'Cloudflare request failed';
   const permissionUnavailable = status === 403 || Number(code) === 9109;
+  const emptyStatus = Array.isArray(endpoint.emptyOnStatuses) && endpoint.emptyOnStatuses.includes(status);
+  const featureUnavailable = emptyStatus || status === 404 || /not found|resource\.not_found|invalid HTTP method or path/i.test(message);
 
   return {
-    status: permissionUnavailable ? 'permission_unavailable' : 'error',
+    status: permissionUnavailable ? 'permission_unavailable' : featureUnavailable ? 'empty' : 'error',
     httpStatus: status,
     code,
-    message: permissionUnavailable ? 'Permission not available' : message
+    message: permissionUnavailable ? 'Permission not available' : featureUnavailable ? 'No data configured' : message
   };
 }
 
 async function fetchCloudflareEndpoint(client, endpoint, accountId) {
-  const response = await client.get(endpoint.path(accountId));
+  const method = String(endpoint.method || 'get').toLowerCase();
+  const url = endpoint.path(accountId);
+  const response = method === 'post'
+    ? await client.post(url, endpoint.body || {})
+    : await client.get(url);
   return response.data;
+}
+
+async function fetchCloudflareZoneEndpoint(client, endpoint, zones = []) {
+  if (!zones.length) return { result: [] };
+  const settled = await Promise.allSettled(zones.map(zone => fetchCloudflareEndpoint(client, endpoint, zone.id)));
+  const fulfilled = settled.filter(result => result.status === 'fulfilled').map(result => result.value);
+  if (fulfilled.length) return { result: fulfilled.flatMap(value => getList(value)) };
+  throw settled.find(result => result.status === 'rejected')?.reason || new Error('Cloudflare zone endpoint failed');
 }
 
 function buildSectionStatuses(results) {
@@ -549,11 +563,13 @@ async function getCloudflareNetworkSecuritySummary(options = {}) {
     }
   });
 
+  const accountEndpoints = CLOUDFLARE_ENDPOINTS.filter(endpoint => endpoint.scope !== 'zone');
+  const zoneEndpoints = CLOUDFLARE_ENDPOINTS.filter(endpoint => endpoint.scope === 'zone');
   const settled = await Promise.allSettled(
-    CLOUDFLARE_ENDPOINTS.map(endpoint => fetchCloudflareEndpoint(client, endpoint, accountId))
+    accountEndpoints.map(endpoint => fetchCloudflareEndpoint(client, endpoint, accountId))
   );
 
-  const raw = CLOUDFLARE_ENDPOINTS.map((endpoint, index) => {
+  const raw = accountEndpoints.map((endpoint, index) => {
     const result = settled[index];
     if (result.status === 'fulfilled') {
       const count = getList(result.value).length;
@@ -569,9 +585,39 @@ async function getCloudflareNetworkSecuritySummary(options = {}) {
     return {
       key: endpoint.key,
       label: endpoint.label,
-      ...summarizeSectionError(result.reason),
+      ...summarizeSectionError(result.reason, endpoint),
       data: null
     };
+  });
+
+  const zonesResult = raw.find(item => item.key === 'zones' && item.status === 'ok')?.data;
+  const zones = getList(zonesResult).map(zone => ({ id: zone.id, name: zone.name })).filter(zone => zone.id);
+  const zoneSettled = await Promise.allSettled(
+    zoneEndpoints.map(endpoint => fetchCloudflareZoneEndpoint(client, endpoint, zones))
+  );
+  zoneEndpoints.forEach((endpoint, index) => {
+    const result = zoneSettled[index];
+    if (!zones.length) {
+      raw.push({ key: endpoint.key, label: endpoint.label, status: 'empty', message: 'No zones configured', data: { result: [] } });
+      return;
+    }
+    if (result.status === 'fulfilled') {
+      const count = getList(result.value).length;
+      raw.push({
+        key: endpoint.key,
+        label: endpoint.label,
+        status: count === 0 ? 'empty' : 'ok',
+        message: count === 0 ? 'No data configured' : null,
+        data: result.value
+      });
+      return;
+    }
+    raw.push({
+      key: endpoint.key,
+      label: endpoint.label,
+      ...summarizeSectionError(result.reason, endpoint),
+      data: null
+    });
   });
 
   return normalizeCloudflarePayload(raw);

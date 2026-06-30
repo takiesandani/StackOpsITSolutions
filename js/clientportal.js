@@ -11451,7 +11451,7 @@ function renderNetworkSecurityCardPanel(project) {
                 <div><span>WARP</span><strong>${escapeIdentityText(String(overview.registeredWarpDevices || overview.enrolledDevices))}</strong></div>
                 <div><span>Logs</span><strong>${escapeIdentityText(String(overview.recentAccessEvents))}</strong></div>
                 <div><span>DLP</span><strong>${escapeIdentityText(String(overview.dlpProfiles))}</strong></div>
-                <div><span>APIs</span><strong>${escapeIdentityText(overview.endpointFamilies ? `${overview.endpointFamiliesAvailable}/${overview.endpointFamilies}` : String(overview.appCategories))}</strong></div>
+                <div><span>Data</span><strong>${escapeIdentityText(overview.endpointFamilies ? `${overview.endpointFamiliesAvailable}/${overview.endpointFamilies}` : String(overview.appCategories))}</strong></div>
             </div>
             <div class="network-security-signal-list">
                 <div class="network-security-signal">
@@ -11773,12 +11773,13 @@ function renderNetworkMetricsGraph(data) {
     const available = Number(overview.endpointFamiliesAvailable || 0);
     const gaps = Number(overview.endpointFamiliesWithGaps || 0);
     const empty = Math.max(0, apiTotal - available - gaps);
-    const totalEvidenceRows = getNetworkEvidenceGroups(data).reduce((sum, group) => sum + (Array.isArray(group.items) ? group.items.length : 0), 0);
+    const clientEvidenceGroups = getNetworkEvidenceGroups(data).filter(group => group.group !== 'api');
+    const totalEvidenceRows = clientEvidenceGroups.reduce((sum, group) => sum + (Array.isArray(group.items) ? group.items.length : 0), 0);
     const totalCloudflareRecords = Math.max(1, data.permissionMatrix.reduce((sum, family) => sum + Number(family.recordCount || 0), 0), totalEvidenceRows);
     const records = [
-        { label: 'Readable API families', value: available, total: apiTotal, evidence: 'permissionMatrix' },
-        { label: 'Families needing review', value: gaps, total: apiTotal, evidence: 'permissionMatrix' },
-        { label: 'Empty / no records', value: empty, total: apiTotal, evidence: 'permissionMatrix' },
+        { label: 'Readable Cloudflare areas', value: available, total: apiTotal, evidence: 'Cloudflare collection status' },
+        { label: 'Areas needing review', value: gaps, total: apiTotal, evidence: 'Cloudflare collection status' },
+        { label: 'Areas with no records', value: empty, total: apiTotal, evidence: 'Cloudflare collection status' },
         { label: 'All log records', value: data.accessLogs.length + data.auditLogs.length + data.accountLogs.length, total: totalCloudflareRecords, evidence: 'accessLogs + auditLogs + accountLogs' },
         { label: 'Infrastructure records', value: data.tunnels.length + data.warpConnectors.length + data.loadBalancerPools.length + data.loadBalancerMonitors.length + data.magicWanSites.length + data.magicWanRoutes.length + data.teamnetRoutes.length, total: totalCloudflareRecords, evidence: 'infrastructure tables' },
         { label: 'Security intelligence records', value: data.securityInsights.length + data.applicationSecurityReports.length + data.apiGatewayOperations.length + data.casbFindings.length + data.cloudforceRequests.length + data.intelFeeds.length + data.dnsFirewallRules.length + data.teamsDexTests.length, total: totalCloudflareRecords, evidence: 'security intel tables' }
@@ -11797,8 +11798,8 @@ function renderNetworkMetricsGraph(data) {
         <div class="network-dashboard-panels network-metrics-graph-grid">
             <article class="network-dashboard-panel network-evidence-section">
                 <div class="network-evidence-section-title">
-                    <h3>Evidence Metrics</h3>
-                    <span>${escapeIdentityText(String(data.permissionMatrix.length || overview.endpointFamilies || 0))} families</span>
+                    <h3>Cloudflare Metrics</h3>
+                    <span>${escapeIdentityText(String(data.permissionMatrix.length || overview.endpointFamilies || 0))} areas</span>
                 </div>
                 <div class="network-metric-bars">
                     ${records.map(record => {
@@ -11975,7 +11976,7 @@ function renderNetworkSecurityOverview(data) {
                     <div><span>Status</span><strong>${escapeIdentityText(overview.securityStatus)}</strong></div>
                     <div><span>Identity Provider</span><strong>${escapeIdentityText(overview.identityProvider)}</strong></div>
                     <div><span>Last Access Event</span><strong>${escapeIdentityText(formatNetworkSecurityDate(overview.lastAccessEvent))}</strong></div>
-                    <div><span>API Families</span><strong>${escapeIdentityText(overview.endpointFamilies ? `${overview.endpointFamiliesAvailable}/${overview.endpointFamilies} readable` : 'Not measured')}</strong></div>
+                    <div><span>Data Coverage</span><strong>${escapeIdentityText(overview.endpointFamilies ? `${overview.endpointFamiliesAvailable}/${overview.endpointFamilies} ready` : 'Not measured')}</strong></div>
                 </div>
             </article>
             <article class="network-dashboard-panel">
@@ -12000,7 +12001,6 @@ function renderSunbirdNetworkSecurityDashboard(inputData = latestNetworkSecurity
     const tabs = [
         { label: 'Overview', panel: renderNetworkSecurityOverview(data) },
         { label: 'Metrics', panel: renderNetworkMetricsGraph(data) },
-        { label: 'API Families', panel: renderNetworkEvidenceGroup(data, 'api') },
         { label: 'Logs', panel: renderNetworkEvidenceGroup(data, 'logs') },
         { label: 'Access', panel: renderNetworkEvidenceGroup(data, 'access') },
         { label: 'Infrastructure', panel: renderNetworkEvidenceGroup(data, 'infrastructure') },
