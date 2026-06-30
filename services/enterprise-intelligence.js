@@ -1287,7 +1287,12 @@ function compactCloudflareText(value, maximum = 180) {
 }
 
 function compactCloudflareEntityData(type, data = {}) {
-    const id = firstReadableValue(data.entityId, data.id, data.uid, data.policyId, data.ruleId, data.profileId, data.deviceId, data.applicationId, data.appId, data.operation_id, data.host, data.hostname);
+    const logTimestamp = firstReadableValue(data.timestamp, data.createdAt, data.created_at, data.datetime, data.dateTime, data.when, data.occurredAt);
+    const logActor = firstReadableValue(data.userEmail, data.email, data.userPrincipalName, data.actor?.email, data.actor_email, data.actorEmail, data.actor?.id, data.actor);
+    const logAction = firstReadableValue(data.action, data.event, data.eventType, data.operation, data.method, data.decision, data.outcome, data.status);
+    const logTarget = firstReadableValue(data.resource?.name, data.resourceName, data.target, data.zoneName, data.appName, data.applicationName, data.ipAddress, data.ip, data.host, data.hostname);
+    const logName = firstReadableValue(data.entityName, data.title, data.name, [logAction, logActor, logTarget, logTimestamp].filter(Boolean).join(' | '));
+    const id = firstReadableValue(data.entityId, data.id, data.uid, data.policyId, data.ruleId, data.profileId, data.deviceId, data.applicationId, data.appId, data.operation_id, data.host, data.hostname, logName);
     const appName = firstReadableValue(data.appName, data.applicationName, data.protectedAppName, data.name, data.displayName, data.domain);
     const deviceName = firstReadableValue(data.deviceName, data.cloudflareDeviceName, data.hostname, data.hostName, data.host, data.name, data.displayName);
     const gatewayRuleName = firstReadableValue(data.gatewayRuleName, data.gatewayPolicyName, data.ruleName, data.policyName, data.name);
@@ -1297,6 +1302,7 @@ function compactCloudflareEntityData(type, data = {}) {
     const findingName = firstReadableValue(data.findingName, data.title, data.summary, data.description, data.insight, data.name, data.displayName);
     const entityName = firstReadableValue(
         data.entityName,
+        ['auditLogs', 'accountLogs', 'accessLogs'].includes(type) ? logName : null,
         type === 'accessApps' ? appName : null,
         type === 'devices' ? deviceName : null,
         type === 'gatewayRules' ? gatewayRuleName : null,
@@ -1325,8 +1331,8 @@ function compactCloudflareEntityData(type, data = {}) {
             ? 'Policy'
             : ['dlpProfiles', 'warpProfiles', 'devicePosture'].includes(type)
             ? 'Profile'
-            : type === 'accessLogs'
-            ? 'Access Event'
+            : ['accessLogs', 'auditLogs', 'accountLogs'].includes(type)
+            ? 'Log Event'
             : ['permissionMatrix', 'endpointGroups', 'sectionStatus', 'sectionErrors'].includes(type)
             ? 'Control Section'
             : ['securityInsights', 'applicationSecurityReports', 'apiGatewayOperations', 'casbFindings', 'cloudforceRequests', 'intelFeeds', 'dnsFirewallRules', 'teamsDexTests'].includes(type)
@@ -1340,6 +1346,11 @@ function compactCloudflareEntityData(type, data = {}) {
         gatewayRuleName: compactCloudflareText(gatewayRuleName),
         profileName: compactCloudflareText(profileName),
         status: compactCloudflareText(data.status || data.action || data.decision || data.outcome || data.result || data.health),
+        action: compactCloudflareText(logAction),
+        userEmail: compactCloudflareText(logActor),
+        ipAddress: compactCloudflareText(data.ipAddress || data.ip || data.clientIp || data.sourceIp),
+        timestamp: compactCloudflareText(logTimestamp),
+        target: compactCloudflareText(logTarget),
         severity: compactCloudflareText(data.severity || data.risk || data.priority || data.confidence),
         moduleName: compactCloudflareText(data.moduleName || data.module),
         endpointFamily: compactCloudflareText(data.endpointFamily || data.permission),
@@ -1363,7 +1374,7 @@ function compactCloudflareEntityData(type, data = {}) {
 function cloudflareEvidenceRows(flattenedEvidence) {
     const typeByLower = new Map(CLOUDFLARE_COMPACT_EVIDENCE_TYPES.map(type => [type.toLowerCase(), type]));
     const grouped = new Map(CLOUDFLARE_COMPACT_EVIDENCE_TYPES.map(type => [type, []]));
-    const categoryLimit = type => ['permissionMatrix', 'endpointGroups', 'sectionStatus', 'sectionErrors'].includes(type) ? 30 : (type === 'accessLogs' ? 12 : 8);
+    const categoryLimit = type => ['permissionMatrix', 'endpointGroups', 'sectionStatus', 'sectionErrors'].includes(type) ? 30 : (['accessLogs', 'auditLogs', 'accountLogs'].includes(type) ? 12 : 8);
     const rows = array(flattenedEvidence);
     for (const row of rows) {
         const evidenceType = String(row.evidenceType || row.sourceLabel || row.evidenceCategory || '').replace(/[_\s-]+/g, '').toLowerCase();
