@@ -149,8 +149,40 @@ function createPowerBIReportingRouter({ reportingService, enterpriseIntelligence
         router.get('/raw/domain/:companyId/:domainKey', enterpriseRoute(req =>
             enterpriseIntelligenceService.getPowerBIRaw(Number(req.params.companyId), req.params.domainKey)
         ));
+
         router.get('/tables/latest/:companyId', enterpriseRoute(async req => {
             const result = await enterpriseIntelligenceService.getPowerBIIntelligenceRun(Number(req.params.companyId), options(req).runId, options(req));
+            const tableName = req.query?.table ? String(req.query.table).trim() : null;
+            if (tableName) {
+                if (!/^[A-Za-z0-9_]+$/.test(tableName)) {
+                    const error = new Error('Invalid Power BI table name');
+                    error.statusCode = 400;
+                    throw error;
+                }
+                const rows = result.tables?.[tableName];
+                if (!Array.isArray(rows)) {
+                    const error = new Error('Power BI table not found');
+                    error.statusCode = 404;
+                    error.details = { tableName, availableTables: Object.keys(result.tables || {}).sort() };
+                    throw error;
+                }
+                if (req.query?.envelope === 'true') {
+                    return {
+                        dataClassification: 'derived_intelligence_table',
+                        companyId: result.companyId,
+                        snapshotId: result.latestSnapshotId,
+                        runId: result.latestRunId,
+                        periodType: result.periodType,
+                        periodStart: result.periodStart,
+                        periodEnd: result.periodEnd,
+                        createdAt: result.createdAt,
+                        tableName,
+                        rowCount: rows.length,
+                        rows
+                    };
+                }
+                return rows;
+            }
             return {
                 dataClassification: 'derived_intelligence_tables',
                 companyId: result.companyId,
