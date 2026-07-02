@@ -9292,28 +9292,111 @@ Return exactly these top-level fields:
         };
     }
 
-    async function getPowerBIHistory(companyId, { periodType = null, limit = 100 } = {}) {
+    function powerBIDomainHistoryRow(row) {
+        if (!row) return null;
+        return stripInternalPowerBIFields(compactNonEmptyObject({
+            domainIntelligenceId: row.ID == null ? null : Number(row.ID),
+            companyId: row.CompanyID == null ? null : Number(row.CompanyID),
+            snapshotId: row.SnapshotID == null ? null : Number(row.SnapshotID),
+            runId: row.RunID == null ? null : Number(row.RunID),
+            domainKey: row.DomainKey || null,
+            domainName: row.DomainName || null,
+            periodType: row.PeriodType || null,
+            periodStart: row.PeriodStart || null,
+            periodEnd: row.PeriodEnd || null,
+            createdAt: row.CreatedAt || null,
+            status: row.Status || null,
+            healthScore: numberOrNull(row.HealthScore),
+            riskScore: numberOrNull(row.RiskScore),
+            riskLevel: row.RiskLevel || null,
+            confidenceScore: numberOrNull(row.ConfidenceScore),
+            domainExecutiveSummary: visibleTextOrNull(row.DomainExecutiveSummary, 1600),
+            technicalSummary: visibleTextOrNull(row.TechnicalSummary, 1600),
+            businessImpact: visibleTextOrNull(row.BusinessImpact, 1200),
+            currentPosture: visibleTextOrNull(row.CurrentPosture, 1200),
+            evidenceSummary: visibleTextOrNull(row.EvidenceSummary, 1200),
+            scoreJustification: visibleTextOrNull(row.ScoreJustification, 1200),
+            errorMessage: visibleTextOrNull(row.ErrorMessage, 1000),
+            tokenUsage: {
+                inputTokens: Number(row.InputTokens || 0),
+                outputTokens: Number(row.OutputTokens || 0),
+                totalTokens: Number(row.TotalTokens || 0),
+                retryCount: Number(row.RetryCount || 0)
+            }
+        }));
+    }
+
+    function powerBISynthesisHistoryRow(row) {
+        if (!row) return null;
+        const powerBiSummary = parseJson(row.PowerBISummaryJson, {});
+        return stripInternalPowerBIFields(compactNonEmptyObject({
+            synthesisId: row.ID == null ? null : Number(row.ID),
+            companyId: row.CompanyID == null ? null : Number(row.CompanyID),
+            snapshotId: row.SnapshotID == null ? null : Number(row.SnapshotID),
+            runId: row.RunID == null ? null : Number(row.RunID),
+            periodType: row.PeriodType || null,
+            periodStart: row.PeriodStart || null,
+            periodEnd: row.PeriodEnd || null,
+            createdAt: row.CreatedAt || null,
+            status: row.Status || null,
+            title: visibleTextOrNull(powerBiSummary.finalReportTitle || powerBiSummary.title, 255),
+            purpose: visibleTextOrNull(powerBiSummary.finalReportPurpose || powerBiSummary.purpose, 1200),
+            businessImpactSummary: visibleTextOrNull(row.BusinessImpactSummary, 1600),
+            tokenUsage: {
+                inputTokens: Number(row.InputTokens || 0),
+                outputTokens: Number(row.OutputTokens || 0),
+                totalTokens: Number(row.TotalTokens || 0),
+                retryCount: Number(row.RetryCount || 0)
+            }
+        }));
+    }
+    async function getPowerBIHistory(companyId, { periodType = null, limit = 25 } = {}) {
         const numericCompanyId = Number(companyId);
+        const requestedLimit = Math.min(100, Math.max(1, Number(limit) || 25));
         const params = [numericCompanyId];
         const periodFilter = periodType ? ' AND PeriodType = ?' : '';
         if (periodType) params.push(String(periodType));
-        params.push(Math.min(500, Math.max(1, Number(limit) || 100)));
-        const [runs] = await pool.query(`SELECT * FROM StackCTRLEnterpriseReportRuns WHERE CompanyID = ?${periodFilter} ORDER BY ID DESC LIMIT ?`, params);
+        params.push(requestedLimit);
+        const [runs] = await pool.query(
+            `SELECT ID, CompanyID, SnapshotID, PeriodType, PeriodStart, PeriodEnd, Status, ProgressJson,
+                    TotalInputTokens, TotalOutputTokens, TotalTokens, RetryCount, StartedAt, CompletedAt, CreatedAt, ErrorMessage
+             FROM StackCTRLEnterpriseReportRuns
+             WHERE CompanyID = ?${periodFilter}
+             ORDER BY ID DESC
+             LIMIT ?`,
+            params
+        );
         const runIds = runs.map(run => Number(run.ID)).filter(Boolean);
         if (!runIds.length) return { dataClassification: 'intelligent_azure_output', companyId: numericCompanyId, periodType: periodType || 'all', reportingPhase: CURRENT_REPORTING_PHASE, activeDomainKeys: ACTIVE_ENTERPRISE_DOMAIN_KEYS, disabledDomains: disabledDomainStates(), runs: [], domains: [], finalSyntheses: [] };
         const placeholders = runIds.map(() => '?').join(',');
         const [[domainRows], [synthesisRows]] = await Promise.all([
-            pool.query(`SELECT * FROM StackCTRLTenantDomainIntelligence WHERE CompanyID = ? AND RunID IN (${placeholders}) ORDER BY RunID DESC, ID`, [numericCompanyId, ...runIds]),
-            pool.query(`SELECT * FROM StackCTRLEnterpriseSynthesis WHERE CompanyID = ? AND RunID IN (${placeholders}) ORDER BY RunID DESC, ID DESC`, [numericCompanyId, ...runIds])
+            pool.query(`SELECT ID, CompanyID, SnapshotID, RunID, DomainKey, DomainName, PeriodType, PeriodStart, PeriodEnd,
+                               HealthScore, RiskScore, RiskLevel, InputTokens, OutputTokens, TotalTokens, RetryCount,
+                               Status, DomainExecutiveSummary, TechnicalSummary, BusinessImpact, CurrentPosture,
+                               EvidenceSummary, ScoreJustification, ConfidenceScore, ErrorMessage, CreatedAt
+                        FROM StackCTRLTenantDomainIntelligence
+                        WHERE CompanyID = ? AND RunID IN (${placeholders})
+                        ORDER BY RunID DESC, ID`, [numericCompanyId, ...runIds]),
+            pool.query(`SELECT ID, CompanyID, SnapshotID, RunID, PeriodType, PeriodStart, PeriodEnd, Status,
+                               BusinessImpactSummary, PowerBISummaryJson, InputTokens, OutputTokens, TotalTokens,
+                               RetryCount, CreatedAt
+                        FROM StackCTRLEnterpriseSynthesis
+                        WHERE CompanyID = ? AND RunID IN (${placeholders})
+                        ORDER BY RunID DESC, ID DESC`, [numericCompanyId, ...runIds])
         ]);
         return {
-            dataClassification: 'intelligent_azure_output', companyId: numericCompanyId,
-            periodType: periodType || 'all', reportingPhase: CURRENT_REPORTING_PHASE, activeDomainKeys: ACTIVE_ENTERPRISE_DOMAIN_KEYS, disabledDomains: disabledDomainStates(), runs: runs.map(powerBIRunRow).filter(Boolean),
-            domains: domainRows.map(powerBIDomainRow),
-            finalSyntheses: synthesisRows.map(powerBISynthesisRow)
+            dataClassification: 'intelligent_azure_output',
+            companyId: numericCompanyId,
+            periodType: periodType || 'all',
+            reportingPhase: CURRENT_REPORTING_PHASE,
+            activeDomainKeys: ACTIVE_ENTERPRISE_DOMAIN_KEYS,
+            disabledDomains: disabledDomainStates(),
+            limit: requestedLimit,
+            runs: runs.map(powerBIRunRow).filter(Boolean),
+            domains: domainRows.map(powerBIDomainHistoryRow).filter(Boolean),
+            finalSyntheses: synthesisRows.map(powerBISynthesisHistoryRow).filter(Boolean)
         };
     }
-
     return {
         settings,
         domains: ENTERPRISE_DOMAINS.map(domain => ({ ...domain, ...enterpriseDomainDescriptor(domain) })),
