@@ -82,8 +82,8 @@ const CLOUDFLARE_MAX_ITEMS_PER_BATCH = 100;
 const DEFAULT_HEAVY_DOMAIN_MAX_ITEMS_PER_BATCH = 50;
 const DEFAULT_THRESHOLD_BATCH_MAX_ITEMS = 50;
 const DEFAULT_MAX_TOTAL_TOKENS = 200000;
-const DEFAULT_DOMAIN_OUTPUT_TOKENS = 8000;
-const DEFAULT_SYNTHESIS_OUTPUT_TOKENS = 8000;
+const DEFAULT_DOMAIN_OUTPUT_TOKENS = 12000;
+const DEFAULT_SYNTHESIS_OUTPUT_TOKENS = 12000;
 const ENTERPRISE_RATE_LIMIT_RETRY_DELAYS_MS = Object.freeze([300000, 300000, 600000]);
 const ENTERPRISE_CONNECTION_RETRY_DELAYS_MS = Object.freeze([0, 15000, 45000]);
 const ENTERPRISE_RATE_LIMIT_RETRY_MAX_MS = 15 * 60 * 1000;
@@ -107,7 +107,7 @@ const COMPACT_SELECTED_DOMAIN_KEYS = Object.freeze(new Set([
 const HEAVY_DOMAINS = Object.freeze(new Set(['governance', 'operations', 'compliance']));
 const SUCCESSFUL_DOMAIN_STATUSES = Object.freeze(new Set(['completed', 'partial', 'completed_with_warnings']));
 const SKIPPED_DOMAIN_STATUSES = Object.freeze(new Set(['skipped_rate_limited', 'skipped_token_threshold', 'skipped_pipeline_stop']));
-const DOMAIN_SYSTEM_MESSAGE = 'You are StackCTRL Enterprise Intelligence. Return valid JSON only. No markdown. No code fences. No explanations outside JSON.';
+const DOMAIN_SYSTEM_MESSAGE = 'You are StackCTRL Enterprise Intelligence. Return valid compact JSON only. No markdown. No code fences. No explanations outside JSON. Prefer short strings and omit optional narrative fields when evidence is already clear.';
 const IDENTITY_LINEAGE_FIELDS = Object.freeze([
     'totalUsers', 'mfaEnabled', 'mfaMissing', 'mfaCoverage', 'privilegedUsers',
     'adminsWithoutMfa', 'highRiskUsers', 'signInIssues', 'externalUsers',
@@ -5888,7 +5888,7 @@ Return exactly these top-level fields:
                 messages: domainMessages(domain, batchPackage),
                 temperature: 0.15,
                 maxTokens: packageResult.package?.strictCompactSelectedDomain
-                    ? Math.min(settings.maxDomainOutputTokens, 6000)
+                    ? Math.min(settings.maxDomainOutputTokens, 10000)
                     : settings.maxDomainOutputTokens,
                 maxRetriesOverride: domain.key === 'email_security' ? 0 : settings.maxRetries,
                 retryDelaysMsOverride: domain.key === 'email_security' ? EMAIL_SECURITY_RATE_LIMIT_RETRY_DELAYS_MS : ENTERPRISE_RATE_LIMIT_RETRY_DELAYS_MS,
@@ -5918,7 +5918,7 @@ Return exactly these top-level fields:
                                 { role: 'user', content: createJsonRepairPrompt(response.data) }
                             ],
                             temperature: 0,
-                            maxTokens: Math.min(settings.maxDomainOutputTokens, 2000),
+                            maxTokens: Math.min(settings.maxDomainOutputTokens, 4000),
                             maxRetriesOverride: 1,
                             retryDelaysMsOverride: ENTERPRISE_RATE_LIMIT_RETRY_DELAYS_MS,
                 retryMaxMsOverride: ENTERPRISE_RATE_LIMIT_RETRY_MAX_MS,
@@ -6004,14 +6004,16 @@ Return exactly these top-level fields:
                 analysis = normalizedDomainResult(response.data, domain, packageResult.current, snapshot.ID, batchEvidence);
             }
 
-            if (jsonRepaired || finishReason === 'length') {
+            const locallyRecoveredJson = jsonRepaired && /local_closure|local_fallback/i.test(String(jsonRepairMethod || ''));
+            const lengthLimitedStringResponse = finishReason === 'length' && typeof response.data === 'string';
+            if (locallyRecoveredJson || lengthLimitedStringResponse) {
                 analysis.missingDataWarnings = [
                     ...array(analysis.missingDataWarnings),
                     'Azure output ended before all closing JSON delimiters were returned. StackCTRL safely recovered the structured response; trailing narrative fields may be incomplete.'
                 ];
             }
             
-            const batchStatus = jsonRepaired || finishReason === 'length' ? 'completed_with_warnings' : 'completed';
+            const batchStatus = locallyRecoveredJson || lengthLimitedStringResponse ? 'completed_with_warnings' : 'completed';
             // Store successful batch. Recovered or length-limited JSON remains explicitly warning-bearing.
             await storeBatch({
                 companyId, snapshotId: snapshot.ID, runId: run.id, domain,
@@ -7810,7 +7812,7 @@ Return exactly these top-level fields:
         };
         const response = await azureOpenAI.createJsonCompletion({
             messages: [
-                { role: 'system', content: 'You are StackCTRL Enterprise Intelligence. Return valid JSON only. No markdown. No code fences. No explanations outside JSON.' },
+                { role: 'system', content: DOMAIN_SYSTEM_MESSAGE },
                 { role: 'user', content: synthesisPrompt(safeValue(synthesisPackage, 0, { maxDepth: 8, maxArray: 100, maxString: 5000 })) }
             ],
             temperature: 0.15,
@@ -7826,6 +7828,7 @@ Return exactly these top-level fields:
         const finishReason = responseFinishReason(response);
         let analysis = response.data || {};
         let synthesisJsonRecovered = false;
+        let synthesisJsonRecoveryMethod = null;
         if (typeof response.data === 'string') {
             const parsed = parseJsonWithDiagnostics(response.data);
             if (!parsed.success) {
@@ -7851,6 +7854,7 @@ Return exactly these top-level fields:
                     if (!localRepair.success) throw repairError;
                     analysis = localRepair.value;
                     synthesisJsonRecovered = true;
+                    synthesisJsonRecoveryMethod = 'local_closure_after_repair_error';
                 }
                 if (repairResponse) {
                     const repairUsage = responseUsage(repairResponse);
@@ -7873,19 +7877,24 @@ Return exactly these top-level fields:
                     }
                     analysis = recovered;
                     synthesisJsonRecovered = true;
+                    synthesisJsonRecoveryMethod = repaired.success
+                        ? 'azure_repair'
+                        : locallyRepairedResponse?.success ? 'azure_repair_then_local_closure' : 'local_closure_after_azure_repair_failure';
                 }
             } else {
                 analysis = parsed.value;
             }
         }
-        if (synthesisJsonRecovered || finishReason === 'length') {
+        const locallyRecoveredSynthesisJson = synthesisJsonRecovered && /local_closure|local_fallback/i.test(String(synthesisJsonRecoveryMethod || ''));
+        const lengthLimitedSynthesisStringResponse = finishReason === 'length' && typeof response.data === 'string';
+        if (locallyRecoveredSynthesisJson || lengthLimitedSynthesisStringResponse) {
             analysis.limitationsAndAssumptions = [
                 ...array(analysis.limitationsAndAssumptions),
                 'Azure response was safely recovered. Some optional narrative fields may be incomplete.'
             ];
         }
         analysis = normalizeSynthesisOutputForDisplay(analysis, snapshotId);
-        const finalRunStatus = synthesisJsonRecovered || finishReason === 'length' || allDomainRows.some(row => row.status !== 'completed')
+        const finalRunStatus = locallyRecoveredSynthesisJson || lengthLimitedSynthesisStringResponse || allDomainRows.some(row => row.status !== 'completed')
             ? 'completed_with_warnings'
             : 'completed';
         const [result] = await pool.query(
@@ -8671,6 +8680,29 @@ Return exactly these top-level fields:
         };
     }
 
+    function powerBIRunRow(row) {
+        if (!row) return null;
+        return stripInternalPowerBIFields(compactNonEmptyObject({
+            runId: Number(row.ID ?? row.runId),
+            companyId: row.CompanyID == null && row.companyId == null ? null : Number(row.CompanyID ?? row.companyId),
+            snapshotId: row.SnapshotID == null && row.snapshotId == null ? null : Number(row.SnapshotID ?? row.snapshotId),
+            periodType: row.PeriodType || row.periodType || null,
+            periodStart: row.PeriodStart || row.periodStart || null,
+            periodEnd: row.PeriodEnd || row.periodEnd || null,
+            status: row.Status || row.status || null,
+            progress: parseJson(row.ProgressJson, row.progress || {}),
+            startedAt: row.StartedAt || row.startedAt || null,
+            completedAt: row.CompletedAt || row.completedAt || null,
+            createdAt: row.CreatedAt || row.createdAt || row.StartedAt || row.startedAt || null,
+            errorMessage: row.ErrorMessage || row.errorMessage || null,
+            tokenUsage: {
+                inputTokens: Number(row.TotalInputTokens || row.InputTokens || row.tokenUsage?.inputTokens || 0),
+                outputTokens: Number(row.TotalOutputTokens || row.OutputTokens || row.tokenUsage?.outputTokens || 0),
+                totalTokens: Number(row.TotalTokens || row.tokenUsage?.totalTokens || 0),
+                retryCount: Number(row.RetryCount || row.tokenUsage?.retryCount || 0)
+            }
+        }));
+    }
     function flattenPowerBITables({ domains = [], finalSynthesis = null, audits = [], runs = [] } = {}) {
         const DomainScorecardRows = sanitizeVisibleValue(array(finalSynthesis?.synthesisOutput?.domainScorecard));
         const reportableDomains = domains.filter(domain => ACTIVE_ENTERPRISE_DOMAIN_SET.has(domain.domainKey));
@@ -9194,7 +9226,7 @@ Return exactly these top-level fields:
                 recordsOmitted: audits.reduce((total, audit) => total + Number(audit.OmittedCount || 0) + Number(audit.EvidenceOmittedCount || 0), 0),
                 audits
             },
-            tables: flattenPowerBITables({ domains, finalSynthesis, audits, runs: [run] })
+            tables: flattenPowerBITables({ domains, finalSynthesis, audits, runs: [powerBIRunRow(run)].filter(Boolean) })
         };
     }
 
@@ -9276,7 +9308,7 @@ Return exactly these top-level fields:
         ]);
         return {
             dataClassification: 'intelligent_azure_output', companyId: numericCompanyId,
-            periodType: periodType || 'all', reportingPhase: CURRENT_REPORTING_PHASE, activeDomainKeys: ACTIVE_ENTERPRISE_DOMAIN_KEYS, disabledDomains: disabledDomainStates(), runs,
+            periodType: periodType || 'all', reportingPhase: CURRENT_REPORTING_PHASE, activeDomainKeys: ACTIVE_ENTERPRISE_DOMAIN_KEYS, disabledDomains: disabledDomainStates(), runs: runs.map(powerBIRunRow).filter(Boolean),
             domains: domainRows.map(powerBIDomainRow),
             finalSyntheses: synthesisRows.map(powerBISynthesisRow)
         };

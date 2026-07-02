@@ -101,6 +101,31 @@ const NETWORK_EVIDENCE_KINDS = [
     { key: 'teamsDexTests', kind: 'teams_dex_test', items: payload => payload.teamsDexTests || [] }
 ];
 
+const NETWORK_SNAPSHOT_COMPAT_COLUMNS = Object.freeze([
+    ['SourceFetchedAt', "DATETIME(3) NULL AFTER CollectedAt"],
+    ['DlpProfiles', "INT NOT NULL DEFAULT 0 AFTER NetworkSecurityScore"],
+    ['IdentityProviders', "INT NOT NULL DEFAULT 0 AFTER DlpProfiles"],
+    ['SectionErrors', "INT NOT NULL DEFAULT 0 AFTER IdentityProviders"],
+    ['PermissionGaps', "INT NOT NULL DEFAULT 0 AFTER SectionErrors"],
+    ['StackCTRLRiskScore', "DECIMAL(6,2) NULL AFTER AccessActivityJson"],
+    ['StackCTRLHealthScore', "DECIMAL(6,2) NULL AFTER StackCTRLRiskScore"],
+    ['SourceAuditJson', "JSON NULL AFTER DashboardMetricsJson"],
+    ['EvidenceSha256', "CHAR(64) NULL AFTER SourceAuditJson"],
+    ['IncompleteReason', "TEXT NULL AFTER EvidenceSha256"],
+    ['ErrorMessage', "TEXT NULL AFTER IncompleteReason"]
+]);
+
+function buildInsert(tableName, columnValues) {
+    const entries = Object.entries(columnValues);
+    if (!entries.length) throw new Error(`Cannot build INSERT for ${tableName} without columns`);
+    const columns = entries.map(([column]) => column);
+    const values = entries.map(([, value]) => value);
+    return {
+        sql: `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`,
+        values
+    };
+}
+
 function mysqlDateTime(value) {
     if (!value) return null;
     const date = value instanceof Date ? value : new Date(value);
@@ -202,6 +227,25 @@ function createNetworkEvidenceStore({ pool, logger = console, now = () => new Da
 
     async function ensureSchema() {
         for (const statement of NETWORK_EVIDENCE_SCHEMA) await pool.query(statement);
+        const [rows] = await pool.query(
+            `SELECT COLUMN_NAME
+             FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME = 'StackCTRLNetworkEvidenceSnapshots'`
+        );
+        const existingColumns = new Set((rows || []).map(row => String(row.COLUMN_NAME || row.column_name || '').toLowerCase()));
+        for (const [columnName, definition] of NETWORK_SNAPSHOT_COMPAT_COLUMNS) {
+            if (existingColumns.has(columnName.toLowerCase())) continue;
+            await pool.query(`ALTER TABLE StackCTRLNetworkEvidenceSnapshots ADD COLUMN ${columnName} ${definition}`);
+        }
+        try {
+            await pool.query(
+                `ALTER TABLE StackCTRLNetworkEvidenceSnapshots
+                 MODIFY SourceSystem VARCHAR(100) NOT NULL DEFAULT 'Cloudflare Zero Trust via StackCTRL'`
+            );
+        } catch (error) {
+            logger.warn?.('[Network Evidence] Could not normalize SourceSystem default; continuing with explicit inserts.', error.message);
+        }
         return { tables: ['StackCTRLNetworkEvidenceSnapshots', 'StackCTRLNetworkEvidence'] };
     }
 
@@ -227,50 +271,63 @@ function createNetworkEvidenceStore({ pool, logger = console, now = () => new Da
         try {
             if (typeof connection.beginTransaction === 'function') await connection.beginTransaction();
             const metrics = evidence.dashboardMetrics;
-            const [snapshotResult] = await connection.query(
-                `INSERT INTO StackCTRLNetworkEvidenceSnapshots
-                 (CompanyID, TenantKey, CollectionTrigger, SourceEndpoint, CollectionStatus, IsComplete,
-                  CollectedAt, SourceFetchedAt, EvidenceRecordCount, ExpectedRecordCount, OmittedRecordCount,
-                  CompletenessPercent, ProtectedApps, EnrolledDevices, GatewayPolicies, ActiveGatewayPolicies,
-                  DeniedAccessEvents, RecentAccessEvents, NetworkSecurityScore, DlpProfiles, IdentityProviders,
-                  SectionErrors, PermissionGaps, ServiceCoverageJson, AccessActivityJson,
-                  StackCTRLRiskScore, StackCTRLHealthScore, DashboardMetricsJson, SourceAuditJson,
-                  EvidenceSha256, IncompleteReason)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [
-                    numericCompanyId, tenantKey, collectionTrigger, sourceEndpoint,
-                    evidence.isComplete ? 'complete' : 'incomplete', evidence.isComplete ? 1 : 0,
-                    mysqlDateTime(collectedAt), mysqlDateTime(sourceFetchedAt), evidence.evidenceRows.length,
-                    evidence.expectedRecordCount, evidence.omittedRecordCount, evidence.completenessPercent,
-                    metrics.protectedApps, metrics.enrolledDevices, metrics.gatewayPolicies, metrics.activeGatewayPolicies,
-                    metrics.deniedAccessEvents, metrics.recentAccessEvents, metrics.networkSecurityScore,
-                    metrics.dlpProfiles, metrics.identityProviders, metrics.sectionErrors, metrics.permissionGaps,
-                    JSON.stringify(evidence.serviceCoverage), JSON.stringify(evidence.accessActivity),
-                    evidence.stackctrlRiskScore, evidence.stackctrlHealthScore, JSON.stringify(metrics),
-                    JSON.stringify({
-                        source: 'stackctrl_processed_network_dashboard',
-                        dashboardFetchedAt: payload?.fetchedAt || null,
-                        collectionTrigger,
-                        sourceEndpoint,
-                        credentialSource: 'environment',
-                        credentialPath: 'CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN (Azure Key Vault, shared with dashboard)'
-                    }),
-                    evidenceHash, evidence.incompleteReason
-                ]
-            );
+            const snapshotInsert = buildInsert('StackCTRLNetworkEvidenceSnapshots', {
+                CompanyID: numericCompanyId,
+                TenantKey: tenantKey,
+                CollectionTrigger: collectionTrigger,
+                SourceSystem: 'Cloudflare Zero Trust via StackCTRL',
+                SourceEndpoint: sourceEndpoint,
+                CollectionStatus: evidence.isComplete ? 'complete' : 'incomplete',
+                IsComplete: evidence.isComplete ? 1 : 0,
+                CollectedAt: mysqlDateTime(collectedAt),
+                SourceFetchedAt: mysqlDateTime(sourceFetchedAt),
+                EvidenceRecordCount: evidence.evidenceRows.length,
+                ExpectedRecordCount: evidence.expectedRecordCount,
+                OmittedRecordCount: evidence.omittedRecordCount,
+                CompletenessPercent: evidence.completenessPercent,
+                ProtectedApps: metrics.protectedApps,
+                EnrolledDevices: metrics.enrolledDevices,
+                GatewayPolicies: metrics.gatewayPolicies,
+                ActiveGatewayPolicies: metrics.activeGatewayPolicies,
+                DeniedAccessEvents: metrics.deniedAccessEvents,
+                RecentAccessEvents: metrics.recentAccessEvents,
+                NetworkSecurityScore: metrics.networkSecurityScore,
+                DlpProfiles: metrics.dlpProfiles,
+                IdentityProviders: metrics.identityProviders,
+                SectionErrors: metrics.sectionErrors,
+                PermissionGaps: metrics.permissionGaps,
+                ServiceCoverageJson: JSON.stringify(evidence.serviceCoverage),
+                AccessActivityJson: JSON.stringify(evidence.accessActivity),
+                StackCTRLRiskScore: evidence.stackctrlRiskScore,
+                StackCTRLHealthScore: evidence.stackctrlHealthScore,
+                DashboardMetricsJson: JSON.stringify(metrics),
+                SourceAuditJson: JSON.stringify({
+                    source: 'stackctrl_processed_network_dashboard',
+                    dashboardFetchedAt: payload?.fetchedAt || null,
+                    collectionTrigger,
+                    sourceEndpoint,
+                    credentialSource: 'environment',
+                    credentialPath: 'CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN (Azure Key Vault, shared with dashboard)'
+                }),
+                EvidenceSha256: evidenceHash,
+                IncompleteReason: evidence.incompleteReason
+            });
+            const [snapshotResult] = await connection.query(snapshotInsert.sql, snapshotInsert.values);
             snapshotId = snapshotResult.insertId;
 
             for (const row of evidence.evidenceRows) {
-                await connection.query(
-                    `INSERT INTO StackCTRLNetworkEvidence
-                     (SnapshotID, CompanyID, TenantKey, EvidenceKind, SourceID, Name, Status,
-                      ProcessedEvidenceJson, CollectedAt)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                    [
-                        snapshotId, numericCompanyId, tenantKey, row.kind, row.sourceId, row.name,
-                        row.status, JSON.stringify(row.processed), mysqlDateTime(collectedAt)
-                    ]
-                );
+                const evidenceInsert = buildInsert('StackCTRLNetworkEvidence', {
+                    SnapshotID: snapshotId,
+                    CompanyID: numericCompanyId,
+                    TenantKey: tenantKey,
+                    EvidenceKind: row.kind,
+                    SourceID: row.sourceId,
+                    Name: row.name,
+                    Status: row.status,
+                    ProcessedEvidenceJson: JSON.stringify(row.processed),
+                    CollectedAt: mysqlDateTime(collectedAt)
+                });
+                await connection.query(evidenceInsert.sql, evidenceInsert.values);
             }
             if (typeof connection.commit === 'function') await connection.commit();
         } catch (error) {
@@ -302,26 +359,33 @@ function createNetworkEvidenceStore({ pool, logger = console, now = () => new Da
         const numericCompanyId = Number(companyId);
         if (!Number.isFinite(numericCompanyId) || numericCompanyId <= 0) throw new Error('A valid companyId is required');
         const message = String(error?.message || error || 'Network evidence collection failed').slice(0, 5000);
-        const [result] = await pool.query(
-            `INSERT INTO StackCTRLNetworkEvidenceSnapshots
-             (CompanyID, TenantKey, CollectionTrigger, SourceEndpoint, CollectionStatus, IsComplete,
-              CollectedAt, EvidenceRecordCount, ExpectedRecordCount, OmittedRecordCount,
-              CompletenessPercent, ServiceCoverageJson, AccessActivityJson, DashboardMetricsJson,
-              SourceAuditJson, IncompleteReason, ErrorMessage)
-             VALUES (?, ?, ?, ?, 'failed', 0, ?, 0, 0, 0, 0, ?, ?, ?, ?, ?, ?)`,
-            [
-                numericCompanyId, tenantKey, collectionTrigger, sourceEndpoint, mysqlDateTime(now()),
-                JSON.stringify({}), JSON.stringify({ total: 0, denied: 0 }), JSON.stringify({}),
-                JSON.stringify({
-                    source: 'stackctrl_processed_network_dashboard',
-                    collectionTrigger,
-                    sourceEndpoint,
-                    credentialSource: 'environment',
-                    credentialPath: 'CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN (Azure Key Vault, shared with dashboard)'
-                }),
-                'Network evidence collection did not complete.', message
-            ]
-        );
+        const failureInsert = buildInsert('StackCTRLNetworkEvidenceSnapshots', {
+            CompanyID: numericCompanyId,
+            TenantKey: tenantKey,
+            CollectionTrigger: collectionTrigger,
+            SourceSystem: 'Cloudflare Zero Trust via StackCTRL',
+            SourceEndpoint: sourceEndpoint,
+            CollectionStatus: 'failed',
+            IsComplete: 0,
+            CollectedAt: mysqlDateTime(now()),
+            EvidenceRecordCount: 0,
+            ExpectedRecordCount: 0,
+            OmittedRecordCount: 0,
+            CompletenessPercent: 0,
+            ServiceCoverageJson: JSON.stringify({}),
+            AccessActivityJson: JSON.stringify({ total: 0, denied: 0 }),
+            DashboardMetricsJson: JSON.stringify({}),
+            SourceAuditJson: JSON.stringify({
+                source: 'stackctrl_processed_network_dashboard',
+                collectionTrigger,
+                sourceEndpoint,
+                credentialSource: 'environment',
+                credentialPath: 'CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN (Azure Key Vault, shared with dashboard)'
+            }),
+            IncompleteReason: 'Network evidence collection did not complete.',
+            ErrorMessage: message
+        });
+        const [result] = await pool.query(failureInsert.sql, failureInsert.values);
         return { snapshotId: result.insertId, companyId: numericCompanyId, status: 'failed', message };
     }
 
