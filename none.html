@@ -3,1311 +3,305 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>StackOps IT Solutions | Managed IT, Cybersecurity & IT Support</title>
-  <meta name="description" content="StackOps IT Solutions - managed IT, cybersecurity, governance, compliance, procurement and business technology support." />
+  <title>Cyber Padlock Scroll Object</title>
+  <meta name="description" content="Single premium scroll-controlled cyber padlock animation." />
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "gsap": "https://cdn.jsdelivr.net/npm/gsap@3.12.5/index.js",
+        "gsap/ScrollTrigger": "https://cdn.jsdelivr.net/npm/gsap@3.12.5/ScrollTrigger.js"
+      }
+    }
+  </script>
 
   <style>
-    :root {
-      --bg: #030711;
-      --ink: rgba(255,255,255,.94);
-      --soft: rgba(255,255,255,.70);
-      --muted: rgba(255,255,255,.48);
-      --blue: #48d8ff;
-      --blue2: #076eff;
-      --cyan: rgba(72,216,255,.42);
-      --glass: rgba(255,255,255,.07);
-      --glass2: rgba(255,255,255,.13);
-      --stroke: rgba(255,255,255,.16);
-      --wide: 96%;
-      --ease: cubic-bezier(.22, 1, .36, 1);
-      --hero-image: url("Images/Welcome.png");
-      --service-image: url("Images/Cybersecurity-Consulting-Agencies-For-2025.jpg");
-      --mx: 50vw;
-      --my: 40vh;
-    }
-
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    html { scroll-behavior: smooth; background: var(--bg); }
 
+    html,
     body {
-      min-height: 100vh;
-      color: var(--ink);
-      font-family: "Segoe UI", Inter, Aptos, Arial, sans-serif;
-      font-weight: 200;
-      background: var(--bg) url("Images/website.png") center top / cover fixed no-repeat;
+      width: 100%;
+      min-height: 100%;
+      background: #000;
       overflow-x: hidden;
     }
 
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      z-index: -4;
-      background:
-        linear-gradient(90deg, rgba(3,7,17,.28) 0%, rgba(3,7,17,.04) 45%, rgba(3,7,17,.30) 100%),
-        linear-gradient(180deg, rgba(3,7,17,.06), rgba(3,7,17,.38) 76%, rgba(3,7,17,.70) 100%),
-        url("Images/website.png") center / cover no-repeat;
-      transform: translate3d(0, var(--bg-shift, 0px), 0) scale(1.035);
-      will-change: transform;
-    }
+    body { min-height: 420vh; }
 
-    body::after {
-      content: "";
-      position: fixed;
-      inset: 0;
-      z-index: -3;
-      pointer-events: none;
-      background:
-        radial-gradient(circle at var(--mx) var(--my), rgba(72,216,255,.20), transparent 22vw),
-        radial-gradient(circle at 15% 15%, rgba(0,100,255,.16), transparent 28vw),
-        radial-gradient(circle at 87% 72%, rgba(72,216,255,.12), transparent 31vw);
-      mix-blend-mode: screen;
-      opacity: .95;
-    }
-
-    a { color: inherit; text-decoration: none; }
-    img { display: block; max-width: 100%; }
-    button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; font-weight: 200; }
-
-    h1, h2, h3, h4, strong, b, p, a, span, small, li { font-weight: 200; }
-    h1, h2, h3 { letter-spacing: -.045em; line-height: .98; }
-    p { color: var(--soft); line-height: 1.78; }
-
-    ::selection { background: rgba(72,216,255,.32); }
-
-    .page-shell {
-      width: var(--wide);
-      margin: 0 auto;
-    }
-
-    .site-header {
-      position: fixed;
-      top: 18px;
-      left: 50%;
-      width: var(--wide);
-      transform: translateX(-50%);
-      z-index: 50;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 22px;
-      padding: 14px 18px 14px 24px;
-      border-radius: 999px;
-      background: linear-gradient(110deg, rgba(255,255,255,.17), rgba(255,255,255,.045), rgba(72,216,255,.08));
-      border: 1px solid rgba(255,255,255,.14);
-      box-shadow: 0 18px 60px rgba(0,0,0,.30);
-      backdrop-filter: blur(24px) saturate(160%);
-      -webkit-backdrop-filter: blur(24px) saturate(160%);
-      transition: padding .35s var(--ease), background .35s var(--ease), transform .35s var(--ease);
-    }
-
-    .site-header.is-small {
-      padding: 9px 15px 9px 20px;
-      background: linear-gradient(110deg, rgba(255,255,255,.12), rgba(255,255,255,.035), rgba(72,216,255,.07));
-    }
-
-    .brand { display: flex; align-items: center; gap: 12px; min-width: 145px; }
-    .brand img { width: 128px; height: 42px; object-fit: contain; object-position: left center; }
-
-    .nav-links {
-      display: flex;
-      align-items: center;
-      gap: 9px;
-      flex-wrap: wrap;
-      justify-content: flex-end;
-    }
-
-    .nav-links a {
-      display: inline-flex;
-      align-items: center;
-      min-height: 37px;
-      padding: 0 17px;
-      border-radius: 999px;
-      font-size: 13px;
-      letter-spacing: .01em;
-      color: rgba(255,255,255,.74);
-      background: rgba(255,255,255,.07);
-      border: 1px solid rgba(255,255,255,.10);
-      transition: transform .28s var(--ease), background .28s var(--ease), color .28s var(--ease);
-    }
-
-    .nav-links a:hover {
-      transform: translateY(-2px);
-      color: #fff;
-      background: rgba(72,216,255,.18);
-    }
-
-    .nav-links .primary {
-      color: #fff;
-      background: linear-gradient(120deg, rgba(72,216,255,.22), rgba(7,110,255,.18));
-      border-color: rgba(72,216,255,.35);
-    }
-
-    .mobile-menu-btn { display: none; }
-
-    .hero {
-      min-height: 100vh;
+    .padlock-scroll-hero {
+      width: 100%;
+      height: 100vh;
       position: relative;
-      display: grid;
-      align-items: center;
-      padding: 112px 0 34px;
       overflow: hidden;
-      z-index: 0;
-      isolation: isolate;
+      background: #000;
     }
 
-    .hero::before {
-      content: "";
+    #padlockCanvas {
       position: absolute;
       inset: 0;
-      background: transparent;
-      z-index: 1;
-      pointer-events: none;
-    }
-
-    .hero-stage {
-      position: absolute;
-      left: 0;
-      right: 0;
-      top: 0;
-      bottom: clamp(194px, 22vh, 226px);
-      z-index: 0;
-      overflow: hidden;
-      background: #030711;
-    }
-
-    .hero-stage::before,
-    .hero-stage::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background-image: var(--hero-image);
-      background-size: cover;
-      background-position: center;
-      transition: opacity .9s var(--ease), transform 7s linear, filter .8s var(--ease);
-      will-change: transform, opacity;
-    }
-
-    .hero-stage::before {
-      opacity: 1;
-      transform: scale(1.005) translate3d(var(--hero-drift-x, 0px), var(--hero-drift-y, 0px), 0);
-      filter: saturate(1.12) contrast(1.02) brightness(1.22);
-    }
-
-    .hero-stage::after {
-      opacity: 0;
-      filter: none;
-      transform: scale(1);
-      mix-blend-mode: screen;
-    }
-
-    .hero-inner {
-      width: var(--wide);
-      margin: 0 auto;
-      min-height: calc(100vh - 150px);
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      position: relative;
-      z-index: 2;
-    }
-
-    .hero-copy {
-      display: none;
-      max-width: 600px;
-      padding-top: 40px;
-      transform: translateY(0);
-      transition: opacity .55s var(--ease), transform .55s var(--ease);
-    }
-
-    .hero-copy.is-changing { opacity: 0; transform: translateY(16px); }
-
-    .eyebrow {
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      font-size: 11px;
-      letter-spacing: .22em;
-      text-transform: uppercase;
-      color: rgba(255,255,255,.72);
-      margin-bottom: 24px;
-    }
-
-    .eyebrow::before {
-      content: "";
-      width: 44px;
-      height: 1px;
-      background: linear-gradient(90deg, var(--blue), transparent);
-    }
-
-    .hero-title {
-      font-size: clamp(2.05rem, 3.55vw, 3.9rem);
-      max-width: 12ch;
-      margin-bottom: 23px;
-      text-wrap: balance;
-    }
-
-    .hero-title span { color: var(--blue); }
-
-    .hero-desc {
-      max-width: 540px;
-      font-size: clamp(1rem, 1.05vw, 1.18rem);
-      color: rgba(255,255,255,.72);
-    }
-
-    .hero-actions {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 14px;
-      margin-top: 34px;
-    }
-
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 12px;
-      min-height: 46px;
-      padding: 0 22px;
-      border-radius: 999px;
-      border: 1px solid rgba(255,255,255,.14);
-      color: rgba(255,255,255,.88);
-      background: rgba(255,255,255,.06);
-      backdrop-filter: blur(18px);
-      -webkit-backdrop-filter: blur(18px);
-      transition: transform .28s var(--ease), background .28s var(--ease), border-color .28s var(--ease);
-    }
-
-    .btn:hover { transform: translateY(-3px); background: rgba(72,216,255,.14); border-color: rgba(72,216,255,.38); }
-    .btn.main { background: linear-gradient(120deg, rgba(72,216,255,.28), rgba(7,110,255,.20)); border-color: rgba(72,216,255,.42); }
-
-    .slide-control {
-      position: absolute;
-      left: 0;
-      right: 0;
-      bottom: clamp(18px, 4vh, 46px);
-      display: grid;
-      grid-template-columns: minmax(220px, 360px) 1fr;
-      gap: 34px;
-      align-items: end;
-    }
-
-    .hero-counter {
-      display: flex;
-      align-items: center;
-      gap: 18px;
-      color: rgba(255,255,255,.76);
-      letter-spacing: .14em;
-      font-size: 12px;
-      text-transform: uppercase;
-    }
-
-    .hero-counter strong { font-size: 44px; letter-spacing: -.07em; color: #fff; }
-
-    .progress {
-      height: 2px;
-      flex: 1;
-      min-width: 120px;
-      background: rgba(255,255,255,.18);
-      overflow: hidden;
-      border-radius: 999px;
-    }
-
-    .progress span {
-      display: block;
+      width: 100%;
       height: 100%;
-      width: 0%;
-      background: linear-gradient(90deg, var(--blue), rgba(255,255,255,.55));
-    }
-
-    .thumb-rail {
-      display: flex;
-      gap: 14px;
-      overflow-x: auto;
-      padding: 7px 2px 9px;
-      scrollbar-width: none;
-      mask-image: linear-gradient(90deg, transparent, #000 4%, #000 94%, transparent);
-      -webkit-mask-image: linear-gradient(90deg, transparent, #000 4%, #000 94%, transparent);
-    }
-
-    .thumb-rail::-webkit-scrollbar { display: none; }
-
-    .thumb {
-      position: relative;
-      flex: 0 0 178px;
-      aspect-ratio: 16 / 9;
-      border-radius: 8px;
-      overflow: hidden;
-      opacity: .62;
-      transform: translateY(0) scale(.96);
-      background: rgba(255,255,255,.06);
-      border: 1px solid rgba(255,255,255,.16);
-      transition: opacity .34s var(--ease), transform .34s var(--ease), border-color .34s var(--ease);
-    }
-
-    .thumb img { width: 100%; height: 100%; object-fit: cover; filter: saturate(.96) brightness(.92); }
-    .thumb::after { content: attr(data-title); position: absolute; left: 12px; right: 12px; bottom: 10px; font-size: 12px; color: rgba(255,255,255,.82); text-shadow: 0 5px 16px rgba(0,0,0,.65); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .thumb.is-active { opacity: 1; transform: translateY(-10px) scale(1); border-color: rgba(72,216,255,.82); box-shadow: 0 18px 40px rgba(0,0,0,.40), 0 0 0 4px rgba(72,216,255,.12); }
-
-    .scroll-cue {
-      position: absolute;
-      right: 0;
-      bottom: clamp(128px, 17vh, 190px);
-      writing-mode: vertical-rl;
-      text-transform: uppercase;
-      letter-spacing: .22em;
-      color: rgba(255,255,255,.44);
-      font-size: 11px;
-    }
-
-    .scroll-cue::after {
-      content: "";
-      display: inline-block;
-      width: 1px;
-      height: 78px;
-      margin-top: 14px;
-      background: linear-gradient(var(--blue), transparent);
-      animation: lineDrop 1.7s var(--ease) infinite;
-    }
-
-    @keyframes lineDrop {
-      0%,100% { transform: translateY(0); opacity: .25; }
-      50% { transform: translateY(18px); opacity: 1; }
-    }
-
-    .section { width: var(--wide); margin: 0 auto; padding: clamp(74px, 10vw, 150px) 0; position: relative; }
-
-    .flow-intro {
-      display: grid;
-      grid-template-columns: minmax(260px, .62fr) 1fr;
-      gap: clamp(32px, 7vw, 110px);
-      align-items: start;
-    }
-
-    .section-kicker {
-      color: var(--blue);
-      letter-spacing: .22em;
-      text-transform: uppercase;
-      font-size: 11px;
-      margin-bottom: 18px;
-    }
-
-    .section-title {
-      font-size: clamp(1.85rem, 2.85vw, 3.25rem);
-      max-width: 800px;
-      text-wrap: balance;
-    }
-
-    .section-text { font-size: clamp(1.02rem, 1.1vw, 1.25rem); max-width: 760px; }
-
-    .liquid-sentence {
-      position: relative;
-      padding-left: clamp(0px, 6vw, 90px);
-    }
-
-    .liquid-sentence::before {
-      content: "";
-      position: absolute;
-      left: 0;
-      top: .72em;
-      width: clamp(0px, 4vw, 62px);
-      height: 1px;
-      background: linear-gradient(90deg, transparent, var(--blue));
-    }
-
-    .floating-metrics {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 17px;
-      margin-top: 38px;
-    }
-
-    .metric {
-      min-width: 144px;
-      padding: 18px 19px;
-      border-radius: 28px;
-      background: rgba(255,255,255,.055);
-      border: 1px solid rgba(255,255,255,.10);
-      backdrop-filter: blur(18px);
-      -webkit-backdrop-filter: blur(18px);
-      transform: translateY(var(--float, 0));
-      transition: transform .5s var(--ease), background .5s var(--ease);
-    }
-
-    .metric:hover { transform: translateY(-9px); background: rgba(72,216,255,.10); }
-    .metric strong { display: block; font-size: 28px; letter-spacing: -.06em; }
-    .metric span { color: var(--muted); font-size: 11px; letter-spacing: .18em; text-transform: uppercase; }
-    .story {
-      width: 100%;
-      margin: 0;
-      padding: clamp(84px, 9vw, 132px) calc((100vw - var(--wide)) / 2) clamp(72px, 9vw, 120px);
-      background: #0404ff00;
-      overflow: hidden;
-    }
-
-    .services-heading {
-      margin-bottom: clamp(28px, 4vw, 54px);
-      text-align: center;
-    }
-
-    .services-heading h2 {
-      font-size: clamp(2.2rem, 4.4vw, 5.25rem);
-      letter-spacing: -.045em;
-      line-height: .98;
-    }
-
-    .services-stage {
-      min-height: min(64vh, 660px);
-      display: grid;
-      grid-template-columns: minmax(300px, .68fr) minmax(440px, 1.32fr);
-      align-items: center;
-      gap: clamp(-18px, 3.2vw, 58px);
-      position: relative;
-      overflow: visible;
-      left: 5%;
-    }
-
-    .services-copy {
-      max-width: 560px;
-      position: relative;
-      z-index: 2;
-      margin-left: clamp(18px, 23vw, 56px);
-    }
-
-    .service-count {
-      color: rgba(72,216,255,.74);
-      letter-spacing: .22em;
-      text-transform: uppercase;
-      font-size: 11px;
-      margin-bottom: 18px;
-    }
-
-    .services-copy h3 {
-      color: var(--blue);
-      font-size: clamp(1.55rem, 2.2vw, 2.7rem);
-      line-height: 1.08;
-      letter-spacing: -.025em;
-      margin-bottom: 14px;
-    }
-
-    .services-copy p {
-      max-width: 610px;
-      color: rgba(255,255,255,.70);
-      line-height: 1.55;
-      font-size: clamp(.95rem, 1vw, 1.08rem);
-    }
-
-    .service-feature-list {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 9px 18px;
-      list-style: none;
-      margin-top: 24px;
-      color: rgba(255,255,255,.72);
-      font-size: 13px;
-    }
-
-    .service-feature-list li {
-      position: relative;
-      padding-left: 16px;
-    }
-
-    .service-feature-list li::before {
-      content: "";
-      position: absolute;
-      left: 0;
-      top: .72em;
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--blue);
-      box-shadow: 0 0 18px rgba(72,216,255,.58);
-    }
-
-    .service-enquire { margin-top: 28px; }
-
-    .services-sticker-wrap {
-      min-height: min(58vh, 600px);
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      position: relative;
-      pointer-events: none;
-    }
-
-    .services-sticker-wrap::before {
-      content: "";
-      position: absolute;
-      width: 54%;
-      aspect-ratio: 1;
-      right: 8%;
-      top: 18%;
-      background: radial-gradient(circle, rgba(72,216,255,.16), transparent 68%);
-      filter: blur(18px);
-      opacity: .85;
-    }
-
-    .service-sticker {
-      position: relative;
-      width: min(63vw, 1040px);
-      max-height: min(64vh, 720px);
-      object-fit: contain;
-      object-position: center right;
-      filter: drop-shadow(0 36px 70px rgba(0,0,0,.42)) saturate(1.05) brightness(1.04);
-      transform: perspective(1100px) rotateY(-10deg) rotateZ(-1.5deg) translateX(-1vw) scale(1.08);
-      transform-origin: center left;
-      transition: opacity .28s var(--ease), transform .45s var(--ease), filter .35s var(--ease);
-      right: 30%;
-    }
-
-    .service-sticker.is-switching {
-      opacity: 0;
-      transform: perspective(1100px) rotateY(-7deg) rotateZ(-1deg) translateX(1vw) scale(1.01);
-    }
-
-    .service-card-rail {
-      display: grid;
-      grid-template-columns: repeat(6, minmax(168px, 1fr));
-      gap: 14px;
-      margin-top: clamp(22px, 4vw, 48px);
-      overflow-x: auto;
-      padding: 4px 2px 12px;
-      scrollbar-width: none;
-    }
-
-    .service-card-rail::-webkit-scrollbar { display: none; }
-
-    .service-card {
-      min-height: 132px;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 14px;
-      border-radius: 8px;
-      background: rgba(255,255,255,.055);
-      border: 1px solid rgba(255,255,255,.09);
-      color: rgba(255,255,255,.76);
-      text-align: left;
-      transition: transform .28s var(--ease), border-color .28s var(--ease), background .28s var(--ease), color .28s var(--ease);
-    }
-
-    .service-card:hover,
-    .service-card.is-active {
-      transform: translateY(-5px);
-      color: #fff;
-      background: rgba(7,110,255,.10);
-      border-color: rgba(72,216,255,.86);
-      box-shadow: 0 18px 45px rgba(0,0,0,.24), 0 0 0 2px rgba(72,216,255,.10);
-    }
-
-    .service-card img {
-      width: 100%;
-      height: 72px;
-      object-fit: contain;
-      object-position: center;
-      filter: saturate(1.02) brightness(1.06);
-    }
-
-    .service-card span {
       display: block;
-      font-size: 12px;
-      line-height: 1.25;
-      color: inherit;
-    }
-
-    .split-scene {
-      min-height: 78vh;
-      display: grid;
-      grid-template-columns: minmax(280px, .74fr) minmax(320px, 1fr);
-      gap: clamp(40px, 8vw, 130px);
-      align-items: center;
-    }
-
-    .blend-image {
-      height: min(70vh, 640px);
-      min-height: 430px;
-      background: url("Images/Stackon.png") center / cover no-repeat;
-      filter: saturate(1.1) brightness(.84);
-      mask-image: linear-gradient(90deg, transparent 0%, #000 18%, #000 74%, transparent 100%), radial-gradient(circle at 50% 50%, #000 0%, #000 55%, transparent 78%);
-      -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 18%, #000 74%, transparent 100%);
-      opacity: .92;
-    }
-
-    .glass-note {
-      max-width: 680px;
-      padding: clamp(28px, 4vw, 54px);
-      border-radius: 46px;
-      background: linear-gradient(135deg, rgba(255,255,255,.10), rgba(255,255,255,.035));
-      border: 1px solid rgba(255,255,255,.12);
-      backdrop-filter: blur(25px) saturate(155%);
-      -webkit-backdrop-filter: blur(25px) saturate(155%);
-      box-shadow: 0 30px 90px rgba(0,0,0,.22);
-    }
-
-    .glass-note h2 { font-size: clamp(1.85rem, 2.6vw, 3rem); margin-bottom: 20px; }
-    .glass-note .btn { margin-top: 28px; }
-
-    .partner-zone { padding-top: 80px; padding-bottom: 90px; overflow: hidden; }
-    .partner-head { display: flex; justify-content: center; gap: 24px; align-items: center; margin-bottom: 34px; text-align: center; }
-    .partner-head h2 { font-size: clamp(1.7rem, 2.35vw, 2.85rem); max-width: 580px; margin: 0 auto; }
-    .partner-head p { max-width: 480px; font-size: .98rem; }
-
-    .logo-marquee {
-      position: relative;
-      width: 100vw;
-      margin-left: calc((100vw - var(--wide)) / -2);
-      padding: 18px 0;
-      overflow: hidden;
-      mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
-      -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
-    }
-
-    .logo-track {
-      display: flex;
-      align-items: center;
-      gap: clamp(38px, 5vw, 78px);
-      width: max-content;
-      animation: logoMove 38s linear infinite;
-      will-change: transform;
-    }
-
-    .logo-marquee:hover .logo-track { animation-play-state: paused; }
-
-    @keyframes logoMove { to { transform: translateX(-50%); } }
-
-    .logo-unit {
-      width: 168px;
-      height: 72px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex: 0 0 auto;
-      opacity: .76;
-      transition: opacity .3s var(--ease), transform .3s var(--ease), filter .3s var(--ease);
-    }
-
-    .logo-unit:hover { opacity: 1; transform: translateY(-6px); }
-
-    .logo-unit img {
-      width: 150px;
-      height: 52px;
-      object-fit: contain;
-      object-position: center;
-      filter: none;
-      mix-blend-mode: normal;
-    }
-
-    .logo-unit:hover img { filter: brightness(1.06) contrast(1.04); mix-blend-mode: normal; }
-
-
-    footer {
-      position: relative;
-      width: var(--wide);
-      margin: 0 auto 26px;
-      padding: 44px clamp(24px, 4vw, 64px);
-      border-radius: 42px;
-      background: linear-gradient(135deg, rgba(255,255,255,.10), rgba(255,255,255,.032));
-      border: 1px solid rgba(255,255,255,.11);
-      backdrop-filter: blur(22px) saturate(145%);
-      -webkit-backdrop-filter: blur(22px) saturate(145%);
-    }
-
-    .footer-grid {
-      display: grid;
-      grid-template-columns: minmax(220px, 1.2fr) repeat(5, minmax(132px, 1fr));
-      gap: 30px;
-      align-items: start;
-    }
-
-    .footer-logo {
-      grid-column: 1;
-      grid-row: 1;
-      justify-self: start;
-      align-self: start;
-      max-width: 250px;
-      padding-top: 61px;
-      text-align: left;
-    }
-    .footer-logo img {
-      position: absolute;
-      top: 12px;
-      left: 14px;
-      display: block;
-      width: 124px;
-      height: 45px;
-      object-fit: contain;
-      object-position: left center;
-      margin: 0;
-    }
-    footer h3 { font-size: 1rem; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 15px; color: rgba(255,255,255,.74); }
-    footer ul { list-style: none; display: grid; gap: 8px; }
-    footer a, footer p { color: rgba(255,255,255,.60); font-size: .94rem; }
-    footer a:hover { color: #fff; }
-    .footer-meta { display: grid; gap: 6px; margin-top: 18px; color: rgba(255,255,255,.46); font-size: .76rem; letter-spacing: .06em; text-transform: uppercase; }
-    .footer-socials {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 16px;
-    }
-    .footer-socials a {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      color: rgba(255,255,255,.72);
-      background: rgba(255,255,255,.07);
-      border: 1px solid rgba(255,255,255,.12);
-      transition: transform .25s var(--ease), background .25s var(--ease), color .25s var(--ease), border-color .25s var(--ease);
-    }
-    .footer-socials a:hover {
-      transform: translateY(-3px);
-      color: #fff;
-      background: rgba(72,216,255,.16);
-      border-color: rgba(72,216,255,.36);
-    }
-    .footer-socials svg {
-      width: 17px;
-      height: 17px;
-      fill: currentColor;
-    }
-    .copyright { margin-top: 36px; color: rgba(255,255,255,.42); font-size: .86rem; }
-
-    .reveal {
-      opacity: 0;
-      transform: translateY(32px);
-      transition: opacity .8s var(--ease), transform .8s var(--ease);
-    }
-
-    .reveal.is-visible { opacity: 1; transform: translateY(0); }
-
-    .liquid-orb {
-      position: fixed;
-      width: 280px;
-      height: 280px;
-      border-radius: 999px;
-      pointer-events: none;
-      z-index: -2;
-      left: var(--mx);
-      top: var(--my);
-      transform: translate(-50%, -50%);
-      background: radial-gradient(circle, rgba(72,216,255,.12), transparent 65%);
-      filter: blur(8px);
-      opacity: .9;
-    }
-
-    @media (max-width: 980px) {
-      :root { --wide: 94%; }
-      .site-header { border-radius: 28px; align-items: flex-start; }
-      .mobile-menu-btn { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 999px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); }
-      .mobile-menu-btn span, .mobile-menu-btn::before, .mobile-menu-btn::after { content: ""; display: block; width: 18px; height: 1px; background: #fff; position: absolute; transition: transform .25s var(--ease); }
-      .mobile-menu-btn::before { transform: translateY(-6px); }
-      .mobile-menu-btn::after { transform: translateY(6px); }
-      .nav-links { display: none; position: absolute; left: 16px; right: 16px; top: 72px; padding: 14px; border-radius: 24px; background: rgba(7,12,26,.84); backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px); border: 1px solid rgba(255,255,255,.10); justify-content: flex-start; }
-      .site-header.is-open .nav-links { display: flex; }
-      .site-header.is-open .mobile-menu-btn span { transform: scaleX(0); }
-      .site-header.is-open .mobile-menu-btn::before { transform: rotate(45deg); }
-      .site-header.is-open .mobile-menu-btn::after { transform: rotate(-45deg); }
-      .hero { min-height: 100svh; padding-top: 104px; }
-      .hero-inner { min-height: calc(100svh - 130px); }
-      .hero-stage { top: 0; bottom: 206px; }
-      .hero-stage::before { opacity: 1; background-position: center; }
-      .hero-copy { padding-top: 18px; max-width: 94%; }
-      .slide-control { grid-template-columns: 1fr; gap: 18px; position: relative;
-      z-index: 2; bottom: auto; margin-top: 46px; }
-      .scroll-cue { display: none; }
-      .flow-intro, .services-stage, .split-scene { grid-template-columns: 1fr; }
-      .story { padding: 78px calc((100vw - var(--wide)) / 2) 72px; }
-      .services-stage { min-height: auto; gap: 22px; }
-      .services-copy { margin-left: 0; }
-      .services-sticker-wrap { min-height: 360px; justify-content: center; }
-      .service-sticker { width: min(96vw, 700px); max-height: 400px; object-position: center; transform: none; }
-      .service-card-rail { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(172px, 42vw); }
-      .blend-image { min-height: 320px; height: 44vh; order: -1; }
-      .partner-head { display: flex; justify-content: center; text-align: center; }
-      .partner-head p { margin-top: 16px; }
-      .footer-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    }
-
-    @media (max-width: 620px) {
-      .brand img { width: 116px; }
-      .hero-title { font-size: clamp(2.05rem, 12vw, 3.9rem); }
-      .hero-actions { align-items: stretch; }
-      .btn { width: 100%; }
-      .hero-counter strong { font-size: 34px; }
-      .thumb { flex-basis: 150px; }
-      .service-feature-list { grid-template-columns: 1fr; }
-      .service-card-rail { grid-auto-columns: minmax(160px, 72vw); }
-      .section { padding: 72px 0; }
-      .floating-metrics { gap: 10px; }
-      .metric { flex: 1 1 130px; min-width: 130px; }
-      .footer-grid { grid-template-columns: 1fr; }
-      .footer-logo { grid-column: auto; justify-self: start; text-align: left; }
-      .footer-logo img { top: 10px; left: 12px; object-position: left center; }
-      footer { border-radius: 30px; }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
     }
   </style>
 </head>
-
 <body>
-  <div class="liquid-orb" aria-hidden="true"></div>
-
-  <header class="site-header" id="siteHeader">
-    <a href="Home.html" class="brand" aria-label="StackOps IT Solutions home">
-      <img src="Images/Logos/RemovedStackOps.png" alt="StackOps IT Solutions" />
-    </a>
-
-    <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Open menu"><span></span></button>
-
-    <nav class="nav-links" aria-label="Main navigation">
-      <a href="about.html">About</a>
-      <a href="service.html">Services</a>
-      <a href="https://proqpilot.com">Shop</a>
-      <a href="contact.html">Contact</a>
-      <a href="ClientDashboardHome.html">Client Dashboard</a>
-      <a href="consultation.html" class="primary">Book a session</a>
-    </nav>
-  </header>
-
   <main>
-    <section class="hero" id="top">
-      <div class="hero-stage" aria-hidden="true"></div>
-
-      <div class="hero-inner">
-        <div class="hero-copy" id="heroCopy">
-          <span class="eyebrow" id="heroEyebrow">Managed IT • Cybersecurity • IT Support</span>
-          <h1 class="hero-title" id="heroTitle">IT that feels invisible until you need it.</h1>
-          <p class="hero-desc" id="heroDesc">StackOps integrates into your environment as one managed technology force across support, security, cloud, governance and procurement.</p>
-          <div class="hero-actions">
-            <a href="consultation.html" class="btn main" id="heroCta">Book a consultation <span>→</span></a>
-            <a href="service.html" class="btn">Explore services</a>
-          </div>
-        </div>
-
-        <div class="scroll-cue">Scroll</div>
-
-        <div class="slide-control">
-          <div class="hero-counter">
-            <strong id="heroNumber">01</strong>
-            <div class="progress" aria-hidden="true"><span id="progressBar"></span></div>
-          </div>
-
-          <div class="thumb-rail" id="thumbRail" aria-label="Featured slide selector"></div>
-        </div>
-      </div>
-    </section>
-
-    <section class="section flow-intro reveal">
-      <div>
-        <div class="section-kicker">The StackOps way</div>
-        <h2 class="section-title">Less noise. More control. A technology partner that moves with the business.</h2>
-      </div>
-      <div class="liquid-sentence">
-        <p class="section-text">We bring support, security, procurement and implementation together so your team has one reliable partner for the technology it depends on every day.</p>
-        <div class="floating-metrics">
-          <div class="metric"><strong>24/7</strong><span>Support view</span></div>
-          <div class="metric"><strong>360°</strong><span>Risk visibility</span></div>
-          <div class="metric"><strong>MSP</strong><span>Partner stack</span></div>
-        </div>
-      </div>
-    </section>
-    <section class="section story reveal" id="services">
-      <div class="services-heading">
-        <h2>Our services</h2>
-      </div>
-
-      <div class="services-stage">
-        <div class="services-copy">
-          <div class="service-count" id="serviceCount">01 / 06</div>
-          <h3 id="serviceTitle">Cybersecurity Consulting</h3>
-          <p id="serviceDesc">Protect your business from cyber threats with our expertise in vulnerability assessment, penetration testing, and incident response.</p>
-          <ul class="service-feature-list" id="serviceFeatures">
-            <li>Vulnerability Assessment</li>
-            <li>Penetration Testing</li>
-            <li>Security Audits</li>
-            <li>Incident Response</li>
-          </ul>
-          <a href="consultation.html" class="btn main service-enquire" id="serviceCta">Enquire <span>→</span></a>
-        </div>
-
-        <div class="services-sticker-wrap" aria-hidden="true">
-          <img class="service-sticker" id="serviceShowcaseImage" src="Images/cyberseculityConsulting.png" alt="" />
-        </div>
-      </div>
-
-      <div class="service-card-rail" id="serviceCardRail" aria-label="Service selector"></div>
-    </section>
-
-    <section class="section split-scene reveal" id="client-portal">
-      <div class="glass-note">
-        <div class="section-kicker">Client service visibility</div>
-        <h2>Clear reporting for clients, projects, risk and service delivery.</h2>
-        <p>Clients can see the work that matters: open requests, project progress, device health, risk items and service outcomes in one focused portal.</p>
-        <a href="ClientDashboardHome.html" class="btn main">Open Client Portal <span>→</span></a>
-      </div>
-      <div class="blend-image" aria-hidden="true"></div>
-    </section>
-
-    <section class="section partner-zone reveal">
-      <div class="partner-head">
-        <h2>Our Technology partners stack</h2>
-      </div>
-
-      <div class="logo-marquee" aria-label="Technology partner logos">
-        <div class="logo-track">
-          <span class="logo-unit"><img src="Images/duo-partner-msp.webp" alt="Duo Partner" /></span>
-          <span class="logo-unit"><img src="Images/GoogleSquare.webp" alt="Google" /></span>
-          <span class="logo-unit"><img src="Images/CisscoBlue.png.jpg" alt="Cisco" /></span>
-          <span class="logo-unit"><img src="Images/AWS.jpg" alt="AWS" /></span>
-          <span class="logo-unit"><img src="Images/Microsoft-Partner.jpg" alt="Microsoft Partner" /></span>
-          <span class="logo-unit"><img src="Images/Dell-Technology-Partner.jpg" alt="Dell Technologies Partner" /></span>
-          <span class="logo-unit"><img src="Images/HP-Partner.jpg" alt="HP Partner" /></span>
-          <span class="logo-unit"><img src="Images/ibm-partner-plus.png" alt="IBM Partner Plus" /></span>
-          <span class="logo-unit"><img src="Images/MSP badge_Dark@3x.png" alt="MSP Partner Badge" /></span>
-
-          <span class="logo-unit"><img src="Images/duo-partner-msp.webp" alt="Duo Partner" /></span>
-          <span class="logo-unit"><img src="Images/GoogleSquare.webp" alt="Google" /></span>
-          <span class="logo-unit"><img src="Images/CisscoBlue.png.jpg" alt="Cisco" /></span>
-          <span class="logo-unit"><img src="Images/AWS.jpg" alt="AWS" /></span>
-          <span class="logo-unit"><img src="Images/Microsoft-Partner.jpg" alt="Microsoft Partner" /></span>
-          <span class="logo-unit"><img src="Images/Dell-Technology-Partner.jpg" alt="Dell Technologies Partner" /></span>
-          <span class="logo-unit"><img src="Images/HP-Partner.jpg" alt="HP Partner" /></span>
-          <span class="logo-unit"><img src="Images/ibm-partner-plus.png" alt="IBM Partner Plus" /></span>
-          <span class="logo-unit"><img src="Images/MSP badge_Dark@3x.png" alt="MSP Partner Badge" /></span>
-        </div>
-      </div>
+    <section class="padlock-scroll-hero" id="padlockHero" aria-label="Scroll controlled cyber padlock animation">
+      <canvas id="padlockCanvas"></canvas>
     </section>
   </main>
 
-  <footer class="reveal">
-    <div class="footer-grid">
-      <div class="footer-logo">
-        <img src="Images/Logos/RemovedStackOps.png" alt="StackOps IT Solutions" />
-        <p>Managed IT and cybersecurity for modern businesses.</p>
+  <script type="module">
+    import * as THREE from "three";
+    import { gsap } from "gsap";
+    import { ScrollTrigger } from "gsap/ScrollTrigger";
 
-      </div>
+    gsap.registerPlugin(ScrollTrigger);
 
-      <div>
-        <h3>Quick Links</h3>
-        <ul>
-          <li><a href="Home.html">Home</a></li>
-          <li><a href="about.html">About us</a></li>
-          <li><a href="contact.html">Contact</a></li>
-          <li><a href="consultation.html">Book a session</a></li>
-          <li><a href="signin.html">Admin portal</a></li>
-        </ul>
-      </div>
+    const hero = document.getElementById("padlockHero");
+    const canvas = document.getElementById("padlockCanvas");
 
-      <div>
-        <h3>Services</h3>
-        <ul>
-          <li><a href="service.html">Managed IT</a></li>
-          <li><a href="service.html">Cybersecurity</a></li>
-          <li><a href="service.html">Governance</a></li>
-          <li><a href="service.html">IT audit</a></li>
-          <li><a href="service.html">Web development</a></li>
-          
-        </ul>
-      </div>
+    const COLORS = {
+      metal: 0x050608,
+      metalFace: 0x090d12,
+      bevel: 0x182231,
+      blue: 0x48d8ff,
+      deepBlue: 0x076eff
+    };
 
-      <div>
-        <h3>Solutions</h3>
-        <ul>
-          <li><a href="ClientDashboardHome.html">StackCTRL portal</a></li>
-          <li><a href="https://proqpilot.com">ProQ Pilot shop</a></li>
-          <li><a href="service.html">Microsoft 365</a></li>
-          <li><a href="service.html">Cisco Duo</a></li>
-        </ul>
-      </div>
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
+    camera.position.set(0, 0, 6.4);
 
-      <div>
-        <h3>Disclaimer</h3>
-        <ul>
-          <li><a href="service.html#web-development">POPIA</a></li>
-          <li><a href="service.html#web-design">Privacy policy</a></li>
-          <li><a href="service.html#mobile-development">Terms</a></li>
-          <li><a href="service.html">Security audits</a></li>
-        </ul>
-      </div>
+    const renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      alpha: true,
+      powerPreference: "high-performance"
+    });
+    renderer.setClearColor(0x000000, 0);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
 
-      <div>
-        <h3>Contact</h3>
-        <p><a href="mailto:info@stackopsit.co.za">info@stackopsit.co.za</a></p>
-        <p><a href="mailto:support@stackopsit.co.za">support@stackopsit.co.za</a></p>
-        <p><a href="mailto:sales@stackopsit.co.za">sales@stackopsit.co.za</a></p>
-        <p>Mia Drive, Waterfall City, Johannesburg, 1685</p>
-        <p>011 568 9337</p>
-        <div class="footer-socials" aria-label="Social links">
-          <a href="https://www.linkedin.com/in/ndamulelo-sandani-0988289a/overlay/about-this-profile/?lipi=urn%3Ali%3Apage%3Ad_flagship3_profile_view_base%3BAO9qQ1ErRwqaNzIPO5obNA%3D%3D" aria-label="LinkedIn" target="_blank" rel="noopener noreferrer">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.98 3.5C4.98 4.88 3.86 6 2.5 6S0 4.88 0 3.5 1.12 1 2.5 1s2.48 1.12 2.48 2.5zM.32 8.02h4.36V23H.32V8.02zM8.1 8.02h4.18v2.04h.06c.58-1.1 2-2.26 4.13-2.26 4.42 0 5.23 2.91 5.23 6.69V23h-4.35v-7.55c0-1.8-.03-4.12-2.51-4.12-2.52 0-2.9 1.97-2.9 4V23H8.1V8.02z"/></svg>
-          </a>
-          <a href="#" aria-label="X">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.9 2H22l-6.8 7.78L23.2 22h-6.26l-4.9-6.4L6.44 22H3.32l7.28-8.32L2.92 2h6.42l4.43 5.86L18.9 2zm-1.1 17.85h1.72L8.4 4.04H6.55L17.8 19.85z"/></svg>
-          </a>
-          <a href="#" aria-label="Facebook">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5.02 3.66 9.18 8.44 9.94v-7.03H7.9v-2.91h2.54V9.84c0-2.52 1.5-3.91 3.78-3.91 1.1 0 2.24.2 2.24.2v2.47H15.2c-1.24 0-1.63.78-1.63 1.57v1.89h2.77l-.44 2.91h-2.33V22C18.34 21.24 22 17.08 22 12.06z"/></svg>
-          </a>
-          <a href="#" aria-label="Instagram">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.75 2h8.5A5.76 5.76 0 0 1 22 7.75v8.5A5.76 5.76 0 0 1 16.25 22h-8.5A5.76 5.76 0 0 1 2 16.25v-8.5A5.76 5.76 0 0 1 7.75 2zm0 2A3.75 3.75 0 0 0 4 7.75v8.5A3.75 3.75 0 0 0 7.75 20h8.5A3.75 3.75 0 0 0 20 16.25v-8.5A3.75 3.75 0 0 0 16.25 4h-8.5zM12 7.25A4.75 4.75 0 1 1 12 16.75 4.75 4.75 0 0 1 12 7.25zm0 2A2.75 2.75 0 1 0 12 14.75 2.75 2.75 0 0 0 12 9.25zM17 6.8a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4z"/></svg>
-          </a>
-        </div>
-      </div>
-    </div>
-    <div class="copyright">© <span id="copyrightYear">2026</span> StackOps IT Solutions. All rights reserved.</div>
-  </footer>
+    const lock = new THREE.Group();
+    lock.position.y = -.08;
+    scene.add(lock);
 
-  <script>
-    const slides = [
-      {
-        eyebrow: "Managed IT • Cybersecurity • IT Support",
-        title: "IT that feels invisible until you need it.",
-        desc: "One managed technology force across support, security, cloud, governance and procurement.",
-        image: "Images/Welcome.png",
-        cta: "Book a consultation",
-        link: "consultation.html",
-        thumb: "Managed IT"
-      },
-      {
-        eyebrow: "Security operations",
-        title: "Protect the stack before the alert becomes a crisis.",
-        desc: "Cybersecurity consulting, risk visibility, incident response and practical controls for real business environments.",
-        image: "Images/TV1.png",
-        cta: "Explore services",
-        link: "service.html",
-        thumb: "Cybersecurity"
-      },
-      {
-        eyebrow: "Client visibility",
-        title: "A clear client portal keeps service delivery measurable.",
-        desc: "Give clients a simple view of projects, devices, risk, compliance and technology outcomes.",
-        image: "Images/Stackon.png",
-        cta: "Client Portal",
-        link: "ClientDashboardHome.html",
-        thumb: "Client Portal"
-      },
-      {
-        eyebrow: "Procurement & hardware",
-        title: "Source, support and manage the technology your teams depend on.",
-        desc: "Hardware, licensing and vendor support with a cleaner procurement experience through the wider StackOps ecosystem.",
-        image: "Images/HandTV.png",
-        cta: "Shop now",
-        link: "https://proqpilot.com",
-        thumb: "Procurement"
-      },
-      {
-        eyebrow: "Consulting",
-        title: "Book the room. Map the risk. Move with clarity.",
-        desc: "Use consultation sessions for roadmaps, audits, implementation planning, cloud decisions and security hardening.",
-        image: "Images/Consultation.png",
-        cta: "Book a session",
-        link: "consultation.html",
-        thumb: "Consulting"
-      },
-      {
-        eyebrow: "Governance & audit",
-        title: "Secure, compliant and board-ready without the noise.",
-        desc: "Professional IT audits, POPIA alignment, governance frameworks and reporting that leadership can understand.",
-        image: "Images/Consult (2).png",
-        cta: "Book a consult",
-        link: "consultation.html",
-        thumb: "Audit"
-      }
-    ];
+    const parts = [];
+    const state = { split: 0, glow: .7 };
 
-    const root = document.documentElement;
-    const header = document.getElementById("siteHeader");
-    const menuBtn = document.getElementById("mobileMenuBtn");
-    const heroCopy = document.getElementById("heroCopy");
-    const heroEyebrow = document.getElementById("heroEyebrow");
-    const heroTitle = document.getElementById("heroTitle");
-    const heroDesc = document.getElementById("heroDesc");
-    const heroCta = document.getElementById("heroCta");
-    const heroNumber = document.getElementById("heroNumber");
-    const progressBar = document.getElementById("progressBar");
-    const thumbRail = document.getElementById("thumbRail");
-    const serviceCount = document.getElementById("serviceCount");
-    const serviceTitle = document.getElementById("serviceTitle");
-    const serviceDesc = document.getElementById("serviceDesc");
-    const serviceFeatures = document.getElementById("serviceFeatures");
-    const serviceCta = document.getElementById("serviceCta");
-    const serviceShowcaseImage = document.getElementById("serviceShowcaseImage");
-    const serviceCardRail = document.getElementById("serviceCardRail");
-
-    let current = 0;
-    let timer;
-    let progressTimer;
-    const slideDuration = 6500;
-
-    function twoDigits(value) {
-      return String(value + 1).padStart(2, "0");
+    function roundedRect(width, height, radius) {
+      const x = -width / 2;
+      const y = -height / 2;
+      const shape = new THREE.Shape();
+      shape.moveTo(x + radius, y);
+      shape.lineTo(x + width - radius, y);
+      shape.quadraticCurveTo(x + width, y, x + width, y + radius);
+      shape.lineTo(x + width, y + height - radius);
+      shape.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+      shape.lineTo(x + radius, y + height);
+      shape.quadraticCurveTo(x, y + height, x, y + height - radius);
+      shape.lineTo(x, y + radius);
+      shape.quadraticCurveTo(x, y, x + radius, y);
+      return shape;
     }
 
-    function buildThumbs() {
-      thumbRail.innerHTML = slides.map((slide, index) => `
-        <button class="thumb" type="button" data-index="${index}" data-title="${slide.thumb}">
-          <img src="${slide.image}" alt="${slide.thumb}" />
-        </button>
-      `).join("");
-
-      thumbRail.querySelectorAll(".thumb").forEach(button => {
-        button.addEventListener("click", () => setSlide(Number(button.dataset.index), true));
-      });
+    function remember(group, splitPosition, splitRotation) {
+      group.userData.homePosition = group.position.clone();
+      group.userData.homeRotation = group.rotation.clone();
+      group.userData.splitPosition = new THREE.Vector3(splitPosition.x, splitPosition.y, splitPosition.z);
+      group.userData.splitRotation = new THREE.Euler(splitRotation.x, splitRotation.y, splitRotation.z);
+      parts.push(group);
+      lock.add(group);
+      return group;
     }
 
-    function restartProgress() {
-      clearInterval(progressTimer);
-      const started = performance.now();
-      progressBar.style.width = "0%";
-
-      progressTimer = setInterval(() => {
-        const pct = Math.min(100, ((performance.now() - started) / slideDuration) * 100);
-        progressBar.style.width = pct + "%";
-      }, 80);
-    }
-
-    function setSlide(index, manual = false) {
-      current = (index + slides.length) % slides.length;
-      const slide = slides[current];
-      heroCopy.classList.add("is-changing");
-
-      setTimeout(() => {
-        root.style.setProperty("--hero-image", `url("${slide.image}")`);
-        heroEyebrow.textContent = slide.eyebrow;
-        heroTitle.textContent = slide.title;
-        heroDesc.textContent = slide.desc;
-        heroCta.href = slide.link;
-        heroCta.innerHTML = `${slide.cta} <span>→</span>`;
-        heroNumber.textContent = twoDigits(current);
-
-        thumbRail.querySelectorAll(".thumb").forEach((thumb, i) => {
-          thumb.classList.toggle("is-active", i === current);
-        });
-
-        heroCopy.classList.remove("is-changing");
-      }, 240);
-
-      restartProgress();
-
-      if (manual) {
-        clearInterval(timer);
-        timer = setInterval(() => setSlide(current + 1), slideDuration);
-      }
-    }
-
-    buildThumbs();
-    setSlide(0);
-    timer = setInterval(() => setSlide(current + 1), slideDuration);
-
-    menuBtn.addEventListener("click", () => header.classList.toggle("is-open"));
-
-    document.querySelectorAll(".nav-links a").forEach(link => {
-      link.addEventListener("click", () => header.classList.remove("is-open"));
+    const blackMetal = new THREE.MeshPhysicalMaterial({
+      color: COLORS.metal,
+      roughness: .28,
+      metalness: .92,
+      clearcoat: .75,
+      clearcoatRoughness: .2,
+      reflectivity: .62
     });
 
-    const revealObserver = new IntersectionObserver(entries => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) entry.target.classList.add("is-visible");
-      });
-    }, { threshold: .18 });
+    const frontMetal = new THREE.MeshPhysicalMaterial({
+      color: COLORS.metalFace,
+      roughness: .22,
+      metalness: .88,
+      clearcoat: .85,
+      clearcoatRoughness: .14,
+      reflectivity: .7
+    });
 
-    document.querySelectorAll(".reveal").forEach(el => revealObserver.observe(el));
+    const bevelMetal = new THREE.MeshStandardMaterial({
+      color: COLORS.bevel,
+      emissive: COLORS.deepBlue,
+      emissiveIntensity: .08,
+      roughness: .2,
+      metalness: .86
+    });
 
-    const services = [
-      {
-        title: "Cybersecurity Consulting",
-        desc: "Protect your business from cyber threats with our expertise in vulnerability assessment, penetration testing, and incident response.",
-        image: "Images/cyberseculityConsulting.png",
-        features: ["Vulnerability Assessment", "Penetration Testing", "Security Audits", "Incident Response"]
-      },
-      {
-        title: "Systems Implementation",
-        desc: "We help you design, deploy, and manage secure and efficient IT systems that support your business operations.",
-        image: "Images/System_Implementation.png",
-        features: ["Infrastructure Design", "Software Deployment", "System Integration", "Migration Services"]
-      },
-      {
-        title: "IT Operations Support",
-        desc: "Our team provides continuous support to ensure your IT infrastructure runs smoothly and securely, minimizing downtime.",
-        image: "Images/IT Operations Support.png",
-        features: ["24/7 Monitoring", "Help Desk Support", "Network Management", "Maintenance & Upgrades"]
-      },
-      {
-        title: "Web Development",
-        desc: "Custom web solutions tailored to your security needs, from simple websites to complex web applications.",
-        image: "Images/Webdev.png",
-        features: ["Custom Websites", "E-commerce Solutions", "Web Applications", "API Development"]
-      },
-      {
-        title: "End-User Computing",
-        desc: "Empowering your workforce with the right tools, devices, and secure environments for productivity.",
-        image: "Images/EndUser.png",
-        features: ["Device Management", "Microsoft 365 / Google Workspace", "Endpoint Security", "User Training & Support", "AI Automation"]
-      },
-      {
-        title: "Governance & Compliance",
-        desc: "Helping your business stay secure, compliant, and aligned with industry standards and regulations.",
-        image: "Images/Gov&Com.png",
-        features: ["IT Governance Frameworks", "Data Privacy & Protection", "Regulatory Compliance", "Risk Management & Reporting", "Policy Development & Audits"]
-      }
+    const glowMaterial = new THREE.MeshBasicMaterial({
+      color: COLORS.blue,
+      transparent: true,
+      opacity: .92
+    });
+
+    const glowLine = new THREE.LineBasicMaterial({
+      color: COLORS.blue,
+      transparent: true,
+      opacity: .46
+    });
+
+    // 1. Back lock body.
+    const backBody = remember(new THREE.Group(), { x: 0, y: 0, z: -.34 }, { x: 0, y: .1, z: 0 });
+    const backGeometry = new THREE.ExtrudeGeometry(roundedRect(1.72, 1.36, .22), {
+      depth: .46,
+      bevelEnabled: true,
+      bevelSize: .055,
+      bevelThickness: .07,
+      bevelSegments: 10,
+      curveSegments: 24
+    });
+    backGeometry.center();
+    const backMesh = new THREE.Mesh(backGeometry, blackMetal);
+    backMesh.position.y = -.38;
+    backBody.add(backMesh);
+
+    // 2. Front lock face.
+    const frontFace = remember(new THREE.Group(), { x: 0, y: -.01, z: .34 }, { x: 0, y: -.08, z: 0 });
+    const faceGeometry = new THREE.ExtrudeGeometry(roundedRect(1.54, 1.18, .18), {
+      depth: .13,
+      bevelEnabled: true,
+      bevelSize: .035,
+      bevelThickness: .045,
+      bevelSegments: 8,
+      curveSegments: 22
+    });
+    faceGeometry.center();
+    const faceMesh = new THREE.Mesh(faceGeometry, frontMetal);
+    faceMesh.position.set(0, -.38, .25);
+    frontFace.add(faceMesh);
+
+    const faceRimGeometry = new THREE.EdgesGeometry(faceGeometry, 20);
+    const faceRim = new THREE.LineSegments(faceRimGeometry, new THREE.LineBasicMaterial({ color: COLORS.blue, transparent: true, opacity: .2 }));
+    faceRim.position.copy(faceMesh.position);
+    frontFace.add(faceRim);
+
+    // 3. Shackle.
+    const shackle = remember(new THREE.Group(), { x: 0, y: .34, z: .12 }, { x: -.08, y: .08, z: 0 });
+    const shackleMesh = new THREE.Mesh(new THREE.TorusGeometry(.58, .09, 22, 128, Math.PI), bevelMetal);
+    shackleMesh.rotation.z = Math.PI;
+    shackleMesh.scale.y = 1.35;
+    shackleMesh.position.set(0, .26, 0);
+    shackle.add(shackleMesh);
+
+    const leftPost = new THREE.Mesh(new THREE.CylinderGeometry(.09, .09, .72, 24), bevelMetal);
+    leftPost.position.set(-.58, -.16, 0);
+    const rightPost = new THREE.Mesh(new THREE.CylinderGeometry(.09, .09, .72, 24), bevelMetal);
+    rightPost.position.set(.58, -.16, 0);
+    shackle.add(leftPost, rightPost);
+
+    // 4. Glowing inner core.
+    const innerCore = remember(new THREE.Group(), { x: 0, y: -.02, z: .48 }, { x: 0, y: 0, z: 0 });
+    const keyholeTop = new THREE.Mesh(new THREE.CircleGeometry(.125, 48), glowMaterial);
+    keyholeTop.position.set(0, -.26, .36);
+    const keyholeStem = new THREE.Mesh(new THREE.PlaneGeometry(.105, .34), glowMaterial);
+    keyholeStem.position.set(0, -.47, .365);
+    innerCore.add(keyholeTop, keyholeStem);
+
+    const circuitGroup = new THREE.Group();
+    const circuitPaths = [
+      [[-.58, -.05, .37], [-.28, -.05, .37], [-.18, -.18, .37]],
+      [[.58, -.05, .37], [.28, -.05, .37], [.18, -.18, .37]],
+      [[-.48, -.72, .37], [-.2, -.62, .37], [-.12, -.5, .37]],
+      [[.48, -.72, .37], [.2, -.62, .37], [.12, -.5, .37]],
+      [[-.42, .05, .37], [-.18, .14, .37], [0, .02, .37]],
+      [[.42, .05, .37], [.18, .14, .37], [0, .02, .37]]
     ];
 
-    function buildServiceCards() {
-      serviceCardRail.innerHTML = services.map((service, index) => `
-        <button class="service-card" type="button" data-index="${index}">
-          <img src="${service.image}" alt="" />
-          <span>${service.title}</span>
-        </button>
-      `).join("");
+    for (const path of circuitPaths) {
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(path.map(([x, y, z]) => new THREE.Vector3(x, y, z))), glowLine);
+      circuitGroup.add(line);
+    }
+    innerCore.add(circuitGroup);
 
-      serviceCardRail.querySelectorAll(".service-card").forEach(button => {
-        button.addEventListener("click", () => setService(Number(button.dataset.index)));
-      });
+    const rimLight = new THREE.DirectionalLight(COLORS.blue, 3.3);
+    rimLight.position.set(-3.5, 2.8, 4.4);
+    const fillLight = new THREE.PointLight(COLORS.blue, 3.4, 10);
+    fillLight.position.set(0, .5, 3.4);
+    const glintLight = new THREE.DirectionalLight(0xffffff, .72);
+    glintLight.position.set(2.4, 3.2, 5);
+    scene.add(new THREE.AmbientLight(0x243043, .3), rimLight, fillLight, glintLight);
+
+    // Replace this placeholder with a real Blender GLB later.
+    // Put the file at public/models/cyber-padlock.glb in a Vite project,
+    // load it with GLTFLoader, then map the GLB meshes into these same four groups:
+    // frontFace, backBody, shackle, and innerCore.
+
+    const timeline = gsap.timeline({
+      scrollTrigger: {
+        trigger: hero,
+        start: "top top",
+        end: "+=320%",
+        pin: true,
+        scrub: 1.1,
+        anticipatePin: 1
+      }
+    });
+
+    timeline
+      .to(camera.position, { z: 4.7, duration: .3, ease: "power2.out" }, 0)
+      .to(state, { glow: 1.25, duration: .3, ease: "power2.out" }, 0)
+      .to(state, { split: 1, glow: 1.65, duration: .45, ease: "power2.inOut" }, .3)
+      .to(camera.position, { z: 3.65, duration: .45, ease: "power2.inOut" }, .3)
+      .to(state, { split: 1, duration: .25, ease: "none" }, .75)
+      .to(state, { split: 0, glow: 2.1, duration: .25, ease: "power2.inOut" }, 1)
+      .to(camera.position, { z: 2.15, duration: .25, ease: "power2.inOut" }, 1);
+
+    function resize() {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      renderer.setSize(width, height, false);
     }
 
-    function setService(index) {
-      const service = services[index];
-      serviceShowcaseImage.classList.add("is-switching");
+    window.addEventListener("resize", resize);
+    resize();
 
-      setTimeout(() => {
-        serviceCount.textContent = `${String(index + 1).padStart(2, "0")} / ${String(services.length).padStart(2, "0")}`;
-        serviceTitle.textContent = service.title;
-        serviceDesc.textContent = service.desc;
-        serviceCta.href = "consultation.html";
-        serviceFeatures.innerHTML = service.features.map(feature => `<li>${feature}</li>`).join("");
-        serviceShowcaseImage.src = service.image;
-        serviceShowcaseImage.alt = service.title;
-        serviceCardRail.querySelectorAll(".service-card").forEach((card, cardIndex) => {
-          card.classList.toggle("is-active", cardIndex === index);
-        });
-        serviceShowcaseImage.classList.remove("is-switching");
-      }, 160);
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const time = clock.getElapsedTime();
+      const split = state.split;
+
+      lock.rotation.y = Math.sin(time * .24) * .16 + time * .045;
+      lock.rotation.x = Math.sin(time * .18) * .025;
+      lock.scale.setScalar(1.42 + (6.4 - camera.position.z) * .095);
+
+      for (const part of parts) {
+        part.position.lerpVectors(part.userData.homePosition, part.userData.splitPosition, split);
+        part.rotation.x = THREE.MathUtils.lerp(part.userData.homeRotation.x, part.userData.splitRotation.x, split);
+        part.rotation.y = THREE.MathUtils.lerp(part.userData.homeRotation.y, part.userData.splitRotation.y, split);
+        part.rotation.z = THREE.MathUtils.lerp(part.userData.homeRotation.z, part.userData.splitRotation.z, split);
+      }
+
+      glowMaterial.opacity = .76 + Math.sin(time * 2.4) * .08;
+      glowLine.opacity = .25 + split * .28 + Math.sin(time * 1.7) * .06;
+      fillLight.intensity = 2.1 + state.glow * 1.45;
+      camera.lookAt(0, -.2, 0);
+      renderer.render(scene, camera);
     }
 
-    buildServiceCards();
-    setService(0);
-window.addEventListener("scroll", () => {
-      const y = window.scrollY;
-      root.style.setProperty("--bg-shift", `${Math.min(80, y * .035)}px`);
-      root.style.setProperty("--hero-drift-y", `${Math.min(26, y * .025)}px`);
-      root.style.setProperty("--hero-drift-x", `${Math.sin(y * .003) * 18}px`);
-      header.classList.toggle("is-small", y > 26);
-    }, { passive: true });
-
-    window.addEventListener("mousemove", event => {
-      root.style.setProperty("--mx", `${event.clientX}px`);
-      root.style.setProperty("--my", `${event.clientY}px`);
-
-});
-
-    document.getElementById("copyrightYear").textContent = new Date().getFullYear();
+    animate();
   </script>
 </body>
 </html>
+

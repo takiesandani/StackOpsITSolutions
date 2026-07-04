@@ -7,12 +7,12 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/mobile.css" media="screen and (max-width: 768px)">
-  <style id="stackops-footer-design">
+    <style id="stackops-footer-design">
     .stackops-site-footer {
       position: relative;
       width: 96%;
       margin: 0 auto 26px;
-      padding: 44px clamp(24px, 4vw, 64px);
+      padding: 44px clamp(24px, 4vw, 64px) 76px;
       border-radius: 42px;
       background: linear-gradient(135deg, rgba(255,255,255,.10), rgba(255,255,255,.032));
       border: 1px solid rgba(255,255,255,.11);
@@ -36,13 +36,14 @@
       max-width: 250px;
       padding-top: 61px;
       text-align: left;
+      min-height: 150px;
     }
     .stackops-footer-logo img {
       position: absolute;
       top: 12px;
       left: 14px;
       display: block;
-      width: 124px;
+      width: clamp(104px, 26vw, 124px);
       height: 45px;
       object-fit: contain;
       object-position: left center;
@@ -76,6 +77,14 @@
       margin: 0;
     }
     .stackops-site-footer p { margin: 0 0 6px; }
+    .stackops-footer-logo p {
+      position: absolute;
+      top: 98px;
+      left: 30px;
+      width: min(250px, calc(100% - 60px));
+      max-width: 250px;
+      margin: 0;
+    }
     .stackops-site-footer a { text-decoration: none; transition: color .25s ease; }
     .stackops-site-footer a:hover { color: #fff; }
     .stackops-footer-socials {
@@ -104,7 +113,10 @@
     }
     .stackops-footer-socials svg { width: 17px; height: 17px; fill: currentColor; }
     .stackops-footer-copyright {
-      margin-top: 36px;
+      position: absolute;
+      left: 30px;
+      right: 40px;
+      bottom: 34px;
       color: rgba(255,255,255,.42);
       font-size: .86rem;
       font-weight: 200;
@@ -117,8 +129,9 @@
     @media (max-width: 620px) {
       .stackops-site-footer { border-radius: 30px; width: 94%; }
       .stackops-footer-grid { grid-template-columns: 1fr; }
-      .stackops-footer-logo { grid-column: auto; justify-self: start; text-align: left; }
+      .stackops-footer-logo { grid-column: auto; justify-self: start; text-align: left; min-height: 150px; }
       .stackops-footer-logo img { top: 10px; left: 12px; }
+      .stackops-footer-logo p { top: 100px; left: 30px; width: min(230px, calc(100% - 60px)); }
     }
   </style>
 </head>
