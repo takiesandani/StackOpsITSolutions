@@ -1,0 +1,145 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const html = fs.readFileSync(path.join(__dirname, '..', 'admin-intelligence.html'), 'utf8');
+const javascript = fs.readFileSync(path.join(__dirname, '..', 'js', 'admin-intelligence.js'), 'utf8');
+const stylesheet = fs.readFileSync(path.join(__dirname, '..', 'css', 'admin-intelligence.css'), 'utf8');
+const adminRoutes = fs.readFileSync(path.join(__dirname, '..', 'routes', 'admin-intelligence.js'), 'utf8');
+
+test('admin control center includes every enterprise audit action', () => {
+    for (const phrase of [
+        'Run Enterprise Deep Report',
+        'Run Domain Deep Analysis',
+        'Run Selected Domain Deep Analysis',
+        'Run Enterprise Synthesis',
+        'View Enterprise Evidence Audit',
+        'Compare StackCTRL Data vs Azure Input',
+        'Compare Compact Output vs Enterprise Output',
+        'View Domain Intelligence',
+        'View Final Enterprise Report'
+    ]) assert.match(html, new RegExp(phrase));
+});
+
+test('admin audit shows input, omissions, Azure output depth, tokens, retries, and status', () => {
+    for (const field of [
+        'StackCTRLDataCount', 'SentToAzureCount', 'OmittedCount',
+        'InputTokens', 'OutputTokens', 'RetryCount', 'AzureInputSummaryJson',
+        'AnalysisJson', 'BatchSummaryJson', 'AzureFinishReason'
+    ]) assert.match(javascript, new RegExp(field));
+});
+
+test('admin audit exposes catalog, evidence, JSON recovery, and affected-entity diagnostics', () => {
+    for (const phrase of [
+        'Catalog Categories', 'Catalog Entity Rows', 'Evidence Rows Included', 'JSON status',
+        'Affected entities', 'Records remaining', 'Estimated tokens', 'Cooldown / retry',
+        'skipped_token_threshold', 'No safe batch was available'
+    ]) assert.match(html.includes(phrase) ? html : javascript, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+});
+
+test('admin enterprise UI uses clear batch labels and latest/history filters', () => {
+    for (const phrase of [
+        'Total StackCTRL Data',
+        'Prepared for Azure',
+        'Successfully Analysed by Azure',
+        'Permanently Omitted',
+        'Completed Batches',
+        'Failed Batches',
+        'Latest run only',
+        'Show all runs',
+        'Failed only',
+        'Completed only',
+        'Runs all domains and final synthesis. Use selected-domain testing first.'
+    ]) assert.match(html, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+});
+
+test('enterprise audit title is reset from the currently rendered latest domain', () => {
+    assert.match(html, /id="enterprise-audit-title">Enterprise evidence and output audit</);
+    assert.match(html, /id="enterprise-audit-subtitle"/);
+    assert.match(javascript, /function updateEnterpriseAuditHeading/);
+    assert.match(javascript, /function resolveEnterprisePrimaryDomain/);
+    assert.match(javascript, /function enterpriseDomainDisplayName/);
+    assert.match(javascript, /function parseEnterpriseRunModeDomainKey/);
+    assert.match(javascript, /const displayedRows = domainRows\.length \? domainRows : audits/);
+    assert.match(javascript, /Number\(selectedDomain\.runId\) === latestRunId/);
+    assert.match(javascript, /function selectEnterpriseDomain/);
+    assert.match(javascript, /const filterByRun = row => !showLatestOnly \|\| !latestRunId \|\| Number\(row\.RunID\) === Number\(latestRunId\)/);
+    assert.doesNotMatch(javascript, /Number\(row\.ID\) === Number\(latestRunId\)/);
+    assert.match(javascript, /supportedEnterpriseDomains\.find\(domain => domain\.key === domainKey\)/);
+    assert.match(javascript, /el\('enterprise-audit-title'\)\.textContent = domainName/);
+    assert.match(javascript, /el\('enterprise-audit-subtitle'\)\.textContent/);
+    assert.match(javascript, /state\.enterpriseSelectedDomain = null/);
+});
+
+test('admin content and JSON input stay below the measured fixed header', () => {
+    assert.match(javascript, /function syncIntelligenceHeaderOffset/);
+    assert.match(javascript, /--intel-header-height/);
+    assert.match(javascript, /content\.scrollTop = 0/);
+    assert.match(javascript, /document\.body\.classList\.add\('json-modal-open'\)/);
+    assert.match(javascript, /document\.body\.classList\.remove\('json-modal-open'\)/);
+    assert.match(stylesheet, /scroll-padding-top:\s*calc\(var\(--intel-header-height\) \+ 18px\)/);
+    assert.match(stylesheet, /scroll-margin-top:\s*calc\(var\(--intel-header-height\) \+ 18px\)/);
+    assert.match(stylesheet, /margin-top:\s*var\(--intel-header-height\)/);
+    assert.match(stylesheet, /place-items:\s*start center/);
+    assert.match(stylesheet, /max-height:\s*calc\(100dvh - var\(--intel-header-height\) - 38px\)/);
+    assert.match(stylesheet, /\.enterprise-audit-panel > \.panel-heading \{[^}]*min-height:\s*88px/);
+    assert.match(stylesheet, /#enterprise-audit-subtitle \{[^}]*position:\s*static/);
+});
+
+test('enterprise lineage and modal views format object values instead of [object Object]', () => {
+    assert.match(javascript, /function formatDisplayValue/);
+    assert.match(javascript, /function formatLineageCell/);
+    assert.match(javascript, /function openJsonModal/);
+    assert.match(html, /id="json-modal-subtitle"/);
+    assert.match(html, /id="json-modal-label"/);
+    assert.match(javascript, /trimmed === '\[object Object\]'/);
+});
+
+test('enterprise input comparison renders run-scoped source lineage', () => {
+    for (const heading of ['StackCTRL Source', 'Enterprise Azure Input', 'Azure Output', 'Stored Intelligence', 'Status']) {
+        assert.match(html, new RegExp(heading));
+    }
+    assert.match(html, /id="enterprise-lineage-body"/);
+    assert.match(html, /id="enterprise-lineage-summary"/);
+    assert.match(javascript, /dataLineageComparison/);
+    assert.match(javascript, /AzureInputSummaryJson\?\.dataLineage/);
+    assert.match(javascript, /target: event\.currentTarget\.dataset\.enterpriseView === 'input' \? 'lineage' : 'audit'/);
+    assert.match(javascript, /el\('enterprise-audit-results'\)\?\.scrollIntoView/);
+    assert.match(javascript, /lineageMetadata\.sourceBuilder/);
+    assert.match(javascript, /lineageAudit\.RunID/);
+    assert.match(javascript, /lineageAudit\.SnapshotID/);
+});
+
+test('admin enterprise UI shows full pipeline progress and queue status', () => {
+    for (const phrase of [
+        'enterprise-pipeline-progress',
+        'Full run status',
+        'Current domain',
+        'Domains completed',
+        'Failed / blocked / skipped',
+        'Synthesis status',
+        'Final report ready',
+        'enterprise-pipeline-queue'
+    ]) assert.match(html.includes(phrase) ? html : javascript, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+});
+
+test('admin enterprise actions render stored failure statuses instead of unconditional success', () => {
+    assert.match(javascript, /enterpriseActionMessage/);
+    assert.match(javascript, /failed_rate_limited/);
+    assert.match(javascript, /Azure rate limit reached/);
+    assert.match(javascript, /completed with warnings/);
+    assert.match(javascript, /Retry failed domain/);
+});
+
+test('admin polling uses lightweight progress and heavy enterprise content is loaded on demand', () => {
+    assert.match(adminRoutes, /getAdminProgress/);
+    for (const pathPart of ['enterprise/domain/:domainKey', 'enterprise/audit/:domainKey', 'enterprise/batches/:domainKey', 'enterprise/synthesis/:runId']) {
+        assert.match(adminRoutes, new RegExp(pathPart.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    }
+    assert.match(javascript, /View batch diagnostics/);
+    assert.match(javascript, /enterprise\/audit\/\$\{encodeURIComponent/);
+    assert.match(javascript, /enterprise\/domain\/\$\{encodeURIComponent/);
+    assert.match(javascript, /Enterprise progress polling stopped/);
+    assert.doesNotMatch(javascript, /loadEnterprise\(\)\.catch\(\(\) => \{\}\)/);
+});

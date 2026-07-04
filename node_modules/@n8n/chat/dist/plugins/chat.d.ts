@@ -1,0 +1,3 @@
+import { Plugin } from 'vue';
+import { ChatOptions } from '../types';
+export declare const ChatPlugin: Plugin<ChatOptions>;

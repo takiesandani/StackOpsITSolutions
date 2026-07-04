@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contact Us | CyberShield</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/mobile.css" media="screen and (max-width: 768px)">
+  <style id="stackops-footer-design">
+    .stackops-site-footer {
+      position: relative;
+      width: 96%;
+      margin: 0 auto 26px;
+      padding: 44px clamp(24px, 4vw, 64px);
+      border-radius: 42px;
+      background: linear-gradient(135deg, rgba(255,255,255,.10), rgba(255,255,255,.032));
+      border: 1px solid rgba(255,255,255,.11);
+      backdrop-filter: blur(22px) saturate(145%);
+      -webkit-backdrop-filter: blur(22px) saturate(145%);
+      color: rgba(255,255,255,.70);
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      overflow: hidden;
+    }
+    .stackops-footer-grid {
+      display: grid;
+      grid-template-columns: minmax(220px, 1.2fr) repeat(5, minmax(132px, 1fr));
+      gap: 30px;
+      align-items: start;
+    }
+    .stackops-footer-logo {
+      grid-column: 1;
+      grid-row: 1;
+      justify-self: start;
+      align-self: start;
+      max-width: 250px;
+      padding-top: 61px;
+      text-align: left;
+    }
+    .stackops-footer-logo img {
+      position: absolute;
+      top: 12px;
+      left: 14px;
+      display: block;
+      width: 124px;
+      height: 45px;
+      object-fit: contain;
+      object-position: left center;
+      margin: 0;
+    }
+    .stackops-footer-logo p,
+    .stackops-site-footer p,
+    .stackops-site-footer a,
+    .stackops-site-footer li {
+      color: rgba(255,255,255,.60);
+      font-size: .94rem;
+      line-height: 1.7;
+      font-weight: 200;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .stackops-site-footer h3 {
+      font-size: 1rem;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      margin: 0 0 15px;
+      color: rgba(255,255,255,.74);
+      font-weight: 200;
+      line-height: 1.6;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .stackops-site-footer ul {
+      list-style: none;
+      display: grid;
+      gap: 8px;
+      padding: 0;
+      margin: 0;
+    }
+    .stackops-site-footer p { margin: 0 0 6px; }
+    .stackops-site-footer a { text-decoration: none; transition: color .25s ease; }
+    .stackops-site-footer a:hover { color: #fff; }
+    .stackops-footer-socials {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 16px;
+    }
+    .stackops-footer-socials a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      color: rgba(255,255,255,.72);
+      background: rgba(255,255,255,.07);
+      border: 1px solid rgba(255,255,255,.12);
+      transition: transform .25s ease, background .25s ease, color .25s ease, border-color .25s ease;
+    }
+    .stackops-footer-socials a:hover {
+      transform: translateY(-3px);
+      color: #fff;
+      background: rgba(72,216,255,.16);
+      border-color: rgba(72,216,255,.36);
+    }
+    .stackops-footer-socials svg { width: 17px; height: 17px; fill: currentColor; }
+    .stackops-footer-copyright {
+      margin-top: 36px;
+      color: rgba(255,255,255,.42);
+      font-size: .86rem;
+      font-weight: 200;
+      line-height: 1.6;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    }
+    @media (max-width: 980px) {
+      .stackops-footer-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+    @media (max-width: 620px) {
+      .stackops-site-footer { border-radius: 30px; width: 94%; }
+      .stackops-footer-grid { grid-template-columns: 1fr; }
+      .stackops-footer-logo { grid-column: auto; justify-self: start; text-align: left; }
+      .stackops-footer-logo img { top: 10px; left: 12px; }
+    }
+  </style>
+</head>
+<body>
+    <!-- Background -->
+    <div class="background"></div>
+
+    <header class="site-header">
+
+        <!-- Logo -->
+        <a href="/" class="logo">
+            <img src="Images/Logos/RemovedStackOps.png" alt="Stackops IT Solutions Logo">
+        </a>
+
+        <!-- Center Navigation -->
+        <ul class="nav-links center-nav" id="nav-links">
+            <li><a href="about.html">About</a></li>
+            <li><a href="service.html">Solutions</a></li>
+            <li><a href="approach.html">Approach</a></li>
+            <li><a href="consultation.html">Consultation</a></li>
+            <li><a href="ClientDashboardHome.html">Client Portal</a></li>
+        </ul>
+
+        <!-- Right Side Icons -->
+        <div class="header-actions">
+
+            <a href="Home.html" class="glass-icon-btn" aria-label="Home">
+                <i class="fas fa-house"></i>
+            </a>
+
+            <a href="contact.html" class="glass-icon-btn" aria-label="Contact Us">
+                <i class="fas fa-phone"></i>
+            </a>
+
+            <a href="https://proqpilot.com" id="shop-link" class="glass-icon-btn" aria-label="Shop">
+                <i class="fas fa-cart-shopping"></i>
+            </a>
+
+            <!-- Hamburger -->
+            <div id="hamburger" class="hamburger">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+
+        </div>
+
+    </header>
+
+    <section class="contact">
+    <div class="containers">
+        <div class="contact-grid">
+
+            <div class="image-left">
+                
+                    <img src="Images/Calling.png" alt="Abstract image of hard drive components">               
+                
+            </div>
+
+            <div class="contact-right-side">
+
+                <div class="contact-header">
+                    <h2>Contact Us</h2>
+                    <p>Have questions about our services or ready to start a project? Reach out to us using the contact form or through our contact details.</p>
+                    <div class="contact-details-grid">
+                        <div class="contact-details-column">
+                            <p class="contact-detail">
+                                <i class="fas fa-phone"></i>
+                                <span><a href="tel:0115689337">011 568 9337</a></span>
+                            </p>
+                            
+                            <p class="contact-detail">
+                                <i class="fas fa-envelope"></i>
+                                <span><a href="mailto:info@stackopsit.co.za">info@stackopsit.co.za</a></span>
+                            </p>
+                            <p class="contact-detail">
+                                <i class="fas fa-envelope"></i>
+                                <span><a href="mailto:info@stackopsit.co.za">support@stackopsit.co.za</a></span>
+                            </p>
+                        </div>
+                        <div class="contact-details-column contact-details-column--right">
+                            <p class="contact-detail">
+                                <i class="fas fa-envelope"></i>
+                                <span><a href="mailto:sales@stackopsit.co.za">sales@stackopsit.co.za</a></span>
+                            </p>
+                            <p class="contact-detail contact-detail--address">
+                                <i class="fas fa-map-marker-alt"></i>
+                                <span>
+                                    <a href="https://www.google.com/maps?q=Mia+Drive,+Waterfall+City,+Johannesburg,+1685" target="_blank">
+                                        Mia Drive, Waterfall City, Johannesburg, 1685
+                                    </a>
+                                </span>
+                            </p>
+                        </div>
+                    </div>
+                    
+                </div>
+
+
+                <div class="contact-form">
+                    <form id="contactForm">
+                        <div class="form-group-name">
+                            <div class="name-field">
+                                <label for="firstName">First Name (required)</label>
+                                <input type="text" id="firstName" name="firstName" placeholder="First Name" required>
+                            </div>
+                            <div class="name-field">
+                                <label for="lastName">Last Name</label>
+                                <input type="text" id="lastName" name="lastName" placeholder="Last Name" required>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="company">Company</label>
+                            <input type="text" id="company" name="company" placeholder="Your Company Name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="contact">Contact</label>
+                            <input type="tel" id="contact" name="contact" placeholder="Contact details" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="email">Email (required)</label>
+                            <input type="email" id="email" name="email" placeholder="Your Email" required>
+                        </div>
+                        
+                        <div class="category">
+                            <label for="service">Service Interested In</label>
+                            <select id="service" name="service" required>
+                                <option value="">Select a Service</option>
+                                <option value="Cybersecurity Consulting">Cybersecurity Consulting</option>
+                                <option value="Cloud Security">Cloud Security</option>
+                                <option value="Systems Implementation">Systems Implementation</option>
+                                <option value="IT Operations Support">IT Operations Support</option>
+                                <option value="End-user computing">End-user computing</option>
+                                <option value="Governance & Compliance">Governance & Compliance</option>
+                                <option value="Web Development">Web Development</option>
+                                <option value="Mobile App Development">Mobile App Development</option>
+                                <option value="AI Automations">AI Automations</option>
+                                <option value="Web Design">Web Design</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="message">Message (required)</label>
+                            <textarea id="message" name="message" placeholder="How can we help you?" rows="5" required></textarea>
+                        </div>
+                        
+                        <div class="glow-wrap contact-form-btn">
+                          <div class="glowing-border-layer"></div>
+                          <button type="submit" class="link-content" style="border: none; background: transparent; cursor: pointer;">SEND</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+    <!-- Footer -->
+    <footer class="stackops-site-footer">
+      <div class="stackops-footer-grid">
+        <div class="stackops-footer-logo">
+          <img src="Images/Logos/RemovedStackOps.png" alt="StackOps IT Solutions" />
+          <p>Managed IT and cybersecurity for modern businesses.</p>
+        </div>
+
+        <div>
+          <h3>Quick Links</h3>
+          <ul>
+            <li><a href="Home.html">Home</a></li>
+            <li><a href="about.html">About us</a></li>
+            <li><a href="contact.html">Contact</a></li>
+            <li><a href="consultation.html">Book a session</a></li>
+            <li><a href="signin.html">Admin portal</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h3>Services</h3>
+          <ul>
+            <li><a href="service.html">Managed IT</a></li>
+            <li><a href="service.html">Cybersecurity</a></li>
+            <li><a href="service.html">Governance</a></li>
+            <li><a href="service.html">IT audit</a></li>
+            <li><a href="service.html">Web development</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h3>Solutions</h3>
+          <ul>
+            <li><a href="ClientDashboardHome.html">StackCTRL portal</a></li>
+            <li><a href="https://proqpilot.com">ProQ Pilot shop</a></li>
+            <li><a href="service.html">Microsoft 365</a></li>
+            <li><a href="service.html">Cisco Duo</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h3>Disclaimer</h3>
+          <ul>
+            <li><a href="service.html#web-development">POPIA</a></li>
+            <li><a href="service.html#web-design">Privacy policy</a></li>
+            <li><a href="service.html#mobile-development">Terms</a></li>
+            <li><a href="service.html">Security audits</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h3>Contact</h3>
+          <p><a href="mailto:info@stackopsit.co.za">info@stackopsit.co.za</a></p>
+          <p><a href="mailto:support@stackopsit.co.za">support@stackopsit.co.za</a></p>
+          <p><a href="mailto:sales@stackopsit.co.za">sales@stackopsit.co.za</a></p>
+          <p>Mia Drive, Waterfall City, Johannesburg, 1685</p>
+          <p>011 568 9337</p>
+          <div class="stackops-footer-socials" aria-label="Social links">
+            <a href="https://www.linkedin.com/in/ndamulelo-sandani-0988289a/overlay/about-this-profile/?lipi=urn%3Ali%3Apage%3Ad_flagship3_profile_view_base%3BAO9qQ1ErRwqaNzIPO5obNA%3D%3D" aria-label="LinkedIn" target="_blank" rel="noopener noreferrer"><i class="fab fa-linkedin-in" aria-hidden="true"></i></a>
+            <a href="#" aria-label="X"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.9 2H22l-6.8 7.78L23.2 22h-6.26l-4.9-6.4L6.44 22H3.32l7.28-8.32L2.92 2h6.42l4.43 5.86L18.9 2zm-1.1 17.85h1.72L8.4 4.04H6.55L17.8 19.85z"/></svg></a>
+            <a href="#" aria-label="Facebook"><i class="fab fa-facebook-f" aria-hidden="true"></i></a>
+            <a href="#" aria-label="Instagram"><i class="fab fa-instagram" aria-hidden="true"></i></a>
+          </div>
+        </div>
+      </div>
+      <div class="stackops-footer-copyright">© <span id="copyright-year" class="copyright-year">2026</span> StackOps IT Solutions. All rights reserved.</div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+                const hamburger = document.getElementById('hamburger');
+                let menu = null;
+
+                function openMenu() {
+                    menu = document.createElement('div');
+                    menu.id = 'minimal-menu';
+                    menu.innerHTML = `
+                        <ul>
+                            <li><a href="Home.html">Home</a></li>
+                            <li><a href="about.html">About</a></li>
+                            <li><a href="service.html">Solutions</a></li>
+                            <li><a href="approach.html">Our Approach</a></li>
+                            <li><a href="contact.html">Contact Us</a></li>
+                            <li><a href="consultation.html">Book a Consultation</a></li>
+                            <li><a href="ClientDashboardHome.html
+">Client Portal</a></li>
+                            <li><a href="https://proqpilot.com">Shop</a></li>
+                        </ul>
+                    `;
+                    document.body.appendChild(menu);
+                    hamburger.classList.add('active');
+                }
+
+                function closeMenu() {
+                    if (menu) {
+                        menu.remove();
+                        menu = null;
+                        hamburger.classList.remove('active');
+                    }
+                }
+
+                hamburger.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    menu ? closeMenu() : openMenu();
+                });
+
+                document.addEventListener('click', (e) => {
+                    if (menu && !menu.contains(e.target) && e.target !== hamburger) {
+                        closeMenu();
+                    }
+                });
+            });
+    </script>
+    <script src="js/script.js"></script>
+</body>
+</html>

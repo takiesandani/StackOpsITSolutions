@@ -1,0 +1,4 @@
+import { InjectionKey } from 'vue';
+import { Chat, ChatOptions } from '../types';
+export declare const ChatSymbol: InjectionKey<Chat>;
+export declare const ChatOptionsSymbol: InjectionKey<ChatOptions>;

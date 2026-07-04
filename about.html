@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About Us | StackOps IT Solutions</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+  <style id="stackops-footer-design">
+    .stackops-site-footer {
+      position: relative;
+      width: 96%;
+      margin: 0 auto 26px;
+      padding: 44px clamp(24px, 4vw, 64px);
+      border-radius: 42px;
+      background: linear-gradient(135deg, rgba(255,255,255,.10), rgba(255,255,255,.032));
+      border: 1px solid rgba(255,255,255,.11);
+      backdrop-filter: blur(22px) saturate(145%);
+      -webkit-backdrop-filter: blur(22px) saturate(145%);
+      color: rgba(255,255,255,.70);
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      overflow: hidden;
+    }
+    .stackops-footer-grid {
+      display: grid;
+      grid-template-columns: minmax(220px, 1.2fr) repeat(5, minmax(132px, 1fr));
+      gap: 30px;
+      align-items: start;
+    }
+    .stackops-footer-logo {
+      grid-column: 1;
+      grid-row: 1;
+      justify-self: start;
+      align-self: start;
+      max-width: 250px;
+      padding-top: 61px;
+      text-align: left;
+    }
+    .stackops-footer-logo img {
+      position: absolute;
+      top: 12px;
+      left: 14px;
+      display: block;
+      width: 124px;
+      height: 45px;
+      object-fit: contain;
+      object-position: left center;
+      margin: 0;
+    }
+    .stackops-footer-logo p,
+    .stackops-site-footer p,
+    .stackops-site-footer a,
+    .stackops-site-footer li {
+      color: rgba(255,255,255,.60);
+      font-size: .94rem;
+      line-height: 1.7;
+      font-weight: 200;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .stackops-site-footer h3 {
+      font-size: 1rem;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      margin: 0 0 15px;
+      color: rgba(255,255,255,.74);
+      font-weight: 200;
+      line-height: 1.6;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .stackops-site-footer ul {
+      list-style: none;
+      display: grid;
+      gap: 8px;
+      padding: 0;
+      margin: 0;
+    }
+    .stackops-site-footer p { margin: 0 0 6px; }
+    .stackops-site-footer a { text-decoration: none; transition: color .25s ease; }
+    .stackops-site-footer a:hover { color: #fff; }
+    .stackops-footer-socials {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 16px;
+    }
+    .stackops-footer-socials a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      color: rgba(255,255,255,.72);
+      background: rgba(255,255,255,.07);
+      border: 1px solid rgba(255,255,255,.12);
+      transition: transform .25s ease, background .25s ease, color .25s ease, border-color .25s ease;
+    }
+    .stackops-footer-socials a:hover {
+      transform: translateY(-3px);
+      color: #fff;
+      background: rgba(72,216,255,.16);
+      border-color: rgba(72,216,255,.36);
+    }
+    .stackops-footer-socials svg { width: 17px; height: 17px; fill: currentColor; }
+    .stackops-footer-copyright {
+      margin-top: 36px;
+      color: rgba(255,255,255,.42);
+      font-size: .86rem;
+      font-weight: 200;
+      line-height: 1.6;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    }
+    @media (max-width: 980px) {
+      .stackops-footer-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+    @media (max-width: 620px) {
+      .stackops-site-footer { border-radius: 30px; width: 94%; }
+      .stackops-footer-grid { grid-template-columns: 1fr; }
+      .stackops-footer-logo { grid-column: auto; justify-self: start; text-align: left; }
+      .stackops-footer-logo img { top: 10px; left: 12px; }
+    }
+  </style>
+</head>
+<body>
+<div class="background"></div>
+
+<header class="site-header">
+
+    <!-- Logo -->
+    <a href="/" class="logo">
+        <img src="Images/Logos/RemovedStackOps.png" alt="Stackops IT Solutions Logo">
+    </a>
+
+    <!-- Center Navigation -->
+    <ul class="nav-links center-nav" id="nav-links">
+        <li><a href="about.html" class="active">About</a></li>
+        <li><a href="service.html">Solutions</a></li>
+        <li><a href="approach.html">Approach</a></li>
+        <li><a href="consultation.html">Consultation</a></li>
+        <li><a href="ClientDashboardHome.html
+"  class="active">Client Portal</a></li>
+    </ul>
+
+    <!-- Right Side Icons -->
+    <div class="header-actions">
+
+        <a href="Home.html" class="glass-icon-btn" aria-label="Home">
+            <i class="fas fa-house"></i>
+        </a>
+
+        <a href="contact.html" class="glass-icon-btn" aria-label="Contact Us">
+            <i class="fas fa-phone"></i>
+        </a>
+
+        <a href="https://proqpilot.com" id="shop-link" class="glass-icon-btn" aria-label="Shop">
+            <i class="fas fa-cart-shopping"></i>
+        </a>
+
+        <!-- Hamburger -->
+        <div id="hamburger" class="hamburger">
+            <span></span>
+            <span></span>
+            <span></span>
+        </div>
+
+    </div>
+
+</header>
+
+<section class="our-story-header-image">
+    <div class="about-content animated-content">
+         <h1>Our Story</h1>
+            <p> It takes wisdom to simplify complexity, and dedication to turn solutions into lasting impact. For over a decade, StackOps IT Solutions has been doing just that. As an all-rounder Managed Services Provider, we’ve spent the last 10 years refining our skills, learning from every challenge, and delivering solutions that not only meet expectations, they quietly exceed them. Our work speaks for itself. Behind every system we build is a team that cares deeply about quality, reliability, and the people we serve. We’re more than just an IT partner, we’re part of your journey, here to make sure technology empowers your growth.</p>
+    </div>
+
+    <div class="our-story-stats">
+            <div class="stat-item">
+                <i class="fas fa-calendar-alt stat-icon"></i>
+                <p class="stat-text">Est. 2016</p>
+            </div>
+            <div class="stat-item">
+                <i class="fas fa-award stat-icon"></i>
+                <p class="stat-text"> 
+                    L1
+                    B-BBEE
+                </p>
+            </div>
+    </div>
+
+</section>
+
+<section class="values">
+    <div class="container">
+        <div class="section-title">
+            <h2>Our Values</h2>
+            <p>The principles that guide everything we do</p>
+        </div>
+        <div class="values-grid">
+            <div class="value-item">
+                <i class="fas fa-shield-alt"></i>
+                <h3>Security First</h3>
+                <p>We prioritize security in every solution we deliver, ensuring our clients are protected against current and emerging threats.</p>
+            </div>
+            <div class="value-item">
+                <i class="fas fa-lightbulb"></i>
+                <h3>Innovation</h3>
+                <p>We adapt to the ever-changing IT landscape, ensuring our clients benefit from the latest innovations, tools, and strategies.</p>
+            </div>
+            <div class="value-item">
+                <i class="fas fa-handshake"></i>
+                <h3>Partnership</h3>
+                <p>We view ourselves as partners to our clients, working closely with them to understand their unique needs and challenges.</p>
+            </div>
+            <div class="value-item">
+                <i class="fas fa-star"></i>
+                <h3>Excellence</h3>
+                <p>We strive for excellence in everything we do, from the quality of our solutions to the service we provide.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="brands-logo-showcase">
+    <div class="section-title-full-width"> 
+        <div class="title-section-left">
+             <h1>
+            <span>Our</span><br>
+            <span>client</span><br>
+            <span>Stack</span>
+        </h1>
+            <p>THE COMPANIES THAT HAVE PLACED THEIR TRUST IN US.</p>
+        </div>
+        <div class="title-section-right">
+            <img src="Images/ClientTitle.png" alt="Stackops IT Solutions Logo">
+        </div>
+    </div>
+        
+    <div class="container">
+
+        <div class="logo-grid">
+            <div class="logos-item">
+                <img src="Images/KomoFin.png" alt="MSSP-art">
+            </div>
+            <div class="logo-item-APCoat">
+                <img src="Images/APCoat.png" alt="MVP">
+            </div>
+            <div class="logo-item">
+                <img src="Images/MVP.png" alt="Thinkerpat Holdings">
+            </div>
+            <div class="logo-item">
+                <img src="Images/ECO-Solut.png" alt="Unique Architecs">
+            </div>
+            <div class="logo-item-ramawa">
+                <img src="Images/Ramawa.png" alt="Ramawa Attoneys">
+            </div>
+            <div class="logo-item">
+                <img src="Images/BSMarc.png" alt="MSSP-art">
+            </div>
+            <div class="logos-item">
+                <img src="Images/MS+SP.png" alt="MVP">
+            </div>
+            <div class="logo-item">
+                <img src="Images/MSSPart.png" alt="Thinkerpat Holdings">
+            </div>
+            <div class="logos-item">
+                <img src="Images/Unique.png" alt="Unique Architecs">
+            </div>
+            <div class="logo-item">
+                <img src="Images/Thinker.png" alt="Ramawa Attoneys">
+            </div>
+            <div class="logo-item">
+                <img src="Images/Barilor.png" alt="Ramawa Attoneys">
+            </div>
+            <div class="logo-items">
+                <img src="Images/Biliyon.jpg" alt="Ramawa Attoneys">
+            </div>
+            <div class="logo-items">
+                <img src="Images/NS LOGO.png" alt="Ramawa Attoneys">
+            </div>
+            <div class="logo-items">
+                <img src="Images/Mhlanti.jpeg" alt="Ramawa Attoneys">
+            </div>
+            <div class="logo-items">
+                <img src="Images/Khumho.png" alt="Ramawa Attoneys">
+            </div>
+            <div class="logo-items logo-item-mm-productions">
+                <img src="Images/MM Productions.png" alt="MM Productions">
+            </div>
+        </div>
+    </div>
+</section>
+
+
+<section class="testimonials-hero">
+    <!-- Particle Background -->
+    <div class="particles" id="particles"></div>
+
+    <div class="container">
+        <div class="testimonials-title">
+            <h1>What Our Clients Say</h1>
+            <p>Real experiences from businesses we've helped transform</p>
+        </div>
+
+        <div class="testimonials-orb-container">
+            <div class="testimonials-slider" id="testimonials-slider">
+                <!-- Testimonials will be dynamically inserted here -->
+            </div>
+        </div>
+        <div class="testimonials-nav" id="testimonials-nav">
+            <!-- Navigation dots will be dynamically inserted here -->
+        </div>
+    </div>
+</section>
+
+<!--
+<section class="team">
+    <div class="container">
+        <div class="section-title">
+            <h2>Our Leadership Team</h2>
+            <p>Meet the experts behind StackOps success.</p>
+        </div>
+        <div class="team-grid">
+            <div class="team-member">
+                <img src="Images/Logos/signature.jpg" alt="Sandani Ndamulelo">
+            </div>
+        </div>
+    </div>
+</section>
+
+-->
+
+<section class="cta">
+    <div class="container">
+        <h2>Ready to Work With Us?</h2>
+        <p>Join our growing list of satisfied clients who have secured their businesses with our help</p>
+        <div class="glow-wrap">
+          <div class="glowing-border-layer"></div>
+          <a href="contact.html" class="link-content">Contact Us</a>
+        </div>
+    </div>
+</section>
+
+    <!-- Footer -->
+    <footer class="stackops-site-footer">
+      <div class="stackops-footer-grid">
+        <div class="stackops-footer-logo">
+          <img src="Images/Logos/RemovedStackOps.png" alt="StackOps IT Solutions" />
+          <p>Managed IT and cybersecurity for modern businesses.</p>
+        </div>
+
+        <div>
+          <h3>Quick Links</h3>
+          <ul>
+            <li><a href="Home.html">Home</a></li>
+            <li><a href="about.html">About us</a></li>
+            <li><a href="contact.html">Contact</a></li>
+            <li><a href="consultation.html">Book a session</a></li>
+            <li><a href="signin.html">Admin portal</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h3>Services</h3>
+          <ul>
+            <li><a href="service.html">Managed IT</a></li>
+            <li><a href="service.html">Cybersecurity</a></li>
+            <li><a href="service.html">Governance</a></li>
+            <li><a href="service.html">IT audit</a></li>
+            <li><a href="service.html">Web development</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h3>Solutions</h3>
+          <ul>
+            <li><a href="ClientDashboardHome.html">StackCTRL portal</a></li>
+            <li><a href="https://proqpilot.com">ProQ Pilot shop</a></li>
+            <li><a href="service.html">Microsoft 365</a></li>
+            <li><a href="service.html">Cisco Duo</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h3>Disclaimer</h3>
+          <ul>
+            <li><a href="service.html#web-development">POPIA</a></li>
+            <li><a href="service.html#web-design">Privacy policy</a></li>
+            <li><a href="service.html#mobile-development">Terms</a></li>
+            <li><a href="service.html">Security audits</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h3>Contact</h3>
+          <p><a href="mailto:info@stackopsit.co.za">info@stackopsit.co.za</a></p>
+          <p><a href="mailto:support@stackopsit.co.za">support@stackopsit.co.za</a></p>
+          <p><a href="mailto:sales@stackopsit.co.za">sales@stackopsit.co.za</a></p>
+          <p>Mia Drive, Waterfall City, Johannesburg, 1685</p>
+          <p>011 568 9337</p>
+          <div class="stackops-footer-socials" aria-label="Social links">
+            <a href="https://www.linkedin.com/in/ndamulelo-sandani-0988289a/overlay/about-this-profile/?lipi=urn%3Ali%3Apage%3Ad_flagship3_profile_view_base%3BAO9qQ1ErRwqaNzIPO5obNA%3D%3D" aria-label="LinkedIn" target="_blank" rel="noopener noreferrer"><i class="fab fa-linkedin-in" aria-hidden="true"></i></a>
+            <a href="#" aria-label="X"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.9 2H22l-6.8 7.78L23.2 22h-6.26l-4.9-6.4L6.44 22H3.32l7.28-8.32L2.92 2h6.42l4.43 5.86L18.9 2zm-1.1 17.85h1.72L8.4 4.04H6.55L17.8 19.85z"/></svg></a>
+            <a href="#" aria-label="Facebook"><i class="fab fa-facebook-f" aria-hidden="true"></i></a>
+            <a href="#" aria-label="Instagram"><i class="fab fa-instagram" aria-hidden="true"></i></a>
+          </div>
+        </div>
+      </div>
+      <div class="stackops-footer-copyright">© <span id="copyright-year" class="copyright-year">2026</span> StackOps IT Solutions. All rights reserved.</div>
+    </footer>
+
+  
+    <script type="module">
+
+       
+        // Sample testimonials data - This will be replaced with API call later
+        const testimonials = [
+            {
+                quote: "Stackops IT Solutions streamlined our Office 365 environment, reduced unnecessary licensing costs, and provided expert guidance on Microsoft 365 best practices. Their support has been reliable, professional, and highly valuable to our business.",
+                author: "Komofin, CEO",
+                image: "Images/KomoFin.png"
+            },
+            {
+                quote: "Working with StackOps IT Solutions has made sourcing and supporting security hardware far easier for our business. They consistently provide quality CCTV and access control equipment, along with dependable technical and warranty support when needed. Their professionalism and responsiveness make them a partner we trust",    
+                author: "ThinkPat, CEO",
+                image: "Images/Thinker.png"
+            },
+            {
+                quote: "StackOps IT Solutions has elevated our firm’s IT to a new standard. Their expertise in Microsoft technologies, combined with a strong focus on security and reliability, makes them a partner we trust completely",
+                author: "Managing Partner, Ramawa Attorneys",
+                image: "Images/Ramawa.png"
+            }
+        ];
+
+        // Testimonials Slideshow
+        let currentTestimonial = 0;
+        let testimonialInterval;
+        let isPaused = false;
+
+        function initTestimonials() {
+            const slider = document.getElementById('testimonials-slider');
+            const nav = document.getElementById('testimonials-nav');
+            
+            // Create testimonial orbs
+            testimonials.forEach((testimonial, index) => {
+                const orb = document.createElement('div');
+                orb.className = 'testimonial-orb';
+                orb.dataset.index = index;
+                
+                orb.innerHTML = `
+                    <div class="testimonial-quote">${testimonial.quote}</div>
+                    <div class="testimonial-footer">
+                        <img src="${testimonial.image}" alt="${testimonial.author}" class="testimonial-image">
+                        <div class="testimonial-author">${testimonial.author}</div>
+                    </div>
+                `;
+                
+                // Add hover listeners to pause rotation
+                orb.addEventListener('mouseenter', () => {
+                    isPaused = true;
+                });
+                orb.addEventListener('mouseleave', () => {
+                    isPaused = false;
+                });
+
+                slider.appendChild(orb);
+
+                // Create navigation dots
+                const dot = document.createElement('div');
+                dot.className = 'nav-dot';
+                dot.dataset.index = index;
+                dot.addEventListener('click', () => goToTestimonial(index));
+                nav.appendChild(dot);
+            });
+
+            // Initialize first testimonial immediately
+            setTimeout(() => {
+                updateTestimonials();
+            }, 50);
+            
+            // Auto-rotate testimonials every 8 seconds
+            testimonialInterval = setInterval(() => {
+                if (!isPaused) {
+                    nextTestimonial();
+                }
+            }, 8000);
+        }
+
+        function updateTestimonials() {
+            const orbs = document.querySelectorAll('.testimonial-orb');
+            const dots = document.querySelectorAll('.nav-dot');
+            
+            // Remove all classes first for smooth transition
+            orbs.forEach((orb) => {
+                orb.classList.remove('active', 'prev', 'next');
+            });
+            
+            // Use requestAnimationFrame for smoother transitions
+            requestAnimationFrame(() => {
+                orbs.forEach((orb, index) => {
+                    // Clear inline styles first
+                    orb.style.opacity = '';
+                    orb.style.transform = '';
+                    
+                    if (index === currentTestimonial) {
+                        orb.classList.add('active');
+                    } else if (index === currentTestimonial - 1 || (currentTestimonial === 0 && index === testimonials.length - 1)) {
+                        orb.classList.add('prev');
+                    } else if (index === currentTestimonial + 1 || (currentTestimonial === testimonials.length - 1 && index === 0)) {
+                        orb.classList.add('next');
+                    }
+                    // Other testimonials will remain hidden with default opacity: 0
+                });
+            });
+
+            dots.forEach((dot, index) => {
+                dot.classList.toggle('active', index === currentTestimonial);
+            });
+        }
+
+        function nextTestimonial() {
+            currentTestimonial = (currentTestimonial + 1) % testimonials.length;
+            updateTestimonials();
+        }
+
+        function prevTestimonial() {
+            currentTestimonial = (currentTestimonial - 1 + testimonials.length) % testimonials.length;
+            updateTestimonials();
+        }
+
+        function goToTestimonial(index) {
+            currentTestimonial = index;
+            updateTestimonials();
+            // Reset auto-rotate timer
+            clearInterval(testimonialInterval);
+            testimonialInterval = setInterval(() => {
+                if (!isPaused) {
+                    nextTestimonial();
+                }
+            }, 8000);
+        }
+
+        // Keep auto-rotate running even on hover - testimonials move continuously
+        // Auto-rotation continues regardless of hover state
+
+        // Create particle background
+        function createParticles() {
+            const particlesContainer = document.getElementById('particles');
+            const particleCount = 9;
+
+            for (let i = 0; i < particleCount; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                particlesContainer.appendChild(particle);
+            }
+        }
+
+        // Hamburger menu toggle
+        const hamburger = document.getElementById('hamburger');
+        const navLinks = document.getElementById('nav-links');
+
+        if (hamburger && navLinks) {
+            hamburger.addEventListener('click', () => {
+                navLinks.classList.toggle('active');
+                hamburger.innerHTML = navLinks.classList.contains('active') ? 
+                    '<i class="fas fa-times"></i>' : '<i class="fas fa-bars"></i>';
+            });
+
+            document.querySelectorAll('.nav-links a').forEach(link => {
+                link.addEventListener('click', () => {
+                    if (navLinks.classList.contains('active')) {
+                        navLinks.classList.remove('active');
+                        hamburger.innerHTML = '<i class="fas fa-bars"></i>';
+                    }
+                });
+            });
+        }
+
+        // Sticky header on scroll
+        window.addEventListener('scroll', function() {
+            const header = document.querySelector('header');
+            if (header) {
+                header.classList.toggle('sticky', window.scrollY > 0);
+            }
+        });
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            createParticles();
+            
+            // Small delay to ensure DOM is fully ready
+            setTimeout(() => {
+                initTestimonials();
+            }, 100);
+            
+            // Update copyright year
+            const yearElement = document.getElementById('copyright-year');
+            if (yearElement) {
+                yearElement.textContent = new Date().getFullYear();
+            }
+        });
+    </script>
+
+        <script src="js/script.js"></script>
+    
+        <script src="js/Testimonials.js"></script>
+        <script>
+             document.addEventListener('DOMContentLoaded', () => {
+                const hamburger = document.getElementById('hamburger');
+                let menu = null;
+
+                function openMenu() {
+                    menu = document.createElement('div');
+                    menu.id = 'minimal-menu';
+                    menu.innerHTML = `
+                        <ul>
+                            <li><a href="Home.html">Home</a></li>
+                            <li><a href="about.html">About</a></li>
+                            <li><a href="service.html">Solutions</a></li>
+                            <li><a href="approach.html">Our Approach</a></li>
+                            <li><a href="contact.html">Contact Us</a></li>
+                            <li><a href="consultation.html">Book a Consultation</a></li>
+                            <li><a href="ClientDashboardHome.html
+">Client Portal</a></li>
+                            <li><a href="https://proqpilot.com">Shop</a></li>
+                        </ul>
+                    `;
+                    document.body.appendChild(menu);
+                    hamburger.classList.add('active');
+                }
+
+                function closeMenu() {
+                    if (menu) {
+                        menu.remove();
+                        menu = null;
+                        hamburger.classList.remove('active');
+                    }
+                }
+
+                hamburger.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    menu ? closeMenu() : openMenu();
+                });
+
+                document.addEventListener('click', (e) => {
+                    if (menu && !menu.contains(e.target) && e.target !== hamburger) {
+                        closeMenu();
+                    }
+                });
+            });
+        </script>
+</body>
+</html>

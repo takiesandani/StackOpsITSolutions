@@ -1,0 +1,81 @@
+/* Thin White Scrollbar Theme - No Track, No Arrows */
+
+/* Firefox */
+.scroll-container,
+.sunbird-incidents-table-wrap,
+.sunbird-activity-feed,
+.sunbird-risk-list-wrap,
+.apps-table-container,
+.identity-users-table-container {
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+  scrollbar-width: thin;
+}
+
+/* Webkit Browsers - Chrome/Safari/Edge */
+.scroll-container::-webkit-scrollbar,
+.sunbird-incidents-table-wrap::-webkit-scrollbar,
+.sunbird-activity-feed::-webkit-scrollbar,
+.sunbird-risk-list-wrap::-webkit-scrollbar,
+.apps-table-container::-webkit-scrollbar,
+.identity-users-table-container::-webkit-scrollbar,
+table::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.scroll-container::-webkit-scrollbar-track,
+.sunbird-incidents-table-wrap::-webkit-scrollbar-track,
+.sunbird-activity-feed::-webkit-scrollbar-track,
+.sunbird-risk-list-wrap::-webkit-scrollbar-track,
+.apps-table-container::-webkit-scrollbar-track,
+.identity-users-table-container::-webkit-scrollbar-track,
+table::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 9999px;
+}
+
+.scroll-container::-webkit-scrollbar-thumb,
+.sunbird-incidents-table-wrap::-webkit-scrollbar-thumb,
+.sunbird-activity-feed::-webkit-scrollbar-thumb,
+.sunbird-risk-list-wrap::-webkit-scrollbar-thumb,
+.apps-table-container::-webkit-scrollbar-thumb,
+.identity-users-table-container::-webkit-scrollbar-thumb,
+table::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 9999px;
+  border: none;
+  min-height: 20px;
+}
+
+.scroll-container::-webkit-scrollbar-thumb:hover,
+.sunbird-incidents-table-wrap::-webkit-scrollbar-thumb:hover,
+.sunbird-activity-feed::-webkit-scrollbar-thumb:hover,
+.sunbird-risk-list-wrap::-webkit-scrollbar-thumb:hover,
+.apps-table-container::-webkit-scrollbar-thumb:hover,
+.identity-users-table-container::-webkit-scrollbar-thumb:hover,
+table::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+/* Remove scrollbar arrows/buttons */
+.scroll-container::-webkit-scrollbar-button,
+.sunbird-incidents-table-wrap::-webkit-scrollbar-button,
+.sunbird-activity-feed::-webkit-scrollbar-button,
+.sunbird-risk-list-wrap::-webkit-scrollbar-button,
+.apps-table-container::-webkit-scrollbar-button,
+.identity-users-table-container::-webkit-scrollbar-button,
+table::-webkit-scrollbar-button {
+  display: none;
+  height: 0;
+  width: 0;
+}
+
+/* Ensure smooth scrolling */
+.scroll-container,
+.sunbird-incidents-table-wrap,
+.sunbird-activity-feed,
+.sunbird-risk-list-wrap,
+.apps-table-container,
+.identity-users-table-container {
+  scrollbar-gutter: stable;
+}

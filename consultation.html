@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Book Consultation | StackOps IT Solutions</title>
+    <link rel="stylesheet" href="css/consultation.css">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style id="stackops-footer-design">
+    .stackops-site-footer {
+      position: relative;
+      width: 96%;
+      margin: 0 auto 26px;
+      padding: 44px clamp(24px, 4vw, 64px);
+      border-radius: 42px;
+      background: linear-gradient(135deg, rgba(255,255,255,.10), rgba(255,255,255,.032));
+      border: 1px solid rgba(255,255,255,.11);
+      backdrop-filter: blur(22px) saturate(145%);
+      -webkit-backdrop-filter: blur(22px) saturate(145%);
+      color: rgba(255,255,255,.70);
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      overflow: hidden;
+    }
+    .stackops-footer-grid {
+      display: grid;
+      grid-template-columns: minmax(220px, 1.2fr) repeat(5, minmax(132px, 1fr));
+      gap: 30px;
+      align-items: start;
+    }
+    .stackops-footer-logo {
+      grid-column: 1;
+      grid-row: 1;
+      justify-self: start;
+      align-self: start;
+      max-width: 250px;
+      padding-top: 61px;
+      text-align: left;
+    }
+    .stackops-footer-logo img {
+      position: absolute;
+      top: 12px;
+      left: 14px;
+      display: block;
+      width: 124px;
+      height: 45px;
+      object-fit: contain;
+      object-position: left center;
+      margin: 0;
+    }
+    .stackops-footer-logo p,
+    .stackops-site-footer p,
+    .stackops-site-footer a,
+    .stackops-site-footer li {
+      color: rgba(255,255,255,.60);
+      font-size: .94rem;
+      line-height: 1.7;
+      font-weight: 200;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .stackops-site-footer h3 {
+      font-size: 1rem;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      margin: 0 0 15px;
+      color: rgba(255,255,255,.74);
+      font-weight: 200;
+      line-height: 1.6;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .stackops-site-footer ul {
+      list-style: none;
+      display: grid;
+      gap: 8px;
+      padding: 0;
+      margin: 0;
+    }
+    .stackops-site-footer p { margin: 0 0 6px; }
+    .stackops-site-footer a { text-decoration: none; transition: color .25s ease; }
+    .stackops-site-footer a:hover { color: #fff; }
+    .stackops-footer-socials {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 16px;
+    }
+    .stackops-footer-socials a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      color: rgba(255,255,255,.72);
+      background: rgba(255,255,255,.07);
+      border: 1px solid rgba(255,255,255,.12);
+      transition: transform .25s ease, background .25s ease, color .25s ease, border-color .25s ease;
+    }
+    .stackops-footer-socials a:hover {
+      transform: translateY(-3px);
+      color: #fff;
+      background: rgba(72,216,255,.16);
+      border-color: rgba(72,216,255,.36);
+    }
+    .stackops-footer-socials svg { width: 17px; height: 17px; fill: currentColor; }
+    .stackops-footer-copyright {
+      margin-top: 36px;
+      color: rgba(255,255,255,.42);
+      font-size: .86rem;
+      font-weight: 200;
+      line-height: 1.6;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    }
+    @media (max-width: 980px) {
+      .stackops-footer-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+    @media (max-width: 620px) {
+      .stackops-site-footer { border-radius: 30px; width: 94%; }
+      .stackops-footer-grid { grid-template-columns: 1fr; }
+      .stackops-footer-logo { grid-column: auto; justify-self: start; text-align: left; }
+      .stackops-footer-logo img { top: 10px; left: 12px; }
+    }
+  </style>
+</head>
+<body>
+    <div class="background"></div>
+
+    <header class="site-header">
+
+        <!-- Logo -->
+        <a href="/" class="logo">
+            <img src="Images/Logos/RemovedStackOps.png" alt="Stackops IT Solutions Logo">
+        </a>
+
+        <!-- Center Navigation -->
+        <ul class="nav-links center-nav" id="nav-links">
+            <li><a href="about.html">About</a></li>
+            <li><a href="service.html">Solutions</a></li>
+            <li><a href="approach.html">Approach</a></li>
+            <li><a href="consultation.html"  class="active">Consultation</a></li>
+            <li><a href="ClientDashboardHome.html
+">Client Portal</a></li>
+        </ul>
+
+        <!-- Right Side Icons -->
+        <div class="header-actions">
+
+            <a href="Home.html" class="glass-icon-btn" aria-label="Home">
+                <i class="fas fa-house"></i>
+            </a>
+
+            <a href="contact.html" class="glass-icon-btn" aria-label="Contact Us">
+                <i class="fas fa-phone"></i>
+            </a>
+
+            <a href="https://proqpilot.com" id="shop-link" class="glass-icon-btn" aria-label="Shop">
+                <i class="fas fa-cart-shopping"></i>
+            </a>
+
+            <!-- Hamburger -->
+            <div id="hamburger" class="hamburger">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+
+        </div>
+
+    </header>
+
+    <div class="container">
+        <div class="consultation-container">
+
+            <div class="calendar-section">
+                <div class="page-header">
+                    <h1>Book a Consultation</h1>
+                    <p>
+                        Schedule a time to speak with one of our cybersecurity experts. We're available to discuss your needs and provide tailored solutions.
+                    </p>
+                </div>
+                
+                <div id="calendar-container"></div>
+
+                <div class="time-selection">
+                    <h3>Select a Time</h3>
+                    <div class="time-slots" id="timeSlots">
+                        </div>
+                </div>
+            </div>
+            
+            <div class="booking-form">
+                <h3>Your Information</h3>
+                <form id="bookingForm">
+                    <input type="hidden" id="selectedDate" name="date">
+                    <input type="hidden" id="selectedTime" name="time">
+                    <div class="form-group">
+                        <label for="name">Full Name</label>
+                        <input type="text" id="name" name="name" placeholder="Enter your full name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="companyName">Company name</label>
+                        <input type="text" id="companyName" name="companyName" placeholder="Enter your Company" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="title">Title</label>
+                        <input type="text" id="title" name="title" placeholder="Enter your title" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="email">Email Address</label>
+                        <input type="email" id="email" name="email" placeholder="Enter your email" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="phone">Phone Number</label>
+                        <input type="tel" id="phone" name="phone" placeholder="Enter your phone number" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="service">Service Interested In</label>
+                        <select id="service" name="service" required>
+                            <option value="">Select a Service</option>
+                            <option value="Cybersecurity Consulting">Cybersecurity Consulting</option>
+                            <option value="Cloud Security">Cloud Security</option>
+                            <option value="Systems Implementation">Systems Implementation</option>
+                            <option value="IT Operations Support">IT Operations Support</option>
+                            <option value="End-user computing">End-user computing</option>
+                            <option value="Governance & Compliance">Governance & Compliance</option>
+                            <option value="Web Development">Web Development</option>
+                            <option value="Mobile App Development">Mobile App Development</option>
+                            <option value="AI Automations">AI Automations</option>
+                            <option value="Web Design">Web Design</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="message">Additional Notes</label>
+                        <textarea id="message" name="message" placeholder="Any specific concerns or questions?"></textarea>
+                    </div>
+                    <div class="glow-wrap" style="width: 100%;">
+                      <div class="glowing-border-layer"></div>
+                      <button class="link-content" type="submit" style="width: 100%; border: none; background: transparent; cursor: pointer;">Book Consultation</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <div class="info-section">
+            <div class="info-grid">
+                <div class="info-card">
+                    <i class="fas fa-video"></i>
+                    <h3>Virtual Consultations</h3>
+                    <p>Can't make it in person? We offer secure video consultations from anywhere.</p>
+                </div>
+                <div class="info-card">
+                    <i class="fas fa-clock"></i>
+                    <h3>60 Minute Sessions</h3>
+                    <p>Each consultation is a full hour to address all your IT concerns.</p>
+                </div>
+                <div class="info-card">
+                    <i class="fas fa-shield-alt"></i>
+                    <h3>Expert Advice</h3>
+                    <p>Our certified professionals will provide tailored solutions for your business needs.</p>
+                </div>
+                <div class="info-card">
+                    <i class="fas fa-file-alt"></i>
+                    <h3>Follow-up Report</h3>
+                    <p> You will receive a detailed report with recommendations after your consultation.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Footer -->
+    <footer class="stackops-site-footer">
+      <div class="stackops-footer-grid">
+        <div class="stackops-footer-logo">
+          <img src="Images/Logos/RemovedStackOps.png" alt="StackOps IT Solutions" />
+          <p>Managed IT and cybersecurity for modern businesses.</p>
+        </div>
+
+        <div>
+          <h3>Quick Links</h3>
+          <ul>
+            <li><a href="Home.html">Home</a></li>
+            <li><a href="about.html">About us</a></li>
+            <li><a href="contact.html">Contact</a></li>
+            <li><a href="consultation.html">Book a session</a></li>
+            <li><a href="signin.html">Admin portal</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h3>Services</h3>
+          <ul>
+            <li><a href="service.html">Managed IT</a></li>
+            <li><a href="service.html">Cybersecurity</a></li>
+            <li><a href="service.html">Governance</a></li>
+            <li><a href="service.html">IT audit</a></li>
+            <li><a href="service.html">Web development</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h3>Solutions</h3>
+          <ul>
+            <li><a href="ClientDashboardHome.html">StackCTRL portal</a></li>
+            <li><a href="https://proqpilot.com">ProQ Pilot shop</a></li>
+            <li><a href="service.html">Microsoft 365</a></li>
+            <li><a href="service.html">Cisco Duo</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h3>Disclaimer</h3>
+          <ul>
+            <li><a href="service.html#web-development">POPIA</a></li>
+            <li><a href="service.html#web-design">Privacy policy</a></li>
+            <li><a href="service.html#mobile-development">Terms</a></li>
+            <li><a href="service.html">Security audits</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h3>Contact</h3>
+          <p><a href="mailto:info@stackopsit.co.za">info@stackopsit.co.za</a></p>
+          <p><a href="mailto:support@stackopsit.co.za">support@stackopsit.co.za</a></p>
+          <p><a href="mailto:sales@stackopsit.co.za">sales@stackopsit.co.za</a></p>
+          <p>Mia Drive, Waterfall City, Johannesburg, 1685</p>
+          <p>011 568 9337</p>
+          <div class="stackops-footer-socials" aria-label="Social links">
+            <a href="https://www.linkedin.com/in/ndamulelo-sandani-0988289a/overlay/about-this-profile/?lipi=urn%3Ali%3Apage%3Ad_flagship3_profile_view_base%3BAO9qQ1ErRwqaNzIPO5obNA%3D%3D" aria-label="LinkedIn" target="_blank" rel="noopener noreferrer"><i class="fab fa-linkedin-in" aria-hidden="true"></i></a>
+            <a href="#" aria-label="X"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.9 2H22l-6.8 7.78L23.2 22h-6.26l-4.9-6.4L6.44 22H3.32l7.28-8.32L2.92 2h6.42l4.43 5.86L18.9 2zm-1.1 17.85h1.72L8.4 4.04H6.55L17.8 19.85z"/></svg></a>
+            <a href="#" aria-label="Facebook"><i class="fab fa-facebook-f" aria-hidden="true"></i></a>
+            <a href="#" aria-label="Instagram"><i class="fab fa-instagram" aria-hidden="true"></i></a>
+          </div>
+        </div>
+      </div>
+      <div class="stackops-footer-copyright">© <span id="copyright-year" class="copyright-year">2026</span> StackOps IT Solutions. All rights reserved.</div>
+    </footer>
+       <script>
+             document.addEventListener('DOMContentLoaded', () => {
+                const hamburger = document.getElementById('hamburger');
+                let menu = null;
+
+                function openMenu() {
+                    menu = document.createElement('div');
+                    menu.id = 'minimal-menu';
+                    menu.innerHTML = `
+                        <ul>
+                            <li><a href="Home.html">Home</a></li>
+                            <li><a href="about.html">About</a></li>
+                            <li><a href="service.html">Solutions</a></li>
+                            <li><a href="approach.html">Our Approach</a></li>
+                            <li><a href="contact.html">Contact Us</a></li>
+                            <li><a href="consultation.html">Book a Consultation</a></li>
+                            <li><a href="ClientDashboardHome.html
+">Client Portal</a></li>
+                            <li><a href="https://proqpilot.com">Shop</a></li>
+                        </ul>
+                    `;
+                    document.body.appendChild(menu);
+                    hamburger.classList.add('active');
+                }
+
+                function closeMenu() {
+                    if (menu) {
+                        menu.remove();
+                        menu = null;
+                        hamburger.classList.remove('active');
+                    }
+                }
+
+                hamburger.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    menu ? closeMenu() : openMenu();
+                });
+
+                document.addEventListener('click', (e) => {
+                    if (menu && !menu.contains(e.target) && e.target !== hamburger) {
+                        closeMenu();
+                    }
+                });
+            });
+        </script>
+    <script src="js/consultation.js"></script>
+    <script src="js/chatbot.js"></script>
+    <script>
+        document.querySelectorAll('#copyright-year, .copyright-year').forEach(yearSpan => {
+            yearSpan.textContent = new Date().getFullYear();
+        });
+    </script>
+
+</body>
+</html>

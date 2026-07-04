@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel | StackOps IT Solutions</title>
+    <link rel="stylesheet" href="css/admin.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="background"></div>
+    
+    <header class="site-header">
+        <a href="/" class="logo">
+            <img src="Images/Logos/RemovedStackOps.png" alt="StackOps IT Solutions Logo">
+        </a>
+        <div class="hamburger" id="hamburger">
+            <i class="fas fa-bars"></i>
+        </div>
+        <ul class="nav-links" id="nav-links">
+            <li><a href="Admin.html" class="active">Calendar</a></li>
+            <li><a href="admin-dashboard.html">Dashboard</a></li>
+            <li><a href="signup.html">Register Client</a></li>
+            <li><a href="#" id="admin-signout">Sign Out</a></li>
+        </ul>
+    </header>
+
+    <div class="container">
+        <div class="admin-panel">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px;">
+                <div>
+                    <h1>Admin Panel - Consultation Management</h1>
+                    <p>Manage consultation availability and view booked appointments.</p>
+                </div>
+                <a href="admin-dashboard.html" class="btn btn-primary" style="text-decoration: none;">
+                    <i class="fas fa-chart-line"></i> Go to Dashboard
+                </a>
+            </div>
+
+            <!-- Tabs Navigation -->
+            <div class="admin-tabs">
+                <button class="tab-btn active" data-tab="calendar-tab">
+                    <i class="fas fa-calendar"></i> Calendar & Availability
+                </button>
+                <button class="tab-btn" data-tab="appointments-tab">
+                    <i class="fas fa-calendar-check"></i> Appointments
+                </button>
+            </div>
+
+            <!-- Calendar Tab -->
+            <div id="calendar-tab" class="tab-content active">
+            <div class="calendar-section">
+                <div class="calendar-header">
+                    <div class="month-nav">
+                        <button id="prev-month-btn"><i class="fas fa-chevron-left"></i></button>
+                    </div>
+                    <span id="current-month-year"></span>
+                    <div class="month-nav">
+                        <button id="next-month-btn"><i class="fas fa-chevron-right"></i></button>
+                    </div>
+                </div>
+                
+                <div class="calendar-grid" id="calendar-grid">
+                    <div class="weekday-name">Sun</div>
+                    <div class="weekday-name">Mon</div>
+                    <div class="weekday-name">Tue</div>
+                    <div class="weekday-name">Wed</div>
+                    <div class="weekday-name">Thu</div>
+                    <div class="weekday-name">Fri</div>
+                    <div class="weekday-name">Sat</div>
+                </div>
+
+                <div class="time-slots-container" id="time-slots-container" style="display: none;">
+                    <h3>Manage Times for <span id="selected-date-display"></span></h3>
+                    <div class="time-slots" id="admin-time-slots">
+                    </div>
+                </div>
+            </div>
+            </div>
+
+            <!-- Appointments Tab -->
+            <div id="appointments-tab" class="tab-content" style="display: none;">
+                <div class="appointments-section">
+                    <div class="admin-header">
+                        <h2>Consultation Appointments</h2>
+                        <div class="admin-actions">
+                            <button id="refresh-btn" class="btn btn-secondary">
+                                <i class="fas fa-sync"></i> Refresh
+                            </button>
+                            <button id="clear-all-btn" class="btn btn-danger">
+                                <i class="fas fa-trash-alt"></i> Clear All
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Filters Section -->
+                    <div class="filters-section">
+                        <div class="filter-group">
+                            <label for="date-filter">Date:</label>
+                            <input type="date" id="date-filter">
+                        </div>
+                        <div class="filter-group">
+                            <label for="search-filter">Search:</label>
+                            <input type="text" id="search-filter" placeholder="Name, email, or phone...">
+                        </div>
+                    </div>
+
+                    <!-- Pending Appointments Table -->
+                    <div class="admin-header" style="margin-top: 30px;">
+                        <h3 style="margin: 0;">Pending Appointments</h3>
+                    </div>
+                    <div class="table-container">
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Time</th>
+                                    <th>Client Name</th>
+                                    <th>Company</th>
+                                    <th>Email</th>
+                                    <th>Phone</th>
+                                    <th>Service</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="appointments-tbody">
+                                <tr>
+                                    <td colspan="9" style="text-align: center; padding: 20px;">
+                                        <i class="fas fa-spinner fa-spin"></i> Loading appointments...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Completed Appointments Section -->
+                    <div class="admin-header" style="margin-top: 40px;">
+                        <h3 style="margin: 0;">Completed Appointments</h3>
+                    </div>
+                    <div class="table-container">
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Time</th>
+                                    <th>Client Name</th>
+                                    <th>Company</th>
+                                    <th>Email</th>
+                                    <th>Phone</th>
+                                    <th>Service</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="completed-tbody">
+                                <tr>
+                                    <td colspan="8" style="text-align: center; padding: 20px; color: #999;">
+                                        No completed appointments yet
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Appointment Details Modal -->
+    <div id="appointment-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Appointment Details</h2>
+            <div id="modal-body">
+                <p><strong>Date:</strong> <span id="modal-date"></span></p>
+                <p><strong>Time:</strong> <span id="modal-time"></span></p>
+                <p><strong>Client Name:</strong> <span id="modal-clientName"></span></p>
+                <p><strong>Company:</strong> <span id="modal-company"></span></p>
+                <p><strong>Title:</strong> <span id="modal-title"></span></p>
+                <p><strong>Email:</strong> <span id="modal-email"></span></p>
+                <p><strong>Phone:</strong> <span id="modal-phone"></span></p>
+                <p><strong>Service:</strong> <span id="modal-service"></span></p>
+                <p><strong>Status:</strong> <span style="color: #4caf50; font-weight: bold;">Booked</span></p>
+                <p><strong>Message:</strong></p>
+                <pre id="modal-message" style="background: #f5f5f5; padding: 10px; border-radius: 4px;"></pre>
+                <div class="modal-actions">
+                    <button id="complete-btn" class="btn btn-success">
+                        <i class="fas fa-check-circle"></i> Mark Complete
+                    </button>
+                    <button id="delete-btn" class="btn btn-danger">
+                        <i class="fas fa-trash"></i> Delete Appointment
+                    </button>
+                    <button id="close-modal-btn" class="btn btn-secondary">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    
+    <script>
+        // Hamburger menu toggle
+        const hamburger = document.getElementById('hamburger');
+        const navLinks = document.getElementById('nav-links');
+
+        if (hamburger && navLinks) {
+            hamburger.addEventListener('click', () => {
+                navLinks.classList.toggle('active');
+                hamburger.innerHTML = navLinks.classList.contains('active') ? 
+                    '<i class="fas fa-times"></i>' : '<i class="fas fa-bars"></i>';
+            });
+
+            // Close mobile menu when clicking on a link
+            document.querySelectorAll('.nav-links a').forEach(link => {
+                link.addEventListener('click', () => {
+                    if (navLinks.classList.contains('active')) {
+                        navLinks.classList.remove('active');
+                        hamburger.innerHTML = '<i class="fas fa-bars"></i>';
+                    }
+                });
+            });
+        }
+
+        // Admin sign-out: clear auth token and redirect home
+        const adminSignout = document.getElementById('admin-signout');
+        if (adminSignout) {
+            adminSignout.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (!confirm('Are you sure you want to sign out?')) return;
+
+                // Clear backend JWT token
+                localStorage.removeItem('authToken');
+
+                // Clear any session storage used elsewhere
+                sessionStorage.clear();
+
+                // Redirect to public home page
+                window.location.href = 'Home.html';
+            });
+        }
+
+        // Sticky header on scroll
+        window.addEventListener('scroll', function() {
+            const header = document.querySelector('header');
+            if (header) {
+                header.classList.toggle('sticky', window.scrollY > 0);
+            }
+        });
+
+        // Tab switching functionality
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const tabName = this.getAttribute('data-tab');
+                
+                // Hide all tabs
+                document.querySelectorAll('.tab-content').forEach(tab => {
+                    tab.classList.remove('active');
+                    tab.style.display = 'none';
+                });
+
+                // Remove active class from all buttons
+                document.querySelectorAll('.tab-btn').forEach(button => {
+                    button.classList.remove('active');
+                });
+
+                // Show selected tab
+                const selectedTab = document.getElementById(tabName);
+                if (selectedTab) {
+                    selectedTab.classList.add('active');
+                    selectedTab.style.display = 'block';
+                    
+                    // Load appointments on appointments tab
+                    if (tabName === 'appointments-tab' && window.loadAppointments) {
+                        window.loadAppointments();
+                    }
+                }
+
+                // Add active class to clicked button
+                this.classList.add('active');
+            });
+        });
+    </script>
+    <script src="js/Authentication.js"></script>
+    <script src="js/admin.js"></script>
+    <script src="js/admin-appointments.js"></script>
+</body>
+</html>

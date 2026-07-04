@@ -1,0 +1,1545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client Dashboard - StackOps IT Solutions</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/mobile.css" media="screen and (max-width: 768px)">
+    <style>
+        /* Override and extend styles */
+        * {
+            font-weight: 100;
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            font-weight: 200;
+        }
+
+        body {
+            background: linear-gradient(rgba(0, 0, 0, 0.219), rgb(0, 0, 0)),
+                url('Images/Website.png') no-repeat center center;
+            background-size: cover;
+            background-attachment: fixed;
+        }
+
+        .background {
+            display: none;
+        }
+
+        /* ===== MAIN CONTENT ===== */
+        main {
+            margin-top: 2rem;
+        }
+
+        /* ===== HERO SECTION ===== */
+        .hero-section {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: clamp(2rem, 5vw, 4rem) clamp(1.5rem, 3vw, 3rem);
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: clamp(1.5rem, 3vw, 3rem);
+            align-items: center;
+        }
+
+        .hero-section h1 {
+            font-size: clamp(1.1rem, 4vw, 2.0rem);
+            line-height: 1.3;
+            margin-bottom: clamp(1rem, 2vw, 1.5rem);
+            color: white;
+            font-weight: 200;
+        }
+
+        .hero-section h1 span {
+            color: rgb(255, 94, 0);
+        }
+
+        .hero-section p {
+            font-size: clamp(0.75rem, 1.5vw, 0.95rem);
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: clamp(1rem, 2vw, 2rem);
+            line-height: 1.7;
+            font-weight: 100;
+        }
+
+        .credential-box {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
+            backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            padding: clamp(1rem, 2vw, 1.5rem);
+            margin-bottom: clamp(1rem, 2vw, 1.5rem);
+            display: flex;
+            gap: 1rem;
+            align-items: flex-start;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25), inset 0 1px 2px rgba(255, 255, 255, 0.5);
+        }
+
+        .credential-icon {
+            font-size: clamp(1.2rem, 2vw, 1.8rem);
+            color: white;
+            flex-shrink: 0;
+        }
+
+        .credential-text h4 {
+            font-size: clamp(0.8rem, 1.2vw, 0.95rem);
+            margin-bottom: 0.3rem;
+            color: white;
+            font-weight: 200;
+        }
+
+        .credential-text p {
+            font-size: clamp(0.7rem, 1vw, 0.85rem);
+            color: rgba(255, 255, 255, 0.7);
+            margin: 0;
+            font-weight: 100;
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: clamp(0.5rem, 1vw, 1rem);
+            flex-wrap: wrap;
+            margin-top: clamp(1rem, 2vw, 2rem);
+        }
+
+        /* ===== GLOWING BUTTON STYLES ===== */
+        .glow-wrap {
+            position: relative;
+            width: fit-content;
+            height: auto;
+            border-radius: 40px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(255, 120, 2, 0.3);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .glow-wrap:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(255, 120, 2, 0.6), 0 8px 20px rgba(255, 120, 2, 0.3);
+        }
+
+        .glowing-border-layer {
+            position: absolute;
+            top: -60px;
+            left: -60px;
+            width: 280px;
+            height: 180px;
+            z-index: 1;
+            background: conic-gradient(#ff7802 0%, hsla(29, 100%, 50%, 0) 25%, #ff880000 50%, #ff730000 75%, #ff7802 100%);
+            animation: spin 3s linear infinite;
+        }
+
+        .link-content {
+            position: relative;
+            z-index: 10;
+            font-weight: 200;
+            font-size: clamp(0.7rem, 0.95vw, 0.85rem);
+            padding: clamp(0.4rem, 0.8vw, 0.6rem) clamp(1rem, 1.8vw, 1.5rem);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            color: white;
+            background: black;
+            border: none;
+            border-radius: 40px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+            margin: 2px;
+        }
+
+        .link-content:hover {
+            color: #ff7802;
+        }
+
+        .btn {
+            position: relative;
+            z-index: 10;
+            font-weight: 200;
+            font-size: clamp(0.75rem, 1vw, 0.9rem);
+            padding: clamp(0.6rem, 1.2vw, 0.85rem) clamp(1.2rem, 2vw, 1.8rem);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            color: white;
+            background: transparent;
+            border: none;
+            border-radius: 40px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+            margin: 2px;
+        }
+
+        .btn:hover {
+            color: #ff7802;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .hero-image img {
+            width: 100%;
+            border-radius: 15px;
+            box-shadow: 0 0 20px rgba(255, 136, 51, 0.411);
+            border: 1px solid rgba(255, 255, 255, 0);
+        }
+
+        /* ===== FEATURES SECTION ===== */
+        section {
+            padding: clamp(3rem, 8vw, 5rem) 0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 clamp(1rem, 3vw, 2rem);
+        }
+
+        .section-title h2 {
+            font-size: clamp(1.5rem, 4vw, 2.2rem);
+            font-weight: 200;
+            margin-bottom: clamp(0.5rem, 1vw, 1rem);
+            color: white;
+        }
+
+        .section-title p {
+            font-size: clamp(0.75rem, 1.5vw, 0.95rem);
+            font-weight: 100;
+            color: rgba(255, 255, 255, 0.7);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: clamp(1.5rem, 2vw, 2rem);
+            margin-top: clamp(2rem, 4vw, 3rem);
+        }
+
+        .feature-card {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
+            backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 15px;
+            padding: clamp(1.2rem, 2vw, 2rem);
+            transition: all 0.4s ease;
+            position: relative;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25), inset 0 1px 2px rgba(255, 255, 255, 0.5);
+            overflow: hidden;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-8px) scale(1.02);
+            background: rgba(255, 255, 255, 0.027);
+            border-color: rgba(255, 255, 255, 0.6);
+            box-shadow: 0 25px 60px rgba(255, 120, 2, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+        }
+
+        .feature-icon {
+            font-size: clamp(1.5rem, 2.5vw, 2rem);
+            color: white;
+            margin-bottom: clamp(0.8rem, 1.5vw, 1.2rem);
+        }
+
+        .feature-card h3 {
+            font-size: clamp(0.9rem, 1.5vw, 1.1rem);
+            margin-bottom: clamp(0.5rem, 1vw, 0.8rem);
+            color: white;
+            font-weight: 200;
+        }
+
+        .feature-card p {
+            font-size: clamp(0.7rem, 1.2vw, 0.85rem);
+            color: rgba(255, 255, 255, 0.7);
+            line-height: 1.6;
+            font-weight: 100;
+        }
+
+        /* ===== PROJECTS SHOWCASE ===== */
+        .projects-showcase {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
+            backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 15px;
+            padding: clamp(1.5rem, 3vw, 2.5rem);
+            margin-top: clamp(2rem, 4vw, 3rem);
+            margin-bottom: clamp(2rem, 4vw, 3rem);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25), inset 0 1px 2px rgba(255, 255, 255, 0.5);
+        }
+
+        .projects-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: clamp(1rem, 2vw, 1.5rem);
+            margin-top: clamp(1.5rem, 3vw, 2rem);
+        }
+
+        .project-item {
+            background: rgba(255, 255, 255, 0.06);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            padding: clamp(1rem, 2vw, 1.5rem);
+            text-align: center;
+            transition: all 0.35s ease;
+        }
+
+        .project-item:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 0 15px rgba(255, 120, 2, 0.3);
+            border-color: rgba(255, 120, 2, 0.4);
+        }
+
+        .project-icon {
+            font-size: clamp(1.5rem, 2.5vw, 2rem);
+            color: white;
+            margin-bottom: clamp(0.5rem, 1vw, 0.8rem);
+        }
+
+        .project-item h4 {
+            font-size: clamp(0.8rem, 1.3vw, 0.95rem);
+            margin-bottom: 0.3rem;
+            color: white;
+            font-weight: 200;
+        }
+
+        .project-item p {
+            font-size: clamp(0.7rem, 1vw, 0.8rem);
+            color: rgba(255, 255, 255, 0.7);
+            margin: 0;
+            font-weight: 100;
+        }
+
+        /* ===== DASHBOARD PREVIEW ===== */
+        .preview-video {
+            position: relative;
+            width: 100%;
+            padding-bottom: 56.25%;
+            height: 0;
+            overflow: hidden;
+            border-radius: 15px;
+            box-shadow: 0 0 25px rgba(255, 120, 2, 0.3);
+            border: 1px solid rgba(255, 120, 2, 0.2);
+            -webkit-mask-image: -webkit-radial-gradient(white, black);
+            mask-image: radial-gradient(white, black);
+        }
+
+        .preview-video iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+            pointer-events: auto;
+            display: block;
+        }
+
+        .preview-image {
+            margin-top: clamp(1.5rem, 3vw, 2.5rem);
+        }
+
+        .preview-image img {
+            width: 100%;
+            border-radius: 15px;
+            box-shadow: 0 0 25px rgba(255, 120, 2, 0.3);
+            border: 1px solid rgba(255, 120, 2, 0.2);
+            transition: transform 0.35s ease;
+        }
+
+        .preview-image:hover img {
+            transform: scale(1.02);
+        }
+
+        /* ===== STATS SECTION ===== */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: clamp(1.5rem, 2vw, 2rem);
+        }
+
+        .stat-box {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
+            backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 15px;
+            padding: clamp(1.5rem, 2.5vw, 2rem);
+            text-align: center;
+            transition: all 0.35s ease;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25), inset 0 1px 2px rgba(255, 255, 255, 0.5);
+        }
+
+        .stat-box:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 45px rgba(255, 120, 2, 0.15);
+        }
+
+        .stat-number {
+            font-size: clamp(1.5rem, 3vw, 2rem);
+            color: #ff7802;
+            font-weight: 200;
+            margin-bottom: 0.3rem;
+        }
+
+        .stat-label {
+            font-size: clamp(0.75rem, 1.2vw, 0.9rem);
+            color: rgba(255, 255, 255, 0.7);
+            font-weight: 100;
+        }
+
+        /* ===== CTA SECTION ===== */
+        .cta-section {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
+            backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 15px;
+            padding: clamp(2rem, 4vw, 3rem);
+            text-align: center;
+            max-width: 900px;
+            margin: clamp(2rem, 4vw, 3rem) auto;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25), inset 0 1px 2px rgba(255, 255, 255, 0.5);
+        }
+
+        /* ===== PERSUASIVE ELEMENTS ===== */
+        .live-status-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(0, 0, 0, 0.1);
+            color: #ffffff;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 200;
+            border: 1px solid rgba(217, 217, 217, 0.3);
+            margin-bottom: 1rem;
+            animation: pulse-green 2s infinite;
+        }
+
+        .live-status-tag i {
+            color: #e60000;
+            font-size: 0.6rem;
+        }
+
+        @keyframes pulse-green {
+            0% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(0, 230, 118, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(0, 230, 118, 0); }
+        }
+
+        .trust-banner {
+            background: linear-gradient(90deg, transparent, rgba(255, 120, 2, 0.05), transparent);
+            padding: 10px;
+            text-align: center;
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.6);
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            margin-bottom: 2rem;
+        }
+
+        .value-badge {
+            background: #ff7802;
+            color: white;
+            font-size: 0.65rem;
+            padding: 2px 8px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            font-weight: 200;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+
+        .cta-section h2 {
+            font-size: clamp(1.4rem, 3vw, 2rem);
+            margin-bottom: clamp(0.8rem, 1.5vw, 1rem);
+            color: white;
+            font-weight: 200;
+        }
+
+        .cta-section p {
+            font-size: clamp(0.75rem, 1.3vw, 0.95rem);
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: clamp(1rem, 2vw, 1.5rem);
+            font-weight: 100;
+        }
+
+        .cta-buttons {
+            display: flex;
+            gap: clamp(0.5rem, 1vw, 1rem);
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        /* ===== BENEFITS SECTION ===== */
+        .benefits-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: clamp(1.5rem, 3vw, 3rem);
+            align-items: center;
+            margin-top: clamp(2rem, 4vw, 3rem);
+        }
+
+        .benefit-item {
+            display: flex;
+            gap: clamp(0.8rem, 1.5vw, 1.2rem);
+            margin-bottom: clamp(1rem, 1.5vw, 1.3rem);
+        }
+
+
+
+        .benefit-check {
+            width: clamp(32px, 4vw, 40px);
+            height: clamp(32px, 4vw, 40px);
+            background: #ff7802;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 0.9rem;
+            flex-shrink: 0;
+            font-weight: 200;
+        }
+
+        .benefit-text h4 {
+            font-size: clamp(0.8rem, 1.3vw, 0.95rem);
+            margin-bottom: 0.3rem;
+            color: white;
+            font-weight: 200;
+        }
+
+        .benefit-text p {
+            font-size: clamp(0.7rem, 1vw, 0.85rem);
+            color: rgba(255, 255, 255, 0.7);
+            margin: 0;
+            font-weight: 100;
+        }
+
+        .benefits-image img {
+            width: 100%;
+            border-radius: 15px;
+            box-shadow: 0 0 25px rgba(255, 120, 2, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0);
+        }
+
+        /* ===== HEADER OVERRIDES - LIQUID GLASS DESIGN ===== */
+        .site-header {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
+            backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
+            -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.15) !important;
+            border: 1px solid rgba(255, 255, 255, 0) !important;
+            box-shadow: 0 12px 40px rgba(255, 115, 0, 0.158), inset 0 1px 2px rgba(255, 255, 255, 0.5), 0 0 20px rgba(255, 120, 2, 0.2) !important;
+            border-radius: 25px;
+            margin: 5px auto;
+            align-items: center;
+            width: 98.5%;
+        }
+
+        /* Override all nav-links blue styling */
+        .center-nav a {
+            border-color: rgba(255, 255, 255, 0.2) !important;
+        }
+
+        .center-nav a:hover {
+            border-color: rgba(255, 120, 2, 0.5) !important;
+            box-shadow: 0 0 12px rgba(255, 120, 2, 0.3), 0 4px 18px rgba(0, 0, 0, 0.2) !important;
+            background: rgba(255, 120, 2, 0.08) !important;
+        }
+
+        .center-nav a.active {
+            border-color: rgba(255, 120, 2, 0.6) !important;
+            box-shadow: 0 0 12px rgba(255, 120, 2, 0.3), 0 0 30px rgba(255, 120, 2, 0.1) !important;
+            background: rgba(255, 120, 2, 0.12) !important;
+        }
+
+        /* Override glass icon buttons blue styling */
+        .glass-icon-btn {
+            box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18), 0 0 12px rgba(255, 120, 2, 0.15) !important;
+            border: 1px solid rgba(255, 120, 2, 0.2) !important;
+        }
+
+        .glass-icon-btn:hover {
+            border-color: rgba(255, 120, 2, 0.5) !important;
+            box-shadow: 0 0 18px rgba(255, 120, 2, 0.3), 0 6px 20px rgba(0, 0, 0, 0.25) !important;
+            background: rgba(255, 120, 2, 0.12) !important;
+        }
+
+        .glass-icon-btn:focus,
+        .glass-icon-btn:focus-visible {
+            outline: none !important;
+            box-shadow: 0 0 18px rgba(255, 120, 2, 0.4), 0 6px 20px rgba(0, 0, 0, 0.25) !important;
+            border-color: rgba(255, 120, 2, 0.6) !important;
+        }
+
+        .nav-links a:hover {
+            color: #ff7802 !important;
+            text-shadow: 0 0 10px rgba(255, 120, 2, 0.5);
+        }
+
+        .nav-links a::after {
+            background: #ff7802 !important;
+        }
+
+        .nav-links a.active {
+            color: #ff7802 !important;
+        }
+
+        .Shop {
+            border-color: #ff7802 !important;
+        }
+
+        .Shop:hover {
+            background-color: #ff7802 !important;
+            box-shadow: 0 0 15px rgba(255, 120, 2, 0.4) !important;
+        }
+
+        /* ===== FOOTER ===== */
+        footer {
+            margin-top: clamp(3rem, 6vw, 4rem);
+        }
+
+        /* ===== SCROLL ANIMATIONS ===== */
+        .fade-in-left {
+            opacity: 0;
+            transform: translateX(-80px);
+        }
+
+        .fade-in-left.animate {
+            animation: fadeInLeft 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+
+        .fade-in-right {
+            opacity: 0;
+            transform: translateX(80px);
+        }
+
+        .fade-in-right.animate {
+            animation: fadeInRight 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+
+        @keyframes fadeInLeft {
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        @keyframes fadeInRight {
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        /* Feature cards - initially hidden */
+        .feature-card {
+            opacity: 0;
+        }
+
+        .feature-card.animate {
+            opacity: 1;
+        }
+
+        .feature-card:nth-child(1) { animation-delay: 0.05s; }
+        .feature-card:nth-child(2) { animation-delay: 0.15s; }
+        .feature-card:nth-child(3) { animation-delay: 0.25s; }
+        .feature-card:nth-child(4) { animation-delay: 0.05s; }
+        .feature-card:nth-child(5) { animation-delay: 0.15s; }
+        .feature-card:nth-child(6) { animation-delay: 0.25s; }
+
+        /* Project items - initially hidden */
+        .project-item {
+            opacity: 0;
+        }
+
+        .project-item.animate {
+            opacity: 1;
+        }
+
+        .project-item:nth-child(1) { animation-delay: 0.05s; }
+        .project-item:nth-child(2) { animation-delay: 0.15s; }
+        .project-item:nth-child(3) { animation-delay: 0.25s; }
+        .project-item:nth-child(4) { animation-delay: 0.05s; }
+        .project-item:nth-child(5) { animation-delay: 0.15s; }
+        .project-item:nth-child(6) { animation-delay: 0.25s; }
+
+        /* Stat boxes - initially hidden */
+        .stat-box {
+            opacity: 0;
+        }
+
+        .stat-box.animate {
+            opacity: 1;
+        }
+
+        .stat-box:nth-child(1) { animation-delay: 0.05s; }
+        .stat-box:nth-child(2) { animation-delay: 0.15s; }
+        .stat-box:nth-child(3) { animation-delay: 0.25s; }
+        .stat-box:nth-child(4) { animation-delay: 0.35s; }
+
+        /* Benefit items - initially hidden */
+        .benefit-item {
+            opacity: 0;
+        }
+
+        .benefit-item.animate {
+            opacity: 1;
+        }
+
+        .benefit-item:nth-child(1) { animation-delay: 0.05s; }
+        .benefit-item:nth-child(2) { animation-delay: 0.15s; }
+        .benefit-item:nth-child(3) { animation-delay: 0.25s; }
+        .benefit-item:nth-child(4) { animation-delay: 0.35s; }
+
+
+        @media (max-width: 1024px) {
+            .hero-section {
+                grid-template-columns: 1fr;
+            }
+
+            .benefits-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (min-width: 1025px) and (max-width: 1600px) {
+            main {
+                margin-top: 1rem;
+            }
+
+            .site-header {
+                padding: 0.78rem 2.6vw;
+                border-radius: 16px;
+            }
+
+            .site-header .logo img {
+                width: 118px;
+            }
+
+            .nav-links {
+                gap: clamp(1.2rem, 2.2vw, 2.4rem);
+            }
+
+            .nav-links a {
+                font-size: 0.78rem;
+                padding: 7px 13px;
+            }
+
+            .header-actions {
+                gap: 9px;
+            }
+
+            .glass-icon-btn {
+                width: 42px;
+                height: 42px;
+            }
+
+            .hero-section {
+                max-width: 1110px;
+                padding: clamp(1.7rem, 3.1vw, 2.4rem) 1.5rem;
+                gap: clamp(1.5rem, 2.6vw, 2.2rem);
+                grid-template-columns: minmax(0, 0.95fr) minmax(420px, 0.92fr);
+            }
+
+            .live-status-tag {
+                font-size: 0.68rem;
+                padding: 4px 11px;
+                margin-bottom: 0.85rem;
+            }
+
+            .hero-section h1 {
+                font-size: clamp(1.45rem, 2.15vw, 1.82rem);
+                margin-bottom: 0.95rem;
+                line-height: 1.28;
+            }
+
+            .hero-section p {
+                font-size: 0.82rem;
+                line-height: 1.58;
+                margin-bottom: 1.1rem;
+            }
+
+            .credential-box {
+                padding: 1rem 1.15rem;
+                margin-bottom: 1rem;
+                min-height: 96px;
+                align-items: center;
+            }
+
+            .credential-icon {
+                font-size: 1.45rem;
+            }
+
+            .credential-text h4 {
+                font-size: 0.86rem;
+            }
+
+            .credential-text p {
+                font-size: 0.76rem;
+                line-height: 1.55;
+            }
+
+            .hero-buttons {
+                margin-top: 1.15rem;
+                gap: 0.8rem;
+            }
+
+            .link-content {
+                font-size: 0.72rem;
+                padding: 0.48rem 1.12rem;
+            }
+
+            .hero-image {
+                align-self: center;
+            }
+
+            .hero-image img {
+                max-width: 500px;
+                margin: 0 auto;
+                display: block;
+            }
+
+            section {
+                padding: clamp(2.2rem, 5vw, 3.7rem) 0;
+            }
+
+            .container {
+                max-width: 1110px;
+            }
+        }
+
+        @media (max-width: 768px) {
+
+            .projects-grid {
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .cta-buttons {
+                flex-direction: row;
+                justify-content: center;
+                gap: clamp(0.5rem, 1vw, 1rem);
+                flex-wrap: wrap;
+            }
+
+            .cta-buttons .glow-wrap {
+                width: fit-content;
+            }
+
+            .hero-buttons .glow-wrap {
+                width: fit-content;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .hero-section {
+                padding: 1.5rem 1rem;
+            }
+
+            .hero-buttons {
+                flex-direction: column;
+                gap: 0.8rem;
+                align-items: center;
+            }
+
+            .hero-buttons .glow-wrap {
+                width: fit-content;
+            }
+
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .projects-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .benefits-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .cta-buttons {
+                flex-direction: column;
+                gap: 0.8rem;
+                align-items: center;
+            }
+
+            .cta-buttons .glow-wrap {
+                width: fit-content;
+            }
+        }
+
+                /* Override background for ClientPortal only */
+        .backgrounds {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 110%;
+            z-index: -1;
+            background: linear-gradient(rgba(0, 0, 0, 0.593), rgba(0, 0, 0, 0.45)),
+                url('Images/Orangebackground.jpg') no-repeat center center;
+            background-size: cover;
+        }
+
+        /* ========================================================= */
+
+    </style>
+  <style id="stackops-footer-design">
+    .stackops-site-footer {
+      position: relative;
+      width: 96%;
+      margin: 0 auto 26px;
+      padding: 44px clamp(24px, 4vw, 64px);
+      border-radius: 42px;
+      background: linear-gradient(135deg, rgba(255,255,255,.10), rgba(255,255,255,.032));
+      border: 1px solid rgba(255,255,255,.11);
+      backdrop-filter: blur(22px) saturate(145%);
+      -webkit-backdrop-filter: blur(22px) saturate(145%);
+      color: rgba(255,255,255,.70);
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      overflow: hidden;
+    }
+    .stackops-footer-grid {
+      display: grid;
+      grid-template-columns: minmax(220px, 1.2fr) repeat(5, minmax(132px, 1fr));
+      gap: 30px;
+      align-items: start;
+    }
+    .stackops-footer-logo {
+      grid-column: 1;
+      grid-row: 1;
+      justify-self: start;
+      align-self: start;
+      max-width: 250px;
+      padding-top: 61px;
+      text-align: left;
+    }
+    .stackops-footer-logo img {
+      position: absolute;
+      top: 12px;
+      left: 14px;
+      display: block;
+      width: 124px;
+      height: 45px;
+      object-fit: contain;
+      object-position: left center;
+      margin: 0;
+    }
+    .stackops-footer-logo p,
+    .stackops-site-footer p,
+    .stackops-site-footer a,
+    .stackops-site-footer li {
+      color: rgba(255,255,255,.60);
+      font-size: .94rem;
+      line-height: 1.7;
+      font-weight: 200;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .stackops-site-footer h3 {
+      font-size: 1rem;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      margin: 0 0 15px;
+      color: rgba(255,255,255,.74);
+      font-weight: 200;
+      line-height: 1.6;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .stackops-site-footer ul {
+      list-style: none;
+      display: grid;
+      gap: 8px;
+      padding: 0;
+      margin: 0;
+    }
+    .stackops-site-footer p { margin: 0 0 6px; }
+    .stackops-site-footer a { text-decoration: none; transition: color .25s ease; }
+    .stackops-site-footer a:hover { color: #fff; }
+    .stackops-footer-socials {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 16px;
+    }
+    .stackops-footer-socials a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      color: rgba(255,255,255,.72);
+      background: rgba(255,255,255,.07);
+      border: 1px solid rgba(255,255,255,.12);
+      transition: transform .25s ease, background .25s ease, color .25s ease, border-color .25s ease;
+    }
+    .stackops-footer-socials a:hover {
+      transform: translateY(-3px);
+      color: #fff;
+      background: rgba(72,216,255,.16);
+      border-color: rgba(72,216,255,.36);
+    }
+    .stackops-footer-socials svg { width: 17px; height: 17px; fill: currentColor; }
+    .stackops-footer-copyright {
+      margin-top: 36px;
+      color: rgba(255,255,255,.42);
+      font-size: .86rem;
+      font-weight: 200;
+      line-height: 1.6;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    }
+    @media (max-width: 980px) {
+      .stackops-footer-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+    @media (max-width: 620px) {
+      .stackops-site-footer { border-radius: 30px; width: 94%; }
+      .stackops-footer-grid { grid-template-columns: 1fr; }
+      .stackops-footer-logo { grid-column: auto; justify-self: start; text-align: left; }
+      .stackops-footer-logo img { top: 10px; left: 12px; }
+    }
+  </style>
+</head>
+<body>
+    <div class="backgrounds"></div>
+
+    <header class="site-header">
+
+        <!-- Logo -->
+        <a href="/" class="logo">
+            <img src="Images/Logos/Ctrl big.png" alt="Stackops IT Solutions Logo">
+        </a>
+
+        <!-- Center Navigation -->
+        <ul class="nav-links center-nav" id="nav-links">
+            <li><a href="about.html">About</a></li>
+            <li><a href="service.html">Solutions</a></li>
+            <li><a href="approach.html">Approach</a></li>
+            <li><a href="consultation.html">Consultation</a></li>
+            <li><a href="ClientDashboardHome.html
+"  class="active">Client Portal</a></li>
+        </ul>
+
+        <!-- Right Side Icons -->
+        <div class="header-actions">
+
+            <a href="Home.html" class="glass-icon-btn" aria-label="Home">
+                <i class="fas fa-house"></i>
+            </a>
+
+            <a href="contact.html" class="glass-icon-btn" aria-label="Contact Us">
+                <i class="fas fa-phone"></i>
+            </a>
+
+            <a href="https://proqpilot.com" id="shop-link" class="glass-icon-btn" aria-label="Shop">
+                <i class="fas fa-cart-shopping"></i>
+            </a>
+
+            <!-- Hamburger -->
+            <div id="hamburger" class="hamburger">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+
+        </div>
+
+    </header>
+
+    <main>
+
+
+        <!-- ===== HERO SECTION ===== -->
+        <section class="hero-section">
+            <div>
+                <div class="live-status-tag">
+                    <i class="fas fa-circle"></i> SOC Operational: 24/7 Monitoring Active
+                </div>
+                <h1>One Platform to Run your entire IT Environment</h1>
+                <p>Experience the power of a fully managed Security Operations Center. Our dashboard transforms complex IT infrastructure into a single, intuitive interface—giving you total visibility and peace of mind without the enterprise overhead.</p>
+
+                <div class="credential-box">
+                    <div class="credential-icon">
+                        <i class="fas fa-envelope-open"></i>
+                    </div>
+                    <div class="credential-text">
+                        <h4>Access your secure dashboard</h4>
+                        <p>Sign in using your secure credentials or set your password via the activation email.</p>
+                    </div>
+                </div>
+
+                <div class="credential-box">
+                    <div class="credential-icon">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <div class="credential-text">
+                        <h4>Experience Enterprise-Grade IT Solutions</h4>
+                        <p>Partner with StackOps IT to secure, manage, and scale your entire IT environment.</p>
+                    </div>
+                </div>
+
+                <div class="hero-buttons">
+                    <div class="glow-wrap">
+                        <div class="glowing-border-layer"></div>
+                        <a href="ClientPortal.html" class="link-content">
+                            <i class="fas fa-sign-in-alt"></i> Sign in
+                        </a>
+                    </div>
+                    <div class="glow-wrap">
+                        <div class="glowing-border-layer"></div>
+                        <a href="contact.html" class="link-content">
+                            <i class="fas fa-handshake"></i> Book a demo
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="hero-image">
+                <img src="Images/Screenshot1.png" alt="Dashboard Interface">
+            </div>
+        </section>
+
+                <!-- ===== BENEFITS SECTION ===== -->
+        <section>
+            <div class="container">
+                <div class="section-title">
+                    <h2>Why Choose Our Client Portal?</h2>
+                    <p>Enterprise-grade features designed for your success</p>
+                </div>
+
+                <div class="benefits-grid">
+                    <div>
+                        <div class="benefit-item">
+                            <div class="benefit-check">
+                                <i class="fas fa-check"></i>
+                            </div>
+                            <div class="benefit-text">
+                                <h4>Unified Command Center</h4>
+                                <p>Consolidate your entire IT footprint—from Microsoft 365 to Backup & Recovery—into one simplified, high-performance portal.</p>
+                            </div>
+                        </div>
+
+                        <div class="benefit-item">
+                            <div class="benefit-check">
+                                <i class="fas fa-check"></i>
+                            </div>
+                            <div class="benefit-text">
+                                <h4>Zero-Trust Peace of Mind</h4>
+                                <p>Live identity monitoring and encrypted governance ensure your business data is shielded by enterprise-grade protocols 24/7.</p>
+                            </div>
+                        </div>
+
+                        <div class="benefit-item">
+                            <div class="benefit-check">
+                                <i class="fas fa-check"></i>
+                            </div>
+                            <div class="benefit-text">
+                                <h4>Executive Decision Intelligence</h4>
+                                <p>Stop guessing. Our dashboard provides actionable, real-time insights that allow you to make data-driven decisions in seconds.</p>
+                            </div>
+                        </div>
+
+                        <div class="benefit-item">
+                            <div class="benefit-check">
+                                <i class="fas fa-check"></i>
+                            </div>
+                            <div class="benefit-text">
+                                <h4>Mobile Responsive</h4>
+                                <p>Access your dashboard from any device - desktop, tablet, or mobile phone.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="benefits-image">
+                        <img src="Images/Screnshot2.png" alt="Benefits">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== DASHBOARD PREVIEW ===== -->
+        <section>
+            <div class="container">
+                <div class="section-title">
+                    <h2>See Your Dashboard in Action</h2>
+                    <p>A glimpse into the powerful interface you'll have access to</p>
+                </div>
+
+                <div class="preview-video" id="previewVideo">
+                    <iframe 
+                        src="https://www.youtube-nocookie.com/embed/gKyAmhhWoj8?autoplay=1&loop=1&mute=1&playlist=gKyAmhhWoj8&rel=0&modestbranding=1"
+                        title="Dashboard Preview"
+                        allow="autoplay; encrypted-media"
+                        playsinline
+                        loading="lazy"
+                        style="border: none;"
+                    ></iframe>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== FEATURES SECTION ===== -->
+        <section>
+            <div class="container">
+                <div class="section-title">
+                    <h2>Powerful Features at Your Fingertips</h2>
+                    <p>Everything you need to manage, monitor, and optimize your IT infrastructure in real-time</p>
+                </div>
+
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-chart-line"></i>
+                        </div>
+                        <h3>Live Defense Map <span class="value-badge">PRO</span></h3>
+                        <p>Visualize every login, threat, and system health metric on a real-time map. Know exactly what's happening across your environment, the moment it happens.</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-lock"></i>
+                        </div>
+                        <h3>Compliance Automation </h3>
+                        <p>Our intelligent system automatically validates MFA enforcement and admin privileges, ensuring you stay audit-ready without the manual effort.</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-folder-open"></i>
+                        </div>
+                        <h3>Project Transparency</h3>
+                        <p>Follow your IT roadmap with total clarity. Track milestones, technical debt, and infrastructure upgrades through a transparent, live project tracker.</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-robot"></i>
+                        </div>
+                        <h3>AI-Powered Chatbot</h3>
+                        <p>Get instant answers to your questions with our intelligent chatbot, available 24/7 to support your needs.</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-file-invoice"></i>
+                        </div>
+                        <h3>Billing & Invoices</h3>
+                        <p>Manage your billing information, view invoices, and track payments all in one convenient location.</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-headset"></i>
+                        </div>
+                        <h3>24/7 Support Access</h3>
+                        <p>Direct access to our support team, service desk tracking, and real-time ticket management for immediate assistance.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+
+
+        <!-- ===== PROJECTS SHOWCASE ===== -->
+        <section class="projects-showcase">
+            <div class="container">
+                <div class="section-title">
+                    <h2>Manage All Your IT Projects</h2>
+                    <p>Track and monitor various IT services and solutions from your dashboard</p>
+                </div>
+
+                <div class="projects-grid">
+                    <div class="project-item">
+                        <div class="project-icon">
+                            <i class="fas fa-id-card"></i>
+                        </div>
+                        <h4>Cisco DUO Licenses</h4>
+                        <p>Enterprise Identity & Access Management - Monitor active usage and license allocation</p>
+                    </div>
+
+                    <div class="project-item">
+                        <div class="project-icon">
+                            <img src="Images/Microsoft-Solutions-Partner.png" alt="Microsoft" style="max-width: 50px; height: auto;">
+                        </div>
+                        <h4>Microsoft 365</h4>
+                        <p>Proactive tenant security insights - Real-time security and health monitoring</p>
+                    </div>
+
+                    <div class="project-item">
+                        <div class="project-icon">
+                            <i class="fas fa-headset"></i>
+                        </div>
+                        <h4>Support & Service Desk</h4>
+                        <p>Real-time support visibility - Track tickets and response times instantly</p>
+                    </div>
+
+                    <div class="project-item">
+                        <div class="project-icon">
+                            <i class="fas fa-database"></i>
+                        </div>
+                        <h4>Backup & Recovery</h4>
+                        <p>Automated protection - Ensure data safety with instant recovery capabilities</p>
+                    </div>
+
+                    <div class="project-item">
+                        <div class="project-icon">
+                            <i class="fas fa-cloud"></i>
+                        </div>
+                        <h4>Cloud Data Services</h4>
+                        <p>Optimized cloud storage - Monitor performance and redundancy levels</p>
+                    </div>
+
+                    <div class="project-item">
+                        <div class="project-icon">
+                            <i class="fas fa-shield-alt"></i>
+                        </div>
+                        <h4>Governance & Compliance</h4>
+                        <p>Risk management - Maintain compliance standards and security protocols</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== STATS SECTION ===== -->
+        <section>
+            <div class="container">
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="stat-number">10+</div>
+                        <div class="stat-label">Active Clients</div>
+                    </div>
+
+                    <div class="stat-box">
+                        <div class="stat-number">99.9%</div>
+                        <div class="stat-label">Uptime Guarantee</div>
+                    </div>
+
+                    <div class="stat-box">
+                        <div class="stat-number">24/7</div>
+                        <div class="stat-label">Support Available</div>
+                    </div>
+
+                    <div class="stat-box">
+                        <div class="stat-number">50+</div>
+                        <div class="stat-label">Integrations</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== CALL TO ACTION ===== -->
+        <div class="container">
+            <div class="cta-section">
+
+                <h2>Claim Your Enterprise Command Center</h2>
+                <p>Don't settle for fragmented IT. Join our elite circle of clients who manage their entire infrastructure with absolute clarity and security. Ready to upgrade your operations?</p>
+
+                <div class="cta-buttons">
+                    <div class="glow-wrap">
+                        <div class="glowing-border-layer"></div>
+                        <a href="ClientPortal.html" class="link-content">
+                            <i class="fas fa-sign-in-alt"></i> Sign In Now
+                        </a>
+                    </div>
+                    <div class="glow-wrap">
+                        <div class="glowing-border-layer"></div>
+                        <a href="contact.html" class="link-content">
+                            <i class="fas fa-phone"></i> Contact Us to Become a Client
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- ===== FOOTER ===== -->
+    <footer class="stackops-site-footer">
+      <div class="stackops-footer-grid">
+        <div class="stackops-footer-logo">
+          <img src="Images/Logos/Ctrl big.png" alt="StackCTRL" />
+          <p>StackCTRL gives clients clear visibility across service delivery, projects, assets and risk.</p>
+        </div>
+
+        <div>
+          <h3>Quick Links</h3>
+          <ul>
+            <li><a href="Home.html">Home</a></li>
+            <li><a href="about.html">About us</a></li>
+            <li><a href="contact.html">Contact</a></li>
+            <li><a href="consultation.html">Book a session</a></li>
+            <li><a href="signin.html">Admin portal</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h3>Services</h3>
+          <ul>
+            <li><a href="service.html">Managed IT</a></li>
+            <li><a href="service.html">Cybersecurity</a></li>
+            <li><a href="service.html">Governance</a></li>
+            <li><a href="service.html">IT audit</a></li>
+            <li><a href="service.html">Web development</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h3>Solutions</h3>
+          <ul>
+            <li><a href="ClientDashboardHome.html">StackCTRL portal</a></li>
+            <li><a href="https://proqpilot.com">ProQ Pilot shop</a></li>
+            <li><a href="service.html">Microsoft 365</a></li>
+            <li><a href="service.html">Cisco Duo</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h3>Disclaimer</h3>
+          <ul>
+            <li><a href="service.html#web-development">POPIA</a></li>
+            <li><a href="service.html#web-design">Privacy policy</a></li>
+            <li><a href="service.html#mobile-development">Terms</a></li>
+            <li><a href="service.html">Security audits</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h3>Contact</h3>
+          <p><a href="mailto:info@stackopsit.co.za">info@stackopsit.co.za</a></p>
+          <p><a href="mailto:support@stackopsit.co.za">support@stackopsit.co.za</a></p>
+          <p><a href="mailto:sales@stackopsit.co.za">sales@stackopsit.co.za</a></p>
+          <p>Mia Drive, Waterfall City, Johannesburg, 1685</p>
+          <p>011 568 9337</p>
+          <div class="stackops-footer-socials" aria-label="Social links">
+            <a href="https://www.linkedin.com/in/ndamulelo-sandani-0988289a/overlay/about-this-profile/?lipi=urn%3Ali%3Apage%3Ad_flagship3_profile_view_base%3BAO9qQ1ErRwqaNzIPO5obNA%3D%3D" aria-label="LinkedIn" target="_blank" rel="noopener noreferrer"><i class="fab fa-linkedin-in" aria-hidden="true"></i></a>
+            <a href="#" aria-label="X"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.9 2H22l-6.8 7.78L23.2 22h-6.26l-4.9-6.4L6.44 22H3.32l7.28-8.32L2.92 2h6.42l4.43 5.86L18.9 2zm-1.1 17.85h1.72L8.4 4.04H6.55L17.8 19.85z"/></svg></a>
+            <a href="#" aria-label="Facebook"><i class="fab fa-facebook-f" aria-hidden="true"></i></a>
+            <a href="#" aria-label="Instagram"><i class="fab fa-instagram" aria-hidden="true"></i></a>
+          </div>
+        </div>
+      </div>
+      <div class="stackops-footer-copyright">© <span id="copyright-year" class="copyright-year">2026</span> StackOps IT Solutions. All rights reserved.</div>
+    </footer>
+
+    <script>
+
+            document.addEventListener('DOMContentLoaded', () => {
+                const hamburger = document.getElementById('hamburger');
+                let menu = null;
+
+                function openMenu() {
+                    menu = document.createElement('div');
+                    menu.id = 'minimal-menu';
+                    menu.innerHTML = `
+                        <ul>
+                            <li><a href="Home.html">Home</a></li>
+                            <li><a href="about.html">About</a></li>
+                            <li><a href="service.html">Solutions</a></li>
+                            <li><a href="approach.html">Our Approach</a></li>
+                            <li><a href="contact.html">Contact Us</a></li>
+                            <li><a href="consultation.html">Book a Consultation</a></li>
+                            <li><a href="ClientDashboardHome.html
+">Client Portal</a></li>
+                            <li><a href="https://proqpilot.com">Shop</a></li>
+                        </ul>
+                    `;
+                    document.body.appendChild(menu);
+                    hamburger.classList.add('active');
+                }
+
+                function closeMenu() {
+                    if (menu) {
+                        menu.remove();
+                        menu = null;
+                        hamburger.classList.remove('active');
+                    }
+                }
+
+                hamburger.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    menu ? closeMenu() : openMenu();
+                });
+
+                document.addEventListener('click', (e) => {
+                    if (menu && !menu.contains(e.target) && e.target !== hamburger) {
+                        closeMenu();
+                    }
+                });
+            });
+        // iOS-compatible video setup
+        document.addEventListener('DOMContentLoaded', () => {
+            const previewVideo = document.getElementById('previewVideo');
+            const iframe = previewVideo?.querySelector('iframe');
+            
+            if (iframe) {
+                // Ensure iframe is interactive on all devices
+                iframe.addEventListener('load', () => {
+                    iframe.style.pointerEvents = 'auto';
+                });
+                iframe.style.pointerEvents = 'auto';
+            }
+        });
+
+        // Smooth scrolling for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function(e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth' });
+                }
+            });
+        });
+
+        // Intersection Observer for scroll animations
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -100px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach((entry, index) => {
+                if (entry.isIntersecting) {
+                    const element = entry.target;
+                    const elementIndex = Array.from(element.parentElement.children).indexOf(element);
+                    
+                    // Add fade-in-left for odd indices, fade-in-right for even
+                    if (elementIndex % 2 === 0) {
+                        element.classList.add('fade-in-left');
+                    } else {
+                        element.classList.add('fade-in-right');
+                    }
+                    
+                    element.classList.add('animate');
+                }
+            });
+        }, observerOptions);
+
+        // Apply observer to all animated elements
+        document.querySelectorAll('.feature-card, .stat-box, .benefit-item, .project-item').forEach(el => {
+            observer.observe(el);
+        });
+
+        document.querySelectorAll('#copyright-year, .copyright-year').forEach(yearSpan => {
+            yearSpan.textContent = new Date().getFullYear();
+        });
+    </script>
+</body>
+</html>

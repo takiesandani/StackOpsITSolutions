@@ -1,0 +1,26 @@
+runtime: nodejs22
+instance_class: F1
+
+env_variables:
+  # Supabase Credentials
+  USE_SUPABASE: "true"
+  SUPABASE_URL: "https://mrubwknihpwlgreoroso.supabase.co"
+  SUPABASE_SERVICE_ROLE_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ydWJ3a25paHB3bGdyZW9yb3NvIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MDM5MjQ2NiwiZXhwIjoyMDc1OTY4NDY2fQ.ikGYNgHS3OY3JTBVN10sbPmwHSkeHwOf-gPNi5psEZs"
+
+  # Email (Nodemailer) Credentials
+  EMAIL_USER: "info@stackopsit.co.za"
+  EMAIL_PASS: "Cxzdsaewq123$"
+  SMTP_HOST: "smtpout.secureserver.net"
+  SMTP_PORT: "465"
+  SMTP_SECURE: "true"
+  SMTP_USER: "info@stackopsit.co.za"
+  SMTP_PASS: "Cxzdsaewq123$"
+
+  # Application Secret
+  ACCESS_TOKEN_SECRET: "7a076e42670cfe26193655fe5f48b776defe078754ca16fb9ae0a054b354d335"
+
+  # Fallback MySQL Credentials (not used if USE_SUPABASE is true)
+  DB_HOST: "localhost"
+  DB_USER: "root"
+  DB_PASSWORD: "@TakalaniSandani2005"
+  DB_NAME: "consultation_db"
