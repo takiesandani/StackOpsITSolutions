@@ -60,6 +60,7 @@ function setupEventListeners() {
     }
 }
 
+//check
 async function loadAppointments() {
     try {
         const token = localStorage.getItem('authToken');
