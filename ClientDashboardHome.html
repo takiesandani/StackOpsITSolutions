@@ -1030,6 +1030,204 @@
       .stackops-footer-logo img { top: 10px; left: 12px; }
       .stackops-footer-logo p { top: 100px; left: 30px; width: min(230px, calc(100% - 60px)); }
     }
+    /* Compact footer for tablets and phones */
+    @media (max-width: 980px) {
+      .stackops-site-footer {
+        padding: 34px clamp(18px, 3vw, 34px) 62px;
+      }
+      .stackops-footer-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 24px 22px;
+      }
+      .stackops-footer-logo {
+        min-height: 122px;
+        padding-top: 52px;
+      }
+      .stackops-footer-logo img {
+        width: 100px;
+        height: 38px;
+      }
+      .stackops-footer-logo p,
+      .stackops-site-footer p,
+      .stackops-site-footer a,
+      .stackops-site-footer li {
+        font-size: .74rem;
+        line-height: 1.48;
+      }
+      .stackops-site-footer h3 {
+        font-size: .82rem;
+        line-height: 1.28;
+        margin-bottom: 9px;
+      }
+      .stackops-site-footer ul {
+        gap: 5px;
+      }
+      .stackops-footer-socials {
+        gap: 8px;
+        margin-top: 10px;
+      }
+      .stackops-footer-socials a {
+        width: 30px;
+        height: 30px;
+      }
+      .stackops-footer-socials svg {
+        width: 14px;
+        height: 14px;
+      }
+    }
+
+    @media (max-width: 620px) {
+      .stackops-site-footer {
+        width: 94%;
+        padding: 26px 16px 50px;
+        border-radius: 26px;
+      }
+      .stackops-footer-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 18px 12px;
+      }
+      .stackops-footer-logo {
+        grid-column: 1 / -1;
+        min-height: 84px;
+        padding-top: 40px;
+      }
+      .stackops-footer-logo img {
+        top: 12px;
+        left: 18px;
+        width: 88px;
+        height: 32px;
+      }
+      .stackops-footer-logo p {
+        top: 58px;
+        left: 30px;
+        width: min(220px, calc(100% - 60px));
+      }
+      .stackops-footer-logo p,
+      .stackops-site-footer p,
+      .stackops-site-footer a,
+      .stackops-site-footer li {
+        font-size: .62rem;
+        line-height: 1.36;
+      }
+      .stackops-site-footer h3 {
+        font-size: .69rem;
+        letter-spacing: .07em;
+        line-height: 1.24;
+        margin-bottom: 7px;
+      }
+      .stackops-site-footer ul {
+        gap: 4px;
+      }
+      .stackops-site-footer a,
+      .stackops-site-footer li,
+      .stackops-site-footer p {
+        overflow-wrap: anywhere;
+      }
+      .stackops-footer-socials {
+        gap: 7px;
+        margin-top: 8px;
+      }
+      .stackops-footer-socials a {
+        width: 28px;
+        height: 28px;
+      }
+      .stackops-footer-copyright {
+        left: 30px;
+        right: 40px;
+        bottom: 16px;
+        font-size: .58rem;
+        line-height: 1.35;
+      }
+    }
+
+    @media (max-width: 380px) {
+      .stackops-site-footer {
+        padding-left: 14px;
+        padding-right: 14px;
+      }
+      .stackops-footer-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px 12px;
+      }
+      .stackops-footer-logo p,
+      .stackops-site-footer p,
+      .stackops-site-footer a,
+      .stackops-site-footer li {
+        font-size: .61rem;
+      }
+      .stackops-site-footer h3 {
+        font-size: .68rem;
+      }
+    }
+    /* Align responsive footer intro and copyright with the column grid */
+    @media (max-width: 980px) {
+      .stackops-footer-logo {
+        grid-column: 1 / -1;
+      }
+      .stackops-footer-logo img,
+      .stackops-footer-logo p,
+      .stackops-footer-copyright {
+        left: clamp(18px, 3vw, 34px);
+      }
+      .stackops-footer-copyright {
+        right: clamp(18px, 3vw, 34px);
+      }
+      .stackops-footer-socials {
+        gap: 6px;
+      }
+      .stackops-footer-socials a {
+        width: 26px;
+        height: 26px;
+      }
+      .stackops-footer-socials svg {
+        width: 12px;
+        height: 12px;
+      }
+    }
+
+    @media (max-width: 620px) {
+      .stackops-footer-logo img,
+      .stackops-footer-logo p,
+      .stackops-footer-copyright {
+        left: 16px;
+      }
+      .stackops-footer-logo p {
+        width: min(220px, calc(100% - 32px));
+      }
+      .stackops-footer-copyright {
+        right: 16px;
+      }
+      .stackops-footer-socials a {
+        width: 24px;
+        height: 24px;
+      }
+      .stackops-footer-socials svg {
+        width: 11px;
+        height: 11px;
+      }
+    }
+
+    @media (max-width: 380px) {
+      .stackops-footer-logo img,
+      .stackops-footer-logo p,
+      .stackops-footer-copyright {
+        left: 14px;
+      }
+      .stackops-footer-logo p {
+        width: min(210px, calc(100% - 28px));
+      }
+      .stackops-footer-copyright {
+        right: 14px;
+      }
+      .stackops-footer-socials a {
+        width: 22px;
+        height: 22px;
+      }
+      .stackops-footer-socials svg {
+        width: 10px;
+        height: 10px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -1556,3 +1754,7 @@
     </script>
 </body>
 </html>
+
+
+
+

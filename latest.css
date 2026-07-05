@@ -7606,3 +7606,236 @@ footer a:hover {
     height: 86px !important;
   }
 }
+
+/* Home services: PlayStation-inspired mobile/tablet carousel */
+@media (max-width: 1024px) {
+  .services-grid-section {
+    padding: clamp(34px, 7vw, 64px) 0;
+    background: rgba(28, 28, 28, 0.7);
+  }
+
+  .services-grid-section .service-container {
+    width: 100%;
+    max-width: none;
+    zoom: 1;
+    padding: clamp(16px, 4vw, 30px) 0 clamp(22px, 5vw, 38px);
+    border-radius: 0;
+    background: transparent;
+    border: 0;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    overflow: visible;
+  }
+
+  .services-grid-section .section-title {
+    margin: 0 0 clamp(18px, 4vw, 28px);
+    padding: 0 clamp(22px, 6vw, 42px);
+    font-family: "SST", "Helvetica Neue", Arial, sans-serif;
+    font-size: clamp(1.1rem, 3.8vw, 1.55rem) !important;
+    line-height: 1.18;
+    letter-spacing: 0;
+    font-weight: 300;
+  }
+
+  .services-grid-section .services-grid {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 66%;
+    grid-template-columns: none;
+    gap: clamp(16px, 4.2vw, 26px);
+    overflow-x: auto;
+    overflow-y: visible;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 14%;
+    padding: 4px 0 22px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    justify-content: start;
+    align-items: stretch;
+  }
+
+  .services-grid-section .services-grid::-webkit-scrollbar {
+    display: none;
+  }
+
+  .services-grid-section .service-item {
+    min-width: 0;
+    min-height: 0;
+    height: auto;
+    border-radius: 20px !important;
+    scroll-snap-align: center;
+    background: linear-gradient(135deg, rgba(255,255,255,.10), rgba(255,255,255,.032)) !important;
+    border: 1px solid rgba(255,255,255,.11) !important;
+    backdrop-filter: blur(22px) saturate(145%) !important;
+    -webkit-backdrop-filter: blur(22px) saturate(145%) !important;
+    box-shadow:
+      0 0 10px rgba(30, 144, 255, 0.46),
+      0 12px 28px rgba(0, 0, 0, 0.34) !important;
+    transform: none !important;
+    animation: none !important;
+    text-align: left;
+    overflow: hidden;
+  }
+
+  .services-grid-section .service-item:hover {
+    transform: none !important;
+    animation: none !important;
+  }
+
+  .services-grid-section .service-item img {
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    height: clamp(148px, 30vw, 230px);
+    max-height: 230px;
+    object-fit: cover;
+    border-radius: 15px;
+  }
+
+  .services-grid-section .service-content {
+    min-width: 0;
+    padding: clamp(15px, 4vw, 22px) clamp(16px, 4.3vw, 24px) clamp(17px, 4.8vw, 26px);
+    text-align: left;
+    font-family: "SST", "Helvetica Neue", Arial, sans-serif;
+  }
+
+  .services-grid-section .service-content h2 {
+    color: rgba(255,255,255,.92);
+    font-family: "SST", "Helvetica Neue", Arial, sans-serif;
+    font-size: clamp(.9rem, 3.45vw, 1.12rem) !important;
+    line-height: 1.22;
+    letter-spacing: 0;
+    font-weight: 300;
+    margin: 0 0 8px;
+  }
+
+  .services-grid-section .service-content p {
+    color: rgba(255,255,255,.68);
+    font-family: "SST", "Helvetica Neue", Arial, sans-serif;
+    font-size: clamp(.72rem, 2.35vw, .84rem) !important;
+    line-height: 1.5;
+    font-weight: 300;
+    margin: 0 0 10px;
+  }
+
+  .services-grid-section .service-content ul {
+    width: auto;
+    display: grid;
+    gap: 3px;
+    margin: 0 0 12px;
+    padding: 0;
+    text-align: left;
+  }
+
+  .services-grid-section .service-content li {
+    align-items: flex-start;
+    color: rgba(255,255,255,.66);
+    font-family: "SST", "Helvetica Neue", Arial, sans-serif;
+    font-size: clamp(.64rem, 2.05vw, .74rem) !important;
+    line-height: 1.28;
+    font-weight: 300;
+    margin: 0;
+  }
+
+  .services-grid-section .service-content li i {
+    margin-top: .18em;
+    margin-right: 6px;
+    color: rgba(72,216,255,.86);
+    font-size: .62rem;
+  }
+
+  .services-grid-section .service-content .glow-wrap,
+  .services-grid-section .service-item .glow-wrap {
+    width: 112px !important;
+    height: 30px !important;
+    align-self: flex-start !important;
+    margin-top: auto !important;
+    border-radius: 999px !important;
+  }
+
+  .services-grid-section .service-content .glow-wrap .link-content,
+  .services-grid-section .service-item .glow-wrap .link-content {
+    border-radius: 999px !important;
+    font-family: "SST", "Helvetica Neue", Arial, sans-serif;
+    font-size: .62rem !important;
+    letter-spacing: .06em !important;
+    font-weight: 400;
+  }
+}
+
+@media (max-width: 520px) {
+  .partners .logo-carousel {
+    min-height: 86px;
+  }
+
+  .partners .logo-item {
+    min-height: 78px;
+  }
+
+  .partners .logo-item img {
+    height: 54px !important;
+    max-width: min(112px, 70%) !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .partners .logo-item img {
+    height: 48px !important;
+    max-width: min(96px, 68%) !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .services-grid-section .services-grid {
+    grid-auto-columns: 76%;
+    gap: 16px;
+    scroll-padding-inline: 9%;
+    padding-inline: 0;
+  }
+
+  .services-grid-section .service-container {
+    width: 100%;
+  }
+}
+
+
+/* About page mobile typography: keep story and values quiet/minimal */
+@media (max-width: 620px) {
+  .our-story-header-image .about-content h1 {
+    font-size: clamp(1.2rem, 5.1vw, 1.45rem) !important;
+    line-height: 1.16;
+    font-weight: 200 !important;
+    letter-spacing: 0;
+  }
+
+  .our-story-header-image .about-content p,
+  .values .section-title p,
+  .values .value-item p {
+    font-size: .72rem !important;
+    line-height: 1.52 !important;
+    font-weight: 200 !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .our-story-header-image .about-content h1 {
+    font-size: 1.15rem !important;
+  }
+
+  .our-story-header-image .about-content p,
+  .values .section-title p,
+  .values .value-item p {
+    font-size: .68rem !important;
+    line-height: 1.48 !important;
+  }
+}
+
+/* About page mobile paragraph weight refinement */
+@media (max-width: 620px) {
+  .our-story-header-image .about-content p,
+  .values .value-item p {
+    font-family: "Segoe UI Light", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    font-weight: 300 !important;
+    color: rgba(255,255,255,.78) !important;
+  }
+}
