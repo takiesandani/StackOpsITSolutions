@@ -239,3 +239,15 @@
         text-align: left;
     }
 }
+/* Keep shared compact header controls consistent when mobile.css loads last */
+@media (max-width: 768px) {
+    .hamburger {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: 31px !important;
+        height: 31px !important;
+        min-width: 31px !important;
+        border-radius: 50% !important;
+    }
+}

@@ -7839,3 +7839,39 @@ footer a:hover {
     color: rgba(255,255,255,.78) !important;
   }
 }
+
+/* Compact liquid glass header for tablets and phones */
+@media (max-width: 992px) {
+  .navbar {
+    width: calc(100% - 20px) !important;
+    min-height: 58px !important;
+    margin: 8px auto 0 !important;
+    padding: 8px 12px !important;
+    border-radius: 18px !important;
+    background: linear-gradient(135deg, rgba(255,255,255,.11), rgba(255,255,255,.035)) !important;
+    border: 1px solid rgba(255,255,255,.16) !important;
+    backdrop-filter: blur(22px) saturate(145%) !important;
+    -webkit-backdrop-filter: blur(22px) saturate(145%) !important;
+    box-shadow: 0 0 12px rgba(30,144,255,.22), 0 12px 26px rgba(0,0,0,.30) !important;
+  }
+
+  .navbar .logo img,
+  .logo img {
+    width: clamp(76px, 18vw, 96px) !important;
+    max-width: 96px !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .navbar {
+    width: calc(100% - 16px) !important;
+    min-height: 54px !important;
+    padding: 7px 10px !important;
+    border-radius: 16px !important;
+  }
+
+  .navbar .logo img,
+  .logo img {
+    width: 74px !important;
+  }
+}

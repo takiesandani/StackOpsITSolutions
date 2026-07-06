@@ -455,9 +455,9 @@
              <h1>
             <span>Our</span><br>
             <span>client</span><br>
-            <span>Stack</span>
+            <span>stack</span>
         </h1>
-            <p>THE COMPANIES THAT HAVE PLACED THEIR TRUST IN US.</p>
+            <p>The companies that have placed their trust in us.</p>
         </div>
         <div class="title-section-right">
             <img src="Images/ClientTitle.png" alt="Stackops IT Solutions Logo">
@@ -539,6 +539,17 @@
             <!-- Navigation dots will be dynamically inserted here -->
         </div>
     </div>
+</section>
+
+<section class="page-header">
+    <div class="container">
+        <h1>Our Approach</h1>
+        <p> An Overview of Our Five-Step Process for Customizing Services</p>
+    </div>
+</section>
+
+<section class="approach-image-section">
+    <img src="Images/Our approach.png" alt="Our Approach Overview">
 </section>
 
 <!--
@@ -783,26 +794,6 @@
             }
         }
 
-        // Hamburger menu toggle
-        const hamburger = document.getElementById('hamburger');
-        const navLinks = document.getElementById('nav-links');
-
-        if (hamburger && navLinks) {
-            hamburger.addEventListener('click', () => {
-                navLinks.classList.toggle('active');
-                hamburger.innerHTML = navLinks.classList.contains('active') ? 
-                    '<i class="fas fa-times"></i>' : '<i class="fas fa-bars"></i>';
-            });
-
-            document.querySelectorAll('.nav-links a').forEach(link => {
-                link.addEventListener('click', () => {
-                    if (navLinks.classList.contains('active')) {
-                        navLinks.classList.remove('active');
-                        hamburger.innerHTML = '<i class="fas fa-bars"></i>';
-                    }
-                });
-            });
-        }
 
         // Sticky header on scroll
         window.addEventListener('scroll', function() {
@@ -879,6 +870,8 @@
         </script>
 </body>
 </html>
+
+
 
 
 

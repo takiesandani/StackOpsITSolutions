@@ -1698,7 +1698,8 @@ a[aria-label="Home"]:hover {
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
-    overflow: visible !important; /* Prevent scrollbar on hover */
+    overflow-x: clip !important;
+    overflow-y: visible !important; /* Prevent scrollbar on hover */
     padding-bottom: 20px !important; /* Extra padding to prevent button from overlapping */
 }
 
@@ -4116,3 +4117,417 @@ body:has(.consultation-container) footer {
     position: relative;
     z-index: 2;
 }
+
+/* Compact liquid glass header for tablets and phones */
+@media (max-width: 992px) {
+    .site-header {
+        width: calc(100% - 20px) !important;
+        min-height: 58px !important;
+        margin: 8px auto 0 !important;
+        padding: 8px 12px !important;
+        border-radius: 18px !important;
+        background: linear-gradient(135deg, rgba(255,255,255,.11), rgba(255,255,255,.035)) !important;
+        border: 1px solid rgba(255,255,255,.16) !important;
+        backdrop-filter: blur(22px) saturate(145%) !important;
+        -webkit-backdrop-filter: blur(22px) saturate(145%) !important;
+        box-shadow: 0 0 12px rgba(30,144,255,.22), 0 12px 26px rgba(0,0,0,.30) !important;
+    }
+
+    .site-header .logo img {
+        width: clamp(76px, 18vw, 96px) !important;
+        max-width: 96px !important;
+    }
+
+    .header-actions {
+        gap: 6px !important;
+    }
+
+    .glass-icon-btn,
+    .hamburger {
+        width: 34px !important;
+        height: 34px !important;
+        min-width: 34px !important;
+        border-radius: 50% !important;
+        background: rgba(255,255,255,.055) !important;
+        border: 1px solid rgba(255,255,255,.13) !important;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.16), 0 4px 12px rgba(0,0,0,.22) !important;
+    }
+
+    .glass-icon-btn i {
+        font-size: 13px !important;
+    }
+
+    .hamburger {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        position: relative !important;
+    }
+
+    .hamburger span {
+        width: 16px !important;
+        height: 2px !important;
+        left: 8px !important;
+        border-radius: 999px !important;
+    }
+
+    .hamburger span:nth-child(1) { top: 9px !important; }
+    .hamburger span:nth-child(2) { top: 16px !important; }
+    .hamburger span:nth-child(3) { top: 23px !important; }
+    .hamburger.active span:nth-child(1) { top: 16px !important; }
+    .hamburger.active span:nth-child(3) { top: 16px !important; }
+
+    #minimal-menu {
+        top: 68px !important;
+        right: 12px !important;
+        width: min(162px, calc(100vw - 24px)) !important;
+        max-height: min(56vh, 260px) !important;
+        padding: 8px !important;
+        border-radius: 14px !important;
+        background: linear-gradient(135deg, rgba(18,18,18,.88), rgba(18,18,18,.58)) !important;
+        border: 1px solid rgba(255,255,255,.14) !important;
+        backdrop-filter: blur(20px) saturate(140%) !important;
+        -webkit-backdrop-filter: blur(20px) saturate(140%) !important;
+        box-shadow: 0 14px 34px rgba(0,0,0,.42), 0 0 12px rgba(30,144,255,.18) !important;
+    }
+
+    #minimal-menu ul li a {
+        padding: 7px 9px !important;
+        border-radius: 10px !important;
+        font-size: .72rem !important;
+        line-height: 1.25 !important;
+        color: rgba(255,255,255,.82) !important;
+    }
+}
+
+@media (max-width: 420px) {
+    .site-header {
+        width: calc(100% - 16px) !important;
+        min-height: 54px !important;
+        padding: 7px 10px !important;
+        border-radius: 16px !important;
+    }
+
+    .site-header .logo img {
+        width: 74px !important;
+    }
+
+    .header-actions {
+        gap: 5px !important;
+    }
+
+    .glass-icon-btn,
+    .hamburger {
+        width: 31px !important;
+        height: 31px !important;
+        min-width: 31px !important;
+    }
+
+    .glass-icon-btn i {
+        font-size: 12px !important;
+    }
+
+    .hamburger span {
+        width: 15px !important;
+        left: 7px !important;
+    }
+
+    .hamburger span:nth-child(1) { top: 8px !important; }
+    .hamburger span:nth-child(2) { top: 15px !important; }
+    .hamburger span:nth-child(3) { top: 22px !important; }
+    .hamburger.active span:nth-child(1),
+    .hamburger.active span:nth-child(3) { top: 15px !important; }
+}
+
+/* About/mobile header reset: never show center nav inside the glass header */
+@media (max-width: 992px) {
+    .site-header .center-nav,
+    .site-header .nav-links,
+    .site-header .nav-links.active {
+        display: none !important;
+        visibility: hidden !important;
+        pointer-events: none !important;
+        position: absolute !important;
+        inset: auto !important;
+        width: 0 !important;
+        height: 0 !important;
+        overflow: hidden !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        clip-path: none !important;
+    }
+
+    .site-header {
+        align-items: center !important;
+        justify-content: space-between !important;
+    }
+
+    .site-header .header-actions {
+        margin-left: auto !important;
+        display: flex !important;
+        align-items: center !important;
+    }
+}
+
+/* About client logos: compact 4 x 4 mobile grid */
+@media (max-width: 767px) {
+    body:has(.our-story-header-image) .brands-logo-showcase .container {
+        width: 100%;
+        padding-inline: 10px;
+    }
+
+    body:has(.our-story-header-image) .brands-logo-showcase .logo-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+        gap: clamp(8px, 2.8vw, 12px) !important;
+        margin-top: 24px !important;
+        padding-bottom: 28px !important;
+        justify-items: center;
+        align-items: center;
+    }
+
+    body:has(.our-story-header-image) .brands-logo-showcase :is(.logo-item, .logos-item, .logo-items, .logo-item-APCoat, .logo-item-ramawa) {
+        width: clamp(58px, 19vw, 76px) !important;
+        max-width: 76px !important;
+        aspect-ratio: 1 / 1;
+        padding: 4px !important;
+        border-radius: 50% !important;
+        box-shadow: 0 0 7px rgba(255,255,255,.58) !important;
+    }
+
+    body:has(.our-story-header-image) .brands-logo-showcase :is(.logo-item, .logos-item, .logo-items, .logo-item-APCoat, .logo-item-ramawa) img {
+        max-width: 82% !important;
+        max-height: 82% !important;
+        width: auto !important;
+        height: auto !important;
+        object-fit: contain !important;
+    }
+}
+
+@media (max-width: 380px) {
+    body:has(.our-story-header-image) .brands-logo-showcase .logo-grid {
+        gap: 8px !important;
+    }
+
+    body:has(.our-story-header-image) .brands-logo-showcase :is(.logo-item, .logos-item, .logo-items, .logo-item-APCoat, .logo-item-ramawa) {
+        width: clamp(52px, 18.5vw, 66px) !important;
+    }
+}
+
+/* About client logos: preserve original per-logo backgrounds on mobile */
+@media (max-width: 767px) {
+    body:has(.our-story-header-image) .brands-logo-showcase .logo-grid > :nth-child(1),
+    body:has(.our-story-header-image) .brands-logo-showcase .logo-grid > :nth-child(7),
+    body:has(.our-story-header-image) .brands-logo-showcase .logo-grid > :nth-child(9) {
+        background: transparent !important;
+    }
+
+    body:has(.our-story-header-image) .brands-logo-showcase .logo-grid > :nth-child(2) {
+        background: #063846 !important;
+    }
+
+    body:has(.our-story-header-image) .brands-logo-showcase .logo-grid > :nth-child(3),
+    body:has(.our-story-header-image) .brands-logo-showcase .logo-grid > :nth-child(4),
+    body:has(.our-story-header-image) .brands-logo-showcase .logo-grid > :nth-child(5),
+    body:has(.our-story-header-image) .brands-logo-showcase .logo-grid > :nth-child(6),
+    body:has(.our-story-header-image) .brands-logo-showcase .logo-grid > :nth-child(8),
+    body:has(.our-story-header-image) .brands-logo-showcase .logo-grid > :nth-child(10),
+    body:has(.our-story-header-image) .brands-logo-showcase .logo-grid > :nth-child(11),
+    body:has(.our-story-header-image) .brands-logo-showcase .logo-grid > :nth-child(13),
+    body:has(.our-story-header-image) .brands-logo-showcase .logo-grid > :nth-child(14),
+    body:has(.our-story-header-image) .brands-logo-showcase .logo-grid > :nth-child(15) {
+        background: #ffffff !important;
+    }
+
+    body:has(.our-story-header-image) .brands-logo-showcase .logo-grid > :nth-child(12) {
+        background: #102331 !important;
+    }
+
+    body:has(.our-story-header-image) .brands-logo-showcase .logo-grid > :nth-child(16) {
+        background: #000000 !important;
+    }
+}
+
+/* About client logos: restore dark circles for specific mobile cells */
+@media (max-width: 767px) {
+    body:has(.our-story-header-image) .brands-logo-showcase .logo-grid > :nth-child(1) {
+        background: #061f14 !important;
+    }
+
+    body:has(.our-story-header-image) .brands-logo-showcase .logo-grid > :nth-child(7),
+    body:has(.our-story-header-image) .brands-logo-showcase .logo-grid > :nth-child(9) {
+        background: #000000 !important;
+    }
+}
+
+
+/* About client stack mobile/tablet image-led title */
+@media (max-width: 991px) {
+    body:has(.our-story-header-image) .brands-logo-showcase {
+        background:
+            radial-gradient(circle at 100% 34%, rgba(214, 151, 95, .22), rgba(214, 151, 95, 0) 42%),
+            linear-gradient(180deg, rgba(35, 25, 20, .76), rgba(10, 10, 10, .94)) !important;
+        padding-top: clamp(18px, 4vw, 34px) !important;
+        padding-bottom: clamp(34px, 7vw, 56px) !important;
+    }
+
+    body:has(.our-story-header-image) .brands-logo-showcase > .section-title-full-width {
+        position: relative !important;
+        display: grid !important;
+        place-items: start center !important;
+        width: min(100% - 28px, 560px) !important;
+        min-height: clamp(500px, 118vw, 680px) !important;
+        margin: 0 auto clamp(24px, 6vw, 42px) !important;
+        overflow: hidden !important;
+        border: 0 !important;
+        border-radius: 0 0 42px 42px !important;
+        background: #2b211b !important;
+        box-shadow: 0 28px 70px rgba(0, 0, 0, .32) !important;
+        zoom: 1 !important;
+        isolation: isolate;
+    }
+
+    body:has(.our-story-header-image) .brands-logo-showcase > .section-title-full-width::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        pointer-events: none;
+        background:
+            linear-gradient(180deg, rgba(18, 12, 9, .42) 0%, rgba(18, 12, 9, .14) 34%, rgba(18, 12, 9, .08) 58%, rgba(7, 6, 5, .58) 100%),
+            radial-gradient(circle at 52% 16%, rgba(222, 167, 112, .10), rgba(222, 167, 112, 0) 34%);
+    }
+
+    body:has(.our-story-header-image) .brands-logo-showcase > .section-title-full-width::after {
+        content: "";
+        position: absolute;
+        right: -18%;
+        bottom: -12%;
+        width: 88%;
+        height: 48%;
+        z-index: 2;
+        pointer-events: none;
+        border-right: 1px solid rgba(234, 176, 116, .66);
+        border-bottom: 1px solid rgba(234, 176, 116, .56);
+        border-radius: 0 0 100% 0;
+        box-shadow: 18px 18px 42px rgba(219, 143, 73, .26), inset -18px -16px 32px rgba(255, 210, 157, .08);
+        opacity: .82;
+    }
+
+    body:has(.our-story-header-image) .title-section-right {
+        position: absolute !important;
+        inset: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        border: 0 !important;
+        overflow: hidden !important;
+        z-index: 0;
+    }
+
+    body:has(.our-story-header-image) .title-section-right img {
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: cover !important;
+        object-position: center bottom !important;
+        display: block !important;
+        filter: saturate(1.02) contrast(.98) brightness(.86);
+        transform: scale(1.02);
+    }
+
+    body:has(.our-story-header-image) .title-section-left {
+        position: relative !important;
+        z-index: 3;
+        width: 100% !important;
+        min-height: auto !important;
+        padding: clamp(22px, 7vw, 48px) 18px 0 !important;
+        border: 0 !important;
+        background: transparent !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
+        text-align: center !important;
+    }
+
+    body:has(.our-story-header-image) .title-section-left h1 {
+        width: auto !important;
+        max-width: min(100%, 420px) !important;
+        margin: 0 !important;
+        color: rgba(236, 246, 250, .78) !important;
+        font-size: clamp(2rem, 10vw, 3.3rem) !important;
+        line-height: 1.05 !important;
+        font-weight: 200 !important;
+        letter-spacing: 0 !important;
+        text-transform: none !important;
+        text-shadow: 0 0 28px rgba(0, 0, 0, .52) !important;
+    }
+
+    body:has(.our-story-header-image) .title-section-left h1::before {
+        content: "TRUSTED BY";
+        display: block;
+        width: fit-content;
+        margin: 0 auto 10px;
+        padding-inline: 22px;
+        color: rgba(226, 176, 122, .78);
+        font-size: .52rem;
+        line-height: 1;
+        font-weight: 200;
+        letter-spacing: .34em;
+        text-transform: uppercase;
+        background: linear-gradient(90deg, rgba(226, 176, 122, .46), rgba(226, 176, 122, 0) 16%, rgba(226, 176, 122, 0) 84%, rgba(226, 176, 122, .46));
+    }
+
+    body:has(.our-story-header-image) .title-section-left h1 br {
+        display: none !important;
+    }
+
+    body:has(.our-story-header-image) .title-section-left h1 span {
+        display: inline !important;
+    }
+
+    body:has(.our-story-header-image) .title-section-left h1::after {
+        left: 50% !important;
+        bottom: -15px !important;
+        width: 58px !important;
+        height: 2px !important;
+        transform: translateX(-50%) !important;
+        background: linear-gradient(90deg, rgba(226, 176, 122, 0), rgba(226, 176, 122, .92), rgba(226, 176, 122, 0)) !important;
+        box-shadow: 0 0 14px rgba(219, 143, 73, .52) !important;
+    }
+
+    body:has(.our-story-header-image) .title-section-left p {
+        width: min(255px, 80vw) !important;
+        margin: 32px auto 0 !important;
+        padding: 0 !important;
+        color: rgba(230, 242, 245, .68) !important;
+        font-size: clamp(.72rem, 3vw, .88rem) !important;
+        line-height: 1.55 !important;
+        font-weight: 200 !important;
+        letter-spacing: 0 !important;
+        text-transform: none !important;
+        text-shadow: 0 0 22px rgba(0, 0, 0, .58) !important;
+    }
+}
+
+@media (max-width: 520px) {
+    body:has(.our-story-header-image) .brands-logo-showcase > .section-title-full-width {
+        width: calc(100% - 22px) !important;
+        min-height: clamp(480px, 128vw, 610px) !important;
+        border-radius: 0 0 34px 34px !important;
+    }
+
+    body:has(.our-story-header-image) .title-section-right img {
+        object-position: center bottom !important;
+    }
+}
+
+@media (max-width: 380px) {
+    body:has(.our-story-header-image) .brands-logo-showcase > .section-title-full-width {
+        min-height: 470px !important;
+    }
+
+    body:has(.our-story-header-image) .title-section-left h1 {
+        font-size: clamp(1.82rem, 9.4vw, 2.35rem) !important;
+    }
+}
+
+
