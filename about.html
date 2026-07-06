@@ -912,7 +912,7 @@
             ticking = false;
             const sectionRect = valuesSection.getBoundingClientRect();
             const gridRect = valuesGrid.getBoundingClientRect();
-            const sectionVisible = sectionRect.bottom > window.innerHeight * 0.12 && sectionRect.top < window.innerHeight * 0.88;
+            const sectionVisible = sectionRect.bottom > window.innerHeight * 0.04 && sectionRect.top < window.innerHeight * 0.96;
 
             if (!sectionVisible) {
                 valueItems.forEach(item => item.classList.remove('is-lit'));
@@ -921,7 +921,7 @@
                 return;
             }
 
-            const focusLine = window.innerHeight * 0.52;
+            const focusLine = window.innerHeight * (window.innerWidth <= 760 ? 0.46 : 0.52);
             let nextIndex = 0;
             let closest = Number.POSITIVE_INFINITY;
 
@@ -958,6 +958,7 @@
 </script>
 </body>
 </html>
+
 
 
 
