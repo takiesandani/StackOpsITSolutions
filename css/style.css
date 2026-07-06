@@ -4455,14 +4455,13 @@ body:has(.consultation-container) footer {
         color: rgba(236, 246, 250, .78) !important;
         font-size: clamp(2rem, 10vw, 3.3rem) !important;
         line-height: 1.05 !important;
-        font-weight: 200 !important;
+        font-weight: 100 !important;
         letter-spacing: 0 !important;
         text-transform: none !important;
         text-shadow: 0 0 28px rgba(0, 0, 0, .52) !important;
     }
 
     body:has(.our-story-header-image) .title-section-left h1::before {
-        content: "TRUSTED BY";
         display: block;
         width: fit-content;
         margin: 0 auto 10px;
@@ -4470,7 +4469,7 @@ body:has(.consultation-container) footer {
         color: rgba(226, 176, 122, .78);
         font-size: .52rem;
         line-height: 1;
-        font-weight: 200;
+        font-weight: 100;
         letter-spacing: .34em;
         text-transform: uppercase;
         background: linear-gradient(90deg, rgba(226, 176, 122, .46), rgba(226, 176, 122, 0) 16%, rgba(226, 176, 122, 0) 84%, rgba(226, 176, 122, .46));
@@ -4531,3 +4530,170 @@ body:has(.consultation-container) footer {
 }
 
 
+
+/* Extra-thin mobile/tablet client stack typography */
+@media (max-width: 991px) {
+    body:has(.our-story-header-image) .title-section-left h1 {
+        font-family: "Segoe UI Light", "Segoe UI", "Helvetica Neue", Arial, sans-serif !important;
+        font-weight: 100 !important;
+        font-variation-settings: "wght" 100 !important;
+        color: rgba(248, 250, 250, .64) !important;
+        text-shadow: 0 0 12px rgba(0, 0, 0, .22) !important;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: geometricPrecision;
+    }
+
+    body:has(.our-story-header-image) .title-section-left h1 span {
+        font-weight: 100 !important;
+        font-family: inherit !important;
+    }
+
+    body:has(.our-story-header-image) .title-section-left h1::before {
+        font-family: "Segoe UI Light", "Segoe UI", "Helvetica Neue", Arial, sans-serif !important;
+        font-weight: 100 !important;
+        font-variation-settings: "wght" 100 !important;
+        color: rgba(226, 176, 122, .62) !important;
+        text-shadow: none !important;
+    }
+
+    body:has(.our-story-header-image) .title-section-left p {
+        font-family: "Segoe UI Light", "Segoe UI", "Helvetica Neue", Arial, sans-serif !important;
+        font-weight: 100 !important;
+        font-variation-settings: "wght" 100 !important;
+        color: rgba(248, 250, 250, .56) !important;
+        text-shadow: 0 0 10px rgba(0, 0, 0, .20) !important;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: geometricPrecision;
+    }
+}
+
+/* Client stack title final mobile positioning + Ramawa logo clipping */
+@media (max-width: 991px) {
+    body:has(.our-story-header-image) .title-section-left {
+        padding-top: clamp(10px, 3.8vw, 24px) !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
+        text-align: center !important;
+    }
+
+    body:has(.our-story-header-image) .title-section-left h1 {
+        margin-inline: auto !important;
+        color: rgba(255, 255, 255, .56) !important;
+        text-shadow: 0 0 6px rgba(0, 0, 0, .16) !important;
+        -webkit-text-stroke: .01px rgba(255, 255, 255, .08);
+    }
+
+    body:has(.our-story-header-image) .title-section-left h1::after {
+        background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,.86), rgba(255,255,255,0)) !important;
+        box-shadow: 0 0 10px rgba(255,255,255,.20) !important;
+    }
+
+    body:has(.our-story-header-image) .title-section-left p {
+        width: min(285px, 82vw) !important;
+        margin: 30px auto 0 !important;
+        color: rgba(255, 255, 255, .50) !important;
+        text-shadow: 0 0 6px rgba(0, 0, 0, .16) !important;
+    }
+
+    body:has(.our-story-header-image) .logo-item-ramawa {
+        overflow: hidden !important;
+        padding: clamp(5px, 1.5vw, 8px) !important;
+        border-radius: 50% !important;
+        background: #ffffff !important;
+    }
+
+    body:has(.our-story-header-image) .logo-item-ramawa img {
+        display: block !important;
+        max-width: 78% !important;
+        max-height: 78% !important;
+        width: auto !important;
+        height: auto !important;
+        object-fit: contain !important;
+        border-radius: 0 !important;
+    }
+}
+
+@media (max-width: 520px) {
+    body:has(.our-story-header-image) .title-section-left {
+        padding-top: 10px !important;
+    }
+
+    body:has(.our-story-header-image) .title-section-left h1 {
+        color: rgba(255, 255, 255, .53) !important;
+    }
+}
+
+/* Stable centered client stack overlay across phone dimensions */
+@media (max-width: 991px) {
+    body:has(.our-story-header-image) .brands-logo-showcase > .section-title-full-width {
+        position: relative !important;
+    }
+
+    body:has(.our-story-header-image) .title-section-left {
+        position: absolute !important;
+        top: 8.5% !important;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        width: min(100%, 390px) !important;
+        padding: 0 18px !important;
+        margin: 0 !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
+        text-align: center !important;
+    }
+
+    body:has(.our-story-header-image) .title-section-left h1 {
+        display: block !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 auto !important;
+        text-align: center !important;
+        font-size: clamp(2rem, 9.9vw, 3.05rem) !important;
+        line-height: 1.02 !important;
+    }
+
+    body:has(.our-story-header-image) .title-section-left h1::before {
+        margin-left: auto !important;
+        margin-right: auto !important;
+        text-align: center !important;
+    }
+
+    body:has(.our-story-header-image) .title-section-left h1::after {
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+    }
+
+    body:has(.our-story-header-image) .title-section-left p {
+        width: min(292px, 82vw) !important;
+        margin: 29px auto 0 !important;
+        text-align: center !important;
+    }
+}
+
+@media (max-width: 430px) {
+    body:has(.our-story-header-image) .title-section-left {
+        top: 8.5% !important;
+        width: min(100%, 360px) !important;
+    }
+
+    body:has(.our-story-header-image) .title-section-left h1 {
+        font-size: clamp(2rem, 9.4vw, 2.55rem) !important;
+    }
+}
+
+@media (max-width: 360px) {
+    body:has(.our-story-header-image) .title-section-left {
+        top: 8.5% !important;
+        width: min(100%, 330px) !important;
+    }
+
+    body:has(.our-story-header-image) .title-section-left h1 {
+        font-size: clamp(1.78rem, 9.1vw, 2.15rem) !important;
+    }
+
+    body:has(.our-story-header-image) .title-section-left p {
+        width: min(270px, 84vw) !important;
+    }
+}
