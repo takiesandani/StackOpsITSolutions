@@ -5685,3 +5685,109 @@ body:has(.our-story-header-image) .values.values-in-view .value-item.is-lit i {
         left: -48px !important;
     }
 }
+
+/* Phone-only testimonial compacting and approach image enlargement */
+@media (max-width: 760px) {
+    body:has(.our-story-header-image) .testimonials-hero {
+        padding: 42px 10px 34px !important;
+    }
+
+    body:has(.our-story-header-image) .testimonials-orb-container {
+        width: 100% !important;
+        min-height: 330px !important;
+        margin: 0 auto !important;
+        padding: 10px 0 4px !important;
+    }
+
+    body:has(.our-story-header-image) .testimonial-orb {
+        width: min(82vw, 292px) !important;
+        max-width: 292px !important;
+        padding: 16px 18px !important;
+        border-radius: 22px !important;
+    }
+
+    body:has(.our-story-header-image) .testimonial-quote {
+        font-size: clamp(.72rem, 3.15vw, .86rem) !important;
+        line-height: 1.58 !important;
+        padding-left: 18px !important;
+        margin-bottom: 14px !important;
+    }
+
+    body:has(.our-story-header-image) .testimonial-quote::before {
+        font-size: 2.3rem !important;
+        top: -6px !important;
+    }
+
+    body:has(.our-story-header-image) .testimonial-footer {
+        margin-top: 12px !important;
+        align-items: center !important;
+    }
+
+    body:has(.our-story-header-image) .testimonial-image {
+        width: 52px !important;
+        height: 52px !important;
+        padding: 4px !important;
+        border-radius: 7px !important;
+    }
+
+    body:has(.our-story-header-image) .testimonial-author {
+        font-size: .72rem !important;
+        line-height: 1.25 !important;
+    }
+
+    body:has(.our-story-header-image) .testimonials-nav {
+        margin-top: -18px !important;
+        margin-bottom: -12px !important;
+        gap: 8px !important;
+    }
+
+    body:has(.our-story-header-image) .nav-dot {
+        width: 8px !important;
+        height: 8px !important;
+    }
+
+    body:has(.our-story-header-image) .approach-image-section {
+        width: calc(100vw - 10px) !important;
+        max-width: none !important;
+        min-height: clamp(430px, 118vw, 620px) !important;
+        height: auto !important;
+        margin: -4px auto 0 !important;
+        padding: 0 !important;
+        display: flex !important;
+        align-items: flex-start !important;
+        justify-content: center !important;
+        overflow: visible !important;
+        background: transparent !important;
+        clip-path: none !important;
+    }
+
+    body:has(.our-story-header-image) .approach-image-section img {
+        width: 100% !important;
+        max-width: none !important;
+        height: auto !important;
+        max-height: none !important;
+        padding: 0 !important;
+        object-fit: contain !important;
+        object-position: top center !important;
+        transform: none !important;
+        position: relative !important;
+    }
+}
+
+@media (max-width: 390px) {
+    body:has(.our-story-header-image) .testimonial-orb {
+        width: min(80vw, 274px) !important;
+        max-width: 274px !important;
+        padding: 14px 16px !important;
+    }
+
+    body:has(.our-story-header-image) .testimonial-quote {
+        font-size: .68rem !important;
+        line-height: 1.54 !important;
+    }
+
+    body:has(.our-story-header-image) .approach-image-section {
+        width: calc(100vw - 6px) !important;
+        min-height: clamp(410px, 124vw, 560px) !important;
+    }
+}
