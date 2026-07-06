@@ -4697,3 +4697,11 @@ body:has(.consultation-container) footer {
         width: min(270px, 84vw) !important;
     }
 }
+
+/* Client stack mobile subtitle weight restore */
+@media (max-width: 991px) {
+    body:has(.our-story-header-image) .title-section-left p {
+        font-weight: 100 !important;
+        font-variation-settings: "wght" 100 !important;
+    }
+}
