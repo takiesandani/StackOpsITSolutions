@@ -868,8 +868,99 @@
                 });
             });
         </script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const valuesSection = document.querySelector('.values');
+        if (!valuesSection) return;
+
+        if (!('IntersectionObserver' in window)) {
+            valuesSection.classList.add('values-in-view');
+            return;
+        }
+
+        const valuesObserver = new IntersectionObserver((entries) => {
+            entries.forEach((entry) => {
+                valuesSection.classList.toggle('values-in-view', entry.isIntersecting);
+            });
+        }, {
+            threshold: [0, 0.12, 0.28, 0.44],
+            rootMargin: '-8% 0px -16% 0px'
+        });
+
+        valuesObserver.observe(valuesSection);
+    });
+</script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const valuesSection = document.querySelector('.values');
+        const valuesGrid = valuesSection ? valuesSection.querySelector('.values-grid') : null;
+        const valueItems = valuesGrid ? Array.from(valuesGrid.querySelectorAll('.value-item')) : [];
+        if (!valuesSection || !valuesGrid || !valueItems.length) return;
+
+        let ticking = false;
+        let activeIndex = -1;
+
+        function setActiveValue(index) {
+            if (index === activeIndex || !valueItems[index]) return;
+            activeIndex = index;
+            valueItems.forEach((item, itemIndex) => {
+                item.classList.toggle('is-lit', itemIndex === index);
+            });
+        }
+
+        function updateValuesBeam() {
+            ticking = false;
+            const sectionRect = valuesSection.getBoundingClientRect();
+            const gridRect = valuesGrid.getBoundingClientRect();
+            const sectionVisible = sectionRect.bottom > window.innerHeight * 0.12 && sectionRect.top < window.innerHeight * 0.88;
+
+            if (!sectionVisible) {
+                valueItems.forEach(item => item.classList.remove('is-lit'));
+                valuesSection.style.setProperty('--values-beam-end', '0px');
+                activeIndex = -1;
+                return;
+            }
+
+            const focusLine = window.innerHeight * 0.52;
+            let nextIndex = 0;
+            let closest = Number.POSITIVE_INFINITY;
+
+            valueItems.forEach((item, index) => {
+                const rect = item.getBoundingClientRect();
+                const center = rect.top + rect.height * 0.5;
+                const distance = Math.abs(center - focusLine);
+                if (distance < closest) {
+                    closest = distance;
+                    nextIndex = index;
+                }
+            });
+
+            setActiveValue(nextIndex);
+
+            const activeIcon = valueItems[nextIndex].querySelector('i');
+            const iconRect = activeIcon ? activeIcon.getBoundingClientRect() : valueItems[nextIndex].getBoundingClientRect();
+            const iconCenter = iconRect.top + iconRect.height * 0.5;
+            const beamEnd = Math.max(0, Math.min(gridRect.height, iconCenter - gridRect.top));
+            valuesSection.style.setProperty('--values-beam-end', `${beamEnd}px`);
+        }
+
+        function requestValuesUpdate() {
+            if (!ticking) {
+                ticking = true;
+                window.requestAnimationFrame(updateValuesBeam);
+            }
+        }
+
+        window.addEventListener('scroll', requestValuesUpdate, { passive: true });
+        window.addEventListener('resize', requestValuesUpdate, { passive: true });
+        requestValuesUpdate();
+    });
+</script>
 </body>
 </html>
+
+
+
 
 
 
