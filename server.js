@@ -706,15 +706,58 @@ let graphTokenCache = {
   expiresAt: 0
 };
 
+function readConfiguredSecret(...names) {
+  for (const name of names) {
+    const value = String(process.env[name] || '').trim();
+    if (value) return value;
+  }
+  return null;
+}
+
+async function getConfiguredSecret(...names) {
+  const environmentValue = readConfiguredSecret(...names);
+  if (environmentValue) return environmentValue;
+
+  for (const name of names) {
+    const value = await getSecret(name);
+    if (value) return value;
+  }
+  return null;
+}
+
+function getAzureEmailCredentialStatus() {
+  const tenantId = readConfiguredSecret('AZURE_TENANT_ID', 'MICROSOFT_TENANT_ID');
+  const clientId = readConfiguredSecret('AZURE_CLIENT_ID', 'MICROSOFT_CLIENT_ID');
+  const clientSecret = readConfiguredSecret('AZURE_CLIENT_SECRET', 'MICROSOFT_CLIENT_SECRET');
+  const missing = [];
+
+  if (!tenantId) missing.push('AZURE_TENANT_ID or MICROSOFT_TENANT_ID');
+  if (!clientId) missing.push('AZURE_CLIENT_ID or MICROSOFT_CLIENT_ID');
+  if (!clientSecret) missing.push('AZURE_CLIENT_SECRET or MICROSOFT_CLIENT_SECRET');
+
+  return {
+    ready: missing.length === 0,
+    missing,
+    acceptedNames: {
+      tenantId: ['AZURE_TENANT_ID', 'MICROSOFT_TENANT_ID'],
+      clientId: ['AZURE_CLIENT_ID', 'MICROSOFT_CLIENT_ID'],
+      clientSecret: ['AZURE_CLIENT_SECRET', 'MICROSOFT_CLIENT_SECRET']
+    }
+  };
+}
+
 async function initializeAzureCredential() {
   if (azureCredential) return;
   
-  const tenantId = await getSecret('AZURE_TENANT_ID');
-  const clientId = await getSecret('AZURE_CLIENT_ID');
-  const clientSecret = await getSecret('AZURE_CLIENT_SECRET');
+  const tenantId = await getConfiguredSecret('AZURE_TENANT_ID', 'MICROSOFT_TENANT_ID');
+  const clientId = await getConfiguredSecret('AZURE_CLIENT_ID', 'MICROSOFT_CLIENT_ID');
+  const clientSecret = await getConfiguredSecret('AZURE_CLIENT_SECRET', 'MICROSOFT_CLIENT_SECRET');
   
   if (!tenantId || !clientId || !clientSecret) {
-    throw new Error('Missing Azure credentials: AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET');
+    const missing = getAzureEmailCredentialStatus().missing.join(', ');
+    const error = new Error(`Missing Azure email credentials: ${missing}`);
+    error.code = 'AZURE_EMAIL_CREDENTIALS_UNAVAILABLE';
+    throw error;
   }
   
   azureCredential = new ClientSecretCredential(tenantId, clientId, clientSecret);
@@ -813,7 +856,7 @@ async function sendGraphEmail(to, subject, body, isHtml = true, fromAddress = 'n
         const delayMs = 1000 + (attempt * 500); // 1.5s, then 2s
         console.log(`[Graph Email] Retrying in ${delayMs}ms...`);
         await new Promise(r => setTimeout(r, delayMs));
-      } else if (attempt === maxRetries) {
+      } else {
         throw lastError;
       }
     }
@@ -4256,6 +4299,12 @@ app.post('/api/admin/availability', authenticateToken, async (req, res) => {
     }
 });
 
+app.get('/api/auth/email-config', (req, res) => {
+    res.json({
+        success: true,
+        graphEmail: getAzureEmailCredentialStatus()
+    });
+});
 app.post('/api/auth/signin', async (req, res) => {
     try {
         console.log('Signin attempt:', req.body.email);
