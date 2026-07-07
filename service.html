@@ -1213,7 +1213,13 @@
             const solutionsMobileToggle = document.getElementById('solutionsMobileToggle');
             const toggleText = solutionsMobileToggle ? solutionsMobileToggle.querySelector('span') : null;
             
-            let currentLockedSolution = 'stackctrl';
+            const validSolutions = new Set(Array.from(sidebarButtons).map(button => button.getAttribute('data-solution')));
+            const getRequestedSolution = () => {
+                const params = new URLSearchParams(window.location.search);
+                const requested = (params.get('solution') || window.location.hash.replace('#', '') || '').toLowerCase();
+                return validSolutions.has(requested) ? requested : 'stackctrl';
+            };
+            let currentLockedSolution = getRequestedSolution();
             let hoverTimeout;
             let currentlyHoveringButton = null;
 
@@ -1236,9 +1242,13 @@
                 }
             });
 
-            // Initialize active state
-            updateActiveButton('stackctrl');
-            showSolutionContent('stackctrl', false);
+            // Initialize active state from ?solution=... or #solution.
+            updateActiveButton(currentLockedSolution);
+            showSolutionContent(currentLockedSolution, false);
+            const initialButton = document.querySelector(`.solution-button[data-solution="${currentLockedSolution}"]`);
+            if (toggleText && initialButton) {
+                toggleText.textContent = initialButton.getAttribute('data-name') || 'Select a Solution';
+            }
 
             // Solution switching with hover preview
             sidebarButtons.forEach(button => {
@@ -1292,6 +1302,9 @@
                     
                     // Set new locked solution
                     currentLockedSolution = solution;
+                    const nextUrl = new URL(window.location.href);
+                    nextUrl.searchParams.set('solution', solution);
+                    window.history.replaceState({}, '', nextUrl);
                     updateActiveButton(solution);
                     showSolutionContent(solution, false); // false = locked mode
 
@@ -1395,6 +1408,8 @@
     </script>
 </body>
 </html>
+
+
 
 
 

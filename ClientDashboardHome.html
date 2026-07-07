@@ -870,7 +870,28 @@
             }
 
             .stats-grid {
-                grid-template-columns: 1fr;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 0.8rem;
+            }
+
+            .stat-box {
+                min-height: 104px;
+                padding: 1rem 0.65rem;
+                border-radius: 14px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .stat-number {
+                font-size: clamp(1.25rem, 7vw, 1.75rem);
+                margin-bottom: 0.28rem;
+            }
+
+            .stat-label {
+                font-size: clamp(0.62rem, 3vw, 0.76rem);
+                line-height: 1.25;
             }
 
             .benefits-grid {
@@ -1229,6 +1250,26 @@
       }
     }
   </style>
+<style>
+  /* Mobile CTA transparent bottom fade */
+  @media (max-width: 768px) {
+    .cta-section {
+      position: relative;
+      isolation: isolate;
+      overflow: hidden;
+      border-bottom: 0 !important;
+      border-radius: 28px 28px 0 0 !important;
+      padding: 34px 16px 78px !important;
+      background:
+        radial-gradient(circle at 18% 8%, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 32%),
+        radial-gradient(circle at 82% 0%, rgba(255, 120, 2, 0.15), rgba(255, 120, 2, 0) 34%),
+        linear-gradient(135deg, rgba(255, 255, 255, 0.105), rgba(255, 255, 255, 0.032) 45%, rgba(255, 255, 255, 0) 100%),
+        linear-gradient(180deg, rgba(22, 24, 27, 0.78) 0%, rgba(20, 22, 25, 0.54) 52%, rgba(20, 22, 25, 0) 100%) !important;
+      -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 70%, rgba(0, 0, 0, 0.82) 88%, transparent 100%);
+      mask-image: linear-gradient(to bottom, #000 0%, #000 70%, rgba(0, 0, 0, 0.82) 88%, transparent 100%);
+    }
+  }
+</style>
 </head>
 <body>
     <div class="backgrounds"></div>
@@ -1754,6 +1795,8 @@
     </script>
 </body>
 </html>
+
+
 
 
 
