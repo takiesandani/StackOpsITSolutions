@@ -81,6 +81,15 @@ function toTemplateText(value, fallback) {
   return (text || String(fallback || '')).slice(0, 900);
 }
 
+function getSecurityAlertAction(alert = {}) {
+  return alert.action ||
+    alert.recommendedAction ||
+    alert.remediation ||
+    alert.nextStep ||
+    alert.status ||
+    "Review the event immediately";
+}
+
 async function sendWhatsAppText({ token, phoneNumberId, to, text, apiVersion = DEFAULT_GRAPH_VERSION }) {
   if (!token) throw new Error('WHATSAPP_ACCESS_TOKEN is not configured');
   if (!phoneNumberId) throw new Error('WHATSAPP_PHONE_NUMBER_ID is not configured');
@@ -124,6 +133,7 @@ async function sendSecurityAlertTemplate(alert = {}, config = {}) {
     alert.eventTime || alert.timestamp || alert.created || alert.updated,
     config.timeZone
   );
+  const eventTime = dateText + " " + timeText;
   const recipient = normalizeWhatsAppRecipient(config.recipient || DEFAULT_RECIPIENT);
   const apiVersion = config.apiVersion || DEFAULT_GRAPH_VERSION;
   const templateName = config.templateName || DEFAULT_SECURITY_ALERT_TEMPLATE;
@@ -143,13 +153,11 @@ async function sendSecurityAlertTemplate(alert = {}, config = {}) {
           {
             type: 'body',
             parameters: [
-              { type: 'text', text: severity },
-              { type: 'text', text: dateText },
-              { type: 'text', text: timeText },
-              { type: 'text', text: toTemplateText(alert.issue || alert.title || alert.displayName || alert.name, 'Security alert') },
-              { type: 'text', text: toTemplateText(alert.assignedTo || alert.owner || alert.assignee, 'Unassigned') },
-              { type: 'text', text: toTemplateText(alert.source || alert.category || alert.vendor, 'StackOps Security') },
-              { type: 'text', text: toTemplateText(alert.status, 'Active') }
+              { type: "text", text: severity },
+              { type: "text", text: toTemplateText(alert.issue || alert.title || alert.displayName || alert.name, "Security alert") },
+              { type: "text", text: toTemplateText(alert.source || alert.category || alert.vendor, "StackOps Security") },
+              { type: "text", text: eventTime },
+              { type: "text", text: toTemplateText(getSecurityAlertAction(alert), "Review the event immediately") }
             ]
           }
         ]
@@ -168,7 +176,8 @@ async function sendSecurityAlertTemplate(alert = {}, config = {}) {
     ...response.data,
     recipient,
     phoneNumberId: config.phoneNumberId,
-    templateName
+    templateName,
+    templateLanguage
   };
 }
 

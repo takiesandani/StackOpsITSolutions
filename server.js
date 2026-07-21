@@ -15,7 +15,6 @@ const { ClientSecretCredential } = require('@azure/identity');
 const {
     normalizeSeverity: normalizeWhatsAppSeverity,
     normalizeWhatsAppRecipient,
-    sendHelloWorldTest,
     sendSecurityAlert
 } = require('./services/whatsapp');
 const { getCloudflareNetworkSecuritySummary } = require('./services/cloudflare');
@@ -11713,35 +11712,50 @@ app.get('/api/security-events', authenticateToken, async (req, res) => {
 
 /**
  * Route: POST /api/whatsapp/test-hello
- * Sends Meta's approved hello_world template to validate Cloud API delivery.
+ * Sends the configured security_alert template with safe sample values.
  */
-app.post('/api/whatsapp/test-hello', authenticateToken, async (req, res) => {
+app.post("/api/whatsapp/test-hello", authenticateToken, async (req, res) => {
     let recipient = null;
     try {
         const config = await getWhatsAppSecurityAlertConfig({ requireEnabled: false });
         if (!config.token || !config.phoneNumberId) {
-            throw new Error('WhatsApp credentials are missing. Configure WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID.');
+            throw new Error("WhatsApp credentials are missing. Configure WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID.");
         }
 
         recipient = normalizeWhatsAppRecipient(config.recipient);
-        console.log(`[WhatsApp Test] Sending hello_world to ${recipient}`);
+        const sampleAlert = {
+            severity: req.body?.severity || "HIGH",
+            issue: req.body?.issue || "Security integration test alert",
+            source: req.body?.source || "StackOps Security",
+            eventTime: req.body?.time || new Date().toISOString(),
+            action: req.body?.action || "Review the event immediately"
+        };
 
-        const response = await sendHelloWorldTest({ ...config, recipient });
+        console.log(`[WhatsApp Test] Sending ${config.templateName || "security_alert"} to ${recipient}`);
+
+        const response = await sendSecurityAlert(sampleAlert, { ...config, recipient });
         const messageId = response.messages?.[0]?.id || null;
-        console.log('[WhatsApp Test] Meta accepted message', { messageId, recipient });
+        console.log("[WhatsApp Test] Meta accepted message", {
+            messageId,
+            recipient,
+            templateName: response.templateName,
+            templateLanguage: response.templateLanguage
+        });
 
         res.json({
             success: true,
             recipient,
             messageId,
+            templateName: response.templateName,
+            templateLanguage: response.templateLanguage,
             response
         });
     } catch (error) {
         const detail = error.response?.data || error.message;
-        console.error('[WhatsApp Test] Failed', detail);
-        res.status(500).json({
+        console.error("[WhatsApp Test] Failed", detail);
+        res.status(error.response?.status || 500).json({
             success: false,
-            error: 'Failed to send WhatsApp hello_world test',
+            error: "Failed to send WhatsApp security_alert test",
             message: error.response?.data?.error?.message || error.message,
             details: error.response?.data || null,
             recipient

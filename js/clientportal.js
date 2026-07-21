@@ -5132,7 +5132,7 @@ function renderSunbirdSecurityShell() {
             <div class="sunbird-security-whatsapp-test">
                 <button id="sunbird-security-whatsapp-test-btn" class="sunbird-security-whatsapp-btn" type="button">
                     <i class="fab fa-whatsapp" aria-hidden="true"></i>
-                    <span>Send WhatsApp test</span>
+                    <span>Send security alert test</span>
                 </button>
                 <p id="sunbird-security-whatsapp-test-status" aria-live="polite"></p>
             </div>
@@ -5193,7 +5193,7 @@ async function sendLatestSunbirdSecurityAlertToWhatsApp() {
         button.classList.add('is-loading');
     }
     if (status) {
-        status.textContent = 'Sending WhatsApp test...';
+        status.textContent = 'Sending security alert test...';
         status.className = '';
     }
 
@@ -5211,7 +5211,7 @@ async function sendLatestSunbirdSecurityAlertToWhatsApp() {
         }
 
         if (status) {
-            status.textContent = `Meta accepted message: ${data.messageId || 'No message ID returned'}`;
+            status.textContent = `Meta accepted security_alert: ${data.messageId || 'No message ID returned'}`;
             status.className = 'success';
         }
     } catch (error) {
