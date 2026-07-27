@@ -67,7 +67,7 @@ class StackOpsChatbot {
                     width: 64px;
                     height: 64px;
                     border-radius: 50%;
-                    background: linear-gradient(135deg, rgba(249, 115, 22, 0.92), rgba(234, 88, 12, 0.98));
+                    background: transparent;
                     backdrop-filter: blur(10px) saturate(180%);
                     -webkit-backdrop-filter: blur(10px) saturate(180%);
                     border: 2px solid rgba(255, 183, 77, 0.85);
@@ -97,7 +97,7 @@ class StackOpsChatbot {
                 }
 
                 .main-toggle.on {
-                    background: rgba(45, 55, 72, 0.8);
+                    background: transparent;
                     backdrop-filter: blur(10px);
                     -webkit-backdrop-filter: blur(10px);
                     border: 1px solid rgba(249, 115, 22, 0.75);
@@ -109,6 +109,7 @@ class StackOpsChatbot {
 
                 .main-toggle:hover {
                     transform: scale(1.1);
+                    background: transparent;
                     box-shadow: 
                         0 8px 32px rgba(0, 0, 0, 0.1),
                         inset 0 1px 1px rgba(255, 255, 255, 0.3),
