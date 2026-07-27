@@ -10905,6 +10905,9 @@ function normalizeNetworkSecurityData(data = {}) {
         devicePosture: Array.isArray(data.devicePosture) ? data.devicePosture : [],
         gatewayRules: Array.isArray(data.gatewayRules) ? data.gatewayRules : [],
         gatewayConfig: data.gatewayConfig || {},
+        gatewayLists: Array.isArray(data.gatewayLists) ? data.gatewayLists : [],
+        gatewayLogging: data.gatewayLogging || null,
+        deviceSettings: data.deviceSettings || null,
         warpProfiles: Array.isArray(data.warpProfiles) ? data.warpProfiles : [],
         accessLogs: Array.isArray(data.accessLogs) ? data.accessLogs : [],
         virtualNetworks: Array.isArray(data.virtualNetworks) ? data.virtualNetworks : [],
@@ -11090,7 +11093,7 @@ function buildCloudflareSecuritySignals(inputData = getCurrentNetworkSecurityDat
         addAlert({
             id: 'dlp-missing',
             title: 'Cloudflare DLP profiles missing',
-            description: 'No DLP profiles were returned, so sensitive data detection is not evidenced.',
+            description: 'No DLP profiles are available, so sensitive data detection is not evidenced.',
             severity: 'medium',
             category: 'DLP',
             recommendation: 'Create or verify Cloudflare DLP profiles'
@@ -11100,7 +11103,7 @@ function buildCloudflareSecuritySignals(inputData = getCurrentNetworkSecurityDat
         addAlert({
             id: 'access-apps-missing',
             title: 'No Cloudflare protected apps evidenced',
-            description: 'Cloudflare Access did not return protected applications for this snapshot.',
+            description: 'Cloudflare Access did not provide protected applications for this snapshot.',
             severity: 'medium',
             category: 'Access',
             recommendation: 'Confirm Cloudflare Access app coverage'
@@ -11110,7 +11113,7 @@ function buildCloudflareSecuritySignals(inputData = getCurrentNetworkSecurityDat
         addAlert({
             id: 'identity-provider-missing',
             title: 'Cloudflare identity provider not evidenced',
-            description: 'No Cloudflare Access identity provider was returned in the latest snapshot.',
+            description: 'No Cloudflare Access identity provider is available in the latest snapshot.',
             severity: 'high',
             category: 'Identity',
             incident: true,
@@ -11125,7 +11128,7 @@ function buildCloudflareSecuritySignals(inputData = getCurrentNetworkSecurityDat
             addAlert({
                 id: `access-block-${log.id || index}`,
                 title: `Cloudflare Access ${log.action || 'blocked'} event`,
-                description: [log.userEmail, log.appName, log.country, log.ipAddress].filter(Boolean).join(' | ') || 'Cloudflare Access returned a denied or blocked request.',
+                description: [log.userEmail, log.appName, log.country, log.ipAddress].filter(Boolean).join(' | ') || 'Cloudflare Access recorded a denied or blocked request.',
                 severity: 'high',
                 category: 'Access',
                 incident: true,
@@ -11138,7 +11141,7 @@ function buildCloudflareSecuritySignals(inputData = getCurrentNetworkSecurityDat
         addAlert({
             id: `section-${key}`,
             title: `Cloudflare ${section.label || key} evidence needs attention`,
-            description: section.message || 'Cloudflare returned an incomplete section for this control.',
+            description: section.message || 'Cloudflare data for this control is incomplete or unavailable.',
             severity: section.status === 'error' ? 'high' : 'medium',
             category: 'Cloudflare API',
             incident: section.status === 'error',
@@ -11154,7 +11157,7 @@ function buildCloudflareSecuritySignals(inputData = getCurrentNetworkSecurityDat
             addAlert({
                 id: `permission-${family.key || family.id}`,
                 title: `${family.module || 'Cloudflare'} evidence gap`,
-                description: `${family.endpointFamily || family.permission || 'Cloudflare API'} returned ${family.status === 'error' ? 'an error' : 'a permission gap'}.`,
+                description: `${family.endpointFamily || family.permission || 'Cloudflare API'} is ${family.status === 'error' ? 'temporarily unavailable' : 'not available with current permissions'}.`,
                 severity: family.status === 'error' ? 'high' : 'medium',
                 category: family.module || 'Cloudflare API',
                 incident: family.status === 'error',
@@ -11166,7 +11169,7 @@ function buildCloudflareSecuritySignals(inputData = getCurrentNetworkSecurityDat
         addAlert({
             id: `casb-${finding.id || finding.uuid || index}`,
             title: finding.name || finding.title || 'Cloudflare CASB finding',
-            description: finding.description || finding.status || 'CASB returned a SaaS posture finding.',
+            description: finding.description || finding.status || 'CASB reported a SaaS posture finding.',
             severity: /critical|high/i.test(String(finding.severity || finding.priority || '')) ? 'high' : 'medium',
             category: 'CASB Dashboard',
             incident: /critical|high/i.test(String(finding.severity || finding.priority || '')),
@@ -11178,7 +11181,7 @@ function buildCloudflareSecuritySignals(inputData = getCurrentNetworkSecurityDat
         addAlert({
             id: `security-insight-${finding.id || index}`,
             title: finding.title || finding.name || 'Cloudflare security insight',
-            description: finding.description || finding.status || 'Cloudflare Security Insights returned a posture finding.',
+            description: finding.description || finding.status || 'Cloudflare Security Insights reported a posture finding.',
             severity: /critical|high/i.test(String(finding.severity || finding.priority || '')) ? 'high' : 'medium',
             category: 'Security Dashboard',
             recommendation: 'Review Cloudflare Security Insights evidence'
@@ -11541,7 +11544,7 @@ function formatNetworkEvidenceValue(value) {
         const compact = JSON.stringify(value);
         return compact.length > 160 ? `${compact.slice(0, 157)}...` : compact;
     }
-    return value ?? 'Not returned';
+    return value ?? 'Not available';
 }
 function getNetworkEvidenceShortId(value) {
     if (!value) return null;
@@ -11568,7 +11571,7 @@ function getNetworkEvidenceDetail(item) {
         getNetworkEvidenceValue(item, ['interface', 'source', 'service', 'ipAddress', 'ip', 'country', 'virtualIpv4', 'virtualIpv6', 'tunnelType']),
         getNetworkEvidenceValue(item, ['lastSeen', 'created_at', 'createdAt', 'when', 'timestamp', 'updated_at', 'last_seen'])
     ].filter(Boolean).map(formatNetworkEvidenceValue);
-    return parts.length ? parts.join(' | ') : 'Record returned';
+    return parts.length ? parts.join(' | ') : 'Details available';
 }
 
 function getNetworkSectionKey(groupOrKey) {
@@ -11588,19 +11591,19 @@ function getNetworkEvidenceStatusLabel(data, groupOrKey, items = []) {
     const status = getNetworkSectionStatus(data, groupOrKey, items);
     const count = Array.isArray(items) ? items.length : 0;
     if (status === 'permission_unavailable') return `Permission unavailable | ${count} records`;
-    if (status === 'error') return `Error | ${count} records`;
-    if (status === 'empty') return `No records returned | ${count} records`;
-    if (status === 'not_requested') return `Not requested | ${count} records`;
+    if (status === 'error') return `Unavailable | ${count} records`;
+    if (status === 'empty') return `No data available | ${count} records`;
+    if (status === 'not_requested') return `Not collected | ${count} records`;
     return `Available | ${count} records`;
 }
 
 function getNetworkEvidenceEmptyText(data, group) {
     const section = data.sections?.[getNetworkSectionKey(group)];
     const status = getNetworkSectionStatus(data, group, group.items || []);
-    if (status === 'permission_unavailable') return `${group.title} was not readable with the current Cloudflare token permissions.`;
-    if (status === 'error') return `${group.title} returned an error${section?.message ? `: ${section.message}` : '.'}`;
-    if (status === 'not_requested') return `${group.title} was not requested by this collector.`;
-    return `${group.title} returned no records. This means Cloudflare responded, but there was nothing configured or no activity in this evidence family.`;
+    if (status === 'permission_unavailable') return `${group.title} is not available with the current Cloudflare token permissions.`;
+    if (status === 'error') return `${group.title} is temporarily unavailable${section?.message ? `: ${section.message}` : '.'}`;
+    if (status === 'not_requested') return `${group.title} was not collected in this refresh.`;
+    return `${group.title} has no data yet. Cloudflare responded successfully, but nothing is configured or active in this area.`;
 }
 
 function renderNetworkEvidenceTable(title, items, columns, emptyText, statusLabel = null) {
@@ -11632,7 +11635,9 @@ function renderNetworkGenericEvidenceTable(title, items, emptyText, statusLabel 
 
 function getNetworkEvidenceGroups(data) {
     const accountEvidence = data.account && Object.keys(data.account).length ? [data.account] : [];
-    const gatewayConfigEvidence = data.gatewayConfig && Object.keys(data.gatewayConfig).length ? [data.gatewayConfig] : [];
+    const gatewayConfigEvidence = networkEvidenceObjectHasData(data.gatewayConfig) ? [data.gatewayConfig] : [];
+    const gatewayLoggingEvidence = networkEvidenceObjectHasData(data.gatewayLogging) ? [data.gatewayLogging] : [];
+    const deviceSettingsEvidence = networkEvidenceObjectHasData(data.deviceSettings) ? [data.deviceSettings] : [];
     const sectionEvidence = Object.entries(data.sections || {}).map(([key, section]) => ({ key, ...section }));
 
     return [
@@ -11723,6 +11728,13 @@ function getNetworkEvidenceGroups(data) {
             { label: 'Status', value: item => item.enabled },
             { label: 'Schedule', value: item => getNetworkEvidenceValue(item, ['schedule', 'frequency', 'interval']) || 'Continuous' }
         ] },
+        { key: 'deviceSettings', title: 'Device Settings', items: deviceSettingsEvidence, group: 'devices', columns: [
+            { label: 'Setting', value: item => item.name || 'Account device settings' },
+            { label: 'Gateway Proxy', value: item => formatNetworkEvidenceValue(item.gatewayProxyEnabled) },
+            { label: 'UDP Proxy', value: item => formatNetworkEvidenceValue(item.udpProxyEnabled) },
+            { label: 'Certificate', value: item => formatNetworkEvidenceValue(item.certificateEnabled) },
+            { label: 'Virtual IP', value: item => formatNetworkEvidenceValue(item.useZtVirtualIp) }
+        ] },
         { key: 'warpProfiles', title: 'WARP Profiles', items: data.warpProfiles, group: 'infrastructure', columns: [
             { label: 'Profile', value: item => item.name },
             { label: 'Mode', value: item => item.serviceMode },
@@ -11755,6 +11767,18 @@ function getNetworkEvidenceGroups(data) {
             { label: 'Enabled', value: item => item.enabled },
             { label: 'Precedence', value: item => item.precedence }
         ] },
+        { key: 'gatewayLists', title: 'Gateway Lists', items: data.gatewayLists, group: 'gateway', columns: [
+            { label: 'List', value: item => item.name },
+            { label: 'Type', value: item => item.type },
+            { label: 'Entries', value: item => item.count },
+            { label: 'Description', value: item => item.description }
+        ] },
+        { key: 'gatewayLogging', title: 'Gateway Logging', items: gatewayLoggingEvidence, group: 'gateway', columns: [
+            { label: 'Setting', value: () => 'Gateway logging' },
+            { label: 'DNS', value: item => formatNetworkEvidenceValue(item.dnsLogAll) },
+            { label: 'HTTP', value: item => formatNetworkEvidenceValue(item.httpLogAll) },
+            { label: 'L4', value: item => formatNetworkEvidenceValue(item.l4LogAll) }
+        ] },
         { key: 'gatewayAppTypes', title: 'Gateway App Catalog', items: data.gatewayAppTypes, group: 'gateway' },
         { key: 'dlpProfiles', title: 'DLP Profiles', items: data.dlpProfiles, group: 'gateway', columns: [
             { label: 'Profile', value: item => item.name },
@@ -11773,11 +11797,30 @@ function getNetworkEvidenceGroups(data) {
     ];
 }
 
+function networkEvidenceObjectHasData(value) {
+    if (value === null || value === undefined || value === '') return false;
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value !== 'object') return true;
+    return Object.values(value).some(entry => networkEvidenceObjectHasData(entry));
+}
+
+function networkEvidenceGroupHasRows(group) {
+    const items = Array.isArray(group.items) ? group.items : [];
+    if (!items.length) return false;
+    if (items.length === 1 && items[0] && typeof items[0] === 'object' && !Array.isArray(items[0])) {
+        return networkEvidenceObjectHasData(items[0]);
+    }
+    return true;
+}
+
 function renderNetworkEvidenceGroup(data, groupKey) {
+    const visibleGroups = getNetworkEvidenceGroups(data)
+        .filter(group => group.group === groupKey)
+        .filter(networkEvidenceGroupHasRows);
+    if (!visibleGroups.length) return '';
     return `
         <div class="network-evidence-section-stack">
-            ${getNetworkEvidenceGroups(data)
-                .filter(group => group.group === groupKey)
+            ${visibleGroups
                 .map(group => group.columns
                     ? renderNetworkEvidenceTable(group.title, group.items, group.columns, getNetworkEvidenceEmptyText(data, group), getNetworkEvidenceStatusLabel(data, group, group.items))
                     : renderNetworkGenericEvidenceTable(group.title, group.items, getNetworkEvidenceEmptyText(data, group), getNetworkEvidenceStatusLabel(data, group, group.items)))
@@ -11798,7 +11841,7 @@ function renderNetworkMetricsGraph(data) {
     const records = [
         { label: 'Readable Cloudflare areas', value: available, total: apiTotal, evidence: 'Cloudflare collection status' },
         { label: 'Areas needing review', value: gaps, total: apiTotal, evidence: 'Cloudflare collection status' },
-        { label: 'Areas with no records', value: empty, total: apiTotal, evidence: 'Cloudflare collection status' },
+        { label: 'Areas with no data', value: empty, total: apiTotal, evidence: 'Cloudflare collection status' },
         { label: 'All log records', value: data.accessLogs.length + data.auditLogs.length + data.accountLogs.length, total: totalCloudflareRecords, evidence: 'accessLogs + auditLogs + accountLogs' },
         { label: 'Infrastructure records', value: data.tunnels.length + data.warpConnectors.length + data.loadBalancerPools.length + data.loadBalancerMonitors.length + data.magicWanSites.length + data.magicWanRoutes.length + data.teamnetRoutes.length, total: totalCloudflareRecords, evidence: 'infrastructure tables' },
         { label: 'Security intelligence records', value: data.securityInsights.length + data.applicationSecurityReports.length + data.apiGatewayOperations.length + data.casbFindings.length + data.cloudforceRequests.length + data.intelFeeds.length + data.dnsFirewallRules.length + data.teamsDexTests.length, total: totalCloudflareRecords, evidence: 'security intel tables' }
@@ -11894,7 +11937,7 @@ function renderNetworkMetricsGraph(data) {
 function getNetworkEvidenceItems(data, key) {
     const pick = (items, mapper, fallback) => {
         const safeItems = Array.isArray(items) ? items : [];
-        if (!safeItems.length) return [{ title: fallback, metaParts: ['Cloudflare returned no records for this signal yet.'] }];
+        if (!safeItems.length) return [{ title: fallback, metaParts: ['No Cloudflare data is available for this signal yet.'] }];
         return safeItems.slice(0, 4).map(mapper);
     };
 
@@ -11952,7 +11995,7 @@ function renderNetworkEvidencePopover(metric, data) {
                     <div class="network-evidence-row">
                         <span>${escapeIdentityText(item.title)}</span>
                         <small>
-                            ${(Array.isArray(item.metaParts) && item.metaParts.length ? item.metaParts : [item.meta || 'Record returned by Cloudflare']).map(part => `<b>${escapeIdentityText(part)}</b>`).join('')}
+                            ${(Array.isArray(item.metaParts) && item.metaParts.length ? item.metaParts : [item.meta || 'Details available from Cloudflare']).map(part => `<b>${escapeIdentityText(part)}</b>`).join('')}
                         </small>
                     </div>
                 `).join('')}
@@ -12055,8 +12098,8 @@ function renderSunbirdNetworkSecurityDashboard(inputData = latestNetworkSecurity
     if (!content) return;
 
     const tabs = [
-        { label: 'Overview', panel: renderNetworkSecurityOverview(data) },
-        { label: 'Metrics', panel: renderNetworkMetricsGraph(data) },
+        { label: 'Overview', panel: renderNetworkSecurityOverview(data), pinned: true },
+        { label: 'Metrics', panel: renderNetworkMetricsGraph(data), pinned: true },
         { label: 'Logs', panel: renderNetworkEvidenceGroup(data, 'logs') },
         { label: 'Access', panel: renderNetworkEvidenceGroup(data, 'access') },
         { label: 'Infrastructure', panel: renderNetworkEvidenceGroup(data, 'infrastructure') },
@@ -12064,7 +12107,7 @@ function renderSunbirdNetworkSecurityDashboard(inputData = latestNetworkSecurity
         { label: 'Security Intel', panel: renderNetworkEvidenceGroup(data, 'security') },
         { label: 'Identity / Certs', panel: renderNetworkEvidenceGroup(data, 'identity') },
         { label: 'Devices', panel: renderNetworkEvidenceGroup(data, 'devices') }
-    ];
+    ].filter(tab => tab.pinned || String(tab.panel || '').trim());
 
     content.innerHTML = `
         ${data.success ? '' : `<div class="network-dashboard-error"><i class="fas fa-circle-exclamation"></i>${escapeIdentityText(data.message || 'Cloudflare data unavailable')}</div>`}

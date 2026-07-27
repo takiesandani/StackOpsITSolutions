@@ -36,7 +36,7 @@ const FAMILY_BY_KEY = Object.freeze(Object.fromEntries(CLOUDFLARE_PERMISSION_FAM
 const CLOUDFLARE_ENDPOINTS = [
   { key: 'account', familyKey: 'zeroTrust', label: 'Account Information', path: accountId => `/accounts/${accountId}` },
   { key: 'accountLogs', familyKey: 'accountLogs', label: 'Account Logs', emptyOnStatuses: [400, 404], path: accountId => `/accounts/${accountId}/logs/audit` },
-  { key: 'auditLogs', familyKey: 'auditLogs', label: 'Audit Logs', path: accountId => `/accounts/${accountId}/audit_logs` },
+  { key: 'auditLogs', familyKey: 'auditLogs', label: 'Audit Logs', path: accountId => `/accounts/${accountId}/audit_logs`, query: () => buildRecentCloudflareQuery({ per_page: 100 }) },
   { key: 'securityInsights', familyKey: 'securityInsights', label: 'Security Insights', path: accountId => `/accounts/${accountId}/security-center/insights` },
   { key: 'applicationSecurityReports', familyKey: 'applicationSecurityReports', label: 'Application Security Reports', path: accountId => `/accounts/${accountId}/security-center/insights` },
   { key: 'apiGateway', familyKey: 'apiGateway', label: 'API Gateway Discovery', scope: 'zone', path: zoneId => `/zones/${zoneId}/api_gateway/discovery/operations` },
@@ -63,14 +63,65 @@ const CLOUDFLARE_ENDPOINTS = [
   { key: 'warpConnectors', familyKey: 'warpConnector', label: 'WARP Connectors', path: accountId => `/accounts/${accountId}/warp_connector` },
   { key: 'gatewayRules', familyKey: 'zeroTrust', label: 'Gateway Rules', path: accountId => `/accounts/${accountId}/gateway/rules` },
   { key: 'gatewayConfig', familyKey: 'zeroTrust', label: 'Gateway Configuration', path: accountId => `/accounts/${accountId}/gateway/configuration` },
+  { key: 'gatewayLogging', familyKey: 'zeroTrust', label: 'Gateway Logging Settings', path: accountId => `/accounts/${accountId}/gateway/logging` },
+  { key: 'gatewayLists', familyKey: 'zeroTrust', label: 'Gateway Lists', path: accountId => `/accounts/${accountId}/gateway/lists` },
   { key: 'gatewayAppTypes', familyKey: 'zeroTrust', label: 'Gateway App Categories', path: accountId => `/accounts/${accountId}/gateway/app_types` },
+  { key: 'deviceSettings', familyKey: 'zeroTrust', label: 'Device Settings', path: accountId => `/accounts/${accountId}/devices/settings` },
   { key: 'virtualNetworks', familyKey: 'networks', label: 'Virtual Networks', path: accountId => `/accounts/${accountId}/teamnet/virtual_networks` },
   { key: 'teamnetRoutes', familyKey: 'networks', label: 'Network Routes', path: accountId => `/accounts/${accountId}/teamnet/routes` },
-  { key: 'accessLogs', familyKey: 'accessAuditLogs', label: 'Access Logs', path: accountId => `/accounts/${accountId}/access/logs/access_requests` },
+  { key: 'accessLogs', familyKey: 'accessAuditLogs', label: 'Access Logs', path: accountId => `/accounts/${accountId}/access/logs/access_requests`, query: () => buildRecentCloudflareQuery({ per_page: 100 }) },
   { key: 'teamsDexTests', familyKey: 'teamsDex', label: 'Teams DEX Tests', path: accountId => `/accounts/${accountId}/dex/tests/overview` },
   { key: 'dlpProfiles', familyKey: 'zeroTrust', label: 'DLP Profiles', path: accountId => `/accounts/${accountId}/dlp/profiles` },
   { key: 'zones', familyKey: 'accountAnalytics', label: 'Zones', path: () => '/zones' }
 ];
+function buildRecentCloudflareQuery({ days = 30, limit = null, per_page = null } = {}) {
+  const until = new Date().toISOString();
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const query = { since, until, direction: 'desc' };
+  if (limit != null) query.limit = limit;
+  if (per_page != null) query.per_page = per_page;
+  return query;
+}
+
+function sanitizeGatewayList(list) {
+  return {
+    id: list.id || null,
+    name: list.name || 'Gateway list',
+    type: firstDefined(list.type, list.list_type, null),
+    description: list.description || null,
+    count: Array.isArray(list.items) ? list.items.length : Number(list.count || 0) || null
+  };
+}
+
+function sanitizeGatewayLoggingSettings(logging) {
+  const settings = logging?.result || logging || {};
+  const byType = settings.settings_by_rule_type || {};
+  return {
+    id: 'gateway-logging',
+    name: 'Gateway logging settings',
+    redactPii: settings.redact_pii ?? null,
+    dnsLogAll: byType.dns?.log_all ?? null,
+    dnsLogBlocks: byType.dns?.log_blocks ?? null,
+    httpLogAll: byType.http?.log_all ?? null,
+    httpLogBlocks: byType.http?.log_blocks ?? null,
+    l4LogAll: byType.l4?.log_all ?? null,
+    l4LogBlocks: byType.l4?.log_blocks ?? null
+  };
+}
+
+function sanitizeDeviceSettings(settings) {
+  const result = settings?.result || settings || {};
+  return {
+    id: 'device-settings',
+    name: 'Account device settings',
+    gatewayProxyEnabled: result.gateway_proxy_enabled ?? null,
+    udpProxyEnabled: result.gateway_udp_proxy_enabled ?? null,
+    certificateEnabled: result.root_certificate_installation_enabled ?? null,
+    useZtVirtualIp: result.use_zt_virtual_ip ?? null,
+    disableForTime: result.disable_for_time ?? null
+  };
+}
+
 function getList(result) {
   if (Array.isArray(result)) return result;
   if (Array.isArray(result?.result)) return result.result;
@@ -80,6 +131,24 @@ function getList(result) {
 
 function firstDefined(...values) {
   return values.find(value => value !== undefined && value !== null && value !== '');
+}
+
+function formatWarpServiceMode(profile) {
+  const modeV2 = profile?.service_mode_v2;
+  if (modeV2 && typeof modeV2 === 'object') {
+    const mode = firstDefined(modeV2.mode, modeV2.service_mode, null);
+    const port = modeV2.port;
+    if (mode && port) return `${mode} (port ${port})`;
+    if (mode) return mode;
+  }
+  return firstDefined(
+    profile.service_mode,
+    profile.serviceMode,
+    profile.service_mode_v2_mode,
+    profile.tunnel_protocol,
+    profile.tunnelProtocol,
+    null
+  );
 }
 
 function valueAtPath(input, path) {
@@ -224,8 +293,8 @@ function sanitizeWarpProfile(profile) {
     allowUpdates: profile.allow_updates ?? null,
     allowedToLeave: profile.allowed_to_leave ?? null,
     autoConnect: profile.auto_connect ?? null,
-    serviceMode: firstDefined(profile.service_mode, profile.serviceMode, null),
-    precedence: profile.precedence ?? null
+    serviceMode: formatWarpServiceMode(profile),
+    precedence: firstDefined(profile.precedence, profile.priority, profile.order, null)
   };
 }
 
@@ -275,9 +344,10 @@ function summarizeSectionError(error, endpoint = {}) {
 async function fetchCloudflareEndpoint(client, endpoint, accountId) {
   const method = String(endpoint.method || 'get').toLowerCase();
   const url = endpoint.path(accountId);
+  const query = typeof endpoint.query === 'function' ? endpoint.query(accountId) : endpoint.query;
   const response = method === 'post'
     ? await client.post(url, endpoint.body || {})
-    : await client.get(url);
+    : await client.get(url, query ? { params: query } : undefined);
   return response.data;
 }
 
@@ -389,6 +459,13 @@ function normalizeCloudflarePayload(raw) {
   }));
   const gatewayRules = getList(byKey.gatewayRules?.data).map(sanitizeGatewayRule);
   const gatewayConfig = maskSensitiveObject(byKey.gatewayConfig?.data?.result || byKey.gatewayConfig?.data || {});
+  const gatewayLists = getList(byKey.gatewayLists?.data).map(sanitizeGatewayList);
+  const gatewayLogging = byKey.gatewayLogging?.status === 'ok'
+    ? sanitizeGatewayLoggingSettings(byKey.gatewayLogging.data)
+    : null;
+  const deviceSettingsRow = byKey.deviceSettings?.status === 'ok'
+    ? sanitizeDeviceSettings(byKey.deviceSettings.data)
+    : null;
   const warpProfiles = getList(byKey.warpProfiles?.data).map(sanitizeWarpProfile);
   const gatewayAppTypes = getList(byKey.gatewayAppTypes?.data).map(item => ({
     id: item.id || item.name || null,
@@ -430,9 +507,12 @@ function normalizeCloudflarePayload(raw) {
   const activeGatewayPolicies = countEnabled(gatewayRules);
   const latestAccessEvent = accessLogs[0]?.timestamp || null;
   const identityProvider = identityProviders.find(provider => /azure/i.test(provider.name || provider.type || '')) || identityProviders[0] || null;
-  const gatewayProxyEnabled = boolFromCloudflareSetting(gatewayConfig, ['gateway_proxy_enabled', 'settings.gateway_proxy.enabled', 'settings.gateway_proxy_enabled']);
-  const udpProxyEnabled = boolFromCloudflareSetting(gatewayConfig, ['gateway_udp_proxy_enabled', 'udp_proxy.enabled', 'settings.gateway_udp_proxy_enabled']);
-  const certificateEnabled = boolFromCloudflareSetting(gatewayConfig, ['root_certificate_installation_enabled', 'settings.root_certificate_installation_enabled', 'settings.certificate', 'certificate']);
+  const gatewayProxyEnabled = boolFromCloudflareSetting(gatewayConfig, ['gateway_proxy_enabled', 'settings.gateway_proxy.enabled', 'settings.gateway_proxy_enabled'])
+    || boolFromCloudflareSetting(deviceSettingsRow, ['gatewayProxyEnabled']);
+  const udpProxyEnabled = boolFromCloudflareSetting(gatewayConfig, ['gateway_udp_proxy_enabled', 'udp_proxy.enabled', 'settings.gateway_udp_proxy_enabled'])
+    || boolFromCloudflareSetting(deviceSettingsRow, ['udpProxyEnabled']);
+  const certificateEnabled = boolFromCloudflareSetting(gatewayConfig, ['root_certificate_installation_enabled', 'settings.root_certificate_installation_enabled', 'settings.certificate', 'certificate'])
+    || boolFromCloudflareSetting(deviceSettingsRow, ['certificateEnabled']);
   const tlsDecryptEnabled = boolFromCloudflareSetting(gatewayConfig, ['tls_decrypt.enabled', 'settings.tls_decrypt.enabled']);
 
   const overview = {
@@ -498,6 +578,9 @@ function normalizeCloudflarePayload(raw) {
     devicePosture,
     gatewayRules,
     gatewayConfig,
+    gatewayLists,
+    gatewayLogging,
+    deviceSettings: deviceSettingsRow,
     warpProfiles,
     accessLogs,
     virtualNetworks,

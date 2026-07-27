@@ -67,43 +67,44 @@ class StackOpsChatbot {
                     width: 64px;
                     height: 64px;
                     border-radius: 50%;
-                    background: rgba(20, 20, 30, 0.3);
+                    background: linear-gradient(135deg, rgba(249, 115, 22, 0.92), rgba(234, 88, 12, 0.98));
                     backdrop-filter: blur(10px) saturate(180%);
                     -webkit-backdrop-filter: blur(10px) saturate(180%);
-                    border: 1px solid rgba(0, 102, 255, 0.4);
+                    border: 2px solid rgba(255, 183, 77, 0.85);
                     cursor: pointer;
                     display: flex;
                     align-items: center;
                     justify-content: center;
                     box-shadow: 
-                        0 8px 32px rgba(0, 0, 0, 0.1),
-                        inset 0 1px 1px rgba(255, 255, 255, 0.3),
-                        0 0 20px rgba(0, 102, 255, 0.5),
-                        0 0 40px rgba(0, 102, 255, 0.3);
+                        0 8px 32px rgba(0, 0, 0, 0.15),
+                        inset 0 1px 1px rgba(255, 255, 255, 0.35),
+                        0 0 20px rgba(249, 115, 22, 0.65),
+                        0 0 40px rgba(249, 115, 22, 0.45);
                     transition: all 0.3s;
                     padding: 0;
                     overflow: hidden;
                 }
 
                 .main-toggle img {
-                    width: 60%;
-                    height: 60%;
+                    width: 58%;
+                    height: 58%;
                     object-fit: contain;
                     display: block;
                     margin: auto;
                     animation: none !important;
                     transform: none !important;
+                    filter: none;
                 }
 
                 .main-toggle.on {
                     background: rgba(45, 55, 72, 0.8);
                     backdrop-filter: blur(10px);
                     -webkit-backdrop-filter: blur(10px);
-                    border: 1px solid rgba(0, 102, 255, 0.6);
+                    border: 1px solid rgba(249, 115, 22, 0.75);
                     box-shadow: 
                         0 8px 32px rgba(0, 0, 0, 0.2),
-                        0 0 25px rgba(0, 102, 255, 0.6),
-                        0 0 50px rgba(0, 102, 255, 0.4);
+                        0 0 25px rgba(249, 115, 22, 0.65),
+                        0 0 50px rgba(249, 115, 22, 0.45);
                 }
 
                 .main-toggle:hover {
@@ -111,8 +112,8 @@ class StackOpsChatbot {
                     box-shadow: 
                         0 8px 32px rgba(0, 0, 0, 0.1),
                         inset 0 1px 1px rgba(255, 255, 255, 0.3),
-                        0 0 25px rgba(0, 102, 255, 0.6),
-                        0 0 50px rgba(0, 102, 255, 0.4);
+                        0 0 25px rgba(249, 115, 22, 0.65),
+                        0 0 50px rgba(249, 115, 22, 0.45);
                 }
 
                 .chat-corner {
@@ -584,7 +585,7 @@ class StackOpsChatbot {
 
             <div class="chatbot-widget" id="chatbot-widget">
                 <button class="main-toggle" id="chatToggle">
-                    <img src="Images/Logos/RemovedStackOpsONLY.png" alt="StackOps Logo">
+                    <img src="Images/Logos/StackCTRLLoading.png" alt="StackOps Logo">
                 </button>
             </div>
 
