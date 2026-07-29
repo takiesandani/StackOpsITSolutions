@@ -976,9 +976,88 @@
             </div>
         </nav>
 
+        <!-- Mobile / Tablet bottom navigation (phones & tablets only) -->
+        <nav class="portal-mobile-bottom-nav" id="portal-mobile-bottom-nav" aria-label="Portal navigation">
+            <button type="button" class="portal-mobile-nav-item active" data-mobile-tab="home" aria-current="page">
+                <i class="fas fa-home" aria-hidden="true"></i>
+                <span>Home</span>
+            </button>
+            <button type="button" class="portal-mobile-nav-item" data-mobile-tab="dashboard">
+                <i class="fas fa-th-large" aria-hidden="true"></i>
+                <span>Dashboard</span>
+            </button>
+            <button type="button" class="portal-mobile-nav-item" data-mobile-tab="alerts">
+                <i class="fas fa-bell" aria-hidden="true"></i>
+                <span>Alerts</span>
+            </button>
+            <button type="button" class="portal-mobile-nav-item" data-mobile-tab="profile">
+                <i class="fas fa-user" aria-hidden="true"></i>
+                <span>Profile</span>
+            </button>
+        </nav>
+
         <!-- PROJECTS VIEW -->
-        <div id="projects-view" class="projects-view">
+        <div id="projects-view" class="projects-view portal-mobile-tab-home">
             <div class="container">
+
+                <!-- Mobile / Tablet home shell (structure only — liquid glass styling from CSS) -->
+                <div class="portal-mobile-shell" id="portal-mobile-shell">
+                    <div class="portal-mobile-greeting">
+                        <h1 class="portal-mobile-greeting-title">Hello, <span id="portal-mobile-user-name">Client</span> 👋</h1>
+                        <p class="portal-mobile-greeting-subtitle">Here's what's happening today.</p>
+                    </div>
+
+                    <div class="portal-mobile-health dashboard-card" id="portal-mobile-health-card">
+                        <div class="portal-mobile-health-content">
+                            <div class="portal-mobile-health-text">
+                                <h2>System Health</h2>
+                                <p class="portal-mobile-health-status" id="portal-mobile-health-status">All systems operational</p>
+                            </div>
+                            <div class="portal-mobile-health-gauge" aria-hidden="true">
+                                <svg class="portal-mobile-health-ring" viewBox="0 0 36 36">
+                                    <path class="portal-mobile-health-ring-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"></path>
+                                    <path class="portal-mobile-health-ring-fill" id="portal-mobile-health-ring" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"></path>
+                                </svg>
+                                <span class="portal-mobile-health-value" id="portal-mobile-health-value">--</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="portal-mobile-quick-actions">
+                        <h2 class="portal-mobile-section-title">Quick Actions</h2>
+                        <div class="portal-mobile-quick-grid" id="portal-mobile-quick-grid"></div>
+                    </div>
+
+                    <div class="portal-mobile-alerts">
+                        <h2 class="portal-mobile-section-title">Latest Alerts</h2>
+                        <div class="portal-mobile-alerts-list" id="portal-mobile-alerts-list">
+                            <div class="portal-mobile-alert-empty">No active alerts</div>
+                        </div>
+                        <button type="button" class="portal-mobile-view-all" id="portal-mobile-view-all-alerts">
+                            View all alerts <i class="fas fa-arrow-right" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Mobile / Tablet profile panel -->
+                <div class="portal-mobile-profile" id="portal-mobile-profile" hidden>
+                    <div class="portal-mobile-profile-card dashboard-card">
+                        <div class="portal-mobile-profile-header">
+                            <div class="portal-mobile-profile-avatar" aria-hidden="true">
+                                <i class="fas fa-user"></i>
+                            </div>
+                            <div>
+                                <h2 id="portal-mobile-profile-name">Client</h2>
+                                <p>StackCTRL Portal</p>
+                            </div>
+                        </div>
+                        <p class="portal-mobile-profile-tagline">Measure. Control. Improve</p>
+                        <button type="button" class="btn-logout-mobile portal-mobile-profile-logout" id="portal-mobile-profile-logout">
+                            <i class="fas fa-power-off" aria-hidden="true"></i>
+                            Logout
+                        </button>
+                    </div>
+                </div>
 
                 <div class="projects-nav">
                     <div class="nav-counter">
@@ -1417,7 +1496,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <script src="js/script.js?v=20260529"></script>
-    <script src="js/clientportal.js?v=20260727-cloudflare-ui-v2"></script>
+    <script src="js/clientportal.js?v=20260729-mobile-portal-layout"></script>
     <script src="js/chatbot.js"></script>
 </body>
 </html>
