@@ -1099,6 +1099,7 @@ function normalizeSummaryMetrics(project) {
 
 document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
+    initializePortalMobileDashboard();
     setupSessionManagement();
     initializeProjectsList();
     initializeBillingCard();
@@ -1120,6 +1121,7 @@ function isSunbirdBillingViewActive(view) {
 async function bootstrapDashboardDataAfterLogin() {
     await refreshUserAccessFromServer();
     // Rebuild visible cards for the authenticated user immediately.
+    syncPortalMobileUserName();
     initializeProjectsList();
     initializeGovernanceCard();
     initializeSupportCard();
@@ -1141,6 +1143,7 @@ async function bootstrapDashboardDataAfterLogin() {
         fetchBackupCardData(),
         initializeBillingCard()
     ]).then(() => {
+        refreshPortalMobileDashboard();
         // Retry identity fetch once if Sunbird data is still empty.
         if (isSunbirdUser() && microsoftUsersData.length === 0) {
             setTimeout(() => {
@@ -15588,3 +15591,99 @@ window.openSunbirdOperationsModal = function(index) {
 
     document.getElementById('sunbird-operations-modal').classList.add('open');
 };
+function isPortalMobileLayout() {
+    return window.matchMedia('(max-width: 1024px)').matches;
+}
+
+function syncPortalMobileUserName() {
+    const name = document.getElementById('user-name')?.textContent?.trim() || 'Client';
+    ['portal-mobile-user-name', 'portal-mobile-profile-name'].forEach(id => {
+        const element = document.getElementById(id);
+        if (element) element.textContent = name;
+    });
+}
+
+function setPortalMobileTab(tab) {
+    const view = document.getElementById('projects-view');
+    if (!view) return;
+    ['home', 'dashboard', 'alerts', 'profile'].forEach(name => view.classList.toggle(`portal-mobile-tab-${name}`, name === tab));
+    document.querySelectorAll('.portal-mobile-nav-item').forEach(button => {
+        const active = button.dataset.mobileTab === tab;
+        button.classList.toggle('active', active);
+        button.toggleAttribute('aria-current', active);
+        if (active) button.setAttribute('aria-current', 'page');
+    });
+    if (tab === 'alerts') window.switchBillingMenu?.('security');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function renderPortalMobileHealth(health) {
+    const value = Math.max(0, Math.min(100, Math.round(Number(health) || 0)));
+    const text = document.getElementById('portal-mobile-health-value');
+    const ring = document.getElementById('portal-mobile-health-ring');
+    const status = document.getElementById('portal-mobile-health-status');
+    if (text) text.textContent = `${value}%`;
+    if (ring) ring.setAttribute('stroke-dasharray', `${value}, 100`);
+    if (status) {
+        status.classList.toggle('is-warning', value < 80 && value >= 60);
+        status.classList.toggle('is-critical', value < 60);
+        status.textContent = value >= 80 ? 'All systems operational' : value >= 60 ? 'Attention recommended' : 'Action required';
+    }
+}
+
+function formatPortalMobileAlertTime(timestamp) {
+    const date = new Date(timestamp);
+    if (!timestamp || Number.isNaN(date.getTime())) return 'Recent';
+    const minutes = Math.max(0, Math.round((Date.now() - date.getTime()) / 60000));
+    return minutes < 1 ? 'Just now' : minutes < 60 ? `${minutes}m ago` : minutes < 1440 ? `${Math.round(minutes / 60)}h ago` : `${Math.round(minutes / 1440)}d ago`;
+}
+
+function renderPortalMobileAlerts(items = []) {
+    const list = document.getElementById('portal-mobile-alerts-list');
+    if (!list) return;
+    if (!items.length) {
+        list.innerHTML = '<div class="portal-mobile-alert-empty">No active alerts</div>';
+        return;
+    }
+    list.innerHTML = items.slice(0, 3).map(item => {
+        const severity = ['critical', 'high', 'medium', 'warning'].includes(String(item.severity).toLowerCase()) ? String(item.severity).toLowerCase() : 'low';
+        const title = escapeIdentityText(item.message || item.displayName || item.title || 'Security alert');
+        const detail = escapeIdentityText(item.source || item.type || item.category || 'Security activity');
+        return `<div class="portal-mobile-alert-item"><span class="portal-mobile-alert-icon severity-${severity}"><i class="fas fa-bell"></i></span><div class="portal-mobile-alert-body"><p class="portal-mobile-alert-title">${title}</p><p class="portal-mobile-alert-meta">${detail} · ${formatPortalMobileAlertTime(item.timestamp || item.createdDateTime || item.created)}</p></div><span class="portal-mobile-alert-dot severity-${severity}"></span></div>`;
+    }).join('');
+}
+
+function renderPortalMobileQuickActions() {
+    const grid = document.getElementById('portal-mobile-quick-grid');
+    if (!grid || grid.dataset.ready) return;
+    const actions = [['Projects', 'fa-folder-open', () => setPortalMobileTab('dashboard')], ['Security Alerts', 'fa-bell', () => setPortalMobileTab('alerts')], ['Chat Support', 'fa-comments', () => document.getElementById('chatbot-toggle')?.click()]];
+    if (isSunbirdUser()) actions.splice(2, 0, ['Reports', 'fa-file-alt', () => { setPortalMobileTab('alerts'); window.switchBillingMenu?.('reports'); }]);
+    actions.forEach(([label, icon, action]) => {
+        const button = document.createElement('button');
+        button.type = 'button'; button.className = 'portal-mobile-quick-btn';
+        button.innerHTML = `<i class="fas ${icon}" aria-hidden="true"></i><span>${label}</span>`;
+        button.addEventListener('click', action); grid.appendChild(button);
+    });
+    grid.dataset.ready = 'true';
+}
+
+async function refreshPortalMobileDashboard() {
+    if (!isPortalMobileLayout() || sessionStorage.getItem('isLoggedIn') !== 'true') return;
+    syncPortalMobileUserName(); renderPortalMobileQuickActions();
+    try {
+        const reports = await fetchSunbirdReportsData('30d');
+        renderPortalMobileHealth(getSunbirdReportIntelligence(reports).health);
+    } catch (error) { console.warn('[Mobile Portal] Report health unavailable:', error.message); }
+    try {
+        const security = cachedSunbirdSecurityData || await fetchSunbirdSecurityEventsData();
+        cachedSunbirdSecurityData = security;
+        renderPortalMobileAlerts(security.activityFeed || security.incidents || []);
+    } catch (error) { console.warn('[Mobile Portal] Security alerts unavailable:', error.message); }
+}
+
+function initializePortalMobileDashboard() {
+    document.querySelectorAll('.portal-mobile-nav-item').forEach(button => button.addEventListener('click', () => setPortalMobileTab(button.dataset.mobileTab || 'home')));
+    document.getElementById('portal-mobile-view-all-alerts')?.addEventListener('click', () => setPortalMobileTab('alerts'));
+    document.getElementById('portal-mobile-profile-logout')?.addEventListener('click', handleLogout);
+    syncPortalMobileUserName(); refreshPortalMobileDashboard();
+}
