@@ -11748,7 +11748,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   }
 
   .portal-mobile-health-ring-fill {
-    stroke: #60a5fa;
+    stroke: #34d399;
     stroke-linecap: round;
     transition: stroke-dasharray 0.4s ease;
   }
@@ -12017,6 +12017,37 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
     display: none;
   }
 
+  .projects-view.portal-mobile-tab-control .portal-mobile-shell,
+  .projects-view.portal-mobile-tab-control .portal-mobile-profile,
+  .projects-view.portal-mobile-tab-control .projects-nav,
+  .projects-view.portal-mobile-tab-control .projects-carousel-shell,
+  .projects-view.portal-mobile-tab-control .project-preview-section {
+    display: none;
+  }
+
+  .projects-view.portal-mobile-tab-control .dashboard-cards-section {
+    display: grid;
+    grid-template-columns: 1fr;
+    margin-top: 0;
+  }
+
+  .projects-view.portal-mobile-tab-control .dashboard-card-vertical-container {
+    display: none;
+  }
+
+  .projects-view.portal-mobile-tab-control .dashboard-with-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .mobile-control-center-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 13px 12px;
+    color: #ffffff;
   .projects-view.portal-mobile-tab-profile .portal-mobile-shell,
   .projects-view.portal-mobile-tab-profile .projects-nav,
   .projects-view.portal-mobile-tab-profile .projects-carousel-shell,

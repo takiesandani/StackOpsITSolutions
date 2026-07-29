@@ -11061,7 +11061,7 @@ function buildCloudflareSecuritySignals(inputData = getCurrentNetworkSecurityDat
             recommendation: 'Restore Cloudflare API evidence collection'
         });
     }
-    if (!overview.gatewayProxyEnabled) {
+    if (overview.gatewayProxyEnabled === false) {
         addAlert({
             id: 'gateway-proxy-disabled',
             title: 'Cloudflare Gateway proxy disabled',
@@ -11072,7 +11072,7 @@ function buildCloudflareSecuritySignals(inputData = getCurrentNetworkSecurityDat
             recommendation: 'Enable Cloudflare Gateway proxy or document the exception'
         });
     }
-    if (!overview.tlsDecryptEnabled) {
+    if (overview.tlsDecryptEnabled === false) {
         addAlert({
             id: 'tls-decrypt-disabled',
             title: 'Cloudflare TLS decrypt disabled',
@@ -11082,7 +11082,7 @@ function buildCloudflareSecuritySignals(inputData = getCurrentNetworkSecurityDat
             recommendation: 'Review TLS decrypt policy readiness'
         });
     }
-    if (!overview.udpProxyEnabled) {
+    if (overview.udpProxyEnabled === false) {
         addAlert({
             id: 'udp-proxy-disabled',
             title: 'Cloudflare UDP proxy disabled',
@@ -11092,7 +11092,7 @@ function buildCloudflareSecuritySignals(inputData = getCurrentNetworkSecurityDat
             recommendation: 'Validate whether UDP proxy should be enabled'
         });
     }
-    if (!overview.dlpProfiles) {
+    if (overview.dlpProfiles === false) {
         addAlert({
             id: 'dlp-missing',
             title: 'Cloudflare DLP profiles missing',
@@ -11102,7 +11102,7 @@ function buildCloudflareSecuritySignals(inputData = getCurrentNetworkSecurityDat
             recommendation: 'Create or verify Cloudflare DLP profiles'
         });
     }
-    if (!overview.protectedApps) {
+    if (overview.protectedApps === false) {
         addAlert({
             id: 'access-apps-missing',
             title: 'No Cloudflare protected apps evidenced',
@@ -11112,7 +11112,7 @@ function buildCloudflareSecuritySignals(inputData = getCurrentNetworkSecurityDat
             recommendation: 'Confirm Cloudflare Access app coverage'
         });
     }
-    if (!overview.identityProviders) {
+    if (overview.identityProviders === false) {
         addAlert({
             id: 'identity-provider-missing',
             title: 'Cloudflare identity provider not evidenced',
@@ -15606,7 +15606,7 @@ function syncPortalMobileUserName() {
 function setPortalMobileTab(tab) {
     const view = document.getElementById('projects-view');
     if (!view) return;
-    ['home', 'dashboard', 'alerts', 'profile'].forEach(name => view.classList.toggle(`portal-mobile-tab-${name}`, name === tab));
+    ['home', 'dashboard', 'alerts', 'profile', 'control'].forEach(name => view.classList.toggle(`portal-mobile-tab-${name}`, name === tab));
     document.querySelectorAll('.portal-mobile-nav-item').forEach(button => {
         const active = button.dataset.mobileTab === tab;
         button.classList.toggle('active', active);
@@ -15615,6 +15615,7 @@ function setPortalMobileTab(tab) {
     });
     if (tab === 'alerts') window.switchBillingMenu?.('security');
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (tab === 'control') window.switchBillingMenu?.('operations');
 }
 
 function renderPortalMobileHealth(health) {
@@ -15623,11 +15624,12 @@ function renderPortalMobileHealth(health) {
     const ring = document.getElementById('portal-mobile-health-ring');
     const status = document.getElementById('portal-mobile-health-status');
     if (text) text.textContent = `${value}%`;
-    if (ring) ring.setAttribute('stroke-dasharray', `${value}, 100`);
+    const tone = value >= 85 ? '#34d399' : value >= 70 ? '#facc15' : value >= 50 ? '#fb923c' : '#f87171';
+    if (ring) { ring.setAttribute('stroke-dasharray', `${value}, 100`); ring.style.stroke = tone; }
     if (status) {
-        status.classList.toggle('is-warning', value < 80 && value >= 60);
-        status.classList.toggle('is-critical', value < 60);
-        status.textContent = value >= 80 ? 'All systems operational' : value >= 60 ? 'Attention recommended' : 'Action required';
+        status.style.color = tone;
+        status.classList.remove('is-warning', 'is-critical');
+        status.textContent = value >= 85 ? 'All systems operational' : value >= 70 ? 'Attention recommended' : value >= 50 ? 'Action recommended' : 'Action required';
     }
 }
 
@@ -15684,6 +15686,10 @@ async function refreshPortalMobileDashboard() {
 function initializePortalMobileDashboard() {
     document.querySelectorAll('.portal-mobile-nav-item').forEach(button => button.addEventListener('click', () => setPortalMobileTab(button.dataset.mobileTab || 'home')));
     document.getElementById('portal-mobile-view-all-alerts')?.addEventListener('click', () => setPortalMobileTab('alerts'));
+    document.getElementById('mobile-control-center-link')?.addEventListener('click', () => {
+        closeMobileMenu();
+        setPortalMobileTab('control');
+    });
     document.getElementById('portal-mobile-profile-logout')?.addEventListener('click', handleLogout);
     syncPortalMobileUserName(); refreshPortalMobileDashboard();
 }
