@@ -2271,7 +2271,7 @@ body.client-portal-page {
 
   border: 0;
   border-bottom: 1px solid rgba(255, 102, 0, 0.18)  !important;
-  border-radius: 20px  !important;
+  border-radius: 50px  !important;
   box-shadow: 0 0 25px rgba(252, 116, 38, 0.85) !important;
 
   margin: 1px auto !important;

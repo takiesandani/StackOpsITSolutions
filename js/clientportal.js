@@ -10662,10 +10662,20 @@ function updatePortalMobileDomainSummary() {
         if (element) element.textContent = value;
     };
 
-    setText('mobile-total-users', getProjectMetricValue(2, /total users/i));
-    setText('mobile-total-devices', getProjectMetricValue(3, /total devices/i));
-    setText('mobile-total-apps', getProjectMetricValue(8, /total apps/i));
-    setText('mobile-total-storage', getMobileTotalStorageValue());
+    const totalUsers = getProjectMetricValue(2, /total users/i);
+    const totalDevices = getProjectMetricValue(3, /total devices/i);
+    const totalApps = getProjectMetricValue(8, /total apps/i);
+    const totalStorage = getMobileTotalStorageValue();
+
+    setText('mobile-total-users', totalUsers);
+    setText('mobile-total-devices', totalDevices);
+    setText('mobile-total-apps', totalApps);
+    setText('mobile-total-storage', totalStorage);
+
+    setText('desktop-total-users', totalUsers);
+    setText('desktop-total-devices', totalDevices);
+    setText('desktop-total-apps', totalApps);
+    setText('desktop-total-storage', totalStorage);
 }
 function displayCurrentProject() {
     const carouselProjects = getFilteredProjects();
@@ -10736,7 +10746,8 @@ function displayCurrentProject() {
     
     document.getElementById('project-current').textContent = currentProjectIndex + 1;
     
-    updateNavigationButtons();`r`n    updatePortalMobileDomainSummary();
+    updateNavigationButtons();
+    updatePortalMobileDomainSummary();
 }
 
 function clearSidePeekCards() {
