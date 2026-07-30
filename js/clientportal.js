@@ -10640,6 +10640,33 @@ function initializeProjectsList() {
     }
 }
 
+function getProjectMetricValue(projectId, labelPattern, fallback = '0') {
+    const project = mockProjects.find(item => Number(item.id) === Number(projectId));
+    const metric = project?.cardMetrics?.find(item => labelPattern.test(String(item.label || '')));
+    return metric ? toMetricValue(metric.value, fallback) : fallback;
+}
+
+function getMobileTotalStorageValue() {
+    const data = cachedSunbirdBackupData || readSunbirdBackupSnapshot?.() || {};
+    const summary = data.summary || {};
+    const value = summary.totalStorageGB ?? summary.totalStorage ?? data.totalStorageGB;
+    if (value == null || value === '') return '0 GB';
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) return `${numeric} GB`;
+    return String(value);
+}
+
+function updatePortalMobileDomainSummary() {
+    const setText = (id, value) => {
+        const element = document.getElementById(id);
+        if (element) element.textContent = value;
+    };
+
+    setText('mobile-total-users', getProjectMetricValue(2, /total users/i));
+    setText('mobile-total-devices', getProjectMetricValue(3, /total devices/i));
+    setText('mobile-total-apps', getProjectMetricValue(8, /total apps/i));
+    setText('mobile-total-storage', getMobileTotalStorageValue());
+}
 function displayCurrentProject() {
     const carouselProjects = getFilteredProjects();
     if (carouselProjects.length === 0) return;
@@ -10709,7 +10736,7 @@ function displayCurrentProject() {
     
     document.getElementById('project-current').textContent = currentProjectIndex + 1;
     
-    updateNavigationButtons();
+    updateNavigationButtons();`r`n    updatePortalMobileDomainSummary();
 }
 
 function clearSidePeekCards() {
@@ -15720,6 +15747,6 @@ function initializePortalMobileDashboard() {
         if (targetId) setTimeout(() => document.getElementById(targetId)?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 80);
     }));
     document.getElementById('portal-mobile-profile-logout')?.addEventListener('click', handleLogout);
-    syncPortalMobileUserName(); refreshPortalMobileDashboard();
+    syncPortalMobileUserName(); updatePortalMobileDomainSummary(); refreshPortalMobileDashboard();
 }
 
