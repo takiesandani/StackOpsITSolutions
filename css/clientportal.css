@@ -12348,3 +12348,214 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
     border-radius: 12px;
   }
 }
+
+/* Phone project dashboard: horizontal summaries, screenshot-style cards */
+.portal-mobile-domain-summary {
+  display: none;
+}
+
+@media (max-width: 600px) {
+  body.sunbird-client-portal .projects-view.portal-mobile-tab-dashboard .portal-mobile-domain-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0;
+    width: 100%;
+    margin: 0 0 10px;
+    padding: 10px 6px;
+    overflow: hidden;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 12px;
+    box-shadow: 0 8px 26px rgba(0, 0, 0, 0.24), inset 0 1px 1px rgba(255, 255, 255, 0.16);
+    backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
+    -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
+  }
+
+  body.sunbird-client-portal .projects-view:not(.portal-mobile-tab-dashboard) .portal-mobile-domain-summary {
+    display: none;
+  }
+
+  body.sunbird-client-portal .portal-mobile-domain-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    min-height: 64px;
+    padding: 0 5px;
+    text-align: center;
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  body.sunbird-client-portal .portal-mobile-domain-stat:last-child {
+    border-right: 0;
+  }
+
+  body.sunbird-client-portal .portal-mobile-domain-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    margin-bottom: 5px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.08);
+    color: #78a8ff;
+    font-size: 0.78rem;
+  }
+
+  body.sunbird-client-portal .portal-mobile-domain-icon.devices { color: #34d399; }
+  body.sunbird-client-portal .portal-mobile-domain-icon.apps { color: #fb923c; }
+  body.sunbird-client-portal .portal-mobile-domain-icon.storage { color: #a78bfa; }
+
+  body.sunbird-client-portal .portal-mobile-domain-label {
+    display: block;
+    width: 100%;
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 0.58rem;
+    line-height: 1.15;
+    white-space: normal;
+  }
+
+  body.sunbird-client-portal .portal-mobile-domain-stat strong {
+    display: block;
+    margin-top: 3px;
+    color: #f8fafc;
+    font-size: 0.82rem;
+    line-height: 1.1;
+  }
+
+  body.sunbird-client-portal .projects-view.portal-mobile-tab-dashboard .projects-nav {
+    display: none;
+  }
+
+  body.sunbird-client-portal .projects-grid {
+    gap: 8px;
+  }
+
+  body.sunbird-client-portal .projects-grid .project-card {
+    padding: 10px 11px 9px;
+    gap: 8px;
+    border-radius: 10px;
+  }
+
+  body.sunbird-client-portal .project-card::after {
+    top: 26px;
+    right: 13px;
+  }
+
+  body.sunbird-client-portal .project-card-header {
+    align-items: center;
+    gap: 10px;
+    min-height: 38px;
+    padding-right: 30px;
+  }
+
+  body.sunbird-client-portal .project-icon {
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    min-height: 34px;
+    font-size: 16px;
+  }
+
+  body.sunbird-client-portal .project-title {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  body.sunbird-client-portal .project-title h3 {
+    font-size: 0.86rem;
+    line-height: 1.15;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  body.sunbird-client-portal .project-type {
+    font-size: 0.6rem;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  body.sunbird-client-portal .project-status-badge {
+    flex: 0 0 auto;
+    margin-right: 16px;
+    padding: 5px 8px;
+    font-size: 0.55rem;
+  }
+
+  body.sunbird-client-portal .project-info {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(58px, 1fr));
+    gap: 0;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+  }
+
+  body.sunbird-client-portal .project-info-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 42px;
+    padding: 0 4px;
+    gap: 3px;
+    background: transparent;
+    border: 0;
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 0;
+    text-align: center;
+  }
+
+  body.sunbird-client-portal .project-info-item:last-child {
+    border-right: 0;
+  }
+
+  body.sunbird-client-portal .project-info-item i {
+    display: none;
+  }
+
+  body.sunbird-client-portal .metric-content-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    width: 100%;
+  }
+
+  body.sunbird-client-portal .metric-label-text {
+    max-width: 100%;
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 0.52rem;
+    line-height: 1.15;
+    white-space: normal;
+  }
+
+  body.sunbird-client-portal .metric-label-text::after {
+    content: "";
+  }
+
+  body.sunbird-client-portal .metric-value-text {
+    color: #f8fafc;
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1.1;
+  }
+
+  body.sunbird-client-portal .project-risks {
+    padding-top: 8px;
+    min-height: 22px;
+  }
+
+  body.sunbird-client-portal .project-risks span {
+    max-width: calc(100% - 22px);
+    font-size: 0.68rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}

@@ -10,7 +10,7 @@ let charts = {};
 let currentProjectIndex = 0;
 let selectedProjectId = null;
 let previewLockedByClick = false;
-const SUNBIRD_PROJECT_DISPLAY_ORDER = [2, 3, 5, 10, 9];
+const SUNBIRD_PHONE_PROJECT_DISPLAY_ORDER = [2, 3, 5, 10, 9];
 
 // Sunbird-only card IDs that should be hidden from non-Sunbird clients
 const SUNBIRD_ONLY_CARD_IDS = [2, 3, 4, 5, 7, 8, 9, 10]; // Identity Protection, Devices, Security & Events, Email Security, Backup & Recovery, Applications, Credential Security, Network Security
@@ -749,11 +749,7 @@ function getFilteredProjects() {
         return mockProjects.filter(project =>
             SUNBIRD_ONLY_CARD_IDS.includes(project.id) &&
             !HIDDEN_PROJECT_CARD_IDS.includes(project.id)
-        ).sort((a, b) => {
-            const aOrder = SUNBIRD_PROJECT_DISPLAY_ORDER.indexOf(Number(a.id));
-            const bOrder = SUNBIRD_PROJECT_DISPLAY_ORDER.indexOf(Number(b.id));
-            return (aOrder === -1 ? 99 : aOrder) - (bOrder === -1 ? 99 : bOrder);
-        });
+        );
     }
     
     if (isSedfaUser()) {
@@ -771,6 +767,16 @@ function getFilteredProjects() {
     );
 }
 
+function getPhoneFilteredProjects() {
+    const projects = getFilteredProjects();
+    if (!isSunbirdUser()) return projects;
+
+    return projects.slice().sort((a, b) => {
+        const aOrder = SUNBIRD_PHONE_PROJECT_DISPLAY_ORDER.indexOf(Number(a.id));
+        const bOrder = SUNBIRD_PHONE_PROJECT_DISPLAY_ORDER.indexOf(Number(b.id));
+        return (aOrder === -1 ? 99 : aOrder) - (bOrder === -1 ? 99 : bOrder);
+    });
+}
 const mockProjects = [
     {
         id: 9,
@@ -10623,7 +10629,7 @@ function initializeProjectsList() {
     document.getElementById('project-total').textContent = carouselProjects.length;
     
     // Default start index to 1 for Sunbird clients so index 0 (Credential Security) is on the left blur.
-    currentProjectIndex = 0;
+    currentProjectIndex = isSunbirdUser() ? 1 : 0;
     selectedProjectId = null;
     previewLockedByClick = false;
     
@@ -10672,20 +10678,15 @@ function updatePortalMobileDomainSummary() {
     setText('mobile-total-apps', totalApps);
     setText('mobile-total-storage', totalStorage);
 
-    setText('desktop-total-users', totalUsers);
-    setText('desktop-total-devices', totalDevices);
-    setText('desktop-total-apps', totalApps);
-    setText('desktop-total-storage', totalStorage);
 }
 function displayCurrentProject() {
-    const carouselProjects = getFilteredProjects();
+    const isPhoneProjectLayout = window.matchMedia('(max-width: 600px)').matches;
+    const carouselProjects = isPhoneProjectLayout ? getPhoneFilteredProjects() : getFilteredProjects();
     if (carouselProjects.length === 0) return;
     
     const projectsGrid = document.getElementById('projects-grid');
     projectsGrid.classList.toggle('project-grid-updating', projectGridHasRendered);
     projectsGrid.innerHTML = '';
-    
-    const isPhoneProjectLayout = window.matchMedia('(max-width: 600px)').matches;
     const visibleProjects = isPhoneProjectLayout
         ? carouselProjects
         : carouselProjects.slice(currentProjectIndex, currentProjectIndex + 3);
