@@ -12559,3 +12559,69 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
     text-overflow: ellipsis;
   }
 }
+
+/* Compact Sunbird dashboard metrics */
+.sunbird-id-metrics {
+  grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
+  gap: 14px;
+  align-items: stretch;
+}
+
+.sunbird-id-metric-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 108px;
+  aspect-ratio: 1 / 0.82;
+  padding: 12px;
+}
+
+.sunbird-id-metric-value {
+  font-size: 1.45rem;
+  line-height: 1.1;
+}
+
+.sunbird-id-metric-label {
+  margin-top: 6px;
+  font-size: 0.78rem;
+  line-height: 1.25;
+}
+
+.sunbird-id-evidence-btn {
+  align-self: flex-start;
+  margin-top: 12px;
+  padding: 7px 10px;
+  font-size: 0.7rem;
+}
+
+@media (max-width: 720px) {
+  .sunbird-identity-dashboard {
+    padding-top: 4px;
+  }
+
+  .sunbird-id-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .sunbird-id-metric-card {
+    min-height: 92px;
+    aspect-ratio: 1 / 0.88;
+    padding: 10px;
+  }
+
+  .sunbird-id-evidence-btn {
+    margin-top: 9px;
+  }
+}
+
+@media (max-width: 600px) {
+  body.sunbird-client-portal .projects-view {
+    margin-top: 56px;
+    padding-top: 4px;
+  }
+
+  body.sunbird-client-portal .projects-view.portal-mobile-tab-dashboard .dashboard-cards-section {
+    margin-top: 4px;
+  }
+}

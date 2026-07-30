@@ -10714,24 +10714,14 @@ function displayCurrentProject() {
                     return;
                 }
 
-                const isSelected = selectedProjectId === project.id && previewLockedByClick;
-                
                 const allCards = document.querySelectorAll('.project-card');
                 allCards.forEach(card => card.classList.remove('glow-selected'));
-                
-                if (isSelected) {
-                    // If already selected, close it
-                    previewLockedByClick = false;
-                    selectedProjectId = null;
-                    hideProjectPreview();
-                } else {
-                    // Otherwise, open it
-                    previewLockedByClick = true;
-                    selectedProjectId = project.id;
-                    projectCard.classList.add('glow-selected');
-                    showProjectPreview(project);
-                    moveProjectPreviewUnderCard(projectCard);
-                }
+
+                previewLockedByClick = true;
+                selectedProjectId = project.id;
+                projectCard.classList.add('glow-selected');
+                showProjectPreview(project);
+                moveProjectPreviewUnderCard(projectCard);
             });
         }
         
