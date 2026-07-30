@@ -10,6 +10,7 @@ let charts = {};
 let currentProjectIndex = 0;
 let selectedProjectId = null;
 let previewLockedByClick = false;
+const SUNBIRD_PROJECT_DISPLAY_ORDER = [2, 3, 5, 10, 9];
 
 // Sunbird-only card IDs that should be hidden from non-Sunbird clients
 const SUNBIRD_ONLY_CARD_IDS = [2, 3, 4, 5, 7, 8, 9, 10]; // Identity Protection, Devices, Security & Events, Email Security, Backup & Recovery, Applications, Credential Security, Network Security
@@ -748,7 +749,11 @@ function getFilteredProjects() {
         return mockProjects.filter(project =>
             SUNBIRD_ONLY_CARD_IDS.includes(project.id) &&
             !HIDDEN_PROJECT_CARD_IDS.includes(project.id)
-        );
+        ).sort((a, b) => {
+            const aOrder = SUNBIRD_PROJECT_DISPLAY_ORDER.indexOf(Number(a.id));
+            const bOrder = SUNBIRD_PROJECT_DISPLAY_ORDER.indexOf(Number(b.id));
+            return (aOrder === -1 ? 99 : aOrder) - (bOrder === -1 ? 99 : bOrder);
+        });
     }
     
     if (isSedfaUser()) {
@@ -10618,7 +10623,7 @@ function initializeProjectsList() {
     document.getElementById('project-total').textContent = carouselProjects.length;
     
     // Default start index to 1 for Sunbird clients so index 0 (Credential Security) is on the left blur.
-    currentProjectIndex = isSunbirdUser() ? 1 : 0;
+    currentProjectIndex = 0;
     selectedProjectId = null;
     previewLockedByClick = false;
     
@@ -10643,8 +10648,10 @@ function displayCurrentProject() {
     projectsGrid.classList.toggle('project-grid-updating', projectGridHasRendered);
     projectsGrid.innerHTML = '';
     
-    // Display 3 projects at a time
-    const visibleProjects = carouselProjects.slice(currentProjectIndex, currentProjectIndex + 3);
+    const isPhoneProjectLayout = window.matchMedia('(max-width: 600px)').matches;
+    const visibleProjects = isPhoneProjectLayout
+        ? carouselProjects
+        : carouselProjects.slice(currentProjectIndex, currentProjectIndex + 3);
     
     visibleProjects.forEach((project, index) => {
         const projectCard = createProjectCard(project);
@@ -10653,6 +10660,7 @@ function displayCurrentProject() {
             projectCard.addEventListener('mouseenter', () => {
                 if (!previewLockedByClick) {
                     showProjectPreview(project);
+                    moveProjectPreviewUnderCard(projectCard);
                 }
             });
             
@@ -10684,6 +10692,7 @@ function displayCurrentProject() {
                     selectedProjectId = project.id;
                     projectCard.classList.add('glow-selected');
                     showProjectPreview(project);
+                    moveProjectPreviewUnderCard(projectCard);
                 }
             });
         }
@@ -10691,12 +10700,29 @@ function displayCurrentProject() {
         projectsGrid.appendChild(projectCard);
     });
 
-    renderSidePeekCards();
+    if (isPhoneProjectLayout) {
+        clearSidePeekCards();
+    } else {
+        renderSidePeekCards();
+    }
     projectGridHasRendered = true;
     
     document.getElementById('project-current').textContent = currentProjectIndex + 1;
     
     updateNavigationButtons();
+}
+
+function clearSidePeekCards() {
+    ['side-peek-prev-card', 'side-peek-next-card'].forEach(id => {
+        const element = document.getElementById(id);
+        if (element) element.innerHTML = '';
+    });
+}
+
+function moveProjectPreviewUnderCard(projectCard) {
+    const previewSection = document.getElementById('project-preview-section');
+    if (!previewSection || !projectCard || !window.matchMedia('(max-width: 600px)').matches) return;
+    projectCard.insertAdjacentElement('afterend', previewSection);
 }
 
 function renderSidePeekCards() {
@@ -15686,10 +15712,14 @@ async function refreshPortalMobileDashboard() {
 function initializePortalMobileDashboard() {
     document.querySelectorAll('.portal-mobile-nav-item').forEach(button => button.addEventListener('click', () => setPortalMobileTab(button.dataset.mobileTab || 'home')));
     document.getElementById('portal-mobile-view-all-alerts')?.addEventListener('click', () => setPortalMobileTab('alerts'));
-    document.getElementById('mobile-control-center-link')?.addEventListener('click', () => {
+    document.querySelectorAll('.mobile-control-panel-link').forEach(button => button.addEventListener('click', () => {
         closeMobileMenu();
         setPortalMobileTab('control');
-    });
+        if (button.dataset.controlMenu) window.switchBillingMenu?.(button.dataset.controlMenu);
+        const targetId = button.dataset.controlPanelTarget;
+        if (targetId) setTimeout(() => document.getElementById(targetId)?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 80);
+    }));
     document.getElementById('portal-mobile-profile-logout')?.addEventListener('click', handleLogout);
     syncPortalMobileUserName(); refreshPortalMobileDashboard();
 }
+
