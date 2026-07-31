@@ -3772,16 +3772,45 @@ function generateSunbirdReportPdf(report, reportId = null) {
             const recordText = value => {
                 if (value == null) return '';
                 if (typeof value !== 'object' || Array.isArray(value)) return cleanText(value);
+
+                const pick = (...keys) => {
+                    for (const k of keys) {
+                        if (k in value && value[k] != null) return value[k];
+                        const found = Object.keys(value).find(f => String(f).toLowerCase() === String(k).toLowerCase());
+                        if (found && value[found] != null) return value[found];
+                    }
+                    return null;
+                };
+
+                const user = pick('displayName', 'name', 'user', 'userPrincipalName', 'userPrincipal', 'userEmail', 'email', 'emailAddress', 'mail', 'username');
+                const device = pick('deviceName', 'device', 'assetName', 'computerName', 'hostname', 'deviceId', 'asset');
+                const finding = pick('title', 'finding', 'risk', 'description', 'detail', 'message', 'summary', 'findingTitle');
+                const status = pick('status', 'state', 'severity', 'complianceState', 'compliant');
+                const evidenceField = pick('evidenceSummary', 'evidence', 'evidenceItems', 'source', 'sourceMetric', 'sourceName', 'sourceId');
+                const valueField = pick('value', 'count', 'metricValue', 'score');
+
                 const fields = [
-                    ['User', value.displayName || value.name || value.user || value.userPrincipalName || value.email],
-                    ['Device', value.deviceName || value.device || value.assetName],
-                    ['Finding', value.title || value.finding || value.risk || value.description || value.detail || value.message],
-                    ['Status', value.status || value.state || value.severity],
-                    ['Evidence', value.evidenceSummary || value.evidence || value.source || value.sourceMetric],
-                    ['Value', value.value || value.count || value.metricValue]
+                    ['User', user],
+                    ['Device', device],
+                    ['Finding', finding],
+                    ['Status', status],
+                    ['Evidence', evidenceField],
+                    ['Value', valueField]
                 ].filter(([, field]) => field != null && cleanText(field));
+
                 const text = fields.map(([label, field]) => `${label}: ${cleanText(field)}`).join(' | ');
                 if (text) return text;
+
+                // Try nested objects (e.g. { user: { email: ... } } or { device: { name: ... } })
+                if (value.user && typeof value.user === 'object') {
+                    const nested = recordText(value.user);
+                    if (nested) return nested;
+                }
+                if (value.device && typeof value.device === 'object') {
+                    const nestedDev = recordText(value.device);
+                    if (nestedDev) return nestedDev;
+                }
+
                 return Object.entries(value)
                     .filter(([, field]) => field != null && (typeof field === 'string' || typeof field === 'number' || typeof field === 'boolean'))
                     .slice(0, 12)
@@ -14455,7 +14484,8 @@ process.on('unhandledRejection', (reason, promise) => {
     console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
-const server = app.listen(PORT, async () => {
+if (require.main === module) {
+    const server = app.listen(PORT, async () => {
     let intelligenceSchemaReady = true;
     try {
         await ensureDatabaseSchema();
@@ -14508,14 +14538,14 @@ const server = app.listen(PORT, async () => {
     console.log(`💾 Memory: ${Math.round(memUsage.heapUsed / 1024 / 1024)} MB used / ${Math.round(memUsage.heapTotal / 1024 / 1024)} MB allocated`);
     console.log(`📋 Test Invoice PDF: http://localhost:${PORT}/test-invoice`);
     console.log(`${'='.repeat(60)}\n`);
-});
+    });
 
-server.on('error', (error) => {
-    console.error('❌ Server error:', error);
-    process.exit(1);
-});
+    server.on('error', (error) => {
+        console.error('❌ Server error:', error);
+        process.exit(1);
+    });
 
-function stopServer(signal) {
+    function stopServer(signal) {
     console.log(`[StackCTRL] ${signal} received. Stopping server automation.`);
     identityEvidenceAutomation.stop();
     deviceEvidenceAutomation.stop();
@@ -14530,7 +14560,12 @@ function stopServer(signal) {
     stackCTRLIntelligenceAutomation.stop();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(1), 10000).unref();
+    }
+
+    process.once('SIGTERM', () => stopServer('SIGTERM'));
+    process.once('SIGINT', () => stopServer('SIGINT'));
+
 }
 
-process.once('SIGTERM', () => stopServer('SIGTERM'));
-process.once('SIGINT', () => stopServer('SIGINT'));
+// Export PDF generator for testing and tooling when required as a module
+exports.generateSunbirdReportPdf = generateSunbirdReportPdf;
