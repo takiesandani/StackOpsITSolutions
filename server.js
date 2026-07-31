@@ -3890,9 +3890,6 @@ function generateSunbirdReportPdf(report, reportId = null) {
                     asItems(output, ['evidenceRows', 'evidence', 'evidenceItems', 'evidenceCatalog', 'sourceEvidence', 'controlAssessment', 'evidenceSummary', 'sourceMetrics', 'currentMetrics', 'scoreJustification']),
                     tableItemsForDomain(domain, ['evidence_rows', 'evidence', 'source_metrics'])
                 );
-                if (!findings.length && !affected.length && !evidence.length && !recommendations.length) {
-                    return;
-                }
                 const summary = cleanText(output.domainExecutiveSummary || output.executiveSummary || output.summary || output.currentPosture || domain.domainExecutiveSummary, 'No stored executive summary is available.');
                 const impact = cleanText(output.businessImpact || output.businessImpactSummary || output.technicalSummary);
                 sectionTitle(labelForDomain(domain));
@@ -3952,7 +3949,30 @@ function generateSunbirdReportPdf(report, reportId = null) {
             doc.font('Helvetica').fontSize(8.7).fillColor(slate).text(executiveSummary, left + 12, overviewY + 28, { width: contentWidth - 24, lineGap: 2 });
             doc.y = overviewY + overviewHeight + 14;
 
-            const domainRows = Array.isArray(report.domainInsights?.domains) ? report.domainInsights.domains : [];
+            const allDomainRows = Array.isArray(report.domainInsights?.domains) ? report.domainInsights.domains : [];
+            const domainHasRenderableContent = domain => {
+                const output = domain.intelligenceOutput || domain.output || {};
+                const score = scoreForDomain(domain);
+                const risk = riskForDomain(domain);
+                const findings = uniqueItems(
+                    asItems(output, ['keyFindings', 'findings', 'topFindings', 'risks', 'riskRegister', 'attentionItems', 'securityFindings']),
+                    tableItemsForDomain(domain, ['findings', 'risks', 'risk_register'])
+                );
+                const recommendations = uniqueItems(
+                    asItems(output, ['recommendations', 'priorityRecommendations', 'actions', 'nextActions', 'remediationActions', 'remediationPlan', 'actionPlan']),
+                    tableItemsForDomain(domain, ['recommendations', 'management_actions'])
+                );
+                const affected = uniqueItems(
+                    asItems(output, ['affectedUsers', 'usersMissingMfa', 'usersWithoutMfa', 'missingMfaUsers', 'privilegedUsers', 'affectedEntities', 'entities', 'affectedDevices']),
+                    tableItemsForDomain(domain, ['affected_entities', 'entities'])
+                );
+                const evidence = uniqueItems(
+                    asItems(output, ['evidenceRows', 'evidence', 'evidenceItems', 'evidenceCatalog', 'sourceEvidence', 'controlAssessment', 'evidenceSummary', 'sourceMetrics', 'currentMetrics', 'scoreJustification']),
+                    tableItemsForDomain(domain, ['evidence_rows', 'evidence', 'source_metrics'])
+                );
+                return (score != null || risk != null) || (findings.length || affected.length || evidence.length || recommendations.length);
+            };
+            const domainRows = allDomainRows.filter(domainHasRenderableContent);
             if (domainRows.length) {
                 sectionTitle('Enterprise domain scorecard');
                 doc.font('Helvetica').fontSize(7.8).fillColor(slate).text('Health is better when higher. Risk requires attention when higher.', left, doc.y, { width: contentWidth });
@@ -3960,7 +3980,6 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 domainRows.forEach(domain => {
                     const health = scoreForDomain(domain);
                     const risk = riskForDomain(domain);
-                    if (health == null && risk == null) return;
                     addPageIfNeeded(34);
                     const rowY = doc.y;
                     const label = labelForDomain(domain);
@@ -3980,8 +3999,6 @@ function generateSunbirdReportPdf(report, reportId = null) {
                     doc.y = rowY + 24;
                 });
                 doc.y += 8;
-            }
-            if (domainRows.length) {
                 sectionTitle('Domain intelligence and evidence');
                 doc.font('Helvetica').fontSize(8.2).fillColor(slate).text('Each domain below is drawn from the latest saved intelligence output and keeps findings, affected entities, evidence, and actions together.', left, doc.y, { width: contentWidth, lineGap: 2 });
                 doc.moveDown(0.7);
