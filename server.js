@@ -3150,7 +3150,25 @@ function buildDeterministicReportAnalysis(report) {
     };
 }
 
-async function generateAiReportAnalysis(report) {
+async function fetchSunbirdPowerBIIntelligence(companyId) {
+    if (!enterpriseIntelligenceService) return null;
+    try {
+        const intelligence = await enterpriseIntelligenceService.getPowerBIIntelligenceRun(companyId);
+        if (!intelligence || !Array.isArray(intelligence.domains) || intelligence.domains.length === 0) {
+            return null;
+        }
+        return {
+            ...intelligence,
+            source: 'enterprise_intelligence',
+            available: true
+        };
+    } catch (error) {
+        console.warn('[Reports] Power BI intelligence unavailable:', error.message);
+        return null;
+    }
+}
+
+async function generateAiReportAnalysis(report, powerBiIntelligence = null) {
     const fallback = buildDeterministicReportAnalysis(report);
     try {
         const evidence = {
@@ -3161,28 +3179,58 @@ async function generateAiReportAnalysis(report) {
             recommendations: report.recommendations.slice(0, 8),
             recentEvents: report.events.slice(0, 20)
         };
+        if (powerBiIntelligence?.domains?.length) {
+            evidence.powerBiDomains = powerBiIntelligence.domains.slice(0, 6).map(domain => ({
+                domainKey: domain.domainKey,
+                domainName: domain.domainName,
+                status: domain.status,
+                healthScore: domain.intelligenceOutput?.healthScore ?? domain.intelligenceOutput?.score ?? null,
+                riskCount: Array.isArray(domain.intelligenceOutput?.risks) ? domain.intelligenceOutput.risks.length : null,
+                recommendationCount: Array.isArray(domain.intelligenceOutput?.recommendations) ? domain.intelligenceOutput.recommendations.length : null,
+                topRisks: (domain.intelligenceOutput?.risks || []).slice(0, 3).map(risk => risk?.title || risk?.name || risk?.detail || 'Risk').filter(Boolean),
+                topRecommendations: (domain.intelligenceOutput?.recommendations || []).slice(0, 3).map(rec => rec?.title || rec?.name || rec?.detail || 'Recommendation').filter(Boolean)
+            }));
+        }
+        if (powerBiIntelligence?.finalSynthesis) {
+            evidence.powerBiFinalSynthesis = {
+                status: powerBiIntelligence.finalSynthesis.status,
+                summary: powerBiIntelligence.finalSynthesis.synthesisOutput?.enterpriseExecutiveSummary?.summary || null,
+                boardReportTitle: powerBiIntelligence.finalSynthesis.synthesisOutput?.boardReport?.boardSummary || null
+            };
+        }
         const completion = await azureOpenAIService.createJsonCompletion({
             temperature: 0.1,
             maxTokens: 700,
             messages: [
                 {
                     role: 'system',
-                    content: 'You are a cybersecurity reporting analyst. Use only supplied evidence. Return JSON with executiveSummary, successes, failures, recommendations. Keep each list concise and actionable. Never invent facts, dates, people, or incidents.'
+                    content: 'You are a cybersecurity reporting analyst. Use only supplied evidence and any included Power BI domain intelligence output. Return JSON with executiveSummary, successes, failures, recommendations. Keep each list concise and actionable. Never invent facts, dates, people, or incidents.'
                 },
                 { role: 'user', content: JSON.stringify(evidence) }
             ]
         });
         const parsed = completion.data || {};
-        return {
+        const result = {
             executiveSummary: String(parsed.executiveSummary || fallback.executiveSummary),
             successes: Array.isArray(parsed.successes) ? parsed.successes.slice(0, 6) : fallback.successes,
             failures: Array.isArray(parsed.failures) ? parsed.failures.slice(0, 8) : fallback.failures,
             recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations.slice(0, 6) : fallback.recommendations,
-            generatedBy: 'StackCTRL AI, grounded in dashboard evidence'
+            generatedBy: powerBiIntelligence ? 'StackCTRL AI + Power BI domain intelligence' : 'StackCTRL AI, grounded in dashboard evidence',
+            rawAiResponse: parsed,
+            powerBiIntelligence: powerBiIntelligence ? {
+                available: true,
+                domainCount: powerBiIntelligence.domains.length,
+                latestRunId: powerBiIntelligence.latestRunId || null
+            } : null
         };
+        console.log('[Reports] AI analysis completed successfully', { successes: result.successes.length, failures: result.failures.length, recommendations: result.recommendations.length });
+        return result;
     } catch (error) {
         console.warn('[Reports] AI analysis fallback:', error.message);
-        return fallback;
+        return {
+            ...fallback,
+            generatedBy: 'StackCTRL evidence engine (AI unavailable)'
+        };
     }
 }
 
@@ -3487,7 +3535,9 @@ async function buildSunbirdReportPayload(companyId, periodStart, periodEnd, incl
         healthScore: clampReportScore(row.HealthScore)
     }));
     report.dailyReports = await loadSunbirdDailyReportSummaries(companyId, periodStart, periodEnd);
-    report.analysis = includeAi ? await generateAiReportAnalysis(report) : buildDeterministicReportAnalysis(report);
+    const powerBiIntelligence = includeAi ? await fetchSunbirdPowerBIIntelligence(companyId) : null;
+    report.powerBiIntelligence = powerBiIntelligence;
+    report.analysis = includeAi ? await generateAiReportAnalysis(report, powerBiIntelligence) : buildDeterministicReportAnalysis(report);
     return report;
 }
 
@@ -3534,6 +3584,7 @@ async function saveSunbirdReport(companyId, reportType, periodStart, periodEnd, 
     });
     try {
         const payload = await buildSunbirdReportPayload(companyId, periodStart, periodEnd, includeAi);
+        payload.generatedWithAi = includeAi;
         const [result] = await pool.query(
             `INSERT INTO SunbirdReports
              (CompanyID, ReportType, PeriodStart, PeriodEnd, HealthScore, ReportStatus, Payload, GeneratedByUserID)
@@ -3661,9 +3712,15 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 .text('AUTOMATED INTELLIGENCE REPORT', 40, 82, { characterSpacing: 1.1 });
             // Do not print the company name here to match PDF design (remove 'Sunbird' under the report title)
             // The company name is kept for filename/meta but not rendered prominently in the header.
+            if (report.generatedWithAi) {
+                doc.font('Helvetica-Bold').fontSize(9).fillColor('#86efac')
+                    .text('AI‑ENABLED REPORT', 40, 100, { characterSpacing: 0.4 });
+                doc.font('Helvetica').fontSize(7.5).fillColor('#d9dee3')
+                    .text('Includes Azure OpenAI analysis ready for Power BI review', 40, 112, { width: 260 });
+            }
 
             doc.font('Helvetica').fontSize(8).fillColor('#d9dee3')
-                .text(`${formatReportDate(report.period.start)} - ${formatReportDate(report.period.end)}`, pageWidth - 220, 100, { width: 180, align: 'right' });
+                .text(`${formatReportDate(report.period.start)} - ${formatReportDate(report.period.end)}`, pageWidth - 220, report.generatedWithAi ? 110 : 100, { width: 180, align: 'right' });
 
             doc.y = 148;
             doc.roundedRect(40, 144, contentWidth, 76, 8).fill(pale);
@@ -3700,6 +3757,38 @@ function generateSunbirdReportPdf(report, reportId = null) {
 
             sectionTitle('Recommended actions');
             bulletList(analysis.recommendations || report.recommendations, orange);
+
+            if (report.generatedWithAi) {
+                sectionTitle('AI-powered insights');
+                doc.font('Helvetica').fontSize(9).fillColor(navy).text('This report includes Azure OpenAI analysis that is ready for Power BI integration. The summaries and recommendations are grounded entirely in the dashboard evidence collected for the selected period.', {
+                    width: contentWidth,
+                    lineGap: 3
+                });
+                doc.moveDown(0.5);
+                doc.font('Helvetica-Bold').fontSize(9).fillColor(orange).text('Proof of AI insight:');
+                bulletList((analysis.successes || report.successes).slice(0, 3).map(item => ({ title: item.title || item.name || 'Insight', detail: item.detail || item.description || '' })), '#38bdf8');
+                if (report.powerBiIntelligence?.domains?.length) {
+                    sectionTitle('Power BI domain intelligence');
+                    const intelligenceDomains = report.powerBiIntelligence.domains.slice(0, 6);
+                    intelligenceDomains.forEach(domain => {
+                        addPageIfNeeded(34);
+                        const domainStatus = String(domain.status || 'unknown').toUpperCase();
+                        doc.font('Helvetica-Bold').fontSize(9).fillColor(navy).text(`${domain.domainName} (${domain.domainKey})`, { width: contentWidth, lineGap: 2 });
+                        doc.font('Helvetica').fontSize(8).fillColor(slate).text(`Status: ${domainStatus}${domain.intelligenceOutput?.healthScore != null ? ` • Health score: ${clampReportScore(domain.intelligenceOutput.healthScore)}` : ''}`, { width: contentWidth, lineGap: 2 });
+                        const topRisks = Array.isArray(domain.intelligenceOutput?.risks) ? domain.intelligenceOutput.risks.slice(0, 2).map(risk => risk?.title || risk?.name || risk?.detail).filter(Boolean) : [];
+                        const topRecs = Array.isArray(domain.intelligenceOutput?.recommendations) ? domain.intelligenceOutput.recommendations.slice(0, 2).map(rec => rec?.title || rec?.name || rec?.detail).filter(Boolean) : [];
+                        if (topRisks.length) {
+                            doc.font('Helvetica-Bold').fontSize(8).fillColor(orange).text('Top risks:', { continued: false });
+                            doc.font('Helvetica').fontSize(8).fillColor(slate).text(topRisks.join(' • '), { width: contentWidth, lineGap: 2 });
+                        }
+                        if (topRecs.length) {
+                            doc.font('Helvetica-Bold').fontSize(8).fillColor(orange).text('Top recommendations:', { continued: false });
+                            doc.font('Helvetica').fontSize(8).fillColor(slate).text(topRecs.join(' • '), { width: contentWidth, lineGap: 2 });
+                        }
+                        doc.moveDown(0.5);
+                    });
+                }
+            }
 
             sectionTitle('Daily report breakdown');
             if (!Array.isArray(report.dailyReports) || !report.dailyReports.length) {
@@ -3912,7 +4001,7 @@ app.post('/api/sunbird/reports/generate', authenticateToken, async (req, res) =>
             actorUserId: req.user.id || null
         });
         const report = await saveSunbirdReport(context.companyId, 'manual', range.start, range.end, req.user.id || null, includeAi);
-        res.status(201).json({ success: true, report: { id: report.id, ...report.payload } });
+        res.status(201).json({ success: true, report: { id: report.id, ...report.payload, generatedWithAi: report.generatedWithAi || includeAi } });
     } catch (error) {
         console.error('[Reports] Generate error:', error);
         res.status(500).json({ success: false, message: error.message });

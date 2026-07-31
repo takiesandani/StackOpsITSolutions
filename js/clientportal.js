@@ -14030,7 +14030,8 @@ window.generateSunbirdReport = async function(range = sunbirdReportsRange, downl
         }
         console.log(`[Reports] Report #${data.report.id} generated and saved to history.`);
         cachedSunbirdReportsData = null;
-        showNotification(downloadWhenReady ? (includeAi ? 'Intelligent report generated and downloading' : 'Report generated and downloading') : 'Report generated and saved', true);
+        const aiStatus = data.report.generatedWithAi ? 'AI-enabled report generated and downloading' : (includeAi ? 'AI requested but fallback report generated' : 'Report generated and downloading');
+        showNotification(downloadWhenReady ? aiStatus : 'Report generated and saved', true);
         if (downloadWhenReady) await window.downloadSunbirdReportPdf(data.report.id);
         if (document.getElementById('sunbird-reports-dashboard')) await loadSunbirdReportsDashboardData(true);
         if (isSunbirdBillingViewActive('reports')) await renderSunbirdReportsView(true);
