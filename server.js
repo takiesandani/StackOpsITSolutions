@@ -3645,7 +3645,7 @@ function generateSunbirdReportPdf(report, reportId = null) {
             const doc = new PDFDocument({ 
                 size: 'A4', 
                 margin: 40, 
-                bufferPages: false,  // Disable page buffering to reduce memory usage
+                bufferPages: true,  // Enable buffering so footers can be added after layout
                 info: {
                     Title: 'Security Assessment Report',
                     Author: 'StackOps IT Solutions'
@@ -3673,14 +3673,13 @@ function generateSunbirdReportPdf(report, reportId = null) {
             const contentWidth = pageWidth - 80;
             const stackOpsLogo = path.join(__dirname, 'Images', 'Sunbird.png');
             const stackCtrlLogo = path.join(__dirname, 'Images', 'Logos', 'Ctrl big.png');
-            let currentPage = 1;
-            doc.on('pageAdded', () => {
-                currentPage += 1;
-                const footerY = doc.page.height - 30;
+            const addFooterToPage = (pageIndex, pageNumber) => {
+                doc.switchToPage(pageIndex);
+                const footerY = doc.page.height - 36;
                 doc.font('Helvetica').fontSize(7).fillColor('#7d8790')
-                    .text(`StackOps IT Solutions | StackCTRL | Evidence generated ${formatReportDate(report.generatedAt, true)}`, 40, footerY, { width: 430 });
-                doc.text(`Page ${currentPage}${reportId ? ` | Report #${reportId}` : ''}`, 480, footerY, { width: 75, align: 'right' });
-            });
+                    .text(`StackOps IT Solutions | StackCTRL | Evidence generated ${formatReportDate(report.generatedAt, true)}`, 40, footerY, { width: 430, lineBreak: false });
+                doc.text(`Page ${pageNumber}${reportId ? ` | Report #${reportId}` : ''}`, 480, footerY, { width: 75, align: 'right', lineBreak: false });
+            };
             const addPageIfNeeded = height => {
                 const availableHeight = doc.page.height - doc.page.margins.bottom - 40;
                 if (doc.y + height > availableHeight) {
@@ -3922,19 +3921,11 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 });
             }
 
-            // Add page footers (now that we can't use bufferedPageRange)
-            // Since we disabled bufferPages for memory efficiency, we'll add footers inline
-            const addFooter = (pageNum) => {
-                doc.font('Helvetica').fontSize(7).fillColor('#7d8790')
-                    .text(`StackOps IT Solutions | StackCTRL | Evidence generated ${formatReportDate(report.generatedAt, true)}`, 40, 806, { width: 430 });
-                doc.text(`Page ${pageNum}${reportId ? ` | Report #${reportId}` : ''}`, 480, 806, { width: 75, align: 'right' });
-            };
-            
-            // Add footer to first page (page 1)
-            doc.font('Helvetica').fontSize(7).fillColor('#7d8790')
-                .text(`StackOps IT Solutions | StackCTRL | Evidence generated ${formatReportDate(report.generatedAt, true)}`, 40, 806, { width: 430 });
-            doc.text(`Page 1${reportId ? ` | Report #${reportId}` : ''}`, 480, 806, { width: 75, align: 'right' });
-            
+            // Add footers after all content has been laid out
+            const pageCount = doc.bufferedPageRange().count;
+            for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
+                addFooterToPage(pageIndex, pageIndex + 1);
+            }
             doc.end();
         } catch (error) {
             reject(error);
