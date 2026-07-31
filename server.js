@@ -3168,6 +3168,59 @@ async function fetchSunbirdPowerBIIntelligence(companyId) {
     }
 }
 
+async function fetchSunbirdPowerBIFinal(companyId) {
+    if (!enterpriseIntelligenceService) return null;
+    try {
+        const finalReport = await enterpriseIntelligenceService.getPowerBIFinal(companyId);
+        if (!finalReport || !finalReport.finalSynthesis || !finalReport.finalSynthesis.synthesisOutput) {
+            return null;
+        }
+        return {
+            ...finalReport,
+            source: 'enterprise_final_synthesis',
+            available: true
+        };
+    } catch (error) {
+        console.warn('[Reports] Power BI final synthesis unavailable:', error.message);
+        return null;
+    }
+}
+
+function buildFinalSynthesisReportAnalysis(report, powerBiFinal = null) {
+    const fallback = buildDeterministicReportAnalysis(report);
+    const finalSynthesis = powerBiFinal?.finalSynthesis;
+    if (!finalSynthesis?.synthesisOutput) return fallback;
+    const output = finalSynthesis.synthesisOutput || {};
+    const managementReport = output.managementReport || {};
+    const resolvedEvents = Array.isArray(report.events)
+        ? report.events.filter(event => ['resolved', 'closed', 'success', 'succeeded', 'healthy'].includes(String(event.status || '').toLowerCase()))
+        : [];
+    const missingMfaUsers = Array.isArray(report.identityUsers)
+        ? report.identityUsers.filter(user => !toBooleanMfa(user.mfaEnabled ?? user.hasMfa ?? user.hasMfaMethod)).slice(0, 12)
+        : [];
+    return {
+        executiveSummary: String(output.enterpriseExecutiveSummary?.summary || fallback.executiveSummary),
+        boardReportSummary: String(output.boardReport?.boardSummary || output.boardReport?.summary || ''),
+        managementReportItems: Array.isArray(managementReport.managementActions)
+            ? managementReport.managementActions
+            : Array.isArray(managementReport.actions)
+                ? managementReport.actions
+                : [],
+        businessImpactSummary: String(output.businessImpactSummary || ''),
+        resolvedEvents: resolvedEvents.slice(0, 10),
+        mfaMissingUsers,
+        backupCoverage: {
+            activeUsersCount: Number(report.backup?.summary?.activeUsersCount || 0),
+            servicesCovered: Number(report.backup?.summary?.servicesCovered || 0),
+            inactiveUsersCount: Number(report.backup?.summary?.inactiveUsersCount || 0)
+        },
+        successes: report.successes.slice(0, 6),
+        failures: report.failures.slice(0, 8),
+        recommendations: report.recommendations.slice(0, 6),
+        generatedBy: 'Final enterprise synthesis'
+    };
+}
+
 async function generateAiReportAnalysis(report, powerBiIntelligence = null) {
     const fallback = buildDeterministicReportAnalysis(report);
     try {
@@ -3292,6 +3345,7 @@ async function loadSunbirdReportEvidence(companyId) {
     const [
         companyRows,
         identityRows,
+        identityUserDetailsRows,
         deviceRows,
         emailRows,
         emailPayloadRows,
@@ -3306,6 +3360,7 @@ async function loadSunbirdReportEvidence(companyId) {
     ] = await Promise.all([
         pool.query('SELECT CompanyName FROM Companies WHERE ID = ? LIMIT 1', [companyId]),
         pool.query('SELECT * FROM IdentityMetricsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
+        pool.query('SELECT UsersPayload, LastUpdated FROM IdentityUserDetailsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
         pool.query('SELECT * FROM DeviceMetricsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
         pool.query('SELECT * FROM EmailMetricsCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
         pool.query('SELECT Payload, LastUpdated FROM EmailSecurityPayloadCache WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1', [companyId]),
@@ -3321,6 +3376,7 @@ async function loadSunbirdReportEvidence(companyId) {
     return {
         companyName: companyRows[0][0]?.CompanyName || 'Client',
         identity: identityRows[0][0] || {},
+        identityUsers: parseReportJson(identityUserDetailsRows[0]?.UsersPayload, []),
         devices: deviceRows[0][0] || {},
         emailMetrics: emailRows[0][0] || {},
         email: parseReportJson(emailPayloadRows[0][0]?.Payload, {}),
@@ -3536,8 +3592,12 @@ async function buildSunbirdReportPayload(companyId, periodStart, periodEnd, incl
     }));
     report.dailyReports = await loadSunbirdDailyReportSummaries(companyId, periodStart, periodEnd);
     const powerBiIntelligence = includeAi ? await fetchSunbirdPowerBIIntelligence(companyId) : null;
+    const powerBiFinal = includeAi ? await fetchSunbirdPowerBIFinal(companyId) : null;
     report.domainInsights = powerBiIntelligence;
-    report.analysis = includeAi ? await generateAiReportAnalysis(report, powerBiIntelligence) : buildDeterministicReportAnalysis(report);
+    report.finalSynthesis = powerBiFinal;
+    report.analysis = includeAi
+        ? (powerBiFinal?.finalSynthesis ? buildFinalSynthesisReportAnalysis(report, powerBiFinal) : await generateAiReportAnalysis(report, powerBiIntelligence))
+        : buildDeterministicReportAnalysis(report);
     return report;
 }
 
@@ -3792,9 +3852,9 @@ function generateSunbirdReportPdf(report, reportId = null) {
             sectionTitle('Report summary');
             const analysis = report.analysis || buildDeterministicReportAnalysis(report);
             const summaryBoxTop = doc.y;
-            const summaryBoxHeight = 120;
+            const summaryBoxHeight = 132;
             doc.roundedRect(40, summaryBoxTop, contentWidth, summaryBoxHeight, 10).fill('#f8fafc').strokeColor('#e1e6ea').stroke();
-            const leftWidth = Math.floor(contentWidth * 0.64);
+            const leftWidth = Math.floor(contentWidth * 0.62);
             const rightWidth = contentWidth - leftWidth - 16;
             doc.font('Helvetica-Bold').fontSize(10).fillColor(navy).text('Executive summary', 48, summaryBoxTop + 12, { width: leftWidth - 16 });
             doc.font('Helvetica').fontSize(9).fillColor(slate).text(analysis.executiveSummary || 'No executive summary is available.', 48, summaryBoxTop + 28, { width: leftWidth - 16, lineGap: 3 });
@@ -3807,26 +3867,85 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 { label: 'Events reviewed', value: `${report.summary.totalEvents}` }
             ];
             quickMetrics.forEach((metric, index) => {
-                const metricY = summaryBoxTop + 30 + index * 20;
-                doc.font('Helvetica-Bold').fontSize(11).fillColor(orange).text(metric.value, metricsX, metricY, { width: rightWidth });
+                const metricY = summaryBoxTop + 30 + index * 24;
+                doc.font('Helvetica-Bold').fontSize(10).fillColor(orange).text(metric.value, metricsX, metricY, { width: rightWidth });
                 doc.font('Helvetica').fontSize(8).fillColor(slate).text(metric.label, metricsX, metricY + 12, { width: rightWidth });
             });
-            doc.y = summaryBoxTop + summaryBoxHeight + 16;
-            if (report.domainInsights?.available) {
-                const domainCount = Array.isArray(report.domainInsights.domains) ? report.domainInsights.domains.length : 0;
-                const phaseText = typeof report.domainInsights.reportingPhase === 'string'
-                    ? report.domainInsights.reportingPhase
-                    : 'current reporting phase';
-                sectionTitle('Stored intelligence summary');
-                doc.font('Helvetica').fontSize(9).fillColor(slate)
-                    .text(`The report includes business-focused intelligence for ${domainCount} domains in the ${phaseText}.`, { width: contentWidth, lineGap: 3 });
-                doc.moveDown(0.5);
-                sectionTitle('Domain findings');
-                report.domainInsights.domains.forEach(domain => renderDomainSummary(domain));
-            } else {
-                doc.moveDown(0.5);
-                sectionTitle('Stored intelligence summary');
-                doc.font('Helvetica').fontSize(9).fillColor(slate).text('No stored domain intelligence was available for this report. The document is based on the latest dashboard evidence and metrics.', { width: contentWidth, lineGap: 3 });
+            doc.y = summaryBoxTop + summaryBoxHeight + 18;
+            if (report.finalSynthesis?.available) {
+                const finalOutput = report.finalSynthesis.finalSynthesis.synthesisOutput || {};
+                sectionTitle('Final enterprise synthesis');
+                if (finalOutput.enterpriseExecutiveSummary?.summary) {
+                    doc.font('Helvetica-Bold').fontSize(9).fillColor(navy).text('Executive summary', { width: contentWidth });
+                    doc.font('Helvetica').fontSize(9).fillColor(slate).text(finalOutput.enterpriseExecutiveSummary.summary, { width: contentWidth, lineGap: 3 });
+                    doc.moveDown(0.3);
+                }
+                if (finalOutput.boardReport?.boardSummary || finalOutput.boardReport?.summary) {
+                    doc.font('Helvetica-Bold').fontSize(9).fillColor(navy).text('Board report', { width: contentWidth });
+                    doc.font('Helvetica').fontSize(9).fillColor(slate).text(finalOutput.boardReport.boardSummary || finalOutput.boardReport.summary || '', { width: contentWidth, lineGap: 3 });
+                    doc.moveDown(0.3);
+                }
+                if (finalOutput.managementReport?.managementActions?.length || finalOutput.managementReport?.actions?.length) {
+                    doc.font('Helvetica-Bold').fontSize(9).fillColor(navy).text('Management report', { width: contentWidth });
+                    const managementRows = Array.isArray(finalOutput.managementReport.managementActions)
+                        ? finalOutput.managementReport.managementActions
+                        : Array.isArray(finalOutput.managementReport.actions)
+                            ? finalOutput.managementReport.actions
+                            : [];
+                    managementRows.slice(0, 6).forEach(item => {
+                        const title = item.title || item.name || item.description || 'Action';
+                        const detail = item.detail || item.description || item.reasoning || '';
+                        addPageIfNeeded(28);
+                        doc.circle(47, doc.y + 5, 2.2).fillColor('#17212b').fill();
+                        doc.font('Helvetica-Bold').fontSize(8).fillColor(navy).text(title, 56, doc.y, { width: contentWidth - 20 });
+                        if (detail) doc.font('Helvetica').fontSize(8).fillColor(slate).text(detail, 56, doc.y + 12, { width: contentWidth - 20, lineGap: 2 });
+                        doc.moveDown(0.7);
+                    });
+                    doc.moveDown(0.2);
+                }
+                if (finalOutput.businessImpactSummary) {
+                    doc.font('Helvetica-Bold').fontSize(9).fillColor(navy).text('Business impact summary', { width: contentWidth });
+                    doc.font('Helvetica').fontSize(9).fillColor(slate).text(finalOutput.businessImpactSummary, { width: contentWidth, lineGap: 3 });
+                    doc.moveDown(0.4);
+                }
+                const mfaMissingUsers = Array.isArray(report.identityUsers)
+                    ? report.identityUsers.filter(user => !toBooleanMfa(user.mfaEnabled ?? user.hasMfa ?? user.hasMfaMethod)).slice(0, 12)
+                    : [];
+                if (mfaMissingUsers.length) {
+                    sectionTitle('Users missing MFA');
+                    doc.font('Helvetica').fontSize(8).fillColor(slate).text(`There are ${mfaMissingUsers.length} users without MFA configured.`, { width: contentWidth, lineGap: 2 });
+                    const tableX = 40;
+                    const rowHeight = 16;
+                    addPageIfNeeded(32 + mfaMissingUsers.length * rowHeight);
+                    mfaMissingUsers.forEach(user => {
+                        doc.font('Helvetica-Bold').fontSize(8).fillColor(navy).text(user.name || user.displayName || user.email || 'Unknown user', tableX, doc.y, { width: 160 });
+                        doc.font('Helvetica').fontSize(8).fillColor(slate).text(user.email || user.userPrincipalName || 'N/A', tableX + 180, doc.y, { width: 220 });
+                        doc.font('Helvetica').fontSize(8).fillColor(slate).text(user.id || '', tableX + 410, doc.y, { width: 120 });
+                        doc.moveDown(0.8);
+                    });
+                    doc.moveDown(0.2);
+                }
+                if (report.backup?.summary?.activeUsersCount != null) {
+                    sectionTitle('Backup coverage');
+                    const backupData = report.backup.summary || {};
+                    doc.font('Helvetica-Bold').fontSize(8).fillColor(navy).text('Backup coverage details', { width: contentWidth });
+                    addPageIfNeeded(48);
+                    const tableX = 40;
+                    const tableWidth = contentWidth;
+                    const labelWidth = 160;
+                    const valueWidth = tableWidth - labelWidth - 8;
+                    const rows = [
+                        { label: 'Active users included', value: `${Number(backupData.activeUsersCount || 0)}` },
+                        { label: 'Inactive users', value: `${Number(backupData.inactiveUsersCount || 0)}` },
+                        { label: 'Services covered', value: `${Number(backupData.servicesCovered || 0)}` }
+                    ];
+                    rows.forEach(row => {
+                        doc.font('Helvetica-Bold').fontSize(8).fillColor(navy).text(row.label, tableX, doc.y, { width: labelWidth });
+                        doc.font('Helvetica').fontSize(8).fillColor(slate).text(row.value, tableX + labelWidth + 8, doc.y, { width: valueWidth });
+                        doc.moveDown(1);
+                    });
+                    doc.moveDown(0.3);
+                }
             }
             sectionTitle('Summary metrics');
             const domainScoreEntries = Object.entries(report.domainScores || {}).filter(([, score]) => score != null);
@@ -3841,24 +3960,6 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 doc.y = y + 20;
             });
             doc.moveDown(0.3);
-            sectionTitle('Health trend');
-            const trend = report.trend || [];
-            if (trend.length) {
-                const barWidth = Math.max(24, (contentWidth - 36) / trend.length - 6);
-                const chartX = 40;
-                const chartY = doc.y;
-                const maxScore = 100;
-                trend.forEach((point, index) => {
-                    const barHeight = Math.max(12, (point.healthScore || 0) / maxScore * 70);
-                    const x = chartX + index * (barWidth + 6);
-                    doc.roundedRect(x, chartY + 70 - barHeight, barWidth, barHeight, 2).fill('#0f172a');
-                    doc.font('Helvetica').fontSize(7).fillColor(slate).text(new Date(point.date).toLocaleDateString('en-ZA', { month: 'short', day: 'numeric' }), x - 4, chartY + 78, { width: barWidth + 8, align: 'center' });
-                });
-                doc.y = chartY + 96;
-            } else {
-                doc.font('Helvetica').fontSize(9).fillColor(slate).text('No trend history available for the selected period.');
-                doc.moveDown(0.5);
-            }
 
             sectionTitle('Executive summary');
             doc.font('Helvetica').fontSize(10).fillColor(navy)
@@ -3914,21 +4015,18 @@ function generateSunbirdReportPdf(report, reportId = null) {
 
             // Compact evidence samples: show a small, proof-oriented selection
             sectionTitle('Evidence samples');
-            const sampleCandidates = [
-                ...(analysis.failures || []),
-                ...(analysis.successes || []),
-                ...(analysis.recommendations || []),
-                ...(report.failures || []),
-                ...(report.successes || []),
-                ...(report.recommendations || [])
-            ];
-            const samples = sampleCandidates.slice(0, 6);
-            if (samples.length) {
-                // reuse bulletList to render title/detail pairs
-                bulletList(samples.map(s => ({ title: s.title || s.name || 'Evidence', detail: s.detail || s.description || '' })), '#52606d');
-            } else if (Array.isArray(report.events) && report.events.length) {
-                const evSamples = report.events.slice(0, 6).map(e => ({ title: e.title || 'Event', detail: `${formatReportDate(e.timestamp, true)} — ${e.source || e.detail || ''}` }));
-                bulletList(evSamples, '#52606d');
+            const evidenceRows = [];
+            if (Array.isArray(report.failures) && report.failures.length) {
+                evidenceRows.push(...report.failures.slice(0, 3).map(item => ({ title: item.title || item.name || 'Failure evidence', detail: item.detail || item.description || item.reasoning || '' })));
+            }
+            if (Array.isArray(report.successes) && report.successes.length) {
+                evidenceRows.push(...report.successes.slice(0, 3).map(item => ({ title: item.title || item.name || 'Success evidence', detail: item.detail || item.description || item.reasoning || '' })));
+            }
+            if (!evidenceRows.length && Array.isArray(report.events) && report.events.length) {
+                evidenceRows.push(...report.events.slice(0, 4).map(e => ({ title: e.title || 'Event evidence', detail: `${formatReportDate(e.timestamp, true)} — ${e.source || e.detail || 'Dashboard event'}` })));
+            }
+            if (evidenceRows.length) {
+                bulletList(evidenceRows, '#52606d');
             } else {
                 doc.font('Helvetica').fontSize(9).fillColor(slate).text('No evidence samples available for this period.');
             }
