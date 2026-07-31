@@ -13623,7 +13623,7 @@ async function renderSunbirdReportsView(forceRefresh = false) {
     if (!billingCard || !isSunbirdBillingViewActive('reports')) return;
     try {
         if (forceRefresh || !cachedSunbirdReportsData) {
-            billingCard.innerHTML = renderSunbirdPremiumLoader('Building intelligent report summary');
+            billingCard.innerHTML = renderSunbirdPremiumLoader('Building report summary');
         }
         const data = await fetchSunbirdReportsData('30d', forceRefresh);
         if (!isSunbirdBillingViewActive('reports')) return;
@@ -13665,7 +13665,7 @@ async function renderSunbirdReportsView(forceRefresh = false) {
                     <div class="sunbird-report-ai-note">
                         <span class="sunbird-report-ai-mark"><i class="fas fa-sparkles"></i></span>
                         <div>
-                            <strong>StackCTRL intelligence</strong>
+                            <strong>Evidence summary</strong>
                             <p>${escapeIdentityText(analysis.executiveSummary || 'Dashboard evidence is being summarized into a focused operational report.')}</p>
                         </div>
                     </div>
@@ -13725,7 +13725,7 @@ function renderSunbirdReportsShell() {
                     <span>Back</span>
                 </button>
                 <div>
-                    <div class="sunbird-report-eyebrow">STACKCTRL INTELLIGENCE</div>
+                    <div class="sunbird-report-eyebrow">Automated reporting</div>
                     <h2>Automated Reports</h2>
                 </div>
                 <div class="sunbird-report-brand-lockup" aria-label="StackOps and StackCTRL">
@@ -13868,7 +13868,7 @@ function renderSunbirdReportsCenter(data) {
             </article>
 
             <article class="sunbird-report-ai-card">
-                <div class="sunbird-report-card-title"><span><i class="fas fa-sparkles"></i> AI executive brief</span><small>${escapeIdentityText(analysis.generatedBy || 'Evidence grounded')}</small></div>
+                <div class="sunbird-report-card-title"><span><i class="fas fa-sparkles"></i> Executive brief</span><small>Latest evidence summary</small></div>
                 <p>${escapeIdentityText(analysis.executiveSummary || 'No executive summary is available.')}</p>
                 <div class="sunbird-report-ai-stats">
                     <span><strong>${Number(summary.failures || 0)}</strong> failures</span>
@@ -14015,7 +14015,7 @@ window.generateSunbirdReport = async function(range = sunbirdReportsRange, downl
         button.disabled = true;
         button.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Building report';
     }
-    showPdfLoadingOverlay(includeAi ? 'Building your intelligent security report...' : 'Building your security report...');
+    showPdfLoadingOverlay(includeAi ? 'Building your report...' : 'Building your report...');
     try {
         console.log(`[Reports] Starting on-demand ${range} report generation. AI included: ${includeAi}`);
         const response = await fetch('/api/sunbird/reports/generate', {
@@ -14030,8 +14030,8 @@ window.generateSunbirdReport = async function(range = sunbirdReportsRange, downl
         }
         console.log(`[Reports] Report #${data.report.id} generated and saved to history.`);
         cachedSunbirdReportsData = null;
-        const aiStatus = data.report.generatedWithAi ? 'AI-enabled report generated and downloading' : (includeAi ? 'AI requested but fallback report generated' : 'Report generated and downloading');
-        showNotification(downloadWhenReady ? aiStatus : 'Report generated and saved', true);
+        const statusMessage = 'Report generated and downloading';
+        showNotification(downloadWhenReady ? statusMessage : 'Report generated and saved', true);
         if (downloadWhenReady) await window.downloadSunbirdReportPdf(data.report.id);
         if (document.getElementById('sunbird-reports-dashboard')) await loadSunbirdReportsDashboardData(true);
         if (isSunbirdBillingViewActive('reports')) await renderSunbirdReportsView(true);
@@ -14050,7 +14050,7 @@ window.generateSunbirdReport = async function(range = sunbirdReportsRange, downl
 window.getIntelligentReport = async function() {
     try {
         const range = sunbirdReportsRange || '30d';
-        showNotification('Requesting intelligent report — this may take a moment', true);
+        showNotification('Requesting enhanced report — this may take a moment', true);
         await window.generateSunbirdReport(range, true, true);
     } catch (err) {
         showNotification(err.message || 'Could not request intelligent report', false);
@@ -14069,6 +14069,10 @@ window.downloadSunbirdReportPdf = async function(reportId) {
             throw new Error(error.message || 'PDF download failed');
         }
         const blob = await response.blob();
+        if (!blob || blob.size === 0) {
+            throw new Error('Received empty PDF from server');
+        }
+        console.log(`[Reports] PDF response content type: ${response.headers.get('Content-Type')}, size: ${blob.size}`);
         const disposition = response.headers.get('Content-Disposition') || '';
         const filenameMatch = disposition.match(/filename="([^"]+)"/i);
         const filename = filenameMatch?.[1] || `StackCTRL-Report-${reportId}.pdf`;
@@ -14076,10 +14080,17 @@ window.downloadSunbirdReportPdf = async function(reportId) {
         const link = document.createElement('a');
         link.href = url;
         link.download = filename;
+        link.style.display = 'none';
         document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(url);
+        if (typeof MouseEvent === 'function') {
+            link.dispatchEvent(new MouseEvent('click'));
+        } else {
+            link.click();
+        }
+        setTimeout(() => {
+            link.remove();
+            URL.revokeObjectURL(url);
+        }, 15000);
         console.log(`[Reports] Download started: ${filename}`);
         hidePdfLoadingOverlay();
         showNotification(`Report ${filename} downloading...`, true);

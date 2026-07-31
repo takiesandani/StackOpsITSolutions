@@ -3215,7 +3215,7 @@ async function generateAiReportAnalysis(report, powerBiIntelligence = null) {
             successes: Array.isArray(parsed.successes) ? parsed.successes.slice(0, 6) : fallback.successes,
             failures: Array.isArray(parsed.failures) ? parsed.failures.slice(0, 8) : fallback.failures,
             recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations.slice(0, 6) : fallback.recommendations,
-            generatedBy: 'StackCTRL intelligence engine',
+            generatedBy: 'Evidence summary engine',
             rawAiResponse: parsed,
             domainIntelligenceInfo: powerBiIntelligence ? {
                 available: true,
@@ -3229,7 +3229,7 @@ async function generateAiReportAnalysis(report, powerBiIntelligence = null) {
         console.warn('[Reports] AI analysis fallback:', error.message);
         return {
             ...fallback,
-            generatedBy: 'StackCTRL intelligence engine (fallback)'
+            generatedBy: 'Evidence summary engine'
         };
     }
 }
@@ -3647,7 +3647,7 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 margin: 40, 
                 bufferPages: false,  // Disable page buffering to reduce memory usage
                 info: {
-                    Title: `${report.companyName} StackCTRL Report`,
+                    Title: 'Security Assessment Report',
                     Author: 'StackOps IT Solutions'
                 },
                 compression: true  // Enable compression to reduce PDF size
@@ -3793,6 +3793,13 @@ function generateSunbirdReportPdf(report, reportId = null) {
             bulletList(analysis.recommendations || report.recommendations, orange);
 
             if (report.domainInsights?.available) {
+                sectionTitle('Stored intelligence summary');
+                const intelSummary = report.domainInsights;
+                doc.font('Helvetica').fontSize(9).fillColor(slate)
+                    .text(`Stored intelligence run: ${intelSummary.latestRunId || 'latest available'}`, { lineGap: 3 });
+                doc.text(`Reporting phase: ${intelSummary.reportingPhase || 'current'}`, { lineGap: 3 });
+                doc.text(`Domains available: ${Array.isArray(intelSummary.domains) ? intelSummary.domains.length : 0}`, { lineGap: 3 });
+                doc.moveDown(0.5);
                 sectionTitle('Domain findings');
                 const intelligenceDomains = report.domainInsights.domains;
                 intelligenceDomains.forEach(domain => {
@@ -4075,7 +4082,7 @@ app.get('/api/sunbird/reports/:id/pdf', authenticateToken, async (req, res) => {
             pdf = await Promise.race([
                 generateSunbirdReportPdf(report, rows[0].ID),
                 new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error('PDF generation timeout (>30s)')), 30000)
+                    setTimeout(() => reject(new Error('PDF generation timeout (>60s)')), 60000)
                 )
             ]);
         } catch (genErr) {
