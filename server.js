@@ -3744,7 +3744,7 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 doc.text(`Page ${pageNumber}${reportId ? ` | Report #${reportId}` : ''}`, 480, footerY, { width: 75, align: 'right', lineBreak: false });
             };
             const addPageIfNeeded = height => {
-                const availableHeight = doc.page.height - doc.page.margins.bottom - 40;
+                const availableHeight = doc.page.height - doc.page.margins.bottom - 80;
                 if (doc.y + height > availableHeight) {
                     doc.addPage();
                     doc.y = 42;
@@ -3757,11 +3757,20 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 if (detail) doc.font('Helvetica').fontSize(8).fillColor(slate).text(detail, x + 12, y + 50, { width: width - 24 });
             };
             const sectionTitle = title => {
-                addPageIfNeeded(42);
-                doc.moveDown(0.5);
+                // Only add page break if we're near the bottom of the page
+                // Don't force a page break if we're at the top of a page
+                const minSectionHeight = 50; // Title + line + spacing
+                const spaceNeeded = doc.y + minSectionHeight;
+                const pageBottom = doc.page.height - doc.page.margins.bottom;
+                
+                if (spaceNeeded > pageBottom) {
+                    doc.addPage();
+                    doc.y = 42;
+                }
+                doc.moveDown(0.3);
                 doc.font('Helvetica-Bold').fontSize(11).fillColor(navy).text(title.toUpperCase());
                 doc.moveTo(40, doc.y + 4).lineTo(pageWidth - 40, doc.y + 4).strokeColor('#d9dee3').stroke();
-                doc.moveDown(0.7);
+                doc.moveDown(0.5);
             };
             const bulletList = (items, tone = navy) => {
                 if (!Array.isArray(items) || !items.length) {
