@@ -3152,13 +3152,33 @@ function buildDeterministicReportAnalysis(report) {
 
 async function fetchSunbirdPowerBIIntelligence(companyId) {
     if (!enterpriseIntelligenceService) return null;
+    const requestedDomainKeys = [
+        'identity',
+        'devices',
+        'email_security',
+        'cloudflare_network_security',
+        'security_alerts',
+        'applications',
+        'backup',
+        'governance',
+        'compliance'
+    ];
     try {
         const intelligence = await enterpriseIntelligenceService.getPowerBIIntelligenceRun(companyId);
-        if (!intelligence || !Array.isArray(intelligence.domains) || intelligence.domains.length === 0) {
-            return null;
+        const domainsByKey = new Map((intelligence?.domains || []).map(domain => [domain.domainKey, domain]));
+        const missingDomainKeys = requestedDomainKeys.filter(key => !domainsByKey.has(key));
+        if (typeof enterpriseIntelligenceService.getPowerBIDomain === 'function' && missingDomainKeys.length) {
+            const results = await Promise.allSettled(missingDomainKeys.map(key => enterpriseIntelligenceService.getPowerBIDomain(companyId, key)));
+            results.forEach((result, index) => {
+                const domain = result.status === 'fulfilled' ? result.value?.domain : null;
+                if (domain?.domainKey) domainsByKey.set(domain.domainKey, domain);
+            });
         }
+        const domains = Array.from(domainsByKey.values()).filter(domain => domain && !['pending', 'temporarily_disabled'].includes(String(domain.status || domain.domainStatus || '').toLowerCase()));
+        if (!domains.length) return null;
         return {
-            ...intelligence,
+            ...(intelligence || {}),
+            domains,
             source: 'enterprise_intelligence',
             available: true
         };
@@ -3167,7 +3187,6 @@ async function fetchSunbirdPowerBIIntelligence(companyId) {
         return null;
     }
 }
-
 async function fetchSunbirdPowerBIFinal(companyId) {
     if (!enterpriseIntelligenceService) return null;
     try {
@@ -3233,7 +3252,7 @@ async function generateAiReportAnalysis(report, powerBiIntelligence = null) {
             recentEvents: report.events.slice(0, 20)
         };
         if (powerBiIntelligence?.domains?.length) {
-            evidence.domainSummaries = powerBiIntelligence.domains.slice(0, 6).map(domain => ({
+            evidence.domainSummaries = powerBiIntelligence.domains.map(domain => ({
                 domainKey: domain.domainKey,
                 domainName: domain.domainName,
                 status: domain.status,
@@ -3702,26 +3721,15 @@ function formatReportDate(value, includeTime = false) {
 function generateSunbirdReportPdf(report, reportId = null) {
     return new Promise((resolve, reject) => {
         try {
-            const doc = new PDFDocument({ 
-                size: 'A4', 
-                margin: 40, 
-                bufferPages: true,  // Enable buffering so footers can be added after layout
-                info: {
-                    Title: 'Security Assessment Report',
-                    Author: 'StackOps IT Solutions'
-                },
-                compression: true  // Enable compression to reduce PDF size
+            const doc = new PDFDocument({
+                size: 'A4',
+                margin: 40,
+                bufferPages: true,
+                info: { Title: 'Security Assessment Report', Author: 'StackOps IT Solutions' },
+                compression: true
             });
             const chunks = [];
-            let totalSize = 0;
-            doc.on('data', chunk => {
-                chunks.push(chunk);
-                totalSize += chunk.length;
-                // Garbage collection hint for large PDFs
-                if (chunks.length > 100) {
-                    totalSize = 0;
-                }
-            });
+            doc.on('data', chunk => chunks.push(chunk));
             doc.on('end', () => resolve(Buffer.concat(chunks)));
             doc.on('error', reject);
 
@@ -3729,357 +3737,206 @@ function generateSunbirdReportPdf(report, reportId = null) {
             const navy = '#17212b';
             const slate = '#52606d';
             const pale = '#f3f5f7';
+            const green = '#16a34a';
+            const red = '#dc2626';
             const pageWidth = doc.page.width;
+            const pageHeight = doc.page.height;
+            const left = 40;
             const contentWidth = pageWidth - 80;
-            const leftMargin = 40;
-            const innerIndent = leftMargin + 12;
-            const innerWidth = contentWidth - 16;
-            const stackOpsLogo = path.join(__dirname, 'Images', 'Sunbird.png');
+            const bottom = pageHeight - 54;
+            const sunbirdLogo = path.join(__dirname, 'Images', 'Sunbird.png');
             const stackCtrlLogo = path.join(__dirname, 'Images', 'Logos', 'Ctrl big.png');
-            const addFooterToPage = (pageIndex, pageNumber) => {
-                doc.switchToPage(pageIndex);
-                const footerY = doc.page.height - 36;
-                doc.font('Helvetica').fontSize(7).fillColor('#7d8790')
-                    .text(`StackOps IT Solutions | StackCTRL | Evidence generated ${formatReportDate(report.generatedAt, true)}`, 40, footerY, { width: 430, lineBreak: false });
-                doc.text(`Page ${pageNumber}${reportId ? ` | Report #${reportId}` : ''}`, 480, footerY, { width: 75, align: 'right', lineBreak: false });
+            const analysis = report.analysis || buildDeterministicReportAnalysis(report);
+
+            const cleanText = (value, fallback = '') => {
+                if (value == null) return fallback;
+                if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value).replace(/\s+/g, ' ').trim() || fallback;
+                if (Array.isArray(value)) return value.map(item => cleanText(item)).filter(Boolean).join('; ') || fallback;
+                const selected = value.title || value.name || value.summary || value.detail || value.description || value.message || value.findings || value.value || value.email || value.userPrincipalName;
+                return cleanText(selected, fallback);
             };
+            const shortText = (value, max = 210) => {
+                const text = cleanText(value);
+                return text.length > max ? `${text.slice(0, max - 3)}...` : text;
+            };
+            const asItems = (output, keys, limit = 6) => {
+                const items = [];
+                keys.forEach(key => {
+                    const value = output?.[key];
+                    if (Array.isArray(value)) items.push(...value);
+                    else if (value != null) items.push(value);
+                });
+                return items.map(item => cleanText(item)).filter(Boolean).filter((item, index, all) => all.indexOf(item) === index).slice(0, limit);
+            };
+            const scoreForDomain = domain => {
+                const output = domain.intelligenceOutput || domain.output || {};
+                const score = output.healthScore ?? output.score ?? output.scoreSummary?.healthScore ?? domain.healthScore ?? domain.score;
+                return Number.isFinite(Number(score)) ? clampReportScore(score) : null;
+            };
+            const labelForDomain = domain => domain.domainName || String(domain.domainKey || 'Domain').replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
             const addPageIfNeeded = height => {
-                const availableHeight = doc.page.height - doc.page.margins.bottom - 80;
-                if (doc.y + height > availableHeight) {
+                if (doc.y + height > bottom) {
                     doc.addPage();
                     doc.y = 42;
                 }
-            };
-            const renderMetricCard = (x, y, width, label, value, detail) => {
-                doc.roundedRect(x, y, width, 64, 8).fill('#f8fafc').strokeColor('#e1e6ea').lineWidth(0.8).stroke();
-                doc.font('Helvetica-Bold').fontSize(10).fillColor(navy).text(label, x + 12, y + 10, { width: width - 24 });
-                doc.font('Helvetica-Bold').fontSize(20).fillColor(orange).text(value, x + 12, y + 26, { width: width - 24 });
-                if (detail) doc.font('Helvetica').fontSize(8).fillColor(slate).text(detail, x + 12, y + 50, { width: width - 24 });
             };
             const sectionTitle = title => {
-                // Only add page break if we're near the bottom of the page
-                // Don't force a page break if we're at the top of a page
-                const minSectionHeight = 50; // Title + line + spacing
-                const spaceNeeded = doc.y + minSectionHeight;
-                const pageBottom = doc.page.height - doc.page.margins.bottom;
-                
-                if (spaceNeeded > pageBottom) {
-                    doc.addPage();
-                    doc.y = 42;
-                }
-                doc.moveDown(0.3);
-                doc.font('Helvetica-Bold').fontSize(11).fillColor(navy).text(title.toUpperCase());
-                doc.moveTo(40, doc.y + 4).lineTo(pageWidth - 40, doc.y + 4).strokeColor('#d9dee3').stroke();
-                doc.moveDown(0.5);
+                addPageIfNeeded(42);
+                doc.font('Helvetica-Bold').fontSize(11).fillColor(navy).text(String(title).toUpperCase(), left, doc.y, { width: contentWidth });
+                doc.moveTo(left, doc.y + 4).lineTo(pageWidth - left, doc.y + 4).strokeColor('#d9dee3').lineWidth(0.8).stroke();
+                doc.y += 12;
             };
-            const bulletList = (items, tone = navy) => {
-                if (!Array.isArray(items) || !items.length) {
-                    doc.font('Helvetica').fontSize(9).fillColor(slate).text('No items recorded.');
-                    return;
+            const drawMetric = (x, y, width, label, value, detail) => {
+                doc.roundedRect(x, y, width, 64, 7).fill('#f8fafc').strokeColor('#e1e6ea').lineWidth(0.8).stroke();
+                doc.font('Helvetica-Bold').fontSize(8).fillColor(navy).text(label, x + 10, y + 9, { width: width - 20, height: 10 });
+                doc.font('Helvetica-Bold').fontSize(19).fillColor(orange).text(String(value), x + 10, y + 23, { width: width - 20, height: 23 });
+                doc.font('Helvetica').fontSize(7.3).fillColor(slate).text(detail, x + 10, y + 49, { width: width - 20, height: 10 });
+            };
+            const drawBar = (x, y, width, score) => {
+                const tone = score >= 85 ? green : score >= 70 ? orange : red;
+                doc.roundedRect(x, y, width, 7, 3.5).fill('#e1e6ea');
+                doc.roundedRect(x, y, Math.max(3, width * score / 100), 7, 3.5).fill(tone);
+            };
+            const drawList = (title, items, x, y, width, maxRows = 3) => {
+                doc.font('Helvetica-Bold').fontSize(7.8).fillColor(orange).text(title, x, y, { width, height: 10 });
+                let rowY = y + 12;
+                const rows = items.slice(0, maxRows);
+                if (!rows.length) {
+                    doc.font('Helvetica').fontSize(7.2).fillColor(slate).text('No stored entries.', x, rowY, { width, height: 18 });
+                    return rowY + 20;
                 }
-                items.forEach(item => {
-                    const title = typeof item === 'string' ? item : item.title || item.name || item.detail || item.description || 'Report item';
-                    const detail = typeof item === 'string' ? '' : item.detail || item.description || item.reasoning || '';
-                    addPageIfNeeded(52);
-                    doc.circle(leftMargin + 4, doc.y + 5, 2.2).fillColor(tone).fill();
-                    doc.font('Helvetica-Bold').fontSize(9).fillColor(navy).text(title, innerIndent, doc.y, { width: innerWidth, align: 'left' });
-                    if (detail) doc.font('Helvetica').fontSize(8.5).fillColor(slate).text(detail, innerIndent, doc.y + 2, { width: innerWidth, lineGap: 1 });
-                    doc.moveDown(0.45);
+                rows.forEach(item => {
+                    doc.circle(x + 2, rowY + 4, 1.5).fillColor(navy).fill();
+                    doc.font('Helvetica').fontSize(7.2).fillColor(slate).text(shortText(item, 125), x + 8, rowY, { width: width - 8, height: 18, lineGap: 1 });
+                    rowY += 19;
                 });
+                return rowY;
             };
-            const renderDomainBulletSection = (title, items) => {
-                if (!Array.isArray(items) || !items.length) return;
-                addPageIfNeeded(28 + Math.min(items.length, 4) * 20);
-                doc.font('Helvetica-Bold').fontSize(9).fillColor(orange).text(title, leftMargin, doc.y, { width: contentWidth });
-                (items || []).slice(0, 5).forEach(item => {
-                    const text = typeof item === 'string' ? item : item.title || item.name || item.detail || item.evidenceSummary || item.reasoning || item.businessImpact || item.description || '';
-                    if (!text) return;
+            const drawEvidenceTable = (rows, x, y, width, maxRows = 5) => {
+                const safeRows = rows.slice(0, maxRows);
+                doc.font('Helvetica-Bold').fontSize(7.8).fillColor(orange).text('Evidence and affected entities', x, y, { width, height: 10 });
+                let rowY = y + 12;
+                if (!safeRows.length) {
+                    doc.font('Helvetica').fontSize(7.2).fillColor(slate).text('No stored evidence rows for this domain.', x, rowY, { width, height: 16 });
+                    return rowY + 18;
+                }
+                safeRows.forEach((row, index) => {
+                    const fill = index % 2 ? '#ffffff' : '#f3f5f7';
+                    doc.rect(x, rowY, width, 18).fill(fill);
+                    doc.font('Helvetica').fontSize(7.1).fillColor(slate).text(shortText(row, 180), x + 7, rowY + 4, { width: width - 14, height: 10 });
+                    rowY += 19;
+                });
+                return rowY;
+            };
+            const drawFlowList = (title, items) => {
+                if (!items.length) return;
+                addPageIfNeeded(24);
+                doc.font('Helvetica-Bold').fontSize(8.5).fillColor(orange).text(title, left + 12, doc.y, { width: contentWidth - 24 });
+                doc.y += 12;
+                items.forEach((item, index) => {
                     addPageIfNeeded(24);
-                    doc.circle(leftMargin + 4, doc.y + 5, 2.2).fillColor('#17212b').fill();
-                    doc.font('Helvetica').fontSize(8).fillColor(slate).text(text, innerIndent, doc.y, { width: innerWidth, lineGap: 2 });
-                    doc.moveDown(0.55);
+                    const rowY = doc.y;
+                    if (index % 2 === 0) doc.rect(left + 8, rowY - 2, contentWidth - 16, 19).fill('#f8fafc');
+                    doc.circle(left + 16, rowY + 5, 1.5).fillColor(navy).fill();
+                    doc.font('Helvetica').fontSize(7.8).fillColor(slate).text(shortText(item, 500), left + 24, rowY, { width: contentWidth - 36, height: 17, lineGap: 1 });
+                    doc.y = rowY + 20;
                 });
-                doc.moveDown(0.2);
+                doc.y += 4;
             };
-            const renderDomainSummary = domain => {
-                const output = domain.intelligenceOutput || {};
-                addPageIfNeeded(92);
-                doc.font('Helvetica-Bold').fontSize(10).fillColor(navy).text(domain.domainName || domain.domainKey || 'Domain', leftMargin, doc.y, { width: contentWidth });
-                if (output.currentPosture) {
-                    doc.font('Helvetica-Bold').fontSize(8.5).fillColor(orange).text('Posture: ', leftMargin, doc.y + 16, { continued: true });
-                    doc.font('Helvetica').fontSize(8.5).fillColor(slate).text(output.currentPosture, innerIndent, doc.y + 16, { width: innerWidth - 4 });
-                    doc.moveDown(0.4);
+            const renderDomain = domain => {
+                const output = domain.intelligenceOutput || domain.output || {};
+                const score = scoreForDomain(domain);
+                const findings = asItems(output, ['keyFindings', 'findings', 'topFindings', 'risks', 'riskRegister'], 1000);
+                const recommendations = asItems(output, ['recommendations', 'priorityRecommendations', 'actions', 'nextActions'], 1000);
+                const affected = asItems(output, ['affectedUsers', 'usersMissingMfa', 'usersWithoutMfa', 'privilegedUsers', 'affectedEntities', 'entities'], 1000);
+                const evidence = asItems(output, ['evidenceRows', 'evidence', 'controlAssessment', 'evidenceSummary', 'sourceMetrics', 'scoreJustification'], 1000);
+                const summary = cleanText(output.domainExecutiveSummary || output.executiveSummary || output.summary || output.currentPosture || domain.domainExecutiveSummary, 'No stored executive summary is available.');
+                const impact = cleanText(output.businessImpact || output.businessImpactSummary || output.technicalSummary);
+                sectionTitle(labelForDomain(domain));
+                addPageIfNeeded(66);
+                const bandY = doc.y;
+                doc.roundedRect(left, bandY, contentWidth, 56, 7).fill('#f8fafc').strokeColor('#e1e6ea').stroke();
+                doc.font('Helvetica-Bold').fontSize(8).fillColor(navy).text(`Stored status: ${cleanText(domain.status || domain.domainStatus, 'available')}`, left + 12, bandY + 10, { width: 190 });
+                if (score != null) {
+                    doc.font('Helvetica-Bold').fontSize(8).fillColor(navy).text(`${score}% HEALTH`, left + 315, bandY + 10, { width: 180, align: 'right' });
+                    drawBar(left + 315, bandY + 26, 180, score);
                 }
-                if (output.businessImpact) {
-                    doc.font('Helvetica-Bold').fontSize(8.5).fillColor(orange).text('Business impact: ', leftMargin, doc.y, { continued: true });
-                    doc.font('Helvetica').fontSize(8.5).fillColor(slate).text(output.businessImpact, innerIndent, doc.y, { width: innerWidth - 4, lineGap: 2 });
-                    doc.moveDown(0.4);
+                doc.font('Helvetica').fontSize(7.8).fillColor(slate).text(shortText(summary, 620), left + 12, bandY + 25, { width: contentWidth - 24, height: 22, lineGap: 1 });
+                doc.y = bandY + 66;
+                if (impact) {
+                    doc.font('Helvetica-Bold').fontSize(8).fillColor(navy).text('Business impact', left + 12, doc.y, { width: contentWidth - 24 });
+                    doc.font('Helvetica').fontSize(7.8).fillColor(slate).text(shortText(impact, 620), left + 12, doc.y + 10, { width: contentWidth - 24, lineGap: 1 });
+                    doc.moveDown(0.5);
                 }
-                if (output.domainExecutiveSummary) {
-                    addPageIfNeeded(26);
-                    doc.font('Helvetica').fontSize(9).fillColor(slate).text(output.domainExecutiveSummary, leftMargin, doc.y, { width: contentWidth, lineGap: 3 });
-                    doc.moveDown(0.4);
+                drawFlowList('Key findings', findings);
+                drawFlowList('Affected users and entities', affected);
+                drawFlowList('Evidence rows and source metrics', evidence);
+                drawFlowList('Recommended actions', recommendations);
+                if (!findings.length && !affected.length && !evidence.length && !recommendations.length) {
+                    doc.font('Helvetica').fontSize(8).fillColor(slate).text('This stored domain output contains its executive assessment, but no itemised findings or evidence rows.', left + 12, doc.y, { width: contentWidth - 24 });
+                    doc.moveDown(0.5);
                 }
-                if (Array.isArray(output.controlAssessment) && output.controlAssessment.length) {
-                    addPageIfNeeded(24 + Math.min(output.controlAssessment.length, 4) * 18);
-                    doc.font('Helvetica-Bold').fontSize(9).fillColor(orange).text('Evidence points', { width: contentWidth });
-                    output.controlAssessment.slice(0, 4).forEach(item => {
-                        const text = typeof item === 'string' ? item : item.title || item.description || item.detail || item.evidenceSummary || '';
-                        if (!text) return;
-                        addPageIfNeeded(20);
-                        doc.circle(47, doc.y + 5, 2.2).fillColor('#17212b').fill();
-                        doc.font('Helvetica').fontSize(8).fillColor(slate).text(text, 56, doc.y, { width: contentWidth - 16, lineGap: 2 });
-                        doc.moveDown(0.55);
-                    });
-                    doc.moveDown(0.2);
-                }
-                renderDomainBulletSection('Key findings', output.keyFindings);
-                renderDomainBulletSection('Top risks', output.risks);
-                renderDomainBulletSection('Recommendations', output.recommendations);
-                if (!Array.isArray(output.controlAssessment) || !output.controlAssessment.length) {
-                    const hasEvidence = Array.isArray(output.keyFindings) && output.keyFindings.length
-                        || Array.isArray(output.risks) && output.risks.length
-                        || Array.isArray(output.recommendations) && output.recommendations.length;
-                    if (!hasEvidence) {
-                        doc.font('Helvetica').fontSize(8).fillColor(slate).text('No domain evidence points were available for this domain.', { width: contentWidth, lineGap: 2 });
-                        doc.moveDown(0.3);
-                    }
-                }
+                doc.font('Helvetica').fontSize(7).fillColor('#7d8790').text(
+                    `Evidence source: ${cleanText(output.sourceHealth?.status || output.sourceLineage?.source || output.batchInfo?.jsonStatus || domain.status, 'stored domain intelligence')}`,
+                    left + 12,
+                    doc.y,
+                    { width: contentWidth - 24, height: 9 }
+                );
+                doc.moveDown(0.9);
             };
+            doc.rect(0, 0, pageWidth, 118).fill(navy);
+            if (fs.existsSync(sunbirdLogo)) doc.image(sunbirdLogo, left, 25, { fit: [150, 42] });
+            if (fs.existsSync(stackCtrlLogo)) doc.image(stackCtrlLogo, pageWidth - 174, 23, { fit: [134, 44], align: 'right' });
+            doc.font('Helvetica').fontSize(8).fillColor('#c8d0d8').text('SECURITY ASSESSMENT REPORT', left, 79, { characterSpacing: 1.1 });
+            doc.font('Helvetica').fontSize(8).fillColor('#d9dee3').text(`${formatReportDate(report.period.start)} - ${formatReportDate(report.period.end)}`, pageWidth - 220, 96, { width: 180, align: 'right' });
 
-            // Header background and logos
-            doc.rect(0, 0, pageWidth, 126).fill(navy);
-            // Place Sunbird logo image; remove any caption text under it (previously 'Sunbird')
-            if (fs.existsSync(stackOpsLogo)) doc.image(stackOpsLogo, 40, 28, { fit: [150, 42] });
-            if (fs.existsSync(stackCtrlLogo)) doc.image(stackCtrlLogo, pageWidth - 174, 26, { fit: [134, 44], align: 'right' });
-            // Title text (company name) and report subtitle
-            doc.font('Helvetica').fontSize(8).fillColor('#c8d0d8')
-                .text('SECURITY ASSESSMENT REPORT', 40, 82, { characterSpacing: 1.1 });
-            // Do not print the company name here to match PDF design
-            // The company name is kept for filename/meta but not rendered prominently in the header.
-            doc.font('Helvetica').fontSize(8).fillColor('#d9dee3')
-                .text(`${formatReportDate(report.period.start)} - ${formatReportDate(report.period.end)}`, pageWidth - 220, 100, { width: 180, align: 'right' });
+            const metricY = 132;
+            const metricGap = 10;
+            const metricWidth = (contentWidth - metricGap * 3) / 4;
+            drawMetric(left, metricY, metricWidth, 'HEALTH SCORE', `${report.summary.healthScore}%`, `${report.summary.failures} findings needing attention`);
+            drawMetric(left + (metricWidth + metricGap), metricY, metricWidth, 'SUCCESSFUL CONTROLS', report.summary.successes, `${report.summary.totalEvents} events reviewed`);
+            drawMetric(left + (metricWidth + metricGap) * 2, metricY, metricWidth, 'ACTIVE INCIDENTS', report.summary.activeIncidents, 'Open or recent issues');
+            drawMetric(left + (metricWidth + metricGap) * 3, metricY, metricWidth, 'HIGH ALERTS', report.summary.highSeverityAlerts, 'Critical signal count');
 
-            doc.y = 146;
-            const topSectionHeight = 124;
-            doc.roundedRect(40, 144, contentWidth, topSectionHeight, 10).fill(pale).strokeColor('#e1e6ea').stroke();
-            const metricWidth = (contentWidth - 36) / 4;
-            renderMetricCard(48, 152, metricWidth, 'HEALTH SCORE', `${report.summary.healthScore}%`, `Failure count: ${report.summary.failures}`);
-            renderMetricCard(48 + metricWidth + 12, 152, metricWidth, 'SUCCESSES', `${report.summary.successes}`, `Events reviewed: ${report.summary.totalEvents}`);
-            renderMetricCard(48 + (metricWidth + 12) * 2, 152, metricWidth, 'ACTIVE INCIDENTS', `${report.summary.activeIncidents}`, 'Open or recent issues');
-            renderMetricCard(48 + (metricWidth + 12) * 3, 152, metricWidth, 'HIGH ALERTS', `${report.summary.highSeverityAlerts}`, 'Critical signal count');
-
-            doc.y = 286;
-            sectionTitle('Report summary');
-            const analysis = report.analysis || buildDeterministicReportAnalysis(report);
-            const summaryBoxTop = doc.y;
-            const summaryBoxHeight = 132;
-            doc.roundedRect(40, summaryBoxTop, contentWidth, summaryBoxHeight, 10).fill('#f8fafc').strokeColor('#e1e6ea').stroke();
-            const leftWidth = Math.floor(contentWidth * 0.62);
-            const rightWidth = contentWidth - leftWidth - 16;
-            doc.font('Helvetica-Bold').fontSize(10).fillColor(navy).text('Executive summary', 48, summaryBoxTop + 12, { width: leftWidth - 16 });
-            doc.font('Helvetica').fontSize(9).fillColor(slate).text(analysis.executiveSummary || 'No executive summary is available.', 48, summaryBoxTop + 28, { width: leftWidth - 16, lineGap: 3 });
-            const metricsX = 48 + leftWidth;
-            doc.font('Helvetica-Bold').fontSize(10).fillColor(navy).text('Quick overview', metricsX, summaryBoxTop + 12, { width: rightWidth });
-            const quickMetrics = [
-                { label: 'Health score', value: `${report.summary.healthScore}%` },
-                { label: 'Failures', value: `${report.summary.failures}` },
-                { label: 'Successes', value: `${report.summary.successes}` },
-                { label: 'Events reviewed', value: `${report.summary.totalEvents}` }
-            ];
-            quickMetrics.forEach((metric, index) => {
-                const metricY = summaryBoxTop + 30 + index * 24;
-                doc.font('Helvetica-Bold').fontSize(10).fillColor(orange).text(metric.value, metricsX, metricY, { width: rightWidth });
-                doc.font('Helvetica').fontSize(8).fillColor(slate).text(metric.label, metricsX, metricY + 12, { width: rightWidth });
-            });
-            doc.y = summaryBoxTop + summaryBoxHeight + 18;
-            if (report.finalSynthesis?.available) {
-                const finalOutput = report.finalSynthesis.finalSynthesis.synthesisOutput || {};
-                sectionTitle('Final enterprise synthesis');
-                if (finalOutput.enterpriseExecutiveSummary?.summary) {
-                    doc.font('Helvetica-Bold').fontSize(9).fillColor(navy).text('Executive summary', { width: contentWidth });
-                    doc.font('Helvetica').fontSize(9).fillColor(slate).text(finalOutput.enterpriseExecutiveSummary.summary, { width: contentWidth, lineGap: 3 });
-                    doc.moveDown(0.3);
-                }
-                if (finalOutput.boardReport?.boardSummary || finalOutput.boardReport?.summary) {
-                    doc.font('Helvetica-Bold').fontSize(9).fillColor(navy).text('Board report', { width: contentWidth });
-                    doc.font('Helvetica').fontSize(9).fillColor(slate).text(finalOutput.boardReport.boardSummary || finalOutput.boardReport.summary || '', { width: contentWidth, lineGap: 3 });
-                    doc.moveDown(0.3);
-                }
-                if (finalOutput.managementReport?.managementActions?.length || finalOutput.managementReport?.actions?.length) {
-                    doc.font('Helvetica-Bold').fontSize(9).fillColor(navy).text('Management report', { width: contentWidth });
-                    const managementRows = Array.isArray(finalOutput.managementReport.managementActions)
-                        ? finalOutput.managementReport.managementActions
-                        : Array.isArray(finalOutput.managementReport.actions)
-                            ? finalOutput.managementReport.actions
-                            : [];
-                    managementRows.slice(0, 6).forEach(item => {
-                        const title = item.title || item.name || item.description || 'Action';
-                        const detail = item.detail || item.description || item.reasoning || '';
-                        addPageIfNeeded(28);
-                        doc.circle(47, doc.y + 5, 2.2).fillColor('#17212b').fill();
-                        doc.font('Helvetica-Bold').fontSize(8).fillColor(navy).text(title, 56, doc.y, { width: contentWidth - 20 });
-                        if (detail) doc.font('Helvetica').fontSize(8).fillColor(slate).text(detail, 56, doc.y + 12, { width: contentWidth - 20, lineGap: 2 });
-                        doc.moveDown(0.7);
-                    });
-                    doc.moveDown(0.2);
-                }
-                if (finalOutput.businessImpactSummary) {
-                    doc.font('Helvetica-Bold').fontSize(9).fillColor(navy).text('Business impact summary', { width: contentWidth });
-                    doc.font('Helvetica').fontSize(9).fillColor(slate).text(finalOutput.businessImpactSummary, { width: contentWidth, lineGap: 3 });
-                    doc.moveDown(0.4);
-                }
-                const mfaMissingUsers = Array.isArray(report.identityUsers)
-                    ? report.identityUsers.filter(user => !toBooleanMfa(user.mfaEnabled ?? user.hasMfa ?? user.hasMfaMethod)).slice(0, 12)
-                    : [];
-                if (mfaMissingUsers.length) {
-                    sectionTitle('Users missing MFA');
-                    doc.font('Helvetica').fontSize(8).fillColor(slate).text(`There are ${mfaMissingUsers.length} users without MFA configured.`, { width: contentWidth, lineGap: 2 });
-                    const tableX = 40;
-                    const rowHeight = 16;
-                    addPageIfNeeded(32 + mfaMissingUsers.length * rowHeight);
-                    mfaMissingUsers.forEach(user => {
-                        doc.font('Helvetica-Bold').fontSize(8).fillColor(navy).text(user.name || user.displayName || user.email || 'Unknown user', tableX, doc.y, { width: 160 });
-                        doc.font('Helvetica').fontSize(8).fillColor(slate).text(user.email || user.userPrincipalName || 'N/A', tableX + 180, doc.y, { width: 220 });
-                        doc.font('Helvetica').fontSize(8).fillColor(slate).text(user.id || '', tableX + 410, doc.y, { width: 120 });
-                        doc.moveDown(0.8);
-                    });
-                    doc.moveDown(0.2);
-                }
-                if (report.backup?.summary?.activeUsersCount != null) {
-                    sectionTitle('Backup coverage');
-                    const backupData = report.backup.summary || {};
-                    doc.font('Helvetica-Bold').fontSize(8).fillColor(navy).text('Backup coverage details', { width: contentWidth });
-                    addPageIfNeeded(48);
-                    const tableX = 40;
-                    const tableWidth = contentWidth;
-                    const labelWidth = 160;
-                    const valueWidth = tableWidth - labelWidth - 8;
-                    const rows = [
-                        { label: 'Active users included', value: `${Number(backupData.activeUsersCount || 0)}` },
-                        { label: 'Inactive users', value: `${Number(backupData.inactiveUsersCount || 0)}` },
-                        { label: 'Services covered', value: `${Number(backupData.servicesCovered || 0)}` }
-                    ];
-                    rows.forEach(row => {
-                        doc.font('Helvetica-Bold').fontSize(8).fillColor(navy).text(row.label, tableX, doc.y, { width: labelWidth });
-                        doc.font('Helvetica').fontSize(8).fillColor(slate).text(row.value, tableX + labelWidth + 8, doc.y, { width: valueWidth });
-                        doc.moveDown(1);
-                    });
-                    doc.moveDown(0.3);
-                }
+            doc.y = 218;
+            sectionTitle('Executive overview');
+            const overviewY = doc.y;
+            const overviewHeight = 108;
+            doc.roundedRect(left, overviewY, contentWidth, overviewHeight, 8).fill('#f8fafc').strokeColor('#e1e6ea').stroke();
+            doc.font('Helvetica-Bold').fontSize(9.5).fillColor(navy).text('Executive summary', left + 12, overviewY + 12, { width: contentWidth - 24 });
+            doc.font('Helvetica').fontSize(8.5).fillColor(slate).text(shortText(analysis.executiveSummary, 560), left + 12, overviewY + 28, { width: contentWidth - 24, height: 48, lineGap: 2 });
+            const enterpriseSummary = cleanText(report.finalSynthesis?.finalSynthesis?.synthesisOutput?.enterpriseExecutiveSummary?.summary);
+            if (enterpriseSummary && enterpriseSummary !== cleanText(analysis.executiveSummary)) {
+                doc.font('Helvetica').fontSize(7.4).fillColor(slate).text(shortText(enterpriseSummary, 650), left + 12, overviewY + 78, { width: contentWidth - 24, height: 20, lineGap: 1 });
             }
-            if (report.domainInsights?.available && Array.isArray(report.domainInsights.domains) && report.domainInsights.domains.length) {
-                sectionTitle('Domain findings');
-                report.domainInsights.domains.forEach(domain => renderDomainSummary(domain));
-            }
-            sectionTitle('Summary metrics');
-            const domainScoreEntries = Object.entries(report.domainScores || {}).filter(([, score]) => score != null);
-            domainScoreEntries.forEach(([domain, score], index) => {
-                addPageIfNeeded(28);
-                const y = doc.y;
-                const color = score >= 85 ? '#16a34a' : score >= 70 ? orange : '#dc2626';
-                doc.font('Helvetica-Bold').fontSize(8.5).fillColor(navy).text(domain.replace(/^./, char => char.toUpperCase()), 40, y, { width: 110 });
-                doc.roundedRect(156, y + 2, 316, 8, 4).fill('#e1e6ea');
-                doc.roundedRect(156, y + 2, 3.16 * clampReportScore(score), 8, 4).fill(color);
-                doc.font('Helvetica-Bold').fontSize(8).fillColor(navy).text(`${clampReportScore(score)}%`, 490, y - 1, { width: 48, align: 'right' });
-                doc.y = y + 20;
-            });
-            doc.moveDown(0.3);
+            doc.y = overviewY + overviewHeight + 14;
 
-            sectionTitle('Executive summary');
-            doc.font('Helvetica').fontSize(10).fillColor(navy)
-                .text(analysis.executiveSummary || '', { lineGap: 3 });
-            sectionTitle('What went well');
-            bulletList(analysis.successes || report.successes, '#16a34a');
-
-            sectionTitle('Failures and attention items');
-            bulletList(analysis.failures || report.failures, '#dc2626');
-
-            sectionTitle('Recommended actions');
-            bulletList(analysis.recommendations || report.recommendations, orange);
-
-            sectionTitle('Daily report breakdown');
-            if (!Array.isArray(report.dailyReports) || !report.dailyReports.length) {
-                doc.font('Helvetica').fontSize(9).fillColor(slate).text('No daily snapshots were saved for this period yet.');
+            const domainRows = Array.isArray(report.domainInsights?.domains) ? report.domainInsights.domains : [];
+            if (domainRows.length) {
+                sectionTitle('Domain intelligence and evidence');
+                doc.font('Helvetica').fontSize(8.2).fillColor(slate).text('Each domain below is drawn from the latest saved intelligence output and keeps findings, affected entities, evidence, and actions together.', left, doc.y, { width: contentWidth, lineGap: 2 });
+                doc.moveDown(0.7);
+                domainRows.forEach(renderDomain);
             } else {
-                report.dailyReports.slice(0, 7).forEach(day => {
-                    addPageIfNeeded(58);
-                    const y = doc.y;
-                    const tone = Number(day.healthScore || 0) >= 85 ? '#16a34a' : Number(day.healthScore || 0) >= 70 ? orange : '#dc2626';
-                    doc.roundedRect(40, y, contentWidth, 48, 6).fill('#f8fafc').strokeColor('#e1e6ea').stroke();
-                    doc.font('Helvetica-Bold').fontSize(8.5).fillColor(navy)
-                        .text(formatReportDate(day.periodEnd || day.date), 52, y + 9, { width: 92 });
-                    doc.font('Helvetica-Bold').fontSize(13).fillColor(tone)
-                        .text(`${Number(day.healthScore || 0)}%`, 150, y + 8, { width: 50, align: 'center' });
-                    doc.font('Helvetica').fontSize(7.5).fillColor(slate)
-                        .text('health', 150, y + 25, { width: 50, align: 'center' });
-                    doc.font('Helvetica-Bold').fontSize(8).fillColor(navy)
-                        .text(`${Number(day.failures || 0)} failures`, 220, y + 8, { width: 72 });
-                    doc.font('Helvetica-Bold').fontSize(8).fillColor(navy)
-                        .text(`${Number(day.successes || 0)} successes`, 300, y + 8, { width: 82 });
-                    doc.font('Helvetica-Bold').fontSize(8).fillColor(navy)
-                        .text(`${Number(day.events || 0)} events`, 390, y + 8, { width: 68 });
-                    const daySignal = day.topFailure || day.topRecommendation || day.topSuccess || 'Daily evidence collected.';
-                    doc.font('Helvetica').fontSize(7.5).fillColor(slate)
-                        .text(daySignal, 220, y + 24, { width: 315, height: 18 });
-                    doc.y = y + 57;
-                });
+                sectionTitle('Domain intelligence and evidence');
+                doc.font('Helvetica').fontSize(8.5).fillColor(slate).text('No saved domain intelligence was available for the selected reporting period.', { width: contentWidth });
             }
 
-            sectionTitle('Domain health');
-            const domains = Object.entries(report.domainScores || {}).filter(([, score]) => score != null);
-            domains.forEach(([domain, score]) => {
-                addPageIfNeeded(25);
-                const y = doc.y;
-                doc.font('Helvetica').fontSize(8.5).fillColor(navy).text(domain.replace(/^./, char => char.toUpperCase()), 40, y, { width: 90 });
-                doc.roundedRect(136, y + 1, 350, 8, 4).fill('#e1e6ea');
-                doc.roundedRect(136, y + 1, 3.5 * clampReportScore(score), 8, 4).fill(score >= 80 ? '#16a34a' : score >= 60 ? orange : '#dc2626');
-                doc.font('Helvetica-Bold').fontSize(8).fillColor(navy).text(`${clampReportScore(score)}%`, 495, y - 1, { width: 48, align: 'right' });
-                doc.y = y + 20;
-            });
-
-            // Compact evidence samples: show a small, proof-oriented selection
-            sectionTitle('Evidence samples');
-            const evidenceRows = [];
-            if (Array.isArray(report.failures) && report.failures.length) {
-                evidenceRows.push(...report.failures.slice(0, 3).map(item => ({ title: item.title || item.name || 'Failure evidence', detail: item.detail || item.description || item.reasoning || '' })));
-            }
-            if (Array.isArray(report.successes) && report.successes.length) {
-                evidenceRows.push(...report.successes.slice(0, 3).map(item => ({ title: item.title || item.name || 'Success evidence', detail: item.detail || item.description || item.reasoning || '' })));
-            }
-            if (!evidenceRows.length && Array.isArray(report.events) && report.events.length) {
-                evidenceRows.push(...report.events.slice(0, 4).map(e => ({ title: e.title || 'Event evidence', detail: `${formatReportDate(e.timestamp, true)} — ${e.source || e.detail || 'Dashboard event'}` })));
-            }
-            if (evidenceRows.length) {
-                bulletList(evidenceRows, '#52606d');
-            } else {
-                doc.font('Helvetica').fontSize(9).fillColor(slate).text('No evidence samples available for this period.');
+            const enterpriseOutput = report.finalSynthesis?.finalSynthesis?.synthesisOutput || {};
+            const enterpriseActions = asItems(enterpriseOutput.managementReport || {}, ['managementActions', 'actions'], 6);
+            const riskRegister = asItems(enterpriseOutput, ['riskRegister', 'recommendations', 'trendAnalysis'], 6);
+            if (enterpriseActions.length || riskRegister.length) {
+                sectionTitle('Enterprise actions');
+                drawList('Management actions', enterpriseActions, left, doc.y, (contentWidth - 16) / 2, 5);
+                drawList('Enterprise risks and trends', riskRegister, left + (contentWidth + 16) / 2, doc.y, (contentWidth - 16) / 2, 5);
+                doc.y += 114;
             }
 
-            sectionTitle('Event timeline');
-            if (!report.events.length) {
-                doc.font('Helvetica').fontSize(9).fillColor(slate).text('No timestamped events were recorded in this period.');
-            } else {
-                report.events.slice(0, 45).forEach(event => {
-                    addPageIfNeeded(42);
-                    const y = doc.y;
-                    doc.font('Helvetica').fontSize(7.5).fillColor(slate).text(formatReportDate(event.timestamp, true), 40, y, { width: 92 });
-                    doc.font('Helvetica-Bold').fontSize(8).fillColor(
-                        ['critical', 'high'].includes(event.severity) ? '#dc2626' :
-                        event.severity === 'medium' ? orange : navy
-                    ).text(String(event.severity || 'info').toUpperCase(), 136, y, { width: 58 });
-                    doc.font('Helvetica-Bold').fontSize(8).fillColor(navy).text(event.title || 'Event', 198, y, { width: 190 });
-                    doc.font('Helvetica').fontSize(8).fillColor(slate).text(event.source || 'Dashboard', 394, y, { width: 109 });
-                    doc.font('Helvetica').fontSize(8).fillColor(slate).text(event.status || 'observed', 505, y, { width: 50, align: 'right' });
-                    doc.moveTo(40, y + 24).lineTo(pageWidth - 40, y + 24).strokeColor('#e7eaed').stroke();
-                    doc.y = y + 31;
-                });
-            }
-
-            // Add footers after all content has been laid out
-            const pageCount = doc.bufferedPageRange().count;
-            for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
-                addFooterToPage(pageIndex, pageIndex + 1);
+            const pageRange = doc.bufferedPageRange();
+            for (let pageIndex = 0; pageIndex < pageRange.count; pageIndex += 1) {
+                doc.switchToPage(pageIndex);
+                doc.font('Helvetica').fontSize(7).fillColor('#7d8790').text('StackOps IT Solutions | StackCTRL | Security assessment', left, pageHeight - 30, { width: 330, lineBreak: false });
+                doc.text(`Page ${pageIndex + 1}${reportId ? ` | Report #${reportId}` : ''}`, pageWidth - 140, pageHeight - 30, { width: 100, align: 'right', lineBreak: false });
             }
             doc.end();
         } catch (error) {
@@ -4087,7 +3944,6 @@ function generateSunbirdReportPdf(report, reportId = null) {
         }
     });
 }
-
 function serializeReportRow(row) {
     const payload = parseReportJson(row.Payload, {});
     return {

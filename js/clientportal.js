@@ -13744,6 +13744,10 @@ function renderSunbirdReportsShell() {
                     <i class="fas fa-file-pdf"></i>
                     Generate PDF
                 </button>
+                <button id="sunbird-report-intelligent-btn" class="sunbird-report-primary-btn" type="button">
+                    <i class="fas fa-brain"></i>
+                    Get intelligent report
+                </button>
             </div>
 
             <div id="sunbird-report-center-content">
@@ -13969,6 +13973,9 @@ function setupSunbirdReportsDashboard() {
     document.getElementById('sunbird-report-generate-btn')?.addEventListener('click', () => {
         window.generateSunbirdReport(sunbirdReportsRange, true);
     });
+    document.getElementById('sunbird-report-intelligent-btn')?.addEventListener('click', () => {
+        window.getIntelligentReport();
+    });
 }
 
 async function loadSunbirdReportsDashboardData(forceRefresh = false) {
@@ -14009,7 +14016,7 @@ function openSunbirdReportsDashboard() {
 }
 
 window.generateSunbirdReport = async function(range = sunbirdReportsRange, downloadWhenReady = true, includeAi = false) {
-    const button = document.getElementById('sunbird-report-generate-btn');
+    const button = document.getElementById(includeAi ? 'sunbird-report-intelligent-btn' : 'sunbird-report-generate-btn');
     const original = button?.innerHTML;
     if (button) {
         button.disabled = true;
