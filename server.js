@@ -3208,7 +3208,7 @@ function buildFinalSynthesisReportAnalysis(report, powerBiFinal = null) {
                 : [],
         businessImpactSummary: String(output.businessImpactSummary || ''),
         resolvedEvents: resolvedEvents.slice(0, 10),
-        mfaMissingUsers,
+        mfaMissingUsers: missingMfaUsers,
         backupCoverage: {
             activeUsersCount: Number(report.backup?.summary?.activeUsersCount || 0),
             servicesCovered: Number(report.backup?.summary?.servicesCovered || 0),
