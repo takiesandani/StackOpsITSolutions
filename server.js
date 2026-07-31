@@ -2788,6 +2788,20 @@ function clampReportScore(value) {
     return Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
 }
 
+function shortText(value, max = 140) {
+    if (value == null) return '';
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        const s = String(value).replace(/\s+/g, ' ').trim();
+        return s.length > max ? s.slice(0, max - 1) + '…' : s;
+    }
+    try {
+        const text = JSON.stringify(value, Object.keys(value).slice(0, 12)).replace(/["\[\]{}]/g, '')
+            .replace(/:,/g, ': ').replace(/,\s*/g, '; ').replace(/\s+/g, ' ').trim();
+        return text.length > max ? text.slice(0, max - 1) + '…' : text;
+    } catch (_) {
+        return String(value).slice(0, max - 1);
+    }
+}
 async function writeSunbirdReportLog({
     companyId,
     reportId = null,
@@ -3883,11 +3897,11 @@ function generateSunbirdReportPdf(report, reportId = null) {
                     tableItemsForDomain(domain, ['recommendations', 'management_actions'])
                 );
                 const affected = uniqueItems(
-                    asItems(output, ['affectedUsers', 'usersMissingMfa', 'usersWithoutMfa', 'missingMfaUsers', 'privilegedUsers', 'affectedEntities', 'entities', 'affectedDevices']),
-                    tableItemsForDomain(domain, ['affected_entities', 'entities'])
+                    asItems(output, ['affectedUsers', 'users', 'usersMissingMfa', 'usersWithoutMfa', 'missingMfaUsers', 'privilegedUsers', 'affectedEntities', 'entities', 'affectedDevices', 'enrolledUsers', 'mfaMissingUsers']),
+                    tableItemsForDomain(domain, ['affected_entities', 'entities', 'users'])
                 );
                 const evidence = uniqueItems(
-                    asItems(output, ['evidenceRows', 'evidence', 'evidenceItems', 'evidenceCatalog', 'sourceEvidence', 'controlAssessment', 'evidenceSummary', 'sourceMetrics', 'currentMetrics', 'scoreJustification']),
+                    asItems(output, ['evidenceRows', 'evidence', 'evidenceItems', 'evidenceCatalog', 'sourceEvidence', 'controlAssessment', 'evidenceSummary', 'sourceMetrics', 'currentMetrics', 'scoreJustification', 'activeMailboxes', 'activeThreats', 'enrolledDevices', 'gatewayPolicies', 'dlpProfiles', 'appCategories', 'auditLogs', 'endpointFamilies', 'backupCoverageScore', 'totalStorageGB']),
                     tableItemsForDomain(domain, ['evidence_rows', 'evidence', 'source_metrics'])
                 );
                 const summary = cleanText(output.domainExecutiveSummary || output.executiveSummary || output.summary || output.currentPosture || domain.domainExecutiveSummary, 'No stored executive summary is available.');
@@ -3963,16 +3977,19 @@ function generateSunbirdReportPdf(report, reportId = null) {
                     tableItemsForDomain(domain, ['recommendations', 'management_actions'])
                 );
                 const affected = uniqueItems(
-                    asItems(output, ['affectedUsers', 'usersMissingMfa', 'usersWithoutMfa', 'missingMfaUsers', 'privilegedUsers', 'affectedEntities', 'entities', 'affectedDevices']),
-                    tableItemsForDomain(domain, ['affected_entities', 'entities'])
+                    asItems(output, ['affectedUsers', 'users', 'usersMissingMfa', 'usersWithoutMfa', 'missingMfaUsers', 'privilegedUsers', 'affectedEntities', 'entities', 'affectedDevices', 'enrolledUsers', 'mfaMissingUsers']),
+                    tableItemsForDomain(domain, ['affected_entities', 'entities', 'users'])
                 );
                 const evidence = uniqueItems(
-                    asItems(output, ['evidenceRows', 'evidence', 'evidenceItems', 'evidenceCatalog', 'sourceEvidence', 'controlAssessment', 'evidenceSummary', 'sourceMetrics', 'currentMetrics', 'scoreJustification']),
+                    asItems(output, ['evidenceRows', 'evidence', 'evidenceItems', 'evidenceCatalog', 'sourceEvidence', 'controlAssessment', 'evidenceSummary', 'sourceMetrics', 'currentMetrics', 'scoreJustification', 'activeMailboxes', 'activeThreats', 'enrolledDevices', 'gatewayPolicies', 'dlpProfiles', 'appCategories', 'auditLogs', 'endpointFamilies', 'backupCoverageScore', 'totalStorageGB']),
                     tableItemsForDomain(domain, ['evidence_rows', 'evidence', 'source_metrics'])
                 );
                 return (score != null || risk != null) || (findings.length || affected.length || evidence.length || recommendations.length);
             };
             const domainRows = allDomainRows.filter(domainHasRenderableContent);
+            if (allDomainRows.length && !domainRows.length) {
+                console.warn('[Reports] No domain rows considered renderable for PDF; check domain intelligence keys or scores.', { availableKeys: allDomainRows.map(d => d.domainKey || d.domainName) });
+            }
             if (domainRows.length) {
                 sectionTitle('Enterprise domain scorecard');
                 doc.font('Helvetica').fontSize(7.8).fillColor(slate).text('Health is better when higher. Risk requires attention when higher.', left, doc.y, { width: contentWidth });
