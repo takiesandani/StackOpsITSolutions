@@ -574,6 +574,21 @@
   color: #fff;
 }
 
+.sunbird-report-get-intel {
+  padding: 6px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 23px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.04));
+  color: #d8dee5;
+  font-size: 0.67rem;
+  cursor: pointer;
+}
+
+.sunbird-report-get-intel:hover {
+  border-color: rgba(34,197,94,0.35);
+  color: #fff;
+}
+
 .sunbird-report-evidence-modal .sunbird-id-modal-backdrop {
   background: rgba(0, 0, 0, 0.64);
 }

@@ -13690,6 +13690,9 @@ async function renderSunbirdReportsView(forceRefresh = false) {
                     <button class="sunbird-report-quick-generate" onclick="window.generateSunbirdReport('30d', true)">
                         <i class="fas fa-file-circle-plus"></i> Generate 30-day PDF
                     </button>
+                    <button class="sunbird-report-get-intel" onclick="window.getIntelligentReport && window.getIntelligentReport()">
+                        <i class="fas fa-brain"></i> Get intelligent report
+                    </button>
                 </div>
             </div>
         `;
@@ -14039,6 +14042,19 @@ window.generateSunbirdReport = async function(range = sunbirdReportsRange, downl
             button.disabled = false;
             button.innerHTML = original;
         }
+    }
+};
+
+// Shortcut handler for the new Get intelligent report button
+window.getIntelligentReport = async function() {
+    // Use the same flow but request AI-inclusive generation
+    try {
+        const range = sunbirdReportsRange || '30d';
+        // show a subtle UI cue
+        showNotification('Requesting intelligent report — this may take a moment', true);
+        await window.generateSunbirdReport(range, true);
+    } catch (err) {
+        showNotification(err.message || 'Could not request intelligent report', false);
     }
 };
 

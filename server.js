@@ -3651,9 +3651,12 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 });
             };
 
+            // Header background and logos
             doc.rect(0, 0, pageWidth, 126).fill(navy);
+            // Place Sunbird logo image; remove any caption text under it (previously 'Sunbird')
             if (fs.existsSync(stackOpsLogo)) doc.image(stackOpsLogo, 40, 28, { fit: [150, 42] });
             if (fs.existsSync(stackCtrlLogo)) doc.image(stackCtrlLogo, pageWidth - 174, 26, { fit: [134, 44], align: 'right' });
+            // Title text (company name) and report subtitle
             doc.font('Helvetica').fontSize(8).fillColor('#c8d0d8')
                 .text('AUTOMATED INTELLIGENCE REPORT', 40, 82, { characterSpacing: 1.1 });
             doc.font('Helvetica-Bold').fontSize(18).fillColor('#ffffff')
@@ -3728,6 +3731,24 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 doc.font('Helvetica-Bold').fontSize(8).fillColor(navy).text(`${clampReportScore(score)}%`, 495, y - 1, { width: 48, align: 'right' });
                 doc.y = y + 20;
             });
+
+            // Compact evidence samples: show a small, proof-oriented selection
+            sectionTitle('Evidence samples');
+            const sampleCandidates = [
+                ...(report.failures || []),
+                ...(report.successes || []),
+                ...(report.recommendations || [])
+            ];
+            const samples = sampleCandidates.slice(0, 6);
+            if (samples.length) {
+                // reuse bulletList to render title/detail pairs
+                bulletList(samples.map(s => ({ title: s.title || s.name || 'Evidence', detail: s.detail || s.description || '' })), '#52606d');
+            } else if (Array.isArray(report.events) && report.events.length) {
+                const evSamples = report.events.slice(0, 6).map(e => ({ title: e.title || 'Event', detail: `${formatReportDate(e.timestamp, true)} — ${e.source || e.detail || ''}` }));
+                bulletList(evSamples, '#52606d');
+            } else {
+                doc.font('Helvetica').fontSize(9).fillColor(slate).text('No evidence samples available for this period.');
+            }
 
             sectionTitle('Event timeline');
             if (!report.events.length) {
