@@ -3180,7 +3180,7 @@ async function generateAiReportAnalysis(report, powerBiIntelligence = null) {
             recentEvents: report.events.slice(0, 20)
         };
         if (powerBiIntelligence?.domains?.length) {
-            evidence.powerBiDomains = powerBiIntelligence.domains.slice(0, 6).map(domain => ({
+            evidence.domainSummaries = powerBiIntelligence.domains.slice(0, 6).map(domain => ({
                 domainKey: domain.domainKey,
                 domainName: domain.domainName,
                 status: domain.status,
@@ -3192,7 +3192,7 @@ async function generateAiReportAnalysis(report, powerBiIntelligence = null) {
             }));
         }
         if (powerBiIntelligence?.finalSynthesis) {
-            evidence.powerBiFinalSynthesis = {
+            evidence.finalSynthesisSummary = {
                 status: powerBiIntelligence.finalSynthesis.status,
                 summary: powerBiIntelligence.finalSynthesis.synthesisOutput?.enterpriseExecutiveSummary?.summary || null,
                 boardReportTitle: powerBiIntelligence.finalSynthesis.synthesisOutput?.boardReport?.boardSummary || null
@@ -3204,7 +3204,7 @@ async function generateAiReportAnalysis(report, powerBiIntelligence = null) {
             messages: [
                 {
                     role: 'system',
-                    content: 'You are a cybersecurity reporting analyst. Use only supplied evidence and any included Power BI domain intelligence output. Return JSON with executiveSummary, successes, failures, recommendations. Keep each list concise and actionable. Never invent facts, dates, people, or incidents.'
+                    content: 'You are a cybersecurity reporting analyst. Use only supplied evidence and any included domain intelligence output. Return JSON with executiveSummary, successes, failures, recommendations. Keep each list concise and actionable. Never invent facts, dates, people, or incidents.'
                 },
                 { role: 'user', content: JSON.stringify(evidence) }
             ]
@@ -3215,9 +3215,9 @@ async function generateAiReportAnalysis(report, powerBiIntelligence = null) {
             successes: Array.isArray(parsed.successes) ? parsed.successes.slice(0, 6) : fallback.successes,
             failures: Array.isArray(parsed.failures) ? parsed.failures.slice(0, 8) : fallback.failures,
             recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations.slice(0, 6) : fallback.recommendations,
-            generatedBy: powerBiIntelligence ? 'StackCTRL AI + Power BI domain intelligence' : 'StackCTRL AI, grounded in dashboard evidence',
+            generatedBy: 'StackCTRL intelligence engine',
             rawAiResponse: parsed,
-            powerBiIntelligence: powerBiIntelligence ? {
+            domainIntelligenceInfo: powerBiIntelligence ? {
                 available: true,
                 domainCount: powerBiIntelligence.domains.length,
                 latestRunId: powerBiIntelligence.latestRunId || null
@@ -3229,7 +3229,7 @@ async function generateAiReportAnalysis(report, powerBiIntelligence = null) {
         console.warn('[Reports] AI analysis fallback:', error.message);
         return {
             ...fallback,
-            generatedBy: 'StackCTRL evidence engine (AI unavailable)'
+            generatedBy: 'StackCTRL intelligence engine (fallback)'
         };
     }
 }
@@ -3536,7 +3536,7 @@ async function buildSunbirdReportPayload(companyId, periodStart, periodEnd, incl
     }));
     report.dailyReports = await loadSunbirdDailyReportSummaries(companyId, periodStart, periodEnd);
     const powerBiIntelligence = includeAi ? await fetchSunbirdPowerBIIntelligence(companyId) : null;
-    report.powerBiIntelligence = powerBiIntelligence;
+    report.domainInsights = powerBiIntelligence;
     report.analysis = includeAi ? await generateAiReportAnalysis(report, powerBiIntelligence) : buildDeterministicReportAnalysis(report);
     return report;
 }
@@ -3673,14 +3673,29 @@ function generateSunbirdReportPdf(report, reportId = null) {
             const contentWidth = pageWidth - 80;
             const stackOpsLogo = path.join(__dirname, 'Images', 'Sunbird.png');
             const stackCtrlLogo = path.join(__dirname, 'Images', 'Logos', 'Ctrl big.png');
+            let currentPage = 1;
+            doc.on('pageAdded', () => {
+                currentPage += 1;
+                const footerY = doc.page.height - 30;
+                doc.font('Helvetica').fontSize(7).fillColor('#7d8790')
+                    .text(`StackOps IT Solutions | StackCTRL | Evidence generated ${formatReportDate(report.generatedAt, true)}`, 40, footerY, { width: 430 });
+                doc.text(`Page ${currentPage}${reportId ? ` | Report #${reportId}` : ''}`, 480, footerY, { width: 75, align: 'right' });
+            });
             const addPageIfNeeded = height => {
-                if (doc.y + height > 765) {
+                const availableHeight = doc.page.height - doc.page.margins.bottom - 40;
+                if (doc.y + height > availableHeight) {
                     doc.addPage();
                     doc.y = 42;
                 }
             };
+            const renderMetricCard = (x, y, width, label, value, detail) => {
+                doc.roundedRect(x, y, width, 64, 8).fill('#f8fafc').strokeColor('#e1e6ea').lineWidth(0.8).stroke();
+                doc.font('Helvetica-Bold').fontSize(10).fillColor(navy).text(label, x + 12, y + 10, { width: width - 24 });
+                doc.font('Helvetica-Bold').fontSize(20).fillColor(orange).text(value, x + 12, y + 26, { width: width - 24 });
+                if (detail) doc.font('Helvetica').fontSize(8).fillColor(slate).text(detail, x + 12, y + 50, { width: width - 24 });
+            };
             const sectionTitle = title => {
-                addPageIfNeeded(38);
+                addPageIfNeeded(42);
                 doc.moveDown(0.5);
                 doc.font('Helvetica-Bold').fontSize(11).fillColor(navy).text(title.toUpperCase());
                 doc.moveTo(40, doc.y + 4).lineTo(pageWidth - 40, doc.y + 4).strokeColor('#d9dee3').stroke();
@@ -3694,7 +3709,7 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 items.forEach(item => {
                     const title = typeof item === 'string' ? item : item.title;
                     const detail = typeof item === 'string' ? '' : item.detail;
-                    addPageIfNeeded(42);
+                    addPageIfNeeded(52);
                     doc.circle(47, doc.y + 5, 2.2).fillColor(tone).fill();
                     doc.font('Helvetica-Bold').fontSize(9).fillColor(navy).text(title || 'Report item', 56, doc.y, { width: contentWidth - 16 });
                     if (detail) doc.font('Helvetica').fontSize(8.5).fillColor(slate).text(detail, 56, doc.y + 2, { width: contentWidth - 16, lineGap: 1 });
@@ -3709,46 +3724,65 @@ function generateSunbirdReportPdf(report, reportId = null) {
             if (fs.existsSync(stackCtrlLogo)) doc.image(stackCtrlLogo, pageWidth - 174, 26, { fit: [134, 44], align: 'right' });
             // Title text (company name) and report subtitle
             doc.font('Helvetica').fontSize(8).fillColor('#c8d0d8')
-                .text('AUTOMATED INTELLIGENCE REPORT', 40, 82, { characterSpacing: 1.1 });
-            // Do not print the company name here to match PDF design (remove 'Sunbird' under the report title)
+                .text('SECURITY ASSESSMENT REPORT', 40, 82, { characterSpacing: 1.1 });
+            // Do not print the company name here to match PDF design
             // The company name is kept for filename/meta but not rendered prominently in the header.
-            if (report.generatedWithAi) {
-                doc.font('Helvetica-Bold').fontSize(9).fillColor('#86efac')
-                    .text('AI‑ENABLED REPORT', 40, 100, { characterSpacing: 0.4 });
-                doc.font('Helvetica').fontSize(7.5).fillColor('#d9dee3')
-                    .text('Includes Azure OpenAI analysis ready for Power BI review', 40, 112, { width: 260 });
-            }
-
             doc.font('Helvetica').fontSize(8).fillColor('#d9dee3')
-                .text(`${formatReportDate(report.period.start)} - ${formatReportDate(report.period.end)}`, pageWidth - 220, report.generatedWithAi ? 110 : 100, { width: 180, align: 'right' });
+                .text(`${formatReportDate(report.period.start)} - ${formatReportDate(report.period.end)}`, pageWidth - 220, 100, { width: 180, align: 'right' });
 
-            doc.y = 148;
-            doc.roundedRect(40, 144, contentWidth, 76, 8).fill(pale);
-            doc.font('Helvetica-Bold').fontSize(28).fillColor(orange).text(`${report.summary.healthScore}%`, 56, 160, { width: 90 });
-            doc.font('Helvetica-Bold').fontSize(9).fillColor(navy).text('SECURITY HEALTH', 56, 194);
-            const statX = [176, 286, 396];
-            [
-                ['Failures', report.summary.failures],
-                ['Successes', report.summary.successes],
-                ['Events reviewed', report.summary.totalEvents]
-            ].forEach((item, index) => {
-                doc.font('Helvetica-Bold').fontSize(16).fillColor(navy).text(String(item[1]), statX[index], 162, { width: 95, align: 'center' });
-                doc.font('Helvetica').fontSize(8).fillColor(slate).text(item[0], statX[index], 190, { width: 95, align: 'center' });
-            });
-            doc.y = 232;
+            doc.y = 146;
+            const topSectionHeight = 124;
+            doc.roundedRect(40, 144, contentWidth, topSectionHeight, 10).fill(pale).strokeColor('#e1e6ea').stroke();
+            const metricWidth = (contentWidth - 36) / 4;
+            renderMetricCard(48, 152, metricWidth, 'HEALTH SCORE', `${report.summary.healthScore}%`, `Failure count: ${report.summary.failures}`);
+            renderMetricCard(48 + metricWidth + 12, 152, metricWidth, 'SUCCESSES', `${report.summary.successes}`, `Events reviewed: ${report.summary.totalEvents}`);
+            renderMetricCard(48 + (metricWidth + 12) * 2, 152, metricWidth, 'ACTIVE INCIDENTS', `${report.summary.activeIncidents}`, 'Open or recent issues');
+            renderMetricCard(48 + (metricWidth + 12) * 3, 152, metricWidth, 'HIGH ALERTS', `${report.summary.highSeverityAlerts}`, 'Critical signal count');
 
-            // Prefer AI analysis when available
+            doc.y = 286;
+            sectionTitle('Report summary');
             const analysis = report.analysis || buildDeterministicReportAnalysis(report);
+            doc.font('Helvetica').fontSize(10).fillColor(navy).text(analysis.executiveSummary || '', { lineGap: 3 });
+            if (report.domainInsights?.available) {
+                doc.moveDown(0.5);
+                doc.font('Helvetica').fontSize(8).fillColor(slate).text(`Latest stored domain summaries include ${report.domainInsights.domains.length} domains across the current reporting phase.`, { lineGap: 2 });
+            }
+            doc.moveDown(0.5);
+            sectionTitle('Summary metrics');
+            const domainScoreEntries = Object.entries(report.domainScores || {}).filter(([, score]) => score != null);
+            domainScoreEntries.forEach(([domain, score], index) => {
+                addPageIfNeeded(28);
+                const y = doc.y;
+                const color = score >= 85 ? '#16a34a' : score >= 70 ? orange : '#dc2626';
+                doc.font('Helvetica-Bold').fontSize(8.5).fillColor(navy).text(domain.replace(/^./, char => char.toUpperCase()), 40, y, { width: 110 });
+                doc.roundedRect(156, y + 2, 316, 8, 4).fill('#e1e6ea');
+                doc.roundedRect(156, y + 2, 3.16 * clampReportScore(score), 8, 4).fill(color);
+                doc.font('Helvetica-Bold').fontSize(8).fillColor(navy).text(`${clampReportScore(score)}%`, 490, y - 1, { width: 48, align: 'right' });
+                doc.y = y + 20;
+            });
+            doc.moveDown(0.3);
+            sectionTitle('Health trend');
+            const trend = report.trend || [];
+            if (trend.length) {
+                const barWidth = Math.max(24, (contentWidth - 36) / trend.length - 6);
+                const chartX = 40;
+                const chartY = doc.y;
+                const maxScore = 100;
+                trend.forEach((point, index) => {
+                    const barHeight = Math.max(12, (point.healthScore || 0) / maxScore * 70);
+                    const x = chartX + index * (barWidth + 6);
+                    doc.roundedRect(x, chartY + 70 - barHeight, barWidth, barHeight, 2).fill('#0f172a');
+                    doc.font('Helvetica').fontSize(7).fillColor(slate).text(new Date(point.date).toLocaleDateString('en-ZA', { month: 'short', day: 'numeric' }), x - 4, chartY + 78, { width: barWidth + 8, align: 'center' });
+                });
+                doc.y = chartY + 96;
+            } else {
+                doc.font('Helvetica').fontSize(9).fillColor(slate).text('No trend history available for the selected period.');
+                doc.moveDown(0.5);
+            }
 
             sectionTitle('Executive summary');
             doc.font('Helvetica').fontSize(10).fillColor(navy)
                 .text(analysis.executiveSummary || '', { lineGap: 3 });
-            if (analysis.generatedBy) {
-                doc.moveDown(0.2);
-                doc.font('Helvetica').fontSize(8).fillColor(slate)
-                    .text(`Analysis generated by: ${analysis.generatedBy}`, { align: 'left' });
-            }
-
             sectionTitle('What went well');
             bulletList(analysis.successes || report.successes, '#16a34a');
 
@@ -3758,36 +3792,46 @@ function generateSunbirdReportPdf(report, reportId = null) {
             sectionTitle('Recommended actions');
             bulletList(analysis.recommendations || report.recommendations, orange);
 
-            if (report.generatedWithAi) {
-                sectionTitle('AI-powered insights');
-                doc.font('Helvetica').fontSize(9).fillColor(navy).text('This report includes Azure OpenAI analysis that is ready for Power BI integration. The summaries and recommendations are grounded entirely in the dashboard evidence collected for the selected period.', {
-                    width: contentWidth,
-                    lineGap: 3
+            if (report.domainInsights?.available) {
+                sectionTitle('Domain findings');
+                const intelligenceDomains = report.domainInsights.domains;
+                intelligenceDomains.forEach(domain => {
+                    addPageIfNeeded(68);
+                    const domainStatus = String(domain.status || 'unknown').toUpperCase();
+                    const score = domain.intelligenceOutput?.healthScore ?? domain.intelligenceOutput?.score ?? null;
+                    const scoreColor = score >= 85 ? '#16a34a' : score >= 70 ? orange : '#dc2626';
+                    doc.font('Helvetica-Bold').fontSize(10).fillColor(navy).text(domain.domainName || domain.domainKey, 40, doc.y, { width: contentWidth });
+                    doc.font('Helvetica').fontSize(8).fillColor(slate).text(`Status: ${domainStatus}${score != null ? ` • Health score: ${clampReportScore(score)}%` : ''}`, { lineGap: 2 });
+                    if (score != null) {
+                        doc.roundedRect(40, doc.y + 8, contentWidth, 10, 5).fill('#e1e6ea');
+                        doc.roundedRect(40, doc.y + 8, clampReportScore(score) / 100 * contentWidth, 10, 5).fill(scoreColor);
+                        doc.y += 18;
+                    } else {
+                        doc.y += 8;
+                    }
+                    const topRisks = Array.isArray(domain.intelligenceOutput?.risks) ? domain.intelligenceOutput.risks.slice(0, 3).map(risk => risk?.title || risk?.name || risk?.detail).filter(Boolean) : [];
+                    const topRecs = Array.isArray(domain.intelligenceOutput?.recommendations) ? domain.intelligenceOutput.recommendations.slice(0, 3).map(rec => rec?.title || rec?.name || rec?.detail).filter(Boolean) : [];
+                    const evidenceRows = Array.isArray(domain.intelligenceOutput?.controlAssessment) ? domain.intelligenceOutput.controlAssessment.slice(0, 2).map(item => item.title || item.name || item.description).filter(Boolean) : [];
+                    if (topRisks.length) {
+                        doc.font('Helvetica-Bold').fontSize(8).fillColor(orange).text('Top risks', { width: contentWidth });
+                        doc.font('Helvetica').fontSize(8).fillColor(slate).list(topRisks, 40, doc.y, { bulletRadius: 1.5, textIndent: 10, lineGap: 2 });
+                        doc.moveDown(0.2);
+                    }
+                    if (topRecs.length) {
+                        doc.font('Helvetica-Bold').fontSize(8).fillColor(orange).text('Top recommendations', { width: contentWidth });
+                        doc.font('Helvetica').fontSize(8).fillColor(slate).list(topRecs, 40, doc.y, { bulletRadius: 1.5, textIndent: 10, lineGap: 2 });
+                        doc.moveDown(0.2);
+                    }
+                    if (evidenceRows.length) {
+                        doc.font('Helvetica-Bold').fontSize(8).fillColor(orange).text('Evidence highlights', { width: contentWidth });
+                        doc.font('Helvetica').fontSize(8).fillColor(slate).list(evidenceRows, 40, doc.y, { bulletRadius: 1.5, textIndent: 10, lineGap: 2 });
+                        doc.moveDown(0.2);
+                    }
+                    doc.moveDown(0.4);
                 });
-                doc.moveDown(0.5);
-                doc.font('Helvetica-Bold').fontSize(9).fillColor(orange).text('Proof of AI insight:');
-                bulletList((analysis.successes || report.successes).slice(0, 3).map(item => ({ title: item.title || item.name || 'Insight', detail: item.detail || item.description || '' })), '#38bdf8');
-                if (report.powerBiIntelligence?.domains?.length) {
-                    sectionTitle('Power BI domain intelligence');
-                    const intelligenceDomains = report.powerBiIntelligence.domains.slice(0, 6);
-                    intelligenceDomains.forEach(domain => {
-                        addPageIfNeeded(34);
-                        const domainStatus = String(domain.status || 'unknown').toUpperCase();
-                        doc.font('Helvetica-Bold').fontSize(9).fillColor(navy).text(`${domain.domainName} (${domain.domainKey})`, { width: contentWidth, lineGap: 2 });
-                        doc.font('Helvetica').fontSize(8).fillColor(slate).text(`Status: ${domainStatus}${domain.intelligenceOutput?.healthScore != null ? ` • Health score: ${clampReportScore(domain.intelligenceOutput.healthScore)}` : ''}`, { width: contentWidth, lineGap: 2 });
-                        const topRisks = Array.isArray(domain.intelligenceOutput?.risks) ? domain.intelligenceOutput.risks.slice(0, 2).map(risk => risk?.title || risk?.name || risk?.detail).filter(Boolean) : [];
-                        const topRecs = Array.isArray(domain.intelligenceOutput?.recommendations) ? domain.intelligenceOutput.recommendations.slice(0, 2).map(rec => rec?.title || rec?.name || rec?.detail).filter(Boolean) : [];
-                        if (topRisks.length) {
-                            doc.font('Helvetica-Bold').fontSize(8).fillColor(orange).text('Top risks:', { continued: false });
-                            doc.font('Helvetica').fontSize(8).fillColor(slate).text(topRisks.join(' • '), { width: contentWidth, lineGap: 2 });
-                        }
-                        if (topRecs.length) {
-                            doc.font('Helvetica-Bold').fontSize(8).fillColor(orange).text('Top recommendations:', { continued: false });
-                            doc.font('Helvetica').fontSize(8).fillColor(slate).text(topRecs.join(' • '), { width: contentWidth, lineGap: 2 });
-                        }
-                        doc.moveDown(0.5);
-                    });
-                }
+            } else {
+                sectionTitle('Domain findings');
+                doc.font('Helvetica').fontSize(9).fillColor(slate).text('No stored domain intelligence was available for this report. The document is based on the latest dashboard evidence and metrics.', { width: contentWidth, lineGap: 3 });
             }
 
             sectionTitle('Daily report breakdown');
