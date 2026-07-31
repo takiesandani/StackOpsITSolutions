@@ -680,7 +680,7 @@ async function generatePayFastLink(paymentData) {
             custom_str1: paymentData.custom_str1
         };
 
-        const signature = generatePayFastSignature(data, passphrase);
+            const signature = generatePayFastSignature(data, passphrase); // Generate signature for PayFast
         data.signature = signature;
 
         const queryString = Object.keys(data)
