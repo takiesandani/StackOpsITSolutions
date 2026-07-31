@@ -3731,6 +3731,9 @@ function generateSunbirdReportPdf(report, reportId = null) {
             const pale = '#f3f5f7';
             const pageWidth = doc.page.width;
             const contentWidth = pageWidth - 80;
+            const leftMargin = 40;
+            const innerIndent = leftMargin + 12;
+            const innerWidth = contentWidth - 16;
             const stackOpsLogo = path.join(__dirname, 'Images', 'Sunbird.png');
             const stackCtrlLogo = path.join(__dirname, 'Images', 'Logos', 'Ctrl big.png');
             const addFooterToPage = (pageIndex, pageNumber) => {
@@ -3769,22 +3772,22 @@ function generateSunbirdReportPdf(report, reportId = null) {
                     const title = typeof item === 'string' ? item : item.title || item.name || item.detail || item.description || 'Report item';
                     const detail = typeof item === 'string' ? '' : item.detail || item.description || item.reasoning || '';
                     addPageIfNeeded(52);
-                    doc.circle(47, doc.y + 5, 2.2).fillColor(tone).fill();
-                    doc.font('Helvetica-Bold').fontSize(9).fillColor(navy).text(title, 56, doc.y, { width: contentWidth - 16 });
-                    if (detail) doc.font('Helvetica').fontSize(8.5).fillColor(slate).text(detail, 56, doc.y + 2, { width: contentWidth - 16, lineGap: 1 });
+                    doc.circle(leftMargin + 4, doc.y + 5, 2.2).fillColor(tone).fill();
+                    doc.font('Helvetica-Bold').fontSize(9).fillColor(navy).text(title, innerIndent, doc.y, { width: innerWidth, align: 'left' });
+                    if (detail) doc.font('Helvetica').fontSize(8.5).fillColor(slate).text(detail, innerIndent, doc.y + 2, { width: innerWidth, lineGap: 1 });
                     doc.moveDown(0.45);
                 });
             };
             const renderDomainBulletSection = (title, items) => {
                 if (!Array.isArray(items) || !items.length) return;
                 addPageIfNeeded(28 + Math.min(items.length, 4) * 20);
-                doc.font('Helvetica-Bold').fontSize(9).fillColor(orange).text(title, { width: contentWidth });
+                doc.font('Helvetica-Bold').fontSize(9).fillColor(orange).text(title, leftMargin, doc.y, { width: contentWidth });
                 (items || []).slice(0, 5).forEach(item => {
                     const text = typeof item === 'string' ? item : item.title || item.name || item.detail || item.evidenceSummary || item.reasoning || item.businessImpact || item.description || '';
                     if (!text) return;
                     addPageIfNeeded(24);
-                    doc.circle(47, doc.y + 5, 2.2).fillColor('#17212b').fill();
-                    doc.font('Helvetica').fontSize(8).fillColor(slate).text(text, 56, doc.y, { width: contentWidth - 16, lineGap: 2 });
+                    doc.circle(leftMargin + 4, doc.y + 5, 2.2).fillColor('#17212b').fill();
+                    doc.font('Helvetica').fontSize(8).fillColor(slate).text(text, innerIndent, doc.y, { width: innerWidth, lineGap: 2 });
                     doc.moveDown(0.55);
                 });
                 doc.moveDown(0.2);
@@ -3792,30 +3795,27 @@ function generateSunbirdReportPdf(report, reportId = null) {
             const renderDomainSummary = domain => {
                 const output = domain.intelligenceOutput || {};
                 addPageIfNeeded(92);
-                doc.font('Helvetica-Bold').fontSize(10).fillColor(navy).text(domain.domainName || domain.domainKey || 'Domain', 40, doc.y, { width: contentWidth });
+                doc.font('Helvetica-Bold').fontSize(10).fillColor(navy).text(domain.domainName || domain.domainKey || 'Domain', leftMargin, doc.y, { width: contentWidth });
                 if (output.currentPosture) {
-                    doc.font('Helvetica-Bold').fontSize(8.5).fillColor(orange).text('Posture: ', 40, doc.y + 16, { continued: true });
-                    doc.font('Helvetica').fontSize(8.5).fillColor(slate).text(output.currentPosture, { width: contentWidth - 56 });
+                    doc.font('Helvetica-Bold').fontSize(8.5).fillColor(orange).text('Posture: ', leftMargin, doc.y + 16, { continued: true });
+                    doc.font('Helvetica').fontSize(8.5).fillColor(slate).text(output.currentPosture, innerIndent, doc.y + 16, { width: innerWidth - 4 });
                     doc.moveDown(0.4);
                 }
                 if (output.businessImpact) {
-                    doc.font('Helvetica-Bold').fontSize(8.5).fillColor(orange).text('Business impact: ', 40, doc.y, { continued: true });
-                    doc.font('Helvetica').fontSize(8.5).fillColor(slate).text(output.businessImpact, { width: contentWidth - 56, lineGap: 2 });
+                    doc.font('Helvetica-Bold').fontSize(8.5).fillColor(orange).text('Business impact: ', leftMargin, doc.y, { continued: true });
+                    doc.font('Helvetica').fontSize(8.5).fillColor(slate).text(output.businessImpact, innerIndent, doc.y, { width: innerWidth - 4, lineGap: 2 });
                     doc.moveDown(0.4);
                 }
                 if (output.domainExecutiveSummary) {
                     addPageIfNeeded(26);
-                    doc.font('Helvetica').fontSize(9).fillColor(slate).text(output.domainExecutiveSummary, { width: contentWidth, lineGap: 3 });
+                    doc.font('Helvetica').fontSize(9).fillColor(slate).text(output.domainExecutiveSummary, leftMargin, doc.y, { width: contentWidth, lineGap: 3 });
                     doc.moveDown(0.4);
                 }
-                renderDomainBulletSection('Key findings', output.keyFindings);
-                renderDomainBulletSection('Top risks', output.risks);
-                renderDomainBulletSection('Recommendations', output.recommendations);
                 if (Array.isArray(output.controlAssessment) && output.controlAssessment.length) {
-                    addPageIfNeeded(24 + Math.min(output.controlAssessment.length, 3) * 18);
+                    addPageIfNeeded(24 + Math.min(output.controlAssessment.length, 4) * 18);
                     doc.font('Helvetica-Bold').fontSize(9).fillColor(orange).text('Evidence points', { width: contentWidth });
-                    output.controlAssessment.slice(0, 3).forEach(item => {
-                        const text = typeof item === 'string' ? item : item.title || item.description || item.detail || '';
+                    output.controlAssessment.slice(0, 4).forEach(item => {
+                        const text = typeof item === 'string' ? item : item.title || item.description || item.detail || item.evidenceSummary || '';
                         if (!text) return;
                         addPageIfNeeded(20);
                         doc.circle(47, doc.y + 5, 2.2).fillColor('#17212b').fill();
@@ -3823,6 +3823,18 @@ function generateSunbirdReportPdf(report, reportId = null) {
                         doc.moveDown(0.55);
                     });
                     doc.moveDown(0.2);
+                }
+                renderDomainBulletSection('Key findings', output.keyFindings);
+                renderDomainBulletSection('Top risks', output.risks);
+                renderDomainBulletSection('Recommendations', output.recommendations);
+                if (!Array.isArray(output.controlAssessment) || !output.controlAssessment.length) {
+                    const hasEvidence = Array.isArray(output.keyFindings) && output.keyFindings.length
+                        || Array.isArray(output.risks) && output.risks.length
+                        || Array.isArray(output.recommendations) && output.recommendations.length;
+                    if (!hasEvidence) {
+                        doc.font('Helvetica').fontSize(8).fillColor(slate).text('No domain evidence points were available for this domain.', { width: contentWidth, lineGap: 2 });
+                        doc.moveDown(0.3);
+                    }
                 }
             };
 
@@ -3946,6 +3958,10 @@ function generateSunbirdReportPdf(report, reportId = null) {
                     });
                     doc.moveDown(0.3);
                 }
+            }
+            if (report.domainInsights?.available && Array.isArray(report.domainInsights.domains) && report.domainInsights.domains.length) {
+                sectionTitle('Domain findings');
+                report.domainInsights.domains.forEach(domain => renderDomainSummary(domain));
             }
             sectionTitle('Summary metrics');
             const domainScoreEntries = Object.entries(report.domainScores || {}).filter(([, score]) => score != null);
