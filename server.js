@@ -3701,19 +3701,69 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 doc.moveDown(0.7);
             };
             const bulletList = (items, tone = navy) => {
-                if (!items.length) {
+                if (!Array.isArray(items) || !items.length) {
                     doc.font('Helvetica').fontSize(9).fillColor(slate).text('No items recorded.');
                     return;
                 }
                 items.forEach(item => {
-                    const title = typeof item === 'string' ? item : item.title;
-                    const detail = typeof item === 'string' ? '' : item.detail;
+                    const title = typeof item === 'string' ? item : item.title || item.name || item.detail || item.description || 'Report item';
+                    const detail = typeof item === 'string' ? '' : item.detail || item.description || item.reasoning || '';
                     addPageIfNeeded(52);
                     doc.circle(47, doc.y + 5, 2.2).fillColor(tone).fill();
-                    doc.font('Helvetica-Bold').fontSize(9).fillColor(navy).text(title || 'Report item', 56, doc.y, { width: contentWidth - 16 });
+                    doc.font('Helvetica-Bold').fontSize(9).fillColor(navy).text(title, 56, doc.y, { width: contentWidth - 16 });
                     if (detail) doc.font('Helvetica').fontSize(8.5).fillColor(slate).text(detail, 56, doc.y + 2, { width: contentWidth - 16, lineGap: 1 });
                     doc.moveDown(0.45);
                 });
+            };
+            const renderDomainBulletSection = (title, items) => {
+                if (!Array.isArray(items) || !items.length) return;
+                addPageIfNeeded(28 + Math.min(items.length, 4) * 20);
+                doc.font('Helvetica-Bold').fontSize(9).fillColor(orange).text(title, { width: contentWidth });
+                (items || []).slice(0, 5).forEach(item => {
+                    const text = typeof item === 'string' ? item : item.title || item.name || item.detail || item.evidenceSummary || item.reasoning || item.businessImpact || item.description || '';
+                    if (!text) return;
+                    addPageIfNeeded(24);
+                    doc.circle(47, doc.y + 5, 2.2).fillColor('#17212b').fill();
+                    doc.font('Helvetica').fontSize(8).fillColor(slate).text(text, 56, doc.y, { width: contentWidth - 16, lineGap: 2 });
+                    doc.moveDown(0.55);
+                });
+                doc.moveDown(0.2);
+            };
+            const renderDomainSummary = domain => {
+                const output = domain.intelligenceOutput || {};
+                addPageIfNeeded(92);
+                doc.font('Helvetica-Bold').fontSize(10).fillColor(navy).text(domain.domainName || domain.domainKey || 'Domain', 40, doc.y, { width: contentWidth });
+                if (output.currentPosture) {
+                    doc.font('Helvetica-Bold').fontSize(8.5).fillColor(orange).text('Posture: ', 40, doc.y + 16, { continued: true });
+                    doc.font('Helvetica').fontSize(8.5).fillColor(slate).text(output.currentPosture, { width: contentWidth - 56 });
+                    doc.moveDown(0.4);
+                }
+                if (output.businessImpact) {
+                    doc.font('Helvetica-Bold').fontSize(8.5).fillColor(orange).text('Business impact: ', 40, doc.y, { continued: true });
+                    doc.font('Helvetica').fontSize(8.5).fillColor(slate).text(output.businessImpact, { width: contentWidth - 56, lineGap: 2 });
+                    doc.moveDown(0.4);
+                }
+                if (output.domainExecutiveSummary) {
+                    addPageIfNeeded(26);
+                    doc.font('Helvetica').fontSize(9).fillColor(slate).text(output.domainExecutiveSummary, { width: contentWidth, lineGap: 3 });
+                    doc.moveDown(0.4);
+                }
+                renderDomainBulletSection('Key findings', output.keyFindings);
+                renderDomainBulletSection('Top risks', output.risks);
+                renderDomainBulletSection('Recommendations', output.recommendations);
+                if (Array.isArray(output.controlAssessment) && output.controlAssessment.length) {
+                    addPageIfNeeded(24 + Math.min(output.controlAssessment.length, 3) * 18);
+                    doc.font('Helvetica-Bold').fontSize(9).fillColor(orange).text('Evidence points', { width: contentWidth });
+                    output.controlAssessment.slice(0, 3).forEach(item => {
+                        const text = typeof item === 'string' ? item : item.title || item.description || item.detail || '';
+                        if (!text) return;
+                        addPageIfNeeded(20);
+                        doc.circle(47, doc.y + 5, 2.2).fillColor('#17212b').fill();
+                        doc.font('Helvetica').fontSize(8).fillColor(slate).text(text, 56, doc.y, { width: contentWidth - 16, lineGap: 2 });
+                        doc.moveDown(0.55);
+                    });
+                    doc.moveDown(0.2);
+                }
             };
 
             // Header background and logos
@@ -3741,12 +3791,43 @@ function generateSunbirdReportPdf(report, reportId = null) {
             doc.y = 286;
             sectionTitle('Report summary');
             const analysis = report.analysis || buildDeterministicReportAnalysis(report);
-            doc.font('Helvetica').fontSize(10).fillColor(navy).text(analysis.executiveSummary || '', { lineGap: 3 });
+            const summaryBoxTop = doc.y;
+            const summaryBoxHeight = 120;
+            doc.roundedRect(40, summaryBoxTop, contentWidth, summaryBoxHeight, 10).fill('#f8fafc').strokeColor('#e1e6ea').stroke();
+            const leftWidth = Math.floor(contentWidth * 0.64);
+            const rightWidth = contentWidth - leftWidth - 16;
+            doc.font('Helvetica-Bold').fontSize(10).fillColor(navy).text('Executive summary', 48, summaryBoxTop + 12, { width: leftWidth - 16 });
+            doc.font('Helvetica').fontSize(9).fillColor(slate).text(analysis.executiveSummary || 'No executive summary is available.', 48, summaryBoxTop + 28, { width: leftWidth - 16, lineGap: 3 });
+            const metricsX = 48 + leftWidth;
+            doc.font('Helvetica-Bold').fontSize(10).fillColor(navy).text('Quick overview', metricsX, summaryBoxTop + 12, { width: rightWidth });
+            const quickMetrics = [
+                { label: 'Health score', value: `${report.summary.healthScore}%` },
+                { label: 'Failures', value: `${report.summary.failures}` },
+                { label: 'Successes', value: `${report.summary.successes}` },
+                { label: 'Events reviewed', value: `${report.summary.totalEvents}` }
+            ];
+            quickMetrics.forEach((metric, index) => {
+                const metricY = summaryBoxTop + 30 + index * 20;
+                doc.font('Helvetica-Bold').fontSize(11).fillColor(orange).text(metric.value, metricsX, metricY, { width: rightWidth });
+                doc.font('Helvetica').fontSize(8).fillColor(slate).text(metric.label, metricsX, metricY + 12, { width: rightWidth });
+            });
+            doc.y = summaryBoxTop + summaryBoxHeight + 16;
             if (report.domainInsights?.available) {
+                const domainCount = Array.isArray(report.domainInsights.domains) ? report.domainInsights.domains.length : 0;
+                const phaseText = typeof report.domainInsights.reportingPhase === 'string'
+                    ? report.domainInsights.reportingPhase
+                    : 'current reporting phase';
+                sectionTitle('Stored intelligence summary');
+                doc.font('Helvetica').fontSize(9).fillColor(slate)
+                    .text(`The report includes business-focused intelligence for ${domainCount} domains in the ${phaseText}.`, { width: contentWidth, lineGap: 3 });
                 doc.moveDown(0.5);
-                doc.font('Helvetica').fontSize(8).fillColor(slate).text(`Latest stored domain summaries include ${report.domainInsights.domains.length} domains across the current reporting phase.`, { lineGap: 2 });
+                sectionTitle('Domain findings');
+                report.domainInsights.domains.forEach(domain => renderDomainSummary(domain));
+            } else {
+                doc.moveDown(0.5);
+                sectionTitle('Stored intelligence summary');
+                doc.font('Helvetica').fontSize(9).fillColor(slate).text('No stored domain intelligence was available for this report. The document is based on the latest dashboard evidence and metrics.', { width: contentWidth, lineGap: 3 });
             }
-            doc.moveDown(0.5);
             sectionTitle('Summary metrics');
             const domainScoreEntries = Object.entries(report.domainScores || {}).filter(([, score]) => score != null);
             domainScoreEntries.forEach(([domain, score], index) => {
@@ -3790,55 +3871,6 @@ function generateSunbirdReportPdf(report, reportId = null) {
 
             sectionTitle('Recommended actions');
             bulletList(analysis.recommendations || report.recommendations, orange);
-
-            if (report.domainInsights?.available) {
-                sectionTitle('Stored intelligence summary');
-                const intelSummary = report.domainInsights;
-                doc.font('Helvetica').fontSize(9).fillColor(slate)
-                    .text(`Stored intelligence run: ${intelSummary.latestRunId || 'latest available'}`, { lineGap: 3 });
-                doc.text(`Reporting phase: ${intelSummary.reportingPhase || 'current'}`, { lineGap: 3 });
-                doc.text(`Domains available: ${Array.isArray(intelSummary.domains) ? intelSummary.domains.length : 0}`, { lineGap: 3 });
-                doc.moveDown(0.5);
-                sectionTitle('Domain findings');
-                const intelligenceDomains = report.domainInsights.domains;
-                intelligenceDomains.forEach(domain => {
-                    addPageIfNeeded(68);
-                    const domainStatus = String(domain.status || 'unknown').toUpperCase();
-                    const score = domain.intelligenceOutput?.healthScore ?? domain.intelligenceOutput?.score ?? null;
-                    const scoreColor = score >= 85 ? '#16a34a' : score >= 70 ? orange : '#dc2626';
-                    doc.font('Helvetica-Bold').fontSize(10).fillColor(navy).text(domain.domainName || domain.domainKey, 40, doc.y, { width: contentWidth });
-                    doc.font('Helvetica').fontSize(8).fillColor(slate).text(`Status: ${domainStatus}${score != null ? ` • Health score: ${clampReportScore(score)}%` : ''}`, { lineGap: 2 });
-                    if (score != null) {
-                        doc.roundedRect(40, doc.y + 8, contentWidth, 10, 5).fill('#e1e6ea');
-                        doc.roundedRect(40, doc.y + 8, clampReportScore(score) / 100 * contentWidth, 10, 5).fill(scoreColor);
-                        doc.y += 18;
-                    } else {
-                        doc.y += 8;
-                    }
-                    const topRisks = Array.isArray(domain.intelligenceOutput?.risks) ? domain.intelligenceOutput.risks.slice(0, 3).map(risk => risk?.title || risk?.name || risk?.detail).filter(Boolean) : [];
-                    const topRecs = Array.isArray(domain.intelligenceOutput?.recommendations) ? domain.intelligenceOutput.recommendations.slice(0, 3).map(rec => rec?.title || rec?.name || rec?.detail).filter(Boolean) : [];
-                    const evidenceRows = Array.isArray(domain.intelligenceOutput?.controlAssessment) ? domain.intelligenceOutput.controlAssessment.slice(0, 2).map(item => item.title || item.name || item.description).filter(Boolean) : [];
-                    if (topRisks.length) {
-                        doc.font('Helvetica-Bold').fontSize(8).fillColor(orange).text('Top risks', { width: contentWidth });
-                        doc.font('Helvetica').fontSize(8).fillColor(slate).list(topRisks, 40, doc.y, { bulletRadius: 1.5, textIndent: 10, lineGap: 2 });
-                        doc.moveDown(0.2);
-                    }
-                    if (topRecs.length) {
-                        doc.font('Helvetica-Bold').fontSize(8).fillColor(orange).text('Top recommendations', { width: contentWidth });
-                        doc.font('Helvetica').fontSize(8).fillColor(slate).list(topRecs, 40, doc.y, { bulletRadius: 1.5, textIndent: 10, lineGap: 2 });
-                        doc.moveDown(0.2);
-                    }
-                    if (evidenceRows.length) {
-                        doc.font('Helvetica-Bold').fontSize(8).fillColor(orange).text('Evidence highlights', { width: contentWidth });
-                        doc.font('Helvetica').fontSize(8).fillColor(slate).list(evidenceRows, 40, doc.y, { bulletRadius: 1.5, textIndent: 10, lineGap: 2 });
-                        doc.moveDown(0.2);
-                    }
-                    doc.moveDown(0.4);
-                });
-            } else {
-                sectionTitle('Domain findings');
-                doc.font('Helvetica').fontSize(9).fillColor(slate).text('No stored domain intelligence was available for this report. The document is based on the latest dashboard evidence and metrics.', { width: contentWidth, lineGap: 3 });
-            }
 
             sectionTitle('Daily report breakdown');
             if (!Array.isArray(report.dailyReports) || !report.dailyReports.length) {
