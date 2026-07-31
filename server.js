@@ -3752,23 +3752,49 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 if (value == null) return fallback;
                 if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value).replace(/\s+/g, ' ').trim() || fallback;
                 if (Array.isArray(value)) return value.map(item => cleanText(item)).filter(Boolean).join('; ') || fallback;
-                const selected = value.title || value.name || value.summary || value.detail || value.description || value.message || value.findings || value.value || value.email || value.userPrincipalName;
+                const selected = value.title || value.name || value.displayName || value.summary || value.detail || value.description || value.message || value.findings || value.value || value.email || value.userPrincipalName || value.id;
                 return cleanText(selected, fallback);
             };
-            const shortText = (value, max = 210) => {
-                const text = cleanText(value);
-                return text.length > max ? `${text.slice(0, max - 3)}...` : text;
+            const recordText = value => {
+                if (value == null) return '';
+                if (typeof value !== 'object' || Array.isArray(value)) return cleanText(value);
+                const fields = [
+                    ['User', value.displayName || value.name || value.user || value.userPrincipalName || value.email],
+                    ['Device', value.deviceName || value.device || value.assetName],
+                    ['Finding', value.title || value.finding || value.risk || value.description || value.detail || value.message],
+                    ['Status', value.status || value.state || value.severity],
+                    ['Evidence', value.evidenceSummary || value.evidence || value.source || value.sourceMetric],
+                    ['Value', value.value || value.count || value.metricValue]
+                ].filter(([, field]) => field != null && cleanText(field));
+                const text = fields.map(([label, field]) => `${label}: ${cleanText(field)}`).join(' | ');
+                if (text) return text;
+                return Object.entries(value)
+                    .filter(([, field]) => field != null && (typeof field === 'string' || typeof field === 'number' || typeof field === 'boolean'))
+                    .slice(0, 12)
+                    .map(([key, field]) => `${key.replace(/([A-Z])/g, ' $1')}: ${cleanText(field)}`)
+                    .join(' | ') || cleanText(value);
             };
-            const asItems = (output, keys, limit = 6) => {
+            const asItems = (output, keys, limit = 1000) => {
                 const items = [];
                 keys.forEach(key => {
                     const value = output?.[key];
                     if (Array.isArray(value)) items.push(...value);
                     else if (value != null) items.push(value);
                 });
-                return items.map(item => cleanText(item)).filter(Boolean).filter((item, index, all) => all.indexOf(item) === index).slice(0, limit);
+                return items.map(item => recordText(item)).filter(Boolean).filter((item, index, all) => all.indexOf(item) === index).slice(0, limit);
+            };            const riskForDomain = domain => {
+                const output = domain.intelligenceOutput || domain.output || {};
+                const score = output.riskScore ?? output.scoreSummary?.riskScore ?? domain.riskScore;
+                return Number.isFinite(Number(score)) ? clampReportScore(score) : null;
             };
-            const scoreForDomain = domain => {
+            const tableItemsForDomain = (domain, tableNames) => {
+                const tables = report.domainInsights?.tables || {};
+                return tableNames.flatMap(tableName => Array.isArray(tables[tableName]) ? tables[tableName] : [])
+                    .filter(row => String(row.domainKey || row.DomainKey || '').toLowerCase() === String(domain.domainKey || '').toLowerCase())
+                    .map(row => recordText(row))
+                    .filter(Boolean);
+            };
+            const uniqueItems = (...groups) => Array.from(new Set(groups.flat().filter(Boolean)));            const scoreForDomain = domain => {
                 const output = domain.intelligenceOutput || domain.output || {};
                 const score = output.healthScore ?? output.score ?? output.scoreSummary?.healthScore ?? domain.healthScore ?? domain.score;
                 return Number.isFinite(Number(score)) ? clampReportScore(score) : null;
@@ -3834,38 +3860,60 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 doc.font('Helvetica-Bold').fontSize(8.5).fillColor(orange).text(title, left + 12, doc.y, { width: contentWidth - 24 });
                 doc.y += 12;
                 items.forEach((item, index) => {
-                    addPageIfNeeded(24);
+                    doc.font('Helvetica').fontSize(7.8);
+                    const rowHeight = Math.max(20, doc.heightOfString(item, { width: contentWidth - 42, lineGap: 1 }) + 7);
+                    addPageIfNeeded(rowHeight + 3);
                     const rowY = doc.y;
-                    if (index % 2 === 0) doc.rect(left + 8, rowY - 2, contentWidth - 16, 19).fill('#f8fafc');
+                    if (index % 2 === 0) doc.rect(left + 8, rowY - 2, contentWidth - 16, rowHeight).fill('#f8fafc');
                     doc.circle(left + 16, rowY + 5, 1.5).fillColor(navy).fill();
-                    doc.font('Helvetica').fontSize(7.8).fillColor(slate).text(shortText(item, 500), left + 24, rowY, { width: contentWidth - 36, height: 17, lineGap: 1 });
-                    doc.y = rowY + 20;
+                    doc.font('Helvetica').fontSize(7.8).fillColor(slate).text(item, left + 24, rowY, { width: contentWidth - 36, lineGap: 1 });
+                    doc.y = rowY + rowHeight + 1;
                 });
                 doc.y += 4;
-            };
-            const renderDomain = domain => {
+            };            const renderDomain = domain => {
                 const output = domain.intelligenceOutput || domain.output || {};
                 const score = scoreForDomain(domain);
-                const findings = asItems(output, ['keyFindings', 'findings', 'topFindings', 'risks', 'riskRegister'], 1000);
-                const recommendations = asItems(output, ['recommendations', 'priorityRecommendations', 'actions', 'nextActions'], 1000);
-                const affected = asItems(output, ['affectedUsers', 'usersMissingMfa', 'usersWithoutMfa', 'privilegedUsers', 'affectedEntities', 'entities'], 1000);
-                const evidence = asItems(output, ['evidenceRows', 'evidence', 'controlAssessment', 'evidenceSummary', 'sourceMetrics', 'scoreJustification'], 1000);
+                const risk = riskForDomain(domain);
+                const findings = uniqueItems(
+                    asItems(output, ['keyFindings', 'findings', 'topFindings', 'risks', 'riskRegister', 'attentionItems', 'securityFindings']),
+                    tableItemsForDomain(domain, ['findings', 'risks', 'risk_register'])
+                );
+                const recommendations = uniqueItems(
+                    asItems(output, ['recommendations', 'priorityRecommendations', 'actions', 'nextActions', 'remediationActions', 'remediationPlan', 'actionPlan']),
+                    tableItemsForDomain(domain, ['recommendations', 'management_actions'])
+                );
+                const affected = uniqueItems(
+                    asItems(output, ['affectedUsers', 'usersMissingMfa', 'usersWithoutMfa', 'missingMfaUsers', 'privilegedUsers', 'affectedEntities', 'entities', 'affectedDevices']),
+                    tableItemsForDomain(domain, ['affected_entities', 'entities'])
+                );
+                const evidence = uniqueItems(
+                    asItems(output, ['evidenceRows', 'evidence', 'evidenceItems', 'evidenceCatalog', 'sourceEvidence', 'controlAssessment', 'evidenceSummary', 'sourceMetrics', 'currentMetrics', 'scoreJustification']),
+                    tableItemsForDomain(domain, ['evidence_rows', 'evidence', 'source_metrics'])
+                );
                 const summary = cleanText(output.domainExecutiveSummary || output.executiveSummary || output.summary || output.currentPosture || domain.domainExecutiveSummary, 'No stored executive summary is available.');
                 const impact = cleanText(output.businessImpact || output.businessImpactSummary || output.technicalSummary);
                 sectionTitle(labelForDomain(domain));
-                addPageIfNeeded(66);
+                doc.font('Helvetica').fontSize(8.3);
+                const summaryHeight = doc.heightOfString(summary, { width: contentWidth - 24, lineGap: 2 });
+                addPageIfNeeded(62 + summaryHeight);
                 const bandY = doc.y;
-                doc.roundedRect(left, bandY, contentWidth, 56, 7).fill('#f8fafc').strokeColor('#e1e6ea').stroke();
-                doc.font('Helvetica-Bold').fontSize(8).fillColor(navy).text(`Stored status: ${cleanText(domain.status || domain.domainStatus, 'available')}`, left + 12, bandY + 10, { width: 190 });
+                doc.roundedRect(left, bandY, contentWidth, 42, 7).fill('#f8fafc').strokeColor('#e1e6ea').stroke();
                 if (score != null) {
-                    doc.font('Helvetica-Bold').fontSize(8).fillColor(navy).text(`${score}% HEALTH`, left + 315, bandY + 10, { width: 180, align: 'right' });
-                    drawBar(left + 315, bandY + 26, 180, score);
+                    doc.font('Helvetica-Bold').fontSize(8).fillColor(navy).text(`HEALTH ${score}%`, left + 12, bandY + 10, { width: 100 });
+                    drawBar(left + 108, bandY + 12, 128, score);
                 }
-                doc.font('Helvetica').fontSize(7.8).fillColor(slate).text(shortText(summary, 620), left + 12, bandY + 25, { width: contentWidth - 24, height: 22, lineGap: 1 });
-                doc.y = bandY + 66;
+                if (risk != null) {
+                    const riskTone = risk >= 70 ? red : risk >= 40 ? orange : green;
+                    doc.font('Helvetica-Bold').fontSize(8).fillColor(navy).text(`RISK ${risk}%`, left + 270, bandY + 10, { width: 90 });
+                    doc.roundedRect(left + 348, bandY + 12, 148, 7, 3.5).fill('#e1e6ea');
+                    doc.roundedRect(left + 348, bandY + 12, Math.max(3, 148 * risk / 100), 7, 3.5).fill(riskTone);
+                }
+                doc.font('Helvetica-Bold').fontSize(8.5).fillColor(navy).text('Domain executive summary', left + 12, bandY + 53, { width: contentWidth - 24 });
+                doc.font('Helvetica').fontSize(8.3).fillColor(slate).text(summary, left + 12, bandY + 66, { width: contentWidth - 24, lineGap: 2 });
+                doc.y = bandY + 66 + summaryHeight + 8;
                 if (impact) {
                     doc.font('Helvetica-Bold').fontSize(8).fillColor(navy).text('Business impact', left + 12, doc.y, { width: contentWidth - 24 });
-                    doc.font('Helvetica').fontSize(7.8).fillColor(slate).text(shortText(impact, 620), left + 12, doc.y + 10, { width: contentWidth - 24, lineGap: 1 });
+                    doc.font('Helvetica').fontSize(7.8).fillColor(slate).text(impact, left + 12, doc.y + 10, { width: contentWidth - 24, lineGap: 1 });
                     doc.moveDown(0.5);
                 }
                 drawFlowList('Key findings', findings);
@@ -3873,16 +3921,10 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 drawFlowList('Evidence rows and source metrics', evidence);
                 drawFlowList('Recommended actions', recommendations);
                 if (!findings.length && !affected.length && !evidence.length && !recommendations.length) {
-                    doc.font('Helvetica').fontSize(8).fillColor(slate).text('This stored domain output contains its executive assessment, but no itemised findings or evidence rows.', left + 12, doc.y, { width: contentWidth - 24 });
+                    doc.font('Helvetica').fontSize(8).fillColor(slate).text('This domain has a saved assessment but no itemised findings, entities, evidence, or actions in the latest output.', left + 12, doc.y, { width: contentWidth - 24 });
                     doc.moveDown(0.5);
                 }
-                doc.font('Helvetica').fontSize(7).fillColor('#7d8790').text(
-                    `Evidence source: ${cleanText(output.sourceHealth?.status || output.sourceLineage?.source || output.batchInfo?.jsonStatus || domain.status, 'stored domain intelligence')}`,
-                    left + 12,
-                    doc.y,
-                    { width: contentWidth - 24, height: 9 }
-                );
-                doc.moveDown(0.9);
+                doc.moveDown(0.7);
             };
             doc.rect(0, 0, pageWidth, 118).fill(navy);
             if (fs.existsSync(sunbirdLogo)) doc.image(sunbirdLogo, left, 25, { fit: [150, 42] });
@@ -3900,18 +3942,41 @@ function generateSunbirdReportPdf(report, reportId = null) {
 
             doc.y = 218;
             sectionTitle('Executive overview');
+            const executiveSummary = cleanText(analysis.executiveSummary, 'No executive summary is available.');
+            doc.font('Helvetica').fontSize(8.7);
+            const executiveHeight = doc.heightOfString(executiveSummary, { width: contentWidth - 24, lineGap: 2 });
+            const overviewHeight = executiveHeight + 40;
+            addPageIfNeeded(overviewHeight + 12);
             const overviewY = doc.y;
-            const overviewHeight = 108;
             doc.roundedRect(left, overviewY, contentWidth, overviewHeight, 8).fill('#f8fafc').strokeColor('#e1e6ea').stroke();
             doc.font('Helvetica-Bold').fontSize(9.5).fillColor(navy).text('Executive summary', left + 12, overviewY + 12, { width: contentWidth - 24 });
-            doc.font('Helvetica').fontSize(8.5).fillColor(slate).text(shortText(analysis.executiveSummary, 560), left + 12, overviewY + 28, { width: contentWidth - 24, height: 48, lineGap: 2 });
-            const enterpriseSummary = cleanText(report.finalSynthesis?.finalSynthesis?.synthesisOutput?.enterpriseExecutiveSummary?.summary);
-            if (enterpriseSummary && enterpriseSummary !== cleanText(analysis.executiveSummary)) {
-                doc.font('Helvetica').fontSize(7.4).fillColor(slate).text(shortText(enterpriseSummary, 650), left + 12, overviewY + 78, { width: contentWidth - 24, height: 20, lineGap: 1 });
-            }
+            doc.font('Helvetica').fontSize(8.7).fillColor(slate).text(executiveSummary, left + 12, overviewY + 28, { width: contentWidth - 24, lineGap: 2 });
             doc.y = overviewY + overviewHeight + 14;
 
             const domainRows = Array.isArray(report.domainInsights?.domains) ? report.domainInsights.domains : [];
+            if (domainRows.length) {
+                sectionTitle('Enterprise domain scorecard');
+                doc.font('Helvetica').fontSize(7.8).fillColor(slate).text('Health is better when higher. Risk requires attention when higher.', left, doc.y, { width: contentWidth });
+                doc.y += 14;
+                domainRows.forEach(domain => {
+                    const health = scoreForDomain(domain);
+                    const risk = riskForDomain(domain);
+                    addPageIfNeeded(34);
+                    const rowY = doc.y;
+                    const label = labelForDomain(domain);
+                    doc.font('Helvetica-Bold').fontSize(7.5).fillColor(navy).text(label, left, rowY, { width: 142, height: 20 });
+                    doc.font('Helvetica').fontSize(7).fillColor(slate).text('Health', left + 148, rowY, { width: 35 });
+                    drawBar(left + 184, rowY + 2, 132, health == null ? 0 : health);
+                    doc.font('Helvetica-Bold').fontSize(7).fillColor(navy).text(health == null ? 'N/A' : `${health}%`, left + 320, rowY - 1, { width: 35, align: 'right' });
+                    doc.font('Helvetica').fontSize(7).fillColor(slate).text('Risk', left + 365, rowY, { width: 25 });
+                    const riskTone = risk == null ? '#e1e6ea' : risk >= 70 ? red : risk >= 40 ? orange : green;
+                    doc.roundedRect(left + 392, rowY + 2, 105, 7, 3.5).fill('#e1e6ea');
+                    if (risk != null) doc.roundedRect(left + 392, rowY + 2, Math.max(3, 105 * risk / 100), 7, 3.5).fill(riskTone);
+                    doc.font('Helvetica-Bold').fontSize(7).fillColor(navy).text(risk == null ? 'N/A' : `${risk}%`, left + 500, rowY - 1, { width: 35, align: 'right' });
+                    doc.y = rowY + 24;
+                });
+                doc.y += 8;
+            }
             if (domainRows.length) {
                 sectionTitle('Domain intelligence and evidence');
                 doc.font('Helvetica').fontSize(8.2).fillColor(slate).text('Each domain below is drawn from the latest saved intelligence output and keeps findings, affected entities, evidence, and actions together.', left, doc.y, { width: contentWidth, lineGap: 2 });
@@ -3923,13 +3988,12 @@ function generateSunbirdReportPdf(report, reportId = null) {
             }
 
             const enterpriseOutput = report.finalSynthesis?.finalSynthesis?.synthesisOutput || {};
-            const enterpriseActions = asItems(enterpriseOutput.managementReport || {}, ['managementActions', 'actions'], 6);
-            const riskRegister = asItems(enterpriseOutput, ['riskRegister', 'recommendations', 'trendAnalysis'], 6);
+            const enterpriseActions = asItems(enterpriseOutput.managementReport || {}, ['managementActions', 'actions']);
+            const riskRegister = asItems(enterpriseOutput, ['riskRegister', 'recommendations', 'trendAnalysis']);
             if (enterpriseActions.length || riskRegister.length) {
                 sectionTitle('Enterprise actions');
-                drawList('Management actions', enterpriseActions, left, doc.y, (contentWidth - 16) / 2, 5);
-                drawList('Enterprise risks and trends', riskRegister, left + (contentWidth + 16) / 2, doc.y, (contentWidth - 16) / 2, 5);
-                doc.y += 114;
+                drawFlowList('Management actions', enterpriseActions);
+                drawFlowList('Enterprise risks and trends', riskRegister);
             }
 
             const pageRange = doc.bufferedPageRange();
