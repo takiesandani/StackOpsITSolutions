@@ -3890,6 +3890,9 @@ function generateSunbirdReportPdf(report, reportId = null) {
                     asItems(output, ['evidenceRows', 'evidence', 'evidenceItems', 'evidenceCatalog', 'sourceEvidence', 'controlAssessment', 'evidenceSummary', 'sourceMetrics', 'currentMetrics', 'scoreJustification']),
                     tableItemsForDomain(domain, ['evidence_rows', 'evidence', 'source_metrics'])
                 );
+                if (!findings.length && !affected.length && !evidence.length && !recommendations.length) {
+                    return;
+                }
                 const summary = cleanText(output.domainExecutiveSummary || output.executiveSummary || output.summary || output.currentPosture || domain.domainExecutiveSummary, 'No stored executive summary is available.');
                 const impact = cleanText(output.businessImpact || output.businessImpactSummary || output.technicalSummary);
                 sectionTitle(labelForDomain(domain));
@@ -3916,14 +3919,10 @@ function generateSunbirdReportPdf(report, reportId = null) {
                     doc.font('Helvetica').fontSize(7.8).fillColor(slate).text(impact, left + 12, doc.y + 10, { width: contentWidth - 24, lineGap: 1 });
                     doc.moveDown(0.5);
                 }
-                drawFlowList('Key findings', findings);
-                drawFlowList('Affected users and entities', affected);
-                drawFlowList('Evidence rows and source metrics', evidence);
-                drawFlowList('Recommended actions', recommendations);
-                if (!findings.length && !affected.length && !evidence.length && !recommendations.length) {
-                    doc.font('Helvetica').fontSize(8).fillColor(slate).text('This domain has a saved assessment but no itemised findings, entities, evidence, or actions in the latest output.', left + 12, doc.y, { width: contentWidth - 24 });
-                    doc.moveDown(0.5);
-                }
+                if (findings.length) drawFlowList('Key findings', findings);
+                if (affected.length) drawFlowList('Affected entities', affected);
+                if (evidence.length) drawFlowList('Evidence rows and source metrics', evidence);
+                if (recommendations.length) drawFlowList('Recommended actions', recommendations);
                 doc.moveDown(0.7);
             };
             doc.rect(0, 0, pageWidth, 118).fill(navy);
@@ -3961,18 +3960,23 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 domainRows.forEach(domain => {
                     const health = scoreForDomain(domain);
                     const risk = riskForDomain(domain);
+                    if (health == null && risk == null) return;
                     addPageIfNeeded(34);
                     const rowY = doc.y;
                     const label = labelForDomain(domain);
                     doc.font('Helvetica-Bold').fontSize(7.5).fillColor(navy).text(label, left, rowY, { width: 142, height: 20 });
-                    doc.font('Helvetica').fontSize(7).fillColor(slate).text('Health', left + 148, rowY, { width: 35 });
-                    drawBar(left + 184, rowY + 2, 132, health == null ? 0 : health);
-                    doc.font('Helvetica-Bold').fontSize(7).fillColor(navy).text(health == null ? 'N/A' : `${health}%`, left + 320, rowY - 1, { width: 35, align: 'right' });
-                    doc.font('Helvetica').fontSize(7).fillColor(slate).text('Risk', left + 365, rowY, { width: 25 });
-                    const riskTone = risk == null ? '#e1e6ea' : risk >= 70 ? red : risk >= 40 ? orange : green;
-                    doc.roundedRect(left + 392, rowY + 2, 105, 7, 3.5).fill('#e1e6ea');
-                    if (risk != null) doc.roundedRect(left + 392, rowY + 2, Math.max(3, 105 * risk / 100), 7, 3.5).fill(riskTone);
-                    doc.font('Helvetica-Bold').fontSize(7).fillColor(navy).text(risk == null ? 'N/A' : `${risk}%`, left + 500, rowY - 1, { width: 35, align: 'right' });
+                    if (health != null) {
+                        doc.font('Helvetica').fontSize(7).fillColor(slate).text('Health', left + 148, rowY, { width: 35 });
+                        drawBar(left + 184, rowY + 2, 132, health);
+                        doc.font('Helvetica-Bold').fontSize(7).fillColor(navy).text(`${health}%`, left + 320, rowY - 1, { width: 35, align: 'right' });
+                    }
+                    if (risk != null) {
+                        doc.font('Helvetica').fontSize(7).fillColor(slate).text('Risk', left + 365, rowY, { width: 25 });
+                        const riskTone = risk >= 70 ? red : risk >= 40 ? orange : green;
+                        doc.roundedRect(left + 392, rowY + 2, 105, 7, 3.5).fill('#e1e6ea');
+                        doc.roundedRect(left + 392, rowY + 2, Math.max(3, 105 * risk / 100), 7, 3.5).fill(riskTone);
+                        doc.font('Helvetica-Bold').fontSize(7).fillColor(navy).text(`${risk}%`, left + 500, rowY - 1, { width: 35, align: 'right' });
+                    }
                     doc.y = rowY + 24;
                 });
                 doc.y += 8;
