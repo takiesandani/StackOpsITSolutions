@@ -14008,20 +14008,20 @@ function openSunbirdReportsDashboard() {
     loadSunbirdReportsDashboardData(false);
 }
 
-window.generateSunbirdReport = async function(range = sunbirdReportsRange, downloadWhenReady = true) {
+window.generateSunbirdReport = async function(range = sunbirdReportsRange, downloadWhenReady = true, includeAi = false) {
     const button = document.getElementById('sunbird-report-generate-btn');
     const original = button?.innerHTML;
     if (button) {
         button.disabled = true;
         button.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Building report';
     }
-    showPdfLoadingOverlay('Building your security report...');
+    showPdfLoadingOverlay(includeAi ? 'Building your intelligent security report...' : 'Building your security report...');
     try {
-        console.log(`[Reports] Starting on-demand ${range} report generation.`);
+        console.log(`[Reports] Starting on-demand ${range} report generation. AI included: ${includeAi}`);
         const response = await fetch('/api/sunbird/reports/generate', {
             method: 'POST',
             headers: getSunbirdReportHeaders(),
-            body: JSON.stringify({ range })
+            body: JSON.stringify({ range, includeAi })
         });
         const data = await response.json();
         if (!response.ok || !data.success) {
@@ -14030,7 +14030,7 @@ window.generateSunbirdReport = async function(range = sunbirdReportsRange, downl
         }
         console.log(`[Reports] Report #${data.report.id} generated and saved to history.`);
         cachedSunbirdReportsData = null;
-        showNotification(downloadWhenReady ? 'Report generated and downloading' : 'Report generated and saved', true);
+        showNotification(downloadWhenReady ? (includeAi ? 'Intelligent report generated and downloading' : 'Report generated and downloading') : 'Report generated and saved', true);
         if (downloadWhenReady) await window.downloadSunbirdReportPdf(data.report.id);
         if (document.getElementById('sunbird-reports-dashboard')) await loadSunbirdReportsDashboardData(true);
         if (isSunbirdBillingViewActive('reports')) await renderSunbirdReportsView(true);
@@ -14047,12 +14047,10 @@ window.generateSunbirdReport = async function(range = sunbirdReportsRange, downl
 
 // Shortcut handler for the new Get intelligent report button
 window.getIntelligentReport = async function() {
-    // Use the same flow but request AI-inclusive generation
     try {
         const range = sunbirdReportsRange || '30d';
-        // show a subtle UI cue
         showNotification('Requesting intelligent report — this may take a moment', true);
-        await window.generateSunbirdReport(range, true);
+        await window.generateSunbirdReport(range, true, true);
     } catch (err) {
         showNotification(err.message || 'Could not request intelligent report', false);
     }
