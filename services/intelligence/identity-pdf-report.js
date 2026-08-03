@@ -140,6 +140,56 @@ function buildIdentityEvidenceRows(items, columns) {
   });
 }
 
+function getEvidenceBucketKeyForFinding(title, findingType = '') {
+  const text = `${title || ''} ${findingType || ''}`.toLowerCase();
+  if (/missing mfa|mfa|multi[- ]factor|authentication/i.test(text)) return 'mfaMissingUsers';
+  if (/privileged|admin|global administrator|role/i.test(text)) return 'adminsWithoutMfa';
+  if (/unknown device|device/i.test(text)) return 'unknownDeviceUsers';
+  if (/external|guest/i.test(text)) return 'externalUsers';
+  if (/sign[- ]?in|signin|login|failed/i.test(text)) return 'failedSignInUsers';
+  if (/high risk|risk/i.test(text)) return 'highRiskUsers';
+  return null;
+}
+
+function filterEvidenceForFinding(finding, identityModel) {
+  const evidence = identityModel?.evidence || {};
+  const explicitItems = flattenIdentityValue(finding?.affectedEntities || finding?.evidenceRows || []);
+  const title = String(finding?.title || finding?.name || '').toLowerCase();
+  const findingType = String(finding?.findingType || '').toLowerCase();
+  const evidenceBucketKey = getEvidenceBucketKeyForFinding(title, findingType);
+
+  if (explicitItems.length) {
+    const filtered = explicitItems.filter(entity => {
+      const hasMfaIssue = /mfa|authentication/i.test(title) && (entity?.mfaEnabled === false || entity?.hasMfa === false || entity?.mfa === false);
+      const hasPrivilegedIssue = /(privileged|admin|global administrator|role)/i.test(title) && (entity?.roles?.length || entity?.roleAssignments?.length || entity?.roleNames?.length || /(admin|global|privileged|security|directory)/i.test(String(entity?.roles?.join(' ') || '')));
+      const hasUnknownDeviceIssue = /unknown device|device/i.test(title) && /unknown|no sign-in|n\/a/i.test(String(entity?.lastSignIn?.device || entity?.device || ''));
+      const hasExternalIssue = /external|guest/i.test(title) && Boolean(entity?.isExternal);
+      const hasSignInIssue = /sign[- ]?in|signin|login|failed/i.test(title) && /fail|unknown|no sign-in|n\/a/i.test(String(entity?.lastSignIn?.status || entity?.signIn?.status || entity?.status || ''));
+      const hasHighRiskIssue = /high risk|risk/i.test(title) && String(entity?.riskLevel || '').toUpperCase() === 'HIGH';
+      return hasMfaIssue || hasPrivilegedIssue || hasUnknownDeviceIssue || hasExternalIssue || hasSignInIssue || hasHighRiskIssue || !evidenceBucketKey;
+    });
+    if (filtered.length) return filtered;
+  }
+
+  if (evidenceBucketKey && Array.isArray(evidence[evidenceBucketKey]) && evidence[evidenceBucketKey].length) {
+    return flattenIdentityValue(evidence[evidenceBucketKey]);
+  }
+
+  return explicitItems;
+}
+
+function getFindingRecommendations(finding, output) {
+  const recommendations = [
+    ...(Array.isArray(finding?.recommendedActions) ? finding.recommendedActions : []),
+    ...(Array.isArray(finding?.recommendations) ? finding.recommendations : []),
+    ...(finding?.recommendation ? [finding.recommendation] : []),
+    ...(Array.isArray(output?.recommendations) ? output.recommendations.map(item => item?.title || item?.recommendation || item?.detail).filter(Boolean) : [])
+  ].filter(Boolean).map(item => normalizeIdentityText(item, ''))
+    .filter(Boolean);
+
+  return recommendations;
+}
+
 function buildProcessedIdentityFindings(identityModel, output) {
   const metrics = identityModel?.metrics || {};
   const evidence = identityModel?.evidence || {};
@@ -149,8 +199,8 @@ function buildProcessedIdentityFindings(identityModel, output) {
     findings.push({
       title: 'Missing MFA',
       severity: 'High',
-      businessImpact: 'Users without MFA are more exposed to credential theft and phishing-led account compromise.',
-      recommendations: ['Enforce MFA for all users.', 'Review registration gaps and remind affected users to enrol.'],
+      businessImpact: '',
+      recommendations: [],
       evidenceItems: evidence.mfaMissingUsers || [],
       findingType: 'missing-mfa'
     });
@@ -160,8 +210,8 @@ function buildProcessedIdentityFindings(identityModel, output) {
     findings.push({
       title: 'High Risk Users',
       severity: 'High',
-      businessImpact: 'High-risk accounts warrant immediate review because they can materially increase tenant exposure.',
-      recommendations: ['Review high-risk accounts and confirm their current access and sign-in posture.'],
+      businessImpact: '',
+      recommendations: [],
       evidenceItems: evidence.highRiskUsers || [],
       findingType: 'high-risk'
     });
@@ -171,8 +221,8 @@ function buildProcessedIdentityFindings(identityModel, output) {
     findings.push({
       title: 'Privileged Users Without MFA',
       severity: 'Critical',
-      businessImpact: 'Privileged accounts without MFA create an immediate path for administrative compromise.',
-      recommendations: ['Require phishing-resistant MFA for privileged accounts.', 'Remove unnecessary administrator access where it is no longer needed.'],
+      businessImpact: '',
+      recommendations: [],
       evidenceItems: evidence.adminsWithoutMfa || [],
       findingType: 'privileged'
     });
@@ -182,8 +232,8 @@ function buildProcessedIdentityFindings(identityModel, output) {
     findings.push({
       title: 'Unknown Devices',
       severity: 'Medium',
-      businessImpact: 'Unknown devices can indicate unmanaged access or weak device trust controls.',
-      recommendations: ['Review unknown devices and verify that they are approved for access.'],
+      businessImpact: '',
+      recommendations: [],
       evidenceItems: evidence.unknownDeviceUsers || [],
       findingType: 'unknown-device'
     });
@@ -193,8 +243,8 @@ function buildProcessedIdentityFindings(identityModel, output) {
     findings.push({
       title: 'Sign-In Issues',
       severity: 'Medium',
-      businessImpact: 'Repeated sign-in issues can point to account lockouts, failed authentication, or abnormal access behaviour.',
-      recommendations: ['Investigate failed sign-ins and reset or remediate affected accounts as needed.'],
+      businessImpact: '',
+      recommendations: [],
       evidenceItems: evidence.failedSignInUsers || [],
       findingType: 'sign-in'
     });
@@ -207,45 +257,27 @@ function buildIdentityPdfViewModel(report) {
   const output = report?.intelligenceOutput || report?.output || {};
   const summary = output.summary || {};
   const identityModel = report?.identityModel || report?.processedIdentityModel || null;
+  const structuredFindings = flattenIdentityValue(output.keyFindings || output.findings || []);
   const processedFindings = identityModel ? buildProcessedIdentityFindings(identityModel, output) : [];
-  const findings = processedFindings.length
-    ? processedFindings.map(finding => {
-        const evidenceItems = flattenIdentityValue(finding.evidenceItems || []);
-        const columns = getIdentityEvidenceColumns(evidenceItems[0] || finding, finding.findingType || 'general');
-        return {
-          title: normalizeIdentityText(finding.title, 'Finding'),
-          severity: normalizeIdentityText(finding.severity, 'Medium'),
-          businessImpact: normalizeIdentityText(finding.businessImpact, 'Business impact is included in the stored intelligence output.'),
-          recommendations: (Array.isArray(finding.recommendations) ? finding.recommendations : []).map(item => normalizeIdentityText(item, 'Review the recommended action.')),
-          evidence: {
-            columns,
-            rows: buildIdentityEvidenceRows(evidenceItems, columns),
-            totalCount: evidenceItems.length,
-            displayedCount: Math.min(evidenceItems.length, 8)
-          }
-        };
-      })
-    : flattenIdentityValue(output.keyFindings || output.findings || []).map(finding => {
-        const evidenceItems = flattenIdentityValue(finding?.affectedEntities || finding?.evidenceRows || []);
-        const columns = getIdentityEvidenceColumns(evidenceItems[0] || finding, 'general');
-        return {
-          title: normalizeIdentityText(finding?.title || finding?.name, 'Finding'),
-          severity: normalizeIdentityText(finding?.severity || finding?.riskLevel || finding?.priority, 'Medium'),
-          businessImpact: normalizeIdentityText(finding?.businessImpact || finding?.businessReason || output.businessImpact, 'Business impact is included in the stored intelligence output.'),
-          recommendations: [
-            ...(Array.isArray(finding?.recommendedActions) ? finding.recommendedActions : []),
-            ...(Array.isArray(finding?.recommendations) ? finding.recommendations : []),
-            ...(finding?.recommendation ? [finding.recommendation] : []),
-            ...(Array.isArray(output.recommendations) ? output.recommendations.map(item => item?.title || item?.recommendation || item?.detail).filter(Boolean) : [])
-          ].filter(Boolean).map(item => normalizeIdentityText(item, 'Review the recommended action.')),
-          evidence: {
-            columns,
-            rows: buildIdentityEvidenceRows(evidenceItems, columns),
-            totalCount: evidenceItems.length,
-            displayedCount: Math.min(evidenceItems.length, 8)
-          }
-        };
-      });
+  const findings = (structuredFindings.length ? structuredFindings : processedFindings).map(finding => {
+    const evidenceItems = filterEvidenceForFinding(finding, identityModel);
+    const columns = getIdentityEvidenceColumns(evidenceItems[0] || finding, finding?.findingType || 'general');
+    const title = normalizeIdentityText(finding?.title || finding?.name || '', 'Finding');
+    const businessImpact = normalizeIdentityText(finding?.businessImpact || finding?.businessReason || '', '');
+    const recommendations = getFindingRecommendations(finding, output);
+    return {
+      title,
+      severity: normalizeIdentityText(finding?.severity || finding?.riskLevel || finding?.priority || '', 'Medium'),
+      businessImpact,
+      recommendations,
+      evidence: {
+        columns,
+        rows: buildIdentityEvidenceRows(evidenceItems, columns),
+        totalCount: evidenceItems.length,
+        displayedCount: Math.min(evidenceItems.length, 8)
+      }
+    };
+  });
 
   const portalSummary = identityModel?.summary || {};
   const metrics = identityModel?.metrics || {};
@@ -263,8 +295,8 @@ function buildIdentityPdfViewModel(report) {
     domainName: report?.domainName || 'Identity Protection',
     summary: {
       title: portalSummary.title || report?.domainName || 'Identity Protection',
-      executiveSummary: normalizeIdentityText(portalSummary.executiveSummary || output.domainExecutiveSummary || output.executiveSummary || output.summary || output.currentPosture, 'No executive summary is available.'),
-      businessImpact: normalizeIdentityText(output.businessImpact || output.businessImpactSummary || output.technicalSummary, 'Business impact is included in the stored intelligence output.'),
+      executiveSummary: normalizeIdentityText(output.domainExecutiveSummary || output.executiveSummary || portalSummary.executiveSummary || output.summary || output.currentPosture, 'No executive summary is available.'),
+      businessImpact: normalizeIdentityText(output.businessImpact || output.businessImpactSummary || output.technicalSummary, ''),
       metrics: effectiveMetrics
     },
     findings

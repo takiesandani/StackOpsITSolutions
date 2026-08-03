@@ -94,3 +94,51 @@ test('buildIdentityPdfViewModel reuses processed identity dashboard metrics when
   assert.ok(viewModel.findings.some(finding => finding.title.includes('Missing MFA')));
   assert.ok(viewModel.findings.some(finding => finding.title.includes('High Risk')));
 });
+
+test('buildIdentityPdfViewModel filters evidence per finding and uses domain-level recommendations and business impact', () => {
+  const viewModel = buildIdentityPdfViewModel({
+    domainKey: 'identity',
+    domainName: 'Identity Protection',
+    intelligenceOutput: {
+      domainExecutiveSummary: 'Privileged accounts and inactive sign-ins need urgent remediation.',
+      businessImpact: 'The organisation faces increased risk of credential misuse and operational disruption.',
+      recommendations: [{ title: 'Enforce phishing-resistant MFA for all privileged accounts.' }],
+      keyFindings: [{
+        title: 'Missing MFA',
+        severity: 'High',
+        businessImpact: 'Unprotected users increase the likelihood of account takeover.',
+        affectedEntities: [{ displayName: 'Alicia Jones', userPrincipalName: 'alicia@company.com', mfaEnabled: false }],
+        evidenceRows: [{ displayName: 'Alicia Jones', userPrincipalName: 'alicia@company.com', mfaEnabled: false }]
+      }]
+    },
+    identityModel: {
+      metrics: {
+        totalUsers: 100,
+        mfaCoverage: 79,
+        highRiskUsers: 12,
+        privilegedUsersWithoutMFA: 4,
+        missingMfaUsers: 20,
+        unknownDevices: 47,
+        signInIssues: 58
+      },
+      evidence: {
+        mfaMissingUsers: [{ displayName: 'Nina Grey', userPrincipalName: 'nina@company.com', mfaEnabled: false }],
+        highRiskUsers: [{ displayName: 'Owen Price', userPrincipalName: 'owen@company.com', riskLevel: 'High' }],
+        unknownDeviceUsers: [{ displayName: 'Mina Park', userPrincipalName: 'mina@company.com', lastSignIn: { device: 'Unknown' } }],
+        failedSignInUsers: [{ displayName: 'Jules Ford', userPrincipalName: 'jules@company.com', lastSignIn: { status: 'Failed' } }],
+        privilegedUsers: [{ displayName: 'Riley Chen', userPrincipalName: 'riley@company.com', roles: ['Global Administrator'] }]
+      },
+      summary: {
+        title: 'Identity Protection',
+        executiveSummary: 'Identity hygiene remains a priority for privileged and dormant accounts.'
+      }
+    }
+  });
+
+  assert.equal(viewModel.summary.executiveSummary, 'Privileged accounts and inactive sign-ins need urgent remediation.');
+  assert.equal(viewModel.summary.businessImpact, 'The organisation faces increased risk of credential misuse and operational disruption.');
+  assert.equal(viewModel.findings[0].businessImpact, 'Unprotected users increase the likelihood of account takeover.');
+  assert.ok(viewModel.findings[0].recommendations.includes('Enforce phishing-resistant MFA for all privileged accounts.'));
+  assert.equal(viewModel.findings[0].evidence.rows[0]['Name'], 'Alicia Jones');
+  assert.equal(viewModel.findings[0].evidence.rows.length, 1);
+});
