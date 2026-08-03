@@ -57,5 +57,40 @@ test('buildIdentityPdfViewModel surfaces executive identity metrics and evidence
   assert.equal(viewModel.findings[0].severity, 'critical');
   assert.ok(viewModel.findings[0].recommendations.includes('Enable MFA immediately.'));
   assert.equal(viewModel.findings[0].evidence.rows.length, 1);
-  assert.deepEqual(viewModel.findings[0].evidence.columns, ['Name', 'Email', 'Role(s)', 'MFA Enabled', 'Risk Level', 'Account Status', 'Last Sign In', 'Days Since Last Sign In', 'Device', 'Location']);
+  assert.deepEqual(viewModel.findings[0].evidence.columns, ['Name', 'Email', 'MFA', 'Risk', 'Last Sign In', 'Days Inactive', 'Device', 'Location']);
+});
+
+test('buildIdentityPdfViewModel reuses processed identity dashboard metrics when provided', () => {
+  const viewModel = buildIdentityPdfViewModel({
+    domainKey: 'identity',
+    domainName: 'Identity Protection',
+    identityModel: {
+      metrics: {
+        totalUsers: 120,
+        mfaCoverage: 79,
+        highRiskUsers: 12,
+        privilegedUsersWithoutMFA: 4,
+        missingMfaUsers: 25,
+        unknownDevices: 8,
+        signInIssues: 10
+      },
+      evidence: {
+        mfaMissingUsers: [{ displayName: 'Nina Grey', userPrincipalName: 'nina@company.com', mfaEnabled: false, riskLevel: 'High' }],
+        highRiskUsers: [{ displayName: 'Owen Price', userPrincipalName: 'owen@company.com', mfaEnabled: false, riskLevel: 'High' }],
+        adminsWithoutMfa: [{ displayName: 'Riley Chen', userPrincipalName: 'riley@company.com', mfaEnabled: false, riskLevel: 'High' }],
+        unknownDeviceUsers: [{ displayName: 'Mina Park', userPrincipalName: 'mina@company.com', lastSignIn: { device: 'Unknown' } }],
+        failedSignInUsers: [{ displayName: 'Jules Ford', userPrincipalName: 'jules@company.com', lastSignIn: { status: 'Failed' } }]
+      },
+      summary: {
+        title: 'Identity Protection',
+        executiveSummary: 'Identity hygiene remains a priority for privileged and dormant accounts.'
+      }
+    }
+  });
+
+  assert.equal(viewModel.summary.metrics.mfaCoverage, 79);
+  assert.equal(viewModel.summary.metrics.highRiskUsers, 12);
+  assert.equal(viewModel.summary.metrics.privilegedUsersWithoutMFA, 4);
+  assert.ok(viewModel.findings.some(finding => finding.title.includes('Missing MFA')));
+  assert.ok(viewModel.findings.some(finding => finding.title.includes('High Risk')));
 });

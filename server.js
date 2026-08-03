@@ -60,6 +60,7 @@ const { createAdminIntelligenceRouter } = require('./routes/admin-intelligence')
 const { createPowerBIReportingService } = require('./services/powerbi-reporting');
 const { createPowerBIReportingRouter } = require('./routes/powerbi-reporting');
 const { buildIdentityPdfViewModel } = require('./services/intelligence/identity-pdf-report');
+const { buildSunbirdIdentityModel } = require('./js/identity-portal-model');
 
 // invoice payment endpoints 
 require("dotenv").config();
@@ -3561,6 +3562,13 @@ async function buildSunbirdReportPayload(companyId, periodStart, periodEnd, incl
     const sourceFreshness = evidence.sourceUpdatedAt.length
         ? new Date(Math.max(...evidence.sourceUpdatedAt.map(value => new Date(value).getTime()).filter(Number.isFinite))).toISOString()
         : null;
+    const identityModel = buildSunbirdIdentityModel({
+        users: evidence.identityUsers || [],
+        summary: {
+            title: 'Identity Protection',
+            executiveSummary: evidence.identity?.executiveSummary || evidence.identity?.ExecutiveSummary || evidence.identity?.summary || ''
+        }
+    });
     const report = {
         version: 1,
         companyName: evidence.companyName,
@@ -3597,6 +3605,7 @@ async function buildSunbirdReportPayload(companyId, periodStart, periodEnd, incl
         failures,
         recommendations,
         events: filteredEvents,
+        identityModel,
         collection: {
             sources: [
                 'Identity',
@@ -3916,7 +3925,7 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 doc.y += 4;
             };
             const selectIdentityColumns = columns => {
-                const priority = ['Name', 'Email', 'Role(s)', 'MFA Enabled', 'Risk Level', 'Account Status', 'Last Sign In', 'Device', 'Location'];
+                const priority = ['Name', 'Email', 'MFA', 'Risk', 'Last Sign In', 'Days Inactive', 'Device', 'Location'];
                 return priority.filter(column => columns.includes(column)).slice(0, 6);
             };
             const drawIdentityMetricSnapshot = viewModel => {
@@ -3960,7 +3969,8 @@ function generateSunbirdReportPdf(report, reportId = null) {
                     doc.font('Helvetica-Bold').fontSize(7.1).fillColor(navy).text(column, columnX + 4, currentY + 4, { width: columnWidth - 8 });
                 });
                 currentY += headerHeight;
-                rows.slice(0, 10).forEach((row, rowIndex) => {
+                const visibleRows = rows.slice(0, 8);
+                visibleRows.forEach((row, rowIndex) => {
                     const cellHeight = Math.max(18, ...selectedColumns.map(column => {
                         const value = row && typeof row === 'object' ? row[column] : null;
                         const text = value == null || value === '' ? '—' : String(value);
@@ -3977,6 +3987,12 @@ function generateSunbirdReportPdf(report, reportId = null) {
                     });
                     currentY += cellHeight;
                 });
+                if (rows.length > visibleRows.length) {
+                    addPageIfNeeded(12);
+                    const noteY = currentY + 6;
+                    doc.font('Helvetica-Oblique').fontSize(6.8).fillColor(slate).text(`…and ${rows.length - visibleRows.length} additional affected users.`, x + 4, noteY, { width: width - 8, lineGap: 1 });
+                    currentY = noteY + 10;
+                }
                 return currentY + 4;
             };
             const drawIdentityFindingBlock = finding => {
@@ -4000,8 +4016,8 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 const totalCount = Number(finding.evidence?.totalCount || 0);
                 const displayedCount = Number(finding.evidence?.displayedCount || 0);
                 const evidenceLabel = totalCount > displayedCount
-                    ? `Showing ${displayedCount} of ${totalCount} affected entities.`
-                    : `${totalCount} affected ${totalCount === 1 ? 'entity' : 'entities'}`;
+                    ? `Showing ${displayedCount} of ${totalCount} affected users.`
+                    : `${totalCount} affected ${totalCount === 1 ? 'user' : 'users'}`;
                 doc.font('Helvetica-Bold').fontSize(7.5).fillColor(navy).text('Affected evidence', left + 8, doc.y, { width: 100 });
                 doc.font('Helvetica').fontSize(7.3).fillColor(slate).text(evidenceLabel, left + 108, doc.y, { width: contentWidth - 116, lineGap: 1 });
                 doc.y += 12;
@@ -4033,7 +4049,12 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 sectionTitle(labelForDomain(domain));
                 const isIdentityDomain = String(domain.domainKey || '').toLowerCase() === 'identity' || String(labelForDomain(domain)).toLowerCase() === 'identity protection';
                 if (isIdentityDomain) {
-                    const viewModel = buildIdentityPdfViewModel({ domainKey: domain.domainKey || 'identity', domainName: labelForDomain(domain), intelligenceOutput: output });
+                    const viewModel = buildIdentityPdfViewModel({
+                        domainKey: domain.domainKey || 'identity',
+                        domainName: labelForDomain(domain),
+                        intelligenceOutput: output,
+                        identityModel: report.identityModel || buildSunbirdIdentityModel({ users: output.users || output.affectedEntities || output.affectedUsers || [], summary: output.summary || {} })
+                    });
                     doc.font('Helvetica').fontSize(8.3);
                     const summaryHeight = doc.heightOfString(viewModel.summary.executiveSummary, { width: contentWidth - 24, lineGap: 2 });
                     addPageIfNeeded(62 + summaryHeight);
