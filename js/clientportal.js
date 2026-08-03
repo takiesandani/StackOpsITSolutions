@@ -13434,20 +13434,32 @@ function renderSunbirdReportValuePanel(data = {}, buckets = getSunbirdReportEvid
 }
 
 function getSunbirdReportIdentityFieldValues(data = {}) {
-    const analysis = data.overview?.analysis || {};
-    const summary = data.overview?.summary || {};
+    const overviewAnalysis = data.overview?.analysis || {};
+    const overviewSummary = data.overview?.summary || {};
+    const latestReport = data.reports?.[0] || {};
+    const rowAnalysis = latestReport.analysis || {};
+    const rowSummary = latestReport.summary || {};
+    const domainInsights = latestReport.domainInsights || data.overview?.domainInsights || null;
+    const identityDomain = Array.isArray(domainInsights?.domains)
+        ? domainInsights.domains.find(domain => String(domain.domainKey || domain.domainName || '').toLowerCase().includes('identity'))
+        : null;
+    const identityOutput = identityDomain?.intelligenceOutput || identityDomain?.output || identityDomain || null;
+
+    const source = identityOutput || rowAnalysis || overviewAnalysis;
+    const fallback = rowSummary || overviewSummary;
+
     const fields = {
-        domainExecutiveSummary: analysis.domainExecutiveSummary || summary.domainExecutiveSummary || analysis.executiveSummary || summary.executiveSummary || '',
-        overallBusinessImpactStatement: analysis.overallBusinessImpactStatement || summary.overallBusinessImpactStatement || analysis.businessImpact || summary.businessImpact || '',
-        riskScore: Number(analysis.riskScore ?? summary.riskScore ?? analysis.score ?? summary.score ?? 0),
-        healthScore: Number(analysis.healthScore ?? summary.healthScore ?? analysis.score ?? summary.score ?? 0),
-        totalUsers: Number(analysis.totalUsers ?? summary.totalUsers ?? 0),
-        protectedPercentage: Number(analysis.protectedPercentage ?? summary.protectedPercentage ?? analysis.mfaCoverage ?? summary.mfaCoverage ?? 0),
-        criticalIssuesCount: Number(analysis.criticalIssuesCount ?? summary.criticalIssuesCount ?? analysis.criticalCount ?? summary.criticalCount ?? 0),
-        highIssuesCount: Number(analysis.highIssuesCount ?? summary.highIssuesCount ?? analysis.highCount ?? summary.highCount ?? 0),
-        mfaCoverageTrend: analysis.mfaCoverageTrend || summary.mfaCoverageTrend || '',
-        riskScoreTrend: analysis.riskScoreTrend || summary.riskScoreTrend || '',
-        risks: Array.isArray(analysis.risks) ? analysis.risks : Array.isArray(summary.risks) ? summary.risks : []
+        domainExecutiveSummary: String(source?.domainExecutiveSummary || source?.executiveSummary || fallback?.domainExecutiveSummary || fallback?.executiveSummary || ''),
+        overallBusinessImpactStatement: String(source?.overallBusinessImpactStatement || source?.businessImpact || source?.businessImpactSummary || fallback?.overallBusinessImpactStatement || fallback?.businessImpact || ''),
+        riskScore: Number(source?.riskScore ?? source?.score ?? source?.scoreSummary?.riskScore ?? fallback?.riskScore ?? fallback?.score ?? 0),
+        healthScore: Number(source?.healthScore ?? source?.score ?? source?.scoreSummary?.healthScore ?? fallback?.healthScore ?? fallback?.score ?? 0),
+        totalUsers: Number(source?.totalUsers ?? fallback?.totalUsers ?? 0),
+        protectedPercentage: Number(source?.protectedPercentage ?? source?.mfaCoverage ?? fallback?.protectedPercentage ?? fallback?.mfaCoverage ?? 0),
+        criticalIssuesCount: Number(source?.criticalIssuesCount ?? source?.criticalCount ?? fallback?.criticalIssuesCount ?? fallback?.criticalCount ?? 0),
+        highIssuesCount: Number(source?.highIssuesCount ?? source?.highCount ?? fallback?.highIssuesCount ?? fallback?.highCount ?? 0),
+        mfaCoverageTrend: String(source?.mfaCoverageTrend || fallback?.mfaCoverageTrend || ''),
+        riskScoreTrend: String(source?.riskScoreTrend || fallback?.riskScoreTrend || ''),
+        risks: Array.isArray(source?.risks) ? source.risks : Array.isArray(fallback?.risks) ? fallback.risks : []
     };
     return fields;
 }

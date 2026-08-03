@@ -4088,7 +4088,10 @@ function serializeReportRow(row) {
         sentAt: row.SentAt,
         createdAt: row.CreatedAt,
         summary: payload.summary || {},
-        analysis: payload.analysis || {}
+        analysis: payload.analysis || {},
+        domainInsights: payload.domainInsights || null,
+        finalSynthesis: payload.finalSynthesis || null,
+        generatedWithAi: payload.generatedWithAi === true
     };
 }
 
