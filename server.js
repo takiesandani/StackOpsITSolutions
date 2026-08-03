@@ -4104,7 +4104,7 @@ function generateSunbirdReportPdf(report, reportId = null) {
                         .filter(Boolean);
                 };
                 const formatIdentityEvidence = entity => {
-                    const identity = cleanText(entity.entityName || entity.displayName || entity.entityDisplayName || entity.userPrincipalName || entity.mail || entity.entityEmail, 'Identity record');
+                    const identity = cleanText(entity.entityName || entity.displayName || entity.entityDisplayName || entity.userPrincipalName || entity.mail || entity.entityEmail, 'Unnamed account');
                     const email = cleanText(entity.entityEmail || entity.mail || entity.userPrincipalName || entity.entityUser);
                     const roles = (Array.isArray(entity.roles) ? entity.roles : []).map(role => cleanText(typeof role === 'object' ? role.name || role.displayName : role)).filter(Boolean);
                     const lastSignIn = entity.lastSignIn && typeof entity.lastSignIn === 'object' ? entity.lastSignIn : {};
@@ -4119,7 +4119,7 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 };
                 const drawFindingEvidence = entities => {
                     if (!entities.length) {
-                        doc.font('Helvetica').fontSize(7.4).fillColor(slate).text('No individual identity records were returned with this finding.', left + 30, doc.y, { width: contentWidth - 42 });
+                        doc.font('Helvetica').fontSize(7.4).fillColor(slate).text('No supporting account details were returned with this finding.', left + 30, doc.y, { width: contentWidth - 42 });
                         doc.y += 16;
                         return;
                     }
@@ -4140,19 +4140,21 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 };
                 const rawFindings = Array.isArray(output.findings) ? output.findings.slice(0, 8) : [];
                 const findings = rawFindings.map(item => {
-                    const explicitEvidence = [
-                        ...(Array.isArray(item.evidenceRecords) ? item.evidenceRecords : []),
-                        ...(Array.isArray(item.affectedEntities) ? item.affectedEntities : []),
-                        ...(Array.isArray(item.evidenceRows) ? item.evidenceRows : [])
-                    ];
-                    const evidenceEntities = explicitEvidence.slice(0, 10);
+                    const evidenceSource = Array.isArray(item.evidenceRecords) && item.evidenceRecords.length
+                        ? item.evidenceRecords
+                        : (Array.isArray(item.affectedEntities) && item.affectedEntities.length ? item.affectedEntities : item.evidenceRows);
+                    const evidenceByIdentity = new Map();
+                    (Array.isArray(evidenceSource) ? evidenceSource : []).forEach(entity => {
+                        const identity = String(entity?.entityId || entity?.id || entity?.entityEmail || entity?.mail || entity?.userPrincipalName || entity?.entityName || entity?.displayName || '').toLowerCase();
+                        if (identity && !evidenceByIdentity.has(identity)) evidenceByIdentity.set(identity, entity);
+                    });
+                    const evidenceEntities = Array.from(evidenceByIdentity.values()).slice(0, 10);
                     return {
                         title: cleanText(item.title, 'Identity finding'),
                         severity: cleanText(item.severity, 'Observed'),
                         impact: cleanText(item.impact),
                         detail: cleanText(item.description),
                         rationale: cleanText(item.whyItMatters),
-                        evidenceSummary: cleanText(item.evidenceSummary),
                         evidenceEntities,
                         evidenceRecordCount: Number(item.evidenceRecordCount || evidenceEntities.length),
                         affectedEntities: Array.isArray(item.affectedEntities) ? item.affectedEntities : [],
@@ -4188,8 +4190,7 @@ function generateSunbirdReportPdf(report, reportId = null) {
                             ['FINDING', finding.detail],
                             ['SEVERITY', finding.severity],
                             ['IMPACT', finding.impact],
-                            ['WHY IT MATTERS', finding.rationale],
-                            ['EVIDENCE', finding.evidenceSummary]
+                            ['WHY IT MATTERS', finding.rationale]
                         ].filter(([, value]) => value);
                         const fieldHeight = fields.reduce((height, [, value]) => height + doc.font('Helvetica').fontSize(7.5).heightOfString(value, { width: contentWidth - 48, lineGap: 1 }) + 14, 0);
                         const evidenceHeight = finding.evidenceEntities.reduce((height, entity) => {
@@ -4216,6 +4217,9 @@ function generateSunbirdReportPdf(report, reportId = null) {
                             doc.font('Helvetica').fontSize(7.5).fillColor(slate).text(value, left + 18, doc.y, { width: contentWidth - 30, lineGap: 1 });
                             doc.y += doc.heightOfString(value, { width: contentWidth - 30, lineGap: 1 }) + 5;
                         });
+                        addPageIfNeeded(22);
+                        doc.font('Helvetica-Bold').fontSize(7.2).fillColor(tone).text('EVIDENCE', left + 18, doc.y, { width: contentWidth - 30 });
+                        doc.y += 11;
                         drawFindingEvidence(finding.evidenceEntities);
                         const remainingEvidence = Math.max(0, finding.evidenceRecordCount - finding.evidenceEntities.length);
                         if (remainingEvidence) {
@@ -4519,6 +4523,19 @@ function buildSunbirdReportIdentityDomain(domain) {
             String(category?.sourceMetric || '').toLowerCase() === key.toLowerCase()
         )).find(Boolean) || null;
     };
+    const identityFindingEntityCount = item => {
+        const text = `${item.title || ''} ${item.description || ''} ${item.patternFound || ''}`.toLowerCase();
+        const wordCounts = {
+            one: 1, two: 2, three: 3, four: 4, five: 5,
+            six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+            eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15,
+            twenty: 20, thirty: 30, forty: 40, fifty: 50
+        };
+        const match = text.match(/\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|twenty|thirty|forty|fifty)\s+(?:[a-z-]+\s+){0,3}(?:users?|accounts?|identities|administrators?)\b/i);
+        if (!match) return null;
+        const value = Number(match[1]);
+        return Number.isFinite(value) && value > 0 ? value : (wordCounts[match[1].toLowerCase()] || null);
+    };
     const evidenceRecordsForFinding = (item = {}, affectedEntities = []) => {
         const category = identityEvidenceCategory(item);
         const categoryEntities = Array.isArray(category?.entities) ? category.entities : [];
@@ -4531,6 +4548,7 @@ function buildSunbirdReportIdentityDomain(domain) {
         const candidates = categoryEntities.length > matchingEntities.length
             ? categoryEntities
             : (matchingEntities.length ? matchingEntities : (affectedEntities.length ? affectedEntities : categoryEntities));
+        const requestedCount = identityFindingEntityCount(item) || Number(category?.count || 0) || candidates.length || affectedEntities.length;
         const uniqueRecords = [];
         const seen = new Set();
         for (const entity of candidates) {
@@ -4538,11 +4556,11 @@ function buildSunbirdReportIdentityDomain(domain) {
             if (!key || seen.has(key)) continue;
             seen.add(key);
             uniqueRecords.push(compactEntity(entity));
-            if (uniqueRecords.length >= evidenceLimit) break;
+            if (uniqueRecords.length >= Math.min(evidenceLimit, requestedCount)) break;
         }
         return {
             records: uniqueRecords,
-            total: Number(category?.count || candidates.length || affectedEntities.length || 0),
+            total: identityFindingEntityCount(item) || Number(category?.count || candidates.length || affectedEntities.length || 0),
             categoryLabel: compactText(category?.label || 'Identity evidence', 160)
         };
     };

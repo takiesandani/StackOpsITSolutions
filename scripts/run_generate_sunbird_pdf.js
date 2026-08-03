@@ -56,7 +56,20 @@ async function run() {
                                     count: 12,
                                     entities: [{ entityName: 'Break-glass account', entityEmail: 'admin@example.com', roles: ['Global Administrator'], mfaEnabled: false, riskLevel: 'HIGH' }]
                                 },
-                                { key: 'privilegedUsers', label: 'Privileged users', sourceMetric: 'privilegedUsers', count: 6 },
+                                {
+                                    key: 'privilegedUsers',
+                                    label: 'Privileged users',
+                                    sourceMetric: 'privilegedUsers',
+                                    count: 6,
+                                    entities: [
+                                        { entityName: 'Brandon Cunningham', entityEmail: 'brandon@example.com', roles: ['SharePoint Administrator', 'Teams Administrator'], mfaEnabled: true, riskLevel: 'SAFE' },
+                                        { entityName: 'Dave Colley', entityEmail: 'dave@example.com', roles: ['Global Administrator', 'Security Administrator'], mfaEnabled: true, riskLevel: 'SAFE' },
+                                        { entityName: 'Gary Norton', entityEmail: 'gary@example.com', roles: ['User Administrator', 'Exchange Administrator'], mfaEnabled: true, riskLevel: 'SAFE' },
+                                        { entityName: 'Ken Ross', entityEmail: 'ken@example.com', roles: ['Global Administrator', 'Fabric Administrator'], mfaEnabled: true, riskLevel: 'SAFE' },
+                                        { entityName: 'StackOpsIT - Ndamulelo Sandani', entityEmail: 'stackopsit@example.com', roles: ['Global Administrator', 'Billing Administrator'], mfaEnabled: true, riskLevel: 'SAFE' },
+                                        { entityName: 'Extra privileged account', entityEmail: 'extra@example.com', roles: ['Security Administrator'], mfaEnabled: true, riskLevel: 'SAFE' }
+                                    ]
+                                },
                                 { key: 'adminsWithoutMfa', label: 'Administrators without MFA', sourceMetric: 'adminsWithoutMfa', count: 1 },
                                 { key: 'highRiskUsers', label: 'High-risk users', sourceMetric: 'highRiskUsers', count: 1 },
                                 { key: 'inactiveUsers', label: 'Inactive users', sourceMetric: 'inactiveUsers', count: 36 }
