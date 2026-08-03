@@ -4250,6 +4250,203 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 }
                 doc.y += 4;
             };
+            const isDevicesDomain = domain => String(domain?.domainKey || domain?.domainName || '').trim().toLowerCase() === 'devices' || /device protection/i.test(String(domain?.domainName || ''));
+            const renderDeviceProtectionReport = domain => {
+                if (!domain) return;
+
+                const output = domain.intelligenceOutput || domain.output || {};
+                const scores = output.authoritativeScores || output.scoreSummary || {};
+                const categories = Array.isArray(output.evidenceCatalog?.categories) ? output.evidenceCatalog.categories : [];
+                const healthScore = clampReportScore(scores.healthScore ?? output.healthScore ?? domain.healthScore ?? 0);
+                const riskScore = clampReportScore(scores.riskScore ?? output.riskScore ?? domain.riskScore ?? 0);
+                const riskLevel = cleanText(scores.riskLevel || output.riskLevel || 'Unrated');
+                const deviceTone = value => {
+                    const normalized = String(value || '').toLowerCase();
+                    if (/critical|high/.test(normalized)) return red;
+                    if (/medium|moderate|warning/.test(normalized)) return orange;
+                    if (/low|safe|good|compliant/.test(normalized)) return green;
+                    return '#2563eb';
+                };
+                const section = (title, tone = navy) => {
+                    addPageIfNeeded(34);
+                    doc.font('Helvetica').fontSize(10.5).fillColor(tone).text(title.toUpperCase(), left, doc.y, { width: contentWidth });
+                    doc.moveTo(left, doc.y + 4).lineTo(pageWidth - left, doc.y + 4).strokeColor('#d9dee3').lineWidth(0.8).stroke();
+                    doc.y += 12;
+                };
+                const metric = (x, y, width, label, value, detail, tone) => {
+                    doc.roundedRect(x, y, width, 62, 7).fill('#f8fafc').strokeColor('#e1e6ea').lineWidth(0.8).stroke();
+                    doc.font('Helvetica').fontSize(7.4).fillColor(slate).text(label, x + 10, y + 10, { width: width - 20, height: 10 });
+                    doc.font('Helvetica').fontSize(18).fillColor(tone).text(String(value), x + 10, y + 23, { width: width - 20, height: 21 });
+                    doc.font('Helvetica').fontSize(7.1).fillColor(slate).text(detail, x + 10, y + 48, { width: width - 20, height: 9 });
+                };
+                const textBlock = (title, text, tone = navy) => {
+                    const value = cleanText(text);
+                    if (!value) return;
+                    const height = doc.font('Helvetica').fontSize(8).heightOfString(value, { width: contentWidth - 24, lineGap: 2 });
+                    addPageIfNeeded(height + 38);
+                    section(title, tone);
+                    doc.font('Helvetica').fontSize(8).fillColor(slate).text(value, left + 12, doc.y, { width: contentWidth - 24, lineGap: 2 });
+                    doc.y += height + 10;
+                };
+                const requestedCount = item => {
+                    const text = `${item?.title || ''} ${item?.description || ''}`.toLowerCase();
+                    const words = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17 };
+                    const match = text.match(/\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen)\s+(?:[a-z-]+\s+){0,2}devices?\b/i);
+                    if (!match) return null;
+                    const numeric = Number(match[1]);
+                    return Number.isFinite(numeric) && numeric > 0 ? numeric : words[match[1].toLowerCase()];
+                };
+                const categoryForFinding = item => {
+                    const text = `${item?.title || ''} ${item?.description || ''}`.toLowerCase();
+                    const keys = [
+                        item?.sourceMetric,
+                        text.includes('non-compliant') ? 'nonCompliantDevices' : '',
+                        text.includes('unknown compliance') ? 'unknownDevices' : '',
+                        text.includes('dead') || text.includes('over 30 days') ? 'deadDevices' : '',
+                        text.includes('stale') ? 'staleDevices' : '',
+                        'allDevices'
+                    ].filter(Boolean);
+                    return keys.map(key => categories.find(category =>
+                        String(category?.key || '').toLowerCase() === String(key).toLowerCase() ||
+                        String(category?.sourceMetric || '').toLowerCase() === String(key).toLowerCase()
+                    )).find(Boolean) || null;
+                };
+                const deviceRowsForFinding = item => {
+                    const directRows = [
+                        ...(Array.isArray(item?.evidenceRecords) ? item.evidenceRecords : []),
+                        ...(Array.isArray(item?.affectedEntities) ? item.affectedEntities : []),
+                        ...(Array.isArray(item?.evidenceRows) ? item.evidenceRows : [])
+                    ];
+                    const category = categoryForFinding(item);
+                    const source = directRows.length ? directRows : (Array.isArray(category?.entities) ? category.entities : []);
+                    const unique = new Map();
+                    source.forEach(device => {
+                        const key = String(device?.entityId || device?.id || device?.entityDeviceName || device?.deviceName || device?.displayName || '').toLowerCase();
+                        if (key && !unique.has(key)) unique.set(key, device);
+                    });
+                    const total = requestedCount(item) || Number(category?.count || unique.size || 0);
+                    return { rows: Array.from(unique.values()).slice(0, Math.min(10, total || 10)), total };
+                };
+                const formatDevice = device => {
+                    const name = cleanText(device.entityDeviceName || device.deviceName || device.entityName || device.displayName, 'Unnamed device');
+                    const user = cleanText(device.assignedUser || device.entityUser || device.userPrincipalName || device.entityEmail || device.mail);
+                    const os = [cleanText(device.operatingSystem), cleanText(device.osVersion)].filter(Boolean).join(' ');
+                    const compliance = cleanText(device.complianceState || device.status);
+                    const encrypted = device.isEncrypted == null ? cleanText(device.encryptionStatus || device.encryptionState) : device.isEncrypted ? 'Encrypted' : 'Not encrypted';
+                    const management = cleanText(device.managementAgent || device.managementState);
+                    const sync = cleanText(device.lastSyncDateTime || device.lastSync || device.lastSeen);
+                    const serial = cleanText(device.serialNumber);
+                    const details = [
+                        user ? `Assigned user: ${user}` : '',
+                        os ? `OS: ${os}` : '',
+                        compliance ? `Compliance: ${compliance}` : '',
+                        encrypted ? `Encryption: ${encrypted}` : '',
+                        management ? `Management: ${management}` : '',
+                        sync ? `Last sync: ${formatReportDate(sync, true)}` : '',
+                        serial ? `Serial: ${serial}` : ''
+                    ].filter(Boolean);
+                    return { name, details };
+                };
+                const drawDevices = devices => {
+                    if (!devices.length) {
+                        doc.font('Helvetica').fontSize(7.4).fillColor(slate).text('No supporting device details were returned with this finding.', left + 30, doc.y, { width: contentWidth - 42 });
+                        doc.y += 16;
+                        return;
+                    }
+                    devices.forEach((device, index) => {
+                        const value = formatDevice(device);
+                        const detail = value.details.join('\n');
+                        const titleHeight = doc.font('Helvetica-Bold').fontSize(7.8).heightOfString(value.name, { width: contentWidth - 56 });
+                        const detailHeight = detail ? doc.font('Helvetica').fontSize(7.2).heightOfString(detail, { width: contentWidth - 56, lineGap: 1 }) : 0;
+                        const rowHeight = Math.max(23, titleHeight + detailHeight + 11);
+                        addPageIfNeeded(rowHeight + 6);
+                        const rowY = doc.y;
+                        if (index % 2 === 0) doc.rect(left + 22, rowY - 2, contentWidth - 34, rowHeight).fill('#fbfcfd');
+                        doc.circle(left + 31, rowY + 4, 1.4).fillColor('#2563eb').fill();
+                        doc.font('Helvetica-Bold').fontSize(7.8).fillColor(navy).text(value.name, left + 38, rowY, { width: contentWidth - 56 });
+                        if (detail) doc.font('Helvetica').fontSize(7.2).fillColor(slate).text(detail, left + 38, rowY + titleHeight + 2, { width: contentWidth - 56, lineGap: 1 });
+                        doc.y = rowY + rowHeight + 3;
+                    });
+                };
+                const splitActions = action => cleanText(action).split(/(?:;|\.(?=\s+[A-Z])|,\s+(?=(?:and\s+)?(?:review|remove|require|retire|initiate|investigate|notify|validate|enforce)\b))/i)
+                    .map(point => point.replace(/^and\s+/i, '').trim().replace(/[.]+$/, '')).filter(Boolean);
+                const findings = [...(Array.isArray(output.risks) ? output.risks : []), ...(Array.isArray(output.keyFindings) ? output.keyFindings : [])]
+                    .slice(0, 8)
+                    .map(item => {
+                        const evidence = deviceRowsForFinding(item);
+                        return {
+                            title: cleanText(item.title || item.patternFound, 'Device finding'),
+                            severity: cleanText(item.severity || item.priority || item.impact || 'Observed'),
+                            detail: cleanText(item.description || item.detail || item.whatHappened || item.title),
+                            impact: cleanText(item.impact || item.businessImpact),
+                            rationale: cleanText(item.whyItMatters || item.reasoning),
+                            devices: evidence.rows,
+                            deviceCount: evidence.total,
+                            actions: splitActions(item.firstAction || item.recommendedAction || item.recommendation)
+                        };
+                    });
+
+                addPageIfNeeded(120);
+                section('Device Protection Report', deviceTone(riskLevel));
+                doc.font('Helvetica').fontSize(8.1).fillColor(slate).text('Current device security posture', left, doc.y, { width: contentWidth });
+                doc.y += 16;
+                const gap = 12;
+                const width = (contentWidth - gap) / 2;
+                const metricY = doc.y;
+                metric(left, metricY, width, 'HEALTH SCORE', `${healthScore}%`, 'Current device health score', healthScore >= 80 ? green : orange);
+                metric(left + width + gap, metricY, width, 'RISK SCORE', `${riskScore}%`, `${riskLevel} risk level`, deviceTone(riskLevel));
+                doc.y = metricY + 76;
+                textBlock('Domain summary', output.domainExecutiveSummary || output.technicalSummary || output.currentPosture, deviceTone(riskLevel));
+                textBlock('Business impact', output.businessImpact || output.businessImpactSummary, deviceTone(riskLevel));
+
+                if (findings.length) {
+                    section(`Key device findings (${findings.length})`);
+                    findings.forEach((finding, index) => {
+                        const tone = deviceTone(finding.severity);
+                        const fields = [
+                            ['FINDING', finding.detail],
+                            ['SEVERITY', finding.severity],
+                            ['IMPACT', finding.impact],
+                            ['WHY IT MATTERS', finding.rationale]
+                        ].filter(([, value]) => value);
+                        addPageIfNeeded(70);
+                        if (index % 2 === 0) doc.rect(left, doc.y - 3, contentWidth, Math.min(190, bottom - doc.y)).fill('#f8fafc');
+                        doc.circle(left + 9, doc.y + 5, 2).fillColor(tone).fill();
+                        doc.font('Helvetica-Bold').fontSize(8.5).fillColor(tone).text(finding.title, left + 18, doc.y, { width: contentWidth - 30, lineGap: 1 });
+                        doc.y += doc.heightOfString(finding.title, { width: contentWidth - 30, lineGap: 1 }) + 7;
+                        fields.forEach(([label, value]) => {
+                            addPageIfNeeded(24);
+                            doc.font('Helvetica-Bold').fontSize(7.2).fillColor(tone).text(label, left + 18, doc.y, { width: contentWidth - 30 });
+                            doc.y += 10;
+                            doc.font('Helvetica').fontSize(7.5).fillColor(slate).text(value, left + 18, doc.y, { width: contentWidth - 30, lineGap: 1 });
+                            doc.y += doc.heightOfString(value, { width: contentWidth - 30, lineGap: 1 }) + 5;
+                        });
+                        addPageIfNeeded(22);
+                        doc.font('Helvetica-Bold').fontSize(7.2).fillColor(tone).text('EVIDENCE', left + 18, doc.y, { width: contentWidth - 30 });
+                        doc.y += 11;
+                        drawDevices(finding.devices);
+                        const remaining = Math.max(0, finding.deviceCount - finding.devices.length);
+                        if (remaining) {
+                            doc.font('Helvetica').fontSize(7.1).fillColor(slate).text(`${remaining} additional affected device${remaining === 1 ? '' : 's'} are available in the Device Protection dashboard.`, left + 38, doc.y, { width: contentWidth - 56 });
+                            doc.y += 15;
+                        }
+                        if (finding.actions.length) {
+                            addPageIfNeeded(24);
+                            doc.font('Helvetica-Bold').fontSize(7.2).fillColor(green).text('RECOMMENDATIONS', left + 18, doc.y, { width: contentWidth - 30 });
+                            doc.y += 11;
+                            finding.actions.forEach(action => {
+                                const actionHeight = doc.font('Helvetica').fontSize(7.4).heightOfString(action, { width: contentWidth - 56, lineGap: 1 });
+                                addPageIfNeeded(actionHeight + 8);
+                                doc.circle(left + 25, doc.y + 4, 1.4).fillColor(green).fill();
+                                doc.font('Helvetica').fontSize(7.4).fillColor(slate).text(action, left + 32, doc.y, { width: contentWidth - 56, lineGap: 1 });
+                                doc.y += actionHeight + 5;
+                            });
+                        }
+                        doc.y += 8;
+                    });
+                }
+                doc.y += 4;
+            };
             const renderDomain = domain => {
                 const output = domain.intelligenceOutput || domain.output || {};
                 const score = scoreForDomain(domain);
@@ -4353,8 +4550,9 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 return (score != null || risk != null) || (findings.length || affected.length || evidence.length || recommendations.length);
             };
             const identityDomain = allDomainRows.find(isIdentityDomain);
+            const devicesDomain = allDomainRows.find(isDevicesDomain);
             const scorecardDomains = allDomainRows.filter(domainHasRenderableContent);
-            const domainRows = scorecardDomains.filter(domain => !isIdentityDomain(domain));
+            const domainRows = scorecardDomains.filter(domain => !isIdentityDomain(domain) && !isDevicesDomain(domain));
             if (allDomainRows.length && !scorecardDomains.length) {
                 console.warn('[Reports] No domain rows considered renderable for PDF; check domain intelligence keys or scores.', { availableKeys: allDomainRows.map(d => d.domainKey || d.domainName) });
             }
@@ -4388,11 +4586,13 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 doc.font('Helvetica').fontSize(8.2).fillColor(slate).text('Each domain below is drawn from the latest saved intelligence output and keeps findings, affected entities, evidence, and actions together.', left, doc.y, { width: contentWidth, lineGap: 2 });
                 doc.moveDown(0.7);
                 renderIdentityProtectionReport(identityDomain);
+                renderDeviceProtectionReport(devicesDomain);
                 domainRows.forEach(renderDomain);
             } else {
                 sectionTitle('Domain intelligence and evidence');
-                if (identityDomain) {
+                if (identityDomain || devicesDomain) {
                     renderIdentityProtectionReport(identityDomain);
+                    renderDeviceProtectionReport(devicesDomain);
                 } else {
                     doc.font('Helvetica').fontSize(8.5).fillColor(slate).text('No saved domain intelligence was available for the selected reporting period.', { width: contentWidth });
                 }

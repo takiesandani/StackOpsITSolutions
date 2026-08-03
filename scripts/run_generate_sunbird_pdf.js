@@ -79,11 +79,43 @@ async function run() {
                 },
                 {
                     domainKey: 'devices',
-                    domainName: 'Devices',
+                    domainName: 'Device Protection',
                     intelligenceOutput: {
-                        evidenceRows: [
-                            { email: 'charlie@example.com', assetName: 'CHARLIE-VMA', finding: 'Outdated OS', severity: 'high' }
-                        ]
+                        authoritativeScores: { healthScore: 83, riskScore: 17, riskLevel: 'low' },
+                        domainExecutiveSummary: 'The Device Protection domain manages 17 devices with 76% compliance and full encryption coverage. Three non-compliant devices require immediate remediation.',
+                        businessImpact: 'Failure to remediate non-compliant stale devices increases the risk of data breaches, regulatory non-compliance, and operational disruption.',
+                        risks: [{
+                            title: 'Non-compliant devices stale or dead over 30 days with assigned users',
+                            severity: 'critical',
+                            impact: 'High',
+                            description: 'Three devices are non-compliant and have not synced for over 30 days with active user assignments.',
+                            whyItMatters: 'Non-compliance combined with stale sync means security controls may not be applied.',
+                            firstAction: 'Initiate remediation or device retirement for non-compliant stale devices'
+                        }, {
+                            title: 'Device with unknown compliance and stale sync',
+                            severity: 'high',
+                            impact: 'Medium',
+                            description: 'LAPTOP-HNCQT3U1 has unknown compliance state and last synced 234 days ago.',
+                            whyItMatters: 'Potential policy gaps and security exposure.',
+                            firstAction: 'Investigate device compliance and sync status'
+                        }],
+                        evidenceCatalog: {
+                            categories: [{
+                                key: 'nonCompliantDevices',
+                                sourceMetric: 'nonCompliantDevices',
+                                count: 3,
+                                entities: [
+                                    { deviceName: 'DEAN', userPrincipalName: 'dean@example.com', operatingSystem: 'Windows', osVersion: '10.0.22631.5189', complianceState: 'noncompliant', encryptionStatus: 'Encrypted', managementAgent: 'mdm', lastSyncDateTime: '2025-05-02T06:58:53Z', serialNumber: 'GT22T14' },
+                                    { deviceName: 'LAPTOP-HNCQT3U1', userPrincipalName: 'dave@example.com', operatingSystem: 'Windows', osVersion: '10.0.26100.6584', complianceState: 'unknown', encryptionStatus: 'Encrypted', managementAgent: 'mdm', lastSyncDateTime: '2025-11-08T15:05:47Z', serialNumber: 'M9N0LP00F69336' },
+                                    { deviceName: 'DESKTOP-HEM6JNN', userPrincipalName: 'user@example.com', operatingSystem: 'Windows', osVersion: '10.0.22631.5189', complianceState: 'noncompliant', encryptionStatus: 'Encrypted', managementAgent: 'mdm', lastSyncDateTime: '2025-04-30T10:12:00Z', serialNumber: 'H3M6JNN' }
+                                ]
+                            }, {
+                                key: 'unknownDevices',
+                                sourceMetric: 'unknownDevices',
+                                count: 1,
+                                entities: [{ deviceName: 'LAPTOP-HNCQT3U1', userPrincipalName: 'dave@example.com', operatingSystem: 'Windows', complianceState: 'unknown', encryptionStatus: 'Encrypted', managementAgent: 'mdm', lastSyncDateTime: '2025-11-08T15:05:47Z', serialNumber: 'M9N0LP00F69336' }]
+                            }]
+                        }
                     }
                 }
             ]
