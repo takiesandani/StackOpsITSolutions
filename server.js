@@ -273,21 +273,199 @@ async function getMicrosoftGraphToken(options = {}) {
   }
 }
 
-async function fetchMicrosoftUsers(token) {
-  try {
-    const response = await fetch('https://graph.microsoft.com/v1.0/users?$top=999&$select=displayName,mail,jobTitle,mobilePhone,userPrincipalName,id', {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    });
+const MICROSOFT_GRAPH_REQUEST_TIMEOUT_MS = Math.max(
+    3000,
+    Number(process.env.MICROSOFT_GRAPH_REQUEST_TIMEOUT_MS) || 15000
+);
+const MICROSOFT_GRAPH_MAX_RESPONSE_BYTES = Math.max(
+    256 * 1024,
+    Number(process.env.MICROSOFT_GRAPH_MAX_RESPONSE_BYTES) || 4 * 1024 * 1024
+);
+const MICROSOFT_GRAPH_SHARED_CACHE_TTL_MS = Math.max(
+    1000,
+    Number(process.env.MICROSOFT_GRAPH_SHARED_CACHE_TTL_MS) || 60000
+);
+const microsoftGraphJsonCache = new Map();
+const microsoftGraphJsonPromises = new Map();
+let sunbirdOperationSequence = 0;
 
-    if (!response.ok) {
-      throw new Error(`Microsoft Graph API failed: ${response.statusText}`);
+function runtimeSnapshot() {
+    const memory = process.memoryUsage();
+    return {
+        rssMb: Math.round(memory.rss / 1024 / 1024),
+        heapUsedMb: Math.round(memory.heapUsed / 1024 / 1024),
+        heapTotalMb: Math.round(memory.heapTotal / 1024 / 1024),
+        externalMb: Math.round(memory.external / 1024 / 1024)
+    };
+}
+
+function logRuntimeOperation(event, details = {}) {
+    console.log('[Runtime]', JSON.stringify({ event, at: new Date().toISOString(), ...runtimeSnapshot(), ...details }));
+}
+
+async function readBoundedResponseText(response, maxBytes, label) {
+    const advertisedLength = Number(response.headers.get('content-length') || 0);
+    if (advertisedLength > maxBytes) {
+        throw new Error(`${label} response exceeds the ${maxBytes}-byte limit`);
+    }
+    if (!response.body) return '';
+
+    const reader = response.body.getReader();
+    const chunks = [];
+    let totalBytes = 0;
+    try {
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            totalBytes += value.byteLength;
+            if (totalBytes > maxBytes) {
+                await reader.cancel();
+                throw new Error(`${label} response exceeds the ${maxBytes}-byte limit`);
+            }
+            chunks.push(Buffer.from(value));
+        }
+    } finally {
+        reader.releaseLock();
+    }
+    return Buffer.concat(chunks, totalBytes).toString('utf8');
+}
+
+async function fetchMicrosoftGraphJsonAttempt(url, token, label) {
+    const startedAt = process.hrtime.bigint();
+    const cpuStart = process.cpuUsage();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), MICROSOFT_GRAPH_REQUEST_TIMEOUT_MS);
+    logRuntimeOperation('graph_request_start', { label });
+    try {
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            signal: controller.signal
+        });
+        const body = await readBoundedResponseText(response, MICROSOFT_GRAPH_MAX_RESPONSE_BYTES, label);
+        if (!response.ok) {
+            throw new Error(`${label} failed (${response.status}): ${body.slice(0, 300) || response.statusText}`);
+        }
+        const payload = body ? JSON.parse(body) : {};
+        logRuntimeOperation('graph_request_complete', {
+            label,
+            responseBytes: Buffer.byteLength(body),
+            durationMs: Number(process.hrtime.bigint() - startedAt) / 1e6,
+            cpuUserMicros: process.cpuUsage(cpuStart).user
+        });
+        return payload;
+    } catch (error) {
+        const message = error.name === 'AbortError'
+            ? `${label} timed out after ${MICROSOFT_GRAPH_REQUEST_TIMEOUT_MS}ms`
+            : error.message;
+        logRuntimeOperation('graph_request_failed', {
+            label,
+            durationMs: Number(process.hrtime.bigint() - startedAt) / 1e6,
+            cpuUserMicros: process.cpuUsage(cpuStart).user,
+            error: message
+        });
+        throw new Error(message);
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+function isRetryableGraphError(error) {
+    return /\((?:408|429|5\d\d)\)|timed out|network|fetch failed/i.test(String(error?.message || ''));
+}
+
+async function fetchMicrosoftGraphJson(url, token, label, { shared = true, retries = 1 } = {}) {
+    const cached = microsoftGraphJsonCache.get(url);
+    if (shared && cached && cached.expiresAt > Date.now()) {
+        logRuntimeOperation('graph_request_cache_hit', { label, responseBytes: cached.responseBytes });
+        return cached.payload;
+    }
+    if (shared && microsoftGraphJsonPromises.has(url)) {
+        logRuntimeOperation('graph_request_joined', { label });
+        return microsoftGraphJsonPromises.get(url);
     }
 
-    const data = await response.json();
+    const request = (async () => {
+        let lastError;
+        for (let attempt = 0; attempt <= retries; attempt += 1) {
+            try {
+                const payload = await fetchMicrosoftGraphJsonAttempt(url, token, label);
+                if (shared) {
+                    const responseBytes = Buffer.byteLength(JSON.stringify(payload));
+                    microsoftGraphJsonCache.set(url, {
+                        payload,
+                        responseBytes,
+                        expiresAt: Date.now() + MICROSOFT_GRAPH_SHARED_CACHE_TTL_MS
+                    });
+                }
+                return payload;
+            } catch (error) {
+                lastError = error;
+                if (attempt >= retries || !isRetryableGraphError(error)) break;
+                const retryDelayMs = 250 * (attempt + 1);
+                logRuntimeOperation('graph_request_retry', { label, attempt: attempt + 1, retryDelayMs, error: error.message });
+                await sleep(retryDelayMs);
+            }
+        }
+        throw lastError;
+    })();
+
+    if (shared) microsoftGraphJsonPromises.set(url, request);
+    try {
+        return await request;
+    } finally {
+        if (shared && microsoftGraphJsonPromises.get(url) === request) {
+            microsoftGraphJsonPromises.delete(url);
+        }
+    }
+}
+
+function beginSunbirdOperation(req, operation) {
+    const requestId = `${operation}-${++sunbirdOperationSequence}`;
+    const startedAt = process.hrtime.bigint();
+    const cpuStart = process.cpuUsage();
+    const tenant = req.user?.companyId || req.user?.tenantId || null;
+    const log = (event, details = {}) => logRuntimeOperation(event, {
+        requestId,
+        operation,
+        endpoint: req.path,
+        tenant,
+        ...details
+    });
+    log('sunbird_operation_start');
+    return {
+        step(name, details = {}) { log('sunbird_operation_step', { step: name, ...details }); },
+        finish(status, details = {}) {
+            log('sunbird_operation_finish', {
+                status,
+                durationMs: Number(process.hrtime.bigint() - startedAt) / 1e6,
+                cpuUserMicros: process.cpuUsage(cpuStart).user,
+                ...details
+            });
+        }
+    };
+}
+
+function sendSunbirdJson(res, payload, operation) {
+    operation.step('response_serialization_start');
+    const body = JSON.stringify(payload);
+    if (Buffer.byteLength(body) > SUNBIRD_DASHBOARD_MAX_RESPONSE_BYTES) {
+        throw new Error(`Sunbird dashboard response exceeds the ${SUNBIRD_DASHBOARD_MAX_RESPONSE_BYTES}-byte limit`);
+    }
+    operation.step('response_serialization_complete', { responseBytes: Buffer.byteLength(body) });
+    res.type('application/json').send(body);
+}
+
+async function fetchMicrosoftUsers(token) {
+  try {
+        const data = await fetchMicrosoftGraphJson(
+            'https://graph.microsoft.com/v1.0/users?$top=250&$select=displayName,mail,jobTitle,mobilePhone,userPrincipalName,id',
+            token,
+            'Microsoft Graph users'
+        );
     return data.value || [];
   } catch (error) {
     console.error('[Microsoft Graph] Failed to fetch users:', error.message);
@@ -298,19 +476,11 @@ async function fetchMicrosoftUsers(token) {
 // Fetch all role assignments from Microsoft Graph
 async function fetchMicrosoftRoleAssignments(token) {
   try {
-    const response = await fetch('https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments?$top=999&$expand=roleDefinition', {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(`Microsoft Graph API failed: ${response.statusText}`);
-    }
-
-    const data = await response.json();
+        const data = await fetchMicrosoftGraphJson(
+            'https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments?$top=250&$expand=roleDefinition',
+            token,
+            'Microsoft Graph role assignments'
+        );
     return data.value || [];
   } catch (error) {
     console.error('[Microsoft Graph] Failed to fetch role assignments:', error.message);
@@ -325,22 +495,11 @@ async function fetchMicrosoftSignIns(token, daysBack = 30) {
     since.setDate(since.getDate() - daysBack);
     const filterDate = since.toISOString();
 
-    const response = await fetch(
-      `https://graph.microsoft.com/v1.0/auditLogs/signIns?$filter=createdDateTime ge ${filterDate}&$top=999&$select=createdDateTime,userPrincipalName,userId,appDisplayName,clientAppUsed,ipAddress,location,deviceDetail,status`,
-      {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      }
+        const data = await fetchMicrosoftGraphJson(
+            `https://graph.microsoft.com/v1.0/auditLogs/signIns?$filter=createdDateTime ge ${filterDate}&$orderby=createdDateTime desc&$top=250&$select=createdDateTime,userPrincipalName,userId,appDisplayName,clientAppUsed,ipAddress,location,deviceDetail,status`,
+            token,
+            'Microsoft Graph sign-ins'
     );
-
-    if (!response.ok) {
-      throw new Error(`Microsoft Graph API failed: ${response.statusText}`);
-    }
-
-    const data = await response.json();
     return data.value || [];
   } catch (error) {
     console.error('[Microsoft Graph] Failed to fetch sign-ins:', error.message);
@@ -351,30 +510,12 @@ async function fetchMicrosoftSignIns(token, daysBack = 30) {
 // Fetch authentication methods for a specific user
 async function fetchUserAuthMethods(token, userId, retries = 2) {
   try {
-    const response = await fetch(
+        const data = await fetchMicrosoftGraphJson(
       `https://graph.microsoft.com/v1.0/users/${userId}/authentication/methods`,
-      {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      }
+            token,
+            `Microsoft Graph authentication methods for ${userId}`,
+            { retries }
     );
-
-    if (!response.ok) {
-      // Retry on transient/rate-limit errors to reduce MFA flapping.
-      if ((response.status === 429 || response.status >= 500) && retries > 0) {
-        await sleep((3 - retries) * 250);
-        return fetchUserAuthMethods(token, userId, retries - 1);
-      }
-
-      const cached = getCachedAuthMethods(userId);
-      if (cached) return cached;
-      return []; // Return empty array if auth methods not available
-    }
-
-    const data = await response.json();
     const methods = data.value || [];
     setCachedAuthMethods(userId, methods);
     return methods;
@@ -392,19 +533,11 @@ async function fetchUserAuthMethods(token, userId, retries = 2) {
 // Fetch service principals (applications) from Microsoft Graph
 async function fetchMicrosoftServicePrincipals(token) {
   try {
-    const response = await fetch('https://graph.microsoft.com/v1.0/servicePrincipals?$top=999&$select=id,displayName,servicePrincipalType,publisherName,createdDateTime,appOwnerOrganizationId,appRoles,oauth2PermissionScopes', {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(`Microsoft Graph API failed: ${response.statusText}`);
-    }
-
-    const data = await response.json();
+        const data = await fetchMicrosoftGraphJson(
+            'https://graph.microsoft.com/v1.0/servicePrincipals?$top=250&$select=id,displayName,servicePrincipalType,publisherName,createdDateTime,appOwnerOrganizationId,appRoles,oauth2PermissionScopes',
+            token,
+            'Microsoft Graph service principals'
+        );
     return data.value || [];
   } catch (error) {
     console.error('[Microsoft Graph] Failed to fetch service principals:', error.message);
@@ -415,19 +548,11 @@ async function fetchMicrosoftServicePrincipals(token) {
 // Fetch groups from Microsoft Graph
 async function fetchMicrosoftGroups(token) {
   try {
-    const response = await fetch('https://graph.microsoft.com/v1.0/groups?$top=999&$select=id,displayName,mailNickname', {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(`Microsoft Graph API failed: ${response.statusText}`);
-    }
-
-    const data = await response.json();
+        const data = await fetchMicrosoftGraphJson(
+            'https://graph.microsoft.com/v1.0/groups?$top=250&$select=id,displayName,mailNickname',
+            token,
+            'Microsoft Graph groups'
+        );
     return data.value || [];
   } catch (error) {
     console.error('[Microsoft Graph] Failed to fetch groups:', error.message);
@@ -438,19 +563,11 @@ async function fetchMicrosoftGroups(token) {
 // Fetch app role assignments for a service principal
 async function fetchAppRoleAssignments(token, servicePrincipalId) {
   try {
-    const response = await fetch(`https://graph.microsoft.com/v1.0/servicePrincipals/${servicePrincipalId}/appRoleAssignedTo?$top=999`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (!response.ok) {
-      return [];
-    }
-
-    const data = await response.json();
+        const data = await fetchMicrosoftGraphJson(
+            `https://graph.microsoft.com/v1.0/servicePrincipals/${servicePrincipalId}/appRoleAssignedTo?$top=250`,
+            token,
+            `Microsoft Graph app assignments for ${servicePrincipalId}`
+        );
     return data.value || [];
   } catch (error) {
     console.error('[Microsoft Graph] Failed to fetch app role assignments:', error.message);
@@ -4132,6 +4249,40 @@ function buildSunbirdReportListOverview(reportRow = null) {
     };
 }
 
+function buildSunbirdReportIdentityDomain(domain) {
+    const source = domain?.intelligenceOutput || {};
+    const risks = Array.isArray(source.risks) ? source.risks.slice(0, 4) : [];
+    return {
+        domainKey: domain?.domainKey || 'identity',
+        intelligenceOutput: {
+            domainExecutiveSummary: String(source.domainExecutiveSummary || '').slice(0, SUNBIRD_DASHBOARD_MAX_STRING_LENGTH),
+            businessImpact: String(source.businessImpact || '').slice(0, SUNBIRD_DASHBOARD_MAX_STRING_LENGTH),
+            healthScore: source.healthScore ?? source.scoreSummary?.healthScore ?? null,
+            riskScore: source.riskScore ?? source.scoreSummary?.riskScore ?? null,
+            risks: risks.map(risk => ({
+                title: String(risk?.title || '').slice(0, SUNBIRD_DASHBOARD_MAX_STRING_LENGTH),
+                severity: String(risk?.severity || '').slice(0, 100),
+                impact: String(risk?.impact || '').slice(0, SUNBIRD_DASHBOARD_MAX_STRING_LENGTH),
+                whyItMatters: String(risk?.whyItMatters || '').slice(0, SUNBIRD_DASHBOARD_MAX_STRING_LENGTH),
+                evidenceSummary: String(risk?.evidenceSummary || '').slice(0, SUNBIRD_DASHBOARD_MAX_STRING_LENGTH),
+                firstAction: String(risk?.firstAction || risk?.recommendation || '').slice(0, SUNBIRD_DASHBOARD_MAX_STRING_LENGTH),
+                affectedEntities: (Array.isArray(risk?.affectedEntities) ? risk.affectedEntities : []).slice(0, 6).map(entity => ({
+                    entityEmail: String(entity?.entityEmail || '').slice(0, 320),
+                    userPrincipalName: String(entity?.userPrincipalName || '').slice(0, 320),
+                    displayName: String(entity?.displayName || '').slice(0, 320),
+                    roles: (Array.isArray(entity?.roles) ? entity.roles : []).slice(0, 20).map(role => String(role).slice(0, 160)),
+                    mfaEnabled: entity?.mfaEnabled ?? null,
+                    lastSignIn: {
+                        device: String(entity?.lastSignIn?.device || '').slice(0, 320),
+                        location: String(entity?.lastSignIn?.location || '').slice(0, 320),
+                        daysSince: entity?.lastSignIn?.daysSince ?? null
+                    }
+                }))
+            }))
+        }
+    };
+}
+
 async function getReportContext(req, res) {
     if (!pool) {
         res.status(503).json({ success: false, message: 'Report database is temporarily unavailable' });
@@ -4155,10 +4306,15 @@ async function getReportContext(req, res) {
 }
 
 app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
+    const operation = beginSunbirdOperation(req, 'reports');
     try {
         const reportContext = await getReportContext(req, res);
-        if (!reportContext) return;
+        if (!reportContext) {
+            operation.finish(res.statusCode, { reason: 'report_context_unavailable' });
+            return;
+        }
         const { context, settings } = reportContext;
+        operation.step('report_context_resolved', { companyId: context.companyId });
         const range = getReportRange(req.query, settings.ActiveSince);
         const limit = Math.max(1, Math.min(50, Number(req.query.limit) || 12));
         const [rows] = await pool.query(
@@ -4177,7 +4333,11 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
              LIMIT 120`,
             [context.companyId, range.start, range.end]
         );
-        const identityDomain = await fetchSunbirdIdentityDomainIntelligence(context.companyId);
+        operation.step('report_rows_loaded', { reports: rows.length, auditLogs: logRows.length });
+        const identityDomain = buildSunbirdReportIdentityDomain(
+            await fetchSunbirdIdentityDomainIntelligence(context.companyId)
+        );
+        operation.step('identity_intelligence_loaded', { risks: identityDomain.intelligenceOutput.risks.length });
         const overview = buildSunbirdReportListOverview(rows[0]);
         await writeSunbirdReportLog({
             companyId: context.companyId,
@@ -4187,7 +4347,8 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
             metadata: { rangeStart: range.start, rangeEnd: range.end },
             actorUserId: req.user.id || null
         });
-        res.json({
+        operation.step('audit_log_written');
+        const responsePayload = {
             success: true,
             settings: {
                 weeklyEnabled: Boolean(settings.WeeklyEnabled && Number(settings.RecipientConfirmed) === 1 && normalizeReportRecipientEmails(settings.RecipientEmail).length),
@@ -4204,9 +4365,12 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
             identityDomain,
             reports: rows.map(serializeReportRow),
             logs: logRows.map(serializeReportAuditLog)
-        });
+        };
+        sendSunbirdJson(res, responsePayload, operation);
+        operation.finish(200, { reports: rows.length, auditLogs: logRows.length });
     } catch (error) {
         console.error('[Reports] List error:', error);
+        operation.finish(500, { error: error.message });
         res.status(500).json({ success: false, message: error.message });
     }
 });
@@ -8757,6 +8921,7 @@ app.get('/api/app-access/:spId', authenticateToken, async (req, res) => {
 });
 
 const SUNBIRD_DASHBOARD_CACHE_TTL_MS = 10 * 60 * 1000;
+const SUNBIRD_DASHBOARD_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const SUNBIRD_PAYLOAD_CACHE_TABLES = new Set([
     'SunbirdComplianceControlsCache',
     'SunbirdOperationsPayloadCache',
@@ -8775,8 +8940,10 @@ async function getSunbirdPayloadCache(tableName, companyId, { allowStale = false
 
     try {
         const [rows] = await pool.query(
-            `SELECT Payload, LastUpdated FROM ${tableName} WHERE CompanyID = ? ORDER BY LastUpdated DESC LIMIT 1`,
-            [companyId]
+            `SELECT Payload, LastUpdated FROM ${tableName}
+             WHERE CompanyID = ? AND OCTET_LENGTH(Payload) <= ?
+             ORDER BY LastUpdated DESC LIMIT 1`,
+            [companyId, SUNBIRD_DASHBOARD_MAX_RESPONSE_BYTES]
         );
 
         if (!rows.length || !rows[0].Payload) return null;
@@ -9228,17 +9395,21 @@ async function fetchGovernancePayloadFromApi() {
 // ============================================================================
 app.get('/api/sunbird/governance', authenticateToken, async (req, res) => {
     let companyId = null;
+    const operation = beginSunbirdOperation(req, 'governance');
     try {
         const userEmail = req.user.email;
         const tenant = getTenantByEmail(userEmail);
 
         if (!tenant || tenant.clientId !== 'sunbird') {
+            operation.finish(403, { reason: 'access_denied' });
             return res.status(403).json({ error: 'Access denied. Sunbird only.' });
         }
 
         companyId = tenant.companyId || req.user.companyId || null;
+        operation.step('tenant_resolved', { companyId });
         const cached = await getSunbirdPayloadCache('SunbirdGovernancePayloadCache', companyId);
         if (cached?.payload?.success && Array.isArray(cached.payload.rows)) {
+            operation.step('cache_hit', { cacheAgeMs: cached.ageMs, rows: cached.payload.rows.length });
             cached.payload = compactSunbirdGovernancePayload(cached.payload, {
                 source: 'db',
                 fetchedAt: cached.lastUpdated
@@ -9247,26 +9418,37 @@ app.get('/api/sunbird/governance', authenticateToken, async (req, res) => {
                 persistGovernanceDashboardEvidence(companyId, cached.payload, 'dashboard_request', '/api/sunbird/governance')
                     .catch(error => console.warn('[Governance Evidence] Cached dashboard payload could not be stored:', error.message));
             }
-            return res.json(cached.payload);
+            sendSunbirdJson(res, cached.payload, operation);
+            operation.finish(200, { source: 'cache', rows: cached.payload.rows.length });
+            return;
         }
 
+        operation.step('live_collection_start');
         const payload = compactSunbirdGovernancePayload(await fetchGovernancePayloadFromApi());
+        operation.step('live_collection_complete', { rows: payload.rows.length });
         await upsertSunbirdPayloadCache('SunbirdGovernancePayloadCache', companyId, payload);
+        operation.step('cache_write_complete');
         if (governanceEvidenceService && companyId) {
             persistGovernanceDashboardEvidence(companyId, payload, 'dashboard_request', '/api/sunbird/governance')
                 .catch(error => console.warn('[Governance Evidence] Dashboard persist failed:', error.message));
         }
-        res.json(payload);
+        sendSunbirdJson(res, payload, operation);
+        operation.finish(200, { source: 'live', rows: payload.rows.length });
     } catch (error) {
         console.error('[Governance API] Critical Error:', error);
         const stale = await getSunbirdPayloadCache('SunbirdGovernancePayloadCache', companyId, { allowStale: true });
         if (stale?.payload?.success && Array.isArray(stale.payload.rows)) {
-            return res.json(compactSunbirdGovernancePayload(stale.payload, {
+            const payload = compactSunbirdGovernancePayload(stale.payload, {
                 source: 'db-stale',
                 fetchedAt: stale.lastUpdated,
                 warning: 'Serving stale cached governance data because live refresh failed.'
-            }));
+            });
+            operation.step('stale_cache_served', { rows: payload.rows.length, error: error.message });
+            sendSunbirdJson(res, payload, operation);
+            operation.finish(200, { source: 'stale', rows: payload.rows.length });
+            return;
         }
+        operation.finish(500, { error: error.message });
         res.status(500).json({ error: 'Failed to aggregate governance data' });
     }
 });
@@ -9279,11 +9461,17 @@ async function fetchComplianceControlsFromApi() {
         // Helper function for Graph API calls
         const fetchGraph = async (endpoint) => {
             const version = endpoint.startsWith('/beta') ? '' : '/v1.0';
-            const response = await fetch(`https://graph.microsoft.com${version}${endpoint}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (!response.ok) return { value: [] };
-            return await response.json();
+            try {
+                return await fetchMicrosoftGraphJson(
+                    `https://graph.microsoft.com${version}${endpoint}`,
+                    token,
+                    `Microsoft Graph compliance ${endpoint}`,
+                    { shared: false }
+                );
+            } catch (error) {
+                console.warn('[Compliance Graph] Endpoint unavailable:', endpoint, error.message);
+                return { value: [] };
+            }
         };
         const userBrief = user => ({
             name: user.displayName || user.userPrincipalName || user.mail || 'Unknown user',
@@ -9507,18 +9695,22 @@ async function fetchComplianceControlsFromApi() {
 // ============================================================================
 app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) => {
     let companyId = null;
+    const operation = beginSunbirdOperation(req, 'compliance-controls');
     try {
         const userEmail = req.user.email;
         const tenant = getTenantByEmail(userEmail);
         
         // 🚨 STRICT SCOPE CONTROL
         if (!tenant || tenant.clientId !== 'sunbird') {
+            operation.finish(403, { reason: 'access_denied' });
             return res.status(403).json({ error: 'Access denied. Sunbird only.' });
         }
 
         companyId = tenant.companyId || req.user.companyId || null;
+        operation.step('tenant_resolved', { companyId });
         const cached = await getSunbirdPayloadCache('SunbirdComplianceControlsCache', companyId);
         if (cached?.payload?.success && Array.isArray(cached.payload.controls)) {
+            operation.step('cache_hit', { cacheAgeMs: cached.ageMs, controls: cached.payload.controls.length });
             cached.payload = compactSunbirdCompliancePayload(cached.payload, {
                 source: 'db',
                 fetchedAt: cached.lastUpdated
@@ -9527,27 +9719,38 @@ app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) 
                 persistComplianceDashboardEvidence(companyId, cached.payload, 'dashboard_request', '/api/sunbird/compliance-controls')
                     .catch(error => console.warn('[Compliance Evidence] Cached dashboard payload could not be stored:', error.message));
             }
-            return res.json(cached.payload);
+            sendSunbirdJson(res, cached.payload, operation);
+            operation.finish(200, { source: 'cache', controls: cached.payload.controls.length });
+            return;
         }
 
+        operation.step('live_collection_start');
         const payload = compactSunbirdCompliancePayload(await fetchComplianceControlsFromApi());
+        operation.step('live_collection_complete', { controls: payload.controls.length });
         await upsertSunbirdPayloadCache('SunbirdComplianceControlsCache', companyId, payload);
+        operation.step('cache_write_complete');
         if (complianceEvidenceService && companyId) {
             persistComplianceDashboardEvidence(companyId, payload, 'dashboard_request', '/api/sunbird/compliance-controls')
                 .catch(error => console.warn('[Compliance Evidence] Dashboard persist failed:', error.message));
         }
-        res.json(payload);
+        sendSunbirdJson(res, payload, operation);
+        operation.finish(200, { source: 'live', controls: payload.controls.length });
 
     } catch (error) {
         console.error('[Compliance API] Critical Error:', error);
         const stale = await getSunbirdPayloadCache('SunbirdComplianceControlsCache', companyId, { allowStale: true });
         if (stale?.payload?.success && Array.isArray(stale.payload.controls)) {
-            return res.json(compactSunbirdCompliancePayload(stale.payload, {
+            const payload = compactSunbirdCompliancePayload(stale.payload, {
                 source: 'db-stale',
                 fetchedAt: stale.lastUpdated,
                 warning: 'Serving stale cached compliance data because live refresh failed.'
-            }));
+            });
+            operation.step('stale_cache_served', { controls: payload.controls.length, error: error.message });
+            sendSunbirdJson(res, payload, operation);
+            operation.finish(200, { source: 'stale', controls: payload.controls.length });
+            return;
         }
+        operation.finish(500, { error: error.message });
         res.status(500).json({ error: 'Failed to aggregate compliance data' });
     }
 });
@@ -9815,6 +10018,7 @@ app.get('/api/sunbird/operations', authenticateToken, async (req, res) => {
 });
 
 app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) => {
+    const operation = beginSunbirdOperation(req, 'identity-dashboard');
     try {
         const userEmail = req.user.email;
         console.log(`[Sunbird Dashboard] Fetching dashboard data for: ${userEmail}`);
@@ -9823,6 +10027,7 @@ app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) =
         const tenant = await verifySunbirdUser(userEmail);
         if (!tenant || tenant.clientId !== 'sunbird') {
             console.warn(`[Sunbird Dashboard] Access denied for ${userEmail}`);
+            operation.finish(403, { reason: 'access_denied' });
             return res.status(403).json({ 
                 success: false,
                 error: 'Access denied',
@@ -9831,9 +10036,11 @@ app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) =
         }
 
         console.log('[Sunbird Dashboard] User verified as Sunbird client');
+    operation.step('tenant_verified', { companyId: tenant.companyId || null });
 
         // Get Microsoft Graph token
         const token = await getMicrosoftGraphToken();
+    operation.step('graph_token_loaded');
 
         // Fetch all data in parallel
         const [users, roleAssignments, signIns] = await Promise.all([
@@ -9841,6 +10048,11 @@ app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) =
             fetchMicrosoftRoleAssignments(token),
             fetchMicrosoftSignIns(token)
         ]);
+        operation.step('graph_aggregates_loaded', {
+            users: users.length,
+            roleAssignments: roleAssignments.length,
+            signIns: signIns.length
+        });
 
         console.log(`[Sunbird Dashboard] Fetched ${users.length} users, ${roleAssignments.length} role assignments, ${signIns.length} sign-ins`);
 
@@ -9932,6 +10144,7 @@ app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) =
                 }
             };
         });
+        operation.step('users_enriched', { users: enrichedUsers.length });
 
         // Calculate dashboard metrics
         const totalUsers = enrichedUsers.length;
@@ -10033,10 +10246,16 @@ app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) =
         };
 
         // Smart insights
+        const toInsightEvidence = user => ({
+            id: user.id,
+            displayName: user.displayName,
+            userPrincipalName: user.userPrincipalName,
+            riskLevel: user.riskLevel
+        });
         const insights = {
-            adminsWithoutMFA: enrichedUsers.filter(u => u.flags.adminWithoutMFA),
-            inactiveUsers: enrichedUsers.filter(u => u.flags.inactiveOver30Days),
-            newLocationLogins: enrichedUsers.filter(u => u.flags.newLocationLogin)
+            adminsWithoutMFA: enrichedUsers.filter(u => u.flags.adminWithoutMFA).slice(0, 20).map(toInsightEvidence),
+            inactiveUsers: enrichedUsers.filter(u => u.flags.inactiveOver30Days).slice(0, 20).map(toInsightEvidence),
+            newLocationLogins: enrichedUsers.filter(u => u.flags.newLocationLogin).slice(0, 20).map(toInsightEvidence)
         };
 
         // Device breakdown
@@ -10123,6 +10342,7 @@ app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) =
         };
 
         if (identityEvidenceService && tenant.companyId) {
+            operation.step('evidence_persist_scheduled');
             identityEvidenceService.persistProcessedEvidence({
                 companyId: tenant.companyId,
                 tenantKey: tenant.clientId,
@@ -10134,10 +10354,12 @@ app.get('/api/sunbird/identity-dashboard', authenticateToken, async (req, res) =
             });
         }
 
-        res.json(dashboardPayload);
+        sendSunbirdJson(res, dashboardPayload, operation);
+        operation.finish(200, { users: enrichedUsers.length, signIns: signIns.length });
 
     } catch (error) {
         console.error('[Sunbird Dashboard] Error:', error.message);
+        operation.finish(500, { error: error.message });
         
         res.status(500).json({ 
             error: 'Failed to fetch dashboard data',
@@ -10618,21 +10840,10 @@ app.get('/api/sunbird/identity-dashboard-cached', authenticateToken, async (req,
  * Fetch managed devices from Microsoft Intune/Device Management
  */
 async function fetchMicrosoftDevices(token) {
-    const url = 'https://graph.microsoft.com/v1.0/deviceManagement/managedDevices';
+    const url = 'https://graph.microsoft.com/v1.0/deviceManagement/managedDevices?$top=250';
     
     try {
-        const response = await fetch(url, {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            }
-        });
-
-        if (!response.ok) {
-            throw new Error(`Failed to fetch devices: ${response.statusText}`);
-        }
-
-        const data = await response.json();
+        const data = await fetchMicrosoftGraphJson(url, token, 'Microsoft Graph managed devices');
         return data.value || [];
     } catch (error) {
         console.error('[Microsoft Graph] Devices fetch failed:', error.message);
@@ -10644,21 +10855,10 @@ async function fetchMicrosoftDevices(token) {
  * Fetch device compliance policies
  */
 async function fetchCompliancePolicies(token) {
-    const url = 'https://graph.microsoft.com/v1.0/deviceManagement/deviceCompliancePolicies';
+    const url = 'https://graph.microsoft.com/v1.0/deviceManagement/deviceCompliancePolicies?$top=250';
     
     try {
-        const response = await fetch(url, {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            }
-        });
-
-        if (!response.ok) {
-            throw new Error(`Failed to fetch compliance policies: ${response.statusText}`);
-        }
-
-        const data = await response.json();
+        const data = await fetchMicrosoftGraphJson(url, token, 'Microsoft Graph compliance policies');
         return data.value || [];
     } catch (error) {
         console.error('[Microsoft Graph] Compliance policies fetch failed:', error.message);
@@ -10673,18 +10873,7 @@ async function fetchSecurityAlerts(token) {
     const url = 'https://graph.microsoft.com/v1.0/security/alerts?$top=50';
     
     try {
-        const response = await fetch(url, {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            }
-        });
-
-        if (!response.ok) {
-            throw new Error(`Failed to fetch security alerts: ${response.statusText}`);
-        }
-
-        const data = await response.json();
+        const data = await fetchMicrosoftGraphJson(url, token, 'Microsoft Graph security alerts');
         return data.value || [];
     } catch (error) {
         console.error('[Microsoft Graph] Security alerts fetch failed:', error.message);
@@ -14579,15 +14768,29 @@ app.get('/test-invoice', (req, res) => {
 // ────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 8080;  // Use PORT env var for Cloud Run
 
+function logProcessFault(event, error) {
+    const details = error instanceof Error
+        ? { name: error.name, message: error.message, stack: String(error.stack || '').slice(0, 8000) }
+        : { message: String(error).slice(0, 2000) };
+    console.error('[Process]', JSON.stringify({ event, at: new Date().toISOString(), ...runtimeSnapshot(), ...details }));
+}
+
 // Add global error handlers before starting server
 process.on('uncaughtException', (error) => {
-    console.error('❌ Uncaught Exception:', error.message);
-    console.error('Stack:', error.stack);
+    logProcessFault('uncaught_exception', error);
     process.exit(1);
 });
 
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+process.on('unhandledRejection', (reason) => {
+    logProcessFault('unhandled_rejection', reason);
+});
+
+process.on('warning', (warning) => {
+    logProcessFault('node_warning', warning);
+});
+
+process.on('exit', (code) => {
+    logRuntimeOperation('process_exit', { code });
 });
 
 if (require.main === module) {
