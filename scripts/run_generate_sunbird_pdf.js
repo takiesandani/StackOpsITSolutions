@@ -32,12 +32,31 @@ async function run() {
                         }],
                         evidenceCatalog: {
                             categories: [
-                                { key: 'allUsers', count: 58 },
-                                { key: 'usersWithoutMfa', count: 12 },
-                                { key: 'privilegedUsers', count: 6 },
-                                { key: 'adminsWithoutMfa', count: 1 },
-                                { key: 'highRiskUsers', count: 1 },
-                                { key: 'inactiveUsers', count: 36 }
+                                {
+                                    key: 'allUsers',
+                                    label: 'All users',
+                                    sourceMetric: 'totalUsers',
+                                    count: 58,
+                                    entities: [{
+                                        entityName: 'Break-glass account',
+                                        entityEmail: 'admin@example.com',
+                                        roles: ['Global Administrator'],
+                                        mfaEnabled: false,
+                                        riskLevel: 'HIGH',
+                                        lastSignIn: { daysSince: 999, location: 'Unknown', device: 'Unknown', status: 'inactive' }
+                                    }]
+                                },
+                                {
+                                    key: 'usersWithoutMfa',
+                                    label: 'Users without MFA',
+                                    sourceMetric: 'mfaMissing',
+                                    count: 12,
+                                    entities: [{ entityName: 'Break-glass account', entityEmail: 'admin@example.com', roles: ['Global Administrator'], mfaEnabled: false, riskLevel: 'HIGH' }]
+                                },
+                                { key: 'privilegedUsers', label: 'Privileged users', sourceMetric: 'privilegedUsers', count: 6 },
+                                { key: 'adminsWithoutMfa', label: 'Administrators without MFA', sourceMetric: 'adminsWithoutMfa', count: 1 },
+                                { key: 'highRiskUsers', label: 'High-risk users', sourceMetric: 'highRiskUsers', count: 1 },
+                                { key: 'inactiveUsers', label: 'Inactive users', sourceMetric: 'inactiveUsers', count: 36 }
                             ]
                         }
                     }
@@ -71,4 +90,4 @@ async function run() {
     }
 }
 
-run();
+run().then(() => process.exit(0));
