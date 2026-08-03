@@ -18,6 +18,7 @@ async function run() {
                     intelligenceOutput: {
                         authoritativeScores: { healthScore: 72, riskScore: 28, riskLevel: 'moderate' },
                         domainExecutiveSummary: 'Most identities have healthy access controls, with MFA enrollment and privileged-account remediation still required.',
+                        businessImpact: 'A compromised privileged identity could allow broad access to the tenant and interrupt business operations before the activity is detected.',
                         risks: [{
                             title: 'Break-glass account is missing MFA',
                             severity: 'High',
@@ -25,10 +26,12 @@ async function run() {
                             firstAction: 'Require MFA for the break-glass account and validate the recovery process.'
                         }],
                         keyFindings: [{
-                            title: 'Users are missing MFA',
-                            severity: 'Medium',
-                            description: 'Twelve active identities have not enrolled in MFA.',
-                            firstAction: 'Require MFA registration for the affected identities before continued access.'
+                            title: 'Privileged users have multiple roles and MFA gaps',
+                            severity: 'High',
+                            description: 'Five privileged users have multiple privileged roles, increasing risk exposure. One privileged user lacks MFA.',
+                            impact: 'Compromise of these accounts could lead to broad access and control.',
+                            whyItMatters: 'Privileged roles can change tenant-wide settings and expose sensitive business data.',
+                            firstAction: 'Require MFA for every privileged account, review each privileged role assignment, and remove roles that are not required.'
                         }],
                         evidenceCatalog: {
                             categories: [
