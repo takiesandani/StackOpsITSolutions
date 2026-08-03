@@ -4254,17 +4254,20 @@ function buildSunbirdReportListOverview(reportRow = null) {
 function buildSunbirdReportIdentityDomain(domain) {
     const source = domain?.intelligenceOutput || {};
     const authoritativeScores = source.authoritativeScores || source.scoreSummary || {};
-    const evidenceLimit = 5;
-    const entityLimit = 5;
+    const evidenceLimit = 10;
+    const entityLimit = 10;
     const compactText = (value, maximum = SUNBIRD_DASHBOARD_MAX_STRING_LENGTH) => String(value || '').slice(0, maximum);
+    const evidenceCategories = Array.isArray(source.evidenceCatalog?.categories) ? source.evidenceCatalog.categories : [];
     const compactEntity = (entity = {}) => {
         const lastSignIn = entity.lastSignIn && typeof entity.lastSignIn === 'object' ? entity.lastSignIn : {};
         return {
             entityId: compactText(entity.entityId || entity.id, 160),
             entityName: compactText(entity.entityName || entity.displayName || entity.entityDisplayName, 320),
-            entityEmail: compactText(entity.entityEmail || entity.mail || entity.userPrincipalName, 320),
+            entityEmail: compactText(entity.entityEmail || entity.mail || entity.userPrincipalName || entity.entityUser, 320),
             userPrincipalName: compactText(entity.userPrincipalName || entity.entityUser || entity.assignedUser, 320),
-            roles: (Array.isArray(entity.roles) ? entity.roles : []).slice(0, 20).map(role => compactText(role, 160)),
+            roles: (Array.isArray(entity.roles) ? entity.roles : []).slice(0, 20)
+                .map(role => compactText(typeof role === 'object' ? role?.name || role?.displayName : role, 160))
+                .filter(Boolean),
             mfaEnabled: entity.mfaEnabled ?? null,
             riskLevel: compactText(entity.riskLevel, 80),
             accountStatus: compactText(entity.accountStatus, 80),
@@ -4284,6 +4287,54 @@ function buildSunbirdReportIdentityDomain(domain) {
         entityCount: Number(entry.entityCount || 0),
         snapshotId: entry.snapshotId ?? domain?.snapshotId ?? null
     });
+    const identityEvidenceCategory = (item = {}) => {
+        const normalizedMetric = String(item.sourceMetric || '').toLowerCase();
+        const title = String(item.title || '').toLowerCase();
+        const text = `${item.title || ''} ${item.description || ''} ${item.patternFound || ''}`.toLowerCase();
+        const preferredKeys = [
+            ...(normalizedMetric ? [normalizedMetric] : []),
+            ...(title.includes('missing mfa') ? ['usersWithoutMfa'] : []),
+            ...((title.includes('break-glass') || title.includes('global administrator')) && text.includes('mfa') ? ['adminsWithoutMfa'] : []),
+            ...(text.includes('external') || text.includes('guest') ? ['externalUsers'] : []),
+            ...(text.includes('privileg') || text.includes('multiple role') ? ['privilegedUsers'] : []),
+            ...(text.includes('admin') && text.includes('mfa') ? ['adminsWithoutMfa'] : []),
+            ...(text.includes('mfa') ? ['usersWithoutMfa'] : []),
+            ...(text.includes('inactive') ? ['inactiveUsers'] : []),
+            ...(text.includes('high risk') ? ['highRiskUsers'] : []),
+            'allUsers'
+        ];
+        return preferredKeys.map(key => evidenceCategories.find(category =>
+            String(category?.key || '').toLowerCase() === key.toLowerCase() ||
+            String(category?.sourceMetric || '').toLowerCase() === key.toLowerCase()
+        )).find(Boolean) || null;
+    };
+    const evidenceRecordsForFinding = (item = {}, affectedEntities = []) => {
+        const category = identityEvidenceCategory(item);
+        const categoryEntities = Array.isArray(category?.entities) ? category.entities : [];
+        const affectedIds = new Set(affectedEntities.map(entity => String(entity?.entityId || entity?.id || '')).filter(Boolean));
+        const affectedEmails = new Set(affectedEntities.map(entity => String(entity?.entityEmail || entity?.mail || entity?.userPrincipalName || '').toLowerCase()).filter(Boolean));
+        const matchingEntities = categoryEntities.filter(entity =>
+            affectedIds.has(String(entity?.entityId || entity?.id || '')) ||
+            affectedEmails.has(String(entity?.entityEmail || entity?.mail || entity?.userPrincipalName || '').toLowerCase())
+        );
+        const candidates = categoryEntities.length > matchingEntities.length
+            ? categoryEntities
+            : (matchingEntities.length ? matchingEntities : (affectedEntities.length ? affectedEntities : categoryEntities));
+        const uniqueRecords = [];
+        const seen = new Set();
+        for (const entity of candidates) {
+            const key = String(entity?.entityId || entity?.id || entity?.entityEmail || entity?.mail || entity?.userPrincipalName || entity?.displayName || '').toLowerCase();
+            if (!key || seen.has(key)) continue;
+            seen.add(key);
+            uniqueRecords.push(compactEntity(entity));
+            if (uniqueRecords.length >= evidenceLimit) break;
+        }
+        return {
+            records: uniqueRecords,
+            total: Number(category?.count || candidates.length || affectedEntities.length || 0),
+            categoryLabel: compactText(category?.label || 'Identity evidence', 160)
+        };
+    };
     const fallbackRecommendation = (item = {}) => {
         const text = `${item.title || ''} ${item.description || ''} ${item.patternFound || ''}`.toLowerCase();
         if (/mfa|multi-factor|multifactor/.test(text) && /privileg|admin|global/.test(text)) {
@@ -4307,6 +4358,7 @@ function buildSunbirdReportIdentityDomain(domain) {
         const evidenceUsed = Array.isArray(item.evidenceUsed) ? item.evidenceUsed : [];
         const evidenceRows = Array.isArray(item.evidenceRows) ? item.evidenceRows : [];
         const affectedEntities = Array.isArray(item.affectedEntities) ? item.affectedEntities : evidenceRows;
+        const evidenceRecords = evidenceRecordsForFinding(item, affectedEntities);
         const severity = compactText(item.severity || item.priority || item.riskLevel || (findingType === 'risk' ? 'Unrated' : 'Observed'), 80);
         const impact = compactText(item.impact || item.businessImpact || item.whyItMatters || item.description || item.detail || item.title, SUNBIRD_DASHBOARD_MAX_STRING_LENGTH);
         const suppliedRecommendation = item.firstAction || item.recommendedAction || item.recommendation || item.detail;
@@ -4334,6 +4386,9 @@ function buildSunbirdReportIdentityDomain(domain) {
             firstAction: recommendation,
             evidenceSummary: compactText(item.evidenceSummary || (evidence.length ? '' : `${evidenceRows.length || affectedEntities.length} StackCTRL evidence row(s) support this finding.`), SUNBIRD_DASHBOARD_MAX_STRING_LENGTH),
             evidence,
+            evidenceRecords: evidenceRecords.records,
+            evidenceRecordCount: evidenceRecords.total,
+            evidenceCategory: evidenceRecords.categoryLabel,
             affectedEntities: affectedEntities.slice(0, entityLimit).map(compactEntity),
             evidenceRows: evidenceRows.slice(0, evidenceLimit).map(compactEntity),
             sourceMetric: compactText(item.sourceMetric, 160),

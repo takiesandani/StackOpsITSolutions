@@ -13512,6 +13512,8 @@ function normalizeIdentityRiskDetail(finding = {}) {
             evidenceSource: entry?.evidenceSource || entry?.sourceLabel || '',
             entityCount: Number(entry?.entityCount || 0)
         })),
+        evidenceRecordCount: Number(finding.evidenceRecordCount || 0),
+        evidenceCategory: finding.evidenceCategory || 'Identity evidence',
         affectedEntities: affected.map(entity => {
             const lastSignIn = entity?.lastSignIn && typeof entity.lastSignIn === 'object' ? entity.lastSignIn : {};
             return {
@@ -13528,8 +13530,68 @@ function normalizeIdentityRiskDetail(finding = {}) {
                 dateTime: lastSignIn.dateTime || ''
             }
             };
-        })
+        }),
+        evidenceRecords: (Array.isArray(finding.evidenceRecords) && finding.evidenceRecords.length
+            ? finding.evidenceRecords
+            : affected).map(entity => {
+                const lastSignIn = entity?.lastSignIn && typeof entity.lastSignIn === 'object' ? entity.lastSignIn : {};
+                return {
+                    entityEmail: entity?.entityEmail || entity?.mail || '',
+                    userPrincipalName: entity?.userPrincipalName || entity?.entityUser || '',
+                    displayName: entity?.displayName || entity?.entityName || entity?.entityDisplayName || '',
+                    roles: Array.isArray(entity?.roles) ? entity.roles.map(role => typeof role === 'object' ? role?.name || role?.displayName || '' : role).filter(Boolean) : [],
+                    mfaEnabled: entity?.mfaEnabled ?? null,
+                    riskLevel: entity?.riskLevel || '',
+                    lastSignIn: {
+                        device: lastSignIn.device || '',
+                        location: lastSignIn.location || '',
+                        daysSince: lastSignIn.daysSince ?? '',
+                        status: lastSignIn.status || ''
+                    }
+                };
+            })
     };
+}
+
+function getIdentityRecommendationPoints(action = '') {
+    const points = String(action)
+        .split(/(?:;|\.(?=\s+[A-Z]))/)
+        .map(point => point.trim())
+        .filter(Boolean);
+    return points.length ? points.slice(0, 4) : ['Review the supporting evidence and assign an owner.'];
+}
+
+function renderIdentityEvidenceRecords(finding) {
+    const records = finding.evidenceRecords.slice(0, 10);
+    const remaining = Math.max(0, Number(finding.evidenceRecordCount || records.length) - records.length);
+    if (!records.length) {
+        return '<p class="sunbird-report-identity-no-evidence">No readable identity records were included with this Azure finding.</p>';
+    }
+    return `
+        <ul class="sunbird-report-identity-evidence-list">
+            ${records.map(record => {
+                const identity = record.displayName || record.userPrincipalName || record.entityEmail || 'Identity record';
+                const signIn = [record.lastSignIn.location, record.lastSignIn.device, record.lastSignIn.status]
+                    .filter(Boolean)
+                    .join(' | ');
+                const posture = [
+                    record.mfaEnabled == null ? '' : record.mfaEnabled ? 'MFA enabled' : 'MFA not enabled',
+                    record.riskLevel ? `Risk ${record.riskLevel}` : '',
+                    record.roles.length ? record.roles.join(', ') : '',
+                    record.lastSignIn.daysSince === '' ? '' : `${record.lastSignIn.daysSince} days since sign-in`
+                ].filter(Boolean).join(' | ');
+                return `
+                    <li>
+                        <strong>${escapeIdentityText(identity)}</strong>
+                        <span>${escapeIdentityText(record.entityEmail || record.userPrincipalName || 'No email returned')}</span>
+                        ${posture ? `<small>${escapeIdentityText(posture)}</small>` : ''}
+                        ${signIn ? `<small>${escapeIdentityText(signIn)}</small>` : ''}
+                    </li>
+                `;
+            }).join('')}
+        </ul>
+        ${remaining ? `<p class="sunbird-report-identity-more-evidence">${remaining} additional affected identity record${remaining === 1 ? '' : 's'} are available in the Identity dashboard.</p>` : ''}
+    `;
 }
 
 function renderSunbirdReportIdentityFieldSection(data = {}) {
@@ -13540,7 +13602,7 @@ function renderSunbirdReportIdentityFieldSection(data = {}) {
         const identity = String(entity.entityEmail || entity.userPrincipalName || entity.displayName || '').toLowerCase();
         if (identity && !entityByIdentity.has(identity)) entityByIdentity.set(identity, entity);
     });
-    const entities = Array.from(entityByIdentity.values()).slice(0, 8);
+    const entities = Array.from(entityByIdentity.values()).slice(0, 10);
     return `
         <section class="sunbird-report-identity-field-section">
             <div class="sunbird-report-card-title">
@@ -13578,8 +13640,8 @@ function renderSunbirdReportIdentityFieldSection(data = {}) {
                             <div class="sunbird-report-identity-field-row"><span>SEVERITY</span><p>${escapeIdentityText(finding.severity)}</p></div>
                             <div class="sunbird-report-identity-field-row"><span>IMPACT</span><p>${escapeIdentityText(finding.impact || 'Impact is recorded in the Azure finding context.')}</p></div>
                             <div class="sunbird-report-identity-field-row"><span>WHY IT MATTERS</span><p>${escapeIdentityText(finding.whyItMatters || finding.impact || 'This finding requires review against the supporting evidence.')}</p></div>
-                            <div class="sunbird-report-identity-field-row"><span>EVIDENCE</span><p>${escapeIdentityText(finding.evidenceSummary || 'Azure returned evidence records for this finding.')}${finding.evidence.length ? `<br><small>${escapeIdentityText(finding.evidence.map(entry => `${entry.label}${entry.entityCount ? ` (${entry.entityCount} entity${entry.entityCount === 1 ? '' : 'ies'})` : ''}${entry.sourceMetric ? ` - ${entry.sourceMetric}` : ''}`).join(' | '))}</small>` : ''}</p></div>
-                            <div class="sunbird-report-identity-field-row"><span>RECOMMENDATION</span><p>${escapeIdentityText(finding.action || 'Review the evidence and assign an owner.')}</p></div>
+                            <div class="sunbird-report-identity-field-row sunbird-report-identity-evidence-row"><span>EVIDENCE</span><div>${renderIdentityEvidenceRecords(finding)}</div></div>
+                            <div class="sunbird-report-identity-field-row sunbird-report-identity-recommendation-row"><span>RECOMMENDATIONS</span><ul>${getIdentityRecommendationPoints(finding.action).map(point => `<li>${escapeIdentityText(point)}</li>`).join('')}</ul></div>
                         </article>
                     `).join('') : '<div class="sunbird-report-empty">Azure did not return identity findings for this reporting period.</div>'}
                 </div>

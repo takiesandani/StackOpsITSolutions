@@ -1219,7 +1219,7 @@
 
 .sunbird-report-identity-field-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 20px;
 }
@@ -1318,6 +1318,95 @@
   font-size: 0.8rem;
 }
 
+/* This report section intentionally uses a white reading surface inside the dark dashboard. */
+.sunbird-reports-dashboard .sunbird-report-identity-field-section {
+  color: #111827 !important;
+  background: #ffffff;
+}
+
+.sunbird-reports-dashboard .sunbird-report-identity-field-section .sunbird-report-card-title > span,
+.sunbird-reports-dashboard .sunbird-report-identity-field-section .sunbird-report-card-title small,
+.sunbird-reports-dashboard .sunbird-report-identity-field-section h3,
+.sunbird-reports-dashboard .sunbird-report-identity-field-grid article strong,
+.sunbird-reports-dashboard .sunbird-report-identity-finding-card > strong,
+.sunbird-reports-dashboard .sunbird-report-identity-entities-grid strong {
+  color: #111827 !important;
+}
+
+.sunbird-reports-dashboard .sunbird-report-identity-field-grid article p,
+.sunbird-reports-dashboard .sunbird-report-identity-field-row p,
+.sunbird-reports-dashboard .sunbird-report-identity-entities-grid span,
+.sunbird-reports-dashboard .sunbird-report-identity-entities-grid small {
+  color: #334155 !important;
+}
+
+.sunbird-reports-dashboard .sunbird-report-identity-field-row span {
+  color: #0f172a !important;
+}
+
+.sunbird-report-identity-field-row > *:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sunbird-report-identity-evidence-list,
+.sunbird-report-identity-recommendation-row ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.sunbird-report-identity-evidence-list {
+  list-style: none;
+  padding-left: 0;
+}
+
+.sunbird-report-identity-evidence-list li {
+  padding: 9px 10px;
+  border: 1px solid #dbe3ec;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.sunbird-report-identity-evidence-list strong,
+.sunbird-report-identity-evidence-list span,
+.sunbird-report-identity-evidence-list small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.sunbird-report-identity-evidence-list strong {
+  color: #111827;
+  font-size: 0.82rem;
+}
+
+.sunbird-report-identity-evidence-list span,
+.sunbird-report-identity-evidence-list small,
+.sunbird-report-identity-no-evidence,
+.sunbird-report-identity-more-evidence {
+  color: #334155;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.sunbird-report-identity-more-evidence {
+  margin: 10px 0 0;
+  font-weight: 600;
+}
+
+.sunbird-report-identity-recommendation-row {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #dbe3ec;
+}
+
+.sunbird-report-identity-recommendation-row ul {
+  color: #1e293b;
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
 @media (max-width: 1080px) {
   .sunbird-report-identity-field-grid,
   .sunbird-report-identity-findings-grid,
@@ -1331,6 +1420,11 @@
   .sunbird-report-identity-finding-card,
   .sunbird-report-identity-entities-grid article {
     padding: 14px;
+  }
+
+  .sunbird-report-identity-field-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
   }
 }
 
