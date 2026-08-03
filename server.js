@@ -4253,34 +4253,114 @@ function buildSunbirdReportListOverview(reportRow = null) {
 
 function buildSunbirdReportIdentityDomain(domain) {
     const source = domain?.intelligenceOutput || {};
-    const risks = Array.isArray(source.risks) ? source.risks.slice(0, 4) : [];
+    const authoritativeScores = source.authoritativeScores || source.scoreSummary || {};
+    const evidenceLimit = 5;
+    const entityLimit = 5;
+    const compactText = (value, maximum = SUNBIRD_DASHBOARD_MAX_STRING_LENGTH) => String(value || '').slice(0, maximum);
+    const compactEntity = (entity = {}) => {
+        const lastSignIn = entity.lastSignIn && typeof entity.lastSignIn === 'object' ? entity.lastSignIn : {};
+        return {
+            entityId: compactText(entity.entityId || entity.id, 160),
+            entityName: compactText(entity.entityName || entity.displayName || entity.entityDisplayName, 320),
+            entityEmail: compactText(entity.entityEmail || entity.mail || entity.userPrincipalName, 320),
+            userPrincipalName: compactText(entity.userPrincipalName || entity.entityUser || entity.assignedUser, 320),
+            roles: (Array.isArray(entity.roles) ? entity.roles : []).slice(0, 20).map(role => compactText(role, 160)),
+            mfaEnabled: entity.mfaEnabled ?? null,
+            riskLevel: compactText(entity.riskLevel, 80),
+            accountStatus: compactText(entity.accountStatus, 80),
+            lastSignIn: {
+                device: compactText(lastSignIn.device, 320),
+                location: compactText(lastSignIn.location, 320),
+                daysSince: lastSignIn.daysSince ?? null,
+                status: compactText(lastSignIn.status, 80),
+                dateTime: compactText(lastSignIn.dateTime, 80)
+            }
+        };
+    };
+    const compactEvidence = (entry = {}) => ({
+        label: compactText(entry.label || entry.title || entry.evidenceSource || entry.sourceMetric, 320),
+        sourceMetric: compactText(entry.sourceMetric, 160),
+        evidenceSource: compactText(entry.evidenceSource || entry.sourceLabel, 320),
+        entityCount: Number(entry.entityCount || 0),
+        snapshotId: entry.snapshotId ?? domain?.snapshotId ?? null
+    });
+    const fallbackRecommendation = (item = {}) => {
+        const text = `${item.title || ''} ${item.description || ''} ${item.patternFound || ''}`.toLowerCase();
+        if (/mfa|multi-factor|multifactor/.test(text) && /privileg|admin|global/.test(text)) {
+            return 'Require MFA for every privileged account, review each privileged role assignment, and remove roles that are not required.';
+        }
+        if (/mfa|multi-factor|multifactor/.test(text)) {
+            return 'Require MFA registration for the affected accounts and restrict access until enrollment is complete.';
+        }
+        if (/privileg|admin|global administrator|multiple roles/.test(text)) {
+            return 'Review privileged role assignments, remove unnecessary roles, and document an approved access-review owner.';
+        }
+        if (/sign-in|signin|device|location/.test(text)) {
+            return 'Investigate the affected sign-ins and devices, then require known, compliant devices for continued access.';
+        }
+        if (/external|guest/.test(text)) {
+            return 'Review external account access, confirm the business owner, and remove access that is no longer required.';
+        }
+        return 'Review the affected identity records, assign an owner, and complete the remediation supported by this evidence.';
+    };
+    const compactFinding = (item = {}, findingType) => {
+        const evidenceUsed = Array.isArray(item.evidenceUsed) ? item.evidenceUsed : [];
+        const evidenceRows = Array.isArray(item.evidenceRows) ? item.evidenceRows : [];
+        const affectedEntities = Array.isArray(item.affectedEntities) ? item.affectedEntities : evidenceRows;
+        const severity = compactText(item.severity || item.priority || item.riskLevel || (findingType === 'risk' ? 'Unrated' : 'Observed'), 80);
+        const impact = compactText(item.impact || item.businessImpact || item.whyItMatters || item.description || item.detail || item.title, SUNBIRD_DASHBOARD_MAX_STRING_LENGTH);
+        const suppliedRecommendation = item.firstAction || item.recommendedAction || item.recommendation || item.detail;
+        const recommendation = compactText(suppliedRecommendation || fallbackRecommendation(item), SUNBIRD_DASHBOARD_MAX_STRING_LENGTH);
+        const evidence = evidenceUsed.length
+            ? evidenceUsed.slice(0, evidenceLimit).map(compactEvidence)
+            : (evidenceRows.length
+                ? [compactEvidence({
+                    label: 'StackCTRL Identity Protection evidence',
+                    sourceMetric: item.sourceMetric,
+                    evidenceSource: item.evidenceSource,
+                    entityCount: evidenceRows.length,
+                    snapshotId: item.snapshotId
+                })]
+                : []);
+        return {
+            findingType,
+            title: compactText(item.title || item.patternFound || item.metricName, SUNBIRD_DASHBOARD_MAX_STRING_LENGTH),
+            severity,
+            impact,
+            description: compactText(item.description || item.detail || item.whatHappened, SUNBIRD_DASHBOARD_MAX_STRING_LENGTH),
+            whyItMatters: compactText(item.whyItMatters || item.reasoning || item.businessImpact || item.description || item.detail, SUNBIRD_DASHBOARD_MAX_STRING_LENGTH),
+            recommendation,
+            recommendationSource: suppliedRecommendation ? 'azure' : 'stackctrl_evidence_fallback',
+            firstAction: recommendation,
+            evidenceSummary: compactText(item.evidenceSummary || (evidence.length ? '' : `${evidenceRows.length || affectedEntities.length} StackCTRL evidence row(s) support this finding.`), SUNBIRD_DASHBOARD_MAX_STRING_LENGTH),
+            evidence,
+            affectedEntities: affectedEntities.slice(0, entityLimit).map(compactEntity),
+            evidenceRows: evidenceRows.slice(0, evidenceLimit).map(compactEntity),
+            sourceMetric: compactText(item.sourceMetric, 160),
+            snapshotId: item.snapshotId ?? domain?.snapshotId ?? null
+        };
+    };
+    const risks = (Array.isArray(source.risks) ? source.risks : []).slice(0, 5);
+    const keyFindings = (Array.isArray(source.keyFindings) ? source.keyFindings : []).slice(0, 5);
+    const findings = [
+        ...risks.map(item => compactFinding(item, 'risk')),
+        ...keyFindings.map(item => compactFinding(item, 'finding'))
+    ];
+    const businessImpact = compactText(
+        source.businessImpact || source.currentPosture || risks.map(risk => risk.businessImpact || risk.impact || risk.whyItMatters).filter(Boolean).join(' '),
+        SUNBIRD_DASHBOARD_MAX_STRING_LENGTH
+    );
     return {
         domainKey: domain?.domainKey || 'identity',
         intelligenceOutput: {
-            domainExecutiveSummary: String(source.domainExecutiveSummary || '').slice(0, SUNBIRD_DASHBOARD_MAX_STRING_LENGTH),
-            businessImpact: String(source.businessImpact || '').slice(0, SUNBIRD_DASHBOARD_MAX_STRING_LENGTH),
-            healthScore: source.healthScore ?? source.scoreSummary?.healthScore ?? null,
-            riskScore: source.riskScore ?? source.scoreSummary?.riskScore ?? null,
-            risks: risks.map(risk => ({
-                title: String(risk?.title || '').slice(0, SUNBIRD_DASHBOARD_MAX_STRING_LENGTH),
-                severity: String(risk?.severity || '').slice(0, 100),
-                impact: String(risk?.impact || '').slice(0, SUNBIRD_DASHBOARD_MAX_STRING_LENGTH),
-                whyItMatters: String(risk?.whyItMatters || '').slice(0, SUNBIRD_DASHBOARD_MAX_STRING_LENGTH),
-                evidenceSummary: String(risk?.evidenceSummary || '').slice(0, SUNBIRD_DASHBOARD_MAX_STRING_LENGTH),
-                firstAction: String(risk?.firstAction || risk?.recommendation || '').slice(0, SUNBIRD_DASHBOARD_MAX_STRING_LENGTH),
-                affectedEntities: (Array.isArray(risk?.affectedEntities) ? risk.affectedEntities : []).slice(0, 6).map(entity => ({
-                    entityEmail: String(entity?.entityEmail || '').slice(0, 320),
-                    userPrincipalName: String(entity?.userPrincipalName || '').slice(0, 320),
-                    displayName: String(entity?.displayName || '').slice(0, 320),
-                    roles: (Array.isArray(entity?.roles) ? entity.roles : []).slice(0, 20).map(role => String(role).slice(0, 160)),
-                    mfaEnabled: entity?.mfaEnabled ?? null,
-                    lastSignIn: {
-                        device: String(entity?.lastSignIn?.device || '').slice(0, 320),
-                        location: String(entity?.lastSignIn?.location || '').slice(0, 320),
-                        daysSince: entity?.lastSignIn?.daysSince ?? null
-                    }
-                }))
-            }))
+            domainExecutiveSummary: compactText(source.domainExecutiveSummary || source.technicalSummary || source.currentPosture),
+            businessImpact,
+            healthScore: source.healthScore ?? authoritativeScores.healthScore ?? domain?.healthScore ?? null,
+            riskScore: source.riskScore ?? authoritativeScores.riskScore ?? domain?.riskScore ?? null,
+            riskLevel: compactText(authoritativeScores.riskLevel || source.riskLevel, 80),
+            findings,
+            risks: findings.filter(finding => finding.findingType === 'risk'),
+            recommendations: (Array.isArray(source.recommendations) ? source.recommendations : []).slice(0, 5).map(item => compactFinding(item, 'recommendation'))
         }
     };
 }
