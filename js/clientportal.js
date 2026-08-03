@@ -1021,6 +1021,7 @@ let cachedSunbirdBackupData = null;
 let cachedSunbirdReportsData = null;
 let sunbirdReportsRange = '30d';
 let sunbirdReportsRequestId = 0;
+const sunbirdReportsRequests = new Map();
 const SUNBIRD_NETWORK_SECURITY_CACHE_KEY = 'sunbirdNetworkSecuritySnapshot_v1';
 const BILLING_CACHE_KEY = 'billingInvoiceCache_v1';
 const BILLING_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -1028,6 +1029,7 @@ let billingAuthRetryCount = 0;
 let identityRiskFocus = 'all';
 let pendingIdentityRiskFocus = 'all';
 let identityFetchRequestId = 0;
+let sunbirdIdentityDashboardRequestPromise = null;
 let retryCount = 0; // Retry counter for Identity Access API failures
 let latestDevicesCardData = null;
 let latestEmailCardData = null;
@@ -2691,6 +2693,23 @@ function saveSunbirdIdentitySnapshot(data) {
 }
 
 async function fetchFreshSunbirdIdentityDashboardData() {
+    if (sunbirdIdentityDashboardRequestPromise) {
+        console.log('[Sunbird Identity Dashboard] Reusing dashboard request already in progress');
+        return sunbirdIdentityDashboardRequestPromise;
+    }
+
+    const request = requestFreshSunbirdIdentityDashboardData();
+    sunbirdIdentityDashboardRequestPromise = request;
+    try {
+        return await request;
+    } finally {
+        if (sunbirdIdentityDashboardRequestPromise === request) {
+            sunbirdIdentityDashboardRequestPromise = null;
+        }
+    }
+}
+
+async function requestFreshSunbirdIdentityDashboardData() {
     const token = localStorage.getItem('authToken');
     if (!token) throw new Error('Authentication required');
     
@@ -13222,24 +13241,47 @@ async function fetchSunbirdReportsData(range = sunbirdReportsRange, forceRefresh
         console.log(`[Reports] Using cached ${range} report data.`);
         return cachedSunbirdReportsData;
     }
-    console.log(`[Reports] Loading report history, daily snapshots, and audit logs for ${range}.`);
-    const response = await fetch(`/api/sunbird/reports?range=${encodeURIComponent(range)}&limit=30`, {
-        cache: 'no-store',
-        headers: getSunbirdReportHeaders()
-    });
-    const data = await response.json();
-    if (!response.ok || !data.success) {
-        console.error('[Reports] Load failed:', response.status, data);
-        throw new Error(data.message || `Reports are unavailable (${response.status})`);
+    if (sunbirdReportsRequests.has(range)) {
+        console.log(`[Reports] Reusing ${range} report request already in progress.`);
+        return sunbirdReportsRequests.get(range);
     }
-    console.log('[Reports] Loaded:', {
-        reports: data.reports?.length || 0,
-        dailySnapshots: (data.reports || []).filter(report => report.type === 'daily').length,
-        auditLogs: data.logs?.length || 0,
-        events: data.overview?.events?.length || 0
-    });
-    cachedSunbirdReportsData = { ...data, selectedRange: range };
-    return cachedSunbirdReportsData;
+
+    const request = (async () => {
+        console.log(`[Reports] Loading report history, daily snapshots, and audit logs for ${range}.`);
+        const response = await fetch(`/api/sunbird/reports?range=${encodeURIComponent(range)}&limit=30`, {
+            cache: 'no-store',
+            headers: getSunbirdReportHeaders()
+        });
+        const responseBody = await response.text();
+        let data;
+        try {
+            data = responseBody ? JSON.parse(responseBody) : {};
+        } catch (_) {
+            throw new Error(response.ok
+                ? 'Reports returned an invalid response. Please refresh and try again.'
+                : `Reports are unavailable (${response.status}). Please try again shortly.`);
+        }
+        if (!response.ok || !data.success) {
+            console.error('[Reports] Load failed:', response.status, data);
+            throw new Error(data.message || `Reports are unavailable (${response.status})`);
+        }
+        console.log('[Reports] Loaded:', {
+            reports: data.reports?.length || 0,
+            dailySnapshots: (data.reports || []).filter(report => report.type === 'daily').length,
+            auditLogs: data.logs?.length || 0,
+            events: data.overview?.events?.length || 0
+        });
+        cachedSunbirdReportsData = { ...data, selectedRange: range };
+        return cachedSunbirdReportsData;
+    })();
+    sunbirdReportsRequests.set(range, request);
+    try {
+        return await request;
+    } finally {
+        if (sunbirdReportsRequests.get(range) === request) {
+            sunbirdReportsRequests.delete(range);
+        }
+    }
 }
 
 function formatSunbirdReportDate(value, includeTime = false) {

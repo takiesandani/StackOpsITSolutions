@@ -4107,6 +4107,33 @@ function serializeReportRow(row) {
     };
 }
 
+function buildSunbirdReportListOverview(reportRow = null) {
+    const payload = parseReportJson(reportRow?.Payload, {});
+    const summary = payload.summary || {};
+    const analysis = payload.analysis || {};
+    return {
+        summary: {
+            healthScore: clampReportScore(summary.healthScore ?? reportRow?.HealthScore ?? 0),
+            status: summary.status || reportRow?.ReportStatus || 'Collecting evidence',
+            failures: Number(summary.failures || payload.failures?.length || analysis.failures?.length || 0),
+            successes: Number(summary.successes || payload.successes?.length || analysis.successes?.length || 0),
+            totalEvents: Number(summary.totalEvents || payload.events?.length || 0)
+        },
+        analysis: {
+            executiveSummary: analysis.executiveSummary || 'The latest saved report is ready for review.',
+            successes: Array.isArray(analysis.successes) ? analysis.successes : [],
+            failures: Array.isArray(analysis.failures) ? analysis.failures : [],
+            recommendations: Array.isArray(analysis.recommendations) ? analysis.recommendations : []
+        },
+        successes: Array.isArray(payload.successes) ? payload.successes : [],
+        failures: Array.isArray(payload.failures) ? payload.failures : [],
+        recommendations: Array.isArray(payload.recommendations) ? payload.recommendations : [],
+        events: Array.isArray(payload.events) ? payload.events : [],
+        domainScores: payload.domainScores || {},
+        trend: Array.isArray(payload.trend) ? payload.trend : []
+    };
+}
+
 async function getReportContext(req, res) {
     if (!pool) {
         res.status(503).json({ success: false, message: 'Report database is temporarily unavailable' });
@@ -4152,10 +4179,8 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
              LIMIT 120`,
             [context.companyId, range.start, range.end]
         );
-        const [overview, identityDomain] = await Promise.all([
-            buildSunbirdReportPayload(context.companyId, range.start, range.end, false),
-            fetchSunbirdIdentityDomainIntelligence(context.companyId)
-        ]);
+        const identityDomain = await fetchSunbirdIdentityDomainIntelligence(context.companyId);
+        const overview = buildSunbirdReportListOverview(rows[0]);
         await writeSunbirdReportLog({
             companyId: context.companyId,
             eventType: 'report_center_viewed',
