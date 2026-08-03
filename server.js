@@ -59,6 +59,7 @@ const { createStackCTRLIntelligenceRouter } = require('./routes/stackctrl-intell
 const { createAdminIntelligenceRouter } = require('./routes/admin-intelligence');
 const { createPowerBIReportingService } = require('./services/powerbi-reporting');
 const { createPowerBIReportingRouter } = require('./routes/powerbi-reporting');
+const { buildIdentityPdfViewModel } = require('./services/intelligence/identity-pdf-report');
 
 // invoice payment endpoints 
 require("dotenv").config();
@@ -3913,7 +3914,101 @@ function generateSunbirdReportPdf(report, reportId = null) {
                     doc.y = rowY + rowHeight + 1;
                 });
                 doc.y += 4;
-            };            const renderDomain = domain => {
+            };
+            const selectIdentityColumns = columns => {
+                const priority = ['Name', 'Email', 'Role(s)', 'MFA Enabled', 'Risk Level', 'Account Status', 'Last Sign In', 'Device', 'Location'];
+                return priority.filter(column => columns.includes(column)).slice(0, 6);
+            };
+            const drawIdentityMetricSnapshot = viewModel => {
+                const metrics = viewModel?.summary?.metrics || {};
+                const bars = [
+                    { label: 'MFA coverage', value: Number(metrics.mfaCoverage || 0), maxValue: 100 },
+                    { label: 'High risk users', value: Number(metrics.highRiskUsers || 0), maxValue: Math.max(10, Number(metrics.highRiskUsers || 0), Number(metrics.privilegedUsersWithoutMFA || 0)) },
+                    { label: 'Privileged without MFA', value: Number(metrics.privilegedUsersWithoutMFA || 0), maxValue: Math.max(10, Number(metrics.privilegedUsersWithoutMFA || 0), Number(metrics.highRiskUsers || 0)) }
+                ];
+                addPageIfNeeded(80);
+                const cardY = doc.y;
+                doc.roundedRect(left + 8, cardY, contentWidth - 16, 58, 6).fill('#f8fafc').strokeColor('#e1e6ea').stroke();
+                doc.font('Helvetica-Bold').fontSize(8.2).fillColor(navy).text('Identity metrics', left + 16, cardY + 8, { width: contentWidth - 32 });
+                const metricWidth = Math.max(90, (contentWidth - 40) / 3);
+                bars.forEach((item, index) => {
+                    const x = left + 16 + index * (metricWidth + 4);
+                    doc.font('Helvetica').fontSize(7.2).fillColor(slate).text(item.label, x, cardY + 24, { width: metricWidth });
+                    const valueText = `${item.value}${item.label.includes('coverage') ? '%' : ''}`;
+                    doc.font('Helvetica-Bold').fontSize(9.2).fillColor(orange).text(valueText, x, cardY + 36, { width: metricWidth });
+                    const availableWidth = Math.max(18, metricWidth - 6);
+                    const scaledWidth = Math.max(8, Math.round(availableWidth * Math.min(1, Math.max(0, item.value / Math.max(1, item.maxValue)))));
+                    doc.roundedRect(x, cardY + 49, availableWidth, 5, 2.5).fill('#e1e6ea');
+                    doc.roundedRect(x, cardY + 49, scaledWidth, 5, 2.5).fill(item.label.includes('coverage') ? orange : navy);
+                });
+                doc.y = cardY + 66;
+            };
+            const drawIdentityEvidenceTable = (columns, rows, x, y, width) => {
+                const selectedColumns = selectIdentityColumns(columns || []);
+                if (!selectedColumns.length) return y + 18;
+                const columnCount = selectedColumns.length;
+                const columnGap = 2;
+                const totalWidth = width - (columnCount - 1) * columnGap;
+                const columnWidth = Math.floor(totalWidth / columnCount);
+                const startY = y;
+                const headerHeight = 16;
+                let currentY = startY;
+                const headerRectY = currentY;
+                doc.rect(x, headerRectY, width, headerHeight).fill('#f8fafc');
+                selectedColumns.forEach((column, index) => {
+                    const columnX = x + index * (columnWidth + columnGap);
+                    doc.font('Helvetica-Bold').fontSize(7.1).fillColor(navy).text(column, columnX + 4, currentY + 4, { width: columnWidth - 8 });
+                });
+                currentY += headerHeight;
+                rows.slice(0, 10).forEach((row, rowIndex) => {
+                    const cellHeight = Math.max(18, ...selectedColumns.map(column => {
+                        const value = row && typeof row === 'object' ? row[column] : null;
+                        const text = value == null || value === '' ? '—' : String(value);
+                        return doc.heightOfString(text, { width: columnWidth - 8, lineGap: 1 }) + 8;
+                    }));
+                    addPageIfNeeded(cellHeight + 8);
+                    const rowY = currentY;
+                    doc.rect(x, rowY, width, cellHeight).fill(rowIndex % 2 === 0 ? '#ffffff' : '#f8fafc');
+                    selectedColumns.forEach((column, index) => {
+                        const columnX = x + index * (columnWidth + columnGap);
+                        const value = row && typeof row === 'object' ? row[column] : null;
+                        const text = value == null || value === '' ? '—' : String(value);
+                        doc.font('Helvetica').fontSize(6.8).fillColor(slate).text(text, columnX + 4, rowY + 4, { width: columnWidth - 8, lineGap: 1 });
+                    });
+                    currentY += cellHeight;
+                });
+                return currentY + 4;
+            };
+            const drawIdentityFindingBlock = finding => {
+                if (!finding) return;
+                addPageIfNeeded(110);
+                const titleY = doc.y;
+                doc.font('Helvetica-Bold').fontSize(8.5).fillColor(navy).text(finding.title, left + 8, titleY, { width: contentWidth - 100 });
+                const badgeWidth = 60;
+                const badgeX = pageWidth - left - badgeWidth - 8;
+                doc.roundedRect(badgeX, titleY, badgeWidth, 12, 3).fill('#f8fafc').strokeColor('#e1e6ea').stroke();
+                doc.font('Helvetica-Bold').fontSize(7).fillColor(orange).text(String(finding.severity || 'Medium').toUpperCase(), badgeX, titleY + 2, { width: badgeWidth, align: 'center' });
+                doc.y = titleY + 16;
+                doc.font('Helvetica-Bold').fontSize(7.5).fillColor(navy).text('Business impact', left + 8, doc.y, { width: 90 });
+                doc.font('Helvetica').fontSize(7.4).fillColor(slate).text(finding.businessImpact || 'Business impact is described in the stored intelligence output.', left + 98, doc.y, { width: contentWidth - 106, lineGap: 1 });
+                doc.y += Math.max(14, doc.heightOfString(finding.businessImpact || 'Business impact is described in the stored intelligence output.', { width: contentWidth - 106, lineGap: 1 }) + 4);
+                doc.font('Helvetica-Bold').fontSize(7.5).fillColor(navy).text('Recommendation', left + 8, doc.y, { width: 90 });
+                const recommendations = Array.isArray(finding.recommendations) && finding.recommendations.length ? finding.recommendations : ['No recommendation provided.'];
+                const recText = recommendations.map(item => `• ${item}`).join('\n');
+                doc.font('Helvetica').fontSize(7.4).fillColor(slate).text(recText, left + 98, doc.y, { width: contentWidth - 106, lineGap: 1 });
+                doc.y += Math.max(16, doc.heightOfString(recText, { width: contentWidth - 106, lineGap: 1 }) + 4);
+                const totalCount = Number(finding.evidence?.totalCount || 0);
+                const displayedCount = Number(finding.evidence?.displayedCount || 0);
+                const evidenceLabel = totalCount > displayedCount
+                    ? `Showing ${displayedCount} of ${totalCount} affected entities.`
+                    : `${totalCount} affected ${totalCount === 1 ? 'entity' : 'entities'}`;
+                doc.font('Helvetica-Bold').fontSize(7.5).fillColor(navy).text('Affected evidence', left + 8, doc.y, { width: 100 });
+                doc.font('Helvetica').fontSize(7.3).fillColor(slate).text(evidenceLabel, left + 108, doc.y, { width: contentWidth - 116, lineGap: 1 });
+                doc.y += 12;
+                const tableHeight = drawIdentityEvidenceTable(finding.evidence?.columns, finding.evidence?.rows || [], left + 8, doc.y, contentWidth - 16);
+                doc.y = tableHeight + 6;
+            };
+            const renderDomain = domain => {
                 const output = domain.intelligenceOutput || domain.output || {};
                 const score = scoreForDomain(domain);
                 const risk = riskForDomain(domain);
@@ -3936,6 +4031,37 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 const summary = cleanText(output.domainExecutiveSummary || output.executiveSummary || output.summary || output.currentPosture || domain.domainExecutiveSummary, 'No stored executive summary is available.');
                 const impact = cleanText(output.businessImpact || output.businessImpactSummary || output.technicalSummary);
                 sectionTitle(labelForDomain(domain));
+                const isIdentityDomain = String(domain.domainKey || '').toLowerCase() === 'identity' || String(labelForDomain(domain)).toLowerCase() === 'identity protection';
+                if (isIdentityDomain) {
+                    const viewModel = buildIdentityPdfViewModel({ domainKey: domain.domainKey || 'identity', domainName: labelForDomain(domain), intelligenceOutput: output });
+                    doc.font('Helvetica').fontSize(8.3);
+                    const summaryHeight = doc.heightOfString(viewModel.summary.executiveSummary, { width: contentWidth - 24, lineGap: 2 });
+                    addPageIfNeeded(62 + summaryHeight);
+                    const bandY = doc.y;
+                    doc.roundedRect(left, bandY, contentWidth, 42, 7).fill('#f8fafc').strokeColor('#e1e6ea').stroke();
+                    if (score != null) {
+                        doc.font('Helvetica-Bold').fontSize(8).fillColor(navy).text(`HEALTH ${score}%`, left + 12, bandY + 10, { width: 100 });
+                        drawBar(left + 108, bandY + 12, 128, score);
+                    }
+                    if (risk != null) {
+                        const riskTone = risk >= 70 ? red : risk >= 40 ? orange : green;
+                        doc.font('Helvetica-Bold').fontSize(8).fillColor(navy).text(`RISK ${risk}%`, left + 270, bandY + 10, { width: 90 });
+                        doc.roundedRect(left + 348, bandY + 12, 148, 7, 3.5).fill('#e1e6ea');
+                        doc.roundedRect(left + 348, bandY + 12, Math.max(3, 148 * risk / 100), 7, 3.5).fill(riskTone);
+                    }
+                    doc.font('Helvetica-Bold').fontSize(8.5).fillColor(navy).text('Executive summary', left + 12, bandY + 53, { width: contentWidth - 24 });
+                    doc.font('Helvetica').fontSize(8.3).fillColor(slate).text(viewModel.summary.executiveSummary, left + 12, bandY + 66, { width: contentWidth - 24, lineGap: 2 });
+                    doc.y = bandY + 66 + summaryHeight + 8;
+                    if (viewModel.summary.businessImpact) {
+                        doc.font('Helvetica-Bold').fontSize(8).fillColor(navy).text('Business impact', left + 12, doc.y, { width: contentWidth - 24 });
+                        doc.font('Helvetica').fontSize(7.8).fillColor(slate).text(viewModel.summary.businessImpact, left + 12, doc.y + 10, { width: contentWidth - 24, lineGap: 1 });
+                        doc.moveDown(0.5);
+                    }
+                    drawIdentityMetricSnapshot(viewModel);
+                    viewModel.findings.forEach(finding => drawIdentityFindingBlock(finding));
+                    doc.moveDown(0.7);
+                    return;
+                }
                 doc.font('Helvetica').fontSize(8.3);
                 const summaryHeight = doc.heightOfString(summary, { width: contentWidth - 24, lineGap: 2 });
                 addPageIfNeeded(62 + summaryHeight);
