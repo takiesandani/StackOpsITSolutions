@@ -13433,6 +13433,194 @@ function renderSunbirdReportValuePanel(data = {}, buckets = getSunbirdReportEvid
     `;
 }
 
+function getSunbirdReportIdentityExecutiveSummary(data = {}) {
+    const analysis = data.overview?.analysis || {};
+    const candidate = analysis.domainExecutiveSummary || analysis.identityExecutiveSummary || analysis.executiveSummary || data.overview?.summary?.executiveSummary || data.overview?.summary?.summary || '';
+    if (typeof candidate === 'string' && candidate.trim()) {
+        return candidate.trim();
+    }
+    if (candidate && typeof candidate === 'object') {
+        return String(candidate.summary || candidate.text || candidate.detail || candidate.description || '').trim();
+    }
+    return 'Identity Protection posture is being reviewed from available evidence and active access signals.';
+}
+
+function getSunbirdReportIdentityModel(data = {}) {
+    if (typeof sunbirdDashboardData === 'object' && sunbirdDashboardData) {
+        return buildSunbirdIdentityModel(sunbirdDashboardData);
+    }
+    const summary = data.overview?.summary || {};
+    const totalUsers = Number(summary.totalUsers || 0);
+    const highRiskUsers = Number(summary.highRiskUsers || 0);
+    const mediumRiskUsers = Number(summary.mediumRiskUsers || 0);
+    const mfaEnabled = Number(summary.mfaEnabled || 0);
+    const mfaMissing = Number(summary.mfaMissing || 0);
+    const privilegedUsers = Number(summary.privilegedUsers || 0);
+    return {
+        users: [],
+        metrics: {
+            totalUsers,
+            mfaEnabled,
+            mfaMissing,
+            mfaCoverage: totalUsers ? Math.round((mfaEnabled / totalUsers) * 100) : 0,
+            privilegedUsers,
+            highRiskUsers,
+            mediumRiskUsers,
+            safeUsers: totalUsers ? Math.max(0, totalUsers - highRiskUsers - mediumRiskUsers) : 0,
+            adminsWithoutMfa: Number(summary.adminsWithoutMfa || 0),
+            inactiveUsers: Number(summary.inactiveUsers || 0)
+        }
+    };
+}
+
+function getSunbirdReportIdentityFindings(data = {}) {
+    const analysis = data.overview?.analysis || {};
+    let rawItems = [];
+    let sourceKey = 'problems';
+
+    if (Array.isArray(analysis.failures) && analysis.failures.length) {
+        rawItems = analysis.failures.slice(0, 4);
+        sourceKey = 'problems';
+    } else if (Array.isArray(analysis.recommendations) && analysis.recommendations.length) {
+        rawItems = analysis.recommendations.slice(0, 4);
+        sourceKey = 'recommendations';
+    }
+
+    if (!rawItems.length && Array.isArray(sunbirdDashboardData?.users) && sunbirdDashboardData.users.length) {
+        rawItems = [...sunbirdDashboardData.users]
+            .sort((a, b) => getSunbirdRiskRank(b) - getSunbirdRiskRank(a))
+            .slice(0, 4)
+            .map(user => ({
+                title: `${user.displayName || user.userPrincipalName || 'Identity account'} requires review`,
+                detail: `${user.mail || user.userPrincipalName || 'Unknown'} is ${toBooleanMfa(user.mfaEnabled) ? 'protected by MFA' : 'not protected by MFA'} and has ${String(user.riskLevel || 'moderate').toUpperCase()} risk.`, 
+                location: user.lastSignIn?.location || user.lastSignIn?.device || 'Azure AD sign-in context',
+                severity: String(user.riskLevel || 'Medium'),
+                impact: `Identity risk level ${String(user.riskLevel || 'Medium')}.`, 
+                firstAction: toBooleanMfa(user.mfaEnabled) ? 'Validate device and sign-in patterns for this account.' : 'Enable MFA and review privileged access.',
+                owner: user.displayName || user.mail || user.userPrincipalName,
+                status: toBooleanMfa(user.mfaEnabled) ? 'Review' : 'Action required'
+            }));
+        sourceKey = 'problems';
+    }
+
+    return rawItems.map(item => {
+        const title = getSunbirdReportItemTitle(item);
+        const detail = getSunbirdReportItemDetail(item);
+        const who = item.who || item.owner || item.assignee || item.user || item.account || item.mail || item.userPrincipalName || title;
+        const where = item.location || item.asset || item.source || item.domain || 'Identity protection scope';
+        const why = item.detail || item.reasoning || item.description || item.impact || 'This condition increases identity risk and reduces access assurance.';
+        const howBad = String(item.severity || item.impact || item.priority || 'Medium');
+        const whatDoIDo = item.firstAction || item.recommendation || detail || 'Review the finding and take the recommended remediation actions.';
+        const impact = getSunbirdReportBusinessImpact(item, sourceKey);
+        return { title, who, where, why, howBad, whatDoIDo, impact };
+    });
+}
+
+function renderSunbirdReportIdentityFindings(data = {}) {
+    const findings = getSunbirdReportIdentityFindings(data);
+    if (!findings.length) {
+        return '<div class="sunbird-report-empty">No identity findings are available from the current report.</div>';
+    }
+    return `
+        <div class="sunbird-report-identity-finding-grid">
+            ${findings.map(item => `
+                <article class="sunbird-report-identity-finding">
+                    <strong>${escapeIdentityText(item.title)}</strong>
+                    <div class="sunbird-report-identity-finding-line"><span>WHO</span><p>${escapeIdentityText(item.who)}</p></div>
+                    <div class="sunbird-report-identity-finding-line"><span>WHERE</span><p>${escapeIdentityText(item.where)}</p></div>
+                    <div class="sunbird-report-identity-finding-line"><span>WHY</span><p>${escapeIdentityText(item.why)}</p></div>
+                    <div class="sunbird-report-identity-finding-line"><span>HOW BAD</span><p>${escapeIdentityText(item.howBad)}</p></div>
+                    <div class="sunbird-report-identity-finding-line"><span>WHAT DO I DO</span><p>${escapeIdentityText(item.whatDoIDo)}</p></div>
+                    <small>${escapeIdentityText(item.impact)}</small>
+                </article>
+            `).join('')}
+        </div>
+    `;
+}
+
+function renderSunbirdReportIdentityRecords(data = {}) {
+    const users = Array.isArray(sunbirdDashboardData?.users) ? sunbirdDashboardData.users.slice(0, 10) : [];
+    if (!users.length) {
+        return '<div class="sunbird-report-empty">Identity records are unavailable. Open the Identity Protection dashboard to load the latest user risk and access evidence.</div>';
+    }
+    const total = sunbirdDashboardData?.users?.length || users.length;
+    return `
+        <div class="sunbird-report-identity-records">
+            <div class="sunbird-report-card-title"><span>Top affected identities</span><small>Showing ${users.length} of ${total} records</small></div>
+            <div class="sunbird-report-identity-records-grid">
+                ${users.map(user => `
+                    <article class="sunbird-report-identity-record">
+                        <strong>${escapeIdentityText(user.displayName || user.userPrincipalName || 'Unknown')}</strong>
+                        <span>${escapeIdentityText(user.mail || user.userPrincipalName || 'No email')}</span>
+                        <small>${escapeIdentityText(String(user.riskLevel || 'Unknown'))} risk • ${escapeIdentityText(toBooleanMfa(user.mfaEnabled) ? 'MFA enabled' : 'MFA missing')}</small>
+                        <small>${escapeIdentityText(user.lastSignIn?.location || user.lastSignIn?.device || 'No recent sign-in')}</small>
+                    </article>
+                `).join('')}
+            </div>
+            ${total > users.length ? `<p class="sunbird-report-identity-records-note">${total - users.length} more affected records are available in the Identity Protection dashboard.</p>` : ''}
+        </div>
+    `;
+}
+
+function renderSunbirdReportIdentitySection(data = {}) {
+    const model = getSunbirdReportIdentityModel(data);
+    const sum = getSunbirdReportIdentityExecutiveSummary(data);
+    const metrics = model.metrics;
+    const total = Math.max(1, metrics.totalUsers || 1);
+    return `
+        <section class="sunbird-report-identity-section">
+            <div class="sunbird-report-identity-section-header">
+                <div>
+                    <span class="sunbird-report-eyebrow">Identity domain</span>
+                    <h3>Identity Protection</h3>
+                    <p>Focused executive reporting for identity risk, access posture, and remediation guidance.</p>
+                </div>
+                <div class="sunbird-report-identity-summary-card">
+                    <div class="sunbird-report-card-title"><span>Domain executive summary</span><small>Identity Protection impact</small></div>
+                    <p>${escapeIdentityText(sum)}</p>
+                </div>
+            </div>
+
+            <div class="sunbird-report-identity-metrics-grid">
+                <article class="sunbird-report-identity-metric-card">
+                    <strong>${Number(metrics.totalUsers || 0)}</strong>
+                    <span>Total identities evaluated</span>
+                </article>
+                <article class="sunbird-report-identity-metric-card">
+                    <strong>${metrics.mfaCoverage}%</strong>
+                    <span>MFA coverage</span>
+                </article>
+                <article class="sunbird-report-identity-metric-card">
+                    <strong>${Number(metrics.highRiskUsers || 0)}</strong>
+                    <span>High-risk identities</span>
+                </article>
+            </div>
+
+            <div class="sunbird-report-identity-chart-grid">
+                ${renderSunbirdPieChart('Risk distribution', [
+                    { label: 'Safe', value: metrics.safeUsers, tone: 'good' },
+                    { label: 'Medium', value: metrics.mediumRiskUsers, tone: 'warn' },
+                    { label: 'High', value: metrics.highRiskUsers, tone: 'bad' }
+                ], total)}
+                ${renderSunbirdPieChart('MFA coverage', [
+                    { label: 'Enabled', value: metrics.mfaEnabled, tone: 'good' },
+                    { label: 'Missing', value: metrics.mfaMissing, tone: 'bad' }
+                ], total)}
+                ${renderSunbirdBarChart('Privileged access', [
+                    { label: 'Privileged', value: metrics.privilegedUsers, tone: 'warn' },
+                    { label: 'Standard', value: Math.max(0, total - metrics.privilegedUsers), tone: 'neutral' }
+                ], total)}
+            </div>
+
+            <div class="sunbird-report-card-title" style="margin-top:18px;"><span>Identity findings</span><small>Business questions answered for the most critical issues</small></div>
+            ${renderSunbirdReportIdentityFindings(data)}
+
+            <div class="sunbird-report-card-title" style="margin-top:18px;"><span>Affected identity records</span><small>Sample of impacted accounts and access signals</small></div>
+            ${renderSunbirdReportIdentityRecords(data)}
+        </section>
+    `;
+}
+
 function renderSunbirdReportKpiButton({ key, value, label, tone, meta }) {
     return `
         <button type="button" class="sunbird-report-kpi tone-${tone}" onclick="window.openSunbirdReportEvidence('${key}')">
@@ -13898,6 +14086,8 @@ function renderSunbirdReportsCenter(data) {
         </div>
 
         ${renderSunbirdReportValuePanel(data, evidenceBuckets)}
+
+        ${renderSunbirdReportIdentitySection(data)}
 
         <div class="sunbird-report-main-grid">
             <article class="sunbird-report-section-card">
