@@ -4060,24 +4060,12 @@ function generateSunbirdReportPdf(report, reportId = null) {
             const renderIdentityProtectionReport = domain => {
                 if (!domain) return;
 
-                const output = domain.intelligenceOutput || domain.output || {};
-                const scores = output.authoritativeScores || output.scoreSummary || {};
-                const categories = Array.isArray(output.evidenceCatalog?.categories) ? output.evidenceCatalog.categories : [];
-                const categoryCount = key => Number(categories.find(category => String(category?.key || '').toLowerCase() === key.toLowerCase())?.count || 0);
-                const totalUsers = categoryCount('allUsers');
-                const usersWithoutMfa = categoryCount('usersWithoutMfa');
-                const mfaCoverage = totalUsers
-                    ? clampReportScore(((totalUsers - usersWithoutMfa) / totalUsers) * 100)
-                    : clampReportScore(output.dashboardMetrics?.mfaCoverage ?? output.mfaCoverage ?? 0);
-                const healthScore = clampReportScore(scores.healthScore ?? output.healthScore ?? domain.healthScore ?? 0);
-                const riskScore = clampReportScore(scores.riskScore ?? output.riskScore ?? domain.riskScore ?? 0);
-                const riskLevel = cleanText(scores.riskLevel || output.riskLevel || 'Unrated');
-                const highRiskUsers = categoryCount('highRiskUsers');
-                const adminsWithoutMfa = categoryCount('adminsWithoutMfa');
-                const privilegedUsers = categoryCount('privilegedUsers');
-                const inactiveUsers = categoryCount('inactiveUsers');
+                const output = buildSunbirdReportIdentityDomain(domain).intelligenceOutput;
+                const healthScore = clampReportScore(output.healthScore ?? 0);
+                const riskScore = clampReportScore(output.riskScore ?? 0);
+                const riskLevel = cleanText(output.riskLevel || 'Unrated');
                 const summary = cleanText(
-                    output.domainExecutiveSummary || output.technicalSummary || output.currentPosture || output.businessImpact,
+                    output.domainExecutiveSummary,
                     'Latest Azure identity evidence is summarized below.'
                 );
                 const severityColor = severity => {
@@ -4115,23 +4103,6 @@ function generateSunbirdReportPdf(report, reportId = null) {
                         .map(point => point.replace(/^and\s+/i, '').trim().replace(/[.]+$/, ''))
                         .filter(Boolean);
                 };
-                const evidenceCategoryForFinding = item => {
-                    const text = `${item.title || ''} ${item.description || ''} ${item.impact || ''} ${item.whyItMatters || ''}`.toLowerCase();
-                    const preferredKeys = [
-                        item.sourceMetric,
-                        text.includes('break-glass') || (text.includes('global administrator') && text.includes('mfa')) ? 'adminsWithoutMfa' : '',
-                        text.includes('multiple role') || text.includes('privileged') ? 'privilegedUsers' : '',
-                        text.includes('missing mfa') || text.includes('mfa gap') ? 'usersWithoutMfa' : '',
-                        text.includes('high-risk') ? 'highRiskUsers' : '',
-                        text.includes('inactive') ? 'inactiveUsers' : '',
-                        text.includes('external') || text.includes('guest') ? 'externalUsers' : '',
-                        'allUsers'
-                    ].filter(Boolean);
-                    return preferredKeys.map(key => categories.find(category =>
-                        String(category?.key || '').toLowerCase() === String(key).toLowerCase() ||
-                        String(category?.sourceMetric || '').toLowerCase() === String(key).toLowerCase()
-                    )).find(Boolean) || null;
-                };
                 const formatIdentityEvidence = entity => {
                     const identity = cleanText(entity.entityName || entity.displayName || entity.entityDisplayName || entity.userPrincipalName || entity.mail || entity.entityEmail, 'Identity record');
                     const email = cleanText(entity.entityEmail || entity.mail || entity.userPrincipalName || entity.entityUser);
@@ -4167,73 +4138,51 @@ function generateSunbirdReportPdf(report, reportId = null) {
                         doc.y = rowY + rowHeight + 3;
                     });
                 };
-                const rawFindings = [...(Array.isArray(output.risks) ? output.risks : []), ...(Array.isArray(output.keyFindings) ? output.keyFindings : [])];
+                const rawFindings = Array.isArray(output.findings) ? output.findings.slice(0, 8) : [];
                 const findings = rawFindings.map(item => {
-                    const evidenceCategory = evidenceCategoryForFinding(item);
                     const explicitEvidence = [
                         ...(Array.isArray(item.evidenceRecords) ? item.evidenceRecords : []),
                         ...(Array.isArray(item.affectedEntities) ? item.affectedEntities : []),
                         ...(Array.isArray(item.evidenceRows) ? item.evidenceRows : [])
                     ];
-                    const evidenceEntities = explicitEvidence.length ? explicitEvidence : (Array.isArray(evidenceCategory?.entities) ? evidenceCategory.entities : []);
+                    const evidenceEntities = explicitEvidence.slice(0, 10);
                     return {
-                    title: cleanText(item.title || item.patternFound || item.metricName, 'Identity finding'),
-                    severity: cleanText(item.severity || item.priority || item.riskLevel, 'Observed'),
-                    impact: cleanText(item.impact || item.businessImpact || item.whyItMatters),
-                    detail: cleanText(item.description || item.detail || item.whatHappened),
-                    rationale: cleanText(item.whyItMatters || item.reasoning),
-                    evidenceSummary: cleanText(item.evidenceSummary || evidenceCategory?.label),
-                    evidenceEntities,
-                    actionPoints: splitRecommendationPoints(item.firstAction || item.recommendedAction || item.recommendation)
+                        title: cleanText(item.title, 'Identity finding'),
+                        severity: cleanText(item.severity, 'Observed'),
+                        impact: cleanText(item.impact),
+                        detail: cleanText(item.description),
+                        rationale: cleanText(item.whyItMatters),
+                        evidenceSummary: cleanText(item.evidenceSummary),
+                        evidenceEntities,
+                        evidenceRecordCount: Number(item.evidenceRecordCount || evidenceEntities.length),
+                        affectedEntities: Array.isArray(item.affectedEntities) ? item.affectedEntities : [],
+                        actionPoints: splitRecommendationPoints(item.firstAction || item.recommendation)
                     };
                 });
-                const actions = uniqueItems(
-                    findings.flatMap(item => item.actionPoints),
-                    (Array.isArray(output.recommendations) ? output.recommendations : [])
-                        .map(item => cleanText(item.firstAction || item.recommendedAction || item.recommendation || item.detail || item))
-                        .filter(Boolean)
-                );
-                const evidenceMetrics = [
-                    { label: 'Users without MFA', value: usersWithoutMfa, detail: totalUsers ? `of ${totalUsers} identities` : 'Azure evidence catalog' },
-                    { label: 'Privileged accounts', value: privilegedUsers, detail: adminsWithoutMfa ? `${adminsWithoutMfa} without MFA` : 'role evidence catalog' },
-                    { label: 'High-risk users', value: highRiskUsers, detail: highRiskUsers ? 'requires investigation' : 'none recorded' },
-                    { label: 'Inactive identities', value: inactiveUsers, detail: 'no sign-in for 30+ days' }
-                ];
+                const affectedByIdentity = new Map();
+                findings.flatMap(finding => finding.affectedEntities).forEach(entity => {
+                    const identity = String(entity.entityEmail || entity.userPrincipalName || entity.entityName || entity.displayName || '').toLowerCase();
+                    if (identity && !affectedByIdentity.has(identity)) affectedByIdentity.set(identity, entity);
+                });
+                const topAffectedEntities = Array.from(affectedByIdentity.values()).slice(0, 10);
 
                 addPageIfNeeded(120);
-                identitySectionTitle('Identity Protection', severityColor(riskLevel));
-                doc.font('Helvetica').fontSize(8.1).fillColor(slate).text('Azure Identity Protection evidence | Latest saved intelligence output', left, doc.y, { width: contentWidth });
+                identitySectionTitle('Identity Protection Report', severityColor(riskLevel));
+                doc.font('Helvetica').fontSize(8.1).fillColor(slate).text('Current identity security posture', left, doc.y, { width: contentWidth });
                 doc.y += 16;
 
-                const metricGap = 10;
-                const metricWidth = (contentWidth - metricGap * 3) / 4;
+                const metricGap = 12;
+                const metricWidth = (contentWidth - metricGap) / 2;
                 const metricY = doc.y;
-                drawIdentityMetric(left, metricY, metricWidth, 'IDENTITY HEALTH', `${healthScore}%`, 'Azure posture score', healthScore >= 80 ? green : orange);
-                drawIdentityMetric(left + (metricWidth + metricGap), metricY, metricWidth, 'IDENTITY RISK', `${riskScore}%`, `${riskLevel} risk level`, severityColor(riskLevel));
-                drawIdentityMetric(left + (metricWidth + metricGap) * 2, metricY, metricWidth, 'MFA COVERAGE', `${mfaCoverage}%`, usersWithoutMfa ? `${usersWithoutMfa} identities outstanding` : 'all recorded identities covered', usersWithoutMfa ? orange : green);
-                drawIdentityMetric(left + (metricWidth + metricGap) * 3, metricY, metricWidth, 'HIGH-RISK USERS', highRiskUsers, highRiskUsers ? 'review required' : 'none recorded', highRiskUsers ? red : green);
+                drawIdentityMetric(left, metricY, metricWidth, 'HEALTH SCORE', `${healthScore}%`, 'Current identity health score', healthScore >= 80 ? green : orange);
+                drawIdentityMetric(left + metricWidth + metricGap, metricY, metricWidth, 'RISK SCORE', `${riskScore}%`, `${riskLevel} risk level`, severityColor(riskLevel));
                 doc.y = metricY + 76;
 
-                const businessImpact = cleanText(
-                    output.businessImpact || output.businessImpactSummary || findings.map(finding => finding.impact).filter(Boolean).join(' ')
-                );
-                drawIdentityText('Identity posture', summary, severityColor(riskLevel));
-                drawIdentityText('Business impact', businessImpact, severityColor(riskLevel));
-
-                identitySectionTitle('Identity evidence snapshot');
-                const evidenceY = doc.y;
-                evidenceMetrics.forEach((metric, index) => {
-                    const x = left + (index % 2) * (contentWidth / 2);
-                    const y = evidenceY + Math.floor(index / 2) * 37;
-                    const metricTone = metric.value > 0 && (index === 0 || index === 2) ? orange : navy;
-                    doc.font('Helvetica').fontSize(8).fillColor(metricTone).text(metric.label.toUpperCase(), x, y, { width: 180 });
-                    doc.font('Helvetica').fontSize(16).fillColor(metricTone).text(String(metric.value), x, y + 11, { width: 40 });
-                    doc.font('Helvetica').fontSize(7.4).fillColor(slate).text(metric.detail, x + 44, y + 15, { width: 205 });
-                });
-                doc.y = evidenceY + 82;
+                drawIdentityText('Domain summary', summary, severityColor(riskLevel));
+                drawIdentityText('Business impact', cleanText(output.businessImpact, 'Business impact is detailed within the current findings below.'), severityColor(riskLevel));
 
                 if (findings.length) {
-                    identitySectionTitle('Priority findings');
+                    identitySectionTitle(`Key identity findings (${findings.length})`);
                     findings.forEach((finding, index) => {
                         const fields = [
                             ['FINDING', finding.detail],
@@ -4268,6 +4217,11 @@ function generateSunbirdReportPdf(report, reportId = null) {
                             doc.y += doc.heightOfString(value, { width: contentWidth - 30, lineGap: 1 }) + 5;
                         });
                         drawFindingEvidence(finding.evidenceEntities);
+                        const remainingEvidence = Math.max(0, finding.evidenceRecordCount - finding.evidenceEntities.length);
+                        if (remainingEvidence) {
+                            doc.font('Helvetica').fontSize(7.1).fillColor(slate).text(`${remainingEvidence} additional affected identity record${remainingEvidence === 1 ? '' : 's'} are available in the Identity dashboard.`, left + 38, doc.y, { width: contentWidth - 56 });
+                            doc.y += 15;
+                        }
                         if (finding.actionPoints.length) {
                             addPageIfNeeded(24);
                             doc.font('Helvetica-Bold').fontSize(7.2).fillColor(green).text('RECOMMENDATIONS', left + 18, doc.y, { width: contentWidth - 30 });
@@ -4284,47 +4238,11 @@ function generateSunbirdReportPdf(report, reportId = null) {
                     });
                 }
 
-                if (categories.length) {
-                    identitySectionTitle('Evidence catalog');
-                    categories.forEach((category, categoryIndex) => {
-                        const label = cleanText(category.label || category.key || category.sourceMetric, 'Identity evidence');
-                        const source = cleanText(category.sourceMetric || category.evidenceSource || category.sourceLabel);
-                        const entities = Array.isArray(category.entities) ? category.entities : [];
-                        const categoryText = `${label} | ${Number(category.count || entities.length || 0)} record(s)${source ? ` | source: ${source}` : ''}`;
-                        const headerHeight = doc.font('Helvetica').fontSize(8.2).heightOfString(categoryText, { width: contentWidth - 16, lineGap: 1 });
-                        addPageIfNeeded(headerHeight + 18);
-                        if (categoryIndex % 2 === 0) doc.rect(left, doc.y - 2, contentWidth, headerHeight + 12).fill('#f8fafc');
-                        doc.font('Helvetica').fontSize(8.2).fillColor('#2563eb').text(categoryText, left + 8, doc.y + 3, { width: contentWidth - 16, lineGap: 1 });
-                        doc.y += headerHeight + 15;
-                        if (!entities.length) {
-                            doc.font('Helvetica').fontSize(7.4).fillColor(slate).text('No individual records were stored for this evidence category.', left + 16, doc.y, { width: contentWidth - 32 });
-                            doc.y += 16;
-                        }
-                        entities.forEach((entity, entityIndex) => {
-                            const entityText = recordText(entity);
-                            const entityHeight = doc.font('Helvetica').fontSize(7.3).heightOfString(entityText, { width: contentWidth - 40, lineGap: 1 });
-                            addPageIfNeeded(entityHeight + 13);
-                            const entityY = doc.y;
-                            if (entityIndex % 2 === 0) doc.rect(left + 8, entityY - 2, contentWidth - 16, entityHeight + 8).fill('#fbfcfd');
-                            doc.circle(left + 17, entityY + 4, 1.4).fillColor('#2563eb').fill();
-                            doc.font('Helvetica').fontSize(7.3).fillColor(slate).text(entityText, left + 24, entityY, { width: contentWidth - 40, lineGap: 1 });
-                            doc.y = entityY + entityHeight + 7;
-                        });
-                        doc.y += 4;
-                    });
-                }
-
-                if (actions.length) {
-                    identitySectionTitle('Recommended actions');
-                    actions.forEach((action, index) => {
-                        const actionHeight = doc.font('Helvetica').fontSize(7.8).heightOfString(action, { width: contentWidth - 36, lineGap: 1 });
-                        addPageIfNeeded(actionHeight + 13);
-                        const actionY = doc.y;
-                        if (index % 2 === 0) doc.rect(left + 8, actionY - 2, contentWidth - 16, actionHeight + 8).fill('#f8fafc');
-                        doc.circle(left + 16, actionY + 4, 1.5).fillColor(green).fill();
-                        doc.font('Helvetica').fontSize(7.8).fillColor(slate).text(action, left + 24, actionY, { width: contentWidth - 36, lineGap: 1 });
-                        doc.y = actionY + actionHeight + 7;
-                    });
+                if (topAffectedEntities.length) {
+                    identitySectionTitle('Top affected entities');
+                    doc.font('Helvetica').fontSize(7.5).fillColor(slate).text('Entities associated with the current identity findings.', left, doc.y, { width: contentWidth });
+                    doc.y += 14;
+                    drawFindingEvidence(topAffectedEntities);
                 }
                 doc.y += 4;
             };
