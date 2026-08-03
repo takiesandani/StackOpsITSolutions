@@ -13434,61 +13434,39 @@ function renderSunbirdReportValuePanel(data = {}, buckets = getSunbirdReportEvid
 }
 
 function getSunbirdReportIdentityFieldValues(data = {}) {
-    const overviewAnalysis = data.overview?.analysis || {};
-    const overviewSummary = data.overview?.summary || {};
-    const latestReport = data.reports?.[0] || {};
-    const rowAnalysis = latestReport.analysis || {};
-    const rowSummary = latestReport.summary || {};
-    const domainInsights = latestReport.domainInsights || data.overview?.domainInsights || null;
-    const identityDomain = Array.isArray(domainInsights?.domains)
-        ? domainInsights.domains.find(domain => String(domain.domainKey || domain.domainName || '').toLowerCase().includes('identity'))
-        : null;
-    const identityOutput = identityDomain?.intelligenceOutput || identityDomain?.output || identityDomain || null;
-
-    const source = identityOutput || rowAnalysis || overviewAnalysis;
-    const fallback = rowSummary || overviewSummary;
+    const source = data.identityDomain?.intelligenceOutput || {};
 
     const fields = {
-        domainExecutiveSummary: String(source?.domainExecutiveSummary || source?.executiveSummary || fallback?.domainExecutiveSummary || fallback?.executiveSummary || ''),
-        overallBusinessImpactStatement: String(source?.overallBusinessImpactStatement || source?.businessImpact || source?.businessImpactSummary || fallback?.overallBusinessImpactStatement || fallback?.businessImpact || ''),
-        riskScore: Number(source?.riskScore ?? source?.score ?? source?.scoreSummary?.riskScore ?? fallback?.riskScore ?? fallback?.score ?? 0),
-        healthScore: Number(source?.healthScore ?? source?.score ?? source?.scoreSummary?.healthScore ?? fallback?.healthScore ?? fallback?.score ?? 0),
-        totalUsers: Number(source?.totalUsers ?? fallback?.totalUsers ?? 0),
-        protectedPercentage: Number(source?.protectedPercentage ?? source?.mfaCoverage ?? fallback?.protectedPercentage ?? fallback?.mfaCoverage ?? 0),
-        criticalIssuesCount: Number(source?.criticalIssuesCount ?? source?.criticalCount ?? fallback?.criticalIssuesCount ?? fallback?.criticalCount ?? 0),
-        highIssuesCount: Number(source?.highIssuesCount ?? source?.highCount ?? fallback?.highIssuesCount ?? fallback?.highCount ?? 0),
-        mfaCoverageTrend: String(source?.mfaCoverageTrend || fallback?.mfaCoverageTrend || ''),
-        riskScoreTrend: String(source?.riskScoreTrend || fallback?.riskScoreTrend || ''),
-        risks: Array.isArray(source?.risks) ? source.risks : Array.isArray(fallback?.risks) ? fallback.risks : []
+        domainExecutiveSummary: String(source.domainExecutiveSummary || ''),
+        businessImpact: String(source.businessImpact || ''),
+        healthScore: source.healthScore ?? source.scoreSummary?.healthScore ?? null,
+        riskScore: source.riskScore ?? source.scoreSummary?.riskScore ?? null,
+        risks: Array.isArray(source.risks) ? source.risks : []
     };
     return fields;
 }
 
 function normalizeIdentityRiskDetail(risk = {}) {
-    const affected = Array.isArray(risk.affectedEntities) ? risk.affectedEntities : Array.isArray(risk.affectedUsers) ? risk.affectedUsers : [];
+    const affected = Array.isArray(risk.affectedEntities) ? risk.affectedEntities : [];
     const primaryEntity = affected[0] || {};
-    const lastSignIn = primaryEntity.lastSignIn || primaryEntity.signIn || {};
+    const lastSignIn = primaryEntity.lastSignIn || {};
     return {
-        title: risk.title || risk.name || risk.detail || risk.riskId || 'Identity risk',
-        businessImpact: risk.businessImpact || risk.businessReason || risk.impact || risk.whyItMatters || '',
-        evidenceSummary: risk.evidenceSummary || risk.description || risk.detail || risk.reasoning || '',
-        who: primaryEntity.displayName || primaryEntity.userPrincipalName || primaryEntity.entityEmail || risk.recommendedOwner || risk.owner || risk.title || 'Unknown user',
-        where: lastSignIn.location || lastSignIn.device || primaryEntity.entityName || primaryEntity.sourceDomain || primaryEntity.sourceMetric || 'Identity Protection domain',
-        why: risk.detail || risk.reasoning || risk.description || risk.whyThisMatters || risk.impact || risk.businessReason || 'Identity condition requires review.',
-        howBad: risk.severity || risk.riskLevel || risk.likelihood || risk.impact || 'Medium',
-        whatDoIDo: risk.firstAction || risk.recommendation || risk.followUpAction || risk.recommendedAction || risk.suggestedAction || 'Review this finding and take the recommended action.',
-        expectedRiskReduction: risk.expectedRiskReduction || risk.riskReduction || risk.expectedReduction || '',
+        title: risk.title || '',
+        severity: risk.severity || '',
+        impact: risk.impact || '',
+        whyItMatters: risk.whyItMatters || '',
+        evidenceSummary: risk.evidenceSummary || '',
+        action: risk.firstAction || risk.recommendation || '',
         affectedEntities: affected.map(entity => ({
-            entityEmail: entity.entityEmail || entity.userPrincipalName || entity.mail || '',
-            userPrincipalName: entity.userPrincipalName || entity.entityEmail || entity.mail || '',
-            displayName: entity.displayName || entity.entityName || entity.name || '',
-            roles: Array.isArray(entity.roles) ? entity.roles : entity.role ? [entity.role] : [],
-            mfaEnabled: entity.mfaEnabled ?? entity.mfaEnabledFlag ?? entity.hasMfa ?? false,
+            entityEmail: entity.entityEmail || '',
+            userPrincipalName: entity.userPrincipalName || '',
+            displayName: entity.displayName || '',
+            roles: Array.isArray(entity.roles) ? entity.roles : [],
+            mfaEnabled: entity.mfaEnabled ?? null,
             lastSignIn: {
                 device: lastSignIn.device || '',
                 location: lastSignIn.location || '',
-                dateTime: lastSignIn.dateTime || lastSignIn.timestamp || '',
-                daysSince: lastSignIn.daysSince ?? lastSignIn.daysAgo ?? ''
+                daysSince: lastSignIn.daysSince ?? ''
             }
         }))
     };
@@ -13497,72 +13475,45 @@ function normalizeIdentityRiskDetail(risk = {}) {
 function renderSunbirdReportIdentityFieldSection(data = {}) {
     const values = getSunbirdReportIdentityFieldValues(data);
     const risks = values.risks.map(normalizeIdentityRiskDetail).slice(0, 4);
-    const entities = risks.flatMap(risk => risk.affectedEntities).filter((item, index, self) => item.entityEmail || item.userPrincipalName || item.displayName).slice(0, 6);
+    const entities = risks.flatMap(risk => risk.affectedEntities).filter(item => item.entityEmail || item.userPrincipalName || item.displayName).slice(0, 6);
     return `
         <section class="sunbird-report-identity-field-section">
             <div class="sunbird-report-card-title">
-                <span><i class="fas fa-user-shield"></i> Identity Protection fields</span>
-                <small>Exact Azure identity model fields</small>
+                <span><i class="fas fa-user-shield"></i> Identity Protection Report</span>
+                <small>Current identity security posture</small>
             </div>
             <div class="sunbird-report-identity-field-grid">
                 <article>
                     <strong>Domain summary</strong>
-                    <p>${escapeIdentityText(values.domainExecutiveSummary || 'No identity domain executive summary available.')}</p>
+                    <p>${escapeIdentityText(values.domainExecutiveSummary || 'No value returned')}</p>
                 </article>
                 <article>
                     <strong>Business impact</strong>
-                    <p>${escapeIdentityText(values.overallBusinessImpactStatement || 'No business impact statement was returned.')}</p>
+                    <p>${escapeIdentityText(values.businessImpact || 'No value returned')}</p>
                 </article>
                 <article>
                     <strong>Health score</strong>
-                    <p>${Number(values.healthScore)}%</p>
+                    <p>${values.healthScore == null ? 'No value returned' : `${Number(values.healthScore)}%`}</p>
                 </article>
                 <article>
                     <strong>Risk score</strong>
-                    <p>${Number(values.riskScore)}%</p>
-                </article>
-                <article>
-                    <strong>Total users</strong>
-                    <p>${Number(values.totalUsers)}</p>
-                </article>
-                <article>
-                    <strong>Protected</strong>
-                    <p>${Number(values.protectedPercentage)}%</p>
-                </article>
-                <article>
-                    <strong>Critical issues</strong>
-                    <p>${Number(values.criticalIssuesCount)}</p>
-                </article>
-                <article>
-                    <strong>High issues</strong>
-                    <p>${Number(values.highIssuesCount)}</p>
-                </article>
-                <article>
-                    <strong>MFA trend</strong>
-                    <p>${escapeIdentityText(values.mfaCoverageTrend || 'No MFA trend available.')}</p>
-                </article>
-                <article>
-                    <strong>Risk trend</strong>
-                    <p>${escapeIdentityText(values.riskScoreTrend || 'No risk trend available.')}</p>
+                    <p>${values.riskScore == null ? 'No value returned' : `${Number(values.riskScore)}%`}</p>
                 </article>
             </div>
             <div class="sunbird-report-identity-findings">
                 <div class="sunbird-report-identity-findings-header">
                     <h3>Key identity findings</h3>
-                    <span>${risks.length} findings from the identity risk model</span>
+                    <span>${risks.length} current identity risks</span>
                 </div>
                 <div class="sunbird-report-identity-findings-grid">
                     ${risks.length ? risks.map(risk => `
                         <article class="sunbird-report-identity-finding-card">
-                            <strong>${escapeIdentityText(risk.title)}</strong>
-                            <div class="sunbird-report-identity-field-row"><span>WHO</span><p>${escapeIdentityText(risk.who)}</p></div>
-                            <div class="sunbird-report-identity-field-row"><span>WHERE</span><p>${escapeIdentityText(risk.where)}</p></div>
-                            <div class="sunbird-report-identity-field-row"><span>WHY</span><p>${escapeIdentityText(risk.why)}</p></div>
-                            <div class="sunbird-report-identity-field-row"><span>HOW BAD</span><p>${escapeIdentityText(risk.howBad)}</p></div>
-                            <div class="sunbird-report-identity-field-row"><span>WHAT DO I DO</span><p>${escapeIdentityText(risk.whatDoIDo)}</p></div>
-                            ${risk.businessImpact ? `<p class="sunbird-report-identity-business-impact"><strong>Business impact:</strong> ${escapeIdentityText(risk.businessImpact)}</p>` : ''}
-                            ${risk.evidenceSummary ? `<p class="sunbird-report-identity-evidence-summary"><strong>Evidence:</strong> ${escapeIdentityText(risk.evidenceSummary)}</p>` : ''}
-                            ${risk.expectedRiskReduction ? `<p class="sunbird-report-identity-reduction"><strong>Expected reduction:</strong> ${escapeIdentityText(risk.expectedRiskReduction)}</p>` : ''}
+                            <strong>${escapeIdentityText(risk.title || 'Untitled risk')}</strong>
+                            <div class="sunbird-report-identity-field-row"><span>SEVERITY</span><p>${escapeIdentityText(risk.severity || 'No value returned')}</p></div>
+                            <div class="sunbird-report-identity-field-row"><span>IMPACT</span><p>${escapeIdentityText(risk.impact || 'No value returned')}</p></div>
+                            <div class="sunbird-report-identity-field-row"><span>WHY IT MATTERS</span><p>${escapeIdentityText(risk.whyItMatters || 'No value returned')}</p></div>
+                            <div class="sunbird-report-identity-field-row"><span>EVIDENCE</span><p>${escapeIdentityText(risk.evidenceSummary || 'No value returned')}</p></div>
+                            <div class="sunbird-report-identity-field-row"><span>FIRST ACTION</span><p>${escapeIdentityText(risk.action || 'No value returned')}</p></div>
                         </article>
                     `).join('') : '<div class="sunbird-report-empty">No identity risk findings were returned.</div>'}
                 </div>
@@ -13574,10 +13525,13 @@ function renderSunbirdReportIdentityFieldSection(data = {}) {
                         ${entities.map(entity => `
                             <article>
                                 <strong>${escapeIdentityText(entity.displayName || entity.userPrincipalName || entity.entityEmail || 'Unknown identity')}</strong>
-                                <span>${escapeIdentityText(entity.entityEmail || entity.userPrincipalName || 'No email')}</span>
-                                <small>${escapeIdentityText(entity.roles.join(', ') || 'No roles')}</small>
-                                <small>${escapeIdentityText(entity.mfaEnabled ? 'MFA enabled' : 'MFA missing')}</small>
-                                <small>${escapeIdentityText(entity.lastSignIn.location || entity.lastSignIn.device || 'Last sign-in unavailable')}</small>
+                                <span>${escapeIdentityText(entity.entityEmail || 'No email returned')}</span>
+                                <small>${escapeIdentityText(entity.userPrincipalName || 'No user principal name returned')}</small>
+                                <small>${escapeIdentityText(entity.roles.join(', ') || 'No roles returned')}</small>
+                                <small>${entity.mfaEnabled == null ? 'MFA status not returned' : entity.mfaEnabled ? 'MFA enabled' : 'MFA disabled'}</small>
+                                <small>${escapeIdentityText(entity.lastSignIn.location || 'No sign-in location returned')}</small>
+                                <small>${escapeIdentityText(entity.lastSignIn.device || 'No sign-in device returned')}</small>
+                                <small>${escapeIdentityText(entity.lastSignIn.daysSince === '' ? 'No sign-in age returned' : `${entity.lastSignIn.daysSince} days since sign-in`)}</small>
                             </article>
                         `).join('')}
                     </div>

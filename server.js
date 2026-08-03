@@ -3201,6 +3201,18 @@ async function fetchSunbirdPowerBIIntelligence(companyId) {
         return null;
     }
 }
+
+async function fetchSunbirdIdentityDomainIntelligence(companyId) {
+    if (!enterpriseIntelligenceService?.getPowerBIDomain) return null;
+    try {
+        const result = await enterpriseIntelligenceService.getPowerBIDomain(companyId, 'identity');
+        return result?.domain || null;
+    } catch (error) {
+        console.warn('[Reports] Identity domain intelligence unavailable:', error.message);
+        return null;
+    }
+}
+
 async function fetchSunbirdPowerBIFinal(companyId) {
     if (!enterpriseIntelligenceService) return null;
     try {
@@ -4140,7 +4152,10 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
              LIMIT 120`,
             [context.companyId, range.start, range.end]
         );
-        const overview = await buildSunbirdReportPayload(context.companyId, range.start, range.end, false);
+        const [overview, identityDomain] = await Promise.all([
+            buildSunbirdReportPayload(context.companyId, range.start, range.end, false),
+            fetchSunbirdIdentityDomainIntelligence(context.companyId)
+        ]);
         await writeSunbirdReportLog({
             companyId: context.companyId,
             eventType: 'report_center_viewed',
@@ -4163,6 +4178,7 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
             },
             range: { start: range.start, end: range.end },
             overview,
+            identityDomain,
             reports: rows.map(serializeReportRow),
             logs: logRows.map(serializeReportAuditLog)
         });
