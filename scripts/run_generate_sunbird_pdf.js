@@ -14,12 +14,32 @@ async function run() {
             domains: [
                 {
                     domainKey: 'identity',
-                    domainName: 'Identity',
+                    domainName: 'Identity Protection',
                     intelligenceOutput: {
-                        evidenceRows: [
-                            { userEmail: 'alice@example.com', deviceName: 'ALICE-LAPTOP', title: 'MFA missing', detail: 'User missing MFA', status: 'noncompliant' },
-                            { user: { email: 'bob@example.com', displayName: 'Bob' }, device: { deviceName: 'BOB-PC' }, title: 'Unpatched device', detail: 'Missing security updates', status: 'warning' }
-                        ]
+                        authoritativeScores: { healthScore: 72, riskScore: 28, riskLevel: 'moderate' },
+                        domainExecutiveSummary: 'Most identities have healthy access controls, with MFA enrollment and privileged-account remediation still required.',
+                        risks: [{
+                            title: 'Break-glass account is missing MFA',
+                            severity: 'High',
+                            description: 'A privileged emergency access account is not protected by multi-factor authentication.',
+                            firstAction: 'Require MFA for the break-glass account and validate the recovery process.'
+                        }],
+                        keyFindings: [{
+                            title: 'Users are missing MFA',
+                            severity: 'Medium',
+                            description: 'Twelve active identities have not enrolled in MFA.',
+                            firstAction: 'Require MFA registration for the affected identities before continued access.'
+                        }],
+                        evidenceCatalog: {
+                            categories: [
+                                { key: 'allUsers', count: 58 },
+                                { key: 'usersWithoutMfa', count: 12 },
+                                { key: 'privilegedUsers', count: 6 },
+                                { key: 'adminsWithoutMfa', count: 1 },
+                                { key: 'highRiskUsers', count: 1 },
+                                { key: 'inactiveUsers', count: 36 }
+                            ]
+                        }
                     }
                 },
                 {

@@ -4042,7 +4042,102 @@ function generateSunbirdReportPdf(report, reportId = null) {
                     doc.y = rowY + rowHeight + 1;
                 });
                 doc.y += 4;
-            };            const renderDomain = domain => {
+            };
+            const isIdentityDomain = domain => String(domain?.domainKey || domain?.domainName || '').trim().toLowerCase() === 'identity' || /identity protection/i.test(String(domain?.domainName || ''));
+            const renderIdentityProtectionReport = domain => {
+                if (!domain) return;
+
+                const output = domain.intelligenceOutput || domain.output || {};
+                const scores = output.authoritativeScores || output.scoreSummary || {};
+                const categories = Array.isArray(output.evidenceCatalog?.categories) ? output.evidenceCatalog.categories : [];
+                const categoryCount = key => Number(categories.find(category => String(category?.key || '').toLowerCase() === key.toLowerCase())?.count || 0);
+                const totalUsers = categoryCount('allUsers');
+                const usersWithoutMfa = categoryCount('usersWithoutMfa');
+                const mfaCoverage = totalUsers
+                    ? clampReportScore(((totalUsers - usersWithoutMfa) / totalUsers) * 100)
+                    : clampReportScore(output.dashboardMetrics?.mfaCoverage ?? output.mfaCoverage ?? 0);
+                const healthScore = clampReportScore(scores.healthScore ?? output.healthScore ?? domain.healthScore ?? 0);
+                const riskScore = clampReportScore(scores.riskScore ?? output.riskScore ?? domain.riskScore ?? 0);
+                const riskLevel = cleanText(scores.riskLevel || output.riskLevel || 'Unrated');
+                const highRiskUsers = categoryCount('highRiskUsers');
+                const adminsWithoutMfa = categoryCount('adminsWithoutMfa');
+                const privilegedUsers = categoryCount('privilegedUsers');
+                const inactiveUsers = categoryCount('inactiveUsers');
+                const summary = cleanText(
+                    output.domainExecutiveSummary || output.technicalSummary || output.currentPosture || output.businessImpact,
+                    'Latest Azure identity evidence is summarized below.'
+                );
+                const findings = [...(Array.isArray(output.risks) ? output.risks : []), ...(Array.isArray(output.keyFindings) ? output.keyFindings : [])]
+                    .slice(0, 6)
+                    .map(item => ({
+                        title: cleanText(item.title || item.patternFound || item.metricName, 'Identity finding'),
+                        severity: cleanText(item.severity || item.priority || item.riskLevel, 'Observed'),
+                        detail: cleanText(item.description || item.whyItMatters || item.impact || item.businessImpact || item.detail),
+                        action: cleanText(item.firstAction || item.recommendedAction || item.recommendation)
+                    }));
+                const actions = uniqueItems(
+                    findings.map(item => item.action).filter(Boolean),
+                    (Array.isArray(output.recommendations) ? output.recommendations : [])
+                        .map(item => cleanText(item.firstAction || item.recommendedAction || item.recommendation || item.detail || item))
+                        .filter(Boolean)
+                );
+                const evidenceMetrics = [
+                    { label: 'Users without MFA', value: usersWithoutMfa, detail: totalUsers ? `of ${totalUsers} identities` : 'Azure evidence catalog' },
+                    { label: 'Privileged accounts', value: privilegedUsers, detail: adminsWithoutMfa ? `${adminsWithoutMfa} without MFA` : 'role evidence catalog' },
+                    { label: 'High-risk users', value: highRiskUsers, detail: highRiskUsers ? 'requires investigation' : 'none recorded' },
+                    { label: 'Inactive identities', value: inactiveUsers, detail: 'no sign-in for 30+ days' }
+                ];
+
+                doc.addPage();
+                doc.y = 42;
+                sectionTitle('Identity Protection');
+                doc.font('Helvetica').fontSize(8.1).fillColor(slate).text('Azure Identity Protection evidence | Latest saved intelligence output', left, doc.y, { width: contentWidth });
+                doc.y += 16;
+
+                const metricGap = 10;
+                const metricWidth = (contentWidth - metricGap * 3) / 4;
+                drawMetric(left, doc.y, metricWidth, 'IDENTITY HEALTH', `${healthScore}%`, 'Azure posture score');
+                drawMetric(left + (metricWidth + metricGap), doc.y, metricWidth, 'IDENTITY RISK', `${riskScore}%`, `${riskLevel} risk level`);
+                drawMetric(left + (metricWidth + metricGap) * 2, doc.y, metricWidth, 'MFA COVERAGE', `${mfaCoverage}%`, usersWithoutMfa ? `${usersWithoutMfa} identities outstanding` : 'all recorded identities covered');
+                drawMetric(left + (metricWidth + metricGap) * 3, doc.y, metricWidth, 'HIGH-RISK USERS', highRiskUsers, highRiskUsers ? 'review required' : 'none recorded');
+                doc.y += 80;
+
+                doc.roundedRect(left, doc.y, contentWidth, 62, 7).fill('#f8fafc').strokeColor('#e1e6ea').lineWidth(0.8).stroke();
+                doc.font('Helvetica-Bold').fontSize(8.5).fillColor(navy).text('Identity posture', left + 12, doc.y + 11, { width: contentWidth - 24 });
+                doc.font('Helvetica').fontSize(8.1).fillColor(slate).text(summary, left + 12, doc.y + 25, { width: contentWidth - 24, height: 28, lineGap: 2, ellipsis: true });
+                doc.y += 76;
+
+                sectionTitle('Identity evidence snapshot');
+                const evidenceY = doc.y;
+                evidenceMetrics.forEach((metric, index) => {
+                    const x = left + (index % 2) * (contentWidth / 2);
+                    const y = evidenceY + Math.floor(index / 2) * 37;
+                    doc.font('Helvetica-Bold').fontSize(8).fillColor(navy).text(metric.label.toUpperCase(), x, y, { width: 180 });
+                    doc.font('Helvetica-Bold').fontSize(16).fillColor(metric.value > 0 && (index === 0 || index === 2) ? orange : navy).text(String(metric.value), x, y + 11, { width: 40 });
+                    doc.font('Helvetica').fontSize(7.4).fillColor(slate).text(metric.detail, x + 44, y + 15, { width: 205 });
+                });
+                doc.y = evidenceY + 82;
+
+                if (findings.length) {
+                    sectionTitle('Priority findings');
+                    findings.forEach((finding, index) => {
+                        const detail = [finding.severity, finding.detail].filter(Boolean).join(': ');
+                        const rowText = detail ? `${finding.title} - ${detail}` : finding.title;
+                        const rowHeight = Math.max(28, doc.heightOfString(rowText, { width: contentWidth - 40, lineGap: 1 }) + 12);
+                        addPageIfNeeded(rowHeight + 4);
+                        const rowY = doc.y;
+                        if (index % 2 === 0) doc.rect(left, rowY - 3, contentWidth, rowHeight).fill('#f8fafc');
+                        doc.circle(left + 9, rowY + 5, 2).fillColor(orange).fill();
+                        doc.font('Helvetica-Bold').fontSize(8.1).fillColor(navy).text(finding.title, left + 18, rowY, { width: contentWidth - 30, height: 11 });
+                        if (detail) doc.font('Helvetica').fontSize(7.4).fillColor(slate).text(shortText(detail, 240), left + 18, rowY + 11, { width: contentWidth - 30, lineGap: 1 });
+                        doc.y = rowY + rowHeight + 2;
+                    });
+                }
+
+                if (actions.length) drawFlowList('Recommended actions', actions);
+                doc.y += 4;
+            };
+            const renderDomain = domain => {
                 const output = domain.intelligenceOutput || domain.output || {};
                 const score = scoreForDomain(domain);
                 const risk = riskForDomain(domain);
@@ -4144,10 +4239,12 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 );
                 return (score != null || risk != null) || (findings.length || affected.length || evidence.length || recommendations.length);
             };
-            const domainRows = allDomainRows.filter(domainHasRenderableContent);
-            if (allDomainRows.length && !domainRows.length) {
+            const identityDomain = allDomainRows.find(isIdentityDomain);
+            const domainRows = allDomainRows.filter(domain => !isIdentityDomain(domain) && domainHasRenderableContent);
+            if (allDomainRows.length && !domainRows.length && !identityDomain) {
                 console.warn('[Reports] No domain rows considered renderable for PDF; check domain intelligence keys or scores.', { availableKeys: allDomainRows.map(d => d.domainKey || d.domainName) });
             }
+            renderIdentityProtectionReport(identityDomain);
             if (domainRows.length) {
                 sectionTitle('Enterprise domain scorecard');
                 doc.font('Helvetica').fontSize(7.8).fillColor(slate).text('Health is better when higher. Risk requires attention when higher.', left, doc.y, { width: contentWidth });
