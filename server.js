@@ -2888,6 +2888,8 @@ app.get('/api/cloudflare/network-security/summary', authenticateToken, async (re
 
 const SUNBIRD_REPORT_TIME_ZONE = 'Africa/Johannesburg';
 const SUNBIRD_REPORT_AUTOMATION_INTERVAL_MS = 60 * 60 * 1000;
+const SUNBIRD_REPORT_OVERVIEW_MAX_PAYLOAD_BYTES = 512 * 1024;
+const SUNBIRD_REPORT_OVERVIEW_MAX_ITEMS = 40;
 
 function parseReportJson(value, fallback = {}) {
     if (!value) return fallback;
@@ -4202,8 +4204,7 @@ function generateSunbirdReportPdf(report, reportId = null) {
         }
     });
 }
-function serializeReportRow(row) {
-    const payload = parseReportJson(row.Payload, {});
+function serializeReportListRow(row) {
     return {
         id: row.ID,
         type: row.ReportType,
@@ -4214,11 +4215,12 @@ function serializeReportRow(row) {
         emailStatus: row.EmailStatus,
         sentAt: row.SentAt,
         createdAt: row.CreatedAt,
-        summary: payload.summary || {},
-        analysis: payload.analysis || {},
-        domainInsights: payload.domainInsights || null,
-        finalSynthesis: payload.finalSynthesis || null,
-        generatedWithAi: payload.generatedWithAi === true
+        summary: {
+            healthScore: Number(row.SummaryHealthScore ?? row.HealthScore ?? 0),
+            failures: Number(row.SummaryFailures ?? 0),
+            successes: Number(row.SummarySuccesses ?? 0),
+            totalEvents: Number(row.SummaryTotalEvents ?? 0)
+        }
     };
 }
 
@@ -4235,17 +4237,17 @@ function buildSunbirdReportListOverview(reportRow = null) {
             totalEvents: Number(summary.totalEvents || payload.events?.length || 0)
         },
         analysis: {
-            executiveSummary: analysis.executiveSummary || 'The latest saved report is ready for review.',
-            successes: Array.isArray(analysis.successes) ? analysis.successes : [],
-            failures: Array.isArray(analysis.failures) ? analysis.failures : [],
-            recommendations: Array.isArray(analysis.recommendations) ? analysis.recommendations : []
+            executiveSummary: shortText(analysis.executiveSummary || 'The latest saved report is ready for review.', SUNBIRD_DASHBOARD_MAX_STRING_LENGTH),
+            successes: compactSunbirdDashboardValue(Array.isArray(analysis.successes) ? analysis.successes.slice(0, SUNBIRD_REPORT_OVERVIEW_MAX_ITEMS) : []),
+            failures: compactSunbirdDashboardValue(Array.isArray(analysis.failures) ? analysis.failures.slice(0, SUNBIRD_REPORT_OVERVIEW_MAX_ITEMS) : []),
+            recommendations: compactSunbirdDashboardValue(Array.isArray(analysis.recommendations) ? analysis.recommendations.slice(0, SUNBIRD_REPORT_OVERVIEW_MAX_ITEMS) : [])
         },
-        successes: Array.isArray(payload.successes) ? payload.successes : [],
-        failures: Array.isArray(payload.failures) ? payload.failures : [],
-        recommendations: Array.isArray(payload.recommendations) ? payload.recommendations : [],
-        events: Array.isArray(payload.events) ? payload.events : [],
-        domainScores: payload.domainScores || {},
-        trend: Array.isArray(payload.trend) ? payload.trend : []
+        successes: compactSunbirdDashboardValue(Array.isArray(payload.successes) ? payload.successes.slice(0, SUNBIRD_REPORT_OVERVIEW_MAX_ITEMS) : []),
+        failures: compactSunbirdDashboardValue(Array.isArray(payload.failures) ? payload.failures.slice(0, SUNBIRD_REPORT_OVERVIEW_MAX_ITEMS) : []),
+        recommendations: compactSunbirdDashboardValue(Array.isArray(payload.recommendations) ? payload.recommendations.slice(0, SUNBIRD_REPORT_OVERVIEW_MAX_ITEMS) : []),
+        events: compactSunbirdDashboardValue(Array.isArray(payload.events) ? payload.events.slice(0, SUNBIRD_REPORT_OVERVIEW_MAX_ITEMS) : []),
+        domainScores: compactSunbirdDashboardValue(payload.domainScores || {}),
+        trend: compactSunbirdDashboardValue(Array.isArray(payload.trend) ? payload.trend.slice(0, SUNBIRD_REPORT_OVERVIEW_MAX_ITEMS) : [])
     };
 }
 
@@ -4318,15 +4320,30 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
         const range = getReportRange(req.query, settings.ActiveSince);
         const limit = Math.max(1, Math.min(50, Number(req.query.limit) || 12));
         const [rows] = await pool.query(
-            `SELECT *
+            `SELECT ID, ReportType, PeriodStart, PeriodEnd, HealthScore, ReportStatus, EmailStatus, SentAt, CreatedAt,
+                    CASE WHEN JSON_VALID(Payload) THEN JSON_UNQUOTE(JSON_EXTRACT(Payload, '$.summary.healthScore')) END AS SummaryHealthScore,
+                    CASE WHEN JSON_VALID(Payload) THEN JSON_UNQUOTE(JSON_EXTRACT(Payload, '$.summary.failures')) END AS SummaryFailures,
+                    CASE WHEN JSON_VALID(Payload) THEN JSON_UNQUOTE(JSON_EXTRACT(Payload, '$.summary.successes')) END AS SummarySuccesses,
+                    CASE WHEN JSON_VALID(Payload) THEN JSON_UNQUOTE(JSON_EXTRACT(Payload, '$.summary.totalEvents')) END AS SummaryTotalEvents
              FROM SunbirdReports
              WHERE CompanyID = ?
              ORDER BY CreatedAt DESC
              LIMIT ?`,
             [context.companyId, limit]
         );
+        const [overviewRows] = await pool.query(
+            `SELECT HealthScore, ReportStatus,
+                    CASE WHEN OCTET_LENGTH(Payload) <= ? THEN Payload ELSE NULL END AS Payload
+             FROM SunbirdReports
+             WHERE CompanyID = ?
+             ORDER BY CreatedAt DESC
+             LIMIT 1`,
+            [SUNBIRD_REPORT_OVERVIEW_MAX_PAYLOAD_BYTES, context.companyId]
+        );
         const [logRows] = await pool.query(
-            `SELECT *
+            `SELECT ID, ReportID, EventType, EventStatus, Message,
+                    CASE WHEN OCTET_LENGTH(Metadata) <= 16384 THEN Metadata ELSE NULL END AS Metadata,
+                    ActorUserID, CreatedAt
              FROM SunbirdReportAuditLogs
              WHERE CompanyID = ? AND CreatedAt BETWEEN ? AND ?
              ORDER BY CreatedAt DESC
@@ -4338,7 +4355,7 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
             await fetchSunbirdIdentityDomainIntelligence(context.companyId)
         );
         operation.step('identity_intelligence_loaded', { risks: identityDomain.intelligenceOutput.risks.length });
-        const overview = buildSunbirdReportListOverview(rows[0]);
+        const overview = buildSunbirdReportListOverview(overviewRows[0] || rows[0]);
         await writeSunbirdReportLog({
             companyId: context.companyId,
             eventType: 'report_center_viewed',
@@ -4363,7 +4380,7 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
             range: { start: range.start, end: range.end },
             overview,
             identityDomain,
-            reports: rows.map(serializeReportRow),
+            reports: rows.map(serializeReportListRow),
             logs: logRows.map(serializeReportAuditLog)
         };
         sendSunbirdJson(res, responsePayload, operation);
