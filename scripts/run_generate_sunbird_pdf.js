@@ -117,6 +117,88 @@ async function run() {
                             }]
                         }
                     }
+                },
+                {
+                    domainKey: 'email_security',
+                    domainName: 'Email Security',
+                    intelligenceOutput: {
+                        authoritativeScores: { healthScore: 75, riskScore: 25, riskLevel: 'moderate' },
+                        domainExecutiveSummary: 'Email security is operating normally with five active low-severity, user-reported alerts. No high-severity malware, phishing, spam, or business email compromise incidents were identified.',
+                        businessImpact: 'Repeated user-reported alerts can add operational workload and make genuine threats harder to recognize without mailbox review and user training.',
+                        risks: [{
+                            title: 'Repeated low-severity user-reported email alerts require review',
+                            severity: 'moderate',
+                            impact: 'moderate',
+                            description: 'Five active low-severity alerts were reported by users as junk or not junk email.',
+                            whyItMatters: 'Repeated reports can indicate a training, classification, or mailbox-risk pattern that needs review.',
+                            firstAction: 'Review alert details and affected mailbox activity for the eight repeatedly targeted users.'
+                        }],
+                        keyFindings: [{
+                            title: '36 active mailboxes have normal mail activity',
+                            description: 'Thirty-six active mailboxes processed normal mail activity during the reporting period.',
+                            firstAction: 'Review two inactive mailboxes for deactivation or ownership confirmation.'
+                        }],
+                        evidenceCatalog: {
+                            categories: [{
+                                key: 'alerts', sourceMetric: 'alerts', count: 5,
+                                entities: [
+                                    { id: 'alert-1', title: 'Email reported by user as junk', sender: 'Unknown sender', recipient: 'ryan', severity: 'low', status: 'newalert', created: '2026-06-30T11:15:00Z', source: 'Office 365 Security and Compliance' },
+                                    { id: 'alert-2', title: 'Email reported by user as not junk', sender: 'Unknown sender', recipient: 'gary', severity: 'low', status: 'newalert', created: '2026-06-30T11:10:00Z', source: 'Office 365 Security and Compliance' }
+                                ]
+                            }, {
+                                key: 'mailActivityUsers', sourceMetric: 'activeMailboxes', count: 36,
+                                entities: [{ id: 'mailbox-1', title: 'Active mailbox activity', recipient: 'ryan', status: 'active', source: 'Microsoft 365 mail activity' }]
+                            }]
+                        }
+                    }
+                },
+                {
+                    domainKey: 'cloudflare_network_security',
+                    domainName: 'Network Security / Cloudflare',
+                    intelligenceOutput: {
+                        authoritativeScores: { healthScore: 78, riskScore: 22, riskLevel: 'low' },
+                        domainExecutiveSummary: 'Cloudflare network security has active gateway protections, DLP profiles, protected applications, and registered WARP devices. Audit log and API permission evidence gaps limit event-level analysis.',
+                        businessImpact: 'Maintained gateway and DLP controls protect sensitive data and roaming users. Completing audit and permission evidence improves detection, response, and access risk management.',
+                        risks: [{
+                            title: 'Audit log raw evidence gap limits event-level visibility',
+                            severity: 'high',
+                            impact: 'high',
+                            description: 'Cloudflare audit log coverage is present, but raw audit event evidence is not currently available for detailed analysis.',
+                            whyItMatters: 'Missing raw audit events limits incident detection and forensic investigation.',
+                            firstAction: 'Obtain raw audit log data for event-level analysis.'
+                        }, {
+                            title: 'Inactive Do Not Inspect gateway policy may allow uninspected traffic',
+                            severity: 'medium',
+                            impact: 'medium',
+                            description: 'The Do Not Inspect gateway policy is configured with its action set to off.',
+                            whyItMatters: 'The policy should be reviewed to confirm its intended traffic inspection behavior.',
+                            firstAction: 'Review the Do Not Inspect gateway policy status.'
+                        }],
+                        keyFindings: [{
+                            title: 'Three enrolled devices are active and registered with WARP profiles',
+                            description: 'The enrolled device fleet is active and protected through registered WARP profiles.',
+                            firstAction: 'Maintain the current device enrollment and WARP profile coverage.'
+                        }, {
+                            title: 'Two DLP profiles protect sensitive data',
+                            description: 'DLP profiles target financial and sensitive personal information.',
+                            firstAction: 'Review DLP profile coverage and policy updates regularly.'
+                        }],
+                        evidenceCatalog: {
+                            categories: [{
+                                key: 'devices', sourceMetric: 'enrolledDevices', count: 3,
+                                entities: [{ id: 'device-1', name: 'DaveLenovo', entityType: 'WARP device', status: 'active', assignedUser: 'dave@example.com' }]
+                            }, {
+                                key: 'gatewayRules', sourceMetric: 'gatewayPolicies', count: 3,
+                                entities: [{ id: 'rule-1', name: 'Do Not Inspect', entityType: 'Gateway policy', action: 'off', enabled: true }]
+                            }, {
+                                key: 'dlpProfiles', sourceMetric: 'dlpProfiles', count: 2,
+                                entities: [{ id: 'dlp-1', name: 'Financial information', entityType: 'DLP profile', status: 'active' }]
+                            }, {
+                                key: 'accessApps', sourceMetric: 'protectedApps', count: 2,
+                                entities: [{ id: 'app-1', name: 'SSO App', entityType: 'Protected application', status: 'active' }]
+                            }]
+                        }
+                    }
                 }
             ]
         },

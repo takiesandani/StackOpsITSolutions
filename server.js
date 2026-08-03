@@ -4447,6 +4447,232 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 }
                 doc.y += 4;
             };
+            const isEmailSecurityDomain = domain => String(domain?.domainKey || domain?.domainName || '').trim().toLowerCase() === 'email_security' || /^email security$/i.test(String(domain?.domainName || ''));
+            const isCloudflareDomain = domain => String(domain?.domainKey || '').trim().toLowerCase() === 'cloudflare_network_security' || /cloudflare|network security/i.test(String(domain?.domainName || ''));
+            const renderEmailOrCloudflareReport = (domain, reportType) => {
+                if (!domain) return;
+
+                const output = domain.intelligenceOutput || domain.output || {};
+                const scores = output.authoritativeScores || output.scoreSummary || {};
+                const categories = Array.isArray(output.evidenceCatalog?.categories) ? output.evidenceCatalog.categories : [];
+                const healthScore = clampReportScore(scores.healthScore ?? output.healthScore ?? domain.healthScore ?? 0);
+                const riskScore = clampReportScore(scores.riskScore ?? output.riskScore ?? domain.riskScore ?? 0);
+                const riskLevel = cleanText(scores.riskLevel || output.riskLevel || 'Unrated');
+                const isEmail = reportType === 'email';
+                const tone = value => {
+                    const normalized = String(value || '').toLowerCase();
+                    if (/critical|high/.test(normalized)) return red;
+                    if (/medium|moderate|warning/.test(normalized)) return orange;
+                    if (/low|safe|good|active|enabled/.test(normalized)) return green;
+                    return '#2563eb';
+                };
+                const section = (title, color = navy) => {
+                    addPageIfNeeded(34);
+                    doc.font('Helvetica').fontSize(10.5).fillColor(color).text(title.toUpperCase(), left, doc.y, { width: contentWidth });
+                    doc.moveTo(left, doc.y + 4).lineTo(pageWidth - left, doc.y + 4).strokeColor('#d9dee3').lineWidth(0.8).stroke();
+                    doc.y += 12;
+                };
+                const metric = (x, y, width, label, value, detail, color) => {
+                    doc.roundedRect(x, y, width, 62, 7).fill('#f8fafc').strokeColor('#e1e6ea').lineWidth(0.8).stroke();
+                    doc.font('Helvetica').fontSize(7.3).fillColor(slate).text(label, x + 10, y + 10, { width: width - 20, height: 10 });
+                    doc.font('Helvetica').fontSize(17).fillColor(color).text(String(value), x + 10, y + 23, { width: width - 20, height: 20 });
+                    doc.font('Helvetica').fontSize(7).fillColor(slate).text(detail, x + 10, y + 48, { width: width - 20, height: 9 });
+                };
+                const textBlock = (title, text, color = navy) => {
+                    const value = cleanText(text);
+                    if (!value) return;
+                    const height = doc.font('Helvetica').fontSize(8).heightOfString(value, { width: contentWidth - 24, lineGap: 2 });
+                    addPageIfNeeded(height + 38);
+                    section(title, color);
+                    doc.font('Helvetica').fontSize(8).fillColor(slate).text(value, left + 12, doc.y, { width: contentWidth - 24, lineGap: 2 });
+                    doc.y += height + 10;
+                };
+                const category = key => categories.find(item => String(item?.key || '').toLowerCase() === key.toLowerCase()) || null;
+                const categoryCount = key => Number(category(key)?.count || 0);
+                const statementCount = pattern => {
+                    const text = [...(Array.isArray(output.risks) ? output.risks : []), ...(Array.isArray(output.keyFindings) ? output.keyFindings : [])]
+                        .map(item => `${item.title || ''} ${item.description || ''}`).join(' ');
+                    const match = text.match(pattern);
+                    return match ? Number(match[1]) : 0;
+                };
+                const metricItems = isEmail
+                    ? [
+                        { label: 'ACTIVE ALERTS', value: categoryCount('alerts'), detail: 'User-reported email alerts', color: categoryCount('alerts') ? orange : green },
+                        { label: 'REPEATEDLY TARGETED', value: statementCount(/(\d+)\s+users?\s+repeatedly/i), detail: 'Users requiring review', color: orange },
+                        { label: 'ACTIVE MAILBOXES', value: categoryCount('mailActivityUsers'), detail: 'Mailboxes with current activity', color: '#2563eb' },
+                        { label: 'INACTIVE MAILBOXES', value: statementCount(/(\d+)\s+inactive mailboxes?/i), detail: 'Mailboxes for review', color: orange }
+                    ]
+                    : [
+                        { label: 'WARP DEVICES', value: categoryCount('devices'), detail: 'Enrolled and protected devices', color: '#2563eb' },
+                        { label: 'GATEWAY RULES', value: categoryCount('gatewayRules'), detail: 'Configured network controls', color: '#2563eb' },
+                        { label: 'DLP PROFILES', value: categoryCount('dlpProfiles'), detail: 'Sensitive-data protections', color: '#2563eb' },
+                        { label: 'PROTECTED APPS', value: categoryCount('accessApps'), detail: 'Active protected applications', color: '#2563eb' }
+                    ];
+                const categoryForFinding = item => {
+                    const text = `${item?.title || ''} ${item?.description || ''}`.toLowerCase();
+                    const keys = isEmail
+                        ? [item?.sourceMetric, /alert|junk|mail|phish|spam|bec/.test(text) ? 'alerts' : '', /mailbox|mail activity/.test(text) ? 'mailActivityUsers' : '', 'alerts']
+                        : [
+                            item?.sourceMetric,
+                            /audit/.test(text) ? 'auditLogs' : '',
+                            /permission|api/.test(text) ? 'endpointFamilies' : '',
+                            /gateway|inspect/.test(text) ? 'gatewayRules' : '',
+                            /dlp/.test(text) ? 'dlpProfiles' : '',
+                            /protected application|sso|warp login/.test(text) ? 'accessApps' : '',
+                            /warp|enrolled device/.test(text) ? 'devices' : '',
+                            /app categor/.test(text) ? 'gatewayAppTypes' : '',
+                            'devices'
+                        ];
+                    return keys.filter(Boolean).map(key => category(key)).find(Boolean) || null;
+                };
+                const evidenceForFinding = item => {
+                    const direct = [
+                        ...(Array.isArray(item?.evidenceRecords) ? item.evidenceRecords : []),
+                        ...(Array.isArray(item?.affectedEntities) ? item.affectedEntities : []),
+                        ...(Array.isArray(item?.evidenceRows) ? item.evidenceRows : [])
+                    ];
+                    const matchedCategory = categoryForFinding(item);
+                    const source = [
+                        ...(Array.isArray(matchedCategory?.entities) ? matchedCategory.entities : []),
+                        ...direct
+                    ];
+                    const unique = new Map();
+                    source.forEach(entry => {
+                        const key = String(entry?.entityId || entry?.id || entry?.name || entry?.title || entry?.deviceName || entry?.entityName || entry?.displayName || '').toLowerCase();
+                        if (key && !unique.has(key)) unique.set(key, entry);
+                    });
+                    const total = Number(matchedCategory?.count || unique.size || 0);
+                    return { rows: Array.from(unique.values()).slice(0, 10), total };
+                };
+                const formatEvidence = entry => {
+                    const name = cleanText(entry.entityName || entry.name || entry.title || entry.deviceName || entry.displayName, isEmail ? 'Email security alert' : 'Cloudflare control');
+                    const fields = isEmail
+                        ? [
+                            entry.recipient ? `Recipient: ${cleanText(entry.recipient)}` : '',
+                            entry.sender ? `Sender: ${cleanText(entry.sender)}` : '',
+                            entry.severity ? `Severity: ${cleanText(entry.severity)}` : '',
+                            entry.status ? `Status: ${cleanText(entry.status)}` : '',
+                            entry.created ? `Reported: ${formatReportDate(entry.created, true)}` : '',
+                            entry.source ? `Source: ${cleanText(entry.source)}` : ''
+                        ]
+                        : [
+                            entry.entityType ? `Type: ${cleanText(entry.entityType)}` : '',
+                            entry.action ? `Action: ${cleanText(entry.action)}` : '',
+                            entry.enabled == null ? '' : `Enabled: ${entry.enabled ? 'Yes' : 'No'}`,
+                            entry.status ? `Status: ${cleanText(entry.status)}` : '',
+                            entry.userPrincipalName || entry.assignedUser ? `User: ${cleanText(entry.userPrincipalName || entry.assignedUser)}` : '',
+                            entry.sourceMetric ? `Source: ${cleanText(entry.sourceMetric)}` : ''
+                        ];
+                    return { name, details: fields.filter(Boolean) };
+                };
+                const drawEvidence = rows => {
+                    if (!rows.length) {
+                        doc.font('Helvetica').fontSize(7.4).fillColor(slate).text('No supporting evidence details were returned with this finding.', left + 30, doc.y, { width: contentWidth - 42 });
+                        doc.y += 16;
+                        return;
+                    }
+                    rows.forEach((entry, index) => {
+                        const evidence = formatEvidence(entry);
+                        const detail = evidence.details.join('\n');
+                        const titleHeight = doc.font('Helvetica-Bold').fontSize(7.8).heightOfString(evidence.name, { width: contentWidth - 56 });
+                        const detailHeight = detail ? doc.font('Helvetica').fontSize(7.2).heightOfString(detail, { width: contentWidth - 56, lineGap: 1 }) : 0;
+                        const rowHeight = Math.max(23, titleHeight + detailHeight + 11);
+                        addPageIfNeeded(rowHeight + 6);
+                        const rowY = doc.y;
+                        if (index % 2 === 0) doc.rect(left + 22, rowY - 2, contentWidth - 34, rowHeight).fill('#fbfcfd');
+                        doc.circle(left + 31, rowY + 4, 1.4).fillColor('#2563eb').fill();
+                        doc.font('Helvetica-Bold').fontSize(7.8).fillColor(navy).text(evidence.name, left + 38, rowY, { width: contentWidth - 56 });
+                        if (detail) doc.font('Helvetica').fontSize(7.2).fillColor(slate).text(detail, left + 38, rowY + titleHeight + 2, { width: contentWidth - 56, lineGap: 1 });
+                        doc.y = rowY + rowHeight + 3;
+                    });
+                };
+                const splitActions = value => cleanText(value).split(/(?:;|\.(?=\s+[A-Z])|,\s+(?=(?:and\s+)?(?:review|remove|require|retire|initiate|investigate|notify|validate|enforce|obtain)\b))/i)
+                    .map(point => point.replace(/^and\s+/i, '').trim().replace(/[.]+$/, '')).filter(Boolean);
+                const findings = [...(Array.isArray(output.risks) ? output.risks : []), ...(Array.isArray(output.keyFindings) ? output.keyFindings : [])]
+                    .slice(0, 8)
+                    .map(item => {
+                        const evidence = evidenceForFinding(item);
+                        return {
+                            title: cleanText(item.title || item.patternFound, `${isEmail ? 'Email' : 'Cloudflare'} finding`),
+                            severity: cleanText(item.severity || item.priority || item.impact || 'Observed'),
+                            detail: cleanText(item.description || item.detail || item.whatHappened || item.title),
+                            impact: cleanText(item.impact || item.businessImpact),
+                            rationale: cleanText(item.whyItMatters || item.reasoning),
+                            evidence: evidence.rows,
+                            evidenceCount: evidence.total,
+                            actions: splitActions(item.firstAction || item.recommendedAction || item.recommendation)
+                        };
+                    });
+
+                addPageIfNeeded(120);
+                section(`${isEmail ? 'Email Security' : 'Network Security / Cloudflare'} Report`, tone(riskLevel));
+                doc.font('Helvetica').fontSize(8.1).fillColor(slate).text(`Current ${isEmail ? 'email' : 'network'} security posture`, left, doc.y, { width: contentWidth });
+                doc.y += 16;
+                const metricGap = 10;
+                const metricWidth = (contentWidth - metricGap * 2) / 3;
+                const metricY = doc.y;
+                const allMetrics = [
+                    { label: 'HEALTH SCORE', value: `${healthScore}%`, detail: 'Current domain health score', color: healthScore >= 80 ? green : orange },
+                    { label: 'RISK SCORE', value: `${riskScore}%`, detail: `${riskLevel} risk level`, color: tone(riskLevel) },
+                    ...metricItems
+                ];
+                allMetrics.forEach((item, index) => {
+                    const column = index % 3;
+                    const row = Math.floor(index / 3);
+                    metric(left + (metricWidth + metricGap) * column, metricY + row * 72, metricWidth, item.label, item.value, item.detail, item.color);
+                });
+                doc.y = metricY + 148;
+                textBlock('Domain summary', output.domainExecutiveSummary || output.technicalSummary || output.currentPosture, tone(riskLevel));
+                textBlock('Business impact', output.businessImpact || output.businessImpactSummary, tone(riskLevel));
+
+                if (findings.length) {
+                    section(`Key ${isEmail ? 'email' : 'network'} findings (${findings.length})`);
+                    findings.forEach((finding, index) => {
+                        const findingTone = tone(finding.severity);
+                        const fields = [
+                            ['FINDING', finding.detail],
+                            ['SEVERITY', finding.severity],
+                            ['IMPACT', finding.impact],
+                            ['WHY IT MATTERS', finding.rationale]
+                        ].filter(([, value]) => value);
+                        addPageIfNeeded(70);
+                        if (index % 2 === 0) doc.rect(left, doc.y - 3, contentWidth, Math.min(190, bottom - doc.y)).fill('#f8fafc');
+                        doc.circle(left + 9, doc.y + 5, 2).fillColor(findingTone).fill();
+                        doc.font('Helvetica-Bold').fontSize(8.5).fillColor(findingTone).text(finding.title, left + 18, doc.y, { width: contentWidth - 30, lineGap: 1 });
+                        doc.y += doc.heightOfString(finding.title, { width: contentWidth - 30, lineGap: 1 }) + 7;
+                        fields.forEach(([label, value]) => {
+                            addPageIfNeeded(24);
+                            doc.font('Helvetica-Bold').fontSize(7.2).fillColor(findingTone).text(label, left + 18, doc.y, { width: contentWidth - 30 });
+                            doc.y += 10;
+                            doc.font('Helvetica').fontSize(7.5).fillColor(slate).text(value, left + 18, doc.y, { width: contentWidth - 30, lineGap: 1 });
+                            doc.y += doc.heightOfString(value, { width: contentWidth - 30, lineGap: 1 }) + 5;
+                        });
+                        addPageIfNeeded(22);
+                        doc.font('Helvetica-Bold').fontSize(7.2).fillColor(findingTone).text('EVIDENCE', left + 18, doc.y, { width: contentWidth - 30 });
+                        doc.y += 11;
+                        drawEvidence(finding.evidence);
+                        const remaining = Math.max(0, finding.evidenceCount - finding.evidence.length);
+                        if (remaining) {
+                            doc.font('Helvetica').fontSize(7.1).fillColor(slate).text(`${remaining} additional evidence record${remaining === 1 ? '' : 's'} are available in the ${isEmail ? 'Email Security' : 'Network Security'} dashboard.`, left + 38, doc.y, { width: contentWidth - 56 });
+                            doc.y += 15;
+                        }
+                        if (finding.actions.length) {
+                            addPageIfNeeded(24);
+                            doc.font('Helvetica-Bold').fontSize(7.2).fillColor(green).text('RECOMMENDATIONS', left + 18, doc.y, { width: contentWidth - 30 });
+                            doc.y += 11;
+                            finding.actions.forEach(action => {
+                                const height = doc.font('Helvetica').fontSize(7.4).heightOfString(action, { width: contentWidth - 56, lineGap: 1 });
+                                addPageIfNeeded(height + 8);
+                                doc.circle(left + 25, doc.y + 4, 1.4).fillColor(green).fill();
+                                doc.font('Helvetica').fontSize(7.4).fillColor(slate).text(action, left + 32, doc.y, { width: contentWidth - 56, lineGap: 1 });
+                                doc.y += height + 5;
+                            });
+                        }
+                        doc.y += 8;
+                    });
+                }
+                doc.y += 4;
+            };
             const renderDomain = domain => {
                 const output = domain.intelligenceOutput || domain.output || {};
                 const score = scoreForDomain(domain);
@@ -4551,8 +4777,10 @@ function generateSunbirdReportPdf(report, reportId = null) {
             };
             const identityDomain = allDomainRows.find(isIdentityDomain);
             const devicesDomain = allDomainRows.find(isDevicesDomain);
+            const emailSecurityDomain = allDomainRows.find(isEmailSecurityDomain);
+            const cloudflareDomain = allDomainRows.find(isCloudflareDomain);
             const scorecardDomains = allDomainRows.filter(domainHasRenderableContent);
-            const domainRows = scorecardDomains.filter(domain => !isIdentityDomain(domain) && !isDevicesDomain(domain));
+            const domainRows = scorecardDomains.filter(domain => !isIdentityDomain(domain) && !isDevicesDomain(domain) && !isEmailSecurityDomain(domain) && !isCloudflareDomain(domain));
             if (allDomainRows.length && !scorecardDomains.length) {
                 console.warn('[Reports] No domain rows considered renderable for PDF; check domain intelligence keys or scores.', { availableKeys: allDomainRows.map(d => d.domainKey || d.domainName) });
             }
@@ -4587,12 +4815,16 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 doc.moveDown(0.7);
                 renderIdentityProtectionReport(identityDomain);
                 renderDeviceProtectionReport(devicesDomain);
+                renderEmailOrCloudflareReport(emailSecurityDomain, 'email');
+                renderEmailOrCloudflareReport(cloudflareDomain, 'cloudflare');
                 domainRows.forEach(renderDomain);
             } else {
                 sectionTitle('Domain intelligence and evidence');
-                if (identityDomain || devicesDomain) {
+                if (identityDomain || devicesDomain || emailSecurityDomain || cloudflareDomain) {
                     renderIdentityProtectionReport(identityDomain);
                     renderDeviceProtectionReport(devicesDomain);
+                    renderEmailOrCloudflareReport(emailSecurityDomain, 'email');
+                    renderEmailOrCloudflareReport(cloudflareDomain, 'cloudflare');
                 } else {
                     doc.font('Helvetica').fontSize(8.5).fillColor(slate).text('No saved domain intelligence was available for the selected reporting period.', { width: contentWidth });
                 }
