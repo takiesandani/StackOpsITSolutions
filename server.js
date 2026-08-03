@@ -534,13 +534,11 @@ if (!useSupabase) {
         connectionLimit: 10,
         queueLimit: 0,
         enableKeepAlive: true,            // Enable TCP keepalive to prevent stale connections
-        keepAliveInitialDelayMs: 0,       // Start keepalive immediately
+        keepAliveInitialDelay: 0,         // Start keepalive immediately
         decimalNumbers: true,             // Return DECIMAL values as numbers
         supportBigNumbers: true,          // Support large numbers
         bigNumberStrings: false,          // Convert large numbers to strings if needed
-        connectionTimeoutMillis: 30000,   // 30 second connection timeout
-        acquireTimeoutMillis: 30000,      // 30 second acquire timeout
-        waitForConnectionsMillis: 5000,   // 5 second wait for connection from queue
+        connectTimeout: 30000,            // 30 second connection timeout
         
         /*
         authPlugins: {
@@ -556,7 +554,7 @@ if (!useSupabase) {
         dbConfig.port = Number(process.env.DB_PORT || 3306);
     }
     console.log(`\n[DB] Attempting to connect via ${socketPath ? 'Cloud SQL socket' : 'configured TCP host'}`);
-    console.log('[DB] Config: connectionTimeout=30s, acquireTimeout=30s');
+    console.log('[DB] Config: connectTimeout=30s');
 
     try {
         // Use mysql.createPool (promise-based) for modern Node.js
@@ -576,7 +574,7 @@ if (!useSupabase) {
         console.log('[POOL] ✅ MySQL pool created with settings:');
         console.log('[POOL]   - connectionLimit: 10');
         console.log('[POOL]   - queueLimit: 0 (unlimited queue)');
-        console.log('[POOL]   - keepAliveInitialDelayMs: 0 (keepalive enabled)');
+        console.log('[POOL]   - keepAliveInitialDelay: 0 (keepalive enabled)');
         console.log('[POOL]   - connectionTimeout: 30 seconds');
         
         // Try a simple test connection immediately (don't wait for result)
@@ -8813,6 +8811,72 @@ async function upsertSunbirdPayloadCache(tableName, companyId, payload) {
     }
 }
 
+const SUNBIRD_DASHBOARD_MAX_ROWS = 80;
+const SUNBIRD_DASHBOARD_MAX_ARRAY_ITEMS = 20;
+const SUNBIRD_DASHBOARD_MAX_OBJECT_KEYS = 30;
+const SUNBIRD_DASHBOARD_MAX_STRING_LENGTH = 1200;
+
+function compactSunbirdDashboardValue(value, depth = 0, seen = new WeakSet()) {
+    if (value == null || typeof value === 'number' || typeof value === 'boolean') return value;
+    if (typeof value === 'string') return value.slice(0, SUNBIRD_DASHBOARD_MAX_STRING_LENGTH);
+    if (depth >= 4) return '[Detail omitted]';
+    if (typeof value !== 'object') return String(value).slice(0, SUNBIRD_DASHBOARD_MAX_STRING_LENGTH);
+    if (seen.has(value)) return '[Circular detail omitted]';
+    seen.add(value);
+    if (Array.isArray(value)) {
+        return value.slice(0, SUNBIRD_DASHBOARD_MAX_ARRAY_ITEMS)
+            .map(item => compactSunbirdDashboardValue(item, depth + 1, seen));
+    }
+    return Object.fromEntries(
+        Object.entries(value)
+            .slice(0, SUNBIRD_DASHBOARD_MAX_OBJECT_KEYS)
+            .map(([key, item]) => [key, compactSunbirdDashboardValue(item, depth + 1, seen)])
+    );
+}
+
+function compactSunbirdGovernancePayload(payload = {}, overrides = {}) {
+    const rows = Array.isArray(payload.rows) ? payload.rows : [];
+    return {
+        success: payload.success !== false,
+        source: overrides.source || payload.source || 'api',
+        fetchedAt: overrides.fetchedAt || payload.fetchedAt || new Date().toISOString(),
+        ...(overrides.warning ? { warning: overrides.warning } : {}),
+        warnings: compactSunbirdDashboardValue(payload.warnings || []),
+        summary: compactSunbirdDashboardValue(payload.summary || {}),
+        rows: rows.slice(0, SUNBIRD_DASHBOARD_MAX_ROWS).map(row => ({
+            area: row.area || '',
+            activity: row.activity || '',
+            source: row.source || '',
+            dataSource: row.dataSource || '',
+            frequency: row.frequency || '',
+            lastReviewed: row.lastReviewed || null,
+            status: row.status || '',
+            connected: Boolean(row.connected),
+            evidence: String(row.evidence || '').slice(0, SUNBIRD_DASHBOARD_MAX_STRING_LENGTH),
+            evidenceData: compactSunbirdDashboardValue(row.evidenceData || {})
+        }))
+    };
+}
+
+function compactSunbirdCompliancePayload(payload = {}, overrides = {}) {
+    const controls = Array.isArray(payload.controls) ? payload.controls : [];
+    return {
+        success: payload.success !== false,
+        source: overrides.source || payload.source || 'api',
+        fetchedAt: overrides.fetchedAt || payload.fetchedAt || new Date().toISOString(),
+        ...(overrides.warning ? { warning: overrides.warning } : {}),
+        warnings: compactSunbirdDashboardValue(payload.warnings || []),
+        summary: compactSunbirdDashboardValue(payload.summary || {}),
+        controls: controls.slice(0, SUNBIRD_DASHBOARD_MAX_ROWS).map(control => ({
+            name: control.name || '',
+            area: control.area || '',
+            insight: String(control.insight || '').slice(0, SUNBIRD_DASHBOARD_MAX_STRING_LENGTH),
+            status: control.status || '',
+            evidenceData: compactSunbirdDashboardValue(control.evidenceData || {})
+        }))
+    };
+}
+
 // ============================================================================
 async function fetchGovernancePayloadFromApi() {
         const token = await getMicrosoftGraphToken();
@@ -9175,18 +9239,18 @@ app.get('/api/sunbird/governance', authenticateToken, async (req, res) => {
         companyId = tenant.companyId || req.user.companyId || null;
         const cached = await getSunbirdPayloadCache('SunbirdGovernancePayloadCache', companyId);
         if (cached?.payload?.success && Array.isArray(cached.payload.rows)) {
+            cached.payload = compactSunbirdGovernancePayload(cached.payload, {
+                source: 'db',
+                fetchedAt: cached.lastUpdated
+            });
             if (governanceEvidenceService && companyId) {
                 persistGovernanceDashboardEvidence(companyId, cached.payload, 'dashboard_request', '/api/sunbird/governance')
                     .catch(error => console.warn('[Governance Evidence] Cached dashboard payload could not be stored:', error.message));
             }
-            return res.json({
-                ...cached.payload,
-                source: 'db',
-                fetchedAt: cached.lastUpdated
-            });
+            return res.json(cached.payload);
         }
 
-        const payload = await fetchGovernancePayloadFromApi();
+        const payload = compactSunbirdGovernancePayload(await fetchGovernancePayloadFromApi());
         await upsertSunbirdPayloadCache('SunbirdGovernancePayloadCache', companyId, payload);
         if (governanceEvidenceService && companyId) {
             persistGovernanceDashboardEvidence(companyId, payload, 'dashboard_request', '/api/sunbird/governance')
@@ -9197,12 +9261,11 @@ app.get('/api/sunbird/governance', authenticateToken, async (req, res) => {
         console.error('[Governance API] Critical Error:', error);
         const stale = await getSunbirdPayloadCache('SunbirdGovernancePayloadCache', companyId, { allowStale: true });
         if (stale?.payload?.success && Array.isArray(stale.payload.rows)) {
-            return res.json({
-                ...stale.payload,
+            return res.json(compactSunbirdGovernancePayload(stale.payload, {
                 source: 'db-stale',
                 fetchedAt: stale.lastUpdated,
                 warning: 'Serving stale cached governance data because live refresh failed.'
-            });
+            }));
         }
         res.status(500).json({ error: 'Failed to aggregate governance data' });
     }
@@ -9456,18 +9519,18 @@ app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) 
         companyId = tenant.companyId || req.user.companyId || null;
         const cached = await getSunbirdPayloadCache('SunbirdComplianceControlsCache', companyId);
         if (cached?.payload?.success && Array.isArray(cached.payload.controls)) {
+            cached.payload = compactSunbirdCompliancePayload(cached.payload, {
+                source: 'db',
+                fetchedAt: cached.lastUpdated
+            });
             if (complianceEvidenceService && companyId) {
                 persistComplianceDashboardEvidence(companyId, cached.payload, 'dashboard_request', '/api/sunbird/compliance-controls')
                     .catch(error => console.warn('[Compliance Evidence] Cached dashboard payload could not be stored:', error.message));
             }
-            return res.json({
-                ...cached.payload,
-                source: 'db',
-                fetchedAt: cached.lastUpdated
-            });
+            return res.json(cached.payload);
         }
 
-        const payload = await fetchComplianceControlsFromApi();
+        const payload = compactSunbirdCompliancePayload(await fetchComplianceControlsFromApi());
         await upsertSunbirdPayloadCache('SunbirdComplianceControlsCache', companyId, payload);
         if (complianceEvidenceService && companyId) {
             persistComplianceDashboardEvidence(companyId, payload, 'dashboard_request', '/api/sunbird/compliance-controls')
@@ -9479,12 +9542,11 @@ app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) 
         console.error('[Compliance API] Critical Error:', error);
         const stale = await getSunbirdPayloadCache('SunbirdComplianceControlsCache', companyId, { allowStale: true });
         if (stale?.payload?.success && Array.isArray(stale.payload.controls)) {
-            return res.json({
-                ...stale.payload,
+            return res.json(compactSunbirdCompliancePayload(stale.payload, {
                 source: 'db-stale',
                 fetchedAt: stale.lastUpdated,
                 warning: 'Serving stale cached compliance data because live refresh failed.'
-            });
+            }));
         }
         res.status(500).json({ error: 'Failed to aggregate compliance data' });
     }
@@ -12863,9 +12925,9 @@ async function performGovernanceEvidenceCollection(companyId, collectionTrigger)
     if (!governanceEvidenceService) throw new Error('Governance evidence storage is not initialized');
     const sourceEndpoint = 'Microsoft Graph processed by StackCTRL Governance';
     try {
-        const rawPayload = await fetchGovernancePayloadFromApi();
-        await upsertSunbirdPayloadCache('SunbirdGovernancePayloadCache', companyId, rawPayload);
-        return persistGovernanceDashboardEvidence(companyId, rawPayload, collectionTrigger, sourceEndpoint);
+        const payload = compactSunbirdGovernancePayload(await fetchGovernancePayloadFromApi());
+        await upsertSunbirdPayloadCache('SunbirdGovernancePayloadCache', companyId, payload);
+        return persistGovernanceDashboardEvidence(companyId, payload, collectionTrigger, sourceEndpoint);
     } catch (error) {
         console.error('[Governance Evidence] Collector failed', { companyId, collectionTrigger, errorMessage: error.message });
         await governanceEvidenceService.recordCollectionFailure({ companyId, tenantKey: 'sunbird', collectionTrigger, sourceEndpoint, error }).catch(() => {});
@@ -12895,9 +12957,9 @@ async function performComplianceEvidenceCollection(companyId, collectionTrigger)
     if (!complianceEvidenceService) throw new Error('Compliance evidence storage is not initialized');
     const sourceEndpoint = 'Microsoft Graph processed by StackCTRL Compliance Validation';
     try {
-        const rawPayload = await fetchComplianceControlsFromApi();
-        await upsertSunbirdPayloadCache('SunbirdComplianceControlsCache', companyId, rawPayload);
-        return persistComplianceDashboardEvidence(companyId, rawPayload, collectionTrigger, sourceEndpoint);
+        const payload = compactSunbirdCompliancePayload(await fetchComplianceControlsFromApi());
+        await upsertSunbirdPayloadCache('SunbirdComplianceControlsCache', companyId, payload);
+        return persistComplianceDashboardEvidence(companyId, payload, collectionTrigger, sourceEndpoint);
     } catch (error) {
         console.error('[Compliance Evidence] Collector failed', { companyId, collectionTrigger, errorMessage: error.message });
         await complianceEvidenceService.recordCollectionFailure({ companyId, tenantKey: 'sunbird', collectionTrigger, sourceEndpoint, error }).catch(() => {});
@@ -13227,7 +13289,7 @@ async function refreshStackCTRLIntelligenceSource(sourceKey, companyId) {
                     throw refreshError;
                 }
             }
-            const payload = await fetchGovernancePayloadFromApi();
+            const payload = compactSunbirdGovernancePayload(await fetchGovernancePayloadFromApi());
             await upsertSunbirdPayloadCache('SunbirdGovernancePayloadCache', companyId, payload);
             return null;
         }
@@ -13244,7 +13306,7 @@ async function refreshStackCTRLIntelligenceSource(sourceKey, companyId) {
                     throw refreshError;
                 }
             }
-            const payload = await fetchComplianceControlsFromApi();
+            const payload = compactSunbirdCompliancePayload(await fetchComplianceControlsFromApi());
             await upsertSunbirdPayloadCache('SunbirdComplianceControlsCache', companyId, payload);
             return null;
         }
