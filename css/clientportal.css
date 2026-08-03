@@ -10469,6 +10469,10 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   margin-bottom: 12px;
 }
 
+#sunbird-identity-dashboard .sunbird-id-charts {
+  grid-template-columns: minmax(220px, 0.8fr) minmax(320px, 1.2fr);
+}
+
 .sunbird-id-chart-card {
   padding: 14px;
 }
@@ -10954,7 +10958,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 .sunbird-id-health-track {
-  height: 10px;
+  height: 6px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.16);
   overflow: hidden;
@@ -10969,6 +10973,38 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 .sunbird-id-health-fill.tone-good { background: #34d399; }
 .sunbird-id-health-fill.tone-warn { background: #ff9f1c; }
 .sunbird-id-health-fill.tone-bad { background: #ef4444; }
+
+.sunbird-id-compact-pie-card,
+.sunbird-id-compact-health-card {
+  min-height: 196px;
+}
+
+.sunbird-id-compact-pie-card .sunbird-id-pie {
+  width: 92px;
+}
+
+.sunbird-id-compact-pie-card .sunbird-id-pie::after {
+  inset: 26px;
+}
+
+.sunbird-id-compact-health-card {
+  grid-template-rows: auto repeat(3, minmax(28px, auto));
+}
+
+.sunbird-id-compact-health-card .sunbird-id-health-row {
+  grid-template-columns: 112px 1fr 44px;
+}
+
+.sunbird-id-refresh-state {
+  grid-column: 1 / -1;
+  min-height: 144px;
+}
+
+.sunbird-id-refresh-state p {
+  margin: 0 0 14px;
+  color: rgba(255, 255, 255, 0.76);
+  line-height: 1.5;
+}
 
 .sunbird-backup-activity-radar-card {
   min-height: 250px;
@@ -10991,6 +11027,17 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 12px;
+}
+
+.sunbird-id-stale-notice {
+  grid-column: 1 / -1;
+  margin: 0;
+  border-left: 3px solid #ff9f1c;
+  background: rgba(255, 159, 28, 0.1);
+  color: #fed7aa;
+  padding: 9px 12px;
+  font-size: 0.82rem;
+  line-height: 1.45;
 }
 
 .sunbird-id-signin-card {

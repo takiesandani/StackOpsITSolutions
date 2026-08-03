@@ -1030,6 +1030,7 @@ let identityRiskFocus = 'all';
 let pendingIdentityRiskFocus = 'all';
 let identityFetchRequestId = 0;
 let sunbirdIdentityDashboardRequestPromise = null;
+let sunbirdIdentityDashboardNotice = '';
 let retryCount = 0; // Retry counter for Identity Access API failures
 let latestDevicesCardData = null;
 let latestEmailCardData = null;
@@ -2716,6 +2717,8 @@ async function requestFreshSunbirdIdentityDashboardData() {
     // Use only the production Identity Dashboard endpoint
     const endpoint = '/api/sunbird/identity-dashboard';
     
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25000);
     try {
         const response = await fetch(endpoint, {
             method: 'GET',
@@ -2726,10 +2729,19 @@ async function requestFreshSunbirdIdentityDashboardData() {
                 'Cache-Control': 'no-cache, no-store, must-revalidate',
                 'Pragma': 'no-cache',
                 'Expires': '0'
-            }
+            },
+            signal: controller.signal
         });
-        
-        const result = await response.json();
+
+        const responseBody = await response.text();
+        let result;
+        try {
+            result = responseBody ? JSON.parse(responseBody) : {};
+        } catch (_) {
+            throw new Error(response.ok
+                ? 'Identity Protection returned an invalid response.'
+                : `Identity Protection is temporarily unavailable (${response.status}).`);
+        }
         
         if (response.ok && result.success) {
             console.log('[Sunbird Identity Dashboard] Data loaded from production endpoint');
@@ -2750,8 +2762,13 @@ async function requestFreshSunbirdIdentityDashboardData() {
         
         throw new Error(result.message || `Identity Dashboard endpoint failed (${response.status})`);
     } catch (error) {
-        console.error('[Sunbird Identity Dashboard] Fetch error:', error.message);
-        throw error;
+        const message = error.name === 'AbortError'
+            ? 'Live identity refresh took too long.'
+            : error.message;
+        console.error('[Sunbird Identity Dashboard] Fetch error:', message);
+        throw new Error(message);
+    } finally {
+        clearTimeout(timeout);
     }
 }
 
@@ -2759,6 +2776,7 @@ async function loadSunbirdIdentityDashboardData() {
     try {
         const data = await fetchFreshSunbirdIdentityDashboardData();
 
+        sunbirdIdentityDashboardNotice = '';
         sunbirdDashboardData = normalizeSunbirdDashboardData(data);
         microsoftUsersData = getSunbirdIdentityUsers(sunbirdDashboardData);
         microsoftRolesData = Array.isArray(sunbirdDashboardData.roleAssignments) ? sunbirdDashboardData.roleAssignments : microsoftRolesData;
@@ -2768,9 +2786,30 @@ async function loadSunbirdIdentityDashboardData() {
         renderSunbirdIdentityDashboard(false);
     } catch (error) {
         console.error('[Sunbird Identity Dashboard] Failed to load:', error.message);
+        const snapshot = readSunbirdIdentitySnapshot();
+        if (snapshot?.users?.length) {
+            sunbirdIdentityDashboardNotice = `Live refresh is delayed. Showing saved identity evidence from ${formatSunbirdReportDate(snapshot.savedAt, true)}.`;
+            sunbirdDashboardData = normalizeSunbirdDashboardData(snapshot);
+            microsoftUsersData = getSunbirdIdentityUsers(sunbirdDashboardData);
+            microsoftRolesData = Array.isArray(sunbirdDashboardData.roleAssignments) ? sunbirdDashboardData.roleAssignments : microsoftRolesData;
+            buildUserRolesMap();
+            renderSunbirdIdentityDashboard();
+            return;
+        }
+
+        const signinsEl = document.getElementById('sunbird-id-signins');
+        if (signinsEl) {
+            signinsEl.innerHTML = `
+                <article class="sunbird-id-signin-card sunbird-id-refresh-state">
+                    <h3>Live sign-ins are temporarily unavailable</h3>
+                    <p>${escapeIdentityText(error.message || 'The identity service did not return data.')}</p>
+                    <button type="button" class="sunbird-id-evidence-btn" onclick="window.openSunbirdIdentityDashboard()">Retry live refresh</button>
+                </article>
+            `;
+        }
         const body = document.getElementById('sunbird-id-users-body');
-        if (body && !getSunbirdIdentityUsers().length) {
-            body.innerHTML = '<tr><td colspan="13" class="sunbird-id-empty">Identity data is unavailable.</td></tr>';
+        if (body) {
+            body.innerHTML = '<tr><td colspan="13" class="sunbird-id-empty">Live identity evidence is temporarily unavailable. Retry the refresh shortly.</td></tr>';
         }
     }
 }
@@ -2907,15 +2946,7 @@ function renderSunbirdIdentityCharts(model) {
             { label: 'Safe', value: model.metrics.safeUsers, tone: 'good' },
             { label: 'Medium', value: model.metrics.mediumRiskUsers, tone: 'warn' },
             { label: 'High', value: model.metrics.highRiskUsers, tone: 'bad' }
-        ], model.metrics.totalUsers)}
-        ${renderSunbirdPieChart('MFA coverage', [
-            { label: 'Enabled', value: model.metrics.mfaEnabled, tone: 'good' },
-            { label: 'Missing', value: model.metrics.mfaMissing, tone: 'bad' }
-        ], model.metrics.totalUsers)}
-        ${renderSunbirdPieChart('Access level', [
-            { label: 'Privileged', value: model.metrics.privilegedUsers, tone: 'warn' },
-            { label: 'Standard', value: Math.max(0, model.metrics.totalUsers - model.metrics.privilegedUsers), tone: 'neutral' }
-        ], model.metrics.totalUsers)}
+        ], model.metrics.totalUsers, 'sunbird-id-compact-pie-card')}
         ${renderSunbirdHealthGraph(model)}
     `;
     animateSunbirdIdentityCharts();
@@ -2960,7 +2991,7 @@ function getSunbirdToneColor(tone, alpha = 1) {
     }[tone] || '#ffffff';
 }
 
-function renderSunbirdPieChart(title, items, total) {
+function renderSunbirdPieChart(title, items, total, extraClass = '') {
     const safeTotal = Math.max(1, total || items.reduce((sum, item) => sum + item.value, 0));
     let cursor = 0;
     const segments = items.map(item => {
@@ -2971,7 +3002,7 @@ function renderSunbirdPieChart(title, items, total) {
     }).join(', ');
 
     return `
-        <article class="sunbird-id-chart-card sunbird-id-pie-card">
+        <article class="sunbird-id-chart-card sunbird-id-pie-card ${extraClass}">
             <h3>${escapeIdentityText(title)}</h3>
             <div class="sunbird-id-pie" style="background: conic-gradient(${segments || 'rgba(255,255,255,0.16) 0 100%'})">
             </div>
@@ -2986,15 +3017,17 @@ function renderSunbirdPieChart(title, items, total) {
 
 function renderSunbirdHealthGraph(model) {
     const mfa = model.metrics.mfaCoverage;
-    const risk = model.metrics.totalUsers ? Math.round(((model.metrics.safeUsers + model.metrics.mediumRiskUsers * 0.5) / model.metrics.totalUsers) * 100) : 0;
+    const privilegedMfa = model.metrics.privilegedUsers
+        ? Math.round(((model.metrics.privilegedUsers - model.metrics.adminsWithoutMfa) / model.metrics.privilegedUsers) * 100)
+        : 100;
     const activity = model.metrics.totalUsers ? Math.round(((model.metrics.totalUsers - model.metrics.inactiveUsers) / model.metrics.totalUsers) * 100) : 0;
     return `
-        <article class="sunbird-id-chart-card sunbird-id-health-card">
-            <h3>Identity health</h3>
+        <article class="sunbird-id-chart-card sunbird-id-health-card sunbird-id-compact-health-card">
+            <h3>Identity posture</h3>
             ${[
                 { label: 'MFA', value: mfa, tone: mfa >= 80 ? 'good' : 'warn' },
-                { label: 'Risk posture', value: risk, tone: risk >= 80 ? 'good' : 'warn' },
-                { label: 'Recent activity', value: activity, tone: activity >= 70 ? 'good' : 'warn' }
+                { label: 'Privileged MFA', value: privilegedMfa, tone: privilegedMfa >= 100 ? 'good' : 'bad' },
+                { label: 'Active in 30 days', value: activity, tone: activity >= 70 ? 'good' : 'warn' }
             ].map(item => `
                 <div class="sunbird-id-health-row">
                     <span>${item.label}</span>
@@ -3051,6 +3084,7 @@ function renderSunbirdIdentitySignIns(model) {
         .slice(0, 50);
 
     signinsEl.innerHTML = `
+        ${sunbirdIdentityDashboardNotice ? `<p class="sunbird-id-stale-notice">${escapeIdentityText(sunbirdIdentityDashboardNotice)}</p>` : ''}
         ${renderSunbirdSignInList('Latest sign-ins', latest, false)}
         ${renderSunbirdSignInList('Sign-in issues', failed, true)}
     `;
