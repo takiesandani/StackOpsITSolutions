@@ -1208,6 +1208,132 @@
   margin-bottom: 16px;
 }
 
+.sunbird-report-identity-field-section {
+  padding: 20px;
+  border: 1px solid rgba(221, 226, 230, 0.95);
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 6px 26px rgba(15, 23, 42, 0.04);
+  margin-bottom: 20px;
+}
+
+.sunbird-report-identity-field-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.sunbird-report-identity-field-grid article {
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.sunbird-report-identity-field-grid article strong {
+  display: block;
+  margin-bottom: 8px;
+  color: #111827;
+}
+
+.sunbird-report-identity-findings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.sunbird-report-identity-findings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.sunbird-report-identity-finding-card {
+  padding: 18px;
+  border: 1px solid rgba(229, 231, 235, 0.95);
+  border-radius: 14px;
+  background: #f9fafb;
+}
+
+.sunbird-report-identity-finding-card strong {
+  display: block;
+  margin-bottom: 10px;
+  color: #111827;
+}
+
+.sunbird-report-identity-field-row {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.sunbird-report-identity-field-row span {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #111827;
+}
+
+.sunbird-report-identity-field-row p,
+.sunbird-report-identity-business-impact,
+.sunbird-report-identity-evidence-summary,
+.sunbird-report-identity-reduction {
+  margin: 0;
+  color: #4b5563;
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.sunbird-report-identity-entities {
+  margin-top: 20px;
+}
+
+.sunbird-report-identity-entities-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.sunbird-report-identity-entities-grid article {
+  padding: 14px;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.sunbird-report-identity-entities-grid strong {
+  display: block;
+  margin-bottom: 8px;
+  color: #111827;
+}
+
+.sunbird-report-identity-entities-grid span,
+.sunbird-report-identity-entities-grid small {
+  display: block;
+  color: #475569;
+  font-size: 0.8rem;
+}
+
+@media (max-width: 1080px) {
+  .sunbird-report-identity-field-grid,
+  .sunbird-report-identity-findings-grid,
+  .sunbird-report-identity-entities-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .sunbird-report-identity-field-grid article,
+  .sunbird-report-identity-finding-card,
+  .sunbird-report-identity-entities-grid article {
+    padding: 14px;
+  }
+}
+
 .sunbird-report-section-card {
   min-height: 260px;
   padding: 19px;
@@ -1277,174 +1403,6 @@
   font-size: 0.68rem;
 }
 
-.sunbird-report-identity-section {
-  padding: 20px 18px;
-  margin-bottom: 22px;
-  border: 1px solid var(--report-line);
-  border-radius: 14px;
-  background: var(--report-panel);
-  box-shadow: 0 3px 18px rgba(23, 33, 43, 0.05);
-}
-
-.sunbird-report-identity-section-header {
-  display: grid;
-  grid-template-columns: 1.2fr 0.8fr;
-  gap: 16px;
-  align-items: start;
-  margin-bottom: 20px;
-}
-
-.sunbird-report-identity-summary-card {
-  padding: 16px;
-  border: 1px solid rgba(221, 226, 230, 0.9);
-  border-radius: 12px;
-  background: #f9fafb;
-}
-
-.sunbird-report-identity-summary-card p {
-  margin: 0;
-  color: #4b5563;
-  font-size: 0.85rem;
-  line-height: 1.65;
-}
-
-.sunbird-report-identity-metrics-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.sunbird-report-identity-metric-card {
-  padding: 16px;
-  border: 1px solid rgba(221, 226, 230, 0.9);
-  border-radius: 12px;
-  background: #fff;
-}
-
-.sunbird-report-identity-metric-card strong {
-  display: block;
-  font-size: 1.5rem;
-  margin-bottom: 8px;
-  color: #111827;
-}
-
-.sunbird-report-identity-metric-card span {
-  color: #6b7280;
-  font-size: 0.82rem;
-}
-
-.sunbird-report-identity-chart-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin-bottom: 18px;
-}
-
-.sunbird-report-identity-finding-grid {
-  display: grid;
-  gap: 14px;
-}
-
-.sunbird-report-identity-finding {
-  padding: 16px;
-  border: 1px solid rgba(221, 226, 230, 0.95);
-  border-radius: 12px;
-  background: #fff;
-}
-
-.sunbird-report-identity-finding strong {
-  display: block;
-  margin-bottom: 10px;
-  color: #111827;
-}
-
-.sunbird-report-identity-finding-line {
-  display: grid;
-  grid-template-columns: 100px 1fr;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-
-.sunbird-report-identity-finding-line span {
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: #111827;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.sunbird-report-identity-finding-line p {
-  margin: 0;
-  color: #4b5563;
-  font-size: 0.82rem;
-  line-height: 1.55;
-}
-
-.sunbird-report-identity-finding small {
-  display: block;
-  margin-top: 8px;
-  color: #6b7280;
-  font-size: 0.72rem;
-}
-
-.sunbird-report-identity-records {
-  padding: 14px;
-  border: 1px solid rgba(221, 226, 230, 0.95);
-  border-radius: 12px;
-  background: #fff;
-}
-
-.sunbird-report-identity-records-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 16px;
-}
-
-.sunbird-report-identity-record {
-  padding: 12px;
-  border: 1px solid rgba(226, 232, 240, 0.95);
-  border-radius: 10px;
-  background: #f8fafc;
-}
-
-.sunbird-report-identity-record strong {
-  display: block;
-  margin-bottom: 6px;
-  color: #111827;
-}
-
-.sunbird-report-identity-record span,
-.sunbird-report-identity-record small {
-  display: block;
-  color: #4b5563;
-  font-size: 0.78rem;
-}
-
-.sunbird-report-identity-records-note {
-  margin-top: 14px;
-  color: #6b7280;
-  font-size: 0.8rem;
-}
-
-@media (max-width: 1100px) {
-  .sunbird-report-identity-section-header,
-  .sunbird-report-identity-chart-grid,
-  .sunbird-report-identity-metrics-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .sunbird-report-identity-records-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 720px) {
-  .sunbird-report-identity-records-grid {
-    grid-template-columns: 1fr;
-  }
-}
 
 .sunbird-report-domain strong {
   color: var(--report-ink);
