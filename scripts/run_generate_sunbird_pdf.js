@@ -199,6 +199,80 @@ async function run() {
                             }]
                         }
                     }
+                },
+                {
+                    domainKey: 'applications',
+                    domainName: 'Applications',
+                    intelligenceOutput: {
+                        authoritativeScores: { healthScore: 87, riskScore: 13, riskLevel: 'low' },
+                        domainExecutiveSummary: 'Application governance is generally healthy, but the application inventory consists of external applications with unknown publishers and no assigned users. Ownership and publisher trust require review.',
+                        businessImpact: 'Unverified external applications can create consent, vendor, and data-access exposure. Establishing ownership and trusted publishers reduces compliance and leakage risk.',
+                        risks: [{
+                            title: 'External applications with unknown publishers and no assigned users',
+                            severity: 'medium',
+                            impact: 'medium',
+                            description: 'The inventory includes external applications with unverified publishers and no assigned users.',
+                            whyItMatters: 'Unknown publishers and unclear ownership can expose tenant data through unmanaged consent and vendor relationships.',
+                            firstAction: 'Review application ownership, publisher trust, permissions, assignments, and ongoing business need.'
+                        }],
+                        keyFindings: [{
+                            title: 'No excessive permissions or high-access applications detected',
+                            description: 'The current inventory does not identify excessive permission scopes or high-access applications.',
+                            firstAction: 'Implement ongoing monitoring and ownership assignment for external applications.'
+                        }],
+                        evidenceCatalog: {
+                            categories: [{
+                                key: 'applications', sourceMetric: 'applications', count: 100,
+                                entities: [
+                                    { id: 'app-1', name: 'Microsoft Intune SCCM Connector', type: 'External', isExternal: true, publisherName: 'Unknown', userCount: 0, roleCount: 0, scopeCount: 0, createdDateTime: '2022-04-04T15:30:52Z' },
+                                    { id: 'app-2', name: 'External Reporting Application', type: 'External', isExternal: true, publisherName: 'Unknown', userCount: 0, roleCount: 0, scopeCount: 0, createdDateTime: '2023-10-14T09:00:00Z' }
+                                ]
+                            }]
+                        }
+                    }
+                },
+                {
+                    domainKey: 'security_alerts',
+                    domainName: 'Security Alerts',
+                    intelligenceOutput: {
+                        authoritativeScores: { healthScore: 0, riskScore: 100, riskLevel: 'critical' },
+                        domainExecutiveSummary: 'No critical alerts are active, but persistent anonymous IP sign-ins and unresolved email threat-management alerts require investigation and containment.',
+                        businessImpact: 'Unresolved anonymous IP sign-ins and email threats can lead to unauthorized access, phishing exposure, and potential data breaches that interrupt operational continuity.',
+                        risks: [{
+                            title: 'Unresolved anonymous IP sign-ins',
+                            severity: 'medium',
+                            description: 'Anonymous IP sign-in patterns remain unresolved and require investigation.',
+                            whyItMatters: 'Anonymous network activity can indicate attempted unauthorized access or account compromise.',
+                            firstAction: 'Investigate and contain unresolved anonymous IP sign-ins to prevent unauthorized access.'
+                        }, {
+                            title: 'Unresolved email threat-management alerts',
+                            severity: 'low',
+                            description: 'Email threat-management alerts remain open for review.',
+                            whyItMatters: 'Unresolved mail alerts can allow phishing or malicious content to persist.',
+                            firstAction: 'Review and enhance email filtering policies and user training.'
+                        }],
+                        keyFindings: [{
+                            title: 'Six unresolved alerts remain across the alert inventory',
+                            description: 'Six unresolved alerts remain, primarily medium and low severity.',
+                            firstAction: 'Confirm resolution quality and suppress recurring alert patterns after investigation.'
+                        }, {
+                            title: 'Threat indicators support alert and user correlation',
+                            description: 'Available indicators can be correlated with affected alerts and users for improved detection.',
+                            firstAction: 'Correlate threat indicators with affected alerts and users.'
+                        }],
+                        evidenceCatalog: {
+                            categories: [{
+                                key: 'alerts', sourceMetric: 'totalAlerts', count: 16,
+                                entities: [{ id: 'alert-1', title: 'Anonymous IP address', user: 'Unknown user', source: 'IPC', status: 'resolved', category: 'AnonymousLogin', severity: 'medium', created: '2026-06-15T12:47:06.88333Z' }]
+                            }, {
+                                key: 'signIns', sourceMetric: 'signIns', count: 1,
+                                entities: [{ id: 'signin-1', user: 'brandon@sunbird.eu', status: 'Failed', location: 'Lisboa, PT', ipAddress: '213.13.6.176', timestamp: '2026-06-30T15:54:38Z', failureReason: "This occurred due to 'Keep me signed in' interrupt when the user was signing in." }]
+                            }, {
+                                key: 'threatIndicators', sourceMetric: 'threatIndicators', count: 25,
+                                entities: [{ id: 'indicator-1', indicator: 'Anonymous IP', indicatorType: 'ThreatKeyword', severity: 'medium', confidence: 'medium', action: 'Review', occurrenceCount: 22, relatedUsers: ['Unknown user'] }]
+                            }]
+                        }
+                    }
                 }
             ]
         },
