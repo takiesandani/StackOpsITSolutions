@@ -273,6 +273,84 @@ async function run() {
                             }]
                         }
                     }
+                },
+                {
+                    domainKey: 'backup',
+                    domainName: 'Backup and Recovery',
+                    intelligenceOutput: {
+                        authoritativeScores: { healthScore: 75, riskScore: 25, riskLevel: 'moderate' },
+                        domainExecutiveSummary: 'Backup and Recovery has 2,796.6 GB total storage across protected services and a full backup coverage score of 100. Exposure risk is high at 94 because of large data holders and missing external backup configuration.',
+                        businessImpact: 'Large data holders without an external backup strategy can increase data-loss impact and extend recovery time for critical services.',
+                        risks: [{
+                            title: 'High exposure risk from large data holders',
+                            severity: 'high',
+                            impact: 'high',
+                            description: 'Large data holders substantially increase recovery exposure across protected services.',
+                            whyItMatters: 'Large stores can delay recovery and amplify the business effect of a service outage.',
+                            firstAction: 'Confirm backup coverage and recovery objectives for large data holders.'
+                        }, {
+                            title: 'External backup configuration is not in place',
+                            severity: 'high',
+                            impact: 'high',
+                            description: 'No external backup configuration is currently recorded for the backup scope.',
+                            whyItMatters: 'An independent backup copy improves resilience against service loss and recovery failures.',
+                            firstAction: 'Implement external backup configuration.'
+                        }],
+                        keyFindings: [{
+                            title: 'Complete backup coverage across services',
+                            severity: 'informational',
+                            description: 'All protected services have recorded backup coverage.',
+                            firstAction: 'Prioritize restore testing based on service storage exposure.'
+                        }],
+                        recommendations: ['Maintain monitoring of large data holders and backup coverage.'],
+                        evidenceCatalog: {
+                            categories: [{
+                                key: 'users', sourceMetric: 'activeUsersCount', count: 28,
+                                entities: [
+                                    { user: 'dave@sunbird.eu', displayName: 'Dave Colley', files: 74271, storage: 286375460449, lastActivity: '2026-06-27' },
+                                    { user: 'john@sunbird.eu', displayName: 'John Ross', files: 51273, storage: 174668182194, lastActivity: '2026-06-28' }
+                                ]
+                            }]
+                        }
+                    }
+                },
+                {
+                    domainKey: 'governance',
+                    domainName: 'Governance',
+                    intelligenceOutput: {
+                        authoritativeScores: { healthScore: 4, riskScore: 96, riskLevel: 'critical' },
+                        domainExecutiveSummary: 'Governance is critical: 12 governance items lack assigned owners and five require management attention. Security, threat, software, MFA, and device reviews require formal accountability.',
+                        businessImpact: 'Unassigned, overdue governance reviews increase exposure to security incidents, compliance violations, and operational disruption.',
+                        risks: [{
+                            title: 'Missing ownership for critical security and threat reviews',
+                            severity: 'critical',
+                            impact: 'high',
+                            description: 'Critical security and threat-review items require ownership and documented management decisions.',
+                            whyItMatters: 'Without assigned accountability, remediation and review decisions can be delayed or missed.',
+                            firstAction: 'Assign owners to all attention-required governance items.'
+                        }, {
+                            title: 'Missing ownership for device posture and identity audits',
+                            severity: 'high',
+                            impact: 'high',
+                            description: 'Device and identity review activities are not assigned to accountable owners.',
+                            whyItMatters: 'Unowned audits make it difficult to confirm that critical controls are reviewed on schedule.',
+                            firstAction: 'Document management decisions and review schedules.'
+                        }],
+                        keyFindings: [{
+                            title: '12 owner-missing governance items and 5 attention-required items',
+                            description: 'Governance evidence is connected, but the activities need assigned owners and timely management review.',
+                            firstAction: 'Schedule regular access and policy reviews with assigned owners.'
+                        }],
+                        evidenceCatalog: {
+                            categories: [{
+                                key: 'governanceRows', sourceMetric: 'governanceRows', count: 12,
+                                entities: [
+                                    { entityId: 'full-stack-review', entityName: 'Full stack review', area: 'Security review', status: 'Attention Required', ownerStatus: 'missing_or_not_supplied', frequency: 'Annual', source: 'Microsoft Graph security alerts', connected: true, evidence: '16 security alert records were checked, with 5 high or critical alerts.', managementAction: 'Assign an owner, review evidence, document the decision, and track remediation.' },
+                                    { entityId: 'review-users', entityName: 'Review users', area: 'Access review', status: 'Connected', ownerStatus: 'missing_or_not_supplied', frequency: 'Quarterly', source: 'Microsoft Graph users', connected: true, evidence: '58 user accounts are available for review, including 9 guest or external accounts.', managementAction: 'Maintain governance evidence and include it in the next review cycle.' }
+                                ]
+                            }]
+                        }
+                    }
                 }
             ]
         },
