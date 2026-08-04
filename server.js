@@ -4453,6 +4453,7 @@ function generateSunbirdReportPdf(report, reportId = null) {
             const isSecurityAlertsDomain = domain => String(domain?.domainKey || domain?.domainName || '').trim().toLowerCase() === 'security_alerts' || /^security alerts$/i.test(String(domain?.domainName || ''));
             const isBackupDomain = domain => String(domain?.domainKey || domain?.domainName || '').trim().toLowerCase() === 'backup' || /backup and recovery/i.test(String(domain?.domainName || ''));
             const isGovernanceDomain = domain => String(domain?.domainKey || domain?.domainName || '').trim().toLowerCase() === 'governance' || /^governance$/i.test(String(domain?.domainName || ''));
+            const isComplianceDomain = domain => String(domain?.domainKey || domain?.domainName || '').trim().toLowerCase() === 'compliance' || /compliance validation/i.test(String(domain?.domainName || ''));
             const renderEmailOrCloudflareReport = (domain, reportType) => {
                 if (!domain) return;
 
@@ -4467,6 +4468,7 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 const isSecurityAlerts = reportType === 'security-alerts';
                 const isBackup = reportType === 'backup';
                 const isGovernance = reportType === 'governance';
+                const isCompliance = reportType === 'compliance';
                 const tone = value => {
                     const normalized = String(value || '').toLowerCase();
                     if (/critical|high/.test(normalized)) return red;
@@ -4475,9 +4477,9 @@ function generateSunbirdReportPdf(report, reportId = null) {
                     return '#2563eb';
                 };
                 const sectionTone = reportType === 'cloudflare' ? orange : tone(riskLevel);
-                const reportLabel = isEmail ? 'Email Security' : isApplications ? 'Applications' : isSecurityAlerts ? 'Security Alerts' : isBackup ? 'Backup and Recovery' : isGovernance ? 'Governance' : 'Network Security / Cloudflare';
-                const postureLabel = isEmail ? 'email' : isApplications ? 'application governance' : isSecurityAlerts ? 'security alert' : isBackup ? 'backup and recovery' : isGovernance ? 'governance' : 'network';
-                const dashboardLabel = isEmail ? 'Email Security' : isApplications ? 'Applications' : isSecurityAlerts ? 'Security Alerts' : isBackup ? 'Backup and Recovery' : isGovernance ? 'Governance' : 'Network Security';
+                const reportLabel = isEmail ? 'Email Security' : isApplications ? 'Applications' : isSecurityAlerts ? 'Security Alerts' : isBackup ? 'Backup and Recovery' : isGovernance ? 'Governance' : isCompliance ? 'Compliance Validation' : 'Network Security / Cloudflare';
+                const postureLabel = isEmail ? 'email' : isApplications ? 'application governance' : isSecurityAlerts ? 'security alert' : isBackup ? 'backup and recovery' : isGovernance ? 'governance' : isCompliance ? 'compliance validation' : 'network';
+                const dashboardLabel = isEmail ? 'Email Security' : isApplications ? 'Applications' : isSecurityAlerts ? 'Security Alerts' : isBackup ? 'Backup and Recovery' : isGovernance ? 'Governance' : isCompliance ? 'Compliance Validation' : 'Network Security';
                 const section = (title, color = navy) => {
                     addPageIfNeeded(34);
                     doc.font('Helvetica').fontSize(10.5).fillColor(color).text(title.toUpperCase(), left, doc.y, { width: contentWidth });
@@ -4513,6 +4515,11 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 const backupCoverage = statementCount(/(?:coverage score of|coverage is|coverage at)\s*(\d+)%/i);
                 const backupExposure = statementCount(/exposure risk(?: score)?(?:\s+is|\s+of)?(?:\s+\w+){0,3}?\s+(\d+)/i);
                 const governanceEntities = categoryEntities('governanceRows');
+                const complianceControls = categoryEntities('controls');
+                const lineageMetric = key => {
+                    const item = Array.isArray(output.dataLineageComparison) ? output.dataLineageComparison.find(entry => entry?.metric === key) : null;
+                    return Number(item?.stackCTRLSource ?? item?.storedIntelligence ?? item?.azureOutput ?? 0);
+                };
                 const metricItems = isEmail
                     ? [
                         { label: 'ACTIVE ALERTS', value: categoryCount('alerts'), detail: 'User-reported email alerts', color: categoryCount('alerts') ? orange : green },
@@ -4548,6 +4555,13 @@ function generateSunbirdReportPdf(report, reportId = null) {
                                         { label: 'GOVERNANCE ITEMS', value: categoryCount('governanceRows'), detail: 'Evidence-backed review activities', color: orange },
                                         { label: 'CONNECTED REVIEWS', value: governanceEntities.filter(item => item?.connected).length, detail: 'Reviews with connected evidence', color: '#2563eb' }
                                     ]
+                                    : isCompliance
+                                        ? [
+                                            { label: 'FAILED CONTROLS', value: lineageMetric('failingControls'), detail: 'Controls requiring remediation', color: red },
+                                            { label: 'PARTIAL CONTROLS', value: lineageMetric('partialControls'), detail: 'Controls needing evidence closure', color: orange },
+                                            { label: 'PASSED CONTROLS', value: lineageMetric('passingControls'), detail: 'API-backed controls passing', color: green },
+                                            { label: 'API CONTROLS', value: lineageMetric('apiControls') || categoryCount('controls'), detail: 'Controls backed by connected evidence', color: '#2563eb' }
+                                        ]
                     : [
                         { label: 'WARP DEVICES', value: categoryCount('devices'), detail: 'Enrolled and protected devices', color: '#2563eb' },
                         { label: 'GATEWAY RULES', value: categoryCount('gatewayRules'), detail: 'Configured network controls', color: '#2563eb' },
@@ -4571,6 +4585,8 @@ function generateSunbirdReportPdf(report, reportId = null) {
                                     ? [item?.sourceMetric, 'users']
                                     : isGovernance
                                         ? [item?.sourceMetric, 'governanceRows']
+                                            : isCompliance
+                                                ? [item?.sourceMetric, 'controls']
                         : [
                             item?.sourceMetric,
                             /audit/.test(text) ? 'auditLogs' : '',
@@ -4591,10 +4607,12 @@ function generateSunbirdReportPdf(report, reportId = null) {
                         ...(Array.isArray(item?.evidenceRows) ? item.evidenceRows : [])
                     ];
                     const matchedCategory = categoryForFinding(item);
-                    const source = [
-                        ...(Array.isArray(matchedCategory?.entities) ? matchedCategory.entities : []),
-                        ...direct
-                    ];
+                    const source = isCompliance
+                        ? direct
+                        : [
+                            ...(Array.isArray(matchedCategory?.entities) ? matchedCategory.entities : []),
+                            ...direct
+                        ];
                     const unique = new Map();
                     source.forEach(entry => {
                         const key = String(entry?.entityId || entry?.id || entry?.name || entry?.title || entry?.deviceName || entry?.entityName || entry?.displayName || '').toLowerCase();
@@ -4604,7 +4622,7 @@ function generateSunbirdReportPdf(report, reportId = null) {
                     return { rows: Array.from(unique.values()).slice(0, 10), total };
                 };
                 const formatEvidence = entry => {
-                    const name = cleanText(entry.displayName || entry.applicationName || entry.entityName || entry.name || entry.title || entry.indicator || entry.value || entry.user || entry.deviceName, isEmail ? 'Email security alert' : isApplications ? 'Application' : isSecurityAlerts ? 'Security alert' : isBackup ? 'Data holder' : isGovernance ? 'Governance review' : 'Cloudflare control');
+                    const name = cleanText(entry.controlName || entry.displayName || entry.applicationName || entry.entityName || entry.name || entry.title || entry.indicator || entry.value || entry.user || entry.deviceName, isEmail ? 'Email security alert' : isApplications ? 'Application' : isSecurityAlerts ? 'Security alert' : isBackup ? 'Data holder' : isGovernance ? 'Governance review' : isCompliance ? 'Compliance control' : 'Cloudflare control');
                     const fields = isEmail
                         ? [
                             entry.recipient ? `Recipient: ${cleanText(entry.recipient)}` : '',
@@ -4668,6 +4686,15 @@ function generateSunbirdReportPdf(report, reportId = null) {
                                                     entry.evidence ? `Evidence: ${cleanText(entry.evidence)}` : '',
                                                     entry.managementAction ? `Action: ${cleanText(entry.managementAction)}` : ''
                                                 ]
+                                                : isCompliance
+                                                    ? [
+                                                        entry.controlCategory || entry.area ? `Area: ${cleanText(entry.controlCategory || entry.area)}` : '',
+                                                        entry.complianceStatus || entry.status ? `Status: ${cleanText(entry.complianceStatus || entry.status).replace(/[🟢🟡🔴]/g, '').trim()}` : '',
+                                                        entry.severity ? `Severity: ${cleanText(entry.severity)}` : '',
+                                                        entry.auditImpact ? `Audit impact: ${cleanText(entry.auditImpact)}` : '',
+                                                        entry.validationReason ? `Evidence: ${cleanText(entry.validationReason)}` : '',
+                                                        entry.remediationAction ? `Action: ${cleanText(entry.remediationAction)}` : ''
+                                                    ]
                         : [
                             entry.entityType ? `Type: ${cleanText(entry.entityType)}` : '',
                             entry.action ? `Action: ${cleanText(entry.action)}` : '',
@@ -4704,21 +4731,26 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 const domainActions = (Array.isArray(output.recommendations) ? output.recommendations : [])
                     .flatMap(item => splitActions(typeof item === 'object' ? item.title || item.firstAction || item.recommendation || item.detail : item))
                     .slice(0, 5);
-                const findings = [...(Array.isArray(output.risks) ? output.risks : []), ...(Array.isArray(output.keyFindings) ? output.keyFindings : [])]
+                const findings = (isCompliance
+                    ? [...complianceControls].sort((leftControl, rightControl) => {
+                        const rank = value => /failed/i.test(String(value)) ? 0 : /partial/i.test(String(value)) ? 1 : 2;
+                        return rank(leftControl.complianceStatus) - rank(rightControl.complianceStatus);
+                    })
+                    : [...(Array.isArray(output.risks) ? output.risks : []), ...(Array.isArray(output.keyFindings) ? output.keyFindings : [])])
                     .slice(0, 8)
                     .map(item => {
                         const evidence = evidenceForFinding(item);
                         return {
-                            title: cleanText(item.title || item.patternFound, `${reportLabel} finding`),
+                            title: cleanText(item.controlName || item.title || item.patternFound, `${reportLabel} finding`),
                             severity: cleanText(item.severity || item.priority || item.impact || 'Observed'),
-                            detail: cleanText(item.description || item.detail || item.whatHappened || item.title),
-                            impact: cleanText(item.impact || item.businessImpact),
-                            rationale: cleanText(item.whyItMatters || item.reasoning),
-                            evidence: evidence.rows,
-                            evidenceCount: evidence.total,
-                            actions: splitActions(item.firstAction || item.recommendedAction || item.recommendation).length
-                                ? splitActions(item.firstAction || item.recommendedAction || item.recommendation)
-                                : (isApplications || isSecurityAlerts || isBackup || isGovernance ? domainActions : [])
+                            detail: cleanText(isCompliance ? item.validationReason || item.insight || item.title : item.description || item.detail || item.whatHappened || item.title),
+                            impact: cleanText(isCompliance ? item.auditImpact : item.impact || item.businessImpact),
+                            rationale: cleanText(isCompliance ? item.remediationAction : item.whyItMatters || item.reasoning),
+                            evidence: isCompliance ? [item] : evidence.rows,
+                            evidenceCount: isCompliance ? 1 : evidence.total,
+                            actions: splitActions(isCompliance ? item.remediationAction : item.firstAction || item.recommendedAction || item.recommendation).length
+                                ? splitActions(isCompliance ? item.remediationAction : item.firstAction || item.recommendedAction || item.recommendation)
+                                : (isApplications || isSecurityAlerts || isBackup || isGovernance || isCompliance ? domainActions : [])
                         };
                     });
 
@@ -4901,8 +4933,9 @@ function generateSunbirdReportPdf(report, reportId = null) {
             const securityAlertsDomain = allDomainRows.find(isSecurityAlertsDomain);
             const backupDomain = allDomainRows.find(isBackupDomain);
             const governanceDomain = allDomainRows.find(isGovernanceDomain);
+            const complianceDomain = allDomainRows.find(isComplianceDomain);
             const scorecardDomains = allDomainRows.filter(domainHasRenderableContent);
-            const domainRows = scorecardDomains.filter(domain => !isIdentityDomain(domain) && !isDevicesDomain(domain) && !isEmailSecurityDomain(domain) && !isCloudflareDomain(domain) && !isApplicationsDomain(domain) && !isSecurityAlertsDomain(domain) && !isBackupDomain(domain) && !isGovernanceDomain(domain));
+            const domainRows = scorecardDomains.filter(domain => !isIdentityDomain(domain) && !isDevicesDomain(domain) && !isEmailSecurityDomain(domain) && !isCloudflareDomain(domain) && !isApplicationsDomain(domain) && !isSecurityAlertsDomain(domain) && !isBackupDomain(domain) && !isGovernanceDomain(domain) && !isComplianceDomain(domain));
             if (allDomainRows.length && !scorecardDomains.length) {
                 console.warn('[Reports] No domain rows considered renderable for PDF; check domain intelligence keys or scores.', { availableKeys: allDomainRows.map(d => d.domainKey || d.domainName) });
             }
@@ -4943,10 +4976,11 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 renderEmailOrCloudflareReport(securityAlertsDomain, 'security-alerts');
                 renderEmailOrCloudflareReport(backupDomain, 'backup');
                 renderEmailOrCloudflareReport(governanceDomain, 'governance');
+                renderEmailOrCloudflareReport(complianceDomain, 'compliance');
                 domainRows.forEach(renderDomain);
             } else {
                 sectionTitle('Domain intelligence and evidence');
-                if (identityDomain || devicesDomain || emailSecurityDomain || cloudflareDomain || applicationsDomain || securityAlertsDomain || backupDomain || governanceDomain) {
+                if (identityDomain || devicesDomain || emailSecurityDomain || cloudflareDomain || applicationsDomain || securityAlertsDomain || backupDomain || governanceDomain || complianceDomain) {
                     renderIdentityProtectionReport(identityDomain);
                     renderDeviceProtectionReport(devicesDomain);
                     renderEmailOrCloudflareReport(emailSecurityDomain, 'email');
@@ -4955,6 +4989,7 @@ function generateSunbirdReportPdf(report, reportId = null) {
                     renderEmailOrCloudflareReport(securityAlertsDomain, 'security-alerts');
                     renderEmailOrCloudflareReport(backupDomain, 'backup');
                     renderEmailOrCloudflareReport(governanceDomain, 'governance');
+                    renderEmailOrCloudflareReport(complianceDomain, 'compliance');
                 } else {
                     doc.font('Helvetica').fontSize(8.5).fillColor(slate).text('No saved domain intelligence was available for the selected reporting period.', { width: contentWidth });
                 }
@@ -4972,8 +5007,9 @@ function generateSunbirdReportPdf(report, reportId = null) {
             const pageRange = doc.bufferedPageRange();
             for (let pageIndex = 0; pageIndex < pageRange.count; pageIndex += 1) {
                 doc.switchToPage(pageIndex);
-                doc.font('Helvetica').fontSize(7).fillColor('#7d8790').text('StackOps IT Solutions | StackCTRL | Security assessment', left, pageHeight - 30, { width: 330, lineBreak: false });
-                doc.text(`Page ${pageIndex + 1}${reportId ? ` | Report #${reportId}` : ''}`, pageWidth - 140, pageHeight - 30, { width: 100, align: 'right', lineBreak: false });
+                const footerY = pageHeight - 50;
+                doc.font('Helvetica').fontSize(7).fillColor('#7d8790').text('StackOps IT Solutions | StackCTRL | Security assessment', left, footerY, { width: 330, lineBreak: false });
+                doc.text(`Page ${pageIndex + 1}${reportId ? ` | Report #${reportId}` : ''}`, pageWidth - 140, footerY, { width: 100, align: 'right', lineBreak: false });
             }
             doc.end();
         } catch (error) {

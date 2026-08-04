@@ -351,6 +351,37 @@ async function run() {
                             }]
                         }
                     }
+                },
+                {
+                    domainKey: 'compliance',
+                    domainName: 'Compliance Validation',
+                    intelligenceOutput: {
+                        authoritativeScores: { healthScore: 0, riskScore: 100, riskLevel: 'critical' },
+                        domainExecutiveSummary: 'Compliance Validation is critical with five failed controls and one partial control. Audit readiness is not achieved because Identity, Device, and Application controls require remediation.',
+                        currentPosture: 'Compliance posture is critical with zero compliance score and multiple high-severity failing controls. Audit readiness is not achieved due to these failures and partial evidence gaps.',
+                        dataLineageComparison: [
+                            { metric: 'totalControls', stackCTRLSource: 38 },
+                            { metric: 'apiControls', stackCTRLSource: 8 },
+                            { metric: 'failingControls', stackCTRLSource: 5 },
+                            { metric: 'partialControls', stackCTRLSource: 1 },
+                            { metric: 'passingControls', stackCTRLSource: 2 },
+                            { metric: 'complianceScore', stackCTRLSource: 0 }
+                        ],
+                        evidenceCatalog: {
+                            categories: [{
+                                key: 'controls', sourceMetric: 'totalControls', count: 8,
+                                entities: [
+                                    { entityId: 'mfa', controlName: 'MFA on all accounts', controlCategory: 'Identity', complianceStatus: 'failed', severity: 'high', auditImpact: 'Failed controls reduce audit readiness.', validationReason: 'MFA on all accounts is failing based on API-sourced compliance evidence.', remediationAction: 'Remediate the failed control and collect closure evidence.' },
+                                    { entityId: 'legacy-auth', controlName: 'Legacy authentication blocked', controlCategory: 'Identity', complianceStatus: 'failed', severity: 'high', auditImpact: 'Failed controls reduce audit readiness.', validationReason: 'Legacy authentication remains enabled based on API-sourced compliance evidence.', remediationAction: 'Remediate the failed control and collect closure evidence.' },
+                                    { entityId: 'device-compliance', controlName: 'Device compliance', controlCategory: 'Devices', complianceStatus: 'failed', severity: 'high', auditImpact: 'Failed controls reduce audit readiness.', validationReason: 'Device compliance is failing based on API-sourced compliance evidence.', remediationAction: 'Remediate the failed control and collect closure evidence.' },
+                                    { entityId: 'approved-tools', controlName: 'Approved tools only', controlCategory: 'Applications', complianceStatus: 'failed', severity: 'high', auditImpact: 'Failed controls reduce audit readiness.', validationReason: 'Approved tools only is failing based on API-sourced compliance evidence.', remediationAction: 'Remediate the failed control and collect closure evidence.' },
+                                    { entityId: 'data-visibility', controlName: 'Data visibility', controlCategory: 'Data', complianceStatus: 'partial', severity: 'medium', auditImpact: 'Partial controls require evidence closure.', validationReason: 'Data visibility partially satisfies compliance validation and needs follow-up.', remediationAction: 'Review the partial control and close evidence gaps.' },
+                                    { entityId: 'device-encryption', controlName: 'Device encryption', controlCategory: 'Devices', complianceStatus: 'passed', severity: 'low', auditImpact: 'Passing controls support audit readiness.', validationReason: 'Device encryption has API-sourced evidence supporting a passing status.', remediationAction: 'Maintain evidence for the next review cycle.' },
+                                    { entityId: 'work-profiles', controlName: 'Work profile on devices', controlCategory: 'Devices', complianceStatus: 'passed', severity: 'low', auditImpact: 'Passing controls support audit readiness.', validationReason: 'Devices are managed with work profiles as per API evidence.', remediationAction: 'Maintain evidence for the next review cycle.' }
+                                ]
+                            }]
+                        }
+                    }
                 }
             ]
         },
