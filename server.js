@@ -2930,6 +2930,19 @@ function shortText(value, max = 140) {
         return String(value).slice(0, max - 1);
     }
 }
+
+function shortMultilineText(value, max = 140) {
+    if (value == null) return '';
+    const normalizeLine = line => String(line || '').replace(/\s+/g, ' ').trim();
+    const combined = String(value)
+        .replace(/\r\n/g, '\n')
+        .split('\n')
+        .map(normalizeLine)
+        .join('\n')
+        .trim();
+    if (!combined) return '';
+    return combined.length > max ? combined.slice(0, max - 1) + '…' : combined;
+}
 async function writeSunbirdReportLog({
     companyId,
     reportId = null,
@@ -3606,7 +3619,7 @@ function buildSunbirdDomainBreakdownFromPayload(payload = {}) {
         };
     };
 
-    return compactSunbirdDashboardValue(domains.slice(0, 12).map(domain => {
+    return compactSunbirdDashboardValue(domains.map(domain => {
         const output = domain?.intelligenceOutput || domain?.output || {};
         const risks = Array.isArray(output.risks) ? output.risks : [];
         const keyFindings = Array.isArray(output.keyFindings) ? output.keyFindings : [];
@@ -3646,16 +3659,14 @@ function buildSunbirdDomainBreakdownFromPayload(payload = {}) {
                     recommendation: shortText(asText(item?.firstAction || item?.recommendedAction || item?.recommendation || item?.remediationAction || item?.detail), 900),
                     sourceMetric: shortText(asText(item?.sourceMetric || ''), 120),
                     evidenceCount: Number(item?.evidenceRecordCount || item?.entityCount || uniqueEvidence.length || 0),
-                    evidence: uniqueEvidence.slice(0, 30)
+                    evidence: uniqueEvidence
                 };
             })
-            .filter(Boolean)
-            .slice(0, 12);
+            .filter(Boolean);
 
         const recommendations = (Array.isArray(output.recommendations) ? output.recommendations : [])
             .map(item => shortText(asText(item?.title || item?.firstAction || item?.recommendation || item?.detail || item), 420))
-            .filter(Boolean)
-            .slice(0, 8);
+            .filter(Boolean);
 
         return {
             domainKey: shortText(asText(domain?.domainKey || ''), 120),
@@ -3693,7 +3704,7 @@ function buildSunbirdLatestReportSnapshot(reportRow = null) {
             status: shortText(summary.status || reportRow.ReportStatus || 'Collected', 120)
         },
         analysis: {
-            executiveSummary: shortText(analysis.executiveSummary || '', SUNBIRD_DASHBOARD_MAX_STRING_LENGTH),
+            executiveSummary: shortMultilineText(analysis.executiveSummary || '', 6000),
             businessImpactSummary: shortText(analysis.businessImpactSummary || '', SUNBIRD_DASHBOARD_MAX_STRING_LENGTH),
             boardReportSummary: shortText(analysis.boardReportSummary || '', SUNBIRD_DASHBOARD_MAX_STRING_LENGTH),
             historicalChanges: compactSunbirdDashboardValue(analysis.historicalChanges || {})
@@ -5375,7 +5386,7 @@ function buildSunbirdReportListOverview(reportRow = null) {
             totalEvents: Number(summary.totalEvents || payload.events?.length || 0)
         },
         analysis: {
-            executiveSummary: shortText(analysis.executiveSummary || 'The latest saved report is ready for review.', SUNBIRD_DASHBOARD_MAX_STRING_LENGTH),
+            executiveSummary: shortMultilineText(analysis.executiveSummary || 'The latest saved report is ready for review.', 6000),
             successes: compactSunbirdDashboardValue(Array.isArray(analysis.successes) ? analysis.successes.slice(0, SUNBIRD_REPORT_OVERVIEW_MAX_ITEMS) : []),
             failures: compactSunbirdDashboardValue(Array.isArray(analysis.failures) ? analysis.failures.slice(0, SUNBIRD_REPORT_OVERVIEW_MAX_ITEMS) : []),
             recommendations: compactSunbirdDashboardValue(Array.isArray(analysis.recommendations) ? analysis.recommendations.slice(0, SUNBIRD_REPORT_OVERVIEW_MAX_ITEMS) : [])
@@ -5629,7 +5640,7 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
         );
         const [detailedRows] = await pool.query(
             `SELECT ID, ReportType, PeriodStart, PeriodEnd, HealthScore, ReportStatus, CreatedAt,
-                    CASE WHEN OCTET_LENGTH(Payload) <= ? THEN Payload ELSE NULL END AS Payload,
+                    Payload,
                     CASE WHEN (
                         LOCATE('"generatedWithAi":true', Payload) > 0
                         OR LOCATE('"finalSynthesis"', Payload) > 0
@@ -5639,7 +5650,7 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
              WHERE CompanyID = ?
              ORDER BY CreatedAt DESC
              LIMIT 8`,
-            [SUNBIRD_REPORT_DETAILS_MAX_PAYLOAD_BYTES, context.companyId]
+            [context.companyId]
         );
                 const [intelligentOverviewRows] = await pool.query(
                         `SELECT HealthScore, ReportStatus,

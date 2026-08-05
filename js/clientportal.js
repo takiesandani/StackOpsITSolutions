@@ -1022,6 +1022,7 @@ let cachedSunbirdReportsData = null;
 let sunbirdReportsRange = '30d';
 let sunbirdReportsRequestId = 0;
 const sunbirdReportDomainEvidenceMap = new Map();
+let sunbirdReportDomainFilter = 'all';
 const sunbirdReportsRequests = new Map();
 const SUNBIRD_NETWORK_SECURITY_CACHE_KEY = 'sunbirdNetworkSecuritySnapshot_v1';
 const BILLING_CACHE_KEY = 'billingInvoiceCache_v1';
@@ -13390,7 +13391,7 @@ function filterSunbirdInsightItems(items = []) {
 }
 
 function formatSunbirdExecutiveSummaryHtml(summaryText = '') {
-    const text = String(summaryText || '').trim();
+    const text = String(summaryText || '').replace(/\r\n/g, '\n').trim();
     if (!text) {
         return '<p>No executive summary is available.</p>';
     }
@@ -13406,7 +13407,12 @@ function formatSunbirdExecutiveSummaryHtml(summaryText = '') {
         .sort((left, right) => left.index - right.index);
 
     if (!positions.length) {
-        return `<p>${escapeIdentityText(text)}</p>`;
+        return text
+            .split(/\n{2,}/)
+            .map(block => block.trim())
+            .filter(Boolean)
+            .map(block => `<p>${escapeIdentityText(block).replace(/\n/g, '<br>')}</p>`)
+            .join('');
     }
 
     const intro = text.slice(0, positions[0].index).trim();
@@ -13417,11 +13423,11 @@ function formatSunbirdExecutiveSummaryHtml(summaryText = '') {
         return { label: marker.label, value };
     }).filter(section => section.value && !isSunbirdTechnicalNoiseText(section.value));
 
-    const introHtml = intro ? `<p>${escapeIdentityText(intro)}</p>` : '';
+    const introHtml = intro ? `<p>${escapeIdentityText(intro).replace(/\n/g, '<br>')}</p>` : '';
     const sectionHtml = sections.map(section => `
         <article class="sunbird-report-exec-section">
             <strong>${escapeIdentityText(section.label)}</strong>
-            <p>${escapeIdentityText(section.value)}</p>
+            <p>${escapeIdentityText(section.value).replace(/\n/g, '<br>')}</p>
         </article>
     `).join('');
 
@@ -13901,7 +13907,12 @@ function getSunbirdDomainFindingEvidenceRows(finding = {}) {
             source: source.source || ''
         };
     });
-    return rows.filter(row => !isSunbirdTechnicalNoiseText(`${row.title} ${row.detail}`)).slice(0, 60);
+    return rows.filter(row => !isSunbirdTechnicalNoiseText(`${row.title} ${row.detail}`));
+}
+
+function setSunbirdReportDomainFilter(domainKey = 'all') {
+    sunbirdReportDomainFilter = String(domainKey || 'all');
+    if (cachedSunbirdReportsData) renderSunbirdReportsCenter(cachedSunbirdReportsData);
 }
 
 function closeSunbirdDomainFindingEvidence() {
@@ -13967,12 +13978,24 @@ function openSunbirdDomainFindingEvidence(evidenceKey) {
 function renderSunbirdReportDomainBreakdown(data = {}) {
     const latest = getSunbirdLatestReportPayload(data);
     const domains = Array.isArray(latest?.domainBreakdown) ? latest.domainBreakdown : [];
-    const filteredDomains = domains.filter(domain => {
+    const visibleDomains = domains.filter(domain => {
         const findings = Array.isArray(domain?.findings) ? domain.findings : [];
         return findings.length || domain?.summary || domain?.businessImpact;
     });
     sunbirdReportDomainEvidenceMap.clear();
-    if (!latest || !filteredDomains.length) return '';
+    if (!latest || !visibleDomains.length) return '';
+
+    const domainOptions = visibleDomains.map(domain => ({
+        key: String(domain.domainKey || '').trim() || String(domain.domainName || '').toLowerCase().replace(/\s+/g, '_') || 'domain',
+        label: getSunbirdReportDomainName(domain)
+    }));
+    const selectedKey = sunbirdReportDomainFilter || 'all';
+    const filteredDomains = selectedKey === 'all'
+        ? visibleDomains
+        : visibleDomains.filter(domain => {
+            const key = String(domain.domainKey || '').trim() || String(domain.domainName || '').toLowerCase().replace(/\s+/g, '_');
+            return key === selectedKey;
+        });
 
     return `
         <section class="sunbird-report-domain-breakdown">
@@ -13980,15 +14003,21 @@ function renderSunbirdReportDomainBreakdown(data = {}) {
                 <span><i class="fas fa-layer-group"></i> Full domain intelligence (latest report)</span>
                 <small>${escapeIdentityText(formatSunbirdReportDate(latest.periodEnd || latest.createdAt))}</small>
             </div>
+            <div class="sunbird-report-domain-filter-row" role="group" aria-label="Domain filter">
+                <button type="button" class="${selectedKey === 'all' ? 'active' : ''}" onclick="window.setSunbirdReportDomainFilter('all')">All domains</button>
+                ${domainOptions.map(option => `
+                    <button type="button" class="${selectedKey === option.key ? 'active' : ''}" onclick="window.setSunbirdReportDomainFilter('${escapeIdentityText(option.key)}')">${escapeIdentityText(option.label)}</button>
+                `).join('')}
+            </div>
             <div class="sunbird-report-domain-breakdown-grid">
                 ${filteredDomains.map((domain, domainIndex) => {
                     const domainName = getSunbirdReportDomainName(domain);
                     const findings = (Array.isArray(domain.findings) ? domain.findings : [])
                         .filter(finding => !isSunbirdTechnicalNoiseText(`${finding?.title || ''} ${finding?.impact || ''} ${finding?.whyItMatters || ''}`))
-                        .slice(0, 12);
+                        ;
                     const recommendations = (Array.isArray(domain.recommendations) ? domain.recommendations : [])
                         .filter(item => !isSunbirdTechnicalNoiseText(item))
-                        .slice(0, 4);
+                        ;
                     return `
                         <article class="sunbird-report-domain-detail-card">
                             <header>
@@ -14290,9 +14319,6 @@ async function renderSunbirdReportsView(forceRefresh = false) {
                     <button class="sunbird-dashboard-btn" onclick="window.openSunbirdReportsDashboard()">
                         <i class="fas fa-arrow-up-right-from-square"></i> Open Report Center
                     </button>
-                    <button class="sunbird-report-quick-generate" onclick="window.generateSunbirdReport('30d', true)">
-                        <i class="fas fa-file-circle-plus"></i> Generate 30-day PDF
-                    </button>
                     <button class="sunbird-report-get-intel" onclick="window.getIntelligentReport && window.getIntelligentReport()">
                         <i class="fas fa-brain"></i> Get intelligent report
                     </button>
@@ -14343,10 +14369,6 @@ function renderSunbirdReportsShell() {
                     <button type="button" data-report-range="90d">90 days</button>
                     <button type="button" data-report-range="since">Since activation</button>
                 </div>
-                <button id="sunbird-report-generate-btn" class="sunbird-report-primary-btn" type="button">
-                    <i class="fas fa-file-pdf"></i>
-                    Generate PDF
-                </button>
                 <button id="sunbird-report-intelligent-btn" class="sunbird-report-primary-btn" type="button">
                     <i class="fas fa-brain"></i>
                     Get intelligent report
@@ -14595,9 +14617,6 @@ function setupSunbirdReportsDashboard() {
             await loadSunbirdReportsDashboardData(true);
         });
     });
-    document.getElementById('sunbird-report-generate-btn')?.addEventListener('click', () => {
-        window.generateSunbirdReport(sunbirdReportsRange, true);
-    });
     document.getElementById('sunbird-report-intelligent-btn')?.addEventListener('click', () => {
         window.getIntelligentReport();
     });
@@ -14641,7 +14660,8 @@ function openSunbirdReportsDashboard() {
 }
 
 window.generateSunbirdReport = async function(range = sunbirdReportsRange, downloadWhenReady = true, includeAi = true) {
-    const button = document.getElementById(includeAi ? 'sunbird-report-intelligent-btn' : 'sunbird-report-generate-btn');
+    const button = document.getElementById(includeAi ? 'sunbird-report-intelligent-btn' : 'sunbird-report-generate-btn')
+        || document.getElementById('sunbird-report-intelligent-btn');
     const original = button?.innerHTML;
     if (button) {
         button.disabled = true;
@@ -14771,6 +14791,7 @@ window.renderSunbirdReportsView = renderSunbirdReportsView;
 window.loadSunbirdReportsDashboardData = loadSunbirdReportsDashboardData;
 window.openSunbirdReportEvidence = openSunbirdReportEvidence;
 window.closeSunbirdReportEvidence = closeSunbirdReportEvidence;
+window.setSunbirdReportDomainFilter = setSunbirdReportDomainFilter;
 window.openSunbirdDomainFindingEvidence = openSunbirdDomainFindingEvidence;
 window.closeSunbirdDomainFindingEvidence = closeSunbirdDomainFindingEvidence;
 

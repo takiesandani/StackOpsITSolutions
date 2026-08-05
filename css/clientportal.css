@@ -1584,6 +1584,30 @@
   gap: 14px;
 }
 
+.sunbird-report-domain-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.sunbird-report-domain-filter-row button {
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #c8d2dd;
+  font-size: 0.65rem;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.sunbird-report-domain-filter-row button:hover,
+.sunbird-report-domain-filter-row button.active {
+  color: #ffffff;
+  border-color: rgba(249, 115, 22, 0.5);
+  background: rgba(249, 115, 22, 0.14);
+}
+
 .sunbird-report-domain-detail-card {
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 12px;
