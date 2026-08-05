@@ -3281,6 +3281,81 @@ function buildDeterministicReportAnalysis(report) {
     };
 }
 
+function buildHistoricalNarrativeFromSynthesis(output = {}) {
+    const trends = Array.isArray(output.trendAnalysis) ? output.trendAnalysis : [];
+    const improved = [];
+    const worsened = [];
+    const unchanged = [];
+    trends.slice(0, 20).forEach(item => {
+        const title = String(item?.metricName || item?.title || item?.trend || '').trim();
+        if (!title) return;
+        const direction = String(item?.direction || '').toLowerCase();
+        const detailText = `${direction} ${String(item?.explanation || '')}`.toLowerCase();
+        if (/improv|reduc|down|better|stabil|closed|resolved/.test(detailText)) {
+            improved.push(title);
+            return;
+        }
+        if (/worsen|increas|up|higher|declin|open|gap/.test(detailText)) {
+            worsened.push(title);
+            return;
+        }
+        unchanged.push(title);
+    });
+
+    const complianceReview = output.complianceReview || {};
+    const managementReport = output.managementReport || {};
+    const failedOrWeak = Array.isArray(complianceReview.failedOrWeakControlThemes)
+        ? complianceReview.failedOrWeakControlThemes
+        : [];
+    const evidenceGaps = Array.isArray(complianceReview.evidenceGaps)
+        ? complianceReview.evidenceGaps
+        : [];
+    const remediationActions = [
+        ...(Array.isArray(complianceReview.priorityComplianceActions) ? complianceReview.priorityComplianceActions : []),
+        ...(Array.isArray(managementReport.whatMustBeDoneNow) ? managementReport.whatMustBeDoneNow : []),
+        ...(Array.isArray(managementReport.managementActions) ? managementReport.managementActions : []),
+        ...(Array.isArray(managementReport.actions) ? managementReport.actions : [])
+    ].map(item => String(item?.title || item?.detail || item || '').trim()).filter(Boolean);
+
+    const chainCount = Array.isArray(managementReport.crossDomainRiskChains)
+        ? managementReport.crossDomainRiskChains.length
+        : 0;
+    const remainsOpen = [...failedOrWeak, ...evidenceGaps]
+        .map(item => String(item?.gap || item?.title || item || '').trim())
+        .filter(Boolean);
+
+    return {
+        whatChangedSinceLastReport: [
+            chainCount
+                ? `${chainCount} cross-domain risk chain${chainCount === 1 ? '' : 's'} remain active across the enterprise domains.`
+                : 'No cross-domain risk chains were explicitly captured in this run.',
+            improved.length
+                ? `Improved: ${improved.slice(0, 3).join(', ')}.`
+                : 'Improved: no major control trend was explicitly marked as improved in this cycle.',
+            worsened.length
+                ? `Worsened: ${worsened.slice(0, 3).join(', ')}.`
+                : 'Worsened: no major control trend was explicitly marked as worsened in this cycle.',
+            unchanged.length
+                ? `Remains open/stable: ${unchanged.slice(0, 3).join(', ')}.`
+                : 'Remains open/stable: baseline continuity is still being established in selected areas.'
+        ].join(' '),
+        historicalTrendAnalysis: trends.length
+            ? `Trend baseline comparison identified ${improved.length} improving, ${worsened.length} worsening, and ${unchanged.length} stable signal${trends.length === 1 ? '' : 's'} across the supplied historical rollups.`
+            : 'Trend baseline comparison: baseline unavailable or insufficient lower-period history was supplied for this cycle.',
+        controlGapsAndRemediationProgress: [
+            remainsOpen.length
+                ? `Control gaps still open: ${remainsOpen.slice(0, 4).join(', ')}.`
+                : 'Control gaps still open: no named failed/weak control theme was explicitly emitted by the synthesis model.',
+            remediationActions.length
+                ? `Remediation progress focus: ${remediationActions.slice(0, 4).join('; ')}.`
+                : 'Remediation progress focus: assign accountable owners and due dates for unresolved controls and risk chains.'
+        ].join(' '),
+        improved,
+        worsened,
+        remainsOpen
+    };
+}
+
 async function fetchSunbirdPowerBIIntelligence(companyId) {
     if (!enterpriseIntelligenceService) return null;
     const requestedDomainKeys = [
@@ -3354,6 +3429,16 @@ function buildFinalSynthesisReportAnalysis(report, powerBiFinal = null) {
     if (!finalSynthesis?.synthesisOutput) return fallback;
     const output = finalSynthesis.synthesisOutput || {};
     const managementReport = output.managementReport || {};
+    const confidence = String(output.enterpriseExecutiveSummary?.confidence || output.evidenceJustificationSummary?.evidenceConfidence || 'medium');
+    const historical = buildHistoricalNarrativeFromSynthesis(output);
+    const executiveSummaryBase = String(output.enterpriseExecutiveSummary?.summary || fallback.executiveSummary);
+    const executiveSummary = [
+        executiveSummaryBase,
+        `What changed since the last report: ${historical.whatChangedSinceLastReport}`,
+        `Historical trend analysis: ${historical.historicalTrendAnalysis}`,
+        `Control gaps and remediation progress: ${historical.controlGapsAndRemediationProgress}`,
+        `Confidence: ${confidence}.`
+    ].filter(Boolean).join(' ');
     const resolvedEvents = Array.isArray(report.events)
         ? report.events.filter(event => ['resolved', 'closed', 'success', 'succeeded', 'healthy'].includes(String(event.status || '').toLowerCase()))
         : [];
@@ -3361,13 +3446,22 @@ function buildFinalSynthesisReportAnalysis(report, powerBiFinal = null) {
         ? report.identityUsers.filter(user => !toBooleanMfa(user.mfaEnabled ?? user.hasMfa ?? user.hasMfaMethod)).slice(0, 12)
         : [];
     return {
-        executiveSummary: String(output.enterpriseExecutiveSummary?.summary || fallback.executiveSummary),
+        executiveSummary,
         boardReportSummary: String(output.boardReport?.boardSummary || output.boardReport?.summary || ''),
         managementReportItems: Array.isArray(managementReport.managementActions)
             ? managementReport.managementActions
             : Array.isArray(managementReport.actions)
                 ? managementReport.actions
                 : [],
+        historicalChanges: {
+            whatChangedSinceLastReport: historical.whatChangedSinceLastReport,
+            historicalTrendAnalysis: historical.historicalTrendAnalysis,
+            controlGapsAndRemediationProgress: historical.controlGapsAndRemediationProgress,
+            whatImproved: historical.improved,
+            whatWorsened: historical.worsened,
+            whatRemainsOpen: historical.remainsOpen,
+            confidence
+        },
         businessImpactSummary: String(output.businessImpactSummary || ''),
         resolvedEvents: resolvedEvents.slice(0, 10),
         mfaMissingUsers: missingMfaUsers,
@@ -3898,6 +3992,12 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 const selected = value.title || value.name || value.displayName || value.summary || value.detail || value.description || value.message || value.findings || value.value || value.email || value.userPrincipalName || value.id;
                 return cleanText(selected, fallback);
             };
+            const isSuppressedFailedStatus = value => /^(failed|failure)$/i.test(cleanText(value));
+            const displayStatus = value => {
+                const normalized = cleanText(value);
+                if (!normalized) return '';
+                return isSuppressedFailedStatus(normalized) ? '' : normalized;
+            };
             const recordText = value => {
                 if (value == null) return '';
                 if (typeof value !== 'object' || Array.isArray(value)) return cleanText(value);
@@ -3933,7 +4033,7 @@ function generateSunbirdReportPdf(report, reportId = null) {
                     ['Risk', riskLevel],
                     ['Last sign-in', signInText],
                     ['Finding', finding],
-                    ['Status', status],
+                    ['Status', displayStatus(status)],
                     ['Evidence', evidenceField],
                     ['Value', valueField]
                 ].filter(([, field]) => field != null && cleanText(field));
@@ -4114,7 +4214,7 @@ function generateSunbirdReportPdf(report, reportId = null) {
                         roles.length ? roles.join(', ') : '',
                         lastSignIn.daysSince == null || lastSignIn.daysSince === '' ? '' : `${lastSignIn.daysSince} days since sign-in`
                     ].filter(Boolean).join(' | ');
-                    const signIn = [lastSignIn.location, lastSignIn.device, lastSignIn.status].map(value => cleanText(value)).filter(Boolean).join(' | ');
+                    const signIn = [lastSignIn.location, lastSignIn.device, displayStatus(lastSignIn.status)].map(value => cleanText(value)).filter(Boolean).join(' | ');
                     return { identity, email, posture, signIn };
                 };
                 const drawFindingEvidence = entities => {
@@ -4628,7 +4728,7 @@ function generateSunbirdReportPdf(report, reportId = null) {
                             entry.recipient ? `Recipient: ${cleanText(entry.recipient)}` : '',
                             entry.sender ? `Sender: ${cleanText(entry.sender)}` : '',
                             entry.severity ? `Severity: ${cleanText(entry.severity)}` : '',
-                            entry.status ? `Status: ${cleanText(entry.status)}` : '',
+                            displayStatus(entry.status) ? `Status: ${displayStatus(entry.status)}` : '',
                             entry.created ? `Reported: ${formatReportDate(entry.created, true)}` : '',
                             entry.source ? `Source: ${cleanText(entry.source)}` : ''
                         ]
@@ -4653,7 +4753,7 @@ function generateSunbirdReportPdf(report, reportId = null) {
                                 : isSecurityAlerts && (entry.ipAddress || entry.failureReason || entry.location)
                                     ? [
                                         entry.user || entry.userPrincipalName ? `User: ${cleanText(entry.user || entry.userPrincipalName)}` : '',
-                                        entry.status ? `Status: ${cleanText(entry.status)}` : '',
+                                        displayStatus(entry.status) ? `Status: ${displayStatus(entry.status)}` : '',
                                         entry.location || entry.country ? `Location: ${cleanText(entry.location || entry.country)}` : '',
                                         entry.ipAddress ? `IP address: ${cleanText(entry.ipAddress)}` : '',
                                         entry.timestamp ? `Occurred: ${formatReportDate(entry.timestamp, true)}` : '',
@@ -4663,7 +4763,7 @@ function generateSunbirdReportPdf(report, reportId = null) {
                                         ? [
                                             entry.user ? `User: ${cleanText(entry.user)}` : '',
                                             entry.severity ? `Severity: ${cleanText(entry.severity)}` : '',
-                                            entry.status ? `Status: ${cleanText(entry.status)}` : '',
+                                                displayStatus(entry.status) ? `Status: ${displayStatus(entry.status)}` : '',
                                             entry.category ? `Category: ${cleanText(entry.category)}` : '',
                                             entry.created ? `Reported: ${formatReportDate(entry.created, true)}` : '',
                                             entry.source ? `Source: ${cleanText(entry.source)}` : ''
@@ -4679,7 +4779,7 @@ function generateSunbirdReportPdf(report, reportId = null) {
                                             : isGovernance
                                                 ? [
                                                     entry.area ? `Area: ${cleanText(entry.area)}` : '',
-                                                    entry.status ? `Status: ${cleanText(entry.status)}` : '',
+                                                    displayStatus(entry.status) ? `Status: ${displayStatus(entry.status)}` : '',
                                                     entry.ownerStatus ? `Owner: ${cleanText(entry.ownerStatus).replace(/_/g, ' ')}` : '',
                                                     entry.frequency ? `Review cycle: ${cleanText(entry.frequency)}` : '',
                                                     entry.source || entry.dataSource ? `Source: ${cleanText(entry.source || entry.dataSource)}` : '',
@@ -4689,7 +4789,7 @@ function generateSunbirdReportPdf(report, reportId = null) {
                                                 : isCompliance
                                                     ? [
                                                         entry.controlCategory || entry.area ? `Area: ${cleanText(entry.controlCategory || entry.area)}` : '',
-                                                        entry.complianceStatus || entry.status ? `Status: ${cleanText(entry.complianceStatus || entry.status).replace(/[🟢🟡🔴]/g, '').trim()}` : '',
+                                                        entry.complianceStatus || entry.status ? `Status: ${displayStatus(cleanText(entry.complianceStatus || entry.status).replace(/[🟢🟡🔴]/g, '').trim())}` : '',
                                                         entry.severity ? `Severity: ${cleanText(entry.severity)}` : '',
                                                         entry.auditImpact ? `Audit impact: ${cleanText(entry.auditImpact)}` : '',
                                                         entry.validationReason ? `Evidence: ${cleanText(entry.validationReason)}` : '',
@@ -5359,7 +5459,10 @@ app.post('/api/sunbird/reports/generate', authenticateToken, async (req, res) =>
         const reportContext = await getReportContext(req, res);
         if (!reportContext) return;
         const { context, settings } = reportContext;
-        const includeAi = req.body?.includeAi === true || String(req.body?.includeAi).toLowerCase() === 'true';
+        const includeAi = !(
+            req.body?.includeAi === false ||
+            String(req.body?.includeAi).toLowerCase() === 'false'
+        );
         const range = getReportRange(req.body || {}, settings.ActiveSince);
         await writeSunbirdReportLog({
             companyId: context.companyId,
@@ -5393,6 +5496,11 @@ app.get('/api/sunbird/reports/:id/pdf', authenticateToken, async (req, res) => {
         if (!rows.length) return res.status(404).json({ success: false, message: 'Report not found' });
         
         const report = parseReportJson(rows[0].Payload, {});
+        report.period = {
+            ...(report.period || {}),
+            start: rows[0].PeriodStart ? new Date(rows[0].PeriodStart).toISOString() : report.period?.start,
+            end: rows[0].PeriodEnd ? new Date(rows[0].PeriodEnd).toISOString() : report.period?.end
+        };
         
         // Generate PDF with timeout protection
         let pdf;
@@ -5654,7 +5762,12 @@ async function runSunbirdReportAutomation() {
             if (lastDaily !== localDate) {
                 const dayStart = new Date(now);
                 dayStart.setUTCDate(dayStart.getUTCDate() - 1);
-                await saveSunbirdReport(companyId, 'daily', dayStart, now, null, false);
+                try {
+                    await saveSunbirdReport(companyId, 'daily', dayStart, now, null, true);
+                } catch (aiError) {
+                    console.warn(`[Reports Automation] Daily AI report generation failed for company ${companyId}; retrying with deterministic fallback:`, aiError.message);
+                    await saveSunbirdReport(companyId, 'daily', dayStart, now, null, false);
+                }
                 await pool.query(
                     'UPDATE SunbirdReportSettings SET LastDailyCollectionDate = ? WHERE CompanyID = ?',
                     [localDate, companyId]
@@ -14685,7 +14798,7 @@ const stackCTRLIntelligenceAutomation = createStackCTRLServerAutomation({
 });
 const enterpriseIntelligenceAutomation = createStackCTRLServerAutomation({
     schedulerService: enterpriseIntelligenceService,
-    enabled: !['false', '0', 'no'].includes(String(process.env.ENTERPRISE_AI_AUTOMATION_ENABLED || 'false').toLowerCase()),
+    enabled: !['false', '0', 'no'].includes(String(process.env.ENTERPRISE_AI_AUTOMATION_ENABLED || 'true').toLowerCase()),
     intervalMs: process.env.ENTERPRISE_AI_AUTOMATION_INTERVAL_MS || (15 * 60 * 1000),
     startupDelayMs: process.env.ENTERPRISE_AI_AUTOMATION_STARTUP_DELAY_MS || (60 * 1000)
 });
@@ -15846,6 +15959,7 @@ if (require.main === module) {
     complianceEvidenceAutomation.stop();
     operationsEvidenceAutomation.stop();
     stackCTRLIntelligenceAutomation.stop();
+    enterpriseIntelligenceAutomation.stop();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(1), 10000).unref();
     }
