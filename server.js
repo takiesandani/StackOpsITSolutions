@@ -4415,6 +4415,222 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 });
                 doc.y += 4;
             };
+            // Classify free-form AI content by reporting concepts, not by a fixed prompt schema.
+            const executiveSectionDefinitions = [
+                ['summary', 'Executive Summary', /\b(executive|overall|enterprise|posture|organisation|organization)\b/i],
+                ['risks', 'Key Risks', /\b(risk|threat|exposure|critical|severity|vulnerabilit|concern)\b/i],
+                ['changes', 'What Changed Since Last Report', /\b(change|shift|movement|delta|since|previous|last\s+(?:report|period|review)|evidence\s+shift)\b/i],
+                ['trend', 'Historical Trend', /\b(histor|baseline|trend|trajectory|over\s+time|compared\s+with)\b/i],
+                ['gaps', 'Open Control Gaps', /\b(control|compliance|governance|security)\b[\s\S]{0,70}\b(gap|open|missing|deficien|remediat)\b|\b(gap|deficien|unresolved|outstanding)\b/i],
+                ['actions', 'Priority Remediation Actions', /\b(action|priority|remediat|mitigat|next\s+step|immediate|enable|disable|retire|investigat|assign|review)\b/i],
+                ['recommendation', 'Executive Recommendation', /\b(recommend|decision|should|advise|propose|endorse)\b/i],
+                ['impact', 'Business Impact', /\b(business|operational|financial|customer)\s+impact\b/i]
+            ].map(([id, title, cue]) => ({ id, title, cue }));
+            const executiveSectionFor = (text, fallback = 'summary') => executiveSectionDefinitions.filter(section => section.id !== 'summary').find(section => section.cue.test(cleanText(text)))?.id || fallback;
+            const executiveMetricLabel = label => {
+                const key = String(label || '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').toLowerCase();
+                if (/\b(confidence|certainty|assurance)\b/.test(key)) return 'Confidence';
+                if (/\b(audit|assessment|compliance)\b.*\b(readiness|ready|prepared)\b/.test(key)) return 'Audit Readiness';
+                if (/\b(overall|enterprise|organisation|organization)\b.*\brisk\b|\brisk\b.*\b(overall|enterprise)\b/.test(key)) return 'Overall Risk';
+                if (/\b(domain|area|scope)\b.*\b(count|analysed|analyzed|assessed|reviewed)\b/.test(key)) return 'Domains Analysed';
+                if (/\b(operation|service|platform)\b.*\b(status|state|health|availability)\b/.test(key)) return 'Operations Status';
+                return '';
+            };
+            const buildExecutiveOverview = () => {
+                const sections = Object.fromEntries(executiveSectionDefinitions.map(section => [section.id, []]));
+                const sectionOrder = executiveSectionDefinitions.map(section => section.id);
+                const sectionTitles = new Map(executiveSectionDefinitions.map(section => [section.id, section.title]));
+                const addCustomSection = heading => {
+                    const title = cleanText(heading).replace(/[_-]+/g, ' ').replace(/\b\w/g, character => character.toUpperCase());
+                    const id = `custom-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}`;
+                    if (!sections[id]) {
+                        sections[id] = [];
+                        sectionOrder.push(id);
+                        sectionTitles.set(id, title || 'Additional Executive Detail');
+                    }
+                    return id;
+                };
+                const metrics = new Map();
+                const addMetric = (label, value) => {
+                    const metric = executiveMetricLabel(label);
+                    const display = cleanText(value).replace(/[_-]+/g, ' ').replace(/\b\w/g, character => character.toUpperCase());
+                    if (metric && display && !/^(null|undefined|n\/a|not available)$/i.test(display)) metrics.set(metric, display);
+                };
+                const addText = (section, value) => {
+                    const text = cleanText(value);
+                    if (!text || /^((no|not)\s+(stored|available)|n\/a)$/i.test(text)) return;
+                    const key = section in sections ? section : executiveSectionFor(text);
+                    if (!sections[key].some(item => item.toLowerCase() === text.toLowerCase())) sections[key].push(text);
+                };
+                const readNarrative = (value, fallback = 'summary') => {
+                    const source = cleanText(value);
+                    if (!source) return;
+                    const lines = String(value).replace(/\r/g, '').split(/\n+/).map(line => line.trim()).filter(Boolean);
+                    let active = fallback;
+                    for (let index = 0; index < lines.length; index += 1) {
+                        const line = lines[index];
+                        const labelled = line.match(/^([^:]{2,80}):\s*(.*)$/);
+                        if (labelled && executiveMetricLabel(labelled[1])) {
+                            addMetric(labelled[1], labelled[2] || lines[++index]);
+                            continue;
+                        }
+                        if (labelled && !executiveSectionFor(labelled[1], null)) {
+                            active = addCustomSection(labelled[1]);
+                            if (labelled[2]) addText(active, labelled[2]);
+                            continue;
+                        }
+                        if (labelled && !labelled[2]) {
+                            active = executiveSectionFor(labelled[1], active);
+                            continue;
+                        }
+                        line.split(/(?<=[.!?])\s+(?=[A-Z0-9])/).map(sentence => sentence.trim()).filter(Boolean)
+                            .forEach(sentence => addText(executiveSectionFor(sentence, active), sentence));
+                    }
+                    [
+                        ['Overall Risk', /\b(?:overall|enterprise)\s+risk\s*(?:is|:|=)?\s*([^.;\n]{1,45})/i],
+                        ['Audit Readiness', /\baudit\s+(?:readiness|status)\s*(?:is|:|=)?\s*([^.;\n]{1,45})/i],
+                        ['Confidence', /\bconfidence\s*(?:is|:|=)?\s*([^.;\n]{1,45})/i],
+                        ['Domains Analysed', /\b(\d+)\s+domains?\s+(?:analysed|analyzed|assessed|reviewed)\b/i],
+                        ['Operations Status', /\boperations?\s+(?:status\s+)?(?:is|:|=)\s*([^.;\n]{1,45})/i]
+                    ].forEach(([label, pattern]) => {
+                        const match = source.match(pattern);
+                        if (match?.[1]) addMetric(label, match[1]);
+                    });
+                };
+                const readMetrics = (value, depth = 0, label = '') => {
+                    if (value == null || depth > 4) return;
+                    if (typeof value !== 'object') return addMetric(label, value);
+                    if (!Array.isArray(value)) Object.entries(value).forEach(([key, nested]) => readMetrics(nested, depth + 1, `${label} ${key}`.trim()));
+                };
+                const addItems = (value, section) => (Array.isArray(value) ? value : value == null ? [] : [value]).map(recordText).filter(Boolean).forEach(item => addText(section, item));
+                const finalOutput = report.finalSynthesis?.finalSynthesis?.synthesisOutput || report.finalSynthesis?.synthesisOutput || {};
+                const historical = analysis.historicalChanges || {};
+                readNarrative(analysis.executiveSummary);
+                readNarrative(analysis.boardReportSummary, 'recommendation');
+                readNarrative(analysis.businessImpactSummary, 'impact');
+                readNarrative(finalOutput.enterpriseExecutiveSummary?.summary);
+                readNarrative(finalOutput.boardReport?.boardSummary || finalOutput.boardReport?.summary, 'recommendation');
+                addItems(analysis.failures || report.failures, 'risks');
+                addItems(finalOutput.riskRegister, 'risks');
+                addItems(analysis.recommendations || report.recommendations, 'actions');
+                addItems(analysis.managementReportItems, 'actions');
+                addItems(finalOutput.managementReport?.managementActions || finalOutput.managementReport?.actions, 'actions');
+                addItems(analysis.resolvedEvents, 'changes');
+                addItems(finalOutput.trendAnalysis, 'trend');
+                addText('changes', historical.whatChangedSinceLastReport);
+                addText('trend', historical.historicalTrendAnalysis);
+                addText('gaps', historical.controlGapsAndRemediationProgress);
+                addItems(historical.whatImproved, 'changes');
+                addItems(historical.whatWorsened, 'changes');
+                addItems(historical.whatRemainsOpen, 'gaps');
+                readMetrics(analysis);
+                readMetrics(finalOutput);
+                readMetrics(report.riskEngine || report.summary || {});
+                if (!metrics.has('Domains Analysed') && Array.isArray(report.domainInsights?.domains) && report.domainInsights.domains.length) addMetric('domains analysed', report.domainInsights.domains.length);
+                return { sections, sectionOrder, sectionTitles, metrics: [...metrics].map(([label, value]) => ({ label, value })) };
+            };
+            const executiveListParts = value => {
+                const text = cleanText(value).replace(/^[\s\u2022\-*\d.)]+/, '').trim();
+                const tidy = item => item.replace(/^\s*(?:and\s+)?/, '').replace(/[.;]+$/, '').trim();
+                const semicolon = text.split(/\s*;\s*/).map(tidy).filter(Boolean);
+                if (semicolon.length > 1) {
+                    const intro = semicolon[0].match(/^(.{3,70}?(?:include|includes|are|is|for|of|:))\s*(.+)$/i);
+                    return intro ? { lead: tidy(intro[1]), items: [tidy(intro[2]), ...semicolon.slice(1)] } : { lead: '', items: semicolon };
+                }
+                const ownership = text.match(/^(.{3,100}?\b(?:for|of|across|to)\s+)([^.]+)$/i);
+                if (ownership) {
+                    const items = ownership[2].split(/\s*,\s*|\s+and\s+/i).map(tidy).filter(Boolean);
+                    if (items.length >= 3) return { lead: ownership[1].trim(), items };
+                }
+                const comma = text.split(/\s*,\s*/).map(tidy).filter(Boolean);
+                const action = /^(?:enable|disable|retire|remove|remediate|investigate|assign|review|validate|implement|configure|document|establish|monitor|restrict|require|update|close|resolve|assess|confirm|prioritise|prioritize)\b/i;
+                return comma.length >= 3 && comma.filter(item => action.test(item)).length >= Math.ceil(comma.length * 0.66) ? { lead: '', items: comma } : null;
+            };
+            const drawExecutiveOverview = overview => {
+                const wrap = (text, width, size) => {
+                    const lines = [];
+                    let line = '';
+                    doc.font('Helvetica').fontSize(size);
+                    cleanText(text).split(/\s+/).filter(Boolean).forEach(word => {
+                        const candidate = line ? `${line} ${word}` : word;
+                        if (line && doc.widthOfString(candidate) > width) {
+                            lines.push(line);
+                            line = word;
+                        } else line = candidate;
+                    });
+                    if (line) lines.push(line);
+                    return lines;
+                };
+                const drawHeader = (title, continued, bodyHeight) => {
+                    if (doc.y + 31 + bodyHeight > bottom) {
+                        doc.addPage();
+                        doc.y = 42;
+                    }
+                    const y = doc.y;
+                    doc.roundedRect(left, y, contentWidth, 22, 6).fill('#f3f5f7');
+                    doc.font('Helvetica-Bold').fontSize(9.7).fillColor(navy).text(`${title}${continued ? ' (continued)' : ''}`, left + 12, y + 6, { width: contentWidth - 24, lineBreak: false });
+                    doc.moveTo(left + 12, y + 27).lineTo(pageWidth - left - 12, y + 27).strokeColor('#d9dee3').lineWidth(0.7).stroke();
+                    doc.y = y + 34;
+                };
+                const drawItem = (title, text, state, marker = '') => {
+                    const width = marker ? contentWidth - 50 : contentWidth - 28;
+                    const size = marker ? 8.8 : 9;
+                    const lines = wrap(text, width, size);
+                    while (lines.length) {
+                        const chunk = lines.splice(0, marker ? 6 : 7);
+                        const height = doc.font('Helvetica').fontSize(size).heightOfString(chunk.join('\n'), { width, lineGap: 2 }) + 3;
+                        if (!state.started || doc.y + height > bottom) {
+                            drawHeader(title, state.started, height);
+                            state.started = true;
+                        }
+                        if (marker === 'bullet') doc.circle(left + 20, doc.y + 5, 1.8).fillColor(orange).fill();
+                        else if (marker) doc.font('Helvetica-Bold').fontSize(8.6).fillColor(navy).text(marker, left + 14, doc.y, { width: 18 });
+                        doc.font('Helvetica').fontSize(size).fillColor(slate).text(chunk.join('\n'), left + (marker ? 30 : 14), doc.y, { width, lineGap: 2 });
+                        doc.y += height + 6;
+                        marker = marker ? 'bullet' : '';
+                    }
+                };
+                if (overview.metrics.length) {
+                    const rowHeight = 19;
+                    const tableHeight = 28 + overview.metrics.length * rowHeight;
+                    if (doc.y + tableHeight > bottom) {
+                        doc.addPage();
+                        doc.y = 42;
+                    }
+                    const y = doc.y;
+                    doc.roundedRect(left, y, contentWidth, 20, 6).fill(navy);
+                    doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#ffffff').text('Enterprise Status', left + 12, y + 6, { width: contentWidth - 24, lineBreak: false });
+                    overview.metrics.forEach((metric, index) => {
+                        const rowY = y + 20 + index * rowHeight;
+                        if (index % 2 === 0) doc.rect(left, rowY, contentWidth, rowHeight).fill('#f8fafc');
+                        doc.font('Helvetica-Bold').fontSize(8.4).fillColor(navy).text(metric.label, left + 12, rowY + 5, { width: contentWidth * 0.48 });
+                        doc.font('Helvetica').fontSize(8.4).fillColor(slate).text(metric.value, left + contentWidth * 0.5, rowY + 5, { width: contentWidth * 0.47 });
+                    });
+                    doc.roundedRect(left, y, contentWidth, tableHeight - 8, 6).strokeColor('#e1e6ea').lineWidth(0.7).stroke();
+                    doc.y = y + tableHeight + 10;
+                }
+                overview.sectionOrder.forEach(sectionId => {
+                    const values = overview.sections[sectionId];
+                    if (!values.length) return;
+                    const title = overview.sectionTitles.get(sectionId);
+                    const state = { started: false };
+                    let number = 1;
+                    values.forEach(value => {
+                        const list = executiveListParts(value);
+                        if (!list) return drawItem(title, value, state);
+                        if (list.lead) {
+                            if (!state.started || doc.y + 18 > bottom) {
+                                drawHeader(title, state.started, 18);
+                                state.started = true;
+                            }
+                            doc.font('Helvetica-Bold').fontSize(8.9).fillColor(navy).text(list.lead, left + 14, doc.y, { width: contentWidth - 28, lineGap: 2 });
+                            doc.y += doc.heightOfString(list.lead, { width: contentWidth - 28, lineGap: 2 }) + 4;
+                        }
+                        list.items.forEach(item => drawItem(title, item, state, sectionId === 'actions' ? `${number++}.` : 'bullet'));
+                    });
+                    doc.y += 8;
+                });
+            };
             const isIdentityDomain = domain => String(domain?.domainKey || domain?.domainName || '').trim().toLowerCase() === 'identity' || /identity protection/i.test(String(domain?.domainName || ''));
             const renderIdentityProtectionReport = domain => {
                 if (!domain) return;
@@ -5249,17 +5465,11 @@ function generateSunbirdReportPdf(report, reportId = null) {
             drawMetric(left + (metricWidth + metricGap) * 3, metricY, metricWidth, 'HIGH ALERTS', report.summary.highSeverityAlerts, 'Critical signal count');
 
             doc.y = 218;
-            sectionTitle('Executive overview');
-            const executiveSummary = cleanText(analysis.executiveSummary, 'No executive summary is available.');
-            doc.font('Helvetica').fontSize(8.7);
-            const executiveHeight = doc.heightOfString(executiveSummary, { width: contentWidth - 24, lineGap: 2 });
-            const overviewHeight = executiveHeight + 40;
-            addPageIfNeeded(overviewHeight + 12);
-            const overviewY = doc.y;
-            doc.roundedRect(left, overviewY, contentWidth, overviewHeight, 8).fill('#f8fafc').strokeColor('#e1e6ea').stroke();
-            doc.font('Helvetica-Bold').fontSize(9.5).fillColor(navy).text('Executive summary', left + 12, overviewY + 12, { width: contentWidth - 24 });
-            doc.font('Helvetica').fontSize(8.7).fillColor(slate).text(executiveSummary, left + 12, overviewY + 28, { width: contentWidth - 24, lineGap: 2 });
-            doc.y = overviewY + overviewHeight + 14;
+            const executiveOverview = buildExecutiveOverview();
+            if (executiveOverview.metrics.length || Object.values(executiveOverview.sections).some(items => items.length)) {
+                sectionTitle('Executive overview');
+                drawExecutiveOverview(executiveOverview);
+            }
 
             const allDomainRows = Array.isArray(report.domainInsights?.domains) ? report.domainInsights.domains : [];
             const domainHasRenderableContent = domain => {
