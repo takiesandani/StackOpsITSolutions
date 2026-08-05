@@ -10767,6 +10767,17 @@ function displayCurrentProject() {
                     return;
                 }
 
+                const previewSection = document.getElementById('project-preview-section');
+                const isSameProjectPreview = previewLockedByClick && selectedProjectId === project.id && previewSection?.classList.contains('visible');
+
+                if (isSameProjectPreview) {
+                    previewLockedByClick = false;
+                    selectedProjectId = null;
+                    projectCard.classList.remove('glow-selected');
+                    hideProjectPreview();
+                    return;
+                }
+
                 const allCards = document.querySelectorAll('.project-card');
                 allCards.forEach(card => card.classList.remove('glow-selected'));
 

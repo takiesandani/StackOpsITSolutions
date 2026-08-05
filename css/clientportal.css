@@ -10288,7 +10288,8 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
 .sunbird-id-metric-card {
   padding: 16px;
-  min-height: 132px;
+  min-height: 102px;
+  aspect-ratio: auto;
 }
 
 .sunbird-id-metric-card.tone-good,
@@ -11640,7 +11641,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   }
 
   .sunbird-id-metric-card {
-    min-height: 104px;
+    min-height: 90px;
     padding: 12px 14px;
   }
 
@@ -11698,7 +11699,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   }
 
   .sunbird-id-metric-card {
-    min-height: 96px;
+    min-height: 84px;
     padding: 10px 12px;
   }
 
