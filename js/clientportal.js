@@ -1021,6 +1021,7 @@ let cachedSunbirdBackupData = null;
 let cachedSunbirdReportsData = null;
 let sunbirdReportsRange = '30d';
 let sunbirdReportsRequestId = 0;
+const sunbirdReportDomainEvidenceMap = new Map();
 const sunbirdReportsRequests = new Map();
 const SUNBIRD_NETWORK_SECURITY_CACHE_KEY = 'sunbirdNetworkSecuritySnapshot_v1';
 const BILLING_CACHE_KEY = 'billingInvoiceCache_v1';
@@ -13865,6 +13866,176 @@ function renderSunbirdReportIdentityFieldSection(data = {}) {
     `;
 }
 
+function getSunbirdLatestReportPayload(data = {}) {
+    const latest = data?.latestReport;
+    return latest && typeof latest === 'object' ? latest : null;
+}
+
+function getSunbirdReportDomainName(domain = {}) {
+    const value = String(domain?.domainName || domain?.domainKey || 'Domain').trim();
+    if (!value) return 'Domain';
+    return value.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+}
+
+function getSunbirdReportSeverityTone(value = '') {
+    const text = String(value || '').toLowerCase();
+    if (/critical|high|severe|failed/.test(text)) return 'failure';
+    if (/medium|moderate|warning|warn/.test(text)) return 'warn';
+    if (/low|good|healthy|safe|resolved|success/.test(text)) return 'success';
+    return 'neutral';
+}
+
+function getSunbirdDomainFindingEvidenceRows(finding = {}) {
+    const direct = Array.isArray(finding?.evidence) ? finding.evidence : [];
+    const rows = direct.map(row => {
+        const source = row && typeof row === 'object' ? row : { detail: row };
+        const details = [
+            source.detail,
+            source.status ? `Status: ${source.status}` : '',
+            source.source ? `Source: ${source.source}` : ''
+        ].filter(Boolean).join(' | ');
+        return {
+            title: source.name || source.title || 'Evidence item',
+            detail: details || 'Evidence detail recorded in the latest report.',
+            severity: source.severity || '',
+            source: source.source || ''
+        };
+    });
+    return rows.filter(row => !isSunbirdTechnicalNoiseText(`${row.title} ${row.detail}`)).slice(0, 60);
+}
+
+function closeSunbirdDomainFindingEvidence() {
+    document.getElementById('sunbird-report-domain-evidence-modal')?.remove();
+    document.removeEventListener('keydown', handleSunbirdDomainFindingEvidenceEscape);
+}
+
+function handleSunbirdDomainFindingEvidenceEscape(event) {
+    if (event.key === 'Escape') closeSunbirdDomainFindingEvidence();
+}
+
+function openSunbirdDomainFindingEvidence(evidenceKey) {
+    const key = String(evidenceKey || '');
+    const payload = sunbirdReportDomainEvidenceMap.get(key);
+    if (!payload) {
+        showNotification('Evidence details are not available for this finding yet.', false);
+        return;
+    }
+    closeSunbirdDomainFindingEvidence();
+    const rows = getSunbirdDomainFindingEvidenceRows(payload.finding);
+    const tone = getSunbirdReportSeverityTone(payload.finding?.severity);
+    const modal = document.createElement('div');
+    modal.id = 'sunbird-report-domain-evidence-modal';
+    modal.className = `sunbird-id-modal sunbird-report-evidence-modal open tone-${tone === 'failure' ? 'danger' : tone === 'success' ? 'success' : 'events'}`;
+    modal.innerHTML = `
+        <div class="sunbird-id-modal-backdrop" onclick="window.closeSunbirdDomainFindingEvidence()"></div>
+        <div class="sunbird-id-modal-panel sunbird-report-evidence-panel" role="dialog" aria-modal="true" aria-labelledby="sunbird-report-domain-evidence-title">
+            <div class="sunbird-id-modal-header sunbird-report-evidence-header">
+                <div>
+                    <h3 id="sunbird-report-domain-evidence-title"><i class="fas fa-magnifying-glass-chart"></i> ${escapeIdentityText(payload.domainName)} - ${escapeIdentityText(payload.finding?.title || 'Finding evidence')}</h3>
+                    <p>${escapeIdentityText(payload.finding?.impact || payload.finding?.whyItMatters || 'Evidence captured from the latest intelligent report only.')}</p>
+                </div>
+                <button type="button" onclick="window.closeSunbirdDomainFindingEvidence()" class="sunbird-id-modal-close" aria-label="Close finding evidence">&times;</button>
+            </div>
+            <div class="sunbird-id-evidence-summary sunbird-report-evidence-summary">
+                <span>${rows.length} evidence row${rows.length === 1 ? '' : 's'}</span>
+                <span>${escapeIdentityText(payload.finding?.severity || 'Observed')}</span>
+                <span>${escapeIdentityText(payload.finding?.sourceMetric || 'Latest report output')}</span>
+            </div>
+            <div class="sunbird-id-evidence-list sunbird-report-evidence-list">
+                ${rows.length ? rows.map(row => `
+                    <article class="sunbird-report-evidence-row">
+                        <div class="sunbird-report-evidence-main">
+                            <strong>${escapeIdentityText(row.title)}</strong>
+                            <span>${escapeIdentityText(row.detail)}</span>
+                        </div>
+                        <div class="sunbird-report-evidence-meta">
+                            ${row.severity ? `<em>${escapeIdentityText(row.severity)}</em>` : ''}
+                            ${row.source ? `<small>${escapeIdentityText(row.source)}</small>` : ''}
+                        </div>
+                    </article>
+                `).join('') : '<div class="sunbird-report-evidence-empty">No structured evidence rows were emitted for this finding.</div>'}
+            </div>
+            <div class="sunbird-id-modal-actions">
+                <button type="button" class="sunbird-id-evidence-btn" onclick="window.closeSunbirdDomainFindingEvidence()">Close</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    document.addEventListener('keydown', handleSunbirdDomainFindingEvidenceEscape);
+}
+
+function renderSunbirdReportDomainBreakdown(data = {}) {
+    const latest = getSunbirdLatestReportPayload(data);
+    const domains = Array.isArray(latest?.domainBreakdown) ? latest.domainBreakdown : [];
+    const filteredDomains = domains.filter(domain => {
+        const findings = Array.isArray(domain?.findings) ? domain.findings : [];
+        return findings.length || domain?.summary || domain?.businessImpact;
+    });
+    sunbirdReportDomainEvidenceMap.clear();
+    if (!latest || !filteredDomains.length) return '';
+
+    return `
+        <section class="sunbird-report-domain-breakdown">
+            <div class="sunbird-report-card-title">
+                <span><i class="fas fa-layer-group"></i> Full domain intelligence (latest report)</span>
+                <small>${escapeIdentityText(formatSunbirdReportDate(latest.periodEnd || latest.createdAt))}</small>
+            </div>
+            <div class="sunbird-report-domain-breakdown-grid">
+                ${filteredDomains.map((domain, domainIndex) => {
+                    const domainName = getSunbirdReportDomainName(domain);
+                    const findings = (Array.isArray(domain.findings) ? domain.findings : [])
+                        .filter(finding => !isSunbirdTechnicalNoiseText(`${finding?.title || ''} ${finding?.impact || ''} ${finding?.whyItMatters || ''}`))
+                        .slice(0, 12);
+                    const recommendations = (Array.isArray(domain.recommendations) ? domain.recommendations : [])
+                        .filter(item => !isSunbirdTechnicalNoiseText(item))
+                        .slice(0, 4);
+                    return `
+                        <article class="sunbird-report-domain-detail-card">
+                            <header>
+                                <h3>${escapeIdentityText(domainName)}</h3>
+                                <div class="sunbird-report-domain-score-pills">
+                                    <span class="tone-${getSunbirdReportScoreTone(domain.healthScore)}">Health ${domain.healthScore == null ? 'n/a' : `${Number(domain.healthScore)}%`}</span>
+                                    <span class="tone-${getSunbirdReportScoreTone(100 - Number(domain.riskScore || 0))}">Risk ${domain.riskScore == null ? 'n/a' : `${Number(domain.riskScore)}%`}</span>
+                                </div>
+                            </header>
+                            ${domain.summary ? `<p class="sunbird-report-domain-summary">${escapeIdentityText(domain.summary)}</p>` : ''}
+                            ${domain.businessImpact ? `<p class="sunbird-report-domain-impact"><strong>Business impact:</strong> ${escapeIdentityText(domain.businessImpact)}</p>` : ''}
+                            ${findings.length ? `
+                                <div class="sunbird-report-domain-findings-list">
+                                    ${findings.map((finding, findingIndex) => {
+                                        const evidenceKey = `${domainIndex}-${findingIndex}`;
+                                        sunbirdReportDomainEvidenceMap.set(evidenceKey, { domainName, finding });
+                                        const tone = getSunbirdReportSeverityTone(finding.severity || finding.riskLevel || finding.priority || '');
+                                        const recommendation = String(finding.recommendation || '').trim();
+                                        return `
+                                            <button type="button" class="sunbird-report-domain-finding tone-${tone}" onclick="window.openSunbirdDomainFindingEvidence('${evidenceKey}')">
+                                                <div class="sunbird-report-domain-finding-head">
+                                                    <strong>${escapeIdentityText(finding.title || 'Domain finding')}</strong>
+                                                    <em>${escapeIdentityText(finding.severity || 'Observed')}</em>
+                                                </div>
+                                                ${finding.impact ? `<p>${escapeIdentityText(finding.impact)}</p>` : ''}
+                                                ${finding.whyItMatters ? `<small>${escapeIdentityText(finding.whyItMatters)}</small>` : ''}
+                                                ${recommendation ? `<small class="sunbird-report-domain-recommend">Next: ${escapeIdentityText(recommendation)}</small>` : ''}
+                                                <span class="sunbird-report-domain-evidence-cta">Open evidence (${Number(finding.evidenceCount || finding.evidence?.length || 0)})</span>
+                                            </button>
+                                        `;
+                                    }).join('')}
+                                </div>
+                            ` : ''}
+                            ${recommendations.length ? `
+                                <div class="sunbird-report-domain-rec-block">
+                                    <strong>Priority actions</strong>
+                                    <ul>${recommendations.map(item => `<li>${escapeIdentityText(item)}</li>`).join('')}</ul>
+                                </div>
+                            ` : ''}
+                        </article>
+                    `;
+                }).join('')}
+            </div>
+        </section>
+    `;
+}
+
 function renderSunbirdReportKpiButton({ key, value, label, tone, meta }) {
     return `
         <button type="button" class="sunbird-report-kpi tone-${tone}" onclick="window.openSunbirdReportEvidence('${key}')">
@@ -14374,7 +14545,7 @@ function renderSunbirdReportsCenter(data) {
 
     ${renderSunbirdReportVisualPanel(data, evidenceBuckets)}
 
-        ${renderSunbirdReportIdentityFieldSection(data)}
+        ${renderSunbirdReportDomainBreakdown(data)}
 
         ${sectionCards ? `<div class="sunbird-report-main-grid">${sectionCards}</div>` : ''}
 
@@ -14600,6 +14771,8 @@ window.renderSunbirdReportsView = renderSunbirdReportsView;
 window.loadSunbirdReportsDashboardData = loadSunbirdReportsDashboardData;
 window.openSunbirdReportEvidence = openSunbirdReportEvidence;
 window.closeSunbirdReportEvidence = closeSunbirdReportEvidence;
+window.openSunbirdDomainFindingEvidence = openSunbirdDomainFindingEvidence;
+window.closeSunbirdDomainFindingEvidence = closeSunbirdDomainFindingEvidence;
 
 async function fetchBackupCardData() {
     const project = mockProjects.find(p => p.isBackupRecoveryCard);

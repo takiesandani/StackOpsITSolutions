@@ -2899,6 +2899,7 @@ app.get('/api/cloudflare/network-security/summary', authenticateToken, async (re
 const SUNBIRD_REPORT_TIME_ZONE = 'Africa/Johannesburg';
 const SUNBIRD_REPORT_AUTOMATION_INTERVAL_MS = 60 * 60 * 1000;
 const SUNBIRD_REPORT_OVERVIEW_MAX_PAYLOAD_BYTES = 512 * 1024;
+const SUNBIRD_REPORT_DETAILS_MAX_PAYLOAD_BYTES = 1024 * 1024;
 const SUNBIRD_REPORT_OVERVIEW_MAX_ITEMS = 40;
 
 function parseReportJson(value, fallback = {}) {
@@ -3291,25 +3292,78 @@ function buildDeterministicReportAnalysis(report) {
     };
 }
 
-function buildHistoricalNarrativeFromSynthesis(output = {}) {
+function buildHistoricalNarrativeFromSynthesis(output = {}, report = null) {
+    const asNumber = value => {
+        const n = Number(value);
+        return Number.isFinite(n) ? n : null;
+    };
+    const extractTrendNumbersFromText = text => {
+        const source = String(text || '');
+        const fromTo = source.match(/from\s+(\d+(?:\.\d+)?)\s*%?\s+to\s+(\d+(?:\.\d+)?)\s*%?/i);
+        if (fromTo) {
+            return {
+                previous: asNumber(fromTo[1]),
+                current: asNumber(fromTo[2]),
+                unit: /%/.test(source) ? '%' : ''
+            };
+        }
+        const reducedBy = source.match(/(?:reduced|decreased|improved)\s+by\s+(\d+(?:\.\d+)?)\s*(percentage points?|pp|%)/i);
+        if (reducedBy) {
+            return {
+                previous: null,
+                current: null,
+                delta: -Math.abs(asNumber(reducedBy[1]) || 0),
+                unit: /pp|percentage/i.test(reducedBy[2]) ? 'pp' : '%'
+            };
+        }
+        return { previous: null, current: null, unit: '' };
+    };
     const trends = Array.isArray(output.trendAnalysis) ? output.trendAnalysis : [];
     const improved = [];
     const worsened = [];
     const unchanged = [];
+    const improvedNarratives = [];
+    const worsenedNarratives = [];
+    const stableNarratives = [];
     trends.slice(0, 20).forEach(item => {
         const title = String(item?.metricName || item?.title || item?.trend || '').trim();
         if (!title) return;
         const direction = String(item?.direction || '').toLowerCase();
-        const detailText = `${direction} ${String(item?.explanation || '')}`.toLowerCase();
+        const explanation = String(item?.explanation || item?.detail || item?.reasoning || '').trim();
+        const detailText = `${direction} ${explanation}`.toLowerCase();
+        const parsed = extractTrendNumbersFromText(explanation);
+        const explicitCurrent = asNumber(item?.currentValue ?? item?.current ?? item?.latest ?? item?.valueAfter);
+        const explicitPrevious = asNumber(item?.previousValue ?? item?.previous ?? item?.baseline ?? item?.valueBefore);
+        const currentValue = explicitCurrent ?? parsed.current;
+        const previousValue = explicitPrevious ?? parsed.previous;
+        const delta = asNumber(item?.delta ?? item?.change ?? item?.difference)
+            ?? (currentValue != null && previousValue != null ? currentValue - previousValue : parsed.delta);
+        const unit = String(item?.unit || parsed.unit || (currentValue != null || previousValue != null ? '%' : '')).trim();
+        const describeChange = () => {
+            if (currentValue != null && previousValue != null) {
+                const pp = currentValue - previousValue;
+                const suffix = unit || '%';
+                return `${title} moved from ${previousValue}${suffix} to ${currentValue}${suffix} (${pp > 0 ? '+' : ''}${pp}${suffix === '%' ? ' percentage points' : suffix}).`;
+            }
+            if (delta != null) {
+                const suffix = unit || 'pts';
+                return `${title} shifted by ${delta > 0 ? '+' : ''}${delta}${suffix}.`;
+            }
+            if (explanation) return `${title}: ${explanation}`;
+            return `${title} changed in this cycle.`;
+        };
         if (/improv|reduc|down|better|stabil|closed|resolved/.test(detailText)) {
             improved.push(title);
+            improvedNarratives.push(describeChange());
             return;
         }
         if (/worsen|increas|up|higher|declin|open|gap/.test(detailText)) {
             worsened.push(title);
+            worsenedNarratives.push(describeChange());
             return;
         }
         unchanged.push(title);
+        stableNarratives.push(explanation ? `${title}: ${explanation}` : `${title} remained materially stable.`);
     });
 
     const complianceReview = output.complianceReview || {};
@@ -3334,23 +3388,51 @@ function buildHistoricalNarrativeFromSynthesis(output = {}) {
         .map(item => String(item?.gap || item?.title || item || '').trim())
         .filter(Boolean);
 
+    const reportDate = formatReportDate(report?.period?.end || new Date());
+    const missingMfaUsers = Array.isArray(report?.identityUsers)
+        ? report.identityUsers.filter(user => !toBooleanMfa(user?.mfaEnabled ?? user?.hasMfa ?? user?.hasMfaMethod))
+        : [];
+    const totalIdentityUsers = Array.isArray(report?.identityUsers) ? report.identityUsers.length : 0;
+    const mfaCoverage = totalIdentityUsers > 0
+        ? Math.max(0, Math.min(100, Math.round(((totalIdentityUsers - missingMfaUsers.length) / totalIdentityUsers) * 100)))
+        : null;
+    const variant = (improved.length + worsened.length + remainsOpen.length + trends.length) % 3;
+    const opening = variant === 0
+        ? `On ${reportDate}, enterprise controls moved with measurable evidence shifts.`
+        : variant === 1
+            ? `As of ${reportDate}, the evidence baseline shows meaningful posture movement across domains.`
+            : `At ${reportDate}, the latest automation run confirms change patterns that can be acted on immediately.`;
+    const mfaNarrative = mfaCoverage == null
+        ? ''
+        : `${missingMfaUsers.length} identity account${missingMfaUsers.length === 1 ? '' : 's'} still lack MFA, with current MFA coverage at ${mfaCoverage}%.`;
+
+    const improvedLine = improvedNarratives.length
+        ? improvedNarratives.slice(0, 2).join(' ')
+        : (improved.length ? `Improved signals include ${improved.slice(0, 3).join(', ')}.` : 'No major control trend was explicitly marked as improved in this cycle.');
+    const worsenedLine = worsenedNarratives.length
+        ? worsenedNarratives.slice(0, 2).join(' ')
+        : (worsened.length ? `Worsening pressure is visible in ${worsened.slice(0, 3).join(', ')}.` : 'No major control trend was explicitly marked as worsened in this cycle.');
+    const stableLine = stableNarratives.length
+        ? stableNarratives.slice(0, 1).join(' ')
+        : (unchanged.length ? `Stable/open themes include ${unchanged.slice(0, 3).join(', ')}.` : 'Baseline continuity is still being established in selected areas.');
+
     return {
         whatChangedSinceLastReport: [
+            opening,
             chainCount
                 ? `${chainCount} cross-domain risk chain${chainCount === 1 ? '' : 's'} remain active across the enterprise domains.`
                 : 'No cross-domain risk chains were explicitly captured in this run.',
-            improved.length
-                ? `Improved: ${improved.slice(0, 3).join(', ')}.`
-                : 'Improved: no major control trend was explicitly marked as improved in this cycle.',
-            worsened.length
-                ? `Worsened: ${worsened.slice(0, 3).join(', ')}.`
-                : 'Worsened: no major control trend was explicitly marked as worsened in this cycle.',
-            unchanged.length
-                ? `Remains open/stable: ${unchanged.slice(0, 3).join(', ')}.`
-                : 'Remains open/stable: baseline continuity is still being established in selected areas.'
+            improvedLine,
+            worsenedLine,
+            stableLine,
+            mfaNarrative
         ].join(' '),
         historicalTrendAnalysis: trends.length
-            ? `Trend baseline comparison identified ${improved.length} improving, ${worsened.length} worsening, and ${unchanged.length} stable signal${trends.length === 1 ? '' : 's'} across the supplied historical rollups.`
+            ? [
+                `Trend baseline comparison identified ${improved.length} improving, ${worsened.length} worsening, and ${unchanged.length} stable signal${trends.length === 1 ? '' : 's'} across the supplied historical rollups.`,
+                improvedNarratives.length ? `Top improvement detail: ${improvedNarratives[0]}` : '',
+                worsenedNarratives.length ? `Top decline detail: ${worsenedNarratives[0]}` : ''
+            ].filter(Boolean).join(' ')
             : 'Trend baseline comparison: baseline unavailable or insufficient lower-period history was supplied for this cycle.',
         controlGapsAndRemediationProgress: [
             remainsOpen.length
@@ -3440,7 +3522,7 @@ function buildFinalSynthesisReportAnalysis(report, powerBiFinal = null) {
     const output = finalSynthesis.synthesisOutput || {};
     const managementReport = output.managementReport || {};
     const confidence = String(output.enterpriseExecutiveSummary?.confidence || output.evidenceJustificationSummary?.evidenceConfidence || 'medium');
-    const historical = buildHistoricalNarrativeFromSynthesis(output);
+    const historical = buildHistoricalNarrativeFromSynthesis(output, report);
     const executiveSummaryBase = String(output.enterpriseExecutiveSummary?.summary || fallback.executiveSummary);
     const executiveSummary = [
         executiveSummaryBase,
@@ -3484,6 +3566,139 @@ function buildFinalSynthesisReportAnalysis(report, powerBiFinal = null) {
         failures: report.failures.slice(0, 8),
         recommendations: report.recommendations.slice(0, 6),
         generatedBy: 'Final enterprise synthesis'
+    };
+}
+
+function buildSunbirdDomainBreakdownFromPayload(payload = {}) {
+    const domains = Array.isArray(payload?.domainInsights?.domains) ? payload.domainInsights.domains : [];
+    if (!domains.length) return [];
+
+    const asText = (value, fallback = '') => {
+        if (value == null) return fallback;
+        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value).trim() || fallback;
+        if (Array.isArray(value)) return value.map(item => asText(item)).filter(Boolean).join('; ') || fallback;
+        return asText(value.title || value.name || value.summary || value.detail || value.description || value.message, fallback);
+    };
+    const scoreOrNull = value => {
+        const n = Number(value);
+        return Number.isFinite(n) ? clampReportScore(n) : null;
+    };
+    const normalizeEvidence = evidence => {
+        const source = evidence && typeof evidence === 'object' ? evidence : { value: evidence };
+        const name = asText(
+            source.entityName || source.displayName || source.entityDisplayName || source.userPrincipalName || source.entityEmail || source.mail || source.deviceName || source.entityDeviceName || source.controlName || source.label || source.title || source.sourceMetric || source.value,
+            'Evidence item'
+        );
+        const detail = asText([
+            source.description || source.detail || source.evidenceSummary || source.reasoning || source.impact,
+            source.location ? `Location: ${source.location}` : '',
+            source.device ? `Device: ${source.device}` : '',
+            source.lastSignIn?.location ? `Sign-in location: ${source.lastSignIn.location}` : '',
+            source.lastSignIn?.device ? `Sign-in device: ${source.lastSignIn.device}` : '',
+            source.lastSignIn?.daysSince == null || source.lastSignIn?.daysSince === '' ? '' : `${source.lastSignIn.daysSince} days since sign-in`
+        ].filter(Boolean).join(' | '));
+        return {
+            name: shortText(name, 220),
+            detail: shortText(detail || asText(source.evidenceSource || source.source || source.sourceMetric || source.status || source.state, ''), 360),
+            severity: shortText(asText(source.severity || source.riskLevel || source.priority || ''), 80),
+            status: shortText(asText(source.status || source.state || source.complianceState || ''), 120),
+            source: shortText(asText(source.sourceMetric || source.evidenceSource || source.source || source.category || ''), 160)
+        };
+    };
+
+    return compactSunbirdDashboardValue(domains.slice(0, 12).map(domain => {
+        const output = domain?.intelligenceOutput || domain?.output || {};
+        const risks = Array.isArray(output.risks) ? output.risks : [];
+        const keyFindings = Array.isArray(output.keyFindings) ? output.keyFindings : [];
+        const explicitFindings = Array.isArray(output.findings) ? output.findings : [];
+        const rawFindings = [...explicitFindings, ...risks, ...keyFindings];
+        const dedupe = new Set();
+        const findings = rawFindings
+            .map((item, index) => {
+                const title = asText(item?.title || item?.patternFound || item?.controlName || item?.metricName, 'Domain finding');
+                const key = `${String(title).toLowerCase()}|${String(item?.description || item?.detail || '').toLowerCase()}`;
+                if (dedupe.has(key)) return null;
+                dedupe.add(key);
+
+                const evidencePool = [
+                    ...(Array.isArray(item?.evidenceRecords) ? item.evidenceRecords : []),
+                    ...(Array.isArray(item?.affectedEntities) ? item.affectedEntities : []),
+                    ...(Array.isArray(item?.evidenceRows) ? item.evidenceRows : []),
+                    ...(Array.isArray(item?.evidenceUsed) ? item.evidenceUsed : []),
+                    ...(Array.isArray(item?.evidence) ? item.evidence : [])
+                ];
+                const uniqueEvidence = [];
+                const evidenceSeen = new Set();
+                evidencePool.forEach(row => {
+                    const normalized = normalizeEvidence(row);
+                    const evidenceKey = `${normalized.name}|${normalized.detail}`.toLowerCase();
+                    if (!evidenceKey || evidenceSeen.has(evidenceKey)) return;
+                    evidenceSeen.add(evidenceKey);
+                    uniqueEvidence.push(normalized);
+                });
+
+                return {
+                    findingId: `${String(domain?.domainKey || domain?.domainName || 'domain').toLowerCase()}-${index + 1}`,
+                    title: shortText(title, 260),
+                    severity: shortText(asText(item?.severity || item?.priority || item?.riskLevel || item?.impact || 'Observed'), 80),
+                    impact: shortText(asText(item?.impact || item?.businessImpact || item?.description || item?.detail), 900),
+                    whyItMatters: shortText(asText(item?.whyItMatters || item?.reasoning || item?.businessImpact || item?.impact), 900),
+                    recommendation: shortText(asText(item?.firstAction || item?.recommendedAction || item?.recommendation || item?.remediationAction || item?.detail), 900),
+                    sourceMetric: shortText(asText(item?.sourceMetric || ''), 120),
+                    evidenceCount: Number(item?.evidenceRecordCount || item?.entityCount || uniqueEvidence.length || 0),
+                    evidence: uniqueEvidence.slice(0, 30)
+                };
+            })
+            .filter(Boolean)
+            .slice(0, 12);
+
+        const recommendations = (Array.isArray(output.recommendations) ? output.recommendations : [])
+            .map(item => shortText(asText(item?.title || item?.firstAction || item?.recommendation || item?.detail || item), 420))
+            .filter(Boolean)
+            .slice(0, 8);
+
+        return {
+            domainKey: shortText(asText(domain?.domainKey || ''), 120),
+            domainName: shortText(asText(domain?.domainName || domain?.domainKey || 'Domain'), 180),
+            healthScore: scoreOrNull(output?.healthScore ?? output?.authoritativeScores?.healthScore ?? output?.scoreSummary?.healthScore ?? domain?.healthScore ?? domain?.score),
+            riskScore: scoreOrNull(output?.riskScore ?? output?.authoritativeScores?.riskScore ?? output?.scoreSummary?.riskScore ?? domain?.riskScore),
+            riskLevel: shortText(asText(output?.riskLevel || output?.authoritativeScores?.riskLevel || output?.scoreSummary?.riskLevel || ''), 80),
+            summary: shortText(asText(output?.domainExecutiveSummary || output?.executiveSummary || output?.technicalSummary || output?.currentPosture || ''), 1200),
+            businessImpact: shortText(asText(output?.businessImpact || output?.businessImpactSummary || ''), 1200),
+            recommendations,
+            findings
+        };
+    }));
+}
+
+function buildSunbirdLatestReportSnapshot(reportRow = null) {
+    if (!reportRow) return null;
+    const payload = parseReportJson(reportRow.Payload, {});
+    const summary = payload?.summary || {};
+    const analysis = payload?.analysis || {};
+    const generatedWithAi = Number(reportRow?.HasIntelligence) === 1 || payload?.generatedWithAi === true || /Final enterprise synthesis/i.test(String(analysis?.generatedBy || ''));
+    return {
+        id: reportRow.ID,
+        type: reportRow.ReportType,
+        periodStart: reportRow.PeriodStart,
+        periodEnd: reportRow.PeriodEnd,
+        createdAt: reportRow.CreatedAt,
+        healthScore: clampReportScore(reportRow.HealthScore ?? summary.healthScore ?? 0),
+        generatedWithAi,
+        summary: {
+            healthScore: clampReportScore(summary.healthScore ?? reportRow.HealthScore ?? 0),
+            failures: Number(summary.failures || payload?.failures?.length || analysis?.failures?.length || 0),
+            successes: Number(summary.successes || payload?.successes?.length || analysis?.successes?.length || 0),
+            totalEvents: Number(summary.totalEvents || payload?.events?.length || 0),
+            status: shortText(summary.status || reportRow.ReportStatus || 'Collected', 120)
+        },
+        analysis: {
+            executiveSummary: shortText(analysis.executiveSummary || '', SUNBIRD_DASHBOARD_MAX_STRING_LENGTH),
+            businessImpactSummary: shortText(analysis.businessImpactSummary || '', SUNBIRD_DASHBOARD_MAX_STRING_LENGTH),
+            boardReportSummary: shortText(analysis.boardReportSummary || '', SUNBIRD_DASHBOARD_MAX_STRING_LENGTH),
+            historicalChanges: compactSunbirdDashboardValue(analysis.historicalChanges || {})
+        },
+        domainBreakdown: buildSunbirdDomainBreakdownFromPayload(payload)
     };
 }
 
@@ -5412,6 +5627,20 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
              LIMIT 1`,
             [SUNBIRD_REPORT_OVERVIEW_MAX_PAYLOAD_BYTES, context.companyId]
         );
+        const [detailedRows] = await pool.query(
+            `SELECT ID, ReportType, PeriodStart, PeriodEnd, HealthScore, ReportStatus, CreatedAt,
+                    CASE WHEN OCTET_LENGTH(Payload) <= ? THEN Payload ELSE NULL END AS Payload,
+                    CASE WHEN (
+                        LOCATE('"generatedWithAi":true', Payload) > 0
+                        OR LOCATE('"finalSynthesis"', Payload) > 0
+                        OR LOCATE('Final enterprise synthesis', Payload) > 0
+                    ) THEN 1 ELSE 0 END AS HasIntelligence
+             FROM SunbirdReports
+             WHERE CompanyID = ?
+             ORDER BY CreatedAt DESC
+             LIMIT 8`,
+            [SUNBIRD_REPORT_DETAILS_MAX_PAYLOAD_BYTES, context.companyId]
+        );
                 const [intelligentOverviewRows] = await pool.query(
                         `SELECT HealthScore, ReportStatus,
                                         CASE WHEN OCTET_LENGTH(Payload) <= ? THEN Payload ELSE NULL END AS Payload
@@ -5441,6 +5670,12 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
             await fetchSunbirdIdentityDomainIntelligence(context.companyId)
         );
         operation.step('identity_intelligence_loaded', { risks: identityDomain.intelligenceOutput.risks.length });
+        const preferredDetailedRow =
+            detailedRows.find(row => Number(row.HasIntelligence) === 1 && parseReportJson(row.Payload, null)?.domainInsights?.domains?.length) ||
+            detailedRows.find(row => parseReportJson(row.Payload, null)?.domainInsights?.domains?.length) ||
+            detailedRows[0] ||
+            null;
+        const latestReport = buildSunbirdLatestReportSnapshot(preferredDetailedRow);
         const overview = buildSunbirdReportListOverview(intelligentOverviewRows[0] || overviewRows[0] || rows[0]);
         await writeSunbirdReportLog({
             companyId: context.companyId,
@@ -5465,6 +5700,7 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
             },
             range: { start: range.start, end: range.end },
             overview,
+            latestReport,
             identityDomain,
             reports: rows.map(serializeReportListRow),
             logs: logRows.map(serializeReportAuditLog)
