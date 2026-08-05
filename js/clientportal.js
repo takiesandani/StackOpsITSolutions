@@ -13352,6 +13352,157 @@ function getSunbirdReportItemDetail(item) {
     return typeof item === 'string' ? '' : item?.detail || '';
 }
 
+function isSunbirdTechnicalNoiseText(value) {
+    const text = String(value || '').toLowerCase();
+    if (!text) return false;
+    return [
+        'failed_source_mismatch',
+        'failed_invalid_json',
+        'failed_rate_limited',
+        'failed_terminal',
+        'json parse failed',
+        'invalid_json',
+        'azure response',
+        'sqlstate',
+        'econnreset',
+        'connection_reset',
+        'timeout',
+        'stack trace',
+        'internalSourcePath'.toLowerCase(),
+        'debugsourcepath',
+        'batch accounting failed',
+        'rawresponsepreview',
+        'token threshold'
+    ].some(marker => text.includes(marker));
+}
+
+function filterSunbirdInsightItems(items = []) {
+    return (Array.isArray(items) ? items : [])
+        .filter(item => {
+            const title = getSunbirdReportItemTitle(item);
+            const detail = getSunbirdReportItemDetail(item);
+            const rawStatus = typeof item === 'object' ? String(item?.status || item?.state || '') : '';
+            if (isSunbirdTechnicalNoiseText(`${title} ${detail}`)) return false;
+            if (/^(failed_source_mismatch|failed_invalid_json|failed_terminal|failed_rate_limited)$/i.test(rawStatus)) return false;
+            return true;
+        });
+}
+
+function formatSunbirdExecutiveSummaryHtml(summaryText = '') {
+    const text = String(summaryText || '').trim();
+    if (!text) {
+        return '<p>No executive summary is available.</p>';
+    }
+    const markers = [
+        { key: 'What changed since the last report:', label: 'What changed since the last report' },
+        { key: 'Historical trend analysis:', label: 'Historical trend analysis' },
+        { key: 'Control gaps and remediation progress:', label: 'Control gaps and remediation progress' },
+        { key: 'Confidence:', label: 'Confidence' }
+    ];
+    const positions = markers
+        .map(marker => ({ ...marker, index: text.indexOf(marker.key) }))
+        .filter(marker => marker.index >= 0)
+        .sort((left, right) => left.index - right.index);
+
+    if (!positions.length) {
+        return `<p>${escapeIdentityText(text)}</p>`;
+    }
+
+    const intro = text.slice(0, positions[0].index).trim();
+    const sections = positions.map((marker, index) => {
+        const start = marker.index + marker.key.length;
+        const end = index + 1 < positions.length ? positions[index + 1].index : text.length;
+        const value = text.slice(start, end).trim();
+        return { label: marker.label, value };
+    }).filter(section => section.value && !isSunbirdTechnicalNoiseText(section.value));
+
+    const introHtml = intro ? `<p>${escapeIdentityText(intro)}</p>` : '';
+    const sectionHtml = sections.map(section => `
+        <article class="sunbird-report-exec-section">
+            <strong>${escapeIdentityText(section.label)}</strong>
+            <p>${escapeIdentityText(section.value)}</p>
+        </article>
+    `).join('');
+
+    return `<div class="sunbird-report-exec-summary">${introHtml}${sectionHtml}</div>`;
+}
+
+function renderSunbirdReportVisualPanel(data = {}, buckets = getSunbirdReportEvidenceBuckets(data)) {
+    const summary = data.overview?.summary || {};
+    const reports = Array.isArray(data.reports) ? data.reports : [];
+    const domainScores = data.overview?.domainScores || {};
+    const domainRows = Object.entries(domainScores)
+        .filter(([, value]) => value != null && Number.isFinite(Number(value)))
+        .map(([key, value]) => ({
+            key,
+            score: Math.max(0, Math.min(100, Number(value))),
+            label: key.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())
+        }))
+        .sort((left, right) => right.score - left.score)
+        .slice(0, 8);
+
+    const failures = Math.max(0, Number(summary.failures || buckets.problems.length || 0));
+    const successes = Math.max(0, Number(summary.successes || buckets.successes.length || 0));
+    const actions = Math.max(0, Number(buckets.recommendations.length || 0));
+    const totalPie = Math.max(1, failures + successes + actions);
+    const failuresPct = Math.round((failures / totalPie) * 100);
+    const successesPct = Math.round((successes / totalPie) * 100);
+    const actionsPct = Math.max(0, 100 - failuresPct - successesPct);
+
+    const trendPoints = reports
+        .slice()
+        .sort((left, right) => new Date(left.periodEnd || left.createdAt || 0) - new Date(right.periodEnd || right.createdAt || 0))
+        .slice(-8)
+        .map((report, index, all) => {
+            const score = Math.max(0, Math.min(100, Number(report.healthScore || report.summary?.healthScore || 0)));
+            const x = all.length === 1 ? 8 : (index / (all.length - 1)) * 92 + 4;
+            const y = 100 - score;
+            return { x: Number(x.toFixed(2)), y: Number(y.toFixed(2)), score, date: report.periodEnd || report.createdAt };
+        });
+
+    if (!domainRows.length && !trendPoints.length) return '';
+
+    const trendPath = trendPoints.map(point => `${point.x},${point.y}`).join(' ');
+    const latestTrend = trendPoints[trendPoints.length - 1];
+
+    return `
+        <section class="sunbird-report-visual-panel">
+            <div class="sunbird-report-card-title">
+                <span><i class="fas fa-chart-pie"></i> Live metrics and charts</span>
+                <small>Real-time evidence only</small>
+            </div>
+            <div class="sunbird-report-visual-grid">
+                <article class="sunbird-report-pie-card">
+                    <div class="sunbird-report-pie" style="--fail:${failuresPct};--success:${successesPct};--actions:${actionsPct};"></div>
+                    <div class="sunbird-report-pie-legend">
+                        <span><i class="tone-fail"></i> Failures ${failures}</span>
+                        <span><i class="tone-success"></i> Successes ${successes}</span>
+                        <span><i class="tone-action"></i> Actions ${actions}</span>
+                    </div>
+                </article>
+                <article class="sunbird-report-trend-card">
+                    <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Health trend">
+                        <polyline points="${escapeIdentityText(trendPath)}" />
+                    </svg>
+                    <div class="sunbird-report-trend-meta">
+                        <span>Health trend (${trendPoints.length || 0} report${trendPoints.length === 1 ? '' : 's'})</span>
+                        <strong>${latestTrend ? `${latestTrend.score}%` : 'No data'}</strong>
+                    </div>
+                </article>
+                <article class="sunbird-report-domain-bars">
+                    ${domainRows.map(domain => `
+                        <div class="sunbird-report-domain-bar-row">
+                            <span>${escapeIdentityText(domain.label)}</span>
+                            <div><i style="width:${domain.score}%"></i></div>
+                            <strong>${domain.score}%</strong>
+                        </div>
+                    `).join('')}
+                </article>
+            </div>
+        </section>
+    `;
+}
+
 function getSunbirdReportEvidenceBuckets(data = cachedSunbirdReportsData || {}) {
     const overview = data.overview || {};
     const analysis = overview.analysis || {};
@@ -13363,10 +13514,10 @@ function getSunbirdReportEvidenceBuckets(data = cachedSunbirdReportsData || {}) 
             ? overview.failures
             : events.filter(event => ['critical', 'high'].includes(String(event.severity || '').toLowerCase()));
     return {
-        problems: [...cloudflareSignals.reportProblems, ...problems],
-        successes: Array.isArray(analysis.successes) && analysis.successes.length ? analysis.successes : (overview.successes || []),
-        recommendations: [...cloudflareSignals.reportRecommendations, ...(Array.isArray(analysis.recommendations) && analysis.recommendations.length ? analysis.recommendations : (overview.recommendations || []))],
-        events: [...cloudflareSignals.reportEvents, ...events]
+        problems: filterSunbirdInsightItems([...cloudflareSignals.reportProblems, ...problems]),
+        successes: filterSunbirdInsightItems(Array.isArray(analysis.successes) && analysis.successes.length ? analysis.successes : (overview.successes || [])),
+        recommendations: filterSunbirdInsightItems([...cloudflareSignals.reportRecommendations, ...(Array.isArray(analysis.recommendations) && analysis.recommendations.length ? analysis.recommendations : (overview.recommendations || []))]),
+        events: filterSunbirdInsightItems([...cloudflareSignals.reportEvents, ...events])
     };
 }
 
@@ -14060,8 +14211,9 @@ function renderSunbirdReportDomainScores(scores = {}) {
 }
 
 function renderSunbirdReportInsightList(items = [], tone = 'neutral', emptyText = 'Nothing recorded', key = '') {
-    if (!items.length) return `<div class="sunbird-report-empty">${escapeIdentityText(emptyText)}</div>`;
-    return items.slice(0, 6).map(item => {
+    const filteredItems = filterSunbirdInsightItems(items);
+    if (!filteredItems.length) return `<div class="sunbird-report-empty">${escapeIdentityText(emptyText)}</div>`;
+    return filteredItems.slice(0, 6).map(item => {
         const ownerStatus = getSunbirdReportOwnerStatus(item, key);
         return `
             <article class="sunbird-report-insight tone-${tone}">
@@ -14098,14 +14250,15 @@ function renderSunbirdReportHistoryRows(reports = []) {
 }
 
 function renderSunbirdReportAuditRows(logs = []) {
-    if (!logs.length) return '<div class="sunbird-report-empty">No report automation logs are available for this period.</div>';
+    const filteredLogs = (Array.isArray(logs) ? logs : []).filter(log => !isSunbirdTechnicalNoiseText(`${log?.message || ''} ${log?.eventType || ''}`));
+    if (!filteredLogs.length) return '<div class="sunbird-report-empty">No report automation logs are available for this period.</div>';
     const iconByStatus = {
         success: 'fa-check',
         failed: 'fa-xmark',
         started: 'fa-ellipsis',
         info: 'fa-circle-info'
     };
-    return logs.slice(0, 80).map(log => `
+    return filteredLogs.slice(0, 80).map(log => `
         <article class="sunbird-report-log-row tone-${escapeIdentityText(log.status || 'info')}">
             <span class="sunbird-report-log-icon"><i class="fas ${iconByStatus[log.status] || 'fa-circle-info'}"></i></span>
             <div>
@@ -14118,8 +14271,9 @@ function renderSunbirdReportAuditRows(logs = []) {
 }
 
 function renderSunbirdReportEventRows(events = []) {
-    if (!events.length) return '<tr><td colspan="6" class="sunbird-id-empty">No timestamped problems or activity were recorded.</td></tr>';
-    return events.slice(0, 40).map(event => `
+    const filteredEvents = filterSunbirdInsightItems(events);
+    if (!filteredEvents.length) return '<tr><td colspan="6" class="sunbird-id-empty">No timestamped problems or activity were recorded.</td></tr>';
+    return filteredEvents.slice(0, 40).map(event => `
         <tr>
             <td>${escapeIdentityText(formatSunbirdReportDate(event.timestamp, true))}</td>
             <td><span class="sunbird-severity-pill ${escapeIdentityText(event.severity || 'low')}">${escapeIdentityText(event.severity || 'info')}</span></td>
@@ -14139,6 +14293,44 @@ function renderSunbirdReportsCenter(data) {
     const analysis = overview.analysis || {};
     const settings = data.settings || {};
     const evidenceBuckets = getSunbirdReportEvidenceBuckets(data);
+    const successItems = filterSunbirdInsightItems(analysis.successes || overview.successes || []);
+    const failureItems = filterSunbirdInsightItems(analysis.failures || overview.failures || []);
+    const recommendationItems = filterSunbirdInsightItems(analysis.recommendations || overview.recommendations || []);
+    const domainScoreItems = Object.values(overview.domainScores || {}).filter(value => value != null);
+    const visibleLogs = (Array.isArray(data.logs) ? data.logs : []).filter(log => !isSunbirdTechnicalNoiseText(`${log?.message || ''} ${log?.eventType || ''}`));
+    const visibleEvents = filterSunbirdInsightItems(overview.events || []);
+    const sectionCards = [
+        successItems.length ? `
+            <article class="sunbird-report-section-card">
+                <div class="sunbird-report-card-title"><span>What went well</span><small>${successItems.length} outcomes</small></div>
+                <div class="sunbird-report-insight-list">
+                    ${renderSunbirdReportInsightList(successItems, 'success', 'No confirmed successes yet.', 'successes')}
+                </div>
+            </article>
+        ` : '',
+        failureItems.length ? `
+            <article class="sunbird-report-section-card">
+                <div class="sunbird-report-card-title"><span>Failures and attention</span><small>${failureItems.length} items</small></div>
+                <div class="sunbird-report-insight-list">
+                    ${renderSunbirdReportInsightList(failureItems, 'failure', 'No failures were recorded.', 'problems')}
+                </div>
+            </article>
+        ` : '',
+        recommendationItems.length ? `
+            <article class="sunbird-report-section-card">
+                <div class="sunbird-report-card-title"><span>Recommended next actions</span><small>Prioritized</small></div>
+                <div class="sunbird-report-insight-list">
+                    ${renderSunbirdReportInsightList(recommendationItems, 'neutral', 'No actions are required.', 'recommendations')}
+                </div>
+            </article>
+        ` : '',
+        domainScoreItems.length ? `
+            <article class="sunbird-report-section-card">
+                <div class="sunbird-report-card-title"><span>Domain health</span><small>Latest evidence</small></div>
+                <div class="sunbird-report-domains">${renderSunbirdReportDomainScores(overview.domainScores || {})}</div>
+            </article>
+        ` : ''
+    ].filter(Boolean).join('');
     content.innerHTML = `
         <div class="sunbird-report-hero-grid">
             <article class="sunbird-report-health-card tone-${getSunbirdReportScoreTone(summary.healthScore)}">
@@ -14154,7 +14346,7 @@ function renderSunbirdReportsCenter(data) {
 
             <article class="sunbird-report-ai-card">
                 <div class="sunbird-report-card-title"><span><i class="fas fa-sparkles"></i> Executive brief</span><small>Latest evidence summary</small></div>
-                <p>${escapeIdentityText(analysis.executiveSummary || 'No executive summary is available.')}</p>
+                ${formatSunbirdExecutiveSummaryHtml(analysis.executiveSummary || '')}
                 <div class="sunbird-report-ai-stats">
                     <span><strong>${Number(summary.failures || 0)}</strong> failures</span>
                     <span><strong>${Number(summary.successes || 0)}</strong> successes</span>
@@ -14180,32 +14372,11 @@ function renderSunbirdReportsCenter(data) {
 
         ${renderSunbirdReportValuePanel(data, evidenceBuckets)}
 
+    ${renderSunbirdReportVisualPanel(data, evidenceBuckets)}
+
         ${renderSunbirdReportIdentityFieldSection(data)}
 
-        <div class="sunbird-report-main-grid">
-            <article class="sunbird-report-section-card">
-                <div class="sunbird-report-card-title"><span>What went well</span><small>${(overview.successes || []).length} outcomes</small></div>
-                <div class="sunbird-report-insight-list">
-                    ${renderSunbirdReportInsightList(analysis.successes || overview.successes || [], 'success', 'No confirmed successes yet.', 'successes')}
-                </div>
-            </article>
-            <article class="sunbird-report-section-card">
-                <div class="sunbird-report-card-title"><span>Failures and attention</span><small>${(overview.failures || []).length} items</small></div>
-                <div class="sunbird-report-insight-list">
-                    ${renderSunbirdReportInsightList(analysis.failures || overview.failures || [], 'failure', 'No failures were recorded.', 'problems')}
-                </div>
-            </article>
-            <article class="sunbird-report-section-card">
-                <div class="sunbird-report-card-title"><span>Recommended next actions</span><small>Prioritized</small></div>
-                <div class="sunbird-report-insight-list">
-                    ${renderSunbirdReportInsightList(analysis.recommendations || overview.recommendations || [], 'neutral', 'No actions are required.', 'recommendations')}
-                </div>
-            </article>
-            <article class="sunbird-report-section-card">
-                <div class="sunbird-report-card-title"><span>Domain health</span><small>Latest evidence</small></div>
-                <div class="sunbird-report-domains">${renderSunbirdReportDomainScores(overview.domainScores || {})}</div>
-            </article>
-        </div>
+        ${sectionCards ? `<div class="sunbird-report-main-grid">${sectionCards}</div>` : ''}
 
         <section class="sunbird-id-table-section sunbird-report-table-section">
             <div class="sunbird-report-table-heading">
@@ -14220,15 +14391,15 @@ function renderSunbirdReportsCenter(data) {
             </div>
         </section>
 
-        <section class="sunbird-report-log-section">
+        ${visibleLogs.length ? `<section class="sunbird-report-log-section">
             <div class="sunbird-report-table-heading">
                 <div><h3>Report automation log</h3><p>Collection, generation, downloads, settings, and email delivery activity.</p></div>
-                <span>${Number(data.logs?.length || 0)} log entries</span>
+                <span>${Number(visibleLogs.length || 0)} log entries</span>
             </div>
-            <div class="sunbird-report-log-list">${renderSunbirdReportAuditRows(data.logs || [])}</div>
-        </section>
+            <div class="sunbird-report-log-list">${renderSunbirdReportAuditRows(visibleLogs)}</div>
+        </section>` : ''}
 
-        <section class="sunbird-id-table-section sunbird-report-table-section">
+        ${visibleEvents.length ? `<section class="sunbird-id-table-section sunbird-report-table-section">
             <div class="sunbird-report-table-heading">
                 <div><h3>Evidence timeline</h3><p>What happened, when it happened, and where it came from.</p></div>
                 <span>${escapeIdentityText(formatSunbirdReportDate(data.range?.start))} - ${escapeIdentityText(formatSunbirdReportDate(data.range?.end))}</span>
@@ -14236,10 +14407,10 @@ function renderSunbirdReportsCenter(data) {
             <div class="sunbird-id-table-wrap">
                 <table class="sunbird-id-table sunbird-report-events-table">
                     <thead><tr><th>Time</th><th>Severity</th><th>Event</th><th>Source</th><th>Status</th><th>User / asset</th></tr></thead>
-                    <tbody>${renderSunbirdReportEventRows(overview.events || [])}</tbody>
+                    <tbody>${renderSunbirdReportEventRows(visibleEvents)}</tbody>
                 </table>
             </div>
-        </section>
+        </section>` : ''}
     `;
 }
 
@@ -14298,7 +14469,7 @@ function openSunbirdReportsDashboard() {
     loadSunbirdReportsDashboardData(false);
 }
 
-window.generateSunbirdReport = async function(range = sunbirdReportsRange, downloadWhenReady = true, includeAi = false) {
+window.generateSunbirdReport = async function(range = sunbirdReportsRange, downloadWhenReady = true, includeAi = true) {
     const button = document.getElementById(includeAi ? 'sunbird-report-intelligent-btn' : 'sunbird-report-generate-btn');
     const original = button?.innerHTML;
     if (button) {

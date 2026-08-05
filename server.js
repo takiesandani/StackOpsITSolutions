@@ -2133,6 +2133,7 @@ async function ensureDatabaseSchema() {
                 ActiveSince DATETIME DEFAULT CURRENT_TIMESTAMP,
                 LastDailyCollectionDate DATE DEFAULT NULL,
                 LastWeeklyReportDate DATE DEFAULT NULL,
+                LastAutomationStartNoticeDate DATE DEFAULT NULL,
                 UpdatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 FOREIGN KEY (CompanyID) REFERENCES Companies(ID)
             )
@@ -2145,6 +2146,15 @@ async function ensureDatabaseSchema() {
             }
         } catch (err) {
             console.warn('[Database] SunbirdReportSettings RecipientConfirmed migration attempted:', err.message);
+        }
+
+        try {
+            const [reportSettingsNoticeColumns] = await pool.query("SHOW COLUMNS FROM SunbirdReportSettings LIKE 'LastAutomationStartNoticeDate'");
+            if (reportSettingsNoticeColumns.length === 0) {
+                await pool.query("ALTER TABLE SunbirdReportSettings ADD COLUMN LastAutomationStartNoticeDate DATE DEFAULT NULL AFTER LastWeeklyReportDate");
+            }
+        } catch (err) {
+            console.warn('[Database] SunbirdReportSettings LastAutomationStartNoticeDate migration attempted:', err.message);
         }
 
         await pool.query(`
@@ -3434,11 +3444,11 @@ function buildFinalSynthesisReportAnalysis(report, powerBiFinal = null) {
     const executiveSummaryBase = String(output.enterpriseExecutiveSummary?.summary || fallback.executiveSummary);
     const executiveSummary = [
         executiveSummaryBase,
-        `What changed since the last report: ${historical.whatChangedSinceLastReport}`,
-        `Historical trend analysis: ${historical.historicalTrendAnalysis}`,
-        `Control gaps and remediation progress: ${historical.controlGapsAndRemediationProgress}`,
-        `Confidence: ${confidence}.`
-    ].filter(Boolean).join(' ');
+        `What changed since the last report:\n${historical.whatChangedSinceLastReport}`,
+        `Historical trend analysis:\n${historical.historicalTrendAnalysis}`,
+        `Control gaps and remediation progress:\n${historical.controlGapsAndRemediationProgress}`,
+        `Confidence:\n${confidence}.`
+    ].filter(Boolean).join('\n\n');
     const resolvedEvents = Array.isArray(report.events)
         ? report.events.filter(event => ['resolved', 'closed', 'success', 'succeeded', 'healthy'].includes(String(event.status || '').toLowerCase()))
         : [];
@@ -5402,6 +5412,20 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
              LIMIT 1`,
             [SUNBIRD_REPORT_OVERVIEW_MAX_PAYLOAD_BYTES, context.companyId]
         );
+                const [intelligentOverviewRows] = await pool.query(
+                        `SELECT HealthScore, ReportStatus,
+                                        CASE WHEN OCTET_LENGTH(Payload) <= ? THEN Payload ELSE NULL END AS Payload
+                         FROM SunbirdReports
+                         WHERE CompanyID = ?
+                             AND (
+                                        LOCATE('"generatedWithAi":true', Payload) > 0
+                                        OR LOCATE('"finalSynthesis"', Payload) > 0
+                                        OR LOCATE('Final enterprise synthesis', Payload) > 0
+                             )
+                         ORDER BY CreatedAt DESC
+                         LIMIT 1`,
+                        [SUNBIRD_REPORT_OVERVIEW_MAX_PAYLOAD_BYTES, context.companyId]
+                );
         const [logRows] = await pool.query(
             `SELECT ID, ReportID, EventType, EventStatus, Message,
                     CASE WHEN OCTET_LENGTH(Metadata) <= 16384 THEN Metadata ELSE NULL END AS Metadata,
@@ -5417,7 +5441,7 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
             await fetchSunbirdIdentityDomainIntelligence(context.companyId)
         );
         operation.step('identity_intelligence_loaded', { risks: identityDomain.intelligenceOutput.risks.length });
-        const overview = buildSunbirdReportListOverview(overviewRows[0] || rows[0]);
+        const overview = buildSunbirdReportListOverview(intelligentOverviewRows[0] || overviewRows[0] || rows[0]);
         await writeSunbirdReportLog({
             companyId: context.companyId,
             eventType: 'report_center_viewed',
@@ -5743,6 +5767,25 @@ async function sendWeeklySunbirdReport(companyId, settings, reportRecord) {
     });
 }
 
+async function sendSunbirdAutomationStartNotice(companyId, companyName, localDate) {
+    const recipient = 'maambelanduni@stackopsit.co.za';
+    const subject = `StackCTRL automation started | ${companyName} | ${localDate}`;
+    const html = renderCorporateEmail({
+        title: 'Daily StackCTRL automation started',
+        greeting: 'Dear Maambelanduni,',
+        bodyHtml: `
+            <p>The daily Sunbird automation cycle has started successfully.</p>
+            <div style="margin:18px 0;padding:16px;border:1px solid #d9e1e8;border-left:4px solid #f97316;background:#f7f9fb;">
+                <p style="margin:0 0 8px;"><strong>Company:</strong> ${escapeHtml(companyName || `Company #${companyId}`)}</p>
+                <p style="margin:0 0 8px;"><strong>Cycle date:</strong> ${escapeHtml(localDate)}</p>
+                <p style="margin:0;"><strong>Status:</strong> Started</p>
+            </div>
+            <p>This notification confirms start-of-day activation. Report generation and delivery will continue through the configured automation schedule.</p>
+        `
+    });
+    await sendEmail(recipient, subject, html, true);
+}
+
 async function runSunbirdReportAutomation() {
     if (!pool) return;
     const now = new Date();
@@ -5756,10 +5799,26 @@ async function runSunbirdReportAutomation() {
             const settings = await ensureSunbirdReportSettings(companyId, null);
             const chosenRecipients = normalizeReportRecipientEmails(settings.RecipientEmail);
             const recipientConfirmed = Number(settings.RecipientConfirmed) === 1;
+            const [companyRows] = await pool.query('SELECT CompanyName FROM Companies WHERE ID = ? LIMIT 1', [companyId]);
+            const companyName = companyRows[0]?.CompanyName || `Company #${companyId}`;
             const lastDaily = settings.LastDailyCollectionDate
                 ? new Date(settings.LastDailyCollectionDate).toISOString().slice(0, 10)
                 : null;
+            const lastAutomationStartNoticeDate = settings.LastAutomationStartNoticeDate
+                ? new Date(settings.LastAutomationStartNoticeDate).toISOString().slice(0, 10)
+                : null;
             if (lastDaily !== localDate) {
+                if (lastAutomationStartNoticeDate !== localDate) {
+                    try {
+                        await sendSunbirdAutomationStartNotice(companyId, companyName, localDate);
+                        await pool.query(
+                            'UPDATE SunbirdReportSettings SET LastAutomationStartNoticeDate = ? WHERE CompanyID = ?',
+                            [localDate, companyId]
+                        );
+                    } catch (noticeError) {
+                        console.warn(`[Reports Automation] Start notice email failed for company ${companyId}:`, noticeError.message);
+                    }
+                }
                 const dayStart = new Date(now);
                 dayStart.setUTCDate(dayStart.getUTCDate() - 1);
                 try {
