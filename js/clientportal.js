@@ -13437,16 +13437,29 @@ function formatSunbirdExecutiveSummaryHtml(summaryText = '') {
 function renderSunbirdReportVisualPanel(data = {}, buckets = getSunbirdReportEvidenceBuckets(data)) {
     const summary = data.overview?.summary || {};
     const reports = Array.isArray(data.reports) ? data.reports : [];
+    const latestDomains = Array.isArray(data.latestReport?.domainBreakdown) ? data.latestReport.domainBreakdown : [];
     const domainScores = data.overview?.domainScores || {};
-    const domainRows = Object.entries(domainScores)
+    const sourceDomainScores = Object.keys(domainScores).length
+        ? domainScores
+        : Object.fromEntries(latestDomains.map(domain => [domain.domainKey || domain.domainName, domain.healthScore]));
+    const domainRows = Object.entries(sourceDomainScores)
         .filter(([, value]) => value != null && Number.isFinite(Number(value)))
         .map(([key, value]) => ({
             key,
             score: Math.max(0, Math.min(100, Number(value))),
             label: key.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())
         }))
-        .sort((left, right) => right.score - left.score)
-        .slice(0, 8);
+        .sort((left, right) => right.score - left.score);
+
+    const rawMetricRows = latestDomains
+        .flatMap(domain => Object.entries(domain.rawMetrics || {}).map(([metric, value]) => ({
+            domain: getSunbirdReportDomainName(domain),
+            metric: metric.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').trim(),
+            value: Math.max(0, Number(value || 0))
+        })))
+        .filter(metric => Number.isFinite(metric.value) && metric.value >= 0)
+        .sort((left, right) => right.value - left.value);
+    const rawMetricMax = Math.max(1, ...rawMetricRows.map(metric => metric.value));
 
     const failures = Math.max(0, Number(summary.failures || buckets.problems.length || 0));
     const successes = Math.max(0, Number(summary.successes || buckets.successes.length || 0));
@@ -13490,6 +13503,7 @@ function renderSunbirdReportVisualPanel(data = {}, buckets = getSunbirdReportEvi
                 <article class="sunbird-report-trend-card">
                     <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Health trend">
                         <polyline points="${escapeIdentityText(trendPath)}" />
+                        ${trendPoints.map(point => `<circle cx="${point.x}" cy="${point.y}" r="2.4"><title>${escapeIdentityText(formatSunbirdReportDate(point.date))}: ${point.score}%</title></circle>`).join('')}
                     </svg>
                     <div class="sunbird-report-trend-meta">
                         <span>Health trend (${trendPoints.length || 0} report${trendPoints.length === 1 ? '' : 's'})</span>
@@ -13497,13 +13511,25 @@ function renderSunbirdReportVisualPanel(data = {}, buckets = getSunbirdReportEvi
                     </div>
                 </article>
                 <article class="sunbird-report-domain-bars">
-                    ${domainRows.map(domain => `
+                    ${domainRows.length ? domainRows.map(domain => `
                         <div class="sunbird-report-domain-bar-row">
                             <span>${escapeIdentityText(domain.label)}</span>
                             <div><i style="width:${domain.score}%"></i></div>
                             <strong>${domain.score}%</strong>
                         </div>
-                    `).join('')}
+                    `).join('') : '<span class="sunbird-report-chart-empty">No current domain health scores were emitted.</span>'}
+                </article>
+                <article class="sunbird-report-raw-metrics-card">
+                    <div class="sunbird-report-raw-metrics-head"><strong>Raw dashboard metrics</strong><span>Latest collected evidence</span></div>
+                    <div class="sunbird-report-raw-metrics-list">
+                        ${rawMetricRows.length ? rawMetricRows.map(metric => `
+                            <div class="sunbird-report-raw-metric-row">
+                                <span title="${escapeIdentityText(metric.domain)}">${escapeIdentityText(metric.metric)}</span>
+                                <div><i style="width:${Math.max(2, (metric.value / rawMetricMax) * 100)}%"></i></div>
+                                <strong>${metric.value.toLocaleString()}</strong>
+                            </div>
+                        `).join('') : '<span class="sunbird-report-chart-empty">No raw metric categories were stored in this report.</span>'}
+                    </div>
                 </article>
             </div>
         </section>

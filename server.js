@@ -3621,6 +3621,12 @@ function buildSunbirdDomainBreakdownFromPayload(payload = {}) {
 
     return compactSunbirdDashboardValue(domains.map(domain => {
         const output = domain?.intelligenceOutput || domain?.output || {};
+        const evidenceCategories = Array.isArray(output?.evidenceCatalog?.categories) ? output.evidenceCatalog.categories : [];
+        const rawMetrics = evidenceCategories.reduce((metrics, category) => {
+            const key = String(category?.sourceMetric || category?.key || category?.label || '').trim();
+            if (key) metrics[key] = Number(category?.count || (Array.isArray(category?.entities) ? category.entities.length : 0) || 0);
+            return metrics;
+        }, {});
         const risks = Array.isArray(output.risks) ? output.risks : [];
         const keyFindings = Array.isArray(output.keyFindings) ? output.keyFindings : [];
         const explicitFindings = Array.isArray(output.findings) ? output.findings : [];
@@ -3640,6 +3646,22 @@ function buildSunbirdDomainBreakdownFromPayload(payload = {}) {
                     ...(Array.isArray(item?.evidenceUsed) ? item.evidenceUsed : []),
                     ...(Array.isArray(item?.evidence) ? item.evidence : [])
                 ];
+                const requestedMetric = String(item?.sourceMetric || '').trim().toLowerCase();
+                const matchingCategories = evidenceCategories.filter(category => {
+                    const categoryKeys = [category?.sourceMetric, category?.key, category?.label]
+                        .map(value => String(value || '').trim().toLowerCase())
+                        .filter(Boolean);
+                    return requestedMetric && categoryKeys.includes(requestedMetric);
+                });
+                const fallbackCategories = matchingCategories.length ? matchingCategories : evidenceCategories;
+                fallbackCategories.forEach(category => {
+                    const categoryRows = Array.isArray(category?.entities) ? category.entities : [];
+                    categoryRows.forEach(row => evidencePool.push({
+                        ...row,
+                        sourceMetric: row?.sourceMetric || category?.sourceMetric || category?.key || '',
+                        evidenceSource: row?.evidenceSource || category?.label || category?.sourceMetric || category?.key || ''
+                    }));
+                });
                 const uniqueEvidence = [];
                 const evidenceSeen = new Set();
                 evidencePool.forEach(row => {
@@ -3658,7 +3680,7 @@ function buildSunbirdDomainBreakdownFromPayload(payload = {}) {
                     whyItMatters: shortText(asText(item?.whyItMatters || item?.reasoning || item?.businessImpact || item?.impact), 900),
                     recommendation: shortText(asText(item?.firstAction || item?.recommendedAction || item?.recommendation || item?.remediationAction || item?.detail), 900),
                     sourceMetric: shortText(asText(item?.sourceMetric || ''), 120),
-                    evidenceCount: Number(item?.evidenceRecordCount || item?.entityCount || uniqueEvidence.length || 0),
+                    evidenceCount: Math.max(Number(item?.evidenceRecordCount || 0), Number(item?.entityCount || 0), uniqueEvidence.length),
                     evidence: uniqueEvidence
                 };
             })
@@ -3676,6 +3698,7 @@ function buildSunbirdDomainBreakdownFromPayload(payload = {}) {
             riskLevel: shortText(asText(output?.riskLevel || output?.authoritativeScores?.riskLevel || output?.scoreSummary?.riskLevel || ''), 80),
             summary: shortText(asText(output?.domainExecutiveSummary || output?.executiveSummary || output?.technicalSummary || output?.currentPosture || ''), 1200),
             businessImpact: shortText(asText(output?.businessImpact || output?.businessImpactSummary || ''), 1200),
+            rawMetrics,
             recommendations,
             findings
         };

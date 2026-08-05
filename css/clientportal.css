@@ -1170,7 +1170,8 @@
 
 .sunbird-report-pie-card,
 .sunbird-report-trend-card,
-.sunbird-report-domain-bars {
+.sunbird-report-domain-bars,
+.sunbird-report-raw-metrics-card {
   min-width: 0;
   border: 1px solid rgba(255, 255, 255, 0.13);
   border-radius: 10px;
@@ -1246,6 +1247,12 @@
   stroke-linejoin: round;
 }
 
+.sunbird-report-trend-card svg circle {
+  fill: #fb923c;
+  stroke: rgba(255, 255, 255, 0.9);
+  stroke-width: 0.8;
+}
+
 .sunbird-report-trend-meta {
   display: flex;
   justify-content: space-between;
@@ -1267,6 +1274,68 @@
 .sunbird-report-domain-bars {
   display: grid;
   gap: 7px;
+}
+
+.sunbird-report-raw-metrics-card {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.sunbird-report-raw-metrics-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sunbird-report-raw-metrics-head strong {
+  color: #ffffff;
+  font-size: 0.72rem;
+}
+
+.sunbird-report-raw-metrics-head span,
+.sunbird-report-chart-empty {
+  color: #aeb7c1;
+  font-size: 0.63rem;
+}
+
+.sunbird-report-raw-metrics-list {
+  display: grid;
+  gap: 7px;
+}
+
+.sunbird-report-raw-metric-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(60px, 2fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.sunbird-report-raw-metric-row > span {
+  color: #dce4ec;
+  font-size: 0.64rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sunbird-report-raw-metric-row > div {
+  height: 7px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.sunbird-report-raw-metric-row i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #38bdf8, #a3e635);
+}
+
+.sunbird-report-raw-metric-row strong {
+  color: #f8fafc;
+  font-size: 0.66rem;
 }
 
 .sunbird-report-domain-bar-row {
