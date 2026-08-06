@@ -13318,7 +13318,7 @@ async function fetchSunbirdReportsData(range = sunbirdReportsRange, forceRefresh
     const request = (async () => {
         console.log(`[Reports] Loading report history, daily snapshots, and audit logs for ${range}.`);
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 45000);
+        const timeout = setTimeout(() => controller.abort(), 90000);
         let response;
         let responseBody;
         try {
@@ -14724,17 +14724,25 @@ function setupSunbirdReportsDashboard() {
 async function loadSunbirdReportsDashboardData(forceRefresh = false) {
     const requestId = ++sunbirdReportsRequestId;
     const content = document.getElementById('sunbird-report-center-content');
-    if (content && forceRefresh) content.innerHTML = renderSunbirdPremiumLoader('Refreshing report evidence');
+    const lastKnownData = cachedSunbirdReportsData;
+    // Keep the usable report view on screen while a fresh PDF/report refresh is queued.
+    // Replacing it with a loader made a transient backend delay look like a broken card.
+    if (content && forceRefresh && !lastKnownData) content.innerHTML = renderSunbirdPremiumLoader('Refreshing report evidence');
     try {
         const data = await fetchSunbirdReportsData(sunbirdReportsRange, forceRefresh);
         if (requestId !== sunbirdReportsRequestId) return;
         renderSunbirdReportsCenter(data);
     } catch (error) {
         if (requestId !== sunbirdReportsRequestId || !content) return;
+        if (lastKnownData) {
+            cachedSunbirdReportsData = lastKnownData;
+            renderSunbirdReportsCenter(lastKnownData);
+            showNotification(`The latest report refresh is delayed. Showing the last verified report: ${error.message}`, false);
+            return;
+        }
         content.innerHTML = `<div class="sunbird-report-load-error"><i class="fas fa-circle-exclamation"></i><p>${escapeIdentityText(error.message)}</p><button type="button" onclick="window.loadSunbirdReportsDashboardData(true)">Try again</button></div>`;
     }
 }
-
 function openSunbirdReportsDashboard() {
     const dashboardView = document.getElementById('dashboard-view');
     const projectsView = document.getElementById('projects-view');
@@ -14769,18 +14777,34 @@ window.generateSunbirdReport = async function(range = sunbirdReportsRange, downl
     showPdfLoadingOverlay(includeAi ? 'Building your report...' : 'Building your report...');
     try {
         console.log(`[Reports] Starting on-demand ${range} report generation. AI included: ${includeAi}`);
-        const response = await fetch('/api/sunbird/reports/generate', {
-            method: 'POST',
-            headers: getSunbirdReportHeaders(),
-            body: JSON.stringify({ range, includeAi })
-        });
-        const data = await response.json();
-        if (!response.ok || !data.success) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 120000);
+        let response;
+        let data;
+        try {
+            response = await fetch('/api/sunbird/reports/generate', {
+                method: 'POST',
+                headers: getSunbirdReportHeaders(),
+                body: JSON.stringify({ range, includeAi }),
+                signal: controller.signal
+            });
+            const responseBody = await response.text();
+            try {
+                data = responseBody ? JSON.parse(responseBody) : {};
+            } catch (_) {
+                throw new Error(response.ok ? 'Report generation returned an invalid response.' : `Report generation failed (${response.status}).`);
+            }
+        } catch (requestError) {
+            if (requestError.name === 'AbortError') throw new Error('Report generation is still running. The existing report remains available; please try again shortly.');
+            throw requestError;
+        } finally {
+            clearTimeout(timeout);
+        }        if (!response.ok || !data.success) {
             console.error('[Reports] Generation failed:', response.status, data);
             throw new Error(data.message || `Report generation failed (${response.status})`);
         }
         console.log(`[Reports] Report #${data.report.id} generated and saved to history.`);
-        cachedSunbirdReportsData = null;
+        // Retain the last verified view as a fallback while the new report is indexed.
         const statusMessage = 'Report generated and downloading';
         showNotification(downloadWhenReady ? statusMessage : 'Report generated and saved', true);
         if (downloadWhenReady) await window.downloadSunbirdReportPdf(data.report.id);
@@ -14877,7 +14901,7 @@ window.saveSunbirdReportSettings = async function() {
             console.error('[Reports] Settings update failed:', response.status, data);
             throw new Error(data.message || `Settings could not be saved (${response.status})`);
         }
-        cachedSunbirdReportsData = null;
+        // Retain the last verified view as a fallback while the new report is indexed.
         showNotification('Report automation settings saved', true);
         await loadSunbirdReportsDashboardData(true);
     } catch (error) {

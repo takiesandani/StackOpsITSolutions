@@ -3689,23 +3689,44 @@ function buildSunbirdDomainBreakdownFromPayload(payload = {}) {
                 if (dedupe.has(key)) return null;
                 dedupe.add(key);
 
-                const hasExplicitEvidenceLinks = String(item?.evidenceLinkVersion || '') === 'explicit_v2';
-                const evidencePool = hasExplicitEvidenceLinks ? [
+                const isStrictlyNormalized = String(item?.evidenceLinkVersion || '') === 'explicit_v2';
+                const attachedEntities = Array.isArray(item?.affectedEntities) ? item.affectedEntities : [];
+                const attachedEvidenceRows = Array.isArray(item?.evidenceRows) ? item.evidenceRows : [];
+                const entityReferenceKey = row => String(
+                    row?.entityId || row?.id || row?.recordId || row?.sourceAlertId || row?.alertId ||
+                    row?.userPrincipalName || row?.entityEmail || row?.deviceName || row?.entityDeviceName ||
+                    row?.controlName || row?.entityName || row?.displayName || row?.name || ''
+                ).trim().toLowerCase();
+                const matchesWholeEvidenceCategory = rows => {
+                    const rowKeys = rows.map(entityReferenceKey).filter(Boolean);
+                    return !isStrictlyNormalized && rowKeys.length > 0 && evidenceCategories.some(category => {
+                        const categoryKeys = (Array.isArray(category?.entities) ? category.entities : []).map(entityReferenceKey).filter(Boolean);
+                        return categoryKeys.length === rowKeys.length &&
+                            categoryKeys.length > 0 && categoryKeys.every(key => rowKeys.includes(key));
+                    });
+                };
+                const acceptedAttachedEntities = matchesWholeEvidenceCategory(attachedEntities) ? [] : attachedEntities;
+                const acceptedEvidenceRows = matchesWholeEvidenceCategory(attachedEvidenceRows) ? [] : attachedEvidenceRows;
+                // Legacy records may not have a provenance version, but their own
+                // affectedEntities/evidenceRecords are still direct finding links.
+                // Never use a metric/category to add records. evidenceRows/evidenceUsed
+                // are accepted only from the new strict normalizer.
+                const evidencePool = [
                     ...(Array.isArray(item?.evidenceRecords) ? item.evidenceRecords : []),
-                    ...(Array.isArray(item?.affectedEntities) ? item.affectedEntities : []),
-                    ...(Array.isArray(item?.evidenceRows) ? item.evidenceRows : []),
-                    ...(Array.isArray(item?.evidenceUsed) ? item.evidenceUsed : []),
-                    ...(Array.isArray(item?.evidence) ? item.evidence : [])
-                ] : [];
+                    ...acceptedAttachedEntities,
+                    ...(Array.isArray(item?.evidence) ? item.evidence : []),
+                    ...acceptedEvidenceRows,
+                    ...(isStrictlyNormalized && Array.isArray(item?.evidenceUsed) ? item.evidenceUsed : [])
+                ];
                 // sourceMetric is an aggregate descriptor, not an evidence relationship.
                 // Never widen a finding to all rows in that metric or domain.
-                const evidenceIds = hasExplicitEvidenceLinks ? [...new Set([
+                const evidenceIds = [...new Set([
                     ...(Array.isArray(item?.affectedEntityIds) ? item.affectedEntityIds : []),
                     ...(Array.isArray(item?.recordIds) ? item.recordIds : []),
                     ...(Array.isArray(item?.sourceAlertIds) ? item.sourceAlertIds : []),
                     ...(Array.isArray(item?.evidenceIds) ? item.evidenceIds : []),
                     ...(Array.isArray(item?.entityIds) ? item.entityIds : [])
-                ].map(value => String(value || '').trim()).filter(Boolean))].slice(0, 100) : [];
+                ].map(value => String(value || '').trim()).filter(Boolean))].slice(0, 100);
                 const uniqueEvidence = [];
                 const evidenceSeen = new Set();
                 evidencePool.forEach(row => {
