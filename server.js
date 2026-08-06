@@ -3689,35 +3689,22 @@ function buildSunbirdDomainBreakdownFromPayload(payload = {}) {
                 if (dedupe.has(key)) return null;
                 dedupe.add(key);
 
-                const isStrictlyNormalized = String(item?.evidenceLinkVersion || '') === 'explicit_v2';
+                // These arrays are the finding's own explicit evidence links. Do not
+                // infer or append a category/domain list from sourceMetric; a finding
+                // may legitimately contain every member of a small category.
                 const attachedEntities = Array.isArray(item?.affectedEntities) ? item.affectedEntities : [];
                 const attachedEvidenceRows = Array.isArray(item?.evidenceRows) ? item.evidenceRows : [];
-                const entityReferenceKey = row => String(
-                    row?.entityId || row?.id || row?.recordId || row?.sourceAlertId || row?.alertId ||
-                    row?.userPrincipalName || row?.entityEmail || row?.deviceName || row?.entityDeviceName ||
-                    row?.controlName || row?.entityName || row?.displayName || row?.name || ''
-                ).trim().toLowerCase();
-                const matchesWholeEvidenceCategory = rows => {
-                    const rowKeys = rows.map(entityReferenceKey).filter(Boolean);
-                    return !isStrictlyNormalized && rowKeys.length > 0 && evidenceCategories.some(category => {
-                        const categoryKeys = (Array.isArray(category?.entities) ? category.entities : []).map(entityReferenceKey).filter(Boolean);
-                        return categoryKeys.length === rowKeys.length &&
-                            categoryKeys.length > 0 && categoryKeys.every(key => rowKeys.includes(key));
-                    });
-                };
-                const acceptedAttachedEntities = matchesWholeEvidenceCategory(attachedEntities) ? [] : attachedEntities;
-                const acceptedEvidenceRows = matchesWholeEvidenceCategory(attachedEvidenceRows) ? [] : attachedEvidenceRows;
-                // Legacy records may not have a provenance version, but their own
-                // affectedEntities/evidenceRecords are still direct finding links.
-                // Never use a metric/category to add records. evidenceRows/evidenceUsed
-                // are accepted only from the new strict normalizer.
-                const evidencePool = [
+                const explicitRecordRows = [
                     ...(Array.isArray(item?.evidenceRecords) ? item.evidenceRecords : []),
-                    ...acceptedAttachedEntities,
+                    ...attachedEntities,
                     ...(Array.isArray(item?.evidence) ? item.evidence : []),
-                    ...acceptedEvidenceRows,
-                    ...(isStrictlyNormalized && Array.isArray(item?.evidenceUsed) ? item.evidenceUsed : [])
+                    ...attachedEvidenceRows
                 ];
+                // evidenceUsed is a descriptive fallback only; never append it to
+                // already linked records and never infer category/domain evidence.
+                const evidencePool = explicitRecordRows.length
+                    ? explicitRecordRows
+                    : (Array.isArray(item?.evidenceUsed) ? item.evidenceUsed : []);
                 // sourceMetric is an aggregate descriptor, not an evidence relationship.
                 // Never widen a finding to all rows in that metric or domain.
                 const evidenceIds = [...new Set([
