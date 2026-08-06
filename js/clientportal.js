@@ -9907,8 +9907,11 @@ async function fetchUpdatedIdentityData() {
 
 function updateIdentityDashboardValuesSmootly() {
     try {
-        const metrics = sunbirdDashboardData.metrics;
-        const riskBreakdown = sunbirdDashboardData.riskBreakdown;
+        const metrics = sunbirdDashboardData?.metrics || {};
+        const riskBreakdown = sunbirdDashboardData?.riskBreakdown || {};
+        const inactivity = riskBreakdown.inactivity || {};
+        const deviceTrust = riskBreakdown.deviceTrust || {};
+        const authenticationStrength = riskBreakdown.authenticationStrength || {};
         
         const updates = [
             // Main stats
@@ -9924,20 +9927,20 @@ function updateIdentityDashboardValuesSmootly() {
             { selector: '[data-stat="privilegedWithoutMFA"]', value: metrics.privilegedUsersWithoutMFA || 0 },
             
             // Inactivity breakdown
-            { selector: '[data-inactivity="0-7"]', value: riskBreakdown.inactivity['0-7days'] || 0 },
-            { selector: '[data-inactivity="7-30"]', value: riskBreakdown.inactivity['7-30days'] || 0 },
-            { selector: '[data-inactivity="30-90"]', value: riskBreakdown.inactivity['30-90days'] || 0 },
-            { selector: '[data-inactivity="90+"]', value: riskBreakdown.inactivity['90+days'] || 0 },
+            { selector: '[data-inactivity="0-7"]', value: inactivity['0-7days'] || 0 },
+            { selector: '[data-inactivity="7-30"]', value: inactivity['7-30days'] || 0 },
+            { selector: '[data-inactivity="30-90"]', value: inactivity['30-90days'] || 0 },
+            { selector: '[data-inactivity="90+"]', value: inactivity['90+days'] || 0 },
             
             // Device trust
-            { selector: '[data-device="managed"]', value: riskBreakdown.deviceTrust.managed || 0 },
-            { selector: '[data-device="unmanaged"]', value: riskBreakdown.deviceTrust.unmanaged || 0 },
-            { selector: '[data-device="unknown"]', value: riskBreakdown.deviceTrust.unknown || 0 },
+            { selector: '[data-device="managed"]', value: deviceTrust.managed || 0 },
+            { selector: '[data-device="unmanaged"]', value: deviceTrust.unmanaged || 0 },
+            { selector: '[data-device="unknown"]', value: deviceTrust.unknown || 0 },
             
             // Auth strength
-            { selector: '[data-auth="passwordOnly"]', value: riskBreakdown.authenticationStrength.passwordOnly || 0 },
-            { selector: '[data-auth="basicMFA"]', value: riskBreakdown.authenticationStrength.basicMFA || 0 },
-            { selector: '[data-auth="strongMFA"]', value: riskBreakdown.authenticationStrength.strongMFA || 0 }
+            { selector: '[data-auth="passwordOnly"]', value: authenticationStrength.passwordOnly || 0 },
+            { selector: '[data-auth="basicMFA"]', value: authenticationStrength.basicMFA || 0 },
+            { selector: '[data-auth="strongMFA"]', value: authenticationStrength.strongMFA || 0 }
         ];
         
         // Update all values smoothly (just text, no re-rendering)
