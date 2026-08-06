@@ -3463,29 +3463,14 @@ function buildHistoricalNarrativeFromSynthesis(output = {}, report = null) {
 
 async function fetchSunbirdPowerBIIntelligence(companyId) {
     if (!enterpriseIntelligenceService) return null;
-    const requestedDomainKeys = [
-        'identity',
-        'devices',
-        'email_security',
-        'cloudflare_network_security',
-        'security_alerts',
-        'applications',
-        'backup',
-        'governance',
-        'compliance'
-    ];
+
     try {
         const intelligence = await enterpriseIntelligenceService.getPowerBIIntelligenceRun(companyId);
-        const domainsByKey = new Map((intelligence?.domains || []).map(domain => [domain.domainKey, domain]));
-        const missingDomainKeys = requestedDomainKeys.filter(key => !domainsByKey.has(key));
-        if (typeof enterpriseIntelligenceService.getPowerBIDomain === 'function' && missingDomainKeys.length) {
-            const results = await Promise.allSettled(missingDomainKeys.map(key => enterpriseIntelligenceService.getPowerBIDomain(companyId, key)));
-            results.forEach((result, index) => {
-                const domain = result.status === 'fulfilled' ? result.value?.domain : null;
-                if (domain?.domainKey) domainsByKey.set(domain.domainKey, domain);
-            });
-        }
-        const domains = Array.from(domainsByKey.values()).filter(domain => domain && !['pending', 'temporarily_disabled'].includes(String(domain.status || domain.domainStatus || '').toLowerCase()));
+        // A report must remain run-consistent. Do not backfill a missing domain from a
+        // separately "latest" record because that can join evidence from another snapshot.
+        const domains = (intelligence?.domains || []).filter(domain =>
+            domain && !['pending', 'temporarily_disabled'].includes(String(domain.status || domain.domainStatus || '').toLowerCase())
+        );
         if (!domains.length) return null;
         return {
             ...(intelligence || {}),
@@ -3510,10 +3495,10 @@ async function fetchSunbirdIdentityDomainIntelligence(companyId) {
     }
 }
 
-async function fetchSunbirdPowerBIFinal(companyId) {
+async function fetchSunbirdPowerBIFinal(companyId, runId = null) {
     if (!enterpriseIntelligenceService) return null;
     try {
-        const finalReport = await enterpriseIntelligenceService.getPowerBIFinal(companyId);
+        const finalReport = await enterpriseIntelligenceService.getPowerBIFinal(companyId, runId);
         if (!finalReport || !finalReport.finalSynthesis || !finalReport.finalSynthesis.synthesisOutput) {
             return null;
         }
@@ -3733,6 +3718,101 @@ function buildSunbirdLatestReportSnapshot(reportRow = null) {
             historicalChanges: compactSunbirdDashboardValue(analysis.historicalChanges || {})
         },
         domainBreakdown: buildSunbirdDomainBreakdownFromPayload(payload)
+    };
+}
+
+function buildSunbirdLiveIntelligenceSnapshot(intelligence = null, finalReport = null) {
+    const domains = Array.isArray(intelligence?.domains) ? intelligence.domains : [];
+    if (!domains.length) return null;
+    const domainBreakdown = buildSunbirdDomainBreakdownFromPayload({ domainInsights: { domains } });
+    const healthValues = domainBreakdown.map(domain => Number(domain.healthScore)).filter(Number.isFinite);
+    const healthScore = healthValues.length
+        ? clampReportScore(healthValues.reduce((total, value) => total + value, 0) / healthValues.length)
+        : 0;
+    const findings = domainBreakdown.flatMap(domain => (domain.findings || []).map(finding => ({
+        ...finding,
+        domainKey: domain.domainKey,
+        domainName: domain.domainName,
+        source: domain.domainName
+    })));
+    const recommendations = domainBreakdown.flatMap(domain => (domain.recommendations || []).map(item => ({
+        title: item,
+        source: domain.domainName,
+        priority: domain.riskLevel || 'medium'
+    })));
+    const synthesis = finalReport?.finalSynthesis?.synthesisOutput || {};
+    const executiveSummary = String(synthesis?.enterpriseExecutiveSummary?.summary || '').trim();
+    const historicalChanges = buildHistoricalNarrativeFromSynthesis(synthesis, {
+        period: { end: intelligence.periodEnd || intelligence.createdAt || new Date() }
+    });
+    const fullExecutiveSummary = executiveSummary
+        ? [
+            executiveSummary,
+            `What changed since the last report:\n${historicalChanges.whatChangedSinceLastReport}`,
+            `Historical trend analysis:\n${historicalChanges.historicalTrendAnalysis}`,
+            `Control gaps and remediation progress:\n${historicalChanges.controlGapsAndRemediationProgress}`,
+            `Confidence:\n${String(synthesis?.enterpriseExecutiveSummary?.confidence || synthesis?.evidenceJustificationSummary?.evidenceConfidence || 'medium')}.`
+        ].join('\n\n')
+        : '';
+    const failures = findings.filter(finding => /critical|high|severe|failed/i.test(String(finding.severity || '')));
+    const successes = findings.filter(finding => /low|healthy|good|resolved|success/i.test(String(finding.severity || '')));
+    return {
+        id: `enterprise-run-${Number(intelligence.latestRunId || 0)}`,
+        enterpriseRunId: Number(intelligence.latestRunId || 0),
+        snapshotId: intelligence.latestSnapshotId == null ? null : Number(intelligence.latestSnapshotId),
+        type: intelligence.periodType || 'daily',
+        periodStart: intelligence.periodStart || null,
+        periodEnd: intelligence.periodEnd || null,
+        createdAt: intelligence.createdAt || null,
+        generatedWithAi: true,
+        summary: {
+            healthScore,
+            failures: failures.length,
+            successes: successes.length,
+            totalEvents: findings.length,
+            status: failures.some(finding => /critical/i.test(String(finding.severity || '')))
+                ? 'critical'
+                : failures.length ? 'attention' : 'healthy'
+        },
+        analysis: {
+            executiveSummary: fullExecutiveSummary,
+            businessImpactSummary: String(synthesis?.businessImpactSummary || ''),
+            boardReportSummary: String(synthesis?.boardReport?.boardSummary || synthesis?.boardReport?.summary || ''),
+            historicalChanges
+        },
+        failures,
+        successes,
+        recommendations,
+        domainBreakdown
+    };
+}
+
+function buildSunbirdLiveOverview(liveReport = null) {
+    if (!liveReport) return null;
+    const domainScores = Object.fromEntries((liveReport.domainBreakdown || []).map(domain => [
+        domain.domainKey || domain.domainName,
+        domain.healthScore
+    ]));
+    return {
+        summary: { ...liveReport.summary },
+        analysis: {
+            executiveSummary: liveReport.analysis?.executiveSummary || '',
+            failures: liveReport.failures || [],
+            successes: liveReport.successes || [],
+            recommendations: liveReport.recommendations || []
+        },
+        failures: liveReport.failures || [],
+        successes: liveReport.successes || [],
+        recommendations: liveReport.recommendations || [],
+        events: (liveReport.failures || []).map(finding => ({
+            title: finding.title,
+            detail: finding.impact || finding.whyItMatters || '',
+            severity: finding.severity || 'observed',
+            source: finding.source || finding.domainName || 'Enterprise intelligence',
+            status: 'observed'
+        })),
+        domainScores,
+        trend: []
     };
 }
 
@@ -4107,7 +4187,9 @@ async function buildSunbirdReportPayload(companyId, periodStart, periodEnd, incl
     }));
     report.dailyReports = await loadSunbirdDailyReportSummaries(companyId, periodStart, periodEnd);
     const powerBiIntelligence = includeAi ? await fetchSunbirdPowerBIIntelligence(companyId) : null;
-    const powerBiFinal = includeAi ? await fetchSunbirdPowerBIFinal(companyId) : null;
+    const powerBiFinal = includeAi
+        ? await fetchSunbirdPowerBIFinal(companyId, powerBiIntelligence?.latestRunId || null)
+        : null;
     report.domainInsights = powerBiIntelligence;
     report.finalSynthesis = powerBiFinal;
     report.analysis = includeAi
@@ -4454,7 +4536,18 @@ function generateSunbirdReportPdf(report, reportId = null) {
                 const addMetric = (label, value) => {
                     const metric = executiveMetricLabel(label);
                     const display = cleanText(value).replace(/[_-]+/g, ' ').replace(/\b\w/g, character => character.toUpperCase());
-                    if (metric && display && !/^(null|undefined|n\/a|not available)$/i.test(display)) metrics.set(metric, display);
+                    if (!metric || !display || /^(null|undefined|n\/a|not available)$/i.test(display)) return;
+                    const levels = metric === 'Confidence'
+                        ? display.match(/\b(high|medium|low)\b/i)
+                        : metric === 'Overall Risk'
+                            ? display.match(/\b(critical|high|moderate|medium|low)\b/i)
+                            : metric === 'Audit Readiness'
+                                ? display.match(/\b(not ready|currently not met|partially ready|ready)\b/i)
+                                : metric === 'Operations Status'
+                                    ? display.match(/\b(enabled|disabled|healthy|degraded|operational|unavailable)\b/i)
+                                    : null;
+                    const compact = levels?.[1] || (metric === 'Domains Analysed' ? display.match(/\d+/)?.[0] : '') || display.slice(0, 56).replace(/\s+\S*$/, '').trim();
+                    if (compact) metrics.set(metric, compact);
                 };
                 const addText = (section, value) => {
                     const text = cleanText(value);
@@ -4471,7 +4564,10 @@ function generateSunbirdReportPdf(report, reportId = null) {
                         const line = lines[index];
                         const labelled = line.match(/^([^:]{2,80}):\s*(.*)$/);
                         if (labelled && executiveMetricLabel(labelled[1])) {
-                            addMetric(labelled[1], labelled[2] || lines[++index]);
+                            const metricValue = labelled[2] || lines[++index];
+                            addMetric(labelled[1], metricValue);
+                            // Preserve explanatory metric detail in the narrative while keeping the status table compact.
+                            if (cleanText(metricValue).length > 70) addText('summary', `${labelled[1]}: ${metricValue}`);
                             continue;
                         }
                         if (labelled && !executiveSectionFor(labelled[1], null)) {
@@ -4585,14 +4681,22 @@ function generateSunbirdReportPdf(report, reportId = null) {
                         }
                         if (marker === 'bullet') doc.circle(left + 20, doc.y + 5, 1.8).fillColor(orange).fill();
                         else if (marker) doc.font('Helvetica-Bold').fontSize(8.6).fillColor(navy).text(marker, left + 14, doc.y, { width: 18 });
-                        doc.font('Helvetica').fontSize(size).fillColor(slate).text(chunk.join('\n'), left + (marker ? 30 : 14), doc.y, { width, lineGap: 2 });
-                        doc.y += height + 6;
+                        const itemY = doc.y;
+                        doc.font('Helvetica').fontSize(size).fillColor(slate).text(chunk.join('\n'), left + (marker ? 30 : 14), itemY, { width, lineGap: 2 });
+                        doc.y = itemY + height + 4;
                         marker = marker ? 'bullet' : '';
                     }
                 };
                 if (overview.metrics.length) {
-                    const rowHeight = 19;
-                    const tableHeight = 28 + overview.metrics.length * rowHeight;
+                    const labelWidth = contentWidth * 0.35;
+                    const valueX = left + labelWidth + 18;
+                    const valueWidth = contentWidth - labelWidth - 30;
+                    const metricRows = overview.metrics.map(metric => {
+                        const labelHeight = doc.font('Helvetica-Bold').fontSize(8.4).heightOfString(metric.label, { width: labelWidth - 12, lineGap: 1 });
+                        const valueHeight = doc.font('Helvetica').fontSize(8.4).heightOfString(metric.value, { width: valueWidth, lineGap: 1 });
+                        return { ...metric, height: Math.max(19, labelHeight + 10, valueHeight + 10) };
+                    });
+                    const tableHeight = 28 + metricRows.reduce((total, row) => total + row.height, 0);
                     if (doc.y + tableHeight > bottom) {
                         doc.addPage();
                         doc.y = 42;
@@ -4600,14 +4704,15 @@ function generateSunbirdReportPdf(report, reportId = null) {
                     const y = doc.y;
                     doc.roundedRect(left, y, contentWidth, 20, 6).fill(navy);
                     doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#ffffff').text('Enterprise Status', left + 12, y + 6, { width: contentWidth - 24, lineBreak: false });
-                    overview.metrics.forEach((metric, index) => {
-                        const rowY = y + 20 + index * rowHeight;
-                        if (index % 2 === 0) doc.rect(left, rowY, contentWidth, rowHeight).fill('#f8fafc');
-                        doc.font('Helvetica-Bold').fontSize(8.4).fillColor(navy).text(metric.label, left + 12, rowY + 5, { width: contentWidth * 0.48 });
-                        doc.font('Helvetica').fontSize(8.4).fillColor(slate).text(metric.value, left + contentWidth * 0.5, rowY + 5, { width: contentWidth * 0.47 });
+                    let rowY = y + 20;
+                    metricRows.forEach((metric, index) => {
+                        if (index % 2 === 0) doc.rect(left, rowY, contentWidth, metric.height).fill('#f8fafc');
+                        doc.font('Helvetica-Bold').fontSize(8.4).fillColor(navy).text(metric.label, left + 12, rowY + 5, { width: labelWidth - 12, lineGap: 1 });
+                        doc.font('Helvetica').fontSize(8.4).fillColor(slate).text(metric.value, valueX, rowY + 5, { width: valueWidth, lineGap: 1 });
+                        rowY += metric.height;
                     });
                     doc.roundedRect(left, y, contentWidth, tableHeight - 8, 6).strokeColor('#e1e6ea').lineWidth(0.7).stroke();
-                    doc.y = y + tableHeight + 10;
+                    doc.y = y + tableHeight + 8;
                 }
                 overview.sectionOrder.forEach(sectionId => {
                     const values = overview.sections[sectionId];
@@ -4617,14 +4722,19 @@ function generateSunbirdReportPdf(report, reportId = null) {
                     let number = 1;
                     values.forEach(value => {
                         const list = executiveListParts(value);
-                        if (!list) return drawItem(title, value, state);
+                        if (!list) {
+                            const marker = sectionId === 'actions' ? `${number++}.` : sectionId === 'summary' || sectionId === 'recommendation' || sectionId === 'impact' ? '' : 'bullet';
+                            return drawItem(title, value, state, marker);
+                        }
                         if (list.lead) {
                             if (!state.started || doc.y + 18 > bottom) {
                                 drawHeader(title, state.started, 18);
                                 state.started = true;
                             }
-                            doc.font('Helvetica-Bold').fontSize(8.9).fillColor(navy).text(list.lead, left + 14, doc.y, { width: contentWidth - 28, lineGap: 2 });
-                            doc.y += doc.heightOfString(list.lead, { width: contentWidth - 28, lineGap: 2 }) + 4;
+                            const leadY = doc.y;
+                            const leadHeight = doc.font('Helvetica-Bold').fontSize(8.9).heightOfString(list.lead, { width: contentWidth - 28, lineGap: 2 });
+                            doc.text(list.lead, left + 14, leadY, { width: contentWidth - 28, lineGap: 2 });
+                            doc.y = leadY + leadHeight + 3;
                         }
                         list.items.forEach(item => drawItem(title, item, state, sectionId === 'actions' ? `${number++}.` : 'bullet'));
                     });
@@ -5910,8 +6020,14 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
             [context.companyId, range.start, range.end]
         );
         operation.step('report_rows_loaded', { reports: rows.length, auditLogs: logRows.length });
+        const liveIntelligence = await fetchSunbirdPowerBIIntelligence(context.companyId);
+        const liveFinal = await fetchSunbirdPowerBIFinal(context.companyId, liveIntelligence?.latestRunId || null);
+        const liveReport = buildSunbirdLiveIntelligenceSnapshot(liveIntelligence, liveFinal);
+        const liveIdentityDomain = Array.isArray(liveIntelligence?.domains)
+            ? liveIntelligence.domains.find(domain => String(domain?.domainKey || '').toLowerCase() === 'identity')
+            : null;
         const identityDomain = buildSunbirdReportIdentityDomain(
-            await fetchSunbirdIdentityDomainIntelligence(context.companyId)
+            liveIdentityDomain || await fetchSunbirdIdentityDomainIntelligence(context.companyId)
         );
         operation.step('identity_intelligence_loaded', { risks: identityDomain.intelligenceOutput.risks.length });
         const preferredDetailedRow =
@@ -5919,8 +6035,9 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
             detailedRows.find(row => parseReportJson(row.Payload, null)?.domainInsights?.domains?.length) ||
             detailedRows[0] ||
             null;
-        const latestReport = buildSunbirdLatestReportSnapshot(preferredDetailedRow);
-        const overview = buildSunbirdReportListOverview(intelligentOverviewRows[0] || overviewRows[0] || rows[0]);
+        const latestReport = liveReport || buildSunbirdLatestReportSnapshot(preferredDetailedRow);
+        const overview = buildSunbirdLiveOverview(liveReport)
+            || buildSunbirdReportListOverview(intelligentOverviewRows[0] || overviewRows[0] || rows[0]);
         await writeSunbirdReportLog({
             companyId: context.companyId,
             eventType: 'report_center_viewed',
@@ -5929,7 +6046,11 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
             metadata: { rangeStart: range.start, rangeEnd: range.end },
             actorUserId: req.user.id || null
         });
-        operation.step('audit_log_written');
+        operation.step('audit_log_written', {
+            liveRunId: liveReport?.enterpriseRunId || null,
+            liveSnapshotId: liveReport?.snapshotId || null,
+            source: liveReport ? 'enterprise_run' : 'saved_report_fallback'
+        });
         const responsePayload = {
             success: true,
             settings: {
@@ -5955,6 +6076,67 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
         console.error('[Reports] List error:', error);
         operation.finish(500, { error: error.message });
         res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.get('/api/sunbird/reports/live-evidence', authenticateToken, async (req, res) => {
+    try {
+        const reportContext = await getReportContext(req, res);
+        if (!reportContext) return;
+        const { context } = reportContext;
+        const domainKey = String(req.query.domainKey || '').trim();
+        const sourceMetric = String(req.query.sourceMetric || '').trim().toLowerCase();
+        if (!domainKey) {
+            return res.status(400).json({ success: false, message: 'A domain key is required for live evidence.' });
+        }
+        const intelligence = await fetchSunbirdPowerBIIntelligence(context.companyId);
+        const domain = (intelligence?.domains || []).find(item => String(item?.domainKey || '').toLowerCase() === domainKey.toLowerCase());
+        if (!domain) {
+            return res.status(404).json({ success: false, message: 'The current enterprise run does not contain this domain.' });
+        }
+        const output = domain.intelligenceOutput || domain.output || {};
+        const categories = Array.isArray(output?.evidenceCatalog?.categories) ? output.evidenceCatalog.categories : [];
+        const matchingCategories = sourceMetric
+            ? categories.filter(category => [category?.sourceMetric, category?.key, category?.label]
+                .map(value => String(value || '').trim().toLowerCase())
+                .includes(sourceMetric))
+            : [];
+        const selectedCategories = matchingCategories.length ? matchingCategories : categories;
+        const categoryRows = selectedCategories.flatMap(category => (Array.isArray(category?.entities) ? category.entities : []).map(entity => ({
+            ...entity,
+            sourceMetric: entity?.sourceMetric || category?.sourceMetric || category?.key || '',
+            evidenceSource: entity?.evidenceSource || category?.label || category?.sourceMetric || category?.key || ''
+        })));
+        const tableRows = Object.entries(intelligence?.tables || {})
+            .filter(([tableName]) => /evidence|entities|affected|control/i.test(tableName))
+            .flatMap(([tableName, table]) => (Array.isArray(table) ? table : []))
+            .filter(row => String(row?.domainKey || row?.DomainKey || '').toLowerCase() === String(domain.domainKey || '').toLowerCase())
+            .map(row => ({
+                ...row,
+                sourceMetric: row?.sourceMetric || row?.SourceMetric || '',
+                evidenceSource: row?.evidenceSource || row?.EvidenceSource || 'Enterprise evidence table'
+            }));
+        const rows = [...categoryRows, ...tableRows];
+        const seen = new Set();
+        const evidence = rows.filter(row => {
+            const key = String(row?.entityId || row?.id || row?.entityEmail || row?.userPrincipalName || row?.deviceName || row?.entityDeviceName || row?.controlName || row?.name || row?.title || JSON.stringify(row));
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+        res.json({
+            success: true,
+            enterpriseRunId: Number(intelligence?.latestRunId || 0),
+            snapshotId: intelligence?.latestSnapshotId == null ? null : Number(intelligence.latestSnapshotId),
+            domainKey: domain.domainKey,
+            domainName: domain.domainName,
+            sourceMetric: sourceMetric || null,
+            matchedMetric: matchingCategories.length > 0,
+            evidence
+        });
+    } catch (error) {
+        console.error('[Reports] Live evidence error:', error);
+        res.status(500).json({ success: false, message: 'Live evidence could not be loaded.' });
     }
 });
 

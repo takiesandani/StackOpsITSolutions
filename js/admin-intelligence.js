@@ -1172,16 +1172,18 @@
         el('run-enterprise-report')?.addEventListener('click', event => {
             if (!window.confirm('Run Enterprise Deep Report for all domains and final synthesis? Use selected-domain testing first.')) return;
             runAction(event.currentTarget, 'Enterprise Deep Report', `/api/admin/intelligence/tenant/${state.selectedCompanyId}/enterprise/run`, {
-            snapshotId: state.tenant?.latestSnapshot?.ID,
-            periodType: 'daily',
-            includeSynthesis: true
+                snapshotId: null,
+                periodType: 'daily',
+                includeSynthesis: true,
+                refreshSnapshot: true
             });
         });
         el('run-enterprise-domains')?.addEventListener('click', event => {
             if (!window.confirm('Run Domain Deep Analysis for all enterprise domains without synthesis?')) return;
             runAction(event.currentTarget, 'Enterprise Domain Deep Analysis', `/api/admin/intelligence/tenant/${state.selectedCompanyId}/enterprise/domain`, {
-            snapshotId: state.tenant?.latestSnapshot?.ID,
-            periodType: 'daily'
+                snapshotId: null,
+                periodType: 'daily',
+                refreshSnapshot: true
             });
         });
         el('run-enterprise-selected')?.addEventListener('click', event => {
@@ -1194,9 +1196,13 @@
             });
         });
         el('run-enterprise-synthesis')?.addEventListener('click', event => {
-            const runId = state.enterprise?.runs?.[0]?.ID;
-            if (!runId) return toast('Load or run domain intelligence before synthesis.', 'error');
-            runAction(event.currentTarget, 'Enterprise Synthesis', `/api/admin/intelligence/tenant/${state.selectedCompanyId}/enterprise/synthesis`, { runId });
+            if (!window.confirm('Refresh the raw snapshot, analyse every active domain, and create a new enterprise synthesis?')) return;
+            runAction(event.currentTarget, 'Enterprise Refresh and Synthesis', `/api/admin/intelligence/tenant/${state.selectedCompanyId}/enterprise/run`, {
+                snapshotId: null,
+                periodType: 'daily',
+                includeSynthesis: true,
+                refreshSnapshot: true
+            });
         });
         document.querySelectorAll('[data-enterprise-view]').forEach(button => button.addEventListener('click', event => {
             loadEnterprise({ scroll: true, target: event.currentTarget.dataset.enterpriseView === 'input' ? 'lineage' : 'audit' }).catch(error => toast(error.message, 'error'));
