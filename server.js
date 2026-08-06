@@ -3669,7 +3669,10 @@ function buildSunbirdDomainBreakdownFromPayload(payload = {}) {
         };
     };
 
-    return compactSunbirdDashboardValue(domains.map(domain => {
+    // This view model is already field-bounded below. Do not pass it through the generic
+    // depth limiter: evidence and evidenceIds sit at depth four and were replaced by
+    // "[Detail omitted]" for every domain before the modal could render them.
+    return domains.map(domain => {
         const output = domain?.intelligenceOutput || domain?.output || {};
         const evidenceCategories = Array.isArray(output?.evidenceCatalog?.categories) ? output.evidenceCatalog.categories : [];
         const rawMetrics = evidenceCategories.reduce((metrics, category) => {
@@ -3758,7 +3761,7 @@ function buildSunbirdDomainBreakdownFromPayload(payload = {}) {
             recommendations,
             findings
         };
-    }));
+    });
 }
 
 function buildSunbirdLatestReportSnapshot(reportRow = null) {
@@ -6220,6 +6223,9 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
             reports: rows.map(serializeReportListRow),
             logs: logRows.map(serializeReportAuditLog)
         };
+        // This endpoint is the live report source; a cached GET can otherwise keep an
+        // older domain run visible after a newer domain analysis completes.
+        res.set('Cache-Control', 'no-store, max-age=0');
         sendSunbirdJson(res, responsePayload, operation);
         operation.finish(200, { reports: rows.length, auditLogs: logRows.length });
     } catch (error) {
