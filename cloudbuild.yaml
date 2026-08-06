@@ -27,6 +27,8 @@ steps:
       '--platform', 'managed',
       '--memory', '2Gi',
       '--cpu', '2',
+      '--min-instances', '1',
+      '--no-cpu-throttling',
       '--timeout', '3600',
       '--set-cloudsql-instances', 'stackops-backend-475222:us-central1:stackops-db',
       '--update-env-vars', 'CLOUD_SQL_CONNECTION_NAME=stackops-backend-475222:us-central1:stackops-db,DB_NAME=consultation_db,NODE_OPTIONS=--trace-uncaught --trace-warnings',

@@ -14668,10 +14668,13 @@ function renderSunbirdReportsCenter(data) {
             </article>
 
             <article class="sunbird-report-automation-card">
-                <div class="sunbird-report-card-title"><span><i class="fas fa-clock-rotate-left"></i> Automation</span><b class="${settings.weeklyEnabled ? 'active' : ''}">${settings.weeklyEnabled ? 'Active' : 'Paused'}</b></div>
-                <div class="sunbird-report-schedule-row"><span>Collection</span><strong>Every day</strong></div>
+                <div class="sunbird-report-card-title"><span><i class="fas fa-clock-rotate-left"></i> Automation</span><b class="${settings.lastHourlyAutomationStatus && !String(settings.lastHourlyAutomationStatus).startsWith('failed') ? 'active' : ''}">${settings.lastHourlyAutomationStatus || 'Awaiting first run'}</b></div>
+                <div class="sunbird-report-schedule-row"><span>Collection</span><strong>Every hour</strong></div>                <div class="sunbird-report-schedule-row"><span>Time zone</span><strong>${escapeIdentityText(settings.timeZoneLabel || 'SAST (UTC+02:00)')}</strong></div>
+                <div class="sunbird-report-schedule-row"><span>Last automation</span><strong>${escapeIdentityText(formatSunbirdReportDate(settings.lastHourlyAutomationAt, true))}</strong></div>
+                <div class="sunbird-report-schedule-row"><span>Latest status</span><strong>${escapeIdentityText(settings.lastHourlyAutomationStatus || 'No completed hourly run yet')}</strong></div>
+                ${settings.lastHourlyAutomationRunId ? `<p class="sunbird-report-delivery-note">Run #${escapeIdentityText(settings.lastHourlyAutomationRunId)} · Snapshot #${escapeIdentityText(settings.lastHourlyAutomationSnapshotId || '—')} · Report #${escapeIdentityText(settings.lastHourlyAutomationReportId || '—')}${settings.lastHourlyAutomationMessage ? `<br>${escapeIdentityText(settings.lastHourlyAutomationMessage)}` : ''}</p>` : ''}
                 <div class="sunbird-report-schedule-row"><span>Delivery</span><strong>Friday, ${String(settings.deliveryHour || 8).padStart(2, '0')}:00 SAST</strong></div>
-                <p class="sunbird-report-delivery-note">On-demand generation downloads the PDF. Friday automation emails the PDF attachment.</p>
+                 <p class="sunbird-report-delivery-note">Each successful hourly run creates a PDF and sends its result to the automation recipient. Friday delivery remains available for the chosen client recipient.</p>
                 <label class="sunbird-report-email-field">
                     <span>Chosen PDF recipient</span>
                     <input id="sunbird-report-recipient" type="email" multiple placeholder="name@sunbird.eu" value="${escapeIdentityText(settings.recipientEmail || '')}">

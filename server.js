@@ -2134,6 +2134,12 @@ async function ensureDatabaseSchema() {
                 LastDailyCollectionDate DATE DEFAULT NULL,
                 LastWeeklyReportDate DATE DEFAULT NULL,
                 LastAutomationStartNoticeDate DATE DEFAULT NULL,
+                LastHourlyAutomationAt DATETIME DEFAULT NULL,
+                LastHourlyAutomationStatus VARCHAR(30) DEFAULT NULL,
+                LastHourlyAutomationMessage VARCHAR(1000) DEFAULT NULL,
+                LastHourlyAutomationRunID BIGINT DEFAULT NULL,
+                LastHourlyAutomationSnapshotID BIGINT DEFAULT NULL,
+                LastHourlyAutomationReportID BIGINT DEFAULT NULL,
                 UpdatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 FOREIGN KEY (CompanyID) REFERENCES Companies(ID)
             )
@@ -2157,6 +2163,21 @@ async function ensureDatabaseSchema() {
             console.warn('[Database] SunbirdReportSettings LastAutomationStartNoticeDate migration attempted:', err.message);
         }
 
+        for (const [column, definition] of [
+            ['LastHourlyAutomationAt', 'DATETIME DEFAULT NULL'],
+            ['LastHourlyAutomationStatus', 'VARCHAR(30) DEFAULT NULL'],
+            ['LastHourlyAutomationMessage', 'VARCHAR(1000) DEFAULT NULL'],
+            ['LastHourlyAutomationRunID', 'BIGINT DEFAULT NULL'],
+            ['LastHourlyAutomationSnapshotID', 'BIGINT DEFAULT NULL'],
+            ['LastHourlyAutomationReportID', 'BIGINT DEFAULT NULL']
+        ]) {
+            try {
+                const [existing] = await pool.query(`SHOW COLUMNS FROM SunbirdReportSettings LIKE '${column}'`);
+                if (!existing.length) await pool.query(`ALTER TABLE SunbirdReportSettings ADD COLUMN ${column} ${definition}`);
+            } catch (err) {
+                console.warn(`[Database] SunbirdReportSettings ${column} migration attempted:`, err.message);
+            }
+        }
         await pool.query(`
             CREATE TABLE IF NOT EXISTS SunbirdReports (
                 ID BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -4287,6 +4308,50 @@ async function saveSunbirdReport(companyId, reportType, periodStart, periodEnd, 
     }
 }
 
+const SUNBIRD_AUTOMATION_NOTIFICATION_EMAIL = process.env.STACKCTRL_AUTOMATION_NOTIFICATION_EMAIL || 'maambelanduni@stackopsit.co.za';
+
+async function updateSunbirdHourlyAutomationState(companyId, state = {}) {
+    await pool.query(`UPDATE SunbirdReportSettings SET LastHourlyAutomationAt = NOW(), LastHourlyAutomationStatus = ?, LastHourlyAutomationMessage = ?, LastHourlyAutomationRunID = ?, LastHourlyAutomationSnapshotID = ?, LastHourlyAutomationReportID = ? WHERE CompanyID = ?`, [String(state.status || 'unknown').slice(0, 30), String(state.message || '').slice(0, 1000) || null, state.runId || null, state.snapshotId || null, state.reportId || null, Number(companyId)]);
+}
+
+async function notifySunbirdHourlyAutomation({ companyId, report = null, run = {}, status, message }) {
+    const recipients = normalizeReportRecipientEmails(SUNBIRD_AUTOMATION_NOTIFICATION_EMAIL);
+    if (!recipients.length) throw new Error('No hourly automation notification recipient is configured');
+    const companyName = report?.payload?.companyName || `Company #${companyId}`;
+    const successful = status === 'completed' || status === 'completed_with_warnings';
+    const pdf = successful && report?.payload ? await Promise.race([generateSunbirdReportPdf(report.payload, report.id), new Promise((_, reject) => setTimeout(() => reject(new Error('Automatic PDF generation exceeded 60 seconds')), 60000))]) : null;
+    const html = renderCorporateEmail({ title: successful ? 'Hourly StackCTRL automation completed' : 'Hourly StackCTRL automation failed', greeting: 'Dear Maambelanduni,', bodyHtml: `<p>${successful ? 'A fresh all-domain StackCTRL collection and Azure enterprise analysis completed.' : 'The hourly StackCTRL collection or Azure enterprise analysis did not complete.'}</p><p><strong>Company:</strong> ${escapeHtml(companyName)}<br><strong>Run:</strong> #${escapeHtml(run.runId || 'Not created')}<br><strong>Snapshot:</strong> #${escapeHtml(run.snapshotId || 'Not created')}<br><strong>Status:</strong> ${escapeHtml(status)}<br><strong>Detail:</strong> ${escapeHtml(message || 'No additional detail was supplied.')}</p>${successful ? '<p>A newly generated hourly PDF report is attached and is also available in the client report history.</p>' : '<p>The client dashboard retains its last verified report and shows this failure in Automation status.</p>'}` });
+    for (const recipient of recipients) await sendEmail(recipient, `StackCTRL hourly automation ${successful ? 'completed' : 'failed'} | ${companyName}`, html, true, pdf ? [{ name: `StackCTRL-Hourly-Report-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.pdf`, contentType: 'application/pdf', content: pdf }] : []);
+    return { recipients, pdfBytes: pdf?.length || 0 };
+}
+
+async function finalizeSunbirdHourlyAutomation({ companyId, run = {}, now = new Date() } = {}) {
+    const status = String(run.status || 'failed').toLowerCase();
+    const success = ['completed', 'completed_with_warnings'].includes(status);
+    const state = { runId: run.runId || null, snapshotId: run.snapshotId || null, reportId: null };
+    if (!success) {
+        const message = run.terminalError?.errorMessage || (run.rateLimit ? 'Azure rate limit reached; no report was generated for this hour.' : `Enterprise run ended with ${status}.`);
+        await writeSunbirdReportLog({ companyId, eventType: 'hourly_automation_failed', status: 'failed', message, metadata: { runId: state.runId, snapshotId: state.snapshotId, status } });
+        try { await notifySunbirdHourlyAutomation({ companyId, run, status, message }); await updateSunbirdHourlyAutomationState(companyId, { ...state, status: 'failed', message }); }
+        catch (notificationError) { await updateSunbirdHourlyAutomationState(companyId, { ...state, status: 'failed_notification', message: `${message} Notification failed: ${notificationError.message}` }); }
+        return { status: 'failed', ...state, message };
+    }
+    try {
+        const report = await saveSunbirdReport(companyId, 'hourly', new Date(new Date(now).getTime() - 60 * 60 * 1000), now, null, true);
+        if (Number(report.payload?.enterpriseRunId || 0) !== Number(run.runId || 0)) throw new Error(`Hourly report lineage mismatch: expected enterprise run #${run.runId}, received #${report.payload?.enterpriseRunId || 'none'}`);
+        const delivery = await notifySunbirdHourlyAutomation({ companyId, report, run, status, message: 'Fresh report and PDF generated successfully.' });
+        await pool.query(`UPDATE SunbirdReports SET EmailStatus = 'sent', SentAt = NOW() WHERE ID = ?`, [report.id]);
+        await writeSunbirdReportLog({ companyId, reportId: report.id, eventType: 'hourly_pdf_emailed', status: 'success', message: `Hourly PDF emailed to ${delivery.recipients.join(', ')}.`, metadata: { runId: run.runId, snapshotId: run.snapshotId, pdfBytes: delivery.pdfBytes } });
+        await updateSunbirdHourlyAutomationState(companyId, { ...state, reportId: report.id, status, message: 'Fresh evidence, Azure analysis, report, PDF, and notification completed.' });
+        return { status, ...state, reportId: report.id, notificationSent: true };
+    } catch (error) {
+        const message = `Hourly report finalization failed: ${error.message}`;
+        await writeSunbirdReportLog({ companyId, eventType: 'hourly_automation_failed', status: 'failed', message, metadata: { runId: state.runId, snapshotId: state.snapshotId } });
+        try { await notifySunbirdHourlyAutomation({ companyId, run, status: 'failed', message }); } catch (_) {}
+        await updateSunbirdHourlyAutomationState(companyId, { ...state, status: 'failed', message });
+        throw error;
+    }
+}
 function formatReportDate(value, includeTime = false) {
     if (!value) return 'Not available';
     return new Intl.DateTimeFormat('en-ZA', {
@@ -6061,7 +6126,14 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
                 activeSince: settings.ActiveSince,
                 lastDailyCollectionDate: settings.LastDailyCollectionDate,
                 lastWeeklyReportDate: settings.LastWeeklyReportDate,
-                timeZone: SUNBIRD_REPORT_TIME_ZONE
+                timeZone: SUNBIRD_REPORT_TIME_ZONE,
+                timeZoneLabel: 'SAST (UTC+02:00)',
+                lastHourlyAutomationAt: settings.LastHourlyAutomationAt || null,
+                lastHourlyAutomationStatus: settings.LastHourlyAutomationStatus || null,
+                lastHourlyAutomationMessage: settings.LastHourlyAutomationMessage || null,
+                lastHourlyAutomationRunId: settings.LastHourlyAutomationRunID || null,
+                lastHourlyAutomationSnapshotId: settings.LastHourlyAutomationSnapshotID || null,
+                lastHourlyAutomationReportId: settings.LastHourlyAutomationReportID || null
             },
             range: { start: range.start, end: range.end },
             overview,
@@ -15511,7 +15583,8 @@ const enterpriseIntelligenceService = createEnterpriseIntelligenceService({
     pool,
     azureOpenAI: azureOpenAIService,
     schedulerService: stackCTRLIntelligenceScheduler,
-    intelligenceService: stackCTRLIntelligenceService
+    intelligenceService: stackCTRLIntelligenceService,
+    onScheduledRunCompleted: finalizeSunbirdHourlyAutomation
 });
 const stackCTRLIntelligenceAutomation = createStackCTRLServerAutomation({
     schedulerService: stackCTRLIntelligenceScheduler,

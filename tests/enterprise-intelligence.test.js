@@ -2055,7 +2055,7 @@ test('Enterprise synthesis recovers a long unterminated JSON string and complete
     assert.equal(synthesisWrite.params[6], 'completed_with_warnings');
 });
 
-test('enterprise automation does nothing outside the controlled daily window', async () => {
+test('enterprise automation checks for an hourly run outside the former daily window', async () => {
     let queryCount = 0;
     const service = createEnterpriseIntelligenceService({
         pool: { async query() { queryCount++; return [[], []]; } },
@@ -2064,8 +2064,8 @@ test('enterprise automation does nothing outside the controlled daily window', a
         config: { domainDelayMs: 0 }
     });
     const result = await service.runScheduledTick({ now: new Date('2026-06-22T06:00:00.000Z') });
-    assert.equal(result.status, 'not_due');
-    assert.equal(queryCount, 0);
+    assert.equal(result.status, 'completed');
+    assert.equal(queryCount, 1);
 });
 
 test('Enterprise Device currentMetrics follow stored dashboard metrics and flatten per-device evidence', async () => {

@@ -4195,6 +4195,7 @@ function createEnterpriseIntelligenceService({
     azureOpenAI,
     schedulerService,
     intelligenceService = null,
+    onScheduledRunCompleted = null,
     logger = console,
     wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
     config = {}
@@ -8280,7 +8281,9 @@ Return exactly these top-level fields:
 
     async function runScheduledTick({ now = new Date(), companyId = null } = {}) {
         const local = DateTime.fromJSDate(now instanceof Date ? now : new Date(now), { zone: 'utc' }).setZone('Africa/Johannesburg');
-        if (local.weekday > 5 || local.hour !== 18 || local.minute < 15 || local.minute >= 30) return { status: 'not_due', localTime: local.toISO() };
+        // The timer can tick more often, but this key gives every tenant exactly
+        // one fresh all-domain enterprise run per Johannesburg calendar hour.
+        const scheduleHour = local.toFormat('yyyyLLddHH');
         let companyIds = companyId ? [Number(companyId)] : [];
         if (!companyIds.length) {
             const [rows] = await pool.query(`SELECT DISTINCT CompanyID FROM StackCTRLClientCapabilities WHERE ProfileKey = 'sunbird' AND IsEnabled = 1`);
@@ -8289,9 +8292,23 @@ Return exactly these top-level fields:
         const results = [];
         for (const id of companyIds) {
             try {
-                const scheduleDate = local.toFormat('yyyyLLdd');
-                const daily = await runEnterpriseReport({ companyId: id, periodType: 'daily', referenceDate: now, deduplicationKey: `${id}:enterprise:daily:${scheduleDate}` });
+                const daily = await runEnterpriseReport({
+                    companyId: id,
+                    periodType: 'daily',
+                    referenceDate: now,
+                    deduplicationKey: `${id}:enterprise:hourly:${scheduleHour}`,
+                    refreshSnapshot: true,
+                    includeSynthesis: true
+                });
                 const companyRuns = [{ periodType: 'daily', status: 'completed', ...daily }];
+                if (daily.status !== 'duplicate' && typeof onScheduledRunCompleted === 'function') {
+                    try {
+                        companyRuns[0].reportAutomation = await onScheduledRunCompleted({ companyId: id, run: daily, now, localTime: local.toISO() });
+                    } catch (automationError) {
+                        logger.error(`[StackCTRL Enterprise] Hourly report finalization failed for company ${id}:`, automationError.message);
+                        companyRuns[0].reportAutomation = { status: 'failed', message: automationError.message };
+                    }
+                }
                 if (daily.rateLimited) {
                     results.push({ companyId: id, runs: companyRuns });
                     break;
