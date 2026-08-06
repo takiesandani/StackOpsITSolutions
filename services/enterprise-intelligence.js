@@ -3464,13 +3464,31 @@ function ensureItemEvidence(item, domain, snapshotId, availableEvidence = []) {
     if ((!normalized.sourceMetric && inferredSourceMetric) || cloudflareWeakMetric) normalized.sourceMetric = inferredSourceMetric;
     const requestedMetric = String(normalized.sourceMetric || '').toLowerCase();
 
-    const matching = requestedMetric
-        ? availableEvidence.filter(row => [row.sourceMetric, row.sourceLabel, row.evidenceCategory, row.evidenceType]
-            .some(value => String(value || '').toLowerCase() === requestedMetric))
-        : [];
-
-    const selected = matching.length ? matching : availableEvidence;
-
+    // sourceMetric describes an aggregate (for example totalUsers); it is not a
+    // relationship to every record in that category. Resolve source rows only via
+    // explicit entity/record/alert IDs, attached entity values, or source paths.
+    const explicitReferenceKeys = new Set([
+        ...array(normalized.affectedEntityIds),
+        ...array(normalized.recordIds),
+        ...array(normalized.sourceAlertIds),
+        ...array(normalized.affectedEntities).flatMap(entity => entityMatchKeys(entity)),
+        ...array(normalized.evidenceRows).flatMap(row => entityMatchKeys(row))
+    ].map(value => String(value || '').trim().toLowerCase()).filter(Boolean));
+    const explicitSourcePaths = new Set(array(normalized.internalSourcePaths)
+        .map(value => String(value || '').trim().toLowerCase()).filter(Boolean));
+    const matching = availableEvidence.filter(row => {
+        const candidate = canonicalEntity({
+            internalSourcePath: row?.internalSourcePath || null,
+            sourceMetric: row?.sourceMetric || null,
+            evidenceType: row?.evidenceType || null,
+            data: row?.data ?? row
+        }, normalized);
+        const candidateKeys = entityMatchKeys(candidate).map(value => String(value || '').trim().toLowerCase());
+        const candidatePath = String(row?.internalSourcePath || candidate?.internalSourcePath || '').trim().toLowerCase();
+        return candidateKeys.some(key => explicitReferenceKeys.has(key)) ||
+            (candidatePath && explicitSourcePaths.has(candidatePath));
+    });
+    const selected = matching;
     const entityContext = {
         ...normalized,
         sourceDomain: normalized.sourceDomain || domain.key,
@@ -3570,6 +3588,7 @@ function ensureItemEvidence(item, domain, snapshotId, availableEvidence = []) {
         normalized.evidenceSummary = `${normalized.evidenceRows.length} readable StackCTRL affected evidence row(s) support this item; complete source data remains available in the raw evidence endpoint.`;
     }
 
+    normalized.evidenceLinkVersion = 'explicit_v2';
     return normalized;
 }
 function normalizeControlAssessment(value, domain, snapshotId, availableEvidence) {

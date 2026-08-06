@@ -14028,7 +14028,7 @@ function handleSunbirdDomainFindingEvidenceEscape(event) {
     if (event.key === 'Escape') closeSunbirdDomainFindingEvidence();
 }
 
-async function openSunbirdDomainFindingEvidence(evidenceKey) {
+function openSunbirdDomainFindingEvidence(evidenceKey) {
     const key = String(evidenceKey || '');
     const payload = sunbirdReportDomainEvidenceMap.get(key);
     if (!payload) {
@@ -14052,12 +14052,12 @@ async function openSunbirdDomainFindingEvidence(evidenceKey) {
                 <button type="button" onclick="window.closeSunbirdDomainFindingEvidence()" class="sunbird-id-modal-close" aria-label="Close finding evidence">&times;</button>
             </div>
             <div class="sunbird-id-evidence-summary sunbird-report-evidence-summary" id="sunbird-report-domain-evidence-summary">
-                <span>${rows.length} cached evidence row${rows.length === 1 ? '' : 's'}</span>
+                <span>${rows.length} explicitly linked evidence row${rows.length === 1 ? '' : 's'}</span>
                 <span>${escapeIdentityText(payload.finding?.severity || 'Observed')}</span>
                 <span>${escapeIdentityText(payload.finding?.sourceMetric || 'Latest report output')}</span>
             </div>
             <div class="sunbird-id-evidence-list sunbird-report-evidence-list" id="sunbird-report-domain-evidence-list">
-                ${rows.length ? renderSunbirdDomainEvidenceRows(rows) : '<div class="sunbird-report-evidence-empty">Loading current evidence from the verified enterprise run.</div>'}
+                ${rows.length ? renderSunbirdDomainEvidenceRows(rows) : '<div class="sunbird-report-evidence-empty">No specific source evidence was attached to this finding.</div>'}
             </div>
             <div class="sunbird-id-modal-actions">
                 <button type="button" class="sunbird-id-evidence-btn" onclick="window.closeSunbirdDomainFindingEvidence()">Close</button>
@@ -14066,33 +14066,8 @@ async function openSunbirdDomainFindingEvidence(evidenceKey) {
     `;
     document.body.appendChild(modal);
     document.addEventListener('keydown', handleSunbirdDomainFindingEvidenceEscape);
-    try {
-        const params = new URLSearchParams({
-            domainKey: String(payload.domainKey || ''),
-            sourceMetric: String(payload.finding?.sourceMetric || '')
-        });
-        const response = await fetch(`/api/sunbird/reports/live-evidence?${params.toString()}`, {
-            cache: 'no-store',
-            headers: getSunbirdReportHeaders()
-        });
-        const result = await response.json();
-        if (!response.ok || !result.success) throw new Error(result.message || 'Current evidence is unavailable.');
-        const liveRows = normalizeSunbirdLiveEvidenceRows(result.evidence || []);
-        const list = document.getElementById('sunbird-report-domain-evidence-list');
-        const summary = document.getElementById('sunbird-report-domain-evidence-summary');
-        if (!list || !summary) return;
-        summary.innerHTML = `
-            <span>${liveRows.length} current evidence row${liveRows.length === 1 ? '' : 's'}</span>
-            <span>${escapeIdentityText(payload.finding?.severity || 'Observed')}</span>
-            <span>Run ${Number(result.enterpriseRunId || 0)}${result.matchedMetric ? ' metric matched' : ' all domain evidence'}</span>
-        `;
-        list.innerHTML = liveRows.length
-            ? renderSunbirdDomainEvidenceRows(liveRows)
-            : '<div class="sunbird-report-evidence-empty">The current enterprise run returned no client-visible evidence rows for this domain.</div>';
-    } catch (error) {
-        const list = document.getElementById('sunbird-report-domain-evidence-list');
-        if (list && !rows.length) list.innerHTML = `<div class="sunbird-report-evidence-empty">${escapeIdentityText(error.message || 'Current evidence could not be loaded.')}</div>`;
-    }
+    // Evidence is rendered from the finding's explicit links only. A metric such as
+    // totalUsers is an aggregate, not a relationship to every record in a domain.
 }
 
 function renderSunbirdReportDomainBreakdown(data = {}) {
@@ -14120,8 +14095,8 @@ function renderSunbirdReportDomainBreakdown(data = {}) {
     return `
         <section class="sunbird-report-domain-breakdown">
             <div class="sunbird-report-card-title">
-                <span><i class="fas fa-layer-group"></i> Full domain intelligence (latest report)</span>
-                <small>${escapeIdentityText(formatSunbirdReportDate(latest.periodEnd || latest.createdAt))}</small>
+                <span><i class="fas fa-layer-group"></i> Full domain intelligence (latest per-domain analysis)</span>
+                <small>${escapeIdentityText(formatSunbirdReportDate(latest.createdAt || latest.periodEnd, true))}</small>
             </div>
             <div class="sunbird-report-domain-filter-row" role="group" aria-label="Domain filter">
                 <button type="button" class="${selectedKey === 'all' ? 'active' : ''}" onclick="window.setSunbirdReportDomainFilter('all')">All domains</button>
@@ -14142,6 +14117,7 @@ function renderSunbirdReportDomainBreakdown(data = {}) {
                         <article class="sunbird-report-domain-detail-card">
                             <header>
                                 <h3>${escapeIdentityText(domainName)}</h3>
+                                <small>${escapeIdentityText(domain.analysedAt ? `Last analysed ${formatSunbirdReportDate(domain.analysedAt, true)}${domain.runId ? ` · Run ${Number(domain.runId)}` : ''}` : 'Analysis time not returned')}</small>
                                 <div class="sunbird-report-domain-score-pills">
                                     <span class="tone-${getSunbirdReportScoreTone(domain.healthScore)}">Health ${domain.healthScore == null ? 'n/a' : `${Number(domain.healthScore)}%`}</span>
                                     <span class="tone-${getSunbirdReportScoreTone(100 - Number(domain.riskScore || 0))}">Risk ${domain.riskScore == null ? 'n/a' : `${Number(domain.riskScore)}%`}</span>

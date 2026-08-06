@@ -3483,20 +3483,65 @@ function buildHistoricalNarrativeFromSynthesis(output = {}, report = null) {
 }
 
 async function fetchSunbirdPowerBIIntelligence(companyId) {
-    if (!enterpriseIntelligenceService) return null;
+    if (!enterpriseIntelligenceService?.getPowerBIDomain) return null;
 
     try {
-        const intelligence = await enterpriseIntelligenceService.getPowerBIIntelligenceRun(companyId);
-        // A report must remain run-consistent. Do not backfill a missing domain from a
-        // separately "latest" record because that can join evidence from another snapshot.
-        const domains = (intelligence?.domains || []).filter(domain =>
-            domain && !['pending', 'temporarily_disabled'].includes(String(domain.status || domain.domainStatus || '').toLowerCase())
-        );
+        // Each domain is independently usable as soon as its own Azure analysis is
+        // complete. Do not require a later all-domain run: that made a stale complete
+        // run outrank a newer, valid domain result.
+        const definitions = (enterpriseIntelligenceService.domains || [])
+            .filter(domain => domain?.includedInCurrentPhase && domain?.selectable !== false);
+        const settled = await Promise.allSettled(definitions.map(async definition => {
+            const result = await enterpriseIntelligenceService.getPowerBIDomain(companyId, definition.key);
+            return result?.domain || null;
+        }));
+        const byKey = new Map(settled
+            .filter(result => result.status === 'fulfilled' && result.value)
+            .map(result => [String(result.value.domainKey || '').toLowerCase(), result.value]));
+        const domains = definitions
+            .map(definition => byKey.get(String(definition.key || '').toLowerCase()))
+            .filter(domain => domain && !['pending', 'temporarily_disabled'].includes(String(domain.status || domain.domainStatus || '').toLowerCase()));
         if (!domains.length) return null;
+
+        const timestamp = domain => {
+            const value = new Date(domain?.createdAt || domain?.periodEnd || domain?.periodStart || 0).getTime();
+            return Number.isFinite(value) ? value : 0;
+        };
+        const newestDomain = domains.reduce((newest, domain) => timestamp(domain) > timestamp(newest) ? domain : newest, domains[0]);
+        const domainManifest = domains.map(domain => ({
+            domainKey: domain.domainKey,
+            domainName: domain.domainName,
+            runId: Number(domain.runId || 0) || null,
+            snapshotId: domain.snapshotId == null ? null : Number(domain.snapshotId),
+            status: domain.status || 'available',
+            analysedAt: domain.createdAt || null,
+            periodStart: domain.periodStart || null,
+            periodEnd: domain.periodEnd || null
+        }));
+        const tables = typeof enterpriseIntelligenceService.flattenPowerBITables === 'function'
+            ? enterpriseIntelligenceService.flattenPowerBITables({ domains })
+            : {};
         return {
-            ...(intelligence || {}),
+            dataClassification: 'intelligent_azure_output',
+            companyId: Number(companyId),
+            latestSnapshotId: newestDomain.snapshotId == null ? null : Number(newestDomain.snapshotId),
+            latestRunId: Number(newestDomain.runId || 0) || null,
+            periodType: 'per_domain_latest',
+            periodStart: newestDomain.periodStart || null,
+            periodEnd: newestDomain.periodEnd || null,
+            createdAt: newestDomain.createdAt || null,
+            reportingPhase: 'per_domain_latest',
+            perDomainLatest: true,
             domains,
-            source: 'enterprise_intelligence',
+            domainManifest,
+            tables,
+            completeness: {
+                expectedDomains: definitions.length,
+                returnedDomains: domains.length,
+                successfulDomains: domains.length,
+                independentlyRefreshed: true
+            },
+            source: 'enterprise_per_domain_intelligence',
             available: true
         };
     } catch (error) {
@@ -3504,7 +3549,6 @@ async function fetchSunbirdPowerBIIntelligence(companyId) {
         return null;
     }
 }
-
 async function fetchSunbirdIdentityDomainIntelligence(companyId) {
     if (!enterpriseIntelligenceService?.getPowerBIDomain) return null;
     try {
@@ -3645,29 +3689,23 @@ function buildSunbirdDomainBreakdownFromPayload(payload = {}) {
                 if (dedupe.has(key)) return null;
                 dedupe.add(key);
 
-                const evidencePool = [
+                const hasExplicitEvidenceLinks = String(item?.evidenceLinkVersion || '') === 'explicit_v2';
+                const evidencePool = hasExplicitEvidenceLinks ? [
                     ...(Array.isArray(item?.evidenceRecords) ? item.evidenceRecords : []),
                     ...(Array.isArray(item?.affectedEntities) ? item.affectedEntities : []),
                     ...(Array.isArray(item?.evidenceRows) ? item.evidenceRows : []),
                     ...(Array.isArray(item?.evidenceUsed) ? item.evidenceUsed : []),
                     ...(Array.isArray(item?.evidence) ? item.evidence : [])
-                ];
-                const requestedMetric = String(item?.sourceMetric || '').trim().toLowerCase();
-                const matchingCategories = evidenceCategories.filter(category => {
-                    const categoryKeys = [category?.sourceMetric, category?.key, category?.label]
-                        .map(value => String(value || '').trim().toLowerCase())
-                        .filter(Boolean);
-                    return requestedMetric && categoryKeys.includes(requestedMetric);
-                });
-                const fallbackCategories = matchingCategories.length ? matchingCategories : evidenceCategories;
-                fallbackCategories.forEach(category => {
-                    const categoryRows = Array.isArray(category?.entities) ? category.entities : [];
-                    categoryRows.forEach(row => evidencePool.push({
-                        ...row,
-                        sourceMetric: row?.sourceMetric || category?.sourceMetric || category?.key || '',
-                        evidenceSource: row?.evidenceSource || category?.label || category?.sourceMetric || category?.key || ''
-                    }));
-                });
+                ] : [];
+                // sourceMetric is an aggregate descriptor, not an evidence relationship.
+                // Never widen a finding to all rows in that metric or domain.
+                const evidenceIds = hasExplicitEvidenceLinks ? [...new Set([
+                    ...(Array.isArray(item?.affectedEntityIds) ? item.affectedEntityIds : []),
+                    ...(Array.isArray(item?.recordIds) ? item.recordIds : []),
+                    ...(Array.isArray(item?.sourceAlertIds) ? item.sourceAlertIds : []),
+                    ...(Array.isArray(item?.evidenceIds) ? item.evidenceIds : []),
+                    ...(Array.isArray(item?.entityIds) ? item.entityIds : [])
+                ].map(value => String(value || '').trim()).filter(Boolean))].slice(0, 100) : [];
                 const uniqueEvidence = [];
                 const evidenceSeen = new Set();
                 evidencePool.forEach(row => {
@@ -3677,7 +3715,6 @@ function buildSunbirdDomainBreakdownFromPayload(payload = {}) {
                     evidenceSeen.add(evidenceKey);
                     uniqueEvidence.push(normalized);
                 });
-
                 return {
                     findingId: `${String(domain?.domainKey || domain?.domainName || 'domain').toLowerCase()}-${index + 1}`,
                     title: shortText(title, 260),
@@ -3686,7 +3723,8 @@ function buildSunbirdDomainBreakdownFromPayload(payload = {}) {
                     whyItMatters: shortText(asText(item?.whyItMatters || item?.reasoning || item?.businessImpact || item?.impact), 900),
                     recommendation: shortText(asText(item?.firstAction || item?.recommendedAction || item?.recommendation || item?.remediationAction || item?.detail), 900),
                     sourceMetric: shortText(asText(item?.sourceMetric || ''), 120),
-                    evidenceCount: Math.max(Number(item?.evidenceRecordCount || 0), Number(item?.entityCount || 0), uniqueEvidence.length),
+                    evidenceCount: uniqueEvidence.length,
+                    evidenceIds,
                     evidence: uniqueEvidence
                 };
             })
@@ -3699,6 +3737,10 @@ function buildSunbirdDomainBreakdownFromPayload(payload = {}) {
         return {
             domainKey: shortText(asText(domain?.domainKey || ''), 120),
             domainName: shortText(asText(domain?.domainName || domain?.domainKey || 'Domain'), 180),
+            runId: Number(domain?.runId || 0) || null,
+            snapshotId: domain?.snapshotId == null ? null : Number(domain.snapshotId),
+            analysedAt: domain?.createdAt || null,
+            periodEnd: domain?.periodEnd || null,
             healthScore: scoreOrNull(output?.healthScore ?? output?.authoritativeScores?.healthScore ?? output?.scoreSummary?.healthScore ?? domain?.healthScore ?? domain?.score),
             riskScore: scoreOrNull(output?.riskScore ?? output?.authoritativeScores?.riskScore ?? output?.scoreSummary?.riskScore ?? domain?.riskScore),
             riskLevel: shortText(asText(output?.riskLevel || output?.authoritativeScores?.riskLevel || output?.scoreSummary?.riskLevel || ''), 80),
@@ -3774,7 +3816,7 @@ function buildSunbirdLiveIntelligenceSnapshot(intelligence = null, finalReport =
             `Control gaps and remediation progress:\n${historicalChanges.controlGapsAndRemediationProgress}`,
             `Confidence:\n${String(synthesis?.enterpriseExecutiveSummary?.confidence || synthesis?.evidenceJustificationSummary?.evidenceConfidence || 'medium')}.`
         ].join('\n\n')
-        : '';
+        : 'This executive view combines the newest completed Azure analysis for each active domain. Domains refresh independently and display their own analysis time and run ID; no older complete enterprise run is used as a substitute.';
     const failures = findings.filter(finding => /critical|high|severe|failed/i.test(String(finding.severity || '')));
     const successes = findings.filter(finding => /low|healthy|good|resolved|success/i.test(String(finding.severity || '')));
     return {
@@ -4208,15 +4250,37 @@ async function buildSunbirdReportPayload(companyId, periodStart, periodEnd, incl
     }));
     report.dailyReports = await loadSunbirdDailyReportSummaries(companyId, periodStart, periodEnd);
     const powerBiIntelligence = includeAi ? await fetchSunbirdPowerBIIntelligence(companyId) : null;
-    const powerBiFinal = includeAi
+    // A final synthesis belongs to one all-domain run. Never mix it with a per-domain-latest composite.
+    const powerBiFinal = includeAi && !powerBiIntelligence?.perDomainLatest
         ? await fetchSunbirdPowerBIFinal(companyId, powerBiIntelligence?.latestRunId || null)
         : null;
     report.domainInsights = powerBiIntelligence;
+    // A report may be a composite of independently completed domains. Persist the
+    // manifest so the PDF and automated delivery retain exact freshness lineage.
+    report.enterpriseRunId = Number(powerBiIntelligence?.latestRunId || 0) || null;
+    report.enterpriseRunManifest = Array.isArray(powerBiIntelligence?.domainManifest)
+        ? powerBiIntelligence.domainManifest
+        : (powerBiIntelligence?.domains || []).map(domain => ({
+            domainKey: domain.domainKey,
+            runId: Number(domain.runId || 0) || null,
+            snapshotId: domain.snapshotId == null ? null : Number(domain.snapshotId),
+            analysedAt: domain.createdAt || null,
+            status: domain.status || null
+        }));
     report.finalSynthesis = powerBiFinal;
+    const perDomainCompositeAnalysis = powerBiIntelligence?.perDomainLatest
+        ? {
+            ...buildDeterministicReportAnalysis(report),
+            executiveSummary: 'This report combines the newest completed Azure analysis for each active domain. Every domain retains its own run, snapshot, and analysis time; no older fully completed enterprise run is substituted for newer domain intelligence.',
+            generatedBy: 'Latest per-domain Azure analyses'
+        }
+        : null;
     report.analysis = includeAi
-        ? (powerBiFinal?.finalSynthesis ? buildFinalSynthesisReportAnalysis(report, powerBiFinal) : await generateAiReportAnalysis(report, powerBiIntelligence))
+        ? (powerBiFinal?.finalSynthesis
+            ? buildFinalSynthesisReportAnalysis(report, powerBiFinal)
+            : (perDomainCompositeAnalysis || await generateAiReportAnalysis(report, powerBiIntelligence)))
         : buildDeterministicReportAnalysis(report);
-    return report;
+        return report;
 }
 
 async function loadSunbirdDailyReportSummaries(companyId, periodStart, periodEnd) {
@@ -4320,7 +4384,7 @@ async function notifySunbirdHourlyAutomation({ companyId, report = null, run = {
     const companyName = report?.payload?.companyName || `Company #${companyId}`;
     const successful = status === 'completed' || status === 'completed_with_warnings';
     const pdf = successful && report?.payload ? await Promise.race([generateSunbirdReportPdf(report.payload, report.id), new Promise((_, reject) => setTimeout(() => reject(new Error('Automatic PDF generation exceeded 60 seconds')), 60000))]) : null;
-    const html = renderCorporateEmail({ title: successful ? 'Hourly StackCTRL automation completed' : 'Hourly StackCTRL automation failed', greeting: 'Dear Maambelanduni,', bodyHtml: `<p>${successful ? 'A fresh all-domain StackCTRL collection and Azure enterprise analysis completed.' : 'The hourly StackCTRL collection or Azure enterprise analysis did not complete.'}</p><p><strong>Company:</strong> ${escapeHtml(companyName)}<br><strong>Run:</strong> #${escapeHtml(run.runId || 'Not created')}<br><strong>Snapshot:</strong> #${escapeHtml(run.snapshotId || 'Not created')}<br><strong>Status:</strong> ${escapeHtml(status)}<br><strong>Detail:</strong> ${escapeHtml(message || 'No additional detail was supplied.')}</p>${successful ? '<p>A newly generated hourly PDF report is attached and is also available in the client report history.</p>' : '<p>The client dashboard retains its last verified report and shows this failure in Automation status.</p>'}` });
+    const html = renderCorporateEmail({ title: successful ? 'Hourly StackCTRL automation completed' : 'Hourly StackCTRL automation failed', greeting: 'Dear Maambelanduni,', bodyHtml: `<p>${successful ? escapeHtml(message || 'A latest per-domain StackCTRL report was generated.') : 'The hourly StackCTRL collection or Azure enterprise analysis did not complete.'}</p><p><strong>Company:</strong> ${escapeHtml(companyName)}<br><strong>Run:</strong> #${escapeHtml(run.runId || 'Not created')}<br><strong>Snapshot:</strong> #${escapeHtml(run.snapshotId || 'Not created')}<br><strong>Status:</strong> ${escapeHtml(status)}<br><strong>Detail:</strong> ${escapeHtml(message || 'No additional detail was supplied.')}</p>${successful ? '<p>A newly generated hourly PDF report is attached and is also available in the client report history.</p>' : '<p>The client dashboard retains its last verified report and shows this failure in Automation status.</p>'}` });
     for (const recipient of recipients) await sendEmail(recipient, `StackCTRL hourly automation ${successful ? 'completed' : 'failed'} | ${companyName}`, html, true, pdf ? [{ name: `StackCTRL-Hourly-Report-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.pdf`, contentType: 'application/pdf', content: pdf }] : []);
     return { recipients, pdfBytes: pdf?.length || 0 };
 }
@@ -4329,7 +4393,7 @@ async function finalizeSunbirdHourlyAutomation({ companyId, run = {}, now = new 
     const status = String(run.status || 'failed').toLowerCase();
     const success = ['completed', 'completed_with_warnings'].includes(status);
     const state = { runId: run.runId || null, snapshotId: run.snapshotId || null, reportId: null };
-    if (!success) {
+    if (!run.runId) {
         const message = run.terminalError?.errorMessage || (run.rateLimit ? 'Azure rate limit reached; no report was generated for this hour.' : `Enterprise run ended with ${status}.`);
         await writeSunbirdReportLog({ companyId, eventType: 'hourly_automation_failed', status: 'failed', message, metadata: { runId: state.runId, snapshotId: state.snapshotId, status } });
         try { await notifySunbirdHourlyAutomation({ companyId, run, status, message }); await updateSunbirdHourlyAutomationState(companyId, { ...state, status: 'failed', message }); }
@@ -4338,12 +4402,18 @@ async function finalizeSunbirdHourlyAutomation({ companyId, run = {}, now = new 
     }
     try {
         const report = await saveSunbirdReport(companyId, 'hourly', new Date(new Date(now).getTime() - 60 * 60 * 1000), now, null, true);
-        if (Number(report.payload?.enterpriseRunId || 0) !== Number(run.runId || 0)) throw new Error(`Hourly report lineage mismatch: expected enterprise run #${run.runId}, received #${report.payload?.enterpriseRunId || 'none'}`);
-        const delivery = await notifySunbirdHourlyAutomation({ companyId, report, run, status, message: 'Fresh report and PDF generated successfully.' });
+        const domainManifest = Array.isArray(report.payload?.enterpriseRunManifest) ? report.payload.enterpriseRunManifest : [];
+        const refreshedDomains = domainManifest.filter(domain => Number(domain?.runId || 0) === Number(run.runId || 0));
+        if (!refreshedDomains.length) throw new Error(`Hourly report contains no completed domain from enterprise run #${run.runId}.`);
+        const deliveryStatus = success ? status : 'completed_with_warnings';
+        const deliveryMessage = success
+            ? 'Fresh report and PDF generated successfully.'
+            : `The enterprise run ended ${status}, but ${refreshedDomains.length} domain(s) completed and a latest per-domain report and PDF were generated.`;
+        const delivery = await notifySunbirdHourlyAutomation({ companyId, report, run, status: deliveryStatus, message: deliveryMessage });
         await pool.query(`UPDATE SunbirdReports SET EmailStatus = 'sent', SentAt = NOW() WHERE ID = ?`, [report.id]);
         await writeSunbirdReportLog({ companyId, reportId: report.id, eventType: 'hourly_pdf_emailed', status: 'success', message: `Hourly PDF emailed to ${delivery.recipients.join(', ')}.`, metadata: { runId: run.runId, snapshotId: run.snapshotId, pdfBytes: delivery.pdfBytes } });
-        await updateSunbirdHourlyAutomationState(companyId, { ...state, reportId: report.id, status, message: 'Fresh evidence, Azure analysis, report, PDF, and notification completed.' });
-        return { status, ...state, reportId: report.id, notificationSent: true };
+        await updateSunbirdHourlyAutomationState(companyId, { ...state, reportId: report.id, status: deliveryStatus, message: deliveryMessage });
+        return { status: deliveryStatus, ...state, reportId: report.id, notificationSent: true, completedWithWarnings: !success };
     } catch (error) {
         const message = `Hourly report finalization failed: ${error.message}`;
         await writeSunbirdReportLog({ companyId, eventType: 'hourly_automation_failed', status: 'failed', message, metadata: { runId: state.runId, snapshotId: state.snapshotId } });
@@ -6086,7 +6156,7 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
         );
         operation.step('report_rows_loaded', { reports: rows.length, auditLogs: logRows.length });
         const liveIntelligence = await fetchSunbirdPowerBIIntelligence(context.companyId);
-        const liveFinal = await fetchSunbirdPowerBIFinal(context.companyId, liveIntelligence?.latestRunId || null);
+        const liveFinal = liveIntelligence?.perDomainLatest ? null : await fetchSunbirdPowerBIFinal(context.companyId, liveIntelligence?.latestRunId || null);
         const liveReport = buildSunbirdLiveIntelligenceSnapshot(liveIntelligence, liveFinal);
         const liveIdentityDomain = Array.isArray(liveIntelligence?.domains)
             ? liveIntelligence.domains.find(domain => String(domain?.domainKey || '').toLowerCase() === 'identity')
@@ -6157,53 +6227,56 @@ app.get('/api/sunbird/reports/live-evidence', authenticateToken, async (req, res
         if (!reportContext) return;
         const { context } = reportContext;
         const domainKey = String(req.query.domainKey || '').trim();
-        const sourceMetric = String(req.query.sourceMetric || '').trim().toLowerCase();
+        const evidenceIds = [...new Set(String(req.query.evidenceIds || '')
+            .split(',').map(value => value.trim().toLowerCase()).filter(Boolean))];
         if (!domainKey) {
             return res.status(400).json({ success: false, message: 'A domain key is required for live evidence.' });
+        }
+        // A metric/category is not a link to an individual record. With no explicit
+        // IDs, deliberately return no rows instead of exposing unrelated domain data.
+        if (!evidenceIds.length) {
+            return res.json({
+                success: true,
+                strictLinking: true,
+                domainKey,
+                evidence: [],
+                message: 'No specific source evidence was attached to this finding.'
+            });
         }
         const intelligence = await fetchSunbirdPowerBIIntelligence(context.companyId);
         const domain = (intelligence?.domains || []).find(item => String(item?.domainKey || '').toLowerCase() === domainKey.toLowerCase());
         if (!domain) {
-            return res.status(404).json({ success: false, message: 'The current enterprise run does not contain this domain.' });
+            return res.status(404).json({ success: false, message: 'No current completed intelligence is available for this domain.' });
         }
         const output = domain.intelligenceOutput || domain.output || {};
         const categories = Array.isArray(output?.evidenceCatalog?.categories) ? output.evidenceCatalog.categories : [];
-        const matchingCategories = sourceMetric
-            ? categories.filter(category => [category?.sourceMetric, category?.key, category?.label]
-                .map(value => String(value || '').trim().toLowerCase())
-                .includes(sourceMetric))
-            : [];
-        const selectedCategories = matchingCategories.length ? matchingCategories : categories;
-        const categoryRows = selectedCategories.flatMap(category => (Array.isArray(category?.entities) ? category.entities : []).map(entity => ({
+        const categoryRows = categories.flatMap(category => (Array.isArray(category?.entities) ? category.entities : []).map(entity => ({
             ...entity,
             sourceMetric: entity?.sourceMetric || category?.sourceMetric || category?.key || '',
             evidenceSource: entity?.evidenceSource || category?.label || category?.sourceMetric || category?.key || ''
         })));
         const tableRows = Object.entries(intelligence?.tables || {})
             .filter(([tableName]) => /evidence|entities|affected|control/i.test(tableName))
-            .flatMap(([tableName, table]) => (Array.isArray(table) ? table : []))
-            .filter(row => String(row?.domainKey || row?.DomainKey || '').toLowerCase() === String(domain.domainKey || '').toLowerCase())
-            .map(row => ({
-                ...row,
-                sourceMetric: row?.sourceMetric || row?.SourceMetric || '',
-                evidenceSource: row?.evidenceSource || row?.EvidenceSource || 'Enterprise evidence table'
-            }));
-        const rows = [...categoryRows, ...tableRows];
+            .flatMap(([, table]) => Array.isArray(table) ? table : [])
+            .filter(row => String(row?.domainKey || row?.DomainKey || '').toLowerCase() === String(domain.domainKey || '').toLowerCase());
+        const rowIds = row => [
+            row?.entityId, row?.id, row?.recordId, row?.sourceAlertId, row?.alertId,
+            row?.SourceID, row?.userId, row?.deviceId, row?.controlId, row?.applicationId
+        ].map(value => String(value || '').trim().toLowerCase()).filter(Boolean);
         const seen = new Set();
-        const evidence = rows.filter(row => {
-            const key = String(row?.entityId || row?.id || row?.entityEmail || row?.userPrincipalName || row?.deviceName || row?.entityDeviceName || row?.controlName || row?.name || row?.title || JSON.stringify(row));
-            if (seen.has(key)) return false;
-            seen.add(key);
+        const evidence = [...categoryRows, ...tableRows].filter(row => {
+            const matchedId = rowIds(row).find(id => evidenceIds.includes(id));
+            if (!matchedId || seen.has(matchedId)) return false;
+            seen.add(matchedId);
             return true;
         });
         res.json({
             success: true,
-            enterpriseRunId: Number(intelligence?.latestRunId || 0),
-            snapshotId: intelligence?.latestSnapshotId == null ? null : Number(intelligence.latestSnapshotId),
+            strictLinking: true,
+            enterpriseRunId: Number(domain.runId || 0),
+            snapshotId: domain.snapshotId == null ? null : Number(domain.snapshotId),
             domainKey: domain.domainKey,
             domainName: domain.domainName,
-            sourceMetric: sourceMetric || null,
-            matchedMetric: matchingCategories.length > 0,
             evidence
         });
     } catch (error) {
@@ -6211,7 +6284,6 @@ app.get('/api/sunbird/reports/live-evidence', authenticateToken, async (req, res
         res.status(500).json({ success: false, message: 'Live evidence could not be loaded.' });
     }
 });
-
 app.post('/api/sunbird/reports/generate', authenticateToken, async (req, res) => {
     try {
         const reportContext = await getReportContext(req, res);
