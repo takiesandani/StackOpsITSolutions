@@ -12386,7 +12386,9 @@ app.get('/api/sunbird/identity-dashboard-cached', authenticateToken, async (req,
             Number(metricsRows[0].active_users_24h || 0) > 0
         );
 
-        if (!cacheHasUsableMetrics) {
+        // Cache-only callers must not restart the slow Microsoft Graph refresh they are avoiding.
+        const cacheOnly = String(req.query?.cacheOnly || '').toLowerCase() === 'true' || String(req.query?.cacheOnly || '') === '1';
+        if (!cacheHasUsableMetrics && !cacheOnly) {
             try {
                 console.log('[Sunbird Cached Dashboard] Cache empty, hydrating identity metrics from Microsoft Graph');
                 const liveMetrics = await fetchIdentityMetricsFromApi();

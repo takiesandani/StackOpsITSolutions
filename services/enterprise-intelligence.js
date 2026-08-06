@@ -84,9 +84,11 @@ const DEFAULT_THRESHOLD_BATCH_MAX_ITEMS = 50;
 const DEFAULT_MAX_TOTAL_TOKENS = 200000;
 const DEFAULT_DOMAIN_OUTPUT_TOKENS = 12000;
 const DEFAULT_SYNTHESIS_OUTPUT_TOKENS = 12000;
-const ENTERPRISE_RATE_LIMIT_RETRY_DELAYS_MS = Object.freeze([300000, 300000, 600000]);
+// Keep interactive report requests bounded. A rate limit is recorded for retry instead of
+// leaving the browser connected through a 5/5/10-minute retry sequence.
+const ENTERPRISE_RATE_LIMIT_RETRY_DELAYS_MS = Object.freeze([15000]);
 const ENTERPRISE_CONNECTION_RETRY_DELAYS_MS = Object.freeze([0, 15000, 45000]);
-const ENTERPRISE_RATE_LIMIT_RETRY_MAX_MS = 15 * 60 * 1000;
+const ENTERPRISE_RATE_LIMIT_RETRY_MAX_MS = 90 * 1000;
 const EMAIL_SECURITY_RATE_LIMIT_RETRY_DELAYS_MS = Object.freeze([]);
 const EMAIL_SECURITY_RATE_LIMIT_RETRY_MAX_MS = 0;
 const STRICT_COMPACT_SELECTED_DOMAIN_KEYS = Object.freeze(new Set([
@@ -4204,7 +4206,8 @@ function createEnterpriseIntelligenceService({
 
     const settings = Object.freeze({
         domainDelayMs: Math.max(0, Number.isFinite(configuredDomainDelayMs) ? configuredDomainDelayMs : DEFAULT_DOMAIN_DELAY_MS),
-        maxRetries: Math.max(0, Number.isFinite(configuredMaxRetries) ? configuredMaxRetries : 3),
+        // One short retry is enough for an interactive request. Further retries are persisted as a rate-limited run instead of holding the browser open.
+        maxRetries: Math.min(1, Math.max(0, Number.isFinite(configuredMaxRetries) ? configuredMaxRetries : 1)),
         concurrency: 1,
         maxInputBytes: Math.min(DEFAULT_MAX_INPUT_BYTES, Math.max(50000, Number(config.maxInputBytes ?? process.env.ENTERPRISE_AI_MAX_INPUT_BYTES_PER_DOMAIN) || DEFAULT_MAX_INPUT_BYTES)),
         maxItemsPerBatch: Math.min(DEFAULT_MAX_ITEMS_PER_BATCH, Math.max(1, Number(config.maxItemsPerBatch ?? process.env.ENTERPRISE_AI_MAX_ITEMS_PER_BATCH) || DEFAULT_MAX_ITEMS_PER_BATCH)),

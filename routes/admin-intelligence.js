@@ -16,6 +16,16 @@ function createAdminIntelligenceRouter({ authenticateToken, adminIntelligenceSer
 
     function sendError(res, error, label) {
         console.error(`[StackCTRL Admin Intelligence] ${label}:`, error.message);
+        const rateLimited = error?.enterpriseStatus === 'failed_rate_limited' || error?.azureMetadata?.rateLimited;
+        const retryAfterMs = Number(error?.azureMetadata?.retryAfterMs || error?.azureMetadata?.lastRetryDelayMs || 0) || null;
+        if (rateLimited) {
+            return res.status(429).json({
+                success: false,
+                status: 'failed_rate_limited',
+                message: error.message || 'Azure is temporarily rate limited. Retry after the indicated cooldown.',
+                retryAfterMs
+            });
+        }
         res.status(error.statusCode || 500).json({ success: false, message: error.message });
     }
 

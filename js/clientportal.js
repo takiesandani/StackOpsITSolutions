@@ -2715,10 +2715,8 @@ async function fetchFreshSunbirdIdentityDashboardData() {
 async function requestFreshSunbirdIdentityDashboardData() {
     const token = localStorage.getItem('authToken');
     if (!token) throw new Error('Authentication required');
-    
-    // Use only the production Identity Dashboard endpoint
+
     const endpoint = '/api/sunbird/identity-dashboard';
-    
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 25000);
     try {
@@ -2744,13 +2742,11 @@ async function requestFreshSunbirdIdentityDashboardData() {
                 ? 'Identity Protection returned an invalid response.'
                 : `Identity Protection is temporarily unavailable (${response.status}).`);
         }
-        
+
         if (response.ok && result.success) {
             console.log('[Sunbird Identity Dashboard] Data loaded from production endpoint');
             return { ...result, liveSource: endpoint };
         }
-        
-        // Provide detailed error feedback for authorization or other issues
         if (response.status === 403) {
             const error = new Error('Access denied: This feature is only available for Sunbird clients');
             error.statusCode = 403;
@@ -2761,9 +2757,35 @@ async function requestFreshSunbirdIdentityDashboardData() {
             error.statusCode = 401;
             throw error;
         }
-        
         throw new Error(result.message || `Identity Dashboard endpoint failed (${response.status})`);
     } catch (error) {
+        // Keep the dashboard usable when a live Microsoft Graph refresh is slow.
+        // The cache-only query is intentionally prevented from triggering Graph again.
+        if (error?.statusCode !== 401 && error?.statusCode !== 403) {
+            const cacheController = new AbortController();
+            const cacheTimeout = setTimeout(() => cacheController.abort(), 8000);
+            try {
+                const cachedResponse = await fetch('/api/sunbird/identity-dashboard-cached?cacheOnly=1', {
+                    method: 'GET',
+                    cache: 'no-store',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                        'Cache-Control': 'no-cache, no-store, must-revalidate'
+                    },
+                    signal: cacheController.signal
+                });
+                const cachedData = await cachedResponse.json().catch(() => ({}));
+                if (cachedResponse.ok && cachedData.success && Array.isArray(cachedData.users) && cachedData.users.length) {
+                    console.warn('[Sunbird Identity Dashboard] Live refresh unavailable; showing the latest stored evidence.');
+                    return { ...cachedData, liveSource: '/api/sunbird/identity-dashboard-cached', cachedFallback: true };
+                }
+            } catch (cacheError) {
+                console.warn('[Sunbird Identity Dashboard] Cached fallback failed:', cacheError.message);
+            } finally {
+                clearTimeout(cacheTimeout);
+            }
+        }
         const message = error.name === 'AbortError'
             ? 'Live identity refresh took too long.'
             : error.message;
@@ -13295,11 +13317,25 @@ async function fetchSunbirdReportsData(range = sunbirdReportsRange, forceRefresh
 
     const request = (async () => {
         console.log(`[Reports] Loading report history, daily snapshots, and audit logs for ${range}.`);
-        const response = await fetch(`/api/sunbird/reports?range=${encodeURIComponent(range)}&limit=30`, {
-            cache: 'no-store',
-            headers: getSunbirdReportHeaders()
-        });
-        const responseBody = await response.text();
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 45000);
+        let response;
+        let responseBody;
+        try {
+            response = await fetch(`/api/sunbird/reports?range=${encodeURIComponent(range)}&limit=30`, {
+                cache: 'no-store',
+                headers: getSunbirdReportHeaders(),
+                signal: controller.signal
+            });
+            responseBody = await response.text();
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                throw new Error('Report summary is taking too long. Please try again; the dashboard has not been left running.');
+            }
+            throw error;
+        } finally {
+            clearTimeout(timeout);
+        }
         let data;
         try {
             data = responseBody ? JSON.parse(responseBody) : {};
