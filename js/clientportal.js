@@ -13957,6 +13957,17 @@ function getSunbirdReportSeverityTone(value = '') {
 }
 
 function getSunbirdDomainFindingEvidenceRows(finding = {}) {
+    console.log('Evidence Resolver');
+    console.log({
+        evidence: finding?.evidence,
+        evidenceRows: finding?.evidenceRows,
+        evidenceRecords: finding?.evidenceRecords,
+        affectedEntities: finding?.affectedEntities
+    });
+    const evidenceProperties = ['evidence', 'evidenceRows', 'evidenceRecords', 'affectedEntities'];
+    if (!evidenceProperties.some(property => Array.isArray(finding?.[property]) && finding[property].length)) {
+        console.log('Finding keys without populated evidence arrays:', Object.keys(finding || {}));
+    }
     const direct = Array.isArray(finding?.evidence) ? finding.evidence : [];
     const rows = direct.map(row => {
         const source = row && typeof row === 'object' ? row : { detail: row };
@@ -13972,9 +13983,10 @@ function getSunbirdDomainFindingEvidenceRows(finding = {}) {
             source: source.source || ''
         };
     });
-    return rows.filter(row => !isSunbirdTechnicalNoiseText(`${row.title} ${row.detail}`));
+    const resolvedEvidence = rows.filter(row => !isSunbirdTechnicalNoiseText(`${row.title} ${row.detail}`));
+    console.log('Resolved Evidence:', resolvedEvidence);
+    return resolvedEvidence;
 }
-
 function normalizeSunbirdLiveEvidenceRows(items = []) {
     return (Array.isArray(items) ? items : []).map(item => {
         const row = item && typeof item === 'object' ? item : { value: item };
@@ -14038,8 +14050,12 @@ function openSunbirdDomainFindingEvidence(evidenceKey) {
         showNotification('Evidence details are not available for this finding yet.', false);
         return;
     }
+    const finding = payload.finding || {};
+    console.log('========== FINDING ==========');
+    console.log(JSON.stringify(finding, null, 2));
+    console.log('Finding property keys:', Object.keys(finding));
     closeSunbirdDomainFindingEvidence();
-    const rows = getSunbirdDomainFindingEvidenceRows(payload.finding);
+    const rows = getSunbirdDomainFindingEvidenceRows(finding);
     const tone = getSunbirdReportSeverityTone(payload.finding?.severity);
     const modal = document.createElement('div');
     modal.id = 'sunbird-report-domain-evidence-modal';
