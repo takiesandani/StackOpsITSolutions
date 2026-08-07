@@ -8300,50 +8300,6 @@ Return exactly these top-level fields:
         return unit === 'month' ? next.month !== local.month : next.year !== local.year;
     }
 
-    async function loadScheduledEnterpriseCompanyIds() {
-        // The report centre can legitimately be active before a legacy capability
-        // row exists. Use the same tenant signals as reporting, rather than
-        // silently scheduling zero companies and leaving the client at
-        // "Awaiting first run" forever.
-        try {
-            const [rows] = await pool.query(`
-                SELECT DISTINCT candidates.CompanyID
-                FROM (
-                    SELECT CompanyID
-                    FROM StackCTRLClientCapabilities
-                    WHERE ProfileKey = 'sunbird' AND IsEnabled = 1
-                    UNION
-                    SELECT CompanyID FROM SunbirdReportSettings
-                    UNION
-                    SELECT CompanyID FROM StackCTRLEnterpriseReportRuns
-                ) candidates
-                JOIN Companies company ON company.ID = candidates.CompanyID
-                LEFT JOIN Users user_account ON user_account.CompanyID = candidates.CompanyID
-                LEFT JOIN TenantAccessControl access_control ON access_control.UserID = user_account.ID
-                LEFT JOIN StackCTRLClientCapabilities active_capability
-                    ON active_capability.CompanyID = candidates.CompanyID
-                    AND active_capability.ProfileKey = 'sunbird'
-                    AND active_capability.IsEnabled = 1
-                WHERE candidates.CompanyID IS NOT NULL
-                  AND (
-                    active_capability.CompanyID IS NOT NULL
-                    OR LOWER(COALESCE(access_control.AccessType, '')) = 'sunbird'
-                    OR LOWER(COALESCE(company.CompanyName, company.companyname, '')) LIKE '%sunbird%'
-                  )
-            `);
-            return rows.map(row => Number(row.CompanyID)).filter(Boolean);
-        } catch (error) {
-            // Older installations may not yet have the report-settings table.
-            // Preserve capability-based scheduling while schema migration catches up.
-            logger.warn('[StackCTRL Enterprise] Report-aware tenant discovery fell back to capabilities:', error.message);
-            const [rows] = await pool.query(`
-                SELECT DISTINCT CompanyID
-                FROM StackCTRLClientCapabilities
-                WHERE ProfileKey = 'sunbird' AND IsEnabled = 1
-            `);
-            return rows.map(row => Number(row.CompanyID)).filter(Boolean);
-        }
-    }
     async function runScheduledTick({ now = new Date(), companyId = null } = {}) {
         const local = DateTime.fromJSDate(now instanceof Date ? now : new Date(now), { zone: 'utc' }).setZone('Africa/Johannesburg');
         // The timer can tick more often, but this key gives every tenant exactly
@@ -8351,9 +8307,9 @@ Return exactly these top-level fields:
         const scheduleHour = local.toFormat('yyyyLLddHH');
         let companyIds = companyId ? [Number(companyId)] : [];
         if (!companyIds.length) {
-            companyIds = await loadScheduledEnterpriseCompanyIds();
+            const [rows] = await pool.query(`SELECT DISTINCT CompanyID FROM StackCTRLClientCapabilities WHERE ProfileKey = 'sunbird' AND IsEnabled = 1`);
+            companyIds = rows.map(row => Number(row.CompanyID)).filter(Boolean);
         }
-        logger.info('[StackCTRL Enterprise] Scheduled tenant discovery', { scheduleHour, companyIds, count: companyIds.length });
         const results = [];
         for (const id of companyIds) {
             try {

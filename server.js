@@ -15891,39 +15891,6 @@ const enterpriseIntelligenceAutomation = createStackCTRLServerAutomation({
     intervalMs: process.env.ENTERPRISE_AI_AUTOMATION_INTERVAL_MS || (15 * 60 * 1000),
     startupDelayMs: process.env.ENTERPRISE_AI_AUTOMATION_STARTUP_DELAY_MS || (60 * 1000)
 });
-function hasValidEnterpriseAutomationTrigger(req) {
-    const expected = String(process.env.STACKCTRL_AUTOMATION_TRIGGER_SECRET || '');
-    const provided = String(req.get('x-stackctrl-automation-key') || '');
-    if (!expected || !provided) return false;
-    const expectedBuffer = Buffer.from(expected, 'utf8');
-    const providedBuffer = Buffer.from(provided, 'utf8');
-    return expectedBuffer.length === providedBuffer.length
-        && crypto.timingSafeEqual(expectedBuffer, providedBuffer);
-}
-
-// Cloud Run can suspend an idle instance, so server timers are a convenience only.
-// Cloud Scheduler calls this endpoint hourly with a secret header. The enterprise
-// scheduler's Johannesburg-hour deduplication makes retries and overlapping
-// instances safe.
-app.post('/api/internal/automation/enterprise-hourly', async (req, res) => {
-    if (!String(process.env.STACKCTRL_AUTOMATION_TRIGGER_SECRET || '')) {
-        return res.status(503).json({ success: false, message: 'Enterprise automation trigger is not configured.' });
-    }
-    if (!hasValidEnterpriseAutomationTrigger(req)) {
-        return res.status(403).json({ success: false, message: 'Invalid enterprise automation trigger.' });
-    }
-    const operation = beginSunbirdOperation(req, 'enterprise_hourly_trigger');
-    try {
-        const result = await enterpriseIntelligenceService.runScheduledTick({ now: new Date() });
-        const companies = Array.isArray(result?.companies) ? result.companies : [];
-        operation.finish(200, { companies: companies.length, localTime: result?.localTime || null });
-        return res.status(200).json({ success: true, ...result });
-    } catch (error) {
-        operation.step('enterprise_hourly_trigger_failed', { error: error.message, stack: String(error.stack || '').slice(0, 1800) });
-        operation.finish(500, { error: error.message });
-        return res.status(500).json({ success: false, message: error.message });
-    }
-});
 const adminIntelligenceService = createAdminIntelligenceService({
     pool,
     azureOpenAI: azureOpenAIService,
