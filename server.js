@@ -5501,9 +5501,16 @@ function generateSunbirdReportPdf(report, reportId = null) {
                     return match ? Number(match[1]) : 0;
                 };
                 const applicationEntities = categoryEntities('applications');
-                const backupStorageGb = statementCount(/(\d+(?:\.\d+)?)\s*GB\s+total storage/i);
-                const backupCoverage = statementCount(/(?:coverage score of|coverage is|coverage at)\s*(\d+)%/i);
-                const backupExposure = statementCount(/exposure risk(?: score)?(?:\s+is|\s+of)?(?:\s+\w+){0,3}?\s+(\d+)/i);
+                const backupLineageMetric = key => {
+                    const item = Array.isArray(output.dataLineageComparison) ? output.dataLineageComparison.find(entry => entry?.metric === key) : null;
+                    return Number(item?.stackCTRLSource ?? item?.storedIntelligence ?? item?.azureOutput ?? 0);
+                };
+                // Backup values are supplied as structured lineage metrics. Prefer them to
+                // AI wording so total storage and coverage stay exact.
+                const backupStorageGb = backupLineageMetric('totalStorageGB') || statementCount(/(\d+(?:\.\d+)?)\s*GB\s+total storage/i);
+                const backupCoverage = backupLineageMetric('backupCoverageScore') || statementCount(/(?:coverage score of|coverage is|coverage at)\s*(\d+)%/i);
+                const backupExposure = backupLineageMetric('dataExposureRiskScore') || statementCount(/exposure risk(?: score)?(?:\s+is|\s+of)?(?:\s+\w+){0,3}?\s+(\d+)/i);
+                const backupDataHolders = backupLineageMetric('activeUsersCount') || categoryCount('users');
                 const governanceEntities = categoryEntities('governanceRows');
                 const complianceControls = categoryEntities('controls');
                 const lineageMetric = key => {
@@ -5536,14 +5543,14 @@ function generateSunbirdReportPdf(report, reportId = null) {
                                     { label: 'TOTAL STORAGE', value: backupStorageGb ? `${backupStorageGb.toLocaleString()} GB` : 'Recorded', detail: 'Storage across protected services', color: '#2563eb' },
                                     { label: 'BACKUP COVERAGE', value: backupCoverage ? `${backupCoverage}%` : 'Recorded', detail: 'Service coverage score', color: green },
                                     { label: 'EXPOSURE RISK', value: backupExposure ? `${backupExposure}%` : 'High', detail: 'Risk from large data holders', color: red },
-                                    { label: 'DATA HOLDERS', value: categoryCount('users'), detail: 'Active users in recovery scope', color: orange }
+                                    { label: 'DATA HOLDERS', value: backupDataHolders, detail: 'Active users in recovery scope', color: orange }
                                 ]
                                 : isGovernance
                                     ? [
                                         { label: 'OWNERLESS ITEMS', value: statementCount(/(\d+)\s+owner-missing/i) || governanceEntities.filter(item => /missing/i.test(String(item?.ownerStatus || ''))).length, detail: 'Items without an assigned owner', color: red },
                                         { label: 'ATTENTION REQUIRED', value: statementCount(/(\d+)\s+attention-required/i) || governanceEntities.filter(item => /attention required/i.test(String(item?.status || ''))).length, detail: 'Items requiring management review', color: red },
                                         { label: 'GOVERNANCE ITEMS', value: categoryCount('governanceRows'), detail: 'Evidence-backed review activities', color: orange },
-                                        { label: 'CONNECTED REVIEWS', value: governanceEntities.filter(item => item?.connected).length, detail: 'Reviews with connected evidence', color: '#2563eb' }
+                                        { label: 'CONNECTED REVIEWS', value: lineageMetric('connectedRows') || governanceEntities.filter(item => item?.connected).length, detail: 'Reviews with connected evidence', color: '#2563eb' }
                                     ]
                                     : isCompliance
                                         ? [
@@ -5600,7 +5607,10 @@ function generateSunbirdReportPdf(report, reportId = null) {
                     // Backup and Governance links are compact IDs. Enrich only those
                     // IDs from their matching domain evidence catalog before PDF layout.
                     const linkedCatalog = (isBackup || isGovernance) ? categoryForFinding(item) : null;
-                    const catalogEntities = Array.isArray(linkedCatalog?.entities) ? linkedCatalog.entities : [];
+                    // These two domains have one authoritative record catalog. An aggregate
+                    // source metric must not shadow that catalog when resolving named evidence.
+                    const evidenceCatalog = isBackup ? (category('users') || linkedCatalog) : isGovernance ? (category('governanceRows') || linkedCatalog) : linkedCatalog;
+                    const catalogEntities = Array.isArray(evidenceCatalog?.entities) ? evidenceCatalog.entities : [];
                     const evidenceKeys = entry => [...new Set([
                         entry?.entityId, entry?.id, entry?.recordId, entry?.sourceAlertId, entry?.alertId,
                         entry?.controlId, entry?.applicationId, entry?.deviceId, entry?.userId,
@@ -5621,14 +5631,47 @@ function generateSunbirdReportPdf(report, reportId = null) {
                                 : entry;
                         })
                         : direct;
+                    const findingText = [item?.title, item?.description, item?.detail, item?.whatHappened, item?.patternFound]
+                        .map(value => String(value || '')).join(' ').toLowerCase();
+                    const evidenceLabels = (Array.isArray(item?.evidenceUsed) ? item.evidenceUsed : [])
+                        .map(value => String(value?.label || value || '').trim().toLowerCase()).filter(Boolean);
+                    const backupEvidenceRows = () => {
+                        const evidenceText = `${findingText} ${evidenceLabels.join(' ')}`;
+                        if (/large data holder|top storage|storage volume|storage user|backup window/.test(evidenceText)) {
+                            const linkedStorageRows = enrichedDirect.filter(entry => Number(entry?.storage) > 0);
+                            if (linkedStorageRows.length) return linkedStorageRows;
+                            const namedRows = catalogEntities.filter(entry => evidenceLabels.some(label => label.includes(String(entry?.displayName || entry?.entityName || '').toLowerCase())));
+                            return namedRows.length ? namedRows : [...catalogEntities].filter(entry => Number(entry?.storage) > 0).sort((leftEntry, rightEntry) => Number(rightEntry.storage) - Number(leftEntry.storage)).slice(0, 5);
+                        }
+                        if (/coverage|external backup|restore/.test(evidenceText)) {
+                            return [{ entityName: 'Backup Coverage Validation', entityType: 'CoverageSummary', sourceMetric: 'backupCoverageScore', backupCoverageScore: lineageMetric('backupCoverageScore'), servicesCovered: lineageMetric('servicesCovered'), totalStorageGB: lineageMetric('totalStorageGB'), dataExposureRiskScore: lineageMetric('dataExposureRiskScore') }];
+                        }
+                        return null;
+                    };
+                    const governanceEvidenceRows = () => {
+                        if (/access review/.test(findingText)) return catalogEntities.filter(entry => /review users|review roles/i.test(String(entry?.activity || '')));
+                        if (/owner.*missing|governance ownership|critical review/.test(findingText)) return catalogEntities.filter(entry => /full stack|threat landscape|app review|identity check|device posture/i.test(String(entry?.activity || '')));
+                        if (/incident review|sign-in logs|backup check|policy review|data review/.test(findingText)) {
+                            const requested = [[/incident review/i, /post-incident/i], [/sign-in logs/i, /sign-in logs/i], [/backup check/i, /backup check/i], [/policy review/i, /ca and compliance policies/i], [/data review/i, /sharepoint usage/i]];
+                            return catalogEntities.filter(entry => requested.some(([needle, activity]) => needle.test(findingText) && activity.test(String(entry?.activity || ''))));
+                        }
+                        if (/owner missing counts|governance summary/.test(findingText)) return [{ entityName: 'Governance Validation Summary', entityType: 'GovernanceSummary', sourceMetric: 'governanceRows', evidence: `${lineageMetric('attentionRequiredRows')} attention-required reviews; ${governanceEntities.filter(entry => /missing/i.test(String(entry?.ownerStatus || '')).length)} ownerless governance items.`, status: 'Observed' }];
+                        if (/manual evidence rows were excluded/.test(findingText)) return [{ entityName: 'Governance Evidence Limitation', entityType: 'EvidenceLimitation', sourceMetric: 'manualRowsExcluded', evidence: `${lineageMetric('manualRowsExcluded')} manual governance rows were excluded from the connected evidence set.`, status: 'Observed' }];
+                        const matchedLabels = catalogEntities.filter(entry => evidenceLabels.some(label => label.includes(String(entry?.activity || entry?.entityName || '').toLowerCase())));
+                        if (matchedLabels.length) return matchedLabels;
+                        const activityMatches = catalogEntities.filter(entry => String(entry?.activity || '').trim() && findingText.includes(String(entry.activity).toLowerCase()));
+                        return activityMatches.length ? activityMatches : null;
+                    };
+                    const semanticRows = isBackup ? backupEvidenceRows() : isGovernance ? governanceEvidenceRows() : null;
+                    const evidenceRows = Array.isArray(semanticRows) ? semanticRows : enrichedDirect;
                     const strongEvidenceKeys = entry => [...new Set([
                         entry?.id, entry?.recordId, entry?.sourceAlertId, entry?.alertId, entry?.SourceID,
                         entry?.controlId, entry?.applicationId, entry?.deviceId, entry?.userId,
                         entry?.entityId && !/[\s@]/.test(String(entry.entityId)) ? entry.entityId : null
                     ].map(value => String(value || '').trim().toLowerCase()).filter(Boolean))];
                     const isSummaryEvidence = entry => /(?:summary|score|coverage)/i.test(String(entry?.entityType || entry?.evidenceType || '')) || /(?:summary|score)$/i.test(String(entry?.entityId || entry?.id || ''));
-                    const specific = enrichedDirect.filter(entry => !isSummaryEvidence(entry));
-                    const source = specific.length ? specific : enrichedDirect;
+                    const specific = evidenceRows.filter(entry => !isSummaryEvidence(entry));
+                    const source = specific.length ? specific : evidenceRows;
                     const entries = [];
                     source.forEach(entry => {
                         const keys = evidenceKeys(entry);
@@ -5702,6 +5745,9 @@ function generateSunbirdReportPdf(report, reportId = null) {
                                                 entry.user ? `Account: ${cleanText(entry.user)}` : '',
                                                 entry.files == null ? '' : `Files: ${Number(entry.files).toLocaleString()}`,
                                                 entry.storage == null ? '' : `Storage: ${(Number(entry.storage) / (1024 ** 3)).toFixed(1)} GB`,
+                                                entry.backupCoverageScore == null ? '' : `Coverage: ${Number(entry.backupCoverageScore)}% across ${Number(entry.servicesCovered || 0)} services`,
+                                                entry.totalStorageGB == null ? '' : `Total protected storage: ${Number(entry.totalStorageGB).toLocaleString()} GB`,
+                                                entry.dataExposureRiskScore == null ? '' : `Exposure risk: ${Number(entry.dataExposureRiskScore)}%`,
                                                 entry.lastActivity ? `Last activity: ${formatReportDate(entry.lastActivity, true)}` : '',
                                                 entry.sourceMetric ? `Source: ${cleanText(entry.sourceMetric)}` : ''
                                             ]
