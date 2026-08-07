@@ -4076,7 +4076,14 @@ function isSunbirdReportAccessContext(context) {
 }
 
 async function loadSunbirdReportEvidence(companyId) {
-    const cloudflarePromise = getCloudflareNetworkSecuritySummary({ getSecret }).catch(error => {
+    // Live Cloudflare enrichment is useful, but the completed enterprise run already
+    // contains its current domain evidence. Never let one external request prevent
+    // a report row (and therefore its PDF) from being persisted.
+    const cloudflarePromise = withSunbirdReportTimeout(
+        () => getCloudflareNetworkSecuritySummary({ getSecret }),
+        12000,
+        'Cloudflare report evidence'
+    ).catch(error => {
         console.warn('[Reports] Cloudflare evidence skipped:', error.message);
         return null;
     });
@@ -6482,7 +6489,10 @@ app.get('/api/sunbird/reports/live-evidence', authenticateToken, async (req, res
             .filter(row => String(row?.domainKey || row?.DomainKey || '').toLowerCase() === String(domain.domainKey || '').toLowerCase());
         const rowIds = row => [
             row?.entityId, row?.id, row?.recordId, row?.sourceAlertId, row?.alertId,
-            row?.SourceID, row?.userId, row?.deviceId, row?.controlId, row?.applicationId
+            row?.SourceID, row?.userId, row?.deviceId, row?.controlId, row?.applicationId,
+            row?.entityEmail, row?.mail, row?.userPrincipalName, row?.entityName,
+            row?.displayName, row?.deviceName, row?.controlName, row?.applicationName,
+            row?.alertName, row?.name, row?.title, row?.label
         ].map(value => String(value || '').trim().toLowerCase()).filter(Boolean);
         const seen = new Set();
         const evidence = [...categoryRows, ...tableRows].filter(row => {

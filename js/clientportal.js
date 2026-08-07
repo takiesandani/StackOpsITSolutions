@@ -13979,6 +13979,35 @@ function getSunbirdDomainFindingEvidenceRows(finding = {}) {
     });
     return rows.filter(row => !isSunbirdTechnicalNoiseText(`${row.title} ${row.detail}`));
 }
+function getSunbirdDomainFindingEvidenceIds(finding = {}) {
+    const fields = ['affectedEntityIds', 'recordIds', 'sourceAlertIds', 'evidenceIds', 'entityIds'];
+    return [...new Set(fields.flatMap(field => Array.isArray(finding?.[field]) ? finding[field] : [])
+        .map(value => String(value || '').trim())
+        .filter(Boolean))];
+}
+
+async function loadSunbirdDomainFindingLiveEvidence(payload = {}) {
+    const domainKey = String(payload?.domainKey || '').trim();
+    const evidenceIds = getSunbirdDomainFindingEvidenceIds(payload?.finding);
+    if (!domainKey || !evidenceIds.length) return [];
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+        const params = new URLSearchParams({ domainKey, evidenceIds: evidenceIds.join(',') });
+        const response = await fetch('/api/sunbird/reports/live-evidence?' + params.toString(), {
+            cache: 'no-store',
+            headers: getSunbirdReportHeaders(),
+            signal: controller.signal
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.success) throw new Error(data.message || 'Evidence request failed (' + response.status + ')');
+        return normalizeSunbirdLiveEvidenceRows(data.evidence);
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
 function normalizeSunbirdLiveEvidenceRows(items = []) {
     return (Array.isArray(items) ? items : []).map(item => {
         const row = item && typeof item === 'object' ? item : { value: item };
@@ -14043,7 +14072,8 @@ function openSunbirdDomainFindingEvidence(evidenceKey) {
         return;
     }
     closeSunbirdDomainFindingEvidence();
-    const rows = getSunbirdDomainFindingEvidenceRows(payload.finding);
+    const explicitEvidenceIds = getSunbirdDomainFindingEvidenceIds(payload.finding);
+    const rows = explicitEvidenceIds.length ? [] : getSunbirdDomainFindingEvidenceRows(payload.finding);
     const tone = getSunbirdReportSeverityTone(payload.finding?.severity);
     const modal = document.createElement('div');
     modal.id = 'sunbird-report-domain-evidence-modal';
@@ -14059,12 +14089,12 @@ function openSunbirdDomainFindingEvidence(evidenceKey) {
                 <button type="button" onclick="window.closeSunbirdDomainFindingEvidence()" class="sunbird-id-modal-close" aria-label="Close finding evidence">&times;</button>
             </div>
             <div class="sunbird-id-evidence-summary sunbird-report-evidence-summary" id="sunbird-report-domain-evidence-summary">
-                <span>${rows.length} explicitly linked evidence row${rows.length === 1 ? '' : 's'}</span>
+                <span id="sunbird-report-domain-evidence-count">${rows.length} explicitly linked evidence row${rows.length === 1 ? '' : 's'}</span>
                 <span>${escapeIdentityText(payload.finding?.severity || 'Observed')}</span>
                 <span>${escapeIdentityText(payload.finding?.sourceMetric || 'Latest report output')}</span>
             </div>
             <div class="sunbird-id-evidence-list sunbird-report-evidence-list" id="sunbird-report-domain-evidence-list">
-                ${rows.length ? renderSunbirdDomainEvidenceRows(rows) : '<div class="sunbird-report-evidence-empty">No specific source evidence was attached to this finding.</div>'}
+                ${explicitEvidenceIds.length ? '<div class="sunbird-report-evidence-empty">Loading exact source evidence for this finding...</div>' : (rows.length ? renderSunbirdDomainEvidenceRows(rows) : '<div class="sunbird-report-evidence-empty">No specific source evidence was attached to this finding.</div>')}
             </div>
             <div class="sunbird-id-modal-actions">
                 <button type="button" class="sunbird-id-evidence-btn" onclick="window.closeSunbirdDomainFindingEvidence()">Close</button>
@@ -14075,6 +14105,26 @@ function openSunbirdDomainFindingEvidence(evidenceKey) {
     document.addEventListener('keydown', handleSunbirdDomainFindingEvidenceEscape);
     // Evidence is rendered from the finding's explicit links only. A metric such as
     // totalUsers is an aggregate, not a relationship to every record in a domain.
+    if (explicitEvidenceIds.length) {
+        const count = modal.querySelector('#sunbird-report-domain-evidence-count');
+        if (count) count.textContent = 'Loading explicitly linked evidence';
+        loadSunbirdDomainFindingLiveEvidence(payload).then(liveRows => {
+            if (!document.body.contains(modal)) return;
+            const currentCount = modal.querySelector('#sunbird-report-domain-evidence-count');
+            const list = modal.querySelector('#sunbird-report-domain-evidence-list');
+            if (currentCount) currentCount.textContent = String(liveRows.length) + ' explicitly linked evidence row' + (liveRows.length === 1 ? '' : 's');
+            if (list) list.innerHTML = liveRows.length
+                ? renderSunbirdDomainEvidenceRows(liveRows)
+                : '<div class="sunbird-report-evidence-empty">No specific source evidence was attached to this finding.</div>';
+        }).catch(error => {
+            console.error('[Reports] Finding evidence load failed:', error);
+            if (!document.body.contains(modal)) return;
+            const currentCount = modal.querySelector('#sunbird-report-domain-evidence-count');
+            const list = modal.querySelector('#sunbird-report-domain-evidence-list');
+            if (currentCount) currentCount.textContent = 'Evidence could not be loaded';
+            if (list) list.innerHTML = '<div class="sunbird-report-evidence-empty">The specifically linked source evidence could not be loaded. Please try this finding again.</div>';
+        });
+    }
 }
 
 function renderSunbirdReportDomainBreakdown(data = {}) {
