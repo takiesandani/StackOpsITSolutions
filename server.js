@@ -3327,25 +3327,21 @@ function buildDeterministicReportAnalysis(report) {
 }
 
 function buildHistoricalNarrativeFromSynthesis(output = {}, report = null) {
-    const normaliseText = value => {
-        if (value == null) return '';
-        if (typeof value === 'object') return '';
-        return String(value).replace(/\s+/g, ' ').trim();
-    };    const asNumber = value => {
+    const asNumber = value => {
         const parsed = Number(value);
         return Number.isFinite(parsed) ? parsed : null;
     };
     const textOf = (value, fields = []) => {
-        if (typeof value === 'string' || typeof value === 'number') return normaliseText(value);
+        if (typeof value === 'string' || typeof value === 'number') return cleanText(value);
         if (!value || typeof value !== 'object') return '';
         for (const field of fields) {
-            const candidate = normaliseText(value[field]);
+            const candidate = cleanText(value[field]);
             if (candidate) return candidate;
         }
         return '';
     };
-    const unique = values => [...new Set(values.map(value => normaliseText(value)).filter(Boolean).map(value => value.toLowerCase()))]
-        .map(value => values.find(item => normaliseText(item).toLowerCase() === value));
+    const unique = values => [...new Set(values.map(value => cleanText(value)).filter(Boolean).map(value => value.toLowerCase()))]
+        .map(value => values.find(item => cleanText(item).toLowerCase() === value));
     const timestamp = row => new Date(row?.periodEnd || row?.date || row?.createdAt || 0).getTime() || 0;
     const dailyReports = (Array.isArray(report?.dailyReports) ? report.dailyReports : [])
         .filter(row => timestamp(row) > 0)
@@ -3389,18 +3385,18 @@ function buildHistoricalNarrativeFromSynthesis(output = {}, report = null) {
         const currentValue = asNumber(item?.currentValue ?? item?.current ?? item?.latest ?? item?.valueAfter);
         const previousValue = asNumber(item?.previousValue ?? item?.previous ?? item?.baseline ?? item?.valueBefore);
         const delta = asNumber(item?.delta ?? item?.change ?? item?.difference);
-        const direction = normaliseText(item?.direction).toLowerCase();
+        const direction = cleanText(item?.direction).toLowerCase();
         const baselineOnly = /baseline unavailable|insufficient historical|no historical/i.test(detail);
         if (baselineOnly || (!title && currentValue == null && previousValue == null && delta == null) || (!direction && currentValue == null && previousValue == null && delta == null)) return;
         if (title && currentValue != null && previousValue != null) {
-            const unit = normaliseText(item?.unit) || '';
+            const unit = cleanText(item?.unit) || '';
             const movement = currentValue - previousValue;
             trendNarratives.push(`${title} moved from ${previousValue}${unit} to ${currentValue}${unit} (${movement > 0 ? '+' : ''}${movement}${unit}).`);
             if (movement !== 0) (movement > 0 ? worsened : improved).push(title);
             return;
         }
         if (title && delta != null) {
-            trendNarratives.push(`${title} shifted by ${delta > 0 ? '+' : ''}${delta}${normaliseText(item?.unit) || ''}.`);
+            trendNarratives.push(`${title} shifted by ${delta > 0 ? '+' : ''}${delta}${cleanText(item?.unit) || ''}.`);
             if (delta !== 0) (delta > 0 ? worsened : improved).push(title);
             return;
         }

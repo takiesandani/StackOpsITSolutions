@@ -9,6 +9,7 @@ function loadHistoricalNarrativeBuilder() {
     const end = source.indexOf('async function fetchSunbirdPowerBIIntelligence(companyId) {', start);
     assert.ok(start >= 0 && end > start, 'historical narrative builder must be present');
     return vm.runInNewContext(`
+        const cleanText = value => String(value == null ? '' : value).replace(/\\s+/g, ' ').trim();
         ${source.slice(start, end)}
         buildHistoricalNarrativeFromSynthesis;
     `);
