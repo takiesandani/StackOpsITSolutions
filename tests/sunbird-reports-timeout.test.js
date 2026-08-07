@@ -34,4 +34,10 @@ test('reports endpoint keeps live enrichment bounded and treats the view audit a
     const schema = fs.readFileSync('sql/stackctrl-enterprise-intelligence.sql', 'utf8');
     assert.match(schema, /ix_domain_intelligence_latest_lookup/);
     assert.match(schema, /ix_enterprise_synthesis_latest_lookup/);
+    assert.match(route, /client_request_aborted/);
+    assert.match(route, /live_domain_intelligence_complete/);
+    assert.match(route, /live_final_synthesis_complete/);
+    assert.match(route, /report_load_failed/);
+    assert.match(source, /traceId/);
+    assert.match(source, /elapsedMs/);
 });

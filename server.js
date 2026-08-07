@@ -428,14 +428,16 @@ function beginSunbirdOperation(req, operation) {
     const startedAt = process.hrtime.bigint();
     const cpuStart = process.cpuUsage();
     const tenant = req.user?.companyId || req.user?.tenantId || null;
+    const traceId = String(req.get?.('x-cloud-trace-context') || '').split('/')[0] || null;
     const log = (event, details = {}) => logRuntimeOperation(event, {
         requestId,
+        traceId,
         operation,
         endpoint: req.path,
         tenant,
+        elapsedMs: Math.round(Number(process.hrtime.bigint() - startedAt) / 1e6),
         ...details
-    });
-    log('sunbird_operation_start');
+    });    log('sunbird_operation_start');
     return {
         step(name, details = {}) { log('sunbird_operation_step', { step: name, ...details }); },
         finish(status, details = {}) {
@@ -6223,6 +6225,7 @@ async function getReportContext(req, res) {
 
 app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
     const operation = beginSunbirdOperation(req, 'reports');
+    req.once('aborted', () => operation.step('client_request_aborted'));
     try {
         const reportContext = await getReportContext(req, res);
         if (!reportContext) {
@@ -6292,12 +6295,15 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
              LIMIT 120`,
             [context.companyId, range.start, range.end]
         );
-        operation.step('report_rows_loaded', { reports: rows.length, auditLogs: logRows.length });
+        operation.step('saved_report_data_loaded', { reports: rows.length, auditLogs: logRows.length, detailedReports: detailedRows.length });
         // Live intelligence enriches the page but cannot block the saved report/history
         // response. Slow domains are omitted for this request and recover next refresh.
+        operation.step('live_domain_intelligence_start');
         const liveIntelligence = await fetchSunbirdPowerBIIntelligence(context.companyId, {
             domainTimeoutMs: SUNBIRD_REPORT_LIVE_DOMAIN_TIMEOUT_MS
         });
+        operation.step('live_domain_intelligence_complete', { domains: liveIntelligence?.domains?.length || 0, timedOutDomains: liveIntelligence?.completeness?.timedOutDomains || [] });
+        operation.step('live_final_synthesis_start');
         const liveFinal = liveIntelligence
             ? await fetchSunbirdPowerBIFinal(
                 context.companyId,
@@ -6305,6 +6311,7 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
                 { timeoutMs: SUNBIRD_REPORT_LIVE_FINAL_TIMEOUT_MS }
             )
             : null;
+        operation.step('live_final_synthesis_complete', { available: Boolean(liveFinal?.finalSynthesis) });
         const liveReport = buildSunbirdLiveIntelligenceSnapshot(liveIntelligence, liveFinal);
         const liveIdentityDomain = Array.isArray(liveIntelligence?.domains)
             ? liveIntelligence.domains.find(domain => String(domain?.domainKey || '').toLowerCase() === 'identity')
@@ -6319,7 +6326,8 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
                 console.warn('[Reports] Identity live read skipped:', error.message);
                 return null;
             });
-        const identityDomain = buildSunbirdReportIdentityDomain(liveIdentityDomain || fallbackIdentityDomain);        operation.step('identity_intelligence_loaded', { risks: identityDomain.intelligenceOutput.risks.length });
+        const identityDomain = buildSunbirdReportIdentityDomain(liveIdentityDomain || fallbackIdentityDomain);
+        operation.step('identity_intelligence_loaded', { risks: identityDomain.intelligenceOutput.risks.length });
         const preferredDetailedRow =
             detailedRows.find(row => Number(row.HasIntelligence) === 1 && parseReportJson(row.Payload, null)?.domainInsights?.domains?.length) ||
             detailedRows.find(row => parseReportJson(row.Payload, null)?.domainInsights?.domains?.length) ||
@@ -6344,7 +6352,8 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
         } catch (auditError) {
             // The dashboard must remain available even if a non-essential audit insert fails.
             console.warn('[Reports] Unable to record report-center view:', auditError.message);
-        }        operation.step('audit_log_written', {
+        }
+        operation.step('audit_log_written', {
             liveRunId: liveReport?.enterpriseRunId || null,
             liveSnapshotId: liveReport?.snapshotId || null,
             source: liveReport ? 'enterprise_run' : 'saved_report_fallback'
@@ -6381,6 +6390,7 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
         sendSunbirdJson(res, responsePayload, operation);
         operation.finish(200, { reports: rows.length, auditLogs: logRows.length });
     } catch (error) {
+        operation.step('report_load_failed', { error: error.message, code: error.code || null, stack: String(error.stack || '').slice(0, 1800) });
         console.error('[Reports] List error:', error);
         operation.finish(500, { error: error.message });
         res.status(500).json({ success: false, message: error.message });
