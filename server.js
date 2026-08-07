@@ -3429,6 +3429,10 @@ function buildHistoricalNarrativeFromSynthesis(output = {}, report = null) {
 const SUNBIRD_REPORT_LIVE_DOMAIN_TIMEOUT_MS = 6500;
 const SUNBIRD_REPORT_LIVE_FINAL_TIMEOUT_MS = 3000;
 const SUNBIRD_REPORT_LIVE_IDENTITY_TIMEOUT_MS = 2500;
+// The report dashboard must remain usable when a historical report row is large
+// or an audit query is slow. These reads are presentation-only; a timeout must
+// degrade to the remaining available report data, never a 500 response.
+const SUNBIRD_REPORT_SAVED_QUERY_TIMEOUT_MS = 3500;
 
 function withSunbirdReportTimeout(task, timeoutMs, label) {
     let timer = null;
@@ -3545,6 +3549,30 @@ async function fetchSunbirdPowerBIFinal(companyId, runId = null, { timeoutMs = 0
     } catch (error) {
         console.warn('[Reports] Power BI final synthesis unavailable:', error.message);
         return null;
+    }
+}
+async function readSunbirdReportRows(label, sql, params) {
+    try {
+        const [rows] = await withSunbirdReportTimeout(
+            () => pool.query({ sql, timeout: SUNBIRD_REPORT_SAVED_QUERY_TIMEOUT_MS }, params),
+            SUNBIRD_REPORT_SAVED_QUERY_TIMEOUT_MS + 250,
+            label
+        );
+        return Array.isArray(rows) ? rows : [];
+    } catch (error) {
+        // A list, overview, or audit-history read is not allowed to make the
+        // entire Reports page unavailable. The operation log retains the exact
+        // reason for diagnosis while the client receives the data that did load.
+        console.warn(`[Reports] ${label} unavailable:`, error.message);
+        return [];
+    }
+}
+function safelyBuildSunbirdReportView(label, builder, fallback = null) {
+    try {
+        return builder();
+    } catch (error) {
+        console.warn(`[Reports] ${label} skipped:`, error.message);
+        return typeof fallback === 'function' ? fallback() : fallback;
     }
 }
 function buildFinalSynthesisReportAnalysis(report, powerBiFinal = null) {
@@ -6236,66 +6264,68 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
         operation.step('report_context_resolved', { companyId: context.companyId });
         const range = getReportRange(req.query, settings.ActiveSince);
         const limit = Math.max(1, Math.min(50, Number(req.query.limit) || 12));
-        const [rows] = await pool.query(
-            `SELECT ID, ReportType, PeriodStart, PeriodEnd, HealthScore, ReportStatus, EmailStatus, SentAt, CreatedAt,
-                    CASE WHEN JSON_VALID(Payload) THEN JSON_UNQUOTE(JSON_EXTRACT(Payload, '$.summary.healthScore')) END AS SummaryHealthScore,
-                    CASE WHEN JSON_VALID(Payload) THEN JSON_UNQUOTE(JSON_EXTRACT(Payload, '$.summary.failures')) END AS SummaryFailures,
-                    CASE WHEN JSON_VALID(Payload) THEN JSON_UNQUOTE(JSON_EXTRACT(Payload, '$.summary.successes')) END AS SummarySuccesses,
-                    CASE WHEN JSON_VALID(Payload) THEN JSON_UNQUOTE(JSON_EXTRACT(Payload, '$.summary.totalEvents')) END AS SummaryTotalEvents
-             FROM SunbirdReports
-             WHERE CompanyID = ?
-             ORDER BY CreatedAt DESC
-             LIMIT ?`,
-            [context.companyId, limit]
-        );
-        const [overviewRows] = await pool.query(
-            `SELECT HealthScore, ReportStatus,
-                    CASE WHEN OCTET_LENGTH(Payload) <= ? THEN Payload ELSE NULL END AS Payload
-             FROM SunbirdReports
-             WHERE CompanyID = ?
-             ORDER BY CreatedAt DESC
-             LIMIT 1`,
-            [SUNBIRD_REPORT_OVERVIEW_MAX_PAYLOAD_BYTES, context.companyId]
-        );
-        const [detailedRows] = await pool.query(
-            `SELECT ID, ReportType, PeriodStart, PeriodEnd, HealthScore, ReportStatus, CreatedAt,
-                    Payload,
-                    CASE WHEN (
-                        LOCATE('"generatedWithAi":true', Payload) > 0
-                        OR LOCATE('"finalSynthesis"', Payload) > 0
-                        OR LOCATE('Final enterprise synthesis', Payload) > 0
-                    ) THEN 1 ELSE 0 END AS HasIntelligence
-             FROM SunbirdReports
-             WHERE CompanyID = ?
-             ORDER BY CreatedAt DESC
-             LIMIT 8`,
-            [context.companyId]
-        );
-                const [intelligentOverviewRows] = await pool.query(
-                        `SELECT HealthScore, ReportStatus,
-                                        CASE WHEN OCTET_LENGTH(Payload) <= ? THEN Payload ELSE NULL END AS Payload
-                         FROM SunbirdReports
-                         WHERE CompanyID = ?
-                             AND (
-                                        LOCATE('"generatedWithAi":true', Payload) > 0
-                                        OR LOCATE('"finalSynthesis"', Payload) > 0
-                                        OR LOCATE('Final enterprise synthesis', Payload) > 0
-                             )
-                         ORDER BY CreatedAt DESC
-                         LIMIT 1`,
-                        [SUNBIRD_REPORT_OVERVIEW_MAX_PAYLOAD_BYTES, context.companyId]
-                );
-        const [logRows] = await pool.query(
-            `SELECT ID, ReportID, EventType, EventStatus, Message,
-                    CASE WHEN OCTET_LENGTH(Metadata) <= 16384 THEN Metadata ELSE NULL END AS Metadata,
-                    ActorUserID, CreatedAt
-             FROM SunbirdReportAuditLogs
-             WHERE CompanyID = ? AND CreatedAt BETWEEN ? AND ?
-             ORDER BY CreatedAt DESC
-             LIMIT 120`,
-            [context.companyId, range.start, range.end]
-        );
-        operation.step('saved_report_data_loaded', { reports: rows.length, auditLogs: logRows.length, detailedReports: detailedRows.length });
+        // Load independent saved-data panels in parallel. Each read has its own SQL
+        // and application deadline and returns an empty list on failure, so a slow
+        // audit/payload query cannot take down the report dashboard.
+        const [rows, overviewRows, detailedRows, logRows] = await Promise.all([
+            readSunbirdReportRows(
+                'Report list',
+                `SELECT ID, ReportType, PeriodStart, PeriodEnd, HealthScore, ReportStatus, EmailStatus, SentAt, CreatedAt,
+                        CASE WHEN JSON_VALID(Payload) THEN JSON_UNQUOTE(JSON_EXTRACT(Payload, '$.summary.healthScore')) END AS SummaryHealthScore,
+                        CASE WHEN JSON_VALID(Payload) THEN JSON_UNQUOTE(JSON_EXTRACT(Payload, '$.summary.failures')) END AS SummaryFailures,
+                        CASE WHEN JSON_VALID(Payload) THEN JSON_UNQUOTE(JSON_EXTRACT(Payload, '$.summary.successes')) END AS SummarySuccesses,
+                        CASE WHEN JSON_VALID(Payload) THEN JSON_UNQUOTE(JSON_EXTRACT(Payload, '$.summary.totalEvents')) END AS SummaryTotalEvents
+                 FROM SunbirdReports
+                 WHERE CompanyID = ?
+                 ORDER BY CreatedAt DESC
+                 LIMIT ?`,
+                [context.companyId, limit]
+            ),
+            readSunbirdReportRows(
+                'Report overview',
+                `SELECT ID, ReportType, PeriodStart, PeriodEnd, HealthScore, ReportStatus, CreatedAt,
+                        CASE WHEN OCTET_LENGTH(Payload) <= ? THEN Payload ELSE NULL END AS Payload
+                 FROM SunbirdReports
+                 WHERE CompanyID = ?
+                 ORDER BY CreatedAt DESC
+                 LIMIT 1`,
+                [SUNBIRD_REPORT_OVERVIEW_MAX_PAYLOAD_BYTES, context.companyId]
+            ),
+            readSunbirdReportRows(
+                'Detailed report history',
+                `SELECT ID, ReportType, PeriodStart, PeriodEnd, HealthScore, ReportStatus, CreatedAt,
+                        CASE WHEN OCTET_LENGTH(Payload) <= ? THEN Payload ELSE NULL END AS Payload
+                 FROM SunbirdReports
+                 WHERE CompanyID = ?
+                 ORDER BY CreatedAt DESC
+                 LIMIT 8`,
+                [SUNBIRD_REPORT_DETAILS_MAX_PAYLOAD_BYTES, context.companyId]
+            ),
+            readSunbirdReportRows(
+                'Report audit history',
+                `SELECT ID, ReportID, EventType, EventStatus, Message,
+                        CASE WHEN OCTET_LENGTH(Metadata) <= 16384 THEN Metadata ELSE NULL END AS Metadata,
+                        ActorUserID, CreatedAt
+                 FROM SunbirdReportAuditLogs
+                 WHERE CompanyID = ? AND CreatedAt BETWEEN ? AND ?
+                 ORDER BY CreatedAt DESC
+                 LIMIT 120`,
+                [context.companyId, range.start, range.end]
+            )
+        ]);
+        const detailedReports = detailedRows.map(row => {
+            const payload = parseReportJson(row.Payload, {});
+            const analysis = payload?.analysis || {};
+            return {
+                ...row,
+                HasIntelligence: payload?.generatedWithAi === true
+                    || Boolean(payload?.finalSynthesis)
+                    || /Final enterprise synthesis/i.test(String(analysis?.generatedBy || ''))
+                    ? 1
+                    : 0
+            };
+        });
+        operation.step('saved_report_data_loaded', { reports: rows.length, auditLogs: logRows.length, detailedReports: detailedReports.length });
         // Live intelligence enriches the page but cannot block the saved report/history
         // response. Slow domains are omitted for this request and recover next refresh.
         operation.step('live_domain_intelligence_start');
@@ -6312,7 +6342,10 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
             )
             : null;
         operation.step('live_final_synthesis_complete', { available: Boolean(liveFinal?.finalSynthesis) });
-        const liveReport = buildSunbirdLiveIntelligenceSnapshot(liveIntelligence, liveFinal);
+        const liveReport = safelyBuildSunbirdReportView(
+            'Live intelligence snapshot',
+            () => buildSunbirdLiveIntelligenceSnapshot(liveIntelligence, liveFinal)
+        );
         const liveIdentityDomain = Array.isArray(liveIntelligence?.domains)
             ? liveIntelligence.domains.find(domain => String(domain?.domainKey || '').toLowerCase() === 'identity')
             : null;
@@ -6326,16 +6359,28 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
                 console.warn('[Reports] Identity live read skipped:', error.message);
                 return null;
             });
-        const identityDomain = buildSunbirdReportIdentityDomain(liveIdentityDomain || fallbackIdentityDomain);
+        const identityDomain = safelyBuildSunbirdReportView(
+            'Identity report view',
+            () => buildSunbirdReportIdentityDomain(liveIdentityDomain || fallbackIdentityDomain),
+            () => buildSunbirdReportIdentityDomain(null)
+        );
         operation.step('identity_intelligence_loaded', { risks: identityDomain.intelligenceOutput.risks.length });
         const preferredDetailedRow =
-            detailedRows.find(row => Number(row.HasIntelligence) === 1 && parseReportJson(row.Payload, null)?.domainInsights?.domains?.length) ||
-            detailedRows.find(row => parseReportJson(row.Payload, null)?.domainInsights?.domains?.length) ||
-            detailedRows[0] ||
+            detailedReports.find(row => Number(row.HasIntelligence) === 1 && parseReportJson(row.Payload, null)?.domainInsights?.domains?.length) ||
+            detailedReports.find(row => parseReportJson(row.Payload, null)?.domainInsights?.domains?.length) ||
+            detailedReports.find(row => Number(row.HasIntelligence) === 1) ||
+            detailedReports[0] ||
             null;
-        const latestReport = liveReport || buildSunbirdLatestReportSnapshot(preferredDetailedRow);
-        const overview = buildSunbirdLiveOverview(liveReport)
-            || buildSunbirdReportListOverview(intelligentOverviewRows[0] || overviewRows[0] || rows[0]);
+        const latestReport = liveReport || safelyBuildSunbirdReportView(
+            'Saved latest-report snapshot',
+            () => buildSunbirdLatestReportSnapshot(preferredDetailedRow)
+        );
+        const overview = safelyBuildSunbirdReportView(
+            'Report overview',
+            () => buildSunbirdLiveOverview(liveReport)
+                || buildSunbirdReportListOverview(preferredDetailedRow || overviewRows[0] || rows[0]),
+            () => buildSunbirdReportListOverview(null)
+        );
         try {
             await withSunbirdReportTimeout(
                 () => writeSunbirdReportLog({
