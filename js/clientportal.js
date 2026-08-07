@@ -13669,6 +13669,11 @@ function getSunbirdReportIntelligence(data = {}, buckets = getSunbirdReportEvide
     const previousFailures = previousReport ? getSunbirdReportSummaryValue(previousReport, 'failures') : NaN;
     const previousSuccesses = previousReport ? getSunbirdReportSummaryValue(previousReport, 'successes') : NaN;
     const topSignal = buckets.problems[0] || buckets.recommendations[0] || buckets.successes[0];
+    const enterpriseBusinessImpact = String(
+        data.overview?.analysis?.businessImpactSummary ||
+        data.latestReport?.analysis?.businessImpactSummary ||
+        ''
+    ).trim();
     return {
         health,
         failures,
@@ -13677,7 +13682,7 @@ function getSunbirdReportIntelligence(data = {}, buckets = getSunbirdReportEvide
         failureTrend: getSunbirdReportDeltaMeta(failures, previousFailures, true),
         successTrend: getSunbirdReportDeltaMeta(successes, previousSuccesses),
         resolvedCount: getSunbirdReportResolvedCount(data, buckets),
-        topImpact: topSignal ? getSunbirdReportBusinessImpact(topSignal, buckets.problems[0] ? 'problems' : 'recommendations') : 'Business impact: evidence baseline is being established.'
+        topImpact: enterpriseBusinessImpact || (topSignal ? getSunbirdReportBusinessImpact(topSignal, buckets.problems[0] ? 'problems' : 'recommendations') : 'Business impact: evidence baseline is being established.')
     };
 }
 
@@ -14636,7 +14641,7 @@ function renderSunbirdReportsCenter(data) {
             </article>
 
             <article class="sunbird-report-ai-card">
-                <div class="sunbird-report-card-title"><span><i class="fas fa-sparkles"></i> Executive brief</span><small>Latest evidence summary</small></div>
+                <div class="sunbird-report-card-title"><span><i class="fas fa-sparkles"></i> Executive brief</span><small>Latest enterprise synthesis</small></div>
                 ${formatSunbirdExecutiveSummaryHtml(analysis.executiveSummary || '')}
                 <div class="sunbird-report-ai-stats">
                     <span><strong>${Number(summary.failures || 0)}</strong> failures</span>

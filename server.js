@@ -3894,14 +3894,10 @@ function buildSunbirdLiveIntelligenceSnapshot(intelligence = null, finalReport =
     const historicalChanges = buildHistoricalNarrativeFromSynthesis(synthesis, {
         period: { end: intelligence.periodEnd || intelligence.createdAt || new Date() }
     });
+    // The client Executive brief must use the stored enterprise synthesis verbatim;
+    // trend/detail sections are rendered elsewhere and must not replace this summary.
     const fullExecutiveSummary = executiveSummary
-        ? [
-            executiveSummary,
-            `What changed since the last report:\n${historicalChanges.whatChangedSinceLastReport}`,
-            `Historical trend analysis:\n${historicalChanges.historicalTrendAnalysis}`,
-            `Control gaps and remediation progress:\n${historicalChanges.controlGapsAndRemediationProgress}`,
-            `Confidence:\n${String(synthesis?.enterpriseExecutiveSummary?.confidence || synthesis?.evidenceJustificationSummary?.evidenceConfidence || 'medium')}.`
-        ].join('\n\n')
+        ? executiveSummary
         : 'This executive view combines the newest completed Azure analysis for each active domain. Domains refresh independently and display their own analysis time and run ID; no older complete enterprise run is used as a substitute.';
     const failures = findings.filter(finding => /critical|high|severe|failed/i.test(String(finding.severity || '')));
     const successes = findings.filter(finding => /low|healthy|good|resolved|success/i.test(String(finding.severity || '')));
@@ -3946,6 +3942,7 @@ function buildSunbirdLiveOverview(liveReport = null) {
         summary: { ...liveReport.summary },
         analysis: {
             executiveSummary: liveReport.analysis?.executiveSummary || '',
+            businessImpactSummary: liveReport.analysis?.businessImpactSummary || '',
             failures: liveReport.failures || [],
             successes: liveReport.successes || [],
             recommendations: liveReport.recommendations || []
@@ -6263,7 +6260,10 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
         );
         operation.step('report_rows_loaded', { reports: rows.length, auditLogs: logRows.length });
         const liveIntelligence = await fetchSunbirdPowerBIIntelligence(context.companyId);
-        const liveFinal = liveIntelligence?.perDomainLatest ? null : await fetchSunbirdPowerBIFinal(context.companyId, liveIntelligence?.latestRunId || null);
+        const liveFinal = await fetchSunbirdPowerBIFinal(
+            context.companyId,
+            liveIntelligence?.perDomainLatest ? null : (liveIntelligence?.latestRunId || null)
+        );
         const liveReport = buildSunbirdLiveIntelligenceSnapshot(liveIntelligence, liveFinal);
         const liveIdentityDomain = Array.isArray(liveIntelligence?.domains)
             ? liveIntelligence.domains.find(domain => String(domain?.domainKey || '').toLowerCase() === 'identity')
