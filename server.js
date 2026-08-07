@@ -3328,98 +3328,160 @@ function buildDeterministicReportAnalysis(report) {
 
 function buildHistoricalNarrativeFromSynthesis(output = {}, report = null) {
     const asNumber = value => {
-        const parsed = Number(value);
-        return Number.isFinite(parsed) ? parsed : null;
+        const n = Number(value);
+        return Number.isFinite(n) ? n : null;
     };
-    const textOf = (value, fields = []) => {
-        if (typeof value === 'string' || typeof value === 'number') return cleanText(value);
-        if (!value || typeof value !== 'object') return '';
-        for (const field of fields) {
-            const candidate = cleanText(value[field]);
-            if (candidate) return candidate;
+    const extractTrendNumbersFromText = text => {
+        const source = String(text || '');
+        const fromTo = source.match(/from\s+(\d+(?:\.\d+)?)\s*%?\s+to\s+(\d+(?:\.\d+)?)\s*%?/i);
+        if (fromTo) {
+            return {
+                previous: asNumber(fromTo[1]),
+                current: asNumber(fromTo[2]),
+                unit: /%/.test(source) ? '%' : ''
+            };
         }
-        return '';
+        const reducedBy = source.match(/(?:reduced|decreased|improved)\s+by\s+(\d+(?:\.\d+)?)\s*(percentage points?|pp|%)/i);
+        if (reducedBy) {
+            return {
+                previous: null,
+                current: null,
+                delta: -Math.abs(asNumber(reducedBy[1]) || 0),
+                unit: /pp|percentage/i.test(reducedBy[2]) ? 'pp' : '%'
+            };
+        }
+        return { previous: null, current: null, unit: '' };
     };
-    const unique = values => [...new Set(values.map(value => cleanText(value)).filter(Boolean).map(value => value.toLowerCase()))]
-        .map(value => values.find(item => cleanText(item).toLowerCase() === value));
-    const timestamp = row => new Date(row?.periodEnd || row?.date || row?.createdAt || 0).getTime() || 0;
-    const dailyReports = (Array.isArray(report?.dailyReports) ? report.dailyReports : [])
-        .filter(row => timestamp(row) > 0)
-        .sort((left, right) => timestamp(left) - timestamp(right));
-    // Daily reports saved inside the selected period are preferred. During a new
-    // daily generation the current report is not saved yet, so compare its live
-    // summary with the latest completed predecessor instead.
-    const currentDaily = dailyReports[dailyReports.length - 1] || report?.currentDailyReport || null;
-    const previousDaily = dailyReports[dailyReports.length - 2] || report?.previousDailyReport || null;
-    const changes = [];
-    const trendNarratives = [];
+    const trends = Array.isArray(output.trendAnalysis) ? output.trendAnalysis : [];
     const improved = [];
     const worsened = [];
-
-    const addMovement = (label, currentValue, previousValue, format = value => String(value)) => {
-        if (currentValue == null || previousValue == null) return;
-        const delta = currentValue - previousValue;
-        if (delta === 0) {
-            trendNarratives.push(`${label} remained at ${format(currentValue)}.`);
+    const unchanged = [];
+    const improvedNarratives = [];
+    const worsenedNarratives = [];
+    const stableNarratives = [];
+    trends.slice(0, 20).forEach(item => {
+        const title = String(item?.metricName || item?.title || item?.trend || '').trim();
+        if (!title) return;
+        const direction = String(item?.direction || '').toLowerCase();
+        const explanation = String(item?.explanation || item?.detail || item?.reasoning || '').trim();
+        const detailText = `${direction} ${explanation}`.toLowerCase();
+        const parsed = extractTrendNumbersFromText(explanation);
+        const explicitCurrent = asNumber(item?.currentValue ?? item?.current ?? item?.latest ?? item?.valueAfter);
+        const explicitPrevious = asNumber(item?.previousValue ?? item?.previous ?? item?.baseline ?? item?.valueBefore);
+        const currentValue = explicitCurrent ?? parsed.current;
+        const previousValue = explicitPrevious ?? parsed.previous;
+        const delta = asNumber(item?.delta ?? item?.change ?? item?.difference)
+            ?? (currentValue != null && previousValue != null ? currentValue - previousValue : parsed.delta);
+        const unit = String(item?.unit || parsed.unit || (currentValue != null || previousValue != null ? '%' : '')).trim();
+        const describeChange = () => {
+            if (currentValue != null && previousValue != null) {
+                const pp = currentValue - previousValue;
+                const suffix = unit || '%';
+                return `${title} moved from ${previousValue}${suffix} to ${currentValue}${suffix} (${pp > 0 ? '+' : ''}${pp}${suffix === '%' ? ' percentage points' : suffix}).`;
+            }
+            if (delta != null) {
+                const suffix = unit || 'pts';
+                return `${title} shifted by ${delta > 0 ? '+' : ''}${delta}${suffix}.`;
+            }
+            if (explanation) return `${title}: ${explanation}`;
+            return `${title} changed in this cycle.`;
+        };
+        if (/improv|reduc|down|better|stabil|closed|resolved/.test(detailText)) {
+            improved.push(title);
+            improvedNarratives.push(describeChange());
             return;
         }
-        const direction = delta > 0 ? 'increased' : 'decreased';
-        changes.push(`${label} ${direction} from ${format(previousValue)} to ${format(currentValue)}.`);
-        trendNarratives.push(`${label} ${direction} by ${format(Math.abs(delta))} compared with the prior completed report.`);
-        if (label === 'Health score') (delta > 0 ? improved : worsened).push(label);
-        if (label === 'Open findings') (delta < 0 ? improved : worsened).push(label);
-        if (label === 'Successful controls') (delta > 0 ? improved : worsened).push(label);
-    };
-
-    if (currentDaily && previousDaily) {
-        addMovement('Health score', asNumber(currentDaily.healthScore), asNumber(previousDaily.healthScore), value => `${value}%`);
-        addMovement('Open findings', asNumber(currentDaily.failures), asNumber(previousDaily.failures));
-        addMovement('Successful controls', asNumber(currentDaily.successes), asNumber(previousDaily.successes));
-        addMovement('Events reviewed', asNumber(currentDaily.events), asNumber(previousDaily.events));
-    }
-
-    const sourceTrends = Array.isArray(output.trendAnalysis) ? output.trendAnalysis : [];
-    sourceTrends.forEach(item => {
-        const detail = textOf(item, ['explanation', 'detail', 'description', 'whatHappened', 'reasoning']);
-        const title = textOf(item, ['metricName', 'title', 'trend']);
-        const currentValue = asNumber(item?.currentValue ?? item?.current ?? item?.latest ?? item?.valueAfter);
-        const previousValue = asNumber(item?.previousValue ?? item?.previous ?? item?.baseline ?? item?.valueBefore);
-        const delta = asNumber(item?.delta ?? item?.change ?? item?.difference);
-        const direction = cleanText(item?.direction).toLowerCase();
-        const baselineOnly = /baseline unavailable|insufficient historical|no historical/i.test(detail);
-        if (baselineOnly || (!title && currentValue == null && previousValue == null && delta == null) || (!direction && currentValue == null && previousValue == null && delta == null)) return;
-        if (title && currentValue != null && previousValue != null) {
-            const unit = cleanText(item?.unit) || '';
-            const movement = currentValue - previousValue;
-            trendNarratives.push(`${title} moved from ${previousValue}${unit} to ${currentValue}${unit} (${movement > 0 ? '+' : ''}${movement}${unit}).`);
-            if (movement !== 0) (movement > 0 ? worsened : improved).push(title);
+        if (/worsen|increas|up|higher|declin|open|gap/.test(detailText)) {
+            worsened.push(title);
+            worsenedNarratives.push(describeChange());
             return;
         }
-        if (title && delta != null) {
-            trendNarratives.push(`${title} shifted by ${delta > 0 ? '+' : ''}${delta}${cleanText(item?.unit) || ''}.`);
-            if (delta !== 0) (delta > 0 ? worsened : improved).push(title);
-            return;
-        }
-        if (title && detail) trendNarratives.push(`${title}: ${detail}`);
+        unchanged.push(title);
+        stableNarratives.push(explanation ? `${title}: ${explanation}` : `${title} remained materially stable.`);
     });
 
     const complianceReview = output.complianceReview || {};
-    const remainsOpen = unique([
-        ...(Array.isArray(complianceReview.failedOrWeakControlThemes) ? complianceReview.failedOrWeakControlThemes : []),
-        ...(Array.isArray(complianceReview.evidenceGaps) ? complianceReview.evidenceGaps : [])
-    ].map(item => textOf(item, ['gap', 'title', 'description', 'detail'])));
+    const managementReport = output.managementReport || {};
+    const failedOrWeak = Array.isArray(complianceReview.failedOrWeakControlThemes)
+        ? complianceReview.failedOrWeakControlThemes
+        : [];
+    const evidenceGaps = Array.isArray(complianceReview.evidenceGaps)
+        ? complianceReview.evidenceGaps
+        : [];
+    const remediationActions = [
+        ...(Array.isArray(complianceReview.priorityComplianceActions) ? complianceReview.priorityComplianceActions : []),
+        ...(Array.isArray(managementReport.whatMustBeDoneNow) ? managementReport.whatMustBeDoneNow : []),
+        ...(Array.isArray(managementReport.managementActions) ? managementReport.managementActions : []),
+        ...(Array.isArray(managementReport.actions) ? managementReport.actions : [])
+    ].map(item => String(item?.title || item?.detail || item || '').trim()).filter(Boolean);
+
+    const chainCount = Array.isArray(managementReport.crossDomainRiskChains)
+        ? managementReport.crossDomainRiskChains.length
+        : 0;
+    const remainsOpen = [...failedOrWeak, ...evidenceGaps]
+        .map(item => String(item?.gap || item?.title || item || '').trim())
+        .filter(Boolean);
+
+    const reportDate = formatReportDate(report?.period?.end || new Date());
+    const missingMfaUsers = Array.isArray(report?.identityUsers)
+        ? report.identityUsers.filter(user => !toBooleanMfa(user?.mfaEnabled ?? user?.hasMfa ?? user?.hasMfaMethod))
+        : [];
+    const totalIdentityUsers = Array.isArray(report?.identityUsers) ? report.identityUsers.length : 0;
+    const mfaCoverage = totalIdentityUsers > 0
+        ? Math.max(0, Math.min(100, Math.round(((totalIdentityUsers - missingMfaUsers.length) / totalIdentityUsers) * 100)))
+        : null;
+    const variant = (improved.length + worsened.length + remainsOpen.length + trends.length) % 3;
+    const opening = variant === 0
+        ? `On ${reportDate}, enterprise controls moved with measurable evidence shifts.`
+        : variant === 1
+            ? `As of ${reportDate}, the evidence baseline shows meaningful posture movement across domains.`
+            : `At ${reportDate}, the latest automation run confirms change patterns that can be acted on immediately.`;
+    const mfaNarrative = mfaCoverage == null
+        ? ''
+        : `${missingMfaUsers.length} identity account${missingMfaUsers.length === 1 ? '' : 's'} still lack MFA, with current MFA coverage at ${mfaCoverage}%.`;
+
+    const improvedLine = improvedNarratives.length
+        ? improvedNarratives.slice(0, 2).join(' ')
+        : (improved.length ? `Improved signals include ${improved.slice(0, 3).join(', ')}.` : 'No major control trend was explicitly marked as improved in this cycle.');
+    const worsenedLine = worsenedNarratives.length
+        ? worsenedNarratives.slice(0, 2).join(' ')
+        : (worsened.length ? `Worsening pressure is visible in ${worsened.slice(0, 3).join(', ')}.` : 'No major control trend was explicitly marked as worsened in this cycle.');
+    const stableLine = stableNarratives.length
+        ? stableNarratives.slice(0, 1).join(' ')
+        : (unchanged.length ? `Stable/open themes include ${unchanged.slice(0, 3).join(', ')}.` : 'Baseline continuity is still being established in selected areas.');
 
     return {
-        whatChangedSinceLastReport: unique(changes).join(' '),
-        historicalTrendAnalysis: unique(trendNarratives).join(' '),
-        // Individual gaps are returned separately so the PDF can render one readable
-        // bullet per real gap, without a synthetic lead-in sentence.
-        controlGapsAndRemediationProgress: '',
-        improved: unique(improved),
-        worsened: unique(worsened),
+        whatChangedSinceLastReport: [
+            opening,
+            chainCount
+                ? `${chainCount} cross-domain risk chain${chainCount === 1 ? '' : 's'} remain active across the enterprise domains.`
+                : 'No cross-domain risk chains were explicitly captured in this run.',
+            improvedLine,
+            worsenedLine,
+            stableLine,
+            mfaNarrative
+        ].join(' '),
+        historicalTrendAnalysis: trends.length
+            ? [
+                `Trend baseline comparison identified ${improved.length} improving, ${worsened.length} worsening, and ${unchanged.length} stable signal${trends.length === 1 ? '' : 's'} across the supplied historical rollups.`,
+                improvedNarratives.length ? `Top improvement detail: ${improvedNarratives[0]}` : '',
+                worsenedNarratives.length ? `Top decline detail: ${worsenedNarratives[0]}` : ''
+            ].filter(Boolean).join(' ')
+            : 'Trend baseline comparison: baseline unavailable or insufficient lower-period history was supplied for this cycle.',
+        controlGapsAndRemediationProgress: [
+            remainsOpen.length
+                ? `Control gaps still open: ${remainsOpen.slice(0, 4).join(', ')}.`
+                : 'Control gaps still open: no named failed/weak control theme was explicitly emitted by the synthesis model.',
+            remediationActions.length
+                ? `Remediation progress focus: ${remediationActions.slice(0, 4).join('; ')}.`
+                : 'Remediation progress focus: assign accountable owners and due dates for unresolved controls and risk chains.'
+        ].join(' '),
+        improved,
+        worsened,
         remainsOpen
     };
 }
+
 async function fetchSunbirdPowerBIIntelligence(companyId) {
     if (!enterpriseIntelligenceService?.getPowerBIDomain) return null;
 
@@ -3527,10 +3589,10 @@ function buildFinalSynthesisReportAnalysis(report, powerBiFinal = null) {
     const executiveSummaryBase = String(output.enterpriseExecutiveSummary?.summary || fallback.executiveSummary);
     const executiveSummary = [
         executiveSummaryBase,
-        historical.whatChangedSinceLastReport ? `What changed since the last report:\n${historical.whatChangedSinceLastReport}` : '',
-        historical.historicalTrendAnalysis ? `Historical trend analysis:\n${historical.historicalTrendAnalysis}` : '',
-        historical.controlGapsAndRemediationProgress ? `Control gaps and remediation progress:\n${historical.controlGapsAndRemediationProgress}` : '',
-        confidence ? `Confidence:\n${confidence}.` : ''
+        `What changed since the last report:\n${historical.whatChangedSinceLastReport}`,
+        `Historical trend analysis:\n${historical.historicalTrendAnalysis}`,
+        `Control gaps and remediation progress:\n${historical.controlGapsAndRemediationProgress}`,
+        `Confidence:\n${confidence}.`
     ].filter(Boolean).join('\n\n');
     const resolvedEvents = Array.isArray(report.events)
         ? report.events.filter(event => ['resolved', 'closed', 'success', 'succeeded', 'healthy'].includes(String(event.status || '').toLowerCase()))
@@ -4270,20 +4332,10 @@ async function buildSunbirdReportPayload(companyId, periodStart, periodEnd, incl
         healthScore: clampReportScore(row.HealthScore)
     }));
     report.dailyReports = await loadSunbirdDailyReportSummaries(companyId, periodStart, periodEnd);
-    report.currentDailyReport = {
-        periodEnd,
-        healthScore: report.summary.healthScore,
-        failures: report.summary.failures,
-        successes: report.summary.successes,
-        events: report.summary.totalEvents
-    };
-    report.previousDailyReport = await loadSunbirdLatestDailyReportSummary(companyId, periodEnd);
     const powerBiIntelligence = includeAi ? await fetchSunbirdPowerBIIntelligence(companyId) : null;
-    // Domain metrics and evidence remain pinned to each domain's newest completed
-    // analysis. The executive narrative is taken from the latest completed enterprise
-    // synthesis, rather than replaced with a fabricated per-domain placeholder.
-    const powerBiFinal = includeAi
-        ? await fetchSunbirdPowerBIFinal(companyId)
+    // A final synthesis belongs to one all-domain run. Never mix it with a per-domain-latest composite.
+    const powerBiFinal = includeAi && !powerBiIntelligence?.perDomainLatest
+        ? await fetchSunbirdPowerBIFinal(companyId, powerBiIntelligence?.latestRunId || null)
         : null;
     report.domainInsights = powerBiIntelligence;
     // A report may be a composite of independently completed domains. Persist the
@@ -4299,10 +4351,17 @@ async function buildSunbirdReportPayload(companyId, periodStart, periodEnd, incl
             status: domain.status || null
         }));
     report.finalSynthesis = powerBiFinal;
+    const perDomainCompositeAnalysis = powerBiIntelligence?.perDomainLatest
+        ? {
+            ...buildDeterministicReportAnalysis(report),
+            executiveSummary: 'This report combines the newest completed Azure analysis for each active domain. Every domain retains its own run, snapshot, and analysis time; no older fully completed enterprise run is substituted for newer domain intelligence.',
+            generatedBy: 'Latest per-domain Azure analyses'
+        }
+        : null;
     report.analysis = includeAi
         ? (powerBiFinal?.finalSynthesis
             ? buildFinalSynthesisReportAnalysis(report, powerBiFinal)
-            : await generateAiReportAnalysis(report, powerBiIntelligence))
+            : (perDomainCompositeAnalysis || await generateAiReportAnalysis(report, powerBiIntelligence)))
         : buildDeterministicReportAnalysis(report);
         return report;
 }
@@ -4339,34 +4398,6 @@ async function loadSunbirdDailyReportSummaries(companyId, periodStart, periodEnd
     });
 }
 
-async function loadSunbirdLatestDailyReportSummary(companyId, before) {
-    const [rows] = await pool.query(
-        `SELECT ID, PeriodStart, PeriodEnd, HealthScore, ReportStatus, Payload, CreatedAt
-         FROM SunbirdReports
-         WHERE CompanyID = ? AND ReportType = 'daily' AND PeriodEnd < ?
-         ORDER BY PeriodEnd DESC
-         LIMIT 1`,
-        [companyId, before]
-    );
-    const row = rows[0];
-    if (!row) return null;
-    const payload = parseReportJson(row.Payload, {});
-    const summary = payload.summary || {};
-    const failures = payload.analysis?.failures || payload.failures || [];
-    const successes = payload.analysis?.successes || payload.successes || [];
-    return {
-        id: row.ID,
-        date: row.PeriodEnd,
-        periodStart: row.PeriodStart,
-        periodEnd: row.PeriodEnd,
-        createdAt: row.CreatedAt,
-        healthScore: clampReportScore(row.HealthScore ?? summary.healthScore ?? 0),
-        status: row.ReportStatus || summary.status || 'collected',
-        failures: Number(summary.failures || failures.length || 0),
-        successes: Number(summary.successes || successes.length || 0),
-        events: Number(summary.totalEvents || payload.events?.length || 0)
-    };
-}
 async function saveSunbirdReport(companyId, reportType, periodStart, periodEnd, generatedByUserId = null, includeAi = false) {
     await writeSunbirdReportLog({
         companyId,
@@ -4786,64 +4817,28 @@ function generateSunbirdReportPdf(report, reportId = null) {
                     if (!Array.isArray(value)) Object.entries(value).forEach(([key, nested]) => readMetrics(nested, depth + 1, `${label} ${key}`.trim()));
                 };
                 const addItems = (value, section) => (Array.isArray(value) ? value : value == null ? [] : [value]).map(recordText).filter(Boolean).forEach(item => addText(section, item));
-                const itemText = (item, fields = []) => {
-                    if (typeof item === 'string' || typeof item === 'number') return cleanText(item);
-                    if (!item || typeof item !== 'object') return '';
-                    for (const field of fields) {
-                        const value = cleanText(item[field]);
-                        if (value) return value;
-                    }
-                    return '';
-                };
-                const isPlaceholder = value => /^(?:finding:\s*)?(?:\d+[.)]?|n\/a|null|undefined)$/i.test(cleanText(value));
-                const addStructuredItems = (value, section, fields = []) => {
-                    const items = Array.isArray(value) ? value : value == null ? [] : [value];
-                    items.map(item => itemText(item, fields)).filter(item => item && !isPlaceholder(item)).forEach(item => addText(section, item));
-                };
-                const addNarrativeSentences = (value, section) => String(value || '')
-                    .split(/\r?\n+|(?<=[.!?])\s+(?=[A-Z0-9])/)
-                    .map(sentence => cleanText(sentence))
-                    .filter(sentence => sentence && !isPlaceholder(sentence))
-                    .forEach(sentence => addText(section, sentence));
                 const finalOutput = report.finalSynthesis?.finalSynthesis?.synthesisOutput || report.finalSynthesis?.synthesisOutput || {};
-                const executive = finalOutput.enterpriseExecutiveSummary || {};
                 const historical = analysis.historicalChanges || {};
-                const hasFinalSynthesis = Object.keys(finalOutput).length > 0;
-
-                if (hasFinalSynthesis) {
-                    // These sections are intentionally sourced from the stored Azure
-                    // synthesis. Raw evidence stays in the dedicated evidence/domain pages.
-                    addText('summary', executive.summary);
-                    addText('impact', finalOutput.businessImpactSummary);
-                    addStructuredItems(finalOutput.riskRegister, 'risks', ['title', 'whatHappened', 'description', 'detail']);
-                    const prioritisedActions = Array.isArray(finalOutput.recommendations) && finalOutput.recommendations.length
-                        ? finalOutput.recommendations
-                        : [
-                            ...(Array.isArray(finalOutput.managementReport?.whatMustBeDoneNow) ? finalOutput.managementReport.whatMustBeDoneNow : []),
-                            ...(Array.isArray(finalOutput.managementReport?.managementActions) ? finalOutput.managementReport.managementActions : []),
-                            ...(Array.isArray(finalOutput.managementReport?.actions) ? finalOutput.managementReport.actions : []),
-                            ...(Array.isArray(finalOutput.boardReport?.boardActions) ? finalOutput.boardReport.boardActions : [])
-                        ];
-                    addStructuredItems(prioritisedActions, 'actions', ['recommendedAction', 'recommendation', 'detail', 'title']);
-                    addText('recommendation', finalOutput.boardReport?.messageToBoard || finalOutput.boardReport?.boardSummary);
-                    addMetric('overall risk', executive.overallPosture || finalOutput.boardReport?.riskLevel);
-                    addMetric('audit readiness', finalOutput.complianceReview?.auditReadinessStatus);
-                    addMetric('confidence', executive.confidence || finalOutput.evidenceJustificationSummary?.evidenceConfidence);
-                    addMetric('domains analysed', Array.isArray(executive.activeDomainsUsed) ? executive.activeDomainsUsed.length : '');
-                    addMetric('operations status', Array.isArray(executive.knownLimitations) ? executive.knownLimitations.join(' ') : executive.knownLimitations);
-                } else {
-                    // A graceful fallback is used only when no completed synthesis exists.
-                    addText('summary', analysis.executiveSummary);
-                    addText('recommendation', analysis.boardReportSummary);
-                    addText('impact', analysis.businessImpactSummary);
-                    addStructuredItems(analysis.failures || report.failures, 'risks', ['title', 'description', 'detail']);
-                    addStructuredItems(analysis.recommendations || report.recommendations, 'actions', ['recommendedAction', 'recommendation', 'detail', 'title']);
-                }
-
-                addNarrativeSentences(historical.whatChangedSinceLastReport, 'changes');
-                addNarrativeSentences(historical.historicalTrendAnalysis, 'trend');
-                addNarrativeSentences(historical.controlGapsAndRemediationProgress, 'gaps');
-                addStructuredItems(historical.whatRemainsOpen, 'gaps');
+                readNarrative(analysis.executiveSummary);
+                readNarrative(analysis.boardReportSummary, 'recommendation');
+                readNarrative(analysis.businessImpactSummary, 'impact');
+                readNarrative(finalOutput.enterpriseExecutiveSummary?.summary);
+                readNarrative(finalOutput.boardReport?.boardSummary || finalOutput.boardReport?.summary, 'recommendation');
+                addItems(analysis.failures || report.failures, 'risks');
+                addItems(finalOutput.riskRegister, 'risks');
+                addItems(analysis.recommendations || report.recommendations, 'actions');
+                addItems(analysis.managementReportItems, 'actions');
+                addItems(finalOutput.managementReport?.managementActions || finalOutput.managementReport?.actions, 'actions');
+                addItems(analysis.resolvedEvents, 'changes');
+                addItems(finalOutput.trendAnalysis, 'trend');
+                addText('changes', historical.whatChangedSinceLastReport);
+                addText('trend', historical.historicalTrendAnalysis);
+                addText('gaps', historical.controlGapsAndRemediationProgress);
+                addItems(historical.whatImproved, 'changes');
+                addItems(historical.whatWorsened, 'changes');
+                addItems(historical.whatRemainsOpen, 'gaps');
+                readMetrics(analysis);
+                readMetrics(finalOutput);
                 readMetrics(report.riskEngine || report.summary || {});
                 if (!metrics.has('Domains Analysed') && Array.isArray(report.domainInsights?.domains) && report.domainInsights.domains.length) addMetric('domains analysed', report.domainInsights.domains.length);
                 return { sections, sectionOrder, sectionTitles, metrics: [...metrics].map(([label, value]) => ({ label, value })) };
