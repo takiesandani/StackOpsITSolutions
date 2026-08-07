@@ -9271,7 +9271,7 @@ Return exactly these top-level fields:
         };
     }
 
-    async function getPowerBIDomain(companyId, domainKey, { runId = null, periodType = null, queryTimeoutMs = 0 } = {}) {
+    async function getPowerBIDomain(companyId, domainKey, { runId = null, periodType = null } = {}) {
         if (!DOMAIN_BY_KEY[domainKey]) {
             const error = new Error(`Unsupported enterprise domain: ${domainKey}`);
             error.statusCode = 400;
@@ -9289,25 +9289,18 @@ Return exactly these top-level fields:
         if (runId) { where += ' AND RunID = ?'; params.push(Number(runId)); }
         else where += ` AND Status IN ('completed', 'completed_with_warnings', 'partial')`;
         if (periodType) { where += ' AND PeriodType = ?'; params.push(String(periodType)); }
-        const sql = `SELECT * FROM StackCTRLTenantDomainIntelligence WHERE ${where} ORDER BY ID DESC LIMIT 1`;
-        const [rows] = await pool.query(
-            queryTimeoutMs > 0 ? { sql, timeout: Math.max(1, Number(queryTimeoutMs)) } : sql,
-            params
-        );
+        const [rows] = await pool.query(`SELECT * FROM StackCTRLTenantDomainIntelligence WHERE ${where} ORDER BY ID DESC LIMIT 1`, params);
         if (!rows[0]) { const error = new Error('Domain intelligence output not found'); error.statusCode = 404; throw error; }
         return { dataClassification: 'intelligent_azure_output', domain: powerBIDomainRow(rows[0]) };
     }
-    async function getPowerBIFinal(companyId, runId = null, { periodType = null, queryTimeoutMs = 0 } = {}) {
+
+    async function getPowerBIFinal(companyId, runId = null, { periodType = null } = {}) {
         const params = [Number(companyId)];
         let where = 'CompanyID = ?';
         if (runId) { where += ' AND RunID = ?'; params.push(Number(runId)); }
         else where += ` AND Status IN ('completed', 'completed_with_warnings')`;
         if (periodType) { where += ' AND PeriodType = ?'; params.push(String(periodType)); }
-        const sql = `SELECT * FROM StackCTRLEnterpriseSynthesis WHERE ${where} ORDER BY ID DESC LIMIT 1`;
-        const [rows] = await pool.query(
-            queryTimeoutMs > 0 ? { sql, timeout: Math.max(1, Number(queryTimeoutMs)) } : sql,
-            params
-        );
+        const [rows] = await pool.query(`SELECT * FROM StackCTRLEnterpriseSynthesis WHERE ${where} ORDER BY ID DESC LIMIT 1`, params);
         if (!rows[0]) {
             return {
                 dataClassification: 'intelligent_azure_output',
@@ -9320,6 +9313,7 @@ Return exactly these top-level fields:
         }
         return { dataClassification: 'intelligent_azure_output', status: rows[0].Status || 'available', reportingPhase: CURRENT_REPORTING_PHASE, limitations: ['Operations is temporarily disabled in this reporting phase. Governance and Compliance Validation are active and must be included in the final synthesis when their stored domain intelligence exists.'], finalSynthesis: powerBISynthesisRow(rows[0]) };
     }
+
     async function getPowerBIRaw(companyId, domainKey = null) {
         if (domainKey && !DOMAIN_BY_KEY[domainKey]) { const error = new Error(`Unsupported enterprise domain: ${domainKey}`); error.statusCode = 400; throw error; }
         const [rows] = await pool.query('SELECT * FROM StackCTRLTenantEvidenceSnapshots WHERE CompanyID = ? ORDER BY ID DESC LIMIT 1', [Number(companyId)]);

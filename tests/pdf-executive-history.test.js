@@ -6,7 +6,7 @@ const vm = require('node:vm');
 function loadHistoricalNarrativeBuilder() {
     const source = fs.readFileSync('server.js', 'utf8');
     const start = source.indexOf('function buildHistoricalNarrativeFromSynthesis(output = {}, report = null) {');
-    const end = source.indexOf('const SUNBIRD_REPORT_LIVE_DOMAIN_TIMEOUT_MS', start);
+    const end = source.indexOf('async function fetchSunbirdPowerBIIntelligence(companyId) {', start);
     assert.ok(start >= 0 && end > start, 'historical narrative builder must be present');
     return vm.runInNewContext(`
         ${source.slice(start, end)}
