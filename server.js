@@ -5597,20 +5597,38 @@ function generateSunbirdReportPdf(report, reportId = null) {
                         ...(Array.isArray(item?.evidence) ? item.evidence : []),
                         ...(Array.isArray(item?.evidenceRows) ? item.evidenceRows : [])
                     ];
+                    // Backup and Governance links are compact IDs. Enrich only those
+                    // IDs from their matching domain evidence catalog before PDF layout.
+                    const linkedCatalog = (isBackup || isGovernance) ? categoryForFinding(item) : null;
+                    const catalogEntities = Array.isArray(linkedCatalog?.entities) ? linkedCatalog.entities : [];
                     const evidenceKeys = entry => [...new Set([
                         entry?.entityId, entry?.id, entry?.recordId, entry?.sourceAlertId, entry?.alertId,
                         entry?.controlId, entry?.applicationId, entry?.deviceId, entry?.userId,
                         entry?.entityEmail, entry?.mail, entry?.userPrincipalName, entry?.entityName,
                         entry?.displayName, entry?.name, entry?.title
                     ].map(value => String(value || '').trim().toLowerCase()).filter(Boolean))];
+                    const catalogByEvidenceKey = new Map();
+                    catalogEntities.forEach(catalogEntry => {
+                        evidenceKeys(catalogEntry).forEach(key => {
+                            if (!catalogByEvidenceKey.has(key)) catalogByEvidenceKey.set(key, catalogEntry);
+                        });
+                    });
+                    const enrichedDirect = catalogEntities.length
+                        ? direct.map(entry => {
+                            const catalogEntry = evidenceKeys(entry).map(key => catalogByEvidenceKey.get(key)).find(Boolean);
+                            return catalogEntry
+                                ? { ...catalogEntry, ...Object.fromEntries(Object.entries(entry || {}).filter(([, value]) => value != null && value !== '')) }
+                                : entry;
+                        })
+                        : direct;
                     const strongEvidenceKeys = entry => [...new Set([
                         entry?.id, entry?.recordId, entry?.sourceAlertId, entry?.alertId, entry?.SourceID,
                         entry?.controlId, entry?.applicationId, entry?.deviceId, entry?.userId,
                         entry?.entityId && !/[\s@]/.test(String(entry.entityId)) ? entry.entityId : null
                     ].map(value => String(value || '').trim().toLowerCase()).filter(Boolean))];
                     const isSummaryEvidence = entry => /(?:summary|score|coverage)/i.test(String(entry?.entityType || entry?.evidenceType || '')) || /(?:summary|score)$/i.test(String(entry?.entityId || entry?.id || ''));
-                    const specific = direct.filter(entry => !isSummaryEvidence(entry));
-                    const source = specific.length ? specific : direct;
+                    const specific = enrichedDirect.filter(entry => !isSummaryEvidence(entry));
+                    const source = specific.length ? specific : enrichedDirect;
                     const entries = [];
                     source.forEach(entry => {
                         const keys = evidenceKeys(entry);
@@ -5633,7 +5651,7 @@ function generateSunbirdReportPdf(report, reportId = null) {
                     return { rows, total: rows.length };
                 };
                 const formatEvidence = entry => {
-                    const name = cleanText(entry.controlName || entry.displayName || entry.applicationName || entry.entityName || entry.name || entry.title || entry.indicator || entry.value || entry.user || entry.deviceName, isEmail ? 'Email security alert' : isApplications ? 'Application' : isSecurityAlerts ? 'Security alert' : isBackup ? 'Data holder' : isGovernance ? 'Governance review' : isCompliance ? 'Compliance control' : 'Cloudflare control');
+                    const name = cleanText(entry.controlName || entry.displayName || entry.applicationName || entry.entityName || entry.name || entry.title || entry.indicator || entry.value || entry.user || entry.deviceName || ((isBackup || isGovernance) ? entry.entityId : ''), isEmail ? 'Email security alert' : isApplications ? 'Application' : isSecurityAlerts ? 'Security alert' : isBackup ? 'Data holder' : isGovernance ? 'Governance review' : isCompliance ? 'Compliance control' : 'Cloudflare control');
                     const fields = isEmail
                         ? [
                             entry.recipient ? `Recipient: ${cleanText(entry.recipient)}` : '',
