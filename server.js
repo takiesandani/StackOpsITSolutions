@@ -3646,21 +3646,77 @@ function buildSunbirdDomainBreakdownFromPayload(payload = {}) {
         const n = Number(value);
         return Number.isFinite(n) ? clampReportScore(n) : null;
     };
+    const evidenceRecordKeys = evidence => {
+        const source = evidence && typeof evidence === 'object' ? evidence : {};
+        return [...new Set([
+            source.entityId, source.id, source.recordId, source.sourceAlertId, source.alertId,
+            source.SourceID, source.controlId, source.applicationId, source.deviceId, source.userId,
+            source.entityEmail, source.mail, source.userPrincipalName, source.entityName,
+            source.displayName, source.name, source.title, source.label
+        ].map(value => asText(value).toLowerCase()).filter(Boolean))];
+    };
+    const evidenceRecordIdentity = evidence => evidenceRecordKeys(evidence)[0] || null;
+    const evidenceStrongRecordKeys = evidence => {
+        const source = evidence && typeof evidence === 'object' ? evidence : {};
+        const entityId = asText(source.entityId);
+        return [...new Set([
+            source.id, source.recordId, source.sourceAlertId, source.alertId, source.SourceID,
+            source.controlId, source.applicationId, source.deviceId, source.userId,
+            entityId && !/[\s@]/.test(entityId) ? entityId : null
+        ].map(value => asText(value).toLowerCase()).filter(Boolean))];
+    };
+    const evidenceValueScore = value => {
+        if (value == null || value === '') return 0;
+        if (Array.isArray(value)) return value.length ? 150 + value.length : 0;
+        if (typeof value === 'object') return Object.keys(value).length ? 200 + Object.keys(value).length : 0;
+        return Math.min(String(value).trim().length, 100);
+    };
+    const mergeEvidenceRecord = (current, candidate) => {
+        const merged = { ...current };
+        Object.entries(candidate && typeof candidate === 'object' ? candidate : {}).forEach(([key, value]) => {
+            if (value == null || value === '') return;
+            if (merged[key] == null || merged[key] === '' || evidenceValueScore(value) > evidenceValueScore(merged[key])) {
+                merged[key] = value;
+            }
+        });
+        return merged;
+    };
+    const isAggregateEvidenceRecord = evidence => {
+        const source = evidence && typeof evidence === 'object' ? evidence : {};
+        const type = asText(source.entityType || source.evidenceType || source.kind).toLowerCase();
+        const id = asText(source.entityId || source.id || source.recordId).toLowerCase();
+        return /(?:summary|score|coverage)/.test(type) || /(?:summary|score)$/.test(id);
+    };
     const normalizeEvidence = evidence => {
         const source = evidence && typeof evidence === 'object' ? evidence : { value: evidence };
         const name = asText(
-            source.entityName || source.displayName || source.entityDisplayName || source.userPrincipalName || source.entityEmail || source.mail || source.deviceName || source.entityDeviceName || source.controlName || source.label || source.title || source.sourceMetric || source.value,
+            source.entityName || source.displayName || source.entityDisplayName || source.userPrincipalName || source.entityEmail || source.mail || source.deviceName || source.entityDeviceName || source.applicationName || source.controlName || source.alertName || source.label || source.title || source.name || source.entityId || source.id || source.value,
             'Evidence item'
         );
+        const signIn = source.lastSignIn && typeof source.lastSignIn === 'object'
+            ? [
+                source.lastSignIn.location ? `Sign-in location: ${source.lastSignIn.location}` : '',
+                source.lastSignIn.device ? `Sign-in device: ${source.lastSignIn.device}` : '',
+                source.lastSignIn.daysSince == null || source.lastSignIn.daysSince === '' ? '' : `${source.lastSignIn.daysSince} days since sign-in`,
+                source.lastSignIn.status ? `Sign-in status: ${source.lastSignIn.status}` : ''
+            ].filter(Boolean).join(' | ')
+            : asText(source.lastSignIn);
         const detail = asText([
+            source.entityEmail || source.mail || source.userPrincipalName || source.email,
+            source.entityType ? `Type: ${source.entityType}` : '',
+            source.applicationName && source.applicationName !== name ? `Application: ${source.applicationName}` : '',
+            source.publisherName ? `Publisher: ${source.publisherName}` : '',
+            source.deviceName && source.deviceName !== name ? `Device: ${source.deviceName}` : '',
+            source.operatingSystem ? `OS: ${source.operatingSystem}` : '',
+            source.policyName ? `Control: ${source.policyName}` : '',
+            source.alertName && source.alertName !== name ? `Alert: ${source.alertName}` : '',
             source.description || source.detail || source.evidenceSummary || source.reasoning || source.impact,
             source.location ? `Location: ${source.location}` : '',
-            source.device ? `Device: ${source.device}` : '',
-            source.lastSignIn?.location ? `Sign-in location: ${source.lastSignIn.location}` : '',
-            source.lastSignIn?.device ? `Sign-in device: ${source.lastSignIn.device}` : '',
-            source.lastSignIn?.daysSince == null || source.lastSignIn?.daysSince === '' ? '' : `${source.lastSignIn.daysSince} days since sign-in`
+            signIn,
+            source.status || source.state || source.complianceState ? `Status: ${source.status || source.state || source.complianceState}` : ''
         ].filter(Boolean).join(' | '));
         return {
+            id: shortText(evidenceRecordIdentity(source) || '', 260),
             name: shortText(name, 220),
             detail: shortText(detail || asText(source.evidenceSource || source.source || source.sourceMetric || source.status || source.state, ''), 360),
             severity: shortText(asText(source.severity || source.riskLevel || source.priority || ''), 80),
@@ -3668,7 +3724,6 @@ function buildSunbirdDomainBreakdownFromPayload(payload = {}) {
             source: shortText(asText(source.sourceMetric || source.evidenceSource || source.source || source.category || ''), 160)
         };
     };
-
     // This view model is already field-bounded below. Do not pass it through the generic
     // depth limiter: evidence and evidenceIds sit at depth four and were replaced by
     // "[Detail omitted]" for every domain before the modal could render them.
@@ -3692,40 +3747,60 @@ function buildSunbirdDomainBreakdownFromPayload(payload = {}) {
                 if (dedupe.has(key)) return null;
                 dedupe.add(key);
 
-                // These arrays are the finding's own explicit evidence links. Do not
-                // infer or append a category/domain list from sourceMetric; a finding
-                // may legitimately contain every member of a small category.
-                const attachedEntities = Array.isArray(item?.affectedEntities) ? item.affectedEntities : [];
-                const attachedEvidenceRows = Array.isArray(item?.evidenceRows) ? item.evidenceRows : [];
+                // These arrays are the finding's explicit evidence links. They may
+                // contain the same record twice: once as an AI summary and once as a
+                // richer source row. Merge by stable record identity before rendering.
                 const explicitRecordRows = [
                     ...(Array.isArray(item?.evidenceRecords) ? item.evidenceRecords : []),
-                    ...attachedEntities,
+                    ...(Array.isArray(item?.affectedEntities) ? item.affectedEntities : []),
                     ...(Array.isArray(item?.evidence) ? item.evidence : []),
-                    ...attachedEvidenceRows
+                    ...(Array.isArray(item?.evidenceRows) ? item.evidenceRows : [])
                 ];
-                // evidenceUsed is a descriptive fallback only; never append it to
-                // already linked records and never infer category/domain evidence.
+                // evidenceUsed is a descriptive fallback only. It must never widen a
+                // finding to a metric category or to the entire domain.
                 const evidencePool = explicitRecordRows.length
                     ? explicitRecordRows
                     : (Array.isArray(item?.evidenceUsed) ? item.evidenceUsed : []);
-                // sourceMetric is an aggregate descriptor, not an evidence relationship.
-                // Never widen a finding to all rows in that metric or domain.
                 const evidenceIds = [...new Set([
                     ...(Array.isArray(item?.affectedEntityIds) ? item.affectedEntityIds : []),
                     ...(Array.isArray(item?.recordIds) ? item.recordIds : []),
                     ...(Array.isArray(item?.sourceAlertIds) ? item.sourceAlertIds : []),
                     ...(Array.isArray(item?.evidenceIds) ? item.evidenceIds : []),
                     ...(Array.isArray(item?.entityIds) ? item.entityIds : [])
-                ].map(value => String(value || '').trim()).filter(Boolean))].slice(0, 100);
-                const uniqueEvidence = [];
-                const evidenceSeen = new Set();
+                ].map(value => String(value || '').trim()).filter(Boolean))];
+                const mergedRecordEntries = [];
+                const unkeyedRecords = [];
                 evidencePool.forEach(row => {
-                    const normalized = normalizeEvidence(row);
-                    const evidenceKey = `${normalized.name}|${normalized.detail}`.toLowerCase();
-                    if (!evidenceKey || evidenceSeen.has(evidenceKey)) return;
-                    evidenceSeen.add(evidenceKey);
-                    uniqueEvidence.push(normalized);
+                    if (!row || typeof row !== 'object') {
+                        if (String(row || '').trim()) unkeyedRecords.push({ label: String(row).trim() });
+                        return;
+                    }
+                    const keys = evidenceRecordKeys(row);
+                    const strongKeys = evidenceStrongRecordKeys(row);
+                    if (!keys.length) {
+                        unkeyedRecords.push(row);
+                        return;
+                    }
+                    const existing = mergedRecordEntries.find(entry => {
+                        const sameStrongRecord = strongKeys.some(key => entry.strongKeys.has(key));
+                        const aliasCanBeUsed = !strongKeys.length || !entry.strongKeys.size;
+                        return sameStrongRecord || (aliasCanBeUsed && keys.some(key => entry.keys.has(key)));
+                    });
+                    if (existing) {
+                        existing.record = mergeEvidenceRecord(existing.record, row);
+                        keys.forEach(key => existing.keys.add(key));
+                        strongKeys.forEach(key => existing.strongKeys.add(key));
+                        return;
+                    }
+                    mergedRecordEntries.push({ record: mergeEvidenceRecord({}, row), keys: new Set(keys), strongKeys: new Set(strongKeys) });
                 });
+                const mergedRecords = [...mergedRecordEntries.map(entry => entry.record), ...unkeyedRecords];
+                // Summary/coverage objects are useful only when they are the sole
+                // attached evidence. Prefer the underlying people, devices, controls,
+                // applications, alerts, or governance items whenever they are present.
+                const specificRecords = mergedRecords.filter(row => !isAggregateEvidenceRecord(row));
+                const displayRecords = specificRecords.length ? specificRecords : mergedRecords;
+                const uniqueEvidence = displayRecords.map(normalizeEvidence).filter(row => row.name && row.name !== 'Evidence item');
                 return {
                     findingId: `${String(domain?.domainKey || domain?.domainName || 'domain').toLowerCase()}-${index + 1}`,
                     title: shortText(title, 260),
@@ -5435,22 +5510,43 @@ function generateSunbirdReportPdf(report, reportId = null) {
                     const direct = [
                         ...(Array.isArray(item?.evidenceRecords) ? item.evidenceRecords : []),
                         ...(Array.isArray(item?.affectedEntities) ? item.affectedEntities : []),
+                        ...(Array.isArray(item?.evidence) ? item.evidence : []),
                         ...(Array.isArray(item?.evidenceRows) ? item.evidenceRows : [])
                     ];
-                    const matchedCategory = categoryForFinding(item);
-                    const source = isCompliance
-                        ? direct
-                        : [
-                            ...(Array.isArray(matchedCategory?.entities) ? matchedCategory.entities : []),
-                            ...direct
-                        ];
-                    const unique = new Map();
+                    const evidenceKeys = entry => [...new Set([
+                        entry?.entityId, entry?.id, entry?.recordId, entry?.sourceAlertId, entry?.alertId,
+                        entry?.controlId, entry?.applicationId, entry?.deviceId, entry?.userId,
+                        entry?.entityEmail, entry?.mail, entry?.userPrincipalName, entry?.entityName,
+                        entry?.displayName, entry?.name, entry?.title
+                    ].map(value => String(value || '').trim().toLowerCase()).filter(Boolean))];
+                    const strongEvidenceKeys = entry => [...new Set([
+                        entry?.id, entry?.recordId, entry?.sourceAlertId, entry?.alertId, entry?.SourceID,
+                        entry?.controlId, entry?.applicationId, entry?.deviceId, entry?.userId,
+                        entry?.entityId && !/[\s@]/.test(String(entry.entityId)) ? entry.entityId : null
+                    ].map(value => String(value || '').trim().toLowerCase()).filter(Boolean))];
+                    const isSummaryEvidence = entry => /(?:summary|score|coverage)/i.test(String(entry?.entityType || entry?.evidenceType || '')) || /(?:summary|score)$/i.test(String(entry?.entityId || entry?.id || ''));
+                    const specific = direct.filter(entry => !isSummaryEvidence(entry));
+                    const source = specific.length ? specific : direct;
+                    const entries = [];
                     source.forEach(entry => {
-                        const key = String(entry?.entityId || entry?.id || entry?.name || entry?.title || entry?.deviceName || entry?.entityName || entry?.displayName || '').toLowerCase();
-                        if (key && !unique.has(key)) unique.set(key, entry);
+                        const keys = evidenceKeys(entry);
+                        const strongKeys = strongEvidenceKeys(entry);
+                        if (!keys.length) return;
+                        const existing = entries.find(candidate => {
+                            const sameStrongRecord = strongKeys.some(key => candidate.strongKeys.has(key));
+                            const aliasCanBeUsed = !strongKeys.length || !candidate.strongKeys.size;
+                            return sameStrongRecord || (aliasCanBeUsed && keys.some(key => candidate.keys.has(key)));
+                        });
+                        if (existing) {
+                            existing.record = { ...existing.record, ...Object.fromEntries(Object.entries(entry || {}).filter(([, value]) => value != null && value !== '')) };
+                            keys.forEach(key => existing.keys.add(key));
+                            strongKeys.forEach(key => existing.strongKeys.add(key));
+                            return;
+                        }
+                        entries.push({ record: { ...entry }, keys: new Set(keys), strongKeys: new Set(strongKeys) });
                     });
-                    const total = Number(matchedCategory?.count || unique.size || 0);
-                    return { rows: Array.from(unique.values()).slice(0, 10), total };
+                    const rows = entries.map(entry => entry.record);
+                    return { rows, total: rows.length };
                 };
                 const formatEvidence = entry => {
                     const name = cleanText(entry.controlName || entry.displayName || entry.applicationName || entry.entityName || entry.name || entry.title || entry.indicator || entry.value || entry.user || entry.deviceName, isEmail ? 'Email security alert' : isApplications ? 'Application' : isSecurityAlerts ? 'Security alert' : isBackup ? 'Data holder' : isGovernance ? 'Governance review' : isCompliance ? 'Compliance control' : 'Cloudflare control');

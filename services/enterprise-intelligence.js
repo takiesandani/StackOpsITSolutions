@@ -3722,9 +3722,11 @@ function compactReasonedItems(items, maximum = 5) {
             whatCanWait: compactTextField(item.whatCanWait, 420),
             firstAction: compactTextField(item.firstAction, 300),
             followUpAction: compactTextField(item.followUpAction, 300),
-            affectedEntities: array(item.affectedEntities).slice(0, 5),
+            // Finding evidence is an explicit source link, not a presentation sample.
+            // Keep the complete linked set so the modal can list every affected record.
+            affectedEntities: array(item.affectedEntities),
             evidenceUsed: array(item.evidenceUsed).slice(0, 5).map(entry => sanitizeVisibleValue(entry)),
-            evidenceRows: array(item.evidenceRows).slice(0, 5)
+            evidenceRows: array(item.evidenceRows)
         });
     });
 }
@@ -3762,7 +3764,7 @@ function compactSelectedDomainAnalysis(analysis, domain) {
         recommendations: compactReasonedItems(evidenceBackedRecommendations, 5),
         managementDecisionsRequired: compactReasonedItems(analysis.managementDecisionsRequired, 5),
         whatCanWait: compactReasonedItems(analysis.whatCanWait, 5),
-        affectedEntities: array(analysis.affectedEntities).slice(0, 5),
+        affectedEntities: array(analysis.affectedEntities),
         missingDataWarnings: array(analysis.missingDataWarnings).filter(warning => !isCuratedReferenceWarning(warning))
     });
     if (!Array.isArray(compacted.missingDataWarnings)) compacted.missingDataWarnings = [];
@@ -4666,13 +4668,13 @@ function createEnterpriseIntelligenceService({
 Use only the supplied compact evidence groups: summaryMetrics, criticalAlerts, highSeverityAlerts, activeIncidents, suspiciousSignIns, anonymousIpEvents, threatIndicators, repeatedAlertPatterns, affectedUsers, affectedDevices, unresolvedAlerts, recentResolvedAlerts, recommendations.
 Do not request omitted raw alerts and do not echo raw full JSON. Each compact row is already readable and Power BI-ready.
 Return only real operational/security risks in risks[]. Put positive observations, such as no critical alerts or resolved alerts, in keyFindings[], currentPosture, or scoreJustification.
-Keep output compact: risks max 5, recommendations max 5, affectedEntities max 5 per risk, evidenceRows max 5 per item, evidenceUsed max 5, technicalReasoning max 5 short objects.
+Keep output compact: risks max 5, recommendations max 5, evidenceUsed max 5, technicalReasoning max 5 short objects.
 Affected entities must match the risk's sourceMetric and evidence group. Use entityType User, Device, Incident, SignInEvent, or IPAddress where the evidence supports it. Do not attach the same unrelated users/devices to every risk.
 Each finding, risk, recommendation, and management action should use these fields when relevant:
 title, severity, category, status, sourceDomain, sourceMetric, sourceMetrics, snapshotId, evidenceSource,
 sourceAlertIds, affectedEntities, affectedEntityIds, evidenceRows, recordIds, whatHappened, whyItMatters, businessImpact,
 recommendedAction, recommendedActions, suggestedOwner, suggestedDueDate, patternFound, reasoning, firstAction, followUpAction, managementDecisionRequired, whatCanWait.
-Every affectedEntities object must include entityId, entityName, entityType, sourceDomain, sourceMetric, businessReason, and recommendation. Include readable user email, device name, incident name, alert name, or IP address where present. IDs may supplement readable evidence but must never replace it.
+Every affectedEntities object must include entityId, entityName, entityType, sourceDomain, sourceMetric, businessReason, and recommendation. Include readable user email, device name, incident name, alert name, or IP address where present. IDs may supplement readable evidence but must never replace it. For every numerical entity claim, return every matching affectedEntityId and recordId from the supplied evidence; never return a representative sample. sourceMetric is a label, not evidence that every record in its category supports the finding.
 Use source paths only in internalSourcePath, debugSourcePath, or auditTrace.sourcePath. Never place source paths in affectedEntities, affectedEntityIds, recordIds, or sourceAlertIds.
 Return exactly:
 {
@@ -4735,7 +4737,7 @@ Device Protection reasoning requirements:
             return `
 Email Security reasoning requirements:
 - Treat prepared StackCTRL email records as valid evidence. Azure rate limits are processing failures, not data failures.
-- Keep output compact: risks max 5, recommendations max 5, affectedEntities max 5 per risk, evidenceUsed max 5, technicalReasoning max 5 short bullet objects.
+- Keep output compact: risks max 5, recommendations max 5, evidenceUsed max 5, technicalReasoning max 5 short bullet objects.
 - Reason from patterns such as high-severity alerts, unresolved incidents, phishing/malware/BEC clusters, affected users, repeated senders/domains, and response posture.
 - Return only real risks in risks[]. Put positive observations in keyFindings[] or currentPosture. Do not mention missing curated references as risks, findings, recommendations, affected entities, or warnings when Email evidence exists.
 - Use one to two sentences for reasoning fields. Prefer short action language over long narrative.
@@ -4750,7 +4752,7 @@ Cloudflare Network Security reasoning requirements:
 - Keep affectedEntities and evidenceRows relevant only to each risk; do not attach unrelated Cloudflare rows to every finding. Use sourceMetric protectedApps only for protected applications, enrolledDevices/registeredWarpDevices for devices, gatewayPolicies for gateway rules, dlpProfiles for DLP, warpProfiles for WARP, appCategories for Gateway app catalog, endpointFamilies for API permission-family coverage, and auditLogs for audit log coverage.
 - coverageSummaries rows are evidence-grade accounting rows: use them to report confirmed counts, sampling, and raw-evidence gaps. Do not invent individual audit/access/account log events when the coverage row says count_only_no_raw_rows.
 - Return only real risks in risks[]. Put positive observations in keyFindings[] or currentPosture. Do not mention missing curated references as risks, findings, recommendations, affected entities, or warnings when Cloudflare evidence exists.
-- Use affected entities only from the matching evidence group; max 5 risks, max 5 affectedEntities per risk, max 5 evidenceRows per risk, and omit null/empty visible fields.
+- Use affected entities only from the matching evidence group; max 5 risks, and omit null/empty visible fields.
 - Do not expose internal source paths visibly. Use internalSourcePath/internalSourcePaths only for traceability.`;
         }
         if (domain.key === 'backup') {
@@ -4760,7 +4762,7 @@ Backup & Recovery reasoning requirements:
 - Focus on large data holders, inactive users holding recoverable data, stale activity, service-level storage exposure, missing external backup coverage, restore posture, and management actions.
 - Use affected entities only from the matching evidence group: large data holder risks use topStorageUsers, inactive data holder risks use inactiveDataHolders, stale activity risks use staleActivityUsers, SharePoint/site risks use topSharePointSites, and coverage validation risks use backupCoverageGaps only.
 - Do not create risks for positive observations such as a 100% backup coverage score; place them in keyFindings[], currentPosture, or scoreJustification. Do not mention missing curated references as risks/findings.
-- Keep output compact: risks max 5, recommendations max 5, affectedEntities max 5 per risk, evidenceUsed max 5, and one to two sentences per reasoning field.`;
+- Keep output compact: risks max 5, recommendations max 5, evidenceUsed max 5, and one to two sentences per reasoning field.`;
         }
         if (domain.key === 'applications') {
             return `
@@ -4769,7 +4771,7 @@ Applications reasoning requirements:
 - Focus on shadow IT, external publishers, broad permissions, unused/stale apps, consent risk, ownership/review gaps, and management decisions.
 - Use affected entities only from the matching evidence group: external publisher/vendor/shadow IT risks use externalApps, excessive permission risks use excessivePermissionApps, high-access risks use highAccessApps, group-assigned risks use groupAssignedApps, and stale/unreviewed risks use staleOrUnreviewedApps.
 - Do not create risks for positive or neutral observations such as no users assigned, no group-assigned or high-access apps detected, or missing curated references; place useful positives in keyFindings[], currentPosture, or scoreJustification.
-- Keep output compact: risks max 5, recommendations max 5, affectedEntities max 5 per risk, evidenceUsed max 5, and one to two sentences per reasoning field.`;
+- Keep output compact: risks max 5, recommendations max 5, evidenceUsed max 5, and one to two sentences per reasoning field.`;
         }
         if (domain.key === 'governance') {
                 return `
@@ -4781,7 +4783,7 @@ Applications reasoning requirements:
             - Every risk must include entityId, entityName, entityType, ownerStatus, governanceIssue, businessImpact, managementAction, evidenceReference, sourceDomain, sourceMetric, and suggestedDueDate where possible.
             - Do not create generic governance advice without evidence. If evidence is missing or stale, report it as a limitation or manual-review item.
             - Put positive observations in keyFindings[] or currentPosture, not risks[].
-            - Keep output compact: risks max 5, recommendations max 5, managementActions max 5, affectedEntities max 5 per risk.`;
+            - Keep output compact: risks max 5, recommendations max 5, managementActions max 5.`;
         }
         if (domain.key === 'compliance') {
             return `
@@ -4794,7 +4796,7 @@ Applications reasoning requirements:
             - Every control result must include controlId, controlName, controlCategory, status, severity, sourceDomain, sourceMetric, evidenceReference, validationReason, remediationAction, auditImpact, and dueDateRecommendation where supplied.
             - Every risk must be tied to failed, partial, or manual-review controls. Positive control observations belong in keyFindings[], passedControls[], or currentPosture, not risks[].
             - Do not claim regulatory compliance, certification, or audit readiness beyond the supplied StackCTRL evidence.
-            - Keep output compact: risks max 5, recommendations max 5, remediationActions max 5, affectedEntities max 5 per risk.`;
+            - Keep output compact: risks max 5, recommendations max 5, remediationActions max 5.`;
         }
         return '';
 }
@@ -4941,7 +4943,7 @@ ${domain.key === 'identity'
 - evidence[] contains individual entity rows from the StackCTRL dashboard table for this batch.
 Every finding, risk, and recommendation MUST be evidence-backed. Do not state a gap without naming affected users, devices, apps, controls, policies, alerts, or other entities from the supplied evidence.
 Visible output must be human-readable. Include userPrincipalName/email, device display name, alert title/display name, application/control/policy name, or another useful entity label whenever supplied. Keep internal IDs as evidence references alongside those names; never return an ID as the only description of an affected entity.
-Every affectedEntities object must include entityId, entityName, entityType, sourceDomain, sourceMetric, businessReason, and recommendation. Use source paths only in internalSourcePath, debugSourcePath, or auditTrace.sourcePath; never use them as entity IDs, record IDs, alert IDs, or visible names.
+Every affectedEntities object must include entityId, entityName, entityType, sourceDomain, sourceMetric, businessReason, and recommendation. For every numerical claim about people, devices, apps, controls, alerts, policies, or other entities, return the complete matching affectedEntityIds and recordIds from the supplied evidence; do not return a sample. sourceMetric is a metric label, never proof that every record in a category supports the finding. If complete links are unavailable, state the evidence limitation and do not make an entity-level count claim. Use source paths only in internalSourcePath, debugSourcePath, or auditTrace.sourcePath; never use them as entity IDs, record IDs, alert IDs, or visible names.
 ${reasoningContract}
 ${richReasoning ? `
 For this selected-domain analysis, move beyond Metric -> Risk -> Recommendation. Produce: Pattern -> Reasoning -> Priority -> Evidence -> Action -> Business decision.
@@ -4949,7 +4951,7 @@ Use these shared reasoning sections: domainExecutiveSummary, technicalReasoning,
 Every risk must include: patternFound, reasoning, whyThisIsHighPriority, whyThisIsWorseThanLowerPriorityIssues, affectedEntities, evidenceUsed, firstAction, followUpAction, businessImpact, managementDecisionRequired, whatCanWait, recommendedOwner, suggestedDueDate.
 Do not hardcode generic risks. Infer patterns and priorities from supplied evidence rows and summary metrics only.` : ''}
 ${compactOutput ? `
-Compact output limits are mandatory: risks max 5; recommendations max 5; affectedEntities max 5 per risk; evidenceUsed max 5; technicalReasoning max 5 short bullet objects; no long paragraphs; reasoning fields one to two short sentences.` : ''}
+Compact narrative limits are mandatory: risks max 5; recommendations max 5; evidenceUsed max 5; technicalReasoning max 5 short bullet objects; no long paragraphs; reasoning fields one to two short sentences. These limits NEVER apply to explicit evidence links: for a numerical finding, return every matching affectedEntityId and recordId from the supplied evidence, and retain the matching affectedEntities/evidenceRows rather than a representative sample.` : ''}
 ${STRICT_COMPACT_SELECTED_DOMAIN_KEYS.has(domain.key) ? `
 Selected-domain polish rules are mandatory: risks[] must contain only real risks; put positive/neutral observations in keyFindings[] or currentPosture; do not mention missing curated references as risks/findings/recommendations/warnings when evidence exists; do not duplicate the same affectedEntities across unrelated risks; keep evidenceRows matched to the risk's sourceMetric; omit null and empty visible fields.` : ''}
 
