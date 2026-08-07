@@ -3424,27 +3424,47 @@ function buildHistoricalNarrativeFromSynthesis(output = {}, report = null) {
         remainsOpen
     };
 }
-async function fetchSunbirdPowerBIIntelligence(companyId) {
-    if (!enterpriseIntelligenceService?.getPowerBIDomain) return null;
+const SUNBIRD_REPORT_LIVE_DOMAIN_TIMEOUT_MS = 6500;
+const SUNBIRD_REPORT_LIVE_FINAL_TIMEOUT_MS = 3000;
+const SUNBIRD_REPORT_LIVE_IDENTITY_TIMEOUT_MS = 2500;
 
+function withSunbirdReportTimeout(task, timeoutMs, label) {
+    let timer = null;
+    const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => {
+            const error = new Error(`${label} exceeded ${timeoutMs}ms`);
+            error.code = 'SUNBIRD_REPORT_TIMEOUT';
+            reject(error);
+        }, timeoutMs);
+    });
+    return Promise.race([Promise.resolve().then(task), timeout]).finally(() => clearTimeout(timer));
+}
+
+async function fetchSunbirdPowerBIIntelligence(companyId, { domainTimeoutMs = SUNBIRD_REPORT_LIVE_DOMAIN_TIMEOUT_MS } = {}) {
+    if (!enterpriseIntelligenceService?.getPowerBIDomain) return null;
     try {
-        // Each domain is independently usable as soon as its own Azure analysis is
-        // complete. Do not require a later all-domain run: that made a stale complete
-        // run outrank a newer, valid domain result.
+        // Every domain remains independently current, but no individual database read
+        // is allowed to block the dashboard response indefinitely.
         const definitions = (enterpriseIntelligenceService.domains || [])
             .filter(domain => domain?.includedInCurrentPhase && domain?.selectable !== false);
-        const settled = await Promise.allSettled(definitions.map(async definition => {
-            const result = await enterpriseIntelligenceService.getPowerBIDomain(companyId, definition.key);
-            return result?.domain || null;
-        }));
+        const settled = await Promise.allSettled(definitions.map(async definition => ({
+            definition,
+            domain: (await withSunbirdReportTimeout(
+                () => enterpriseIntelligenceService.getPowerBIDomain(companyId, definition.key, { queryTimeoutMs: domainTimeoutMs }),
+                domainTimeoutMs,
+                `Live ${definition.name || definition.key} intelligence`
+            ))?.domain || null
+        })));
         const byKey = new Map(settled
-            .filter(result => result.status === 'fulfilled' && result.value)
-            .map(result => [String(result.value.domainKey || '').toLowerCase(), result.value]));
+            .filter(result => result.status === 'fulfilled' && result.value?.domain)
+            .map(result => [String(result.value.domain.domainKey || '').toLowerCase(), result.value.domain]));
+        const timedOutDomains = settled
+            .map((result, index) => result.status === 'rejected' && result.reason?.code === 'SUNBIRD_REPORT_TIMEOUT' ? definitions[index]?.key : null)
+            .filter(Boolean);
         const domains = definitions
             .map(definition => byKey.get(String(definition.key || '').toLowerCase()))
             .filter(domain => domain && !['pending', 'temporarily_disabled'].includes(String(domain.status || domain.domainStatus || '').toLowerCase()));
         if (!domains.length) return null;
-
         const timestamp = domain => {
             const value = new Date(domain?.createdAt || domain?.periodEnd || domain?.periodStart || 0).getTime();
             return Number.isFinite(value) ? value : 0;
@@ -3481,6 +3501,7 @@ async function fetchSunbirdPowerBIIntelligence(companyId) {
                 expectedDomains: definitions.length,
                 returnedDomains: domains.length,
                 successfulDomains: domains.length,
+                timedOutDomains,
                 independentlyRefreshed: true
             },
             source: 'enterprise_per_domain_intelligence',
@@ -3491,10 +3512,11 @@ async function fetchSunbirdPowerBIIntelligence(companyId) {
         return null;
     }
 }
-async function fetchSunbirdIdentityDomainIntelligence(companyId) {
+
+async function fetchSunbirdIdentityDomainIntelligence(companyId, { timeoutMs = 0 } = {}) {
     if (!enterpriseIntelligenceService?.getPowerBIDomain) return null;
     try {
-        const result = await enterpriseIntelligenceService.getPowerBIDomain(companyId, 'identity');
+        const result = await enterpriseIntelligenceService.getPowerBIDomain(companyId, 'identity', timeoutMs > 0 ? { queryTimeoutMs: timeoutMs } : {});
         return result?.domain || null;
     } catch (error) {
         console.warn('[Reports] Identity domain intelligence unavailable:', error.message);
@@ -3502,13 +3524,17 @@ async function fetchSunbirdIdentityDomainIntelligence(companyId) {
     }
 }
 
-async function fetchSunbirdPowerBIFinal(companyId, runId = null) {
+async function fetchSunbirdPowerBIFinal(companyId, runId = null, { timeoutMs = 0 } = {}) {
     if (!enterpriseIntelligenceService) return null;
     try {
-        const finalReport = await enterpriseIntelligenceService.getPowerBIFinal(companyId, runId);
-        if (!finalReport || !finalReport.finalSynthesis || !finalReport.finalSynthesis.synthesisOutput) {
-            return null;
-        }
+        const finalReport = timeoutMs > 0
+            ? await withSunbirdReportTimeout(
+                () => enterpriseIntelligenceService.getPowerBIFinal(companyId, runId, { queryTimeoutMs: timeoutMs }),
+                timeoutMs,
+                'Live enterprise synthesis'
+            )
+            : await enterpriseIntelligenceService.getPowerBIFinal(companyId, runId);
+        if (!finalReport || !finalReport.finalSynthesis || !finalReport.finalSynthesis.synthesisOutput) return null;
         return {
             ...finalReport,
             source: 'enterprise_final_synthesis',
@@ -3519,7 +3545,6 @@ async function fetchSunbirdPowerBIFinal(companyId, runId = null) {
         return null;
     }
 }
-
 function buildFinalSynthesisReportAnalysis(report, powerBiFinal = null) {
     const fallback = buildDeterministicReportAnalysis(report);
     const finalSynthesis = powerBiFinal?.finalSynthesis;
@@ -6268,19 +6293,33 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
             [context.companyId, range.start, range.end]
         );
         operation.step('report_rows_loaded', { reports: rows.length, auditLogs: logRows.length });
-        const liveIntelligence = await fetchSunbirdPowerBIIntelligence(context.companyId);
-        const liveFinal = await fetchSunbirdPowerBIFinal(
-            context.companyId,
-            liveIntelligence?.perDomainLatest ? null : (liveIntelligence?.latestRunId || null)
-        );
+        // Live intelligence enriches the page but cannot block the saved report/history
+        // response. Slow domains are omitted for this request and recover next refresh.
+        const liveIntelligence = await fetchSunbirdPowerBIIntelligence(context.companyId, {
+            domainTimeoutMs: SUNBIRD_REPORT_LIVE_DOMAIN_TIMEOUT_MS
+        });
+        const liveFinal = liveIntelligence
+            ? await fetchSunbirdPowerBIFinal(
+                context.companyId,
+                liveIntelligence.perDomainLatest ? null : (liveIntelligence.latestRunId || null),
+                { timeoutMs: SUNBIRD_REPORT_LIVE_FINAL_TIMEOUT_MS }
+            )
+            : null;
         const liveReport = buildSunbirdLiveIntelligenceSnapshot(liveIntelligence, liveFinal);
         const liveIdentityDomain = Array.isArray(liveIntelligence?.domains)
             ? liveIntelligence.domains.find(domain => String(domain?.domainKey || '').toLowerCase() === 'identity')
             : null;
-        const identityDomain = buildSunbirdReportIdentityDomain(
-            liveIdentityDomain || await fetchSunbirdIdentityDomainIntelligence(context.companyId)
-        );
-        operation.step('identity_intelligence_loaded', { risks: identityDomain.intelligenceOutput.risks.length });
+        const fallbackIdentityDomain = liveIdentityDomain
+            ? null
+            : await withSunbirdReportTimeout(
+                () => fetchSunbirdIdentityDomainIntelligence(context.companyId, { timeoutMs: SUNBIRD_REPORT_LIVE_IDENTITY_TIMEOUT_MS }),
+                SUNBIRD_REPORT_LIVE_IDENTITY_TIMEOUT_MS,
+                'Live identity intelligence'
+            ).catch(error => {
+                console.warn('[Reports] Identity live read skipped:', error.message);
+                return null;
+            });
+        const identityDomain = buildSunbirdReportIdentityDomain(liveIdentityDomain || fallbackIdentityDomain);        operation.step('identity_intelligence_loaded', { risks: identityDomain.intelligenceOutput.risks.length });
         const preferredDetailedRow =
             detailedRows.find(row => Number(row.HasIntelligence) === 1 && parseReportJson(row.Payload, null)?.domainInsights?.domains?.length) ||
             detailedRows.find(row => parseReportJson(row.Payload, null)?.domainInsights?.domains?.length) ||
@@ -6289,15 +6328,23 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
         const latestReport = liveReport || buildSunbirdLatestReportSnapshot(preferredDetailedRow);
         const overview = buildSunbirdLiveOverview(liveReport)
             || buildSunbirdReportListOverview(intelligentOverviewRows[0] || overviewRows[0] || rows[0]);
-        await writeSunbirdReportLog({
-            companyId: context.companyId,
-            eventType: 'report_center_viewed',
-            status: 'success',
-            message: `Report center loaded for ${req.query.range || '30d'}.`,
-            metadata: { rangeStart: range.start, rangeEnd: range.end },
-            actorUserId: req.user.id || null
-        });
-        operation.step('audit_log_written', {
+        try {
+            await withSunbirdReportTimeout(
+                () => writeSunbirdReportLog({
+                    companyId: context.companyId,
+                    eventType: 'report_center_viewed',
+                    status: 'success',
+                    message: `Report center loaded for ${req.query.range || '30d'}.`,
+                    metadata: { rangeStart: range.start, rangeEnd: range.end },
+                    actorUserId: req.user.id || null
+                }),
+                1500,
+                'Report view audit'
+            );
+        } catch (auditError) {
+            // The dashboard must remain available even if a non-essential audit insert fails.
+            console.warn('[Reports] Unable to record report-center view:', auditError.message);
+        }        operation.step('audit_log_written', {
             liveRunId: liveReport?.enterpriseRunId || null,
             liveSnapshotId: liveReport?.snapshotId || null,
             source: liveReport ? 'enterprise_run' : 'saved_report_fallback'

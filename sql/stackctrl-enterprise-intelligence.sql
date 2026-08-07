@@ -150,6 +150,9 @@ CREATE TABLE IF NOT EXISTS StackCTRLTenantDomainIntelligence (
     KEY ix_domain_intelligence_status (Status, CreatedAt)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Supports latest completed per-domain reads used by the client report dashboard.
+CREATE INDEX IF NOT EXISTS ix_domain_intelligence_latest_lookup
+    ON StackCTRLTenantDomainIntelligence (CompanyID, DomainKey, Status, ID);
 CREATE TABLE IF NOT EXISTS StackCTRLTenantDomainIntelligenceBatches (
     ID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     CompanyID BIGINT NOT NULL,
@@ -230,6 +233,9 @@ CREATE TABLE IF NOT EXISTS StackCTRLEnterpriseSynthesis (
     KEY ix_enterprise_synthesis_company (CompanyID, RunID)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Supports latest completed synthesis reads used by the client report dashboard.
+CREATE INDEX IF NOT EXISTS ix_enterprise_synthesis_latest_lookup
+    ON StackCTRLEnterpriseSynthesis (CompanyID, Status, ID);
 CREATE TABLE IF NOT EXISTS StackCTRLIntelligenceEvidenceAudit (
     ID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     CompanyID BIGINT NOT NULL,
