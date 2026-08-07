@@ -4349,7 +4349,7 @@ async function buildSunbirdReportPayload(companyId, periodStart, periodEnd, incl
     // analysis. The executive narrative is taken from the latest completed enterprise
     // synthesis, rather than replaced with a fabricated per-domain placeholder.
     const powerBiFinal = includeAi
-        ? await fetchSunbirdPowerBIFinal(companyId)
+        ? await fetchSunbirdPowerBIFinal(companyId, null, { timeoutMs: 12000 })
         : null;
     report.domainInsights = powerBiIntelligence;
     // A report may be a composite of independently completed domains. Persist the
@@ -4368,9 +4368,16 @@ async function buildSunbirdReportPayload(companyId, periodStart, periodEnd, incl
     report.analysis = includeAi
         ? (powerBiFinal?.finalSynthesis
             ? buildFinalSynthesisReportAnalysis(report, powerBiFinal)
-            : await generateAiReportAnalysis(report, powerBiIntelligence))
+            : await withSunbirdReportTimeout(
+                () => generateAiReportAnalysis(report, powerBiIntelligence),
+                15000,
+                'Report AI fallback'
+            ).catch(error => {
+                console.warn('[Reports] AI fallback skipped:', error.message);
+                return buildDeterministicReportAnalysis(report);
+            }))
         : buildDeterministicReportAnalysis(report);
-        return report;
+    return report;
 }
 
 async function loadSunbirdDailyReportSummaries(companyId, periodStart, periodEnd) {
@@ -4445,6 +4452,15 @@ async function saveSunbirdReport(companyId, reportType, periodStart, periodEnd, 
     try {
         const payload = await buildSunbirdReportPayload(companyId, periodStart, periodEnd, includeAi);
         payload.generatedWithAi = includeAi;
+        const payloadJson = JSON.stringify(payload);
+        console.log('[Reports Generate] payload prepared', JSON.stringify({
+            companyId,
+            reportType,
+            payloadBytes: Buffer.byteLength(payloadJson),
+            domainCount: Array.isArray(payload?.domainInsights?.domains) ? payload.domainInsights.domains.length : 0,
+            enterpriseRunId: payload.enterpriseRunId || null,
+            hasFinalSynthesis: Boolean(payload?.finalSynthesis?.finalSynthesis)
+        }));
         const [result] = await pool.query(
             `INSERT INTO SunbirdReports
              (CompanyID, ReportType, PeriodStart, PeriodEnd, HealthScore, ReportStatus, Payload, GeneratedByUserID)
@@ -4456,7 +4472,7 @@ async function saveSunbirdReport(companyId, reportType, periodStart, periodEnd, 
                 periodEnd,
                 payload.summary.healthScore,
                 payload.summary.status,
-                JSON.stringify(payload),
+                payloadJson,
                 generatedByUserId
             ]
         );
@@ -6516,9 +6532,13 @@ app.get('/api/sunbird/reports/live-evidence', authenticateToken, async (req, res
     }
 });
 app.post('/api/sunbird/reports/generate', authenticateToken, async (req, res) => {
+    const operation = beginSunbirdOperation(req, 'report_generate');
     try {
         const reportContext = await getReportContext(req, res);
-        if (!reportContext) return;
+        if (!reportContext) {
+            operation.finish(res.statusCode, { reason: 'report_context_unavailable' });
+            return;
+        }
         const { context, settings } = reportContext;
         const includeAi = !(
             req.body?.includeAi === false ||
@@ -6529,13 +6549,32 @@ app.post('/api/sunbird/reports/generate', authenticateToken, async (req, res) =>
             companyId: context.companyId,
             eventType: 'manual_report_requested',
             status: 'started',
-            message: `On-demand ${req.body?.range || '30d'} report requested.${includeAi ? ' AI-enabled' : ''}`,
+            message: 'On-demand ' + (req.body?.range || '30d') + ' report requested.' + (includeAi ? ' AI-enabled' : ''),
             metadata: { rangeStart: range.start, rangeEnd: range.end, includeAi },
             actorUserId: req.user.id || null
         });
+        operation.step('report_build_started', { companyId: context.companyId, includeAi });
         const report = await saveSunbirdReport(context.companyId, 'manual', range.start, range.end, req.user.id || null, includeAi);
-        res.status(201).json({ success: true, report: { id: report.id, ...report.payload, generatedWithAi: report.generatedWithAi || includeAi } });
+        operation.step('report_persisted', {
+            reportId: report.id,
+            payloadBytes: Buffer.byteLength(JSON.stringify(report.payload)),
+            domainCount: Array.isArray(report.payload?.domainInsights?.domains) ? report.payload.domainInsights.domains.length : 0,
+            enterpriseRunId: report.payload?.enterpriseRunId || null
+        });
+        res.status(201).json({
+            success: true,
+            report: {
+                id: report.id,
+                generatedWithAi: includeAi,
+                summary: report.payload.summary,
+                enterpriseRunId: report.payload.enterpriseRunId || null,
+                domainCount: Array.isArray(report.payload?.domainInsights?.domains) ? report.payload.domainInsights.domains.length : 0
+            }
+        });
+        operation.finish(201, { reportId: report.id });
     } catch (error) {
+        operation.step('report_generation_failed', { error: error.message, code: error.code || null, stack: String(error.stack || '').slice(0, 1800) });
+        operation.finish(500, { error: error.message });
         console.error('[Reports] Generate error:', error);
         res.status(500).json({ success: false, message: error.message });
     }
