@@ -6259,18 +6259,12 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
             [context.companyId, range.start, range.end]
         );
         operation.step('report_rows_loaded', { reports: rows.length, auditLogs: logRows.length });
-        const liveIntelligence = await fetchSunbirdPowerBIIntelligence(context.companyId);
-        const liveFinal = await fetchSunbirdPowerBIFinal(
-            context.companyId,
-            liveIntelligence?.perDomainLatest ? null : (liveIntelligence?.latestRunId || null)
-        );
-        const liveReport = buildSunbirdLiveIntelligenceSnapshot(liveIntelligence, liveFinal);
-        const liveIdentityDomain = Array.isArray(liveIntelligence?.domains)
-            ? liveIntelligence.domains.find(domain => String(domain?.domainKey || '').toLowerCase() === 'identity')
-            : null;
-        const identityDomain = buildSunbirdReportIdentityDomain(
-            liveIdentityDomain || await fetchSunbirdIdentityDomainIntelligence(context.companyId)
-        );
+        // The report centre is a saved-report/history view. Do not make opening it
+        // wait for live Azure/domain synthesis, which can take minutes while a
+        // collection is in progress. Fresh live intelligence remains available in
+        // its dedicated domain views and is persisted into the next saved report.
+        const liveReport = null;
+        const identityDomain = buildSunbirdReportIdentityDomain(null);
         operation.step('identity_intelligence_loaded', { risks: identityDomain.intelligenceOutput.risks.length });
         const preferredDetailedRow =
             detailedRows.find(row => Number(row.HasIntelligence) === 1 && parseReportJson(row.Payload, null)?.domainInsights?.domains?.length) ||
@@ -6280,14 +6274,15 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
         const latestReport = liveReport || buildSunbirdLatestReportSnapshot(preferredDetailedRow);
         const overview = buildSunbirdLiveOverview(liveReport)
             || buildSunbirdReportListOverview(intelligentOverviewRows[0] || overviewRows[0] || rows[0]);
-        await writeSunbirdReportLog({
+        // Viewing a report must not wait for a nonessential audit insert.
+        void writeSunbirdReportLog({
             companyId: context.companyId,
             eventType: 'report_center_viewed',
             status: 'success',
             message: `Report center loaded for ${req.query.range || '30d'}.`,
             metadata: { rangeStart: range.start, rangeEnd: range.end },
             actorUserId: req.user.id || null
-        });
+        }).catch(error => console.warn('[Reports] Unable to record report-center view:', error.message));
         operation.step('audit_log_written', {
             liveRunId: liveReport?.enterpriseRunId || null,
             liveSnapshotId: liveReport?.snapshotId || null,
