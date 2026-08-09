@@ -7220,6 +7220,7 @@ async function ensureUserEntraIdentitiesTable() {
     return entraIdentitySchemaPromise;
 }
 
+
 async function getCompanyForEntraTenant(tenantId) {
     const [rows] = await pool.query(
         `SELECT cm.CompanyID AS companyId
@@ -7245,6 +7246,7 @@ async function getUserByEntraIdentity(tenantId, objectId) {
     return rows[0] || null;
 }
 
+
 async function resolveApprovedEntraUser(identity) {
     const tenantId = String(identity.tid || '').toLowerCase();
     const objectId = String(identity.oid || '').toLowerCase();
@@ -7255,12 +7257,13 @@ async function resolveApprovedEntraUser(identity) {
     if (!company?.companyId) throw new Error('Microsoft tenant is not approved for StackCTRL access.');
     let user = await getUserByEntraIdentity(tenantId, objectId);
     if (user) {
-        if (Number(user.companyId) !== Number(company.companyId)) throw new Error('Microsoft identity is not assigned to the approved company.');
+        if (company?.companyId && Number(user.companyId) !== Number(company.companyId)) throw new Error('Microsoft identity is not assigned to the approved company.');
         return user;
     }
     if (!email) throw new Error('Microsoft did not provide an email for first-time account matching.');
     user = await getUserByEmail(email);
-    if (!user || Number(user.companyId) !== Number(company.companyId)) throw new Error('Microsoft user is not pre-approved for this StackCTRL company.');
+    if (!user) throw new Error('Microsoft user is not pre-approved for StackCTRL access.');
+    if (company?.companyId && Number(user.companyId) !== Number(company.companyId)) throw new Error('Microsoft user is not pre-approved for this StackCTRL company.');
     try {
         await pool.query('INSERT INTO UserEntraIdentities (UserID, TenantID, ObjectID) VALUES (?, ?, ?)', [user.id, tenantId, objectId]);
     } catch (error) {
