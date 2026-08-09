@@ -16315,6 +16315,14 @@ function filterMicrosoftUsers() {
 
 // Add search input listener
 document.addEventListener('DOMContentLoaded', () => {
+    const microsoftSignInButton = document.getElementById('microsoft-signin-btn');
+    if (microsoftSignInButton) {
+        microsoftSignInButton.addEventListener('click', () => {
+            microsoftSignInButton.setAttribute('aria-busy', 'true');
+            microsoftSignInButton.disabled = true;
+        });
+    }
+
     const searchInput = document.getElementById('microsoft-user-search');
     if (searchInput) {
         searchInput.addEventListener('input', filterMicrosoftUsers);

@@ -13338,3 +13338,26 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
     margin-top: 4px;
   }
 }
+
+/* Microsoft Entra portal handoff */
+.microsoft-signin { margin-top: 4px; }
+.microsoft-signin-copy { margin: 0 0 16px; color: #f4f2ef; font-size: 0.92rem; font-weight: 500; line-height: 1.6; }
+.microsoft-signin-button { position: relative; display: flex; align-items: center; width: 100%; min-height: 58px; padding: 12px 16px; overflow: hidden; color: #ffffff; background: #11100f; border: 1px solid rgba(255, 119, 0, 0.72); border-radius: 12px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08); cursor: pointer; transition: transform 180ms ease, background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease; }
+.microsoft-signin-button::before { position: absolute; inset: 0; content: ""; background: linear-gradient(100deg, rgba(255, 119, 0, 0.13), transparent 38%); pointer-events: none; }
+.microsoft-signin-button:hover { background: #181513; border-color: #ff8d38; box-shadow: 0 14px 34px rgba(0, 0, 0, 0.38), 0 0 0 3px rgba(255, 119, 0, 0.12); transform: translateY(-2px); }
+.microsoft-signin-button:active { background: #0b0a09; box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.45); transform: translateY(0); }
+.microsoft-signin-button:focus-visible { outline: 3px solid #ffffff; outline-offset: 3px; }
+.microsoft-signin-button[aria-busy="true"] { cursor: wait; pointer-events: none; opacity: 0.84; }
+.microsoft-mark { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(2, 8px); gap: 2px; flex: 0 0 auto; width: 18px; margin-right: 13px; }
+.microsoft-mark span { width: 8px; height: 8px; }
+.microsoft-mark span:nth-child(1) { background: #f35325; }
+.microsoft-mark span:nth-child(2) { background: #81bc06; }
+.microsoft-mark span:nth-child(3) { background: #05a6f0; }
+.microsoft-mark span:nth-child(4) { background: #ffba08; }
+.microsoft-signin-label { position: relative; z-index: 1; flex: 1; color: #ffffff; font-size: 0.98rem; font-weight: 600; letter-spacing: 0; text-align: left; white-space: nowrap; }
+.microsoft-signin-arrow { position: relative; z-index: 1; color: #ff8d38; font-size: 0.82rem; transition: transform 180ms ease; }
+.microsoft-signin-button:hover .microsoft-signin-arrow { transform: translateX(3px); }
+.microsoft-signin-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+.microsoft-signin-trust { display: flex; align-items: center; justify-content: center; gap: 7px; margin: 12px 0 0; color: #bcb8b4; font-size: 0.76rem; }
+.microsoft-signin-trust i { color: #ff7700; }
+@media (max-width: 375px) { .microsoft-signin-button { min-height: 55px; padding-inline: 13px; } .microsoft-signin-label { font-size: 0.9rem; } .microsoft-mark { margin-right: 10px; } }

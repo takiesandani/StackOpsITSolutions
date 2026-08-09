@@ -6,7 +6,7 @@
     <title>Client Portal | StackOps IT Solutions</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/clientportal.css?v=20260803-identity-report-evidence-v13">
+    <link rel="stylesheet" href="css/clientportal.css?v=20260809-microsoft-entra-v2">
     <link rel="stylesheet" href="css/scrollbar.css">
 
     <style>
@@ -881,13 +881,21 @@
 
                 <div class="microsoft-signin" id="microsoft-signin">
                     <p class="microsoft-signin-copy">Use your approved Microsoft work account to access the portal.</p>
-                    <div class="glow-wrap-face3">
-                        <div class="glowing-border-layer-face3"></div>
-                        <button type="button" class="btn-login" id="microsoft-signin-btn">
-                            <span>Sign in with Microsoft</span>
-                            <i class="fab fa-microsoft" aria-hidden="true"></i>
-                        </button>
-                    </div>
+                    <button
+                        type="button"
+                        class="microsoft-signin-button"
+                        id="microsoft-signin-btn"
+                        onclick="window.location.assign('/api/auth/microsoft/signin')"
+                        aria-describedby="microsoft-signin-trust"
+                    >
+                        <span class="microsoft-mark" aria-hidden="true">
+                            <span></span><span></span><span></span><span></span>
+                        </span>
+                        <span class="microsoft-signin-label">Sign in with Microsoft</span>
+                        <span class="microsoft-signin-status" aria-live="polite">Opening secure sign-in…</span>
+                        <i class="fas fa-arrow-right microsoft-signin-arrow" aria-hidden="true"></i>
+                    </button>
+                    <p class="microsoft-signin-trust" id="microsoft-signin-trust"><i class="fas fa-lock" aria-hidden="true"></i> Secure Microsoft Entra handoff</p>
                 </div>
 
                 <div class="login-info">
@@ -1494,7 +1502,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <script src="js/script.js?v=20260529"></script>
-    <script src="js/clientportal.js?v=20260809-microsoft-entra-v1"></script>
+    <script src="js/clientportal.js?v=20260809-microsoft-entra-v2"></script>
     <script src="js/chatbot.js"></script>
 </body>
 </html>
