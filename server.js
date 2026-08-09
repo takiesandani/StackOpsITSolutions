@@ -7106,6 +7106,7 @@ const MICROSOFT_PORTAL_OAUTH_COOKIE = 'stackctrl_microsoft_oauth';
 const MICROSOFT_PORTAL_BOOTSTRAP_COOKIE = 'stackctrl_microsoft_login';
 const MICROSOFT_PORTAL_OAUTH_TTL_MS = 10 * 60 * 1000;
 const MICROSOFT_PORTAL_BOOTSTRAP_TTL_MS = 2 * 60 * 1000;
+const MICROSOFT_PORTAL_PUBLIC_HOSTS = new Set(['stackopsit.co.za', 'stackopsit.com']);
 const microsoftPortalOidcMetadataCache = new Map();
 const microsoftPortalOidcJwksCache = new Map();
 let microsoftPortalAuthConfigPromise = null;
