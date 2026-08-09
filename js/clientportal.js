@@ -9028,11 +9028,15 @@ function setupEventListeners() {
     const mobileNav = document.getElementById('mobile-nav');
     const btnLogoutMobile = document.getElementById('btn-logout-mobile');
     const verifyMfaBtn = document.getElementById('verify-mfa-btn');
+    const microsoftSignInBtn = document.getElementById('microsoft-signin-btn');
     const resendCodeLink = document.getElementById('resend-code-link');
     const backToLoginLink = document.getElementById('back-to-login');
 
     if (loginForm) {
         loginForm.addEventListener('submit', handleLogin);
+    }
+    if (microsoftSignInBtn) {
+        microsoftSignInBtn.addEventListener('click', startMicrosoftSignIn);
     }
 
     if (verifyMfaBtn) {
@@ -9267,6 +9271,10 @@ function hidePdfLoadingOverlay() {
     if (overlay) {
         overlay.style.display = 'none';
     }
+}
+
+function startMicrosoftSignIn() {
+    window.location.assign('/api/auth/microsoft/signin');
 }
 
 function handleLogin(e) {

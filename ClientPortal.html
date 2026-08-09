@@ -879,49 +879,13 @@
                     <p>Secure access to your IT projects and monitoring</p>
                 </div>
 
-                <form id="login-form" class="login-form">
-                    <div class="form-group">
-                        <label for="login-email">Email Address</label>
-                        <input type="email" id="login-email" required placeholder="Enter your email">
-                        <div class="error-message" id="login-email-error"></div>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="login-password">Password</label>
-                        <input type="password" id="login-password" required placeholder="Enter your password">
-                        <i class="fas fa-eye password-toggle" id="password-toggle"></i>
-                        <div class="error-message" id="login-password-error"></div>
-                    </div>
-
+                <div class="microsoft-signin" id="microsoft-signin">
+                    <p class="microsoft-signin-copy">Use your approved Microsoft work account to access the portal.</p>
                     <div class="glow-wrap-face3">
                         <div class="glowing-border-layer-face3"></div>
-                        <button type="submit" class="btn-login" id="login-submit-btn">
-                            <span>Sign In</span>
-                            <i class="fas fa-arrow-right"></i>
-                        </button>
-                    </div>
-
-                    
-                    <div class="login-footer">
-                        <a href="forgot_password.html" class="forgot-link">Forgot password?</a>
-                    </div>
-                </form>
-
-                <!-- MFA Section -->
-                <div class="mfa-section" id="mfa-section" style="display: none;">
-                    <h3>Enter MFA Code</h3>
-                    <div class="form-group">
-                        <label for="mfa-code">6-Digit Code</label>
-                        <input type="text" id="mfa-code" name="mfa-code" maxlength="6" pattern="\d{6}">
-                        <div class="error-message" id="mfa-error">Invalid or expired code</div>
-                    </div>
-                    <div class="resend-code">
-                        <a href="#" id="resend-code-link">Resend Code</a>
-                    </div>
-                    <div class="glow-wrap-face3">
-                        <div class="glowing-border-layer-face3"></div>
-                        <button type="button" class="btn-login" id="verify-mfa-btn">
-                            Verify Code
+                        <button type="button" class="btn-login" id="microsoft-signin-btn">
+                            <span>Sign in with Microsoft</span>
+                            <i class="fab fa-microsoft" aria-hidden="true"></i>
                         </button>
                     </div>
                 </div>
@@ -1530,7 +1494,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <script src="js/script.js?v=20260529"></script>
-    <script src="js/clientportal.js?v=20260807-enterprise-brief-v18"></script>
+    <script src="js/clientportal.js?v=20260809-microsoft-entra-v1"></script>
     <script src="js/chatbot.js"></script>
 </body>
 </html>

@@ -7102,6 +7102,186 @@ app.post('/api/admin/availability', authenticateToken, async (req, res) => {
     }
 });
 
+const MICROSOFT_PORTAL_OAUTH_COOKIE = 'stackctrl_microsoft_oauth';
+const MICROSOFT_PORTAL_BOOTSTRAP_COOKIE = 'stackctrl_microsoft_login';
+const MICROSOFT_PORTAL_OAUTH_TTL_MS = 10 * 60 * 1000;
+const MICROSOFT_PORTAL_BOOTSTRAP_TTL_MS = 2 * 60 * 1000;
+const microsoftPortalOidcMetadataCache = new Map();
+const microsoftPortalOidcJwksCache = new Map();
+let microsoftPortalAuthConfigPromise = null;
+
+function microsoftPortalCookieOptions(maxAge, path = '/') {
+    return { httpOnly: true, secure: Boolean(process.env.K_SERVICE) || process.env.NODE_ENV === 'production', sameSite: 'lax', path, maxAge };
+}
+
+function readRequestCookie(req, name) {
+    const cookieHeader = String(req.headers.cookie || '');
+    const prefix = `${name}=`;
+    const match = cookieHeader.split(';').map(item => item.trim()).find(item => item.startsWith(prefix));
+    return match ? decodeURIComponent(match.slice(prefix.length)) : null;
+}
+
+function base64UrlJson(value) {
+    return Buffer.from(JSON.stringify(value)).toString('base64url');
+}
+
+function parseBase64UrlJson(value) {
+    try { return JSON.parse(Buffer.from(String(value || ''), 'base64url').toString('utf8')); } catch (_) { return null; }
+}
+
+function safeSecretString(value) {
+    return String(value || '').trim();
+}
+
+async function getMicrosoftPortalAuthConfig() {
+    if (microsoftPortalAuthConfigPromise) return microsoftPortalAuthConfigPromise;
+    microsoftPortalAuthConfigPromise = (async () => {
+        const [tenantId, clientId, clientSecret, redirectUri] = await Promise.all([
+            getSecret('ENTRA_PORTAL_TENANT_ID'), getSecret('ENTRA_PORTAL_CLIENT_ID'),
+            getSecret('ENTRA_PORTAL_CLIENT_SECRET'), getSecret('ENTRA_PORTAL_REDIRECT_URI')
+        ]);
+        const config = { tenantId: safeSecretString(tenantId), clientId: safeSecretString(clientId), clientSecret: safeSecretString(clientSecret), redirectUri: safeSecretString(redirectUri) };
+        const tenantIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!tenantIdPattern.test(config.tenantId) || !config.clientId || !config.clientSecret || !config.redirectUri) {
+            throw new Error('Microsoft portal sign-in is not configured. ENTRA_PORTAL_TENANT_ID, ENTRA_PORTAL_CLIENT_ID, ENTRA_PORTAL_CLIENT_SECRET, and ENTRA_PORTAL_REDIRECT_URI are required.');
+        }
+        const redirectUrl = new URL(config.redirectUri);
+        if (redirectUrl.protocol !== 'https:' && process.env.NODE_ENV === 'production') throw new Error('ENTRA_PORTAL_REDIRECT_URI must use HTTPS in production.');
+        return config;
+    })();
+    try { return await microsoftPortalAuthConfigPromise; } catch (error) { microsoftPortalAuthConfigPromise = null; throw error; }
+}
+
+async function fetchMicrosoftPortalOidcMetadata(config) {
+    const cached = microsoftPortalOidcMetadataCache.get(config.tenantId);
+    if (cached && cached.expiresAt > Date.now()) return cached.value;
+    const url = `https://login.microsoftonline.com/${encodeURIComponent(config.tenantId)}/v2.0/.well-known/openid-configuration`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Microsoft OpenID configuration request failed (${response.status}).`);
+    const metadata = await response.json();
+    if (!metadata?.authorization_endpoint || !metadata?.token_endpoint || !metadata?.jwks_uri || !metadata?.issuer) throw new Error('Microsoft OpenID configuration is incomplete.');
+    microsoftPortalOidcMetadataCache.set(config.tenantId, { value: metadata, expiresAt: Date.now() + (6 * 60 * 60 * 1000) });
+    return metadata;
+}
+
+async function fetchMicrosoftPortalSigningKeys(metadata) {
+    const cached = microsoftPortalOidcJwksCache.get(metadata.jwks_uri);
+    if (cached && cached.expiresAt > Date.now()) return cached.value;
+    const response = await fetch(metadata.jwks_uri);
+    if (!response.ok) throw new Error(`Microsoft signing-key request failed (${response.status}).`);
+    const body = await response.json();
+    if (!Array.isArray(body?.keys)) throw new Error('Microsoft signing keys are unavailable.');
+    microsoftPortalOidcJwksCache.set(metadata.jwks_uri, { value: body.keys, expiresAt: Date.now() + (60 * 60 * 1000) });
+    return body.keys;
+}
+function secureStringEquals(left, right) {
+    const leftBuffer = Buffer.from(String(left || ''));
+    const rightBuffer = Buffer.from(String(right || ''));
+    return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+async function validateMicrosoftPortalIdToken(idToken, config, metadata, expectedNonce) {
+    const [headerPart, payloadPart, signaturePart, extraPart] = String(idToken || '').split('.');
+    const header = parseBase64UrlJson(headerPart);
+    const claims = parseBase64UrlJson(payloadPart);
+    if (extraPart || !header || !claims || header.alg !== 'RS256' || !header.kid) throw new Error('Microsoft returned an invalid identity token.');
+    const signingKeys = await fetchMicrosoftPortalSigningKeys(metadata);
+    const signingKey = signingKeys.find(key => key.kid === header.kid && key.kty === 'RSA');
+    if (!signingKey || !crypto.verify('RSA-SHA256', Buffer.from(`${headerPart}.${payloadPart}`), crypto.createPublicKey({ key: signingKey, format: 'jwk' }), Buffer.from(signaturePart, 'base64url'))) {
+        throw new Error('Microsoft identity token signature is invalid.');
+    }
+    const expectedIssuer = String(metadata.issuer).replace('{tenantid}', config.tenantId);
+    const now = Math.floor(Date.now() / 1000);
+    if (claims.aud !== config.clientId || claims.iss !== expectedIssuer || claims.tid !== config.tenantId || !secureStringEquals(claims.nonce, expectedNonce)) {
+        throw new Error('Microsoft identity token is not for this portal.');
+    }
+    if (!Number.isFinite(Number(claims.exp)) || Number(claims.exp) <= now - 60 || (claims.nbf && Number(claims.nbf) > now + 60)) throw new Error('Microsoft identity token is expired or not yet valid.');
+    return claims;
+}
+
+async function buildPortalAuthentication(user) {
+    const accessContext = await getUserAccessContextByEmail(user.email);
+    const effectiveAccess = accessContext?.hasSunbirdAccess ? 'sunbird' : (accessContext?.accessType || 'standard');
+    const jwtPayload = { id: user.id, email: user.email, role: user.role, companyId: accessContext?.companyId || user.companyId || null, access: effectiveAccess, hasSunbirdAccess: Boolean(accessContext?.hasSunbirdAccess), tenantId: accessContext?.tenantId || null };
+    const accessToken = jwt.sign(jwtPayload, ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
+    accessContextCache.set(String(user.email || '').toLowerCase(), { accessType: effectiveAccess, tenantId: jwtPayload.tenantId, companyId: jwtPayload.companyId });
+    return {
+        accessToken,
+        redirect: String(user.role || '').toLowerCase() === 'admin' ? '/Admin.html' : '/ClientPortal.html',
+        user: { id: user.id, email: user.email, firstName: user.firstName || '', lastName: user.lastName || '', role: user.role || 'client', companyId: jwtPayload.companyId, access: jwtPayload.access, hasSunbirdAccess: jwtPayload.hasSunbirdAccess, tenantId: jwtPayload.tenantId }
+    };
+}
+
+app.get('/api/auth/microsoft/signin', async (req, res) => {
+    try {
+        const config = await getMicrosoftPortalAuthConfig();
+        const metadata = await fetchMicrosoftPortalOidcMetadata(config);
+        const state = crypto.randomBytes(32).toString('base64url');
+        const nonce = crypto.randomBytes(32).toString('base64url');
+        const codeVerifier = crypto.randomBytes(64).toString('base64url');
+        const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
+        res.cookie(MICROSOFT_PORTAL_OAUTH_COOKIE, base64UrlJson({ state, nonce, codeVerifier, expiresAt: Date.now() + MICROSOFT_PORTAL_OAUTH_TTL_MS }), microsoftPortalCookieOptions(MICROSOFT_PORTAL_OAUTH_TTL_MS, '/api/auth/microsoft/callback'));
+        const authorizeUrl = new URL(metadata.authorization_endpoint);
+        authorizeUrl.search = new URLSearchParams({ client_id: config.clientId, response_type: 'code', redirect_uri: config.redirectUri, response_mode: 'query', scope: 'openid profile email', state, nonce, code_challenge: codeChallenge, code_challenge_method: 'S256' }).toString();
+        return res.redirect(authorizeUrl.toString());
+    } catch (error) {
+        console.error('[Microsoft Portal Auth] Unable to start sign-in:', error.message);
+        return res.status(503).json({ success: false, message: 'Microsoft sign-in is not available. Please contact StackOps support.' });
+    }
+});
+
+app.get('/api/auth/microsoft/callback', async (req, res) => {
+    const clearOauthCookie = () => res.clearCookie(MICROSOFT_PORTAL_OAUTH_COOKIE, microsoftPortalCookieOptions(0, '/api/auth/microsoft/callback'));
+    try {
+        if (req.query.error) { clearOauthCookie(); return res.redirect('/microsoft-auth-complete.html?error=cancelled'); }
+        const oauthState = parseBase64UrlJson(readRequestCookie(req, MICROSOFT_PORTAL_OAUTH_COOKIE));
+        const returnedState = String(req.query.state || '');
+        const code = String(req.query.code || '');
+        if (!oauthState || !code || !oauthState.expiresAt || oauthState.expiresAt < Date.now() || !secureStringEquals(oauthState.state, returnedState)) {
+            clearOauthCookie(); return res.redirect('/microsoft-auth-complete.html?error=invalid_request');
+        }
+        const config = await getMicrosoftPortalAuthConfig();
+        const metadata = await fetchMicrosoftPortalOidcMetadata(config);
+        const tokenResponse = await fetch(metadata.token_endpoint, {
+            method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ client_id: config.clientId, client_secret: config.clientSecret, grant_type: 'authorization_code', code, redirect_uri: config.redirectUri, code_verifier: oauthState.codeVerifier })
+        });
+        const tokenPayload = await tokenResponse.json();
+        if (!tokenResponse.ok || !tokenPayload.id_token) throw new Error(`Microsoft token exchange failed (${tokenResponse.status}).`);
+        const identity = await validateMicrosoftPortalIdToken(tokenPayload.id_token, config, metadata, oauthState.nonce);
+        const email = safeSecretString(identity.email || identity.preferred_username).toLowerCase();
+        const user = email && identity.oid ? await getUserByEmail(email) : null;
+        const userRole = String(user?.role || '').toLowerCase();
+        if (!user || (userRole !== 'client' && userRole !== 'admin')) { clearOauthCookie(); return res.redirect('/microsoft-auth-complete.html?error=not_authorized'); }
+        const bootstrapToken = jwt.sign({ purpose: 'microsoft-portal-bootstrap', userId: user.id, email: user.email, oid: identity.oid }, ACCESS_TOKEN_SECRET, { expiresIn: '2m' });
+        clearOauthCookie();
+        res.cookie(MICROSOFT_PORTAL_BOOTSTRAP_COOKIE, bootstrapToken, microsoftPortalCookieOptions(MICROSOFT_PORTAL_BOOTSTRAP_TTL_MS, '/api/auth/microsoft/complete'));
+        return res.redirect('/microsoft-auth-complete.html');
+    } catch (error) {
+        clearOauthCookie();
+        console.error('[Microsoft Portal Auth] Callback failed:', error.message);
+        return res.redirect('/microsoft-auth-complete.html?error=failed');
+    }
+});
+
+app.get('/api/auth/microsoft/complete', async (req, res) => {
+    const clearBootstrapCookie = () => res.clearCookie(MICROSOFT_PORTAL_BOOTSTRAP_COOKIE, microsoftPortalCookieOptions(0, '/api/auth/microsoft/complete'));
+    try {
+        const token = readRequestCookie(req, MICROSOFT_PORTAL_BOOTSTRAP_COOKIE);
+        if (!token) return res.status(401).json({ success: false, message: 'Your Microsoft sign-in session has expired. Please try again.' });
+        const bootstrap = jwt.verify(token, ACCESS_TOKEN_SECRET);
+        if (bootstrap?.purpose !== 'microsoft-portal-bootstrap' || !bootstrap?.email) throw new Error('Invalid Microsoft sign-in session.');
+        const user = await getUserByEmail(bootstrap.email);
+        if (!user || Number(user.id) !== Number(bootstrap.userId)) throw new Error('The portal user is no longer available.');
+        const portalAuthentication = await buildPortalAuthentication(user);
+        clearBootstrapCookie();
+        return res.json({ success: true, ...portalAuthentication });
+    } catch (error) {
+        clearBootstrapCookie();
+        console.error('[Microsoft Portal Auth] Completion failed:', error.message);
+        return res.status(401).json({ success: false, message: 'Unable to complete Microsoft sign-in. Please try again.' });
+    }
+});
 app.get('/api/auth/email-config', (req, res) => {
     res.json({
         success: true,

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Completing secure sign-in</title>
+</head>
+<body>
+  <main>
+    <p id="message">Completing your secure Microsoft sign-in…</p>
+  </main>
+  <script>
+    (async function completeMicrosoftSignIn() {
+      const message = document.getElementById('message');
+      const error = new URLSearchParams(window.location.search).get('error');
+      if (error) {
+        message.textContent = error === 'not_authorized'
+          ? 'Your Microsoft account is not authorised for this portal.'
+          : 'Microsoft sign-in was cancelled or could not be completed. Please try again.';
+        return;
+      }
+      try {
+        const response = await fetch('/api/auth/microsoft/complete', { credentials: 'same-origin', cache: 'no-store' });
+        const data = await response.json();
+        if (!response.ok || !data.success || !data.accessToken || !data.user) throw new Error(data.message || 'Unable to complete sign-in.');
+        localStorage.setItem('authToken', data.accessToken);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        sessionStorage.setItem('userEmail', data.user.email);
+        sessionStorage.setItem('isLoggedIn', 'true');
+        sessionStorage.setItem('loginTime', String(Date.now()));
+        sessionStorage.setItem('userFirstName', data.user.firstName || '');
+        sessionStorage.setItem('userLastName', data.user.lastName || '');
+        window.location.replace(data.redirect || '/ClientPortal.html');
+      } catch (failure) {
+        message.textContent = failure.message || 'Unable to complete Microsoft sign-in. Please try again.';
+      }
+    })();
+  </script>
+</body>
+</html>
