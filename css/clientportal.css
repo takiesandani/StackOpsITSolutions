@@ -13247,3 +13247,229 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 .microsoft-signin + .login-info p { margin-bottom: 5px; font-size: 0.8rem; opacity: 0.84; }
 .microsoft-signin + .login-info p:last-child { margin-bottom: 0; }
 @media (max-width: 375px) { .microsoft-signin-button { min-height: 54px; padding-inline: 14px; } .microsoft-signin-label { font-size: 0.9rem; } }
+
+/* Hybrid portal sign-in: preserve the choice screen; scope email form styling to its detail view. */
+.login-box #signin-choices ~ .login-info {
+  margin-top: 26px;
+  padding-top: 14px;
+}
+
+.email-signin-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #c9c4be;
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: color 180ms ease;
+}
+
+.email-signin-trigger span {
+  height: 1px;
+  flex: 1 1 auto;
+  background: rgba(255, 255, 255, 0.13);
+  transition: background-color 180ms ease;
+}
+
+.email-signin-trigger:hover,
+.email-signin-trigger:focus-visible {
+  color: #ff8d38;
+  outline: none;
+}
+
+.email-signin-trigger:hover span,
+.email-signin-trigger:focus-visible span {
+  background: rgba(255, 119, 0, 0.52);
+}
+
+.email-signin-trigger:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.email-signin[hidden] {
+  display: none !important;
+}
+
+.email-signin {
+  margin-top: 2px;
+}
+
+.back-to-microsoft-signin {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #d7d2cc;
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: color 180ms ease, transform 180ms ease;
+}
+
+.back-to-microsoft-signin i {
+  color: #ff790f;
+}
+
+.back-to-microsoft-signin:hover,
+.back-to-microsoft-signin:focus-visible {
+  color: #ff9b50;
+  outline: none;
+  transform: translateX(-2px);
+}
+
+#email-signin .login-form {
+  margin: 0;
+}
+
+#email-signin .login-form h2,
+#email-signin .mfa-section h3 {
+  margin: 0;
+  color: #ffffff;
+  font-size: clamp(1.45rem, 4vw, 1.78rem);
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  text-align: center;
+}
+
+#email-signin .email-signin-intro {
+  margin: 5px auto 25px;
+  color: #c9c4be;
+  font-size: 0.83rem;
+  line-height: 1.55;
+  text-align: center;
+}
+
+#email-signin .form-group {
+  margin-bottom: 17px;
+}
+
+#email-signin .form-group label {
+  margin-bottom: 7px;
+  color: #ddd8d2;
+  font-size: 0.77rem;
+  font-weight: 500;
+}
+
+#email-signin .form-group input {
+  min-height: 48px;
+  padding: 11px 14px;
+  border: 1px solid #d9d2ca;
+  border-radius: 8px;
+  background: #fffaf5;
+  color: #17120e;
+  font-size: 0.9rem;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.07);
+}
+
+#email-signin .form-group input:focus {
+  border-color: #f47721;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(244, 119, 33, 0.22);
+}
+
+#email-signin .form-group:has(#login-password) input {
+  padding-right: 48px;
+}
+
+#email-signin .password-toggle {
+  top: 34px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #e86f1b;
+  display: grid;
+  place-items: center;
+}
+
+#email-signin .password-toggle:hover,
+#email-signin .password-toggle:focus-visible {
+  color: #ff9c57;
+  outline: none;
+}
+
+#email-signin .btn-login {
+  position: relative;
+  width: 100%;
+  min-height: 50px;
+  margin: 3px 0 0;
+  padding: 11px 18px;
+  border: 1px solid #000000;
+  border-radius: 999px;
+  background: #050505;
+  color: #ffffff !important;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.32);
+  font-size: 0.92rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+#email-signin .btn-login:hover,
+#email-signin .btn-login:focus-visible {
+  border-color: #f47721;
+  box-shadow: 0 0 0 3px rgba(244, 119, 33, 0.2), 0 10px 22px rgba(0, 0, 0, 0.38);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+#email-signin .btn-login:active {
+  transform: translateY(0);
+}
+
+#email-signin .btn-login:disabled {
+  border-color: #333333;
+  background: #242424;
+  color: #9d9d9d !important;
+  cursor: wait;
+  box-shadow: none;
+  transform: none;
+}
+
+#email-signin .mfa-section {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+#email-signin .mfa-section h3 {
+  font-size: 1.4rem;
+}
+
+#email-signin .mfa-section .form-group input {
+  text-align: center;
+  letter-spacing: 0.32em;
+}
+
+#email-signin .resend-code {
+  margin: 17px 0 0;
+  color: #c9c4be;
+  font-size: 0.8rem;
+}
+
+#email-signin .resend-code a {
+  color: #ff8d38;
+}
+
+#email-signin .resend-code a:hover,
+#email-signin .resend-code a:focus-visible {
+  color: #ffc089;
+}
+
+@media (max-width: 375px) {
+  #email-signin .email-signin-intro {
+    font-size: 0.78rem;
+  }
+}
