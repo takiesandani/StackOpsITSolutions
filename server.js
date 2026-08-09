@@ -7137,15 +7137,13 @@ function safeSecretString(value) {
 async function getMicrosoftPortalAuthConfig() {
     if (microsoftPortalAuthConfigPromise) return microsoftPortalAuthConfigPromise;
     microsoftPortalAuthConfigPromise = (async () => {
-        const [tenantId, clientId, clientSecret, redirectUri] = await Promise.all([
-            getSecret('ENTRA_PORTAL_TENANT_ID'), getSecret('ENTRA_PORTAL_CLIENT_ID'),
-            getSecret('ENTRA_PORTAL_CLIENT_SECRET'), getSecret('ENTRA_PORTAL_REDIRECT_URI')
+        const [clientId, clientSecret, redirectUri] = await Promise.all([
+            getSecret('ENTRA_PORTAL_CLIENT_ID'),
+            getSecret('ENTRA_PORTAL_CLIENT_SECRET'),
+            getSecret('ENTRA_PORTAL_REDIRECT_URI')
         ]);
-        const config = { tenantId: safeSecretString(tenantId), clientId: safeSecretString(clientId), clientSecret: safeSecretString(clientSecret), redirectUri: safeSecretString(redirectUri) };
-        const tenantIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        if (!tenantIdPattern.test(config.tenantId) || !config.clientId || !config.clientSecret || !config.redirectUri) {
-            throw new Error('Microsoft portal sign-in is not configured. ENTRA_PORTAL_TENANT_ID, ENTRA_PORTAL_CLIENT_ID, ENTRA_PORTAL_CLIENT_SECRET, and ENTRA_PORTAL_REDIRECT_URI are required.');
-        }
+        const config = { clientId: safeSecretString(clientId), clientSecret: safeSecretString(clientSecret), redirectUri: safeSecretString(redirectUri) };
+        if (!config.clientId || !config.clientSecret || !config.redirectUri) throw new Error('Microsoft portal sign-in is not configured. ENTRA_PORTAL_CLIENT_ID, ENTRA_PORTAL_CLIENT_SECRET, and ENTRA_PORTAL_REDIRECT_URI are required.');
         const redirectUrl = new URL(config.redirectUri);
         if (redirectUrl.protocol !== 'https:' && process.env.NODE_ENV === 'production') throw new Error('ENTRA_PORTAL_REDIRECT_URI must use HTTPS in production.');
         return config;
@@ -7156,21 +7154,20 @@ async function getMicrosoftPortalAuthConfig() {
 function getMicrosoftPortalRedirectUri(req, config) {
     const redirectUrl = new URL(config.redirectUri);
     const requestHost = String(req.hostname || '').toLowerCase();
-    if (redirectUrl.protocol !== 'https:' || redirectUrl.pathname !== '/api/auth/microsoft/callback' || !MICROSOFT_PORTAL_PUBLIC_HOSTS.has(requestHost)) {
-        throw new Error('Microsoft portal redirect host is not allowed.');
-    }
+    if (redirectUrl.protocol !== 'https:' || redirectUrl.pathname !== '/api/auth/microsoft/callback' || !MICROSOFT_PORTAL_PUBLIC_HOSTS.has(requestHost)) throw new Error('Microsoft portal redirect host is not allowed.');
     redirectUrl.hostname = requestHost;
     return redirectUrl.toString();
 }
-async function fetchMicrosoftPortalOidcMetadata(config) {
-    const cached = microsoftPortalOidcMetadataCache.get(config.tenantId);
+
+async function fetchMicrosoftPortalOidcMetadata() {
+    const authority = 'organizations';
+    const cached = microsoftPortalOidcMetadataCache.get(authority);
     if (cached && cached.expiresAt > Date.now()) return cached.value;
-    const url = `https://login.microsoftonline.com/${encodeURIComponent(config.tenantId)}/v2.0/.well-known/openid-configuration`;
-    const response = await fetch(url);
+    const response = await fetch(`https://login.microsoftonline.com/${authority}/v2.0/.well-known/openid-configuration`);
     if (!response.ok) throw new Error(`Microsoft OpenID configuration request failed (${response.status}).`);
     const metadata = await response.json();
     if (!metadata?.authorization_endpoint || !metadata?.token_endpoint || !metadata?.jwks_uri || !metadata?.issuer) throw new Error('Microsoft OpenID configuration is incomplete.');
-    microsoftPortalOidcMetadataCache.set(config.tenantId, { value: metadata, expiresAt: Date.now() + (6 * 60 * 60 * 1000) });
+    microsoftPortalOidcMetadataCache.set(authority, { value: metadata, expiresAt: Date.now() + (6 * 60 * 60 * 1000) });
     return metadata;
 }
 
@@ -7194,21 +7191,85 @@ async function validateMicrosoftPortalIdToken(idToken, config, metadata, expecte
     const [headerPart, payloadPart, signaturePart, extraPart] = String(idToken || '').split('.');
     const header = parseBase64UrlJson(headerPart);
     const claims = parseBase64UrlJson(payloadPart);
-    if (extraPart || !header || !claims || header.alg !== 'RS256' || !header.kid) throw new Error('Microsoft returned an invalid identity token.');
+    const tenantIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (extraPart || !header || !claims || header.alg !== 'RS256' || !header.kid || !tenantIdPattern.test(String(claims.tid || ''))) throw new Error('Microsoft returned an invalid organizational identity token.');
     const signingKeys = await fetchMicrosoftPortalSigningKeys(metadata);
     const signingKey = signingKeys.find(key => key.kid === header.kid && key.kty === 'RSA');
-    if (!signingKey || !crypto.verify('RSA-SHA256', Buffer.from(`${headerPart}.${payloadPart}`), crypto.createPublicKey({ key: signingKey, format: 'jwk' }), Buffer.from(signaturePart, 'base64url'))) {
-        throw new Error('Microsoft identity token signature is invalid.');
-    }
-    const expectedIssuer = String(metadata.issuer).replace('{tenantid}', config.tenantId);
+    if (!signingKey || !crypto.verify('RSA-SHA256', Buffer.from(`${headerPart}.${payloadPart}`), crypto.createPublicKey({ key: signingKey, format: 'jwk' }), Buffer.from(signaturePart, 'base64url'))) throw new Error('Microsoft identity token signature is invalid.');
+    const expectedIssuer = String(metadata.issuer).replace('{tenantid}', claims.tid);
     const now = Math.floor(Date.now() / 1000);
-    if (claims.aud !== config.clientId || claims.iss !== expectedIssuer || claims.tid !== config.tenantId || !secureStringEquals(claims.nonce, expectedNonce)) {
-        throw new Error('Microsoft identity token is not for this portal.');
-    }
+    if (claims.aud !== config.clientId || claims.iss !== expectedIssuer || !secureStringEquals(claims.nonce, expectedNonce)) throw new Error('Microsoft identity token is not for this portal.');
     if (!Number.isFinite(Number(claims.exp)) || Number(claims.exp) <= now - 60 || (claims.nbf && Number(claims.nbf) > now + 60)) throw new Error('Microsoft identity token is expired or not yet valid.');
     return claims;
 }
 
+let entraIdentitySchemaPromise = null;
+async function ensureUserEntraIdentitiesTable() {
+    if (entraIdentitySchemaPromise) return entraIdentitySchemaPromise;
+    entraIdentitySchemaPromise = pool.query(`
+        CREATE TABLE IF NOT EXISTS UserEntraIdentities (
+            UserID INT NOT NULL,
+            TenantID CHAR(36) NOT NULL,
+            ObjectID CHAR(36) NOT NULL,
+            CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UpdatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (UserID),
+            UNIQUE KEY uq_user_entra_tenant_object (TenantID, ObjectID)
+        )
+    `).catch(error => { entraIdentitySchemaPromise = null; throw error; });
+    return entraIdentitySchemaPromise;
+}
+
+async function getCompanyForEntraTenant(tenantId) {
+    const [rows] = await pool.query(
+        `SELECT cm.CompanyID AS companyId
+         FROM CompanyMicrosoftMapping cm
+         INNER JOIN MicrosoftTenants mt ON mt.ID = cm.MicrosoftTenantID
+         WHERE cm.IsActive = 1 AND LOWER(mt.TenantID) = LOWER(?)
+         LIMIT 2`,
+        [tenantId]
+    );
+    if (rows.length > 1) throw new Error('Microsoft tenant is mapped to more than one StackCTRL company.');
+    return rows[0] || null;
+}
+
+async function getUserByEntraIdentity(tenantId, objectId) {
+    const [rows] = await pool.query(
+        `SELECT u.ID AS id, u.FirstName AS firstName, u.LastName AS lastName, u.Email AS email, u.Role AS role, u.CompanyID AS companyId
+         FROM UserEntraIdentities ei
+         INNER JOIN Users u ON u.ID = ei.UserID
+         WHERE ei.TenantID = ? AND ei.ObjectID = ?
+         LIMIT 1`,
+        [tenantId, objectId]
+    );
+    return rows[0] || null;
+}
+
+async function resolveApprovedEntraUser(identity) {
+    const tenantId = String(identity.tid || '').toLowerCase();
+    const objectId = String(identity.oid || '').toLowerCase();
+    const email = safeSecretString(identity.email || identity.preferred_username).toLowerCase();
+    if (!tenantId || !objectId) throw new Error('Microsoft identity is missing its tenant or user object ID.');
+    await ensureUserEntraIdentitiesTable();
+    const company = await getCompanyForEntraTenant(tenantId);
+    if (!company?.companyId) throw new Error('Microsoft tenant is not approved for StackCTRL access.');
+    let user = await getUserByEntraIdentity(tenantId, objectId);
+    if (user) {
+        if (Number(user.companyId) !== Number(company.companyId)) throw new Error('Microsoft identity is not assigned to the approved company.');
+        return user;
+    }
+    if (!email) throw new Error('Microsoft did not provide an email for first-time account matching.');
+    user = await getUserByEmail(email);
+    if (!user || Number(user.companyId) !== Number(company.companyId)) throw new Error('Microsoft user is not pre-approved for this StackCTRL company.');
+    try {
+        await pool.query('INSERT INTO UserEntraIdentities (UserID, TenantID, ObjectID) VALUES (?, ?, ?)', [user.id, tenantId, objectId]);
+    } catch (error) {
+        if (error.code !== 'ER_DUP_ENTRY') throw error;
+        const existingUser = await getUserByEntraIdentity(tenantId, objectId);
+        if (!existingUser || Number(existingUser.id) !== Number(user.id)) throw new Error('Microsoft identity is already linked to another StackCTRL user.');
+    }
+    return user;
+}
 async function buildPortalAuthentication(user) {
     const accessContext = await getUserAccessContextByEmail(user.email);
     const effectiveAccess = accessContext?.hasSunbirdAccess ? 'sunbird' : (accessContext?.accessType || 'standard');
@@ -7248,7 +7309,22 @@ app.get('/api/auth/microsoft/callback', async (req, res) => {
         const oauthState = parseBase64UrlJson(readRequestCookie(req, MICROSOFT_PORTAL_OAUTH_COOKIE));
         const returnedState = String(req.query.state || '');
         const code = String(req.query.code || '');
-        if (!oauthState || !code || !oauthState.redirectUri || !oauthState.expiresAt || oauthState.expiresAt < Date.now() || new URL(oauthState.redirectUri).hostname !== String(req.hostname || '').toLowerCase() || !secureStringEquals(oauthState.state, returnedState)) {
+        const callbackHost = String(req.hostname || '').toLowerCase();
+        const callbackDiagnostics = {
+            hasStateCookie: Boolean(oauthState),
+            hasAuthorizationCode: Boolean(code),
+            hasRedirectUri: Boolean(oauthState?.redirectUri),
+            stateExpired: Boolean(oauthState?.expiresAt && oauthState.expiresAt < Date.now()),
+            callbackHost
+        };
+        let stateIsValid = false;
+        let callbackHostIsValid = false;
+        try {
+            stateIsValid = Boolean(oauthState?.state) && secureStringEquals(oauthState.state, returnedState);
+            callbackHostIsValid = Boolean(oauthState?.redirectUri) && new URL(oauthState.redirectUri).hostname === callbackHost;
+        } catch (_) { callbackHostIsValid = false; }
+        if (!oauthState || !code || !oauthState.redirectUri || !oauthState.expiresAt || oauthState.expiresAt < Date.now() || !callbackHostIsValid || !stateIsValid) {
+            console.warn('[Microsoft Portal Auth] Callback rejected before token exchange:', { ...callbackDiagnostics, stateIsValid, callbackHostIsValid });
             clearOauthCookie(); return res.redirect('/microsoft-auth-complete.html?error=invalid_request');
         }
         const config = await getMicrosoftPortalAuthConfig();
@@ -7260,11 +7336,19 @@ app.get('/api/auth/microsoft/callback', async (req, res) => {
         const tokenPayload = await tokenResponse.json();
         if (!tokenResponse.ok || !tokenPayload.id_token) throw new Error(`Microsoft token exchange failed (${tokenResponse.status}).`);
         const identity = await validateMicrosoftPortalIdToken(tokenPayload.id_token, config, metadata, oauthState.nonce);
-        const email = safeSecretString(identity.email || identity.preferred_username).toLowerCase();
-        const user = email && identity.oid ? await getUserByEmail(email) : null;
+        const user = await resolveApprovedEntraUser(identity);
         const userRole = String(user?.role || '').toLowerCase();
-        if (!user || (userRole !== 'client' && userRole !== 'admin')) { clearOauthCookie(); return res.redirect('/microsoft-auth-complete.html?error=not_authorized'); }
-        const bootstrapToken = jwt.sign({ purpose: 'microsoft-portal-bootstrap', userId: user.id, email: user.email, oid: identity.oid }, ACCESS_TOKEN_SECRET, { expiresIn: '2m' });
+        if (userRole !== 'client' && userRole !== 'admin') {
+            clearOauthCookie();
+            return res.redirect('/microsoft-auth-complete.html?error=not_authorized');
+        }
+        const bootstrapToken = jwt.sign({
+            purpose: 'microsoft-portal-bootstrap',
+            userId: user.id,
+            email: user.email,
+            tenantId: identity.tid,
+            oid: identity.oid
+        }, ACCESS_TOKEN_SECRET, { expiresIn: '2m' });
         clearOauthCookie();
         res.cookie(MICROSOFT_PORTAL_BOOTSTRAP_COOKIE, bootstrapToken, microsoftPortalCookieOptions(MICROSOFT_PORTAL_BOOTSTRAP_TTL_MS, '/api/auth/microsoft/complete'));
         return res.redirect('/microsoft-auth-complete.html');
