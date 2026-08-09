@@ -7152,6 +7152,15 @@ async function getMicrosoftPortalAuthConfig() {
     try { return await microsoftPortalAuthConfigPromise; } catch (error) { microsoftPortalAuthConfigPromise = null; throw error; }
 }
 
+function getMicrosoftPortalRedirectUri(req, config) {
+    const redirectUrl = new URL(config.redirectUri);
+    const requestHost = String(req.hostname || '').toLowerCase();
+    if (redirectUrl.protocol !== 'https:' || redirectUrl.pathname !== '/api/auth/microsoft/callback' || !MICROSOFT_PORTAL_PUBLIC_HOSTS.has(requestHost)) {
+        throw new Error('Microsoft portal redirect host is not allowed.');
+    }
+    redirectUrl.hostname = requestHost;
+    return redirectUrl.toString();
+}
 async function fetchMicrosoftPortalOidcMetadata(config) {
     const cached = microsoftPortalOidcMetadataCache.get(config.tenantId);
     if (cached && cached.expiresAt > Date.now()) return cached.value;
@@ -7220,9 +7229,9 @@ app.get('/api/auth/microsoft/signin', async (req, res) => {
         const nonce = crypto.randomBytes(32).toString('base64url');
         const codeVerifier = crypto.randomBytes(64).toString('base64url');
         const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
-        res.cookie(MICROSOFT_PORTAL_OAUTH_COOKIE, base64UrlJson({ state, nonce, codeVerifier, expiresAt: Date.now() + MICROSOFT_PORTAL_OAUTH_TTL_MS }), microsoftPortalCookieOptions(MICROSOFT_PORTAL_OAUTH_TTL_MS, '/api/auth/microsoft/callback'));
+        res.cookie(MICROSOFT_PORTAL_OAUTH_COOKIE, base64UrlJson({ state, nonce, codeVerifier, redirectUri, expiresAt: Date.now() + MICROSOFT_PORTAL_OAUTH_TTL_MS }), microsoftPortalCookieOptions(MICROSOFT_PORTAL_OAUTH_TTL_MS, '/api/auth/microsoft/callback'));
         const authorizeUrl = new URL(metadata.authorization_endpoint);
-        authorizeUrl.search = new URLSearchParams({ client_id: config.clientId, response_type: 'code', redirect_uri: config.redirectUri, response_mode: 'query', scope: 'openid profile email', state, nonce, code_challenge: codeChallenge, code_challenge_method: 'S256' }).toString();
+        authorizeUrl.search = new URLSearchParams({ client_id: config.clientId, response_type: 'code', redirect_uri: redirectUri, response_mode: 'query', scope: 'openid profile email', state, nonce, code_challenge: codeChallenge, code_challenge_method: 'S256' }).toString();
         return res.redirect(authorizeUrl.toString());
     } catch (error) {
         console.error('[Microsoft Portal Auth] Unable to start sign-in:', error.message);
@@ -7237,14 +7246,14 @@ app.get('/api/auth/microsoft/callback', async (req, res) => {
         const oauthState = parseBase64UrlJson(readRequestCookie(req, MICROSOFT_PORTAL_OAUTH_COOKIE));
         const returnedState = String(req.query.state || '');
         const code = String(req.query.code || '');
-        if (!oauthState || !code || !oauthState.expiresAt || oauthState.expiresAt < Date.now() || !secureStringEquals(oauthState.state, returnedState)) {
+        if (!oauthState || !code || !oauthState.redirectUri || !oauthState.expiresAt || oauthState.expiresAt < Date.now() || new URL(oauthState.redirectUri).hostname !== String(req.hostname || '').toLowerCase() || !secureStringEquals(oauthState.state, returnedState)) {
             clearOauthCookie(); return res.redirect('/microsoft-auth-complete.html?error=invalid_request');
         }
         const config = await getMicrosoftPortalAuthConfig();
         const metadata = await fetchMicrosoftPortalOidcMetadata(config);
         const tokenResponse = await fetch(metadata.token_endpoint, {
             method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({ client_id: config.clientId, client_secret: config.clientSecret, grant_type: 'authorization_code', code, redirect_uri: config.redirectUri, code_verifier: oauthState.codeVerifier })
+            body: new URLSearchParams({ client_id: config.clientId, client_secret: config.clientSecret, grant_type: 'authorization_code', code, redirect_uri: oauthState.redirectUri, code_verifier: oauthState.codeVerifier })
         });
         const tokenPayload = await tokenResponse.json();
         if (!tokenResponse.ok || !tokenPayload.id_token) throw new Error(`Microsoft token exchange failed (${tokenResponse.status}).`);
