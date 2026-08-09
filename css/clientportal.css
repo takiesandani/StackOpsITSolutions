@@ -13361,3 +13361,8 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 .microsoft-signin-trust { display: flex; align-items: center; justify-content: center; gap: 7px; margin: 12px 0 0; color: #bcb8b4; font-size: 0.76rem; }
 .microsoft-signin-trust i { color: #ff7700; }
 @media (max-width: 375px) { .microsoft-signin-button { min-height: 55px; padding-inline: 13px; } .microsoft-signin-label { font-size: 0.9rem; } .microsoft-mark { margin-right: 10px; } }
+
+/* Keep the post-handoff security cues deliberately secondary. */
+.microsoft-signin + .login-info { margin-top: 26px; padding-top: 14px; }
+.microsoft-signin + .login-info p { margin-bottom: 5px; font-size: 0.8rem; opacity: 0.84; }
+.microsoft-signin + .login-info p:last-child { margin-bottom: 0; }

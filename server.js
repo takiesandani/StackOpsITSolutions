@@ -7225,6 +7225,7 @@ app.get('/api/auth/microsoft/signin', async (req, res) => {
     try {
         const config = await getMicrosoftPortalAuthConfig();
         const metadata = await fetchMicrosoftPortalOidcMetadata(config);
+        const redirectUri = getMicrosoftPortalRedirectUri(req, config);
         const state = crypto.randomBytes(32).toString('base64url');
         const nonce = crypto.randomBytes(32).toString('base64url');
         const codeVerifier = crypto.randomBytes(64).toString('base64url');
