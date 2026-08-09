@@ -6,7 +6,7 @@
     <title>Client Portal | StackOps IT Solutions</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/clientportal.css?v=20260809-microsoft-entra-v2">
+    <link rel="stylesheet" href="css/clientportal.css?v=20260809-hybrid-auth-v1">
     <link rel="stylesheet" href="css/scrollbar.css">
 
     <style>
@@ -879,24 +879,72 @@
                     <p>Secure access to your IT projects and monitoring</p>
                 </div>
 
-                <div class="microsoft-signin" id="microsoft-signin">
-                    <p class="microsoft-signin-copy">Use your approved Microsoft work account to access the portal.</p>
-                    <button
-                        type="button"
-                        class="microsoft-signin-button"
-                        id="microsoft-signin-btn"
-                        onclick="window.location.assign('/api/auth/microsoft/signin')"
-                        aria-describedby="microsoft-signin-trust"
-                    >
-                        <span class="microsoft-mark" aria-hidden="true">
-                            <span></span><span></span><span></span><span></span>
-                        </span>
-                        <span class="microsoft-signin-label">Sign in with Microsoft</span>
-                        <span class="microsoft-signin-status" aria-live="polite">Opening secure sign-in…</span>
-                        <i class="fas fa-arrow-right microsoft-signin-arrow" aria-hidden="true"></i>
+                <div class="signin-choices" id="signin-choices">
+                    <div class="microsoft-signin" id="microsoft-signin">
+                        <p class="microsoft-signin-copy">Use your approved Microsoft work account to access the portal.</p>
+                        <button
+                            type="button"
+                            class="microsoft-signin-button"
+                            id="microsoft-signin-btn"
+                            onclick="window.location.assign('/api/auth/microsoft/signin')"
+                            aria-describedby="microsoft-signin-trust"
+                        >
+                            <span class="microsoft-mark" aria-hidden="true">
+                                <span></span><span></span><span></span><span></span>
+                            </span>
+                            <span class="microsoft-signin-label">Sign in with Microsoft</span>
+                            <span class="microsoft-signin-status" aria-live="polite">Opening secure sign-in…</span>
+                            <i class="fas fa-arrow-right microsoft-signin-arrow" aria-hidden="true"></i>
+                        </button>
+                        <p class="microsoft-signin-trust" id="microsoft-signin-trust"><i class="fas fa-lock" aria-hidden="true"></i> Secure Microsoft Entra handoff</p>
+                    </div>
+
+                    <div class="signin-choice-divider" aria-hidden="true"><span>or</span></div>
+                    <button type="button" class="email-signin-trigger" id="email-signin-trigger">
+                        <i class="fas fa-envelope" aria-hidden="true"></i>
+                        <span>Sign in with email instead</span>
                     </button>
-                    <p class="microsoft-signin-trust" id="microsoft-signin-trust"><i class="fas fa-lock" aria-hidden="true"></i> Secure Microsoft Entra handoff</p>
                 </div>
+
+                <section class="email-signin" id="email-signin" hidden aria-labelledby="email-signin-title">
+                    <button type="button" class="back-to-microsoft" id="back-to-microsoft-signin">
+                        <i class="fas fa-arrow-left" aria-hidden="true"></i>
+                        <span>Back to Microsoft sign-in</span>
+                    </button>
+                    <div class="email-signin-heading">
+                        <p class="email-signin-eyebrow">Database user access</p>
+                        <h2 id="email-signin-title">Sign in with email</h2>
+                        <p>Use this secure option if you have an existing StackCTRL portal account.</p>
+                    </div>
+
+                    <form id="login-form" class="login-form" novalidate>
+                        <div class="form-group">
+                            <label for="login-email">Email address</label>
+                            <input id="login-email" name="email" type="email" autocomplete="email" inputmode="email" required>
+                            <p id="login-email-error" class="error-message" role="alert">Enter a valid email address.</p>
+                        </div>
+                        <div class="form-group">
+                            <label for="login-password">Password</label>
+                            <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+                            <button id="password-toggle" class="password-toggle fas fa-eye" type="button" aria-label="Show password" aria-pressed="false"></button>
+                            <p id="login-password-error" class="error-message" role="alert">Enter your password.</p>
+                        </div>
+                        <button id="login-submit-btn" class="email-login-submit" type="submit"><span>Continue securely</span><i class="fas fa-arrow-right" aria-hidden="true"></i></button>
+                    </form>
+
+                    <section id="mfa-section" class="mfa-section" aria-labelledby="mfa-title">
+                        <p class="email-signin-eyebrow">Verification required</p>
+                        <h3 id="mfa-title">Check your email</h3>
+                        <p class="mfa-copy">Enter the six-digit verification code we sent to your registered email address.</p>
+                        <div class="form-group">
+                            <label for="mfa-code">Verification code</label>
+                            <input id="mfa-code" name="mfa-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}">
+                            <p id="mfa-error" class="error-message" role="alert"></p>
+                        </div>
+                        <button id="verify-mfa-btn" class="email-login-submit" type="button">Verify and continue <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
+                        <p class="resend-code">Didn't receive a code? <a href="#" id="resend-code-link">Send a new code</a></p>
+                    </section>
+                </section>
 
                 <div class="login-info">
                     <p><i class="fas fa-shield-alt"></i> Secure login with encryption</p>
@@ -1502,7 +1550,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <script src="js/script.js?v=20260529"></script>
-    <script src="js/clientportal.js?v=20260809-microsoft-entra-v2"></script>
+    <script src="js/clientportal.js?v=20260809-hybrid-auth-v1"></script>
     <script src="js/chatbot.js"></script>
 </body>
 </html>

@@ -9030,9 +9030,19 @@ function setupEventListeners() {
     const verifyMfaBtn = document.getElementById('verify-mfa-btn');
     const resendCodeLink = document.getElementById('resend-code-link');
     const backToLoginLink = document.getElementById('back-to-login');
+    const emailSignInTrigger = document.getElementById('email-signin-trigger');
+    const backToMicrosoftSignIn = document.getElementById('back-to-microsoft-signin');
 
     if (loginForm) {
         loginForm.addEventListener('submit', handleLogin);
+    }
+
+    if (emailSignInTrigger) {
+        emailSignInTrigger.addEventListener('click', showEmailSignIn);
+    }
+
+    if (backToMicrosoftSignIn) {
+        backToMicrosoftSignIn.addEventListener('click', showMicrosoftSignIn);
     }
 
     if (verifyMfaBtn) {
@@ -9188,10 +9198,14 @@ function togglePasswordVisibility() {
         passwordInput.type = 'text';
         toggle.classList.remove('fa-eye');
         toggle.classList.add('fa-eye-slash');
+        toggle.setAttribute('aria-label', 'Hide password');
+        toggle.setAttribute('aria-pressed', 'true');
     } else {
         passwordInput.type = 'password';
         toggle.classList.remove('fa-eye-slash');
         toggle.classList.add('fa-eye');
+        toggle.setAttribute('aria-label', 'Show password');
+        toggle.setAttribute('aria-pressed', 'false');
     }
 }
 
@@ -9203,6 +9217,53 @@ function togglePasswordVisibility() {
 
 /* AUTHENTICATION */
 let currentEmail = '';
+
+function showEmailSignIn() {
+    const signinChoices = document.getElementById('signin-choices');
+    const emailSignIn = document.getElementById('email-signin');
+    const loginForm = document.getElementById('login-form');
+    const mfaSection = document.getElementById('mfa-section');
+    const emailInput = document.getElementById('login-email');
+
+    if (!signinChoices || !emailSignIn) return;
+
+    signinChoices.hidden = true;
+    emailSignIn.hidden = false;
+    emailSignIn.setAttribute('aria-hidden', 'false');
+    if (loginForm) loginForm.style.display = 'block';
+    if (mfaSection) mfaSection.style.display = 'none';
+
+    window.setTimeout(() => emailInput?.focus(), 0);
+}
+
+function showMicrosoftSignIn() {
+    const signinChoices = document.getElementById('signin-choices');
+    const emailSignIn = document.getElementById('email-signin');
+    const loginForm = document.getElementById('login-form');
+    const mfaSection = document.getElementById('mfa-section');
+    const mfaCodeInput = document.getElementById('mfa-code');
+    const mfaError = document.getElementById('mfa-error');
+    const emailError = document.getElementById('login-email-error');
+    const passwordError = document.getElementById('login-password-error');
+    const microsoftButton = document.getElementById('microsoft-signin-btn');
+
+    if (!signinChoices || !emailSignIn) return;
+
+    if (loginForm) {
+        loginForm.reset();
+        loginForm.style.display = 'block';
+    }
+    if (mfaSection) mfaSection.style.display = 'none';
+    if (mfaCodeInput) mfaCodeInput.value = '';
+    [mfaError, emailError, passwordError].forEach((element) => {
+        if (element) element.style.display = 'none';
+    });
+    currentEmail = '';
+    emailSignIn.hidden = true;
+    emailSignIn.setAttribute('aria-hidden', 'true');
+    signinChoices.hidden = false;
+    microsoftButton?.focus();
+}
 
 // Show notification (same as signin.html)
 function showNotification(message, isSuccess = true) {
