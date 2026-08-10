@@ -2260,7 +2260,7 @@ body.client-portal-page {
   border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 15px;
 
-  box-shadow: 
+  box-shadow:
     0 12px 40px rgba(0, 0, 0, 0.25),
     inset 0 1px 2px rgba(255, 255, 255, 0.5),
     inset 0 -1px 2px rgba(0, 0, 0, 0.15);
@@ -2290,7 +2290,7 @@ body.client-portal-page {
   transform: translateY(-8px) scale(1.02);
   background: rgba(255, 255, 255, 0.027);
   border-color: rgba(255, 255, 255, 0.6);
-  box-shadow: 
+  box-shadow:
     0 25px 60px rgba(255, 255, 255, 0.35),
     0 0 0 1px rgba(255, 255, 255, 0.5) inset,
     0 12px 40px rgba(255, 255, 255, 0.25),
@@ -2353,7 +2353,7 @@ body.client-portal-page {
 
   padding: clamp(24px, 3.2vw, 34px) clamp(22px, 3vw, 32px);
 
-  box-shadow: 
+  box-shadow:
     0 12px 40px rgba(0, 0, 0, 0.25),
     inset 0 1px 2px rgba(255, 255, 255, 0.5),
     inset 0 -1px 2px rgba(0, 0, 0, 0.15);
@@ -2388,7 +2388,7 @@ body.client-portal-page {
 
 .login-header {
   text-align: center;
-  margin-bottom: 22px;
+  margin-bottom: 35px;
 }
 
 .login-logo {
@@ -3147,7 +3147,7 @@ body.client-portal-page {
   height: var(--side-peek-card-height, 130px);
   transform: scale(1);
   filter: saturate(0.72);
-  box-shadow: 
+  box-shadow:
     0 4px 16px rgba(255, 255, 255, 0.2),
     inset 0 1px 0 rgba(255, 255, 255, 0.2);
   transition: all 0.25s ease;
@@ -3304,7 +3304,7 @@ body:not(.sunbird-client-portal) .project-card.no-interaction.non-sunbird-blur-g
   background: rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
   border: 1px solid rgba(255, 255, 255, 0.4);
-  box-shadow: 
+  box-shadow:
     0 25px 60px rgba(0, 0, 0, 0.4),
     0 0 20px rgba(255, 255, 255, 0.2);
   z-index: 100;
@@ -3424,7 +3424,7 @@ body:not(.sunbird-client-portal) .project-card.no-interaction.non-sunbird-blur-g
   background: rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(28px) saturate(200%) brightness(1.15);
   border: 1px solid rgba(255, 255, 255, 0.4);
-  box-shadow: 
+  box-shadow:
     0 25px 60px rgba(0, 0, 0, 0.4),
     0 0 20px rgba(255, 255, 255, 0.2);
   z-index: 100;
@@ -3499,7 +3499,7 @@ body:not(.sunbird-client-portal) .project-card.no-interaction.non-sunbird-blur-g
   border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 12px;
 
-  box-shadow: 
+  box-shadow:
     0 6px 18px rgba(255, 255, 255, 0.32),
     inset 0 0.5px 1px rgba(255, 255, 255, 0.452),
     inset 0 -0.5px 1px rgba(0, 0, 0, 0.08);
@@ -3536,7 +3536,7 @@ body:not(.sunbird-client-portal) .project-card.no-interaction.non-sunbird-blur-g
   border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 15px;
 
-  box-shadow: 
+  box-shadow:
     0 12px 40px rgba(0, 0, 0, 0.25),
     inset 0 1px 2px rgba(255, 255, 255, 0.5),
     inset 0 -1px 2px rgba(0, 0, 0, 0.15);
@@ -3619,7 +3619,7 @@ body:not(.sunbird-client-portal) .project-card.no-interaction.non-sunbird-blur-g
   transform: translateY(-12px) scale(1.02);
   background: rgba(255, 255, 255, 0.18);
   border-color: rgba(255, 255, 255, 0.6);
-  box-shadow: 
+  box-shadow:
     0 25px 60px rgba(255, 255, 255, 0.35),
     0 0 0 1px rgba(255, 255, 255, 0.5) inset,
     0 12px 40px rgba(255, 255, 255, 0.25),
@@ -3698,7 +3698,7 @@ body:not(.sunbird-client-portal) .project-card.no-interaction.non-sunbird-blur-g
   font-size: 24.5px;
   color: var(--primary);
   flex-shrink: 0;
-  box-shadow: 
+  box-shadow:
     0 8px 20px rgba(255, 255, 255, 0.25),
     inset 0 1px 0 rgba(255, 255, 255, 0.4);
   transition: all 0.4s ease;
@@ -4894,7 +4894,7 @@ body:not(.sunbird-client-portal) .project-card.no-interaction.non-sunbird-blur-g
   border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 12px;
 
-  box-shadow: 
+  box-shadow:
     0 12px 40px rgba(0, 0, 0, 0.25),
     inset 0 1px 2px rgba(255, 255, 255, 0.5),
     inset 0 -1px 2px rgba(0, 0, 0, 0.15);
@@ -5917,7 +5917,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 12px;
 
-  box-shadow: 
+  box-shadow:
     0 12px 40px rgba(0, 0, 0, 0.25),
     inset 0 1px 2px rgba(255, 255, 255, 0.5),
     inset 0 -1px 2px rgba(0, 0, 0, 0.15);
@@ -5980,7 +5980,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 12px;
 
-  box-shadow: 
+  box-shadow:
     0 12px 40px rgba(0, 0, 0, 0.25),
     inset 0 1px 2px rgba(255, 255, 255, 0.5),
     inset 0 -1px 2px rgba(0, 0, 0, 0.15);
@@ -6022,7 +6022,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   transform: translateY(-12px) scale(1.01);
   background: rgba(255, 255, 255, 0.18);
   border-color: rgba(255, 255, 255, 0.6);
-  box-shadow: 
+  box-shadow:
     0 25px 60px rgba(255, 255, 255, 0.35),
     0 0 0 1px rgba(255, 255, 255, 0.5) inset,
     0 12px 40px rgba(255, 255, 255, 0.25),
@@ -9114,7 +9114,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
   padding: 15px;
 
-  box-shadow: 
+  box-shadow:
     0 12px 40px rgba(0, 0, 0, 0.25),
     inset 0 1px 2px rgba(255, 255, 255, 0.5),
     inset 0 -1px 2px rgba(0, 0, 0, 0.15);
@@ -9158,7 +9158,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   transform: translateY(-5px);
   background: rgba(255, 255, 255, 0.18);
   border-color: rgba(255, 255, 255, 0.6);
-  box-shadow: 
+  box-shadow:
     0 25px 60px rgba(255, 255, 255, 0.35),
     0 0 0 1px rgba(255, 255, 255, 0.5) inset;
 }
@@ -9703,7 +9703,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
   padding: 12px;
 
-  box-shadow: 
+  box-shadow:
     0 12px 40px rgba(0, 0, 0, 0.25),
     inset 0 1px 2px rgba(255, 255, 255, 0.5),
     inset 0 -1px 2px rgba(0, 0, 0, 0.15);
@@ -9740,7 +9740,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   transform: translateY(-5px);
   background: rgba(255, 255, 255, 0.18);
   border-color: rgba(255, 255, 255, 0.6);
-  box-shadow: 
+  box-shadow:
     0 25px 60px rgba(255, 255, 255, 0.35),
     0 0 0 1px rgba(255, 255, 255, 0.5) inset;
 }
@@ -10346,7 +10346,7 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
 .sunbird-governance-table {
     width: 100%;
-    min-width: 450px; 
+    min-width: 450px;
     border-collapse: collapse;
 }
 
@@ -13472,4 +13472,944 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   #email-signin .email-signin-intro {
     font-size: 0.78rem;
   }
+}
+
+/* Refined portal sign-in choice: neutral Microsoft primary, quiet secondary email action. */
+@media (min-width: 521px) {
+  .login-container { max-width: 458px; }
+}
+
+.microsoft-signin-copy {
+  margin-bottom: 17px;
+  color: #e7e4e0;
+}
+
+.microsoft-signin-button {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 13px;
+  min-height: 52px;
+  padding: 12px 17px;
+  overflow: visible;
+  color: #1b1b1b;
+  background: #ffffff;
+  border: 1px solid #c8c8c8;
+  border-radius: 8px;
+  box-shadow: 0 5px 16px rgba(0, 0, 0, 0.26);
+}
+
+.microsoft-signin-button::before { content: none; }
+
+.microsoft-signin-button:hover {
+  background: #f5f5f5;
+  border-color: #9a9a9a;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+  transform: translateY(-1px);
+}
+
+.microsoft-signin-button:active {
+  background: #e9e9e9;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12);
+  transform: translateY(0);
+}
+
+.microsoft-signin-button:focus-visible {
+  outline: 3px solid rgba(241, 112, 31, 0.82);
+  outline-offset: 3px;
+}
+
+.microsoft-mark {
+  display: block;
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  object-position: center;
+}
+
+.microsoft-signin-label {
+  color: #1b1b1b;
+  font-size: 0.96rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-align: left;
+}
+
+.microsoft-signin-trust {
+  margin-top: 11px;
+  color: #aaa6a1;
+}
+
+.microsoft-signin-trust i { color: #b9b5b0; }
+
+.signin-option-divider {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 12px;
+  align-items: center;
+  margin: 17px 0 0;
+  color: #98938d;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.signin-option-divider::before,
+.signin-option-divider::after {
+  height: 1px;
+  content: "";
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.email-signin-trigger {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  margin: 12px 0 0;
+  padding: 10px 15px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+  color: #eeeae6;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: left;
+  transition: transform 160ms ease, color 160ms ease, background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.email-signin-trigger span {
+  height: auto;
+  background: transparent;
+}
+
+.email-signin-trigger i:first-child { color: #c7c3be; font-size: 0.93rem; }
+.email-signin-trigger i:last-child { color: #a7a19a; font-size: 0.76rem; transition: transform 160ms ease, color 160ms ease; }
+
+.email-signin-trigger:hover,
+.email-signin-trigger:focus-visible {
+  border-color: rgba(255, 255, 255, 0.48);
+  background: rgba(255, 255, 255, 0.085);
+  color: #ffffff;
+  box-shadow: 0 7px 18px rgba(0, 0, 0, 0.2);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.email-signin-trigger:hover span,
+.email-signin-trigger:focus-visible span { background: transparent; }
+
+.email-signin-trigger:hover i:last-child,
+.email-signin-trigger:focus-visible i:last-child {
+  color: #f17a2a;
+  transform: translateX(2px);
+}
+
+@media (max-width: 375px) {
+  .microsoft-signin-button { min-height: 52px; padding-inline: 14px; }
+}
+
+/* StackCTRL portal sign-in: composed smoked liquid glass. */
+@media (min-width: 521px) {
+  .login-container {
+    max-width: 480px;
+  }
+}
+
+.login-box.liquid-glass-card {
+  min-height: 690px;
+  padding: clamp(30px, 4vw, 42px) clamp(26px, 4.2vw, 40px) 38px;
+  background:
+    radial-gradient(110% 72% at 7% 0%, rgba(255, 255, 255, 0.14), transparent 52%),
+    radial-gradient(82% 72% at 100% 100%, rgba(214, 87, 15, 0.09), transparent 64%),
+    linear-gradient(145deg, rgba(43, 43, 44, 0.6), rgba(7, 7, 8, 0.68) 55%, rgba(16, 13, 12, 0.56));
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  border-radius: 24px;
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.48),
+    0 0 58px rgba(255, 115, 25, 0.2),
+    0 0 20px rgba(126, 197, 211, 0.1),
+    0 0 1px 1px rgba(255, 255, 255, 0.12),
+    inset 0 1px 1px rgba(255, 255, 255, 0.46),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(32px) saturate(138%);
+  -webkit-backdrop-filter: blur(32px) saturate(138%);
+  transition: transform 220ms ease, border-color 220ms ease, box-shadow 220ms ease;
+  animation: live-glow 3.4s ease-in-out infinite;
+}
+
+.login-box.liquid-glass-card::before {
+  background:
+    linear-gradient(118deg, rgba(255, 255, 255, 0.13) 0%, rgba(255, 255, 255, 0.025) 27%, transparent 49%),
+    linear-gradient(295deg, transparent 54%, rgba(255, 255, 255, 0.055) 100%);
+  opacity: 1;
+}
+
+.login-box.liquid-glass-card::after {
+  position: absolute;
+  inset: 1px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 23px;
+  content: "";
+  pointer-events: none;
+  z-index: 1;
+}
+
+.login-box.liquid-glass-card:hover {
+  border-color: rgba(255, 255, 255, 0.42);
+  box-shadow:
+    0 28px 68px rgba(0, 0, 0, 0.54),
+    0 0 64px rgba(255, 115, 25, 0.25),
+    0 0 28px rgba(126, 197, 211, 0.13),
+    0 0 1px 1px rgba(255, 255, 255, 0.18),
+    inset 0 1px 1px rgba(255, 255, 255, 0.5),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.32);
+  transform: translateY(-3px);
+}
+
+.login-box.liquid-glass-card .login-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "logo home"
+    "title title";
+  align-items: start;
+  justify-items: start;
+  margin: 0 0 38px;
+  text-align: center;
+}
+
+.login-box.liquid-glass-card .login-logo {
+  grid-area: logo;
+  width: 94px;
+  margin: 0 0 24px;
+  filter: drop-shadow(0 0 9px rgba(245, 103, 18, 0.38));
+}
+
+.login-box.liquid-glass-card .login-home-link {
+  grid-area: home;
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.9);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.045));
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 15px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 7px 18px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(14px) saturate(135%);
+  -webkit-backdrop-filter: blur(14px) saturate(135%);
+  transition: transform 180ms ease, color 180ms ease, border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
+}
+
+.login-box.liquid-glass-card .login-home-link:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.13);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.46), 0 10px 22px rgba(0, 0, 0, 0.27), 0 0 18px rgba(255, 115, 25, 0.14);
+  transform: translateY(-2px);
+}
+
+.login-box.liquid-glass-card .login-home-link:focus-visible {
+  outline: 3px solid rgba(243, 111, 24, 0.92);
+  outline-offset: 3px;
+}
+
+.login-box.liquid-glass-card .login-home-link:active {
+  transform: translateY(0) scale(0.96);
+}
+
+.login-box.liquid-glass-card .login-header h1 {
+  margin: 0 0 7px;
+  color: rgba(255, 255, 255, 0.96);
+  font-size: 1.08rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.login-box.liquid-glass-card .login-header p {
+  grid-area: title;
+  justify-self: stretch;
+  margin: 0;
+  color: rgba(224, 221, 217, 0.72);
+  font-size: 0.82rem;
+}
+
+.login-box.liquid-glass-card .microsoft-signin {
+  margin-top: 0;
+}
+
+.login-box.liquid-glass-card .microsoft-signin-button,
+.login-box.liquid-glass-card .email-signin-trigger {
+  width: fit-content;
+  max-width: 100%;
+  min-height: 56px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 45px;
+  background:
+    linear-gradient(120deg, rgba(255, 255, 255, 0.17), rgba(255, 255, 255, 0.06) 50%, rgba(255, 255, 255, 0.095)),
+    rgba(20, 20, 21, 0.46);
+  box-shadow:
+    0 10px 22px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.31),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(18px) saturate(142%);
+  -webkit-backdrop-filter: blur(18px) saturate(142%);
+}
+
+.login-box.liquid-glass-card .microsoft-signin-button {
+  grid-template-columns: 26px auto;
+  column-gap: 13px;
+  padding: 13px 20px;
+  color: #ffffff;
+  margin-inline: auto;
+}
+
+.login-box.liquid-glass-card .microsoft-signin-button::before {
+  display: block;
+  background: linear-gradient(106deg, rgba(255, 255, 255, 0.13), transparent 38%);
+}
+
+.login-box.liquid-glass-card .microsoft-signin-label {
+  color: #ffffff;
+  font-size: 0.94rem;
+  font-weight: 400;
+}
+
+.login-box.liquid-glass-card .microsoft-mark {
+  width: 23px;
+  height: 23px;
+}
+
+.login-box.liquid-glass-card .microsoft-signin-button:hover {
+  border-color: rgba(255, 255, 255, 0.54);
+  background:
+    linear-gradient(120deg, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0.1) 50%, rgba(255, 255, 255, 0.15)),
+    rgba(29, 29, 30, 0.56);
+  box-shadow:
+    0 14px 30px rgba(0, 0, 0, 0.3),
+    0 0 22px rgba(255, 255, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.42),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+  transform: translateY(-2px) scale(1.006);
+}
+
+.login-box.liquid-glass-card .microsoft-signin-button:active {
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  transform: translateY(0) scale(0.996);
+}
+
+.login-box.liquid-glass-card .microsoft-signin-button:focus-visible,
+.login-box.liquid-glass-card .email-signin-trigger:focus-visible {
+  outline: 3px solid rgba(243, 111, 24, 0.92);
+  outline-offset: 3px;
+}
+
+.login-box.liquid-glass-card .microsoft-signin-trust {
+  justify-content: center;
+  margin: 13px 0 0;
+  color: rgba(226, 223, 220, 0.67);
+}
+
+.login-box.liquid-glass-card .microsoft-signin-trust i {
+  color: rgba(244, 116, 31, 0.9);
+}
+
+.login-box.liquid-glass-card .signin-option-divider {
+  margin-top: 24px;
+  color: rgba(220, 216, 211, 0.58);
+}
+
+.login-box.liquid-glass-card .signin-option-divider::before,
+.login-box.liquid-glass-card .signin-option-divider::after {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2));
+}
+
+.login-box.liquid-glass-card .signin-option-divider::after {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.2), transparent);
+}
+
+.login-box.liquid-glass-card .email-signin-trigger {
+  grid-template-columns: 20px auto 16px;
+  gap: 11px;
+  margin-top: 18px;
+  padding: 13px 21px;
+  color: rgba(250, 248, 246, 0.91);
+  margin-inline: auto;
+  font-weight: 400;
+}
+
+.login-box.liquid-glass-card .email-signin-trigger i:first-child {
+  color: rgba(237, 233, 229, 0.82);
+}
+
+.login-box.liquid-glass-card .email-signin-trigger i:last-child {
+  color: rgba(237, 233, 229, 0.68);
+}
+
+.login-box.liquid-glass-card .email-signin-trigger:hover {
+  border-color: rgba(243, 119, 35, 0.58);
+  background:
+    linear-gradient(120deg, rgba(243, 119, 35, 0.15), rgba(255, 255, 255, 0.09) 52%, rgba(255, 255, 255, 0.12)),
+    rgba(28, 25, 23, 0.58);
+  box-shadow:
+    0 14px 29px rgba(0, 0, 0, 0.3),
+    0 0 22px rgba(244, 112, 24, 0.11),
+    inset 0 1px 0 rgba(255, 255, 255, 0.38),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+  color: #ffffff;
+  transform: translateY(-2px) scale(1.006);
+}
+
+.login-box.liquid-glass-card .email-signin-trigger:hover i:last-child {
+  color: #f69a59;
+  transform: translateX(3px);
+}
+
+.login-box.liquid-glass-card .email-signin-trigger:active {
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  transform: translateY(0) scale(0.996);
+}
+
+.login-box.liquid-glass-card .login-info {
+  margin-top: 28px;
+  padding-top: 19px;
+  border-color: rgba(255, 255, 255, 0.13);
+}
+
+.login-box.liquid-glass-card .login-info p {
+  margin-bottom: 8px;
+  color: rgba(226, 223, 219, 0.74);
+  font-size: 0.8rem;
+}
+
+.login-box.liquid-glass-card .login-info i {
+  color: rgba(244, 116, 31, 0.88);
+}
+
+@media (max-width: 520px) {
+  .login-box.liquid-glass-card {
+    min-height: 640px;
+    padding: 28px 24px 29px;
+    border-radius: 21px;
+  }
+
+  .login-box.liquid-glass-card::after {
+    border-radius: 20px;
+  }
+
+  .login-box.liquid-glass-card .login-header {
+    margin-bottom: 25px;
+  }
+}
+
+/* Sign-in home control: keep the brand fixed while the action stack sits lower. */
+.login-box.liquid-glass-card .login-header {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "logo"
+    "title";
+}
+
+.login-box.liquid-glass-card .login-header p {
+  margin-top: 42px;
+}
+
+.login-box.liquid-glass-card #signin-choices {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.login-box.liquid-glass-card #signin-choices .login-home-link {
+  grid-area: auto;
+  display: inline-flex;
+  margin: 22px auto 0;
+}
+
+@media (max-width: 520px) {
+  .login-box.liquid-glass-card .login-header p {
+    margin-top: 30px;
+  }
+
+  .login-box.liquid-glass-card #signin-choices .login-home-link {
+    margin-top: 18px;
+  }
+}
+
+/* Email sign-in is a dedicated view, never an extension of the choice screen. */
+.login-box.liquid-glass-card #signin-choices[hidden],
+.login-box.liquid-glass-card #email-signin[hidden] { display: none !important; }
+
+.login-box.liquid-glass-card #email-signin:not([hidden]) { display: block; width: min(100%, 400px); margin: 44px auto 0; }
+
+.login-box.liquid-glass-card #email-signin .back-to-microsoft-signin { display: inline-flex; align-items: center; gap: 8px; margin: 0 0 28px; padding: 0; border: 0; background: transparent; color: rgba(242, 238, 233, 0.8); font: inherit; font-size: 0.84rem; }
+.login-box.liquid-glass-card #email-signin .back-to-microsoft-signin:hover,
+.login-box.liquid-glass-card #email-signin .back-to-microsoft-signin:focus-visible { color: #fff; outline: none; }
+
+.login-box.liquid-glass-card #email-signin .form-group input { min-height: 54px; border: 1px solid rgba(255, 255, 255, 0.26); border-radius: 16px; background: linear-gradient(118deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.055) 52%, rgba(255, 255, 255, 0.08)), rgba(21, 20, 20, 0.52); color: #fff; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), inset 0 -1px 0 rgba(0, 0, 0, 0.22), 0 8px 22px rgba(0, 0, 0, 0.16); backdrop-filter: blur(18px) saturate(135%); -webkit-backdrop-filter: blur(18px) saturate(135%); }
+.login-box.liquid-glass-card #email-signin .form-group input::placeholder { color: rgba(255, 255, 255, 0.48); }
+.login-box.liquid-glass-card #email-signin .form-group input:focus { border-color: rgba(255, 255, 255, 0.62); background: linear-gradient(118deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.08) 52%, rgba(255, 255, 255, 0.1)), rgba(28, 27, 27, 0.62); color: #fff; box-shadow: 0 0 0 3px rgba(244, 116, 31, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.32), 0 10px 25px rgba(0, 0, 0, 0.22); }
+.login-box.liquid-glass-card #email-signin .password-toggle { color: rgba(255, 255, 255, 0.72); }
+
+.login-box.liquid-glass-card #email-signin .btn-login { border-color: rgba(255, 255, 255, 0.3); background: linear-gradient(118deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.07) 50%, rgba(255, 255, 255, 0.11)), rgba(22, 21, 21, 0.58); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 -1px 0 rgba(0, 0, 0, 0.24), 0 9px 24px rgba(0, 0, 0, 0.24); font-weight: 400; backdrop-filter: blur(18px) saturate(140%); -webkit-backdrop-filter: blur(18px) saturate(140%); }
+.login-box.liquid-glass-card #email-signin .btn-login:hover,
+.login-box.liquid-glass-card #email-signin .btn-login:focus-visible { border-color: rgba(255, 255, 255, 0.58); background: linear-gradient(118deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.12) 50%, rgba(255, 255, 255, 0.17)), rgba(33, 31, 30, 0.62); box-shadow: 0 0 0 3px rgba(244, 116, 31, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.42), 0 12px 28px rgba(0, 0, 0, 0.3); }
+
+.login-box.liquid-glass-card #email-signin:not([hidden]) + .login-info { width: min(100%, 400px); margin: 30px auto 0; }
+@media (max-width: 520px) { .login-box.liquid-glass-card #email-signin:not([hidden]) { margin-top: 32px; } }
+
+/* Portal sign-in layout: maintain the same composed tall card in both modes. */
+.login-box.liquid-glass-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 820px;
+}
+
+.login-box.liquid-glass-card .login-header {
+  flex: 0 0 auto;
+  margin-bottom: 0;
+}
+
+.login-box.liquid-glass-card .login-header p {
+  margin-top: 68px;
+}
+
+/* The home control belongs to the choice action stack, never the left brand column. */
+.login-box.liquid-glass-card #signin-choices .login-home-link {
+  align-self: center;
+  margin: 24px auto 0;
+}
+
+.login-box.liquid-glass-card #signin-choices ~ .login-info {
+  margin-top: auto;
+}
+
+/* Email is a dedicated, deliberate page within the same card, rather than a stacked extension. */
+.login-box.liquid-glass-card #email-signin:not([hidden]) {
+  width: min(100%, 370px);
+  margin: 112px auto 0;
+}
+
+.login-box.liquid-glass-card #email-signin .back-to-microsoft-signin {
+  margin-bottom: 40px;
+}
+
+.login-box.liquid-glass-card #email-signin .login-form h2 {
+  font-size: clamp(1.65rem, 3vw, 2rem);
+}
+
+.login-box.liquid-glass-card #email-signin .email-signin-intro {
+  margin-bottom: 32px;
+}
+
+.login-box.liquid-glass-card #email-signin .form-group {
+  margin-bottom: 20px;
+}
+
+.login-box.liquid-glass-card #email-signin .form-group input,
+.login-box.liquid-glass-card #email-signin .btn-login {
+  border-radius: 28px;
+}
+
+.login-box.liquid-glass-card #email-signin:not([hidden]) + .login-info {
+  width: min(100%, 370px);
+  margin: auto auto 0;
+}
+
+@media (max-width: 520px) {
+  .login-box.liquid-glass-card {
+    min-height: 790px;
+  }
+
+  .login-box.liquid-glass-card .login-header p {
+    margin-top: 54px;
+  }
+
+  .login-box.liquid-glass-card #email-signin:not([hidden]) {
+    margin-top: 76px;
+  }
+
+  .login-box.liquid-glass-card #email-signin .back-to-microsoft-signin {
+    margin-bottom: 32px;
+  }
+}
+
+/* Separate sign-in cards: preserve the agreed choice composition and keep email self-contained. */
+.login-choice-card.liquid-glass-card {
+  min-height: 690px;
+}
+
+.login-choice-card.liquid-glass-card .login-header p {
+  margin-top: 42px;
+}
+
+.login-choice-card.liquid-glass-card #signin-choices ~ .login-info {
+  margin-top: 28px;
+}
+
+.login-home-control {
+  display: flex;
+  width: 100%;
+  justify-content: center;
+}
+
+.login-choice-card.liquid-glass-card #signin-choices .login-home-link {
+  align-self: auto;
+  margin: 24px 0 0;
+}
+
+.email-login-card.liquid-glass-card {
+  width: 100%;
+  min-height: min(820px, calc(100dvh - 40px));
+}
+
+.email-login-card#email-signin:not([hidden]) {
+  display: flex;
+  width: 100%;
+  margin: 0;
+}
+
+.email-login-card.liquid-glass-card .login-header p {
+  margin-top: 58px;
+}
+
+.email-login-card .email-signin-content {
+  width: min(100%, 370px);
+  margin: 92px auto 0;
+}
+
+.email-login-card .email-signin-content .back-to-microsoft-signin {
+  margin-bottom: 36px;
+}
+
+.email-login-card .login-info {
+  width: min(100%, 370px);
+  margin: auto auto 0;
+}
+
+@media (max-width: 520px) {
+  .login-choice-card.liquid-glass-card {
+    min-height: 640px;
+  }
+
+  .email-login-card.liquid-glass-card {
+    min-height: min(760px, calc(100dvh - 28px));
+  }
+
+  .email-login-card .email-signin-content {
+    margin-top: 62px;
+  }
+}
+
+/* Keep the choice actions comfortably separated from the centred title. */
+.login-choice-card.liquid-glass-card .login-header p {
+  margin-bottom: 26px;
+}
+/* Ensure mutually exclusive portal sign-in cards cannot be overridden by layout rules. */
+.login-choice-card[hidden],
+.email-login-card[hidden] {
+  display: none !important;
+}
+
+/* Email sign-in refinement: one compact form system, shared card dimensions. */
+@media (min-width: 521px) {
+  .login-choice-card.liquid-glass-card,
+  .email-login-card.liquid-glass-card {
+    box-sizing: border-box;
+    height: 820px;
+    min-height: 820px;
+  }
+}
+
+/* Keep the choice view's existing composition intact; only the outer card grows. */
+.email-login-card.liquid-glass-card .email-signin-content {
+  width: min(100%, 370px);
+  margin: 54px auto 0;
+}
+
+.email-login-card.liquid-glass-card .email-signin-content .back-to-microsoft-signin {
+  margin-bottom: 22px;
+}
+
+.email-login-card.liquid-glass-card .login-form h2,
+.email-login-card.liquid-glass-card .mfa-section h3 {
+  font-size: clamp(1.55rem, 3vw, 1.82rem);
+  font-weight: 400;
+}
+
+.email-login-card.liquid-glass-card .email-signin-intro {
+  margin: 6px auto 18px;
+}
+
+.email-login-card.liquid-glass-card .form-group {
+  margin-bottom: 14px;
+}
+
+.email-login-card.liquid-glass-card .form-group label {
+  margin-bottom: 6px;
+}
+
+.email-login-card.liquid-glass-card .form-group input {
+  min-height: 52px;
+  border-radius: 28px;
+  border-color: rgba(255, 255, 255, 0.3);
+  background:
+    linear-gradient(118deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.055) 52%, rgba(255, 255, 255, 0.08)),
+    rgba(21, 20, 20, 0.52);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.27),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.22),
+    0 8px 22px rgba(0, 0, 0, 0.16);
+}
+
+.email-login-card.liquid-glass-card .btn-login {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: fit-content;
+  min-width: 174px;
+  min-height: 54px;
+  margin: 4px auto 0;
+  padding: 13px 22px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 45px;
+  background:
+    linear-gradient(120deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.07) 50%, rgba(255, 255, 255, 0.11)),
+    rgba(22, 21, 21, 0.58);
+  box-shadow:
+    0 9px 24px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.24);
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.email-login-card.liquid-glass-card .btn-login:focus-visible {
+  outline: 3px solid rgba(243, 111, 24, 0.92);
+  outline-offset: 3px;
+}
+
+.email-login-card.liquid-glass-card .login-info {
+  width: min(100%, 370px);
+  margin: auto auto 0;
+}
+
+@media (max-width: 520px) {
+  .login-choice-card.liquid-glass-card,
+  .email-login-card.liquid-glass-card {
+    box-sizing: border-box;
+    height: auto;
+    min-height: min(760px, calc(100dvh - 28px));
+  }
+
+  .email-login-card.liquid-glass-card .email-signin-content {
+    width: min(100%, 350px);
+    margin-top: 42px;
+  }
+
+  .email-login-card.liquid-glass-card .email-signin-content .back-to-microsoft-signin {
+    margin-bottom: 18px;
+  }
+}
+
+/* Keep the email submit action in the form flow despite legacy portal button rules. */
+.email-login-card.liquid-glass-card .btn-login {
+  position: static;
+  inset: auto;
+  height: auto;
+}
+
+@media (max-width: 520px) {
+  .email-login-card.liquid-glass-card {
+    min-height: 0;
+  }
+}
+
+/* Closing trust divider and shared glass submit action. */
+.login-choice-card.liquid-glass-card .login-info-closing-divider {
+  width: 100%;
+  height: 1px;
+  margin-top: 14px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+}
+
+.email-login-card.liquid-glass-card .btn-login {
+  border-color: rgba(255, 255, 255, 0.3);
+  background:
+    linear-gradient(120deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.07) 50%, rgba(255, 255, 255, 0.11)),
+    rgba(22, 21, 21, 0.58);
+  box-shadow:
+    0 9px 24px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+.email-login-card.liquid-glass-card .btn-login:hover {
+  border-color: rgba(255, 255, 255, 0.58);
+  background:
+    linear-gradient(120deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.12) 50%, rgba(255, 255, 255, 0.17)),
+    rgba(33, 31, 30, 0.62);
+  box-shadow:
+    0 0 0 3px rgba(244, 116, 31, 0.22),
+    0 12px 28px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.42),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.24);
+  transform: translateY(-1px);
+}
+
+.email-login-card.liquid-glass-card .btn-login:active {
+  transform: translateY(0);
+}
+
+/* Email action: a compact, transparent glass control with a close-by trust area. */
+.email-login-card.liquid-glass-card .login-form {
+  display: flex;
+  flex-direction: column;
+}
+
+.email-login-card.liquid-glass-card #login-submit-btn {
+  align-self: center;
+  width: max-content;
+  min-width: 0;
+  min-height: 52px;
+  margin: 10px auto 0;
+  padding: 12px 20px;
+  color: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.36);
+  border-radius: 45px;
+  background:
+    linear-gradient(118deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.075) 52%, rgba(255, 255, 255, 0.13)),
+    rgba(29, 28, 29, 0.32);
+  box-shadow:
+    0 10px 22px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.38),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.16);
+  backdrop-filter: blur(20px) saturate(145%);
+  -webkit-backdrop-filter: blur(20px) saturate(145%);
+}
+
+.email-login-card.liquid-glass-card #login-submit-btn:hover {
+  border-color: rgba(255, 255, 255, 0.62);
+  background:
+    linear-gradient(118deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.12) 52%, rgba(255, 255, 255, 0.18)),
+    rgba(44, 42, 43, 0.4);
+}
+
+.email-login-card.liquid-glass-card #email-signin:not([hidden]) + .login-info {
+  display: flex;
+  width: min(100%, 370px);
+  margin: 18px auto 0;
+  padding: 15px 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.email-login-card.liquid-glass-card #email-signin:not([hidden]) + .login-info p {
+  margin: 0;
+  text-align: center;
+}
+
+@media (max-width: 520px) {
+  .email-login-card.liquid-glass-card #login-submit-btn {
+    min-height: 50px;
+    margin-top: 8px;
+    padding: 11px 18px;
+  }
+
+  .email-login-card.liquid-glass-card #email-signin:not([hidden]) + .login-info {
+    width: min(100%, 350px);
+    margin-top: 16px;
+    padding: 13px 0;
+  }
+}
+
+/* Email sign-in rhythm: keep the action and trust details together in the form flow. */
+.email-login-card.liquid-glass-card .login-form h2::after,
+.email-login-card.liquid-glass-card .login-form::after,
+.email-login-card.liquid-glass-card .login-form .form-group:nth-of-type(2)::after {
+  content: "";
+  display: block;
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent);
+}
+
+.email-login-card.liquid-glass-card .login-form h2::after {
+  margin: 13px auto 17px;
+}
+
+.email-login-card.liquid-glass-card .login-form .form-group:nth-of-type(2)::after {
+  margin: 16px auto 12px;
+}
+
+.email-login-card.liquid-glass-card .login-form::after {
+  margin: 13px auto 0;
+}
+
+.email-login-card.liquid-glass-card #login-submit-btn {
+  align-self: center;
+  margin: 0 auto;
+}
+
+.email-login-card.liquid-glass-card > .login-info {
+  display: flex;
+  width: min(100%, 370px);
+  margin: 14px auto 0;
+  padding: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+}
+
+.email-login-card.liquid-glass-card > .login-info p {
+  margin: 0;
+  text-align: center;
+}
+
+@media (max-width: 520px) {
+  .email-login-card.liquid-glass-card > .login-info {
+    width: min(100%, 350px);
+    margin-top: 12px;
+  }
+}
+
+/* Final email submit alignment override. */
+.email-login-card #login-submit-btn {
+  position: static !important;
+  display: inline-flex !important;
+  width: fit-content !important;
+  margin: 20px auto 0 !important;
+  align-self: center !important;
+  justify-self: center !important;
+}
+
+/* Force email submit to the exact horizontal midpoint of its form. */
+.email-login-card #login-submit-btn {
+  position: relative !important;
+  left: 50% !important;
+  right: auto !important;
+  transform: translateX(-50%) !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+/* Lower the choice-card content stack without moving the top-left logo. */
+.login-choice-card.liquid-glass-card .login-header > p {
+  transform: translateY(34px);
+}
+.login-choice-card.liquid-glass-card #signin-choices,
+.login-choice-card.liquid-glass-card .login-info,
+.login-choice-card.liquid-glass-card .login-info-closing-divider {
+  transform: translateY(34px);
 }

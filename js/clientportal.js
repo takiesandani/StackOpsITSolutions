@@ -9219,15 +9219,15 @@ function togglePasswordVisibility() {
 let currentEmail = '';
 
 function showEmailSignIn() {
-    const signinChoices = document.getElementById('signin-choices');
+    const choiceCard = document.getElementById('login-choice-card');
     const emailSignIn = document.getElementById('email-signin');
     const loginForm = document.getElementById('login-form');
     const mfaSection = document.getElementById('mfa-section');
     const emailInput = document.getElementById('login-email');
 
-    if (!signinChoices || !emailSignIn) return;
+    if (!choiceCard || !emailSignIn) return;
 
-    signinChoices.hidden = true;
+    choiceCard.hidden = true;
     emailSignIn.hidden = false;
     emailSignIn.setAttribute('aria-hidden', 'false');
     if (loginForm) loginForm.style.display = 'block';
@@ -9237,7 +9237,7 @@ function showEmailSignIn() {
 }
 
 function showMicrosoftSignIn() {
-    const signinChoices = document.getElementById('signin-choices');
+    const choiceCard = document.getElementById('login-choice-card');
     const emailSignIn = document.getElementById('email-signin');
     const loginForm = document.getElementById('login-form');
     const mfaSection = document.getElementById('mfa-section');
@@ -9247,7 +9247,7 @@ function showMicrosoftSignIn() {
     const passwordError = document.getElementById('login-password-error');
     const microsoftButton = document.getElementById('microsoft-signin-btn');
 
-    if (!signinChoices || !emailSignIn) return;
+    if (!choiceCard || !emailSignIn) return;
 
     if (loginForm) {
         loginForm.reset();
@@ -9261,10 +9261,9 @@ function showMicrosoftSignIn() {
     currentEmail = '';
     emailSignIn.hidden = true;
     emailSignIn.setAttribute('aria-hidden', 'true');
-    signinChoices.hidden = false;
+    choiceCard.hidden = false;
     microsoftButton?.focus();
 }
-
 // Show notification (same as signin.html)
 function showNotification(message, isSuccess = true) {
     const notification = document.getElementById('notification');
@@ -16681,4 +16680,3 @@ function initializePortalMobileDashboard() {
     document.getElementById('portal-mobile-profile-logout')?.addEventListener('click', handleLogout);
     syncPortalMobileUserName(); updatePortalMobileDomainSummary(); refreshPortalMobileDashboard();
 }
-
