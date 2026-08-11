@@ -14413,3 +14413,21 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 .login-choice-card.liquid-glass-card .login-info-closing-divider {
   transform: translateY(34px);
 }
+
+/* Laptop-height sign-in layout: keep both cards inside the viewport instead of
+   allowing the fixed desktop height to push their lower content below it. */
+@media (min-width: 521px) and (max-height: 900px) {
+  .login-section {
+    padding-top: 16px;
+    padding-bottom: 16px;
+  }
+
+  .login-box.liquid-glass-card,
+  .login-choice-card.liquid-glass-card,
+  .email-login-card.liquid-glass-card {
+    height: min(820px, calc(100dvh - 32px));
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+}

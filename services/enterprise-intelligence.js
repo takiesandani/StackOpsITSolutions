@@ -8344,16 +8344,19 @@ Return exactly these top-level fields:
             return rows.map(row => Number(row.CompanyID)).filter(Boolean);
         }
     }
-    async function runScheduledTick({ now = new Date(), companyId = null } = {}) {
+    async function runScheduledTick({ now = new Date(), companyId = null, cadence = 'hourly', finalizeReport = true } = {}) {
         const local = DateTime.fromJSDate(now instanceof Date ? now : new Date(now), { zone: 'utc' }).setZone('Africa/Johannesburg');
-        // The timer can tick more often, but this key gives every tenant exactly
-        // one fresh all-domain enterprise run per Johannesburg calendar hour.
-        const scheduleHour = local.toFormat('yyyyLLddHH');
+        const normalizedCadence = String(cadence || 'hourly').toLowerCase() === 'daily' ? 'daily' : 'hourly';
+        // The timer can tick more often than the intended cadence. This key makes
+        // retries and overlapping Cloud Run instances safe for every tenant.
+        const scheduleKey = normalizedCadence === 'daily'
+            ? local.toFormat('yyyyLLdd')
+            : local.toFormat('yyyyLLddHH');
         let companyIds = companyId ? [Number(companyId)] : [];
         if (!companyIds.length) {
             companyIds = await loadScheduledEnterpriseCompanyIds();
         }
-        logger.info('[StackCTRL Enterprise] Scheduled tenant discovery', { scheduleHour, companyIds, count: companyIds.length });
+        logger.info('[StackCTRL Enterprise] Scheduled tenant discovery', { cadence: normalizedCadence, scheduleKey, companyIds, count: companyIds.length });
         const results = [];
         for (const id of companyIds) {
             try {
@@ -8361,12 +8364,12 @@ Return exactly these top-level fields:
                     companyId: id,
                     periodType: 'daily',
                     referenceDate: now,
-                    deduplicationKey: `${id}:enterprise:hourly:${scheduleHour}`,
+                    deduplicationKey: `${id}:enterprise:${normalizedCadence}:${scheduleKey}`,
                     refreshSnapshot: true,
                     includeSynthesis: true
                 });
                 const companyRuns = [{ periodType: 'daily', status: 'completed', ...daily }];
-                if (daily.status !== 'duplicate' && typeof onScheduledRunCompleted === 'function') {
+                if (finalizeReport && daily.status !== 'duplicate' && typeof onScheduledRunCompleted === 'function') {
                     try {
                         companyRuns[0].reportAutomation = await onScheduledRunCompleted({ companyId: id, run: daily, now, localTime: local.toISO() });
                     } catch (automationError) {
@@ -8387,7 +8390,16 @@ Return exactly these top-level fields:
                 results.push({ companyId: id, runs: [{ status: 'failed', message: error.message }] });
             }
         }
-        return { status: 'completed', localTime: local.toISO(), companies: results };
+        return { status: 'completed', cadence: normalizedCadence, scheduleKey, localTime: local.toISO(), companies: results };
+    }
+
+    async function runDailyAutomationTick({ now = new Date(), companyId = null, force = false } = {}) {
+        const local = DateTime.fromJSDate(now instanceof Date ? now : new Date(now), { zone: 'utc' }).setZone('Africa/Johannesburg');
+        const configuredHour = Math.min(23, Math.max(0, Number(process.env.ENTERPRISE_AI_DAILY_RUN_HOUR) || 0));
+        if (!force && local.hour !== configuredHour) {
+            return { status: 'not_due', cadence: 'daily', localTime: local.toISO(), scheduledHour: configuredHour, companies: [] };
+        }
+        return runScheduledTick({ now, companyId, cadence: 'daily', finalizeReport: false });
     }
 
     async function getAdminData(companyId, runId = null) {
@@ -9497,6 +9509,7 @@ Return exactly these top-level fields:
         runEnterpriseSynthesis,
         runRollupReport,
         runScheduledTick,
+        runDailyAutomationTick,
         getAdminData,
         getAdminProgress,
         getAdminDomainDetail,

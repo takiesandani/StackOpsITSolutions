@@ -16276,8 +16276,11 @@ const stackCTRLIntelligenceAutomation = createStackCTRLServerAutomation({
     intervalMs: process.env.STACKCTRL_SERVER_AUTOMATION_INTERVAL_MS,
     startupDelayMs: process.env.STACKCTRL_SERVER_AUTOMATION_STARTUP_DELAY_MS
 });
+const enterpriseDailyIntelligenceScheduler = {
+    runScheduledTick: options => enterpriseIntelligenceService.runDailyAutomationTick(options)
+};
 const enterpriseIntelligenceAutomation = createStackCTRLServerAutomation({
-    schedulerService: enterpriseIntelligenceService,
+    schedulerService: enterpriseDailyIntelligenceScheduler,
     enabled: !['false', '0', 'no'].includes(String(process.env.ENTERPRISE_AI_AUTOMATION_ENABLED || 'true').toLowerCase()),
     intervalMs: process.env.ENTERPRISE_AI_AUTOMATION_INTERVAL_MS || (15 * 60 * 1000),
     startupDelayMs: process.env.ENTERPRISE_AI_AUTOMATION_STARTUP_DELAY_MS || (60 * 1000)
@@ -16292,25 +16295,25 @@ function hasValidEnterpriseAutomationTrigger(req) {
         && crypto.timingSafeEqual(expectedBuffer, providedBuffer);
 }
 
-// Cloud Run can suspend an idle instance, so server timers are a convenience only.
-// Cloud Scheduler calls this endpoint hourly with a secret header. The enterprise
-// scheduler's Johannesburg-hour deduplication makes retries and overlapping
-// instances safe.
-app.post('/api/internal/automation/enterprise-hourly', async (req, res) => {
+// Cloud Run can suspend an idle instance, so a secure Cloud Scheduler request is
+// the reliable trigger. The legacy hourly path remains compatible, but now obeys
+// the daily Johannesburg schedule; use the explicit daily path for a forced retry.
+app.post(['/api/internal/automation/enterprise-hourly', '/api/internal/automation/enterprise-daily'], async (req, res) => {
     if (!String(process.env.STACKCTRL_AUTOMATION_TRIGGER_SECRET || '')) {
         return res.status(503).json({ success: false, message: 'Enterprise automation trigger is not configured.' });
     }
     if (!hasValidEnterpriseAutomationTrigger(req)) {
         return res.status(403).json({ success: false, message: 'Invalid enterprise automation trigger.' });
     }
-    const operation = beginSunbirdOperation(req, 'enterprise_hourly_trigger');
+    const isExplicitDailyTrigger = req.path.endsWith('/enterprise-daily');
+    const operation = beginSunbirdOperation(req, 'enterprise_daily_trigger');
     try {
-        const result = await enterpriseIntelligenceService.runScheduledTick({ now: new Date() });
+        const result = await enterpriseIntelligenceService.runDailyAutomationTick({ now: new Date(), force: isExplicitDailyTrigger });
         const companies = Array.isArray(result?.companies) ? result.companies : [];
-        operation.finish(200, { companies: companies.length, localTime: result?.localTime || null });
+        operation.finish(200, { companies: companies.length, localTime: result?.localTime || null, status: result?.status || null });
         return res.status(200).json({ success: true, ...result });
     } catch (error) {
-        operation.step('enterprise_hourly_trigger_failed', { error: error.message, stack: String(error.stack || '').slice(0, 1800) });
+        operation.step('enterprise_daily_trigger_failed', { error: error.message, stack: String(error.stack || '').slice(0, 1800) });
         operation.finish(500, { error: error.message });
         return res.status(500).json({ success: false, message: error.message });
     }

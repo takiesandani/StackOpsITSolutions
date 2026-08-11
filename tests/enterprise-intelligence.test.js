@@ -2067,6 +2067,19 @@ test('enterprise automation checks for an hourly run outside the former daily wi
     assert.equal(result.status, 'completed');
     assert.equal(queryCount, 1);
 });
+test('enterprise daily automation waits for the configured Johannesburg hour', async () => {
+    let queryCount = 0;
+    const service = createEnterpriseIntelligenceService({
+        pool: { async query() { queryCount++; return [[], []]; } },
+        azureOpenAI: { async createJsonCompletion() { throw new Error('Azure should not be called'); } },
+        schedulerService: { async getHistoricalSnapshotContext() { return {}; } },
+        config: { domainDelayMs: 0 }
+    });
+    const result = await service.runDailyAutomationTick({ now: new Date('2026-06-22T06:00:00.000Z') });
+    assert.equal(result.status, 'not_due');
+    assert.equal(result.cadence, 'daily');
+    assert.equal(queryCount, 0);
+});
 
 test('Enterprise Device currentMetrics follow stored dashboard metrics and flatten per-device evidence', async () => {
     const pool = {
