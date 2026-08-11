@@ -14431,3 +14431,52 @@ scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
     scrollbar-gutter: stable;
   }
 }
+
+
+/* Prevent the outer login overlay from exposing a browser scrollbar at laptop heights. */
+@media (min-width: 521px) and (max-height: 900px) {
+  .login-section {
+    overflow-y: hidden;
+    overflow-x: hidden;
+  }
+}
+
+/* Remove the legacy divider behavior from the email sign-in button label. */
+.login-box.liquid-glass-card .email-signin-trigger span {
+  display: inline;
+  flex: 0 0 auto;
+  width: auto;
+  height: auto;
+  background: transparent;
+}
+
+.login-box.liquid-glass-card .email-signin-trigger::before,
+.login-box.liquid-glass-card .email-signin-trigger::after {
+  content: none;
+}
+
+/* Final laptop override: the email action must remain a compact button, never a full-width divider row. */
+.login-choice-card.liquid-glass-card .email-signin-trigger {
+  display: inline-grid !important;
+  width: fit-content !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+}
+
+.login-choice-card.liquid-glass-card .email-signin-trigger span {
+  display: block !important;
+  flex: none !important;
+  width: auto !important;
+  height: auto !important;
+  background: transparent !important;
+}
+
+/* Remove the duplicate inset edge on the two portal sign-in cards. */
+.login-choice-card.liquid-glass-card::after,
+.email-login-card.liquid-glass-card::after {
+  content: none !important;
+  display: none !important;
+  border: 0 !important;
+}
