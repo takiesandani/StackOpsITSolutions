@@ -662,16 +662,33 @@
 
 .sunbird-report-evidence-main strong {
   color: #f8fafc;
-  font-size: 0.78rem;
+  font-size: 0.84rem;
   font-weight: 550;
 }
 
 .sunbird-report-evidence-main span {
   color: #a8b2bd;
-  font-size: 0.7rem;
-  line-height: 1.45;
+  font-size: 0.78rem;
+  line-height: 1.55;
 }
 
+.sunbird-report-evidence-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sunbird-report-evidence-facts li {
+  padding: 3px 7px;
+  border-left: 2px solid rgba(249, 115, 22, 0.52);
+  background: rgba(255, 255, 255, 0.045);
+  color: #cbd5e1;
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
 .sunbird-report-evidence-main p,
 .sunbird-report-insight-impact {
   margin: 2px 0 0;

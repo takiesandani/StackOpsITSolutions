@@ -8396,7 +8396,10 @@ Return exactly these top-level fields:
     async function runDailyAutomationTick({ now = new Date(), companyId = null, force = false } = {}) {
         const local = DateTime.fromJSDate(now instanceof Date ? now : new Date(now), { zone: 'utc' }).setZone('Africa/Johannesburg');
         const configuredHour = Math.min(23, Math.max(0, Number(process.env.ENTERPRISE_AI_DAILY_RUN_HOUR) || 0));
-        if (!force && local.hour !== configuredHour) {
+        // If the instance was asleep or restarting at the exact scheduled hour,
+        // keep the run eligible for the rest of that Johannesburg day. The daily
+        // deduplication key still guarantees at most one run per tenant.
+        if (!force && local.hour < configuredHour) {
             return { status: 'not_due', cadence: 'daily', localTime: local.toISO(), scheduledHour: configuredHour, companies: [] };
         }
         return runScheduledTick({ now, companyId, cadence: 'daily', finalizeReport: false });

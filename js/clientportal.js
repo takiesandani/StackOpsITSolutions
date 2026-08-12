@@ -14021,86 +14021,138 @@ function getSunbirdReportSeverityTone(value = '') {
     return 'neutral';
 }
 
-function getSunbirdDomainFindingEvidenceRows(finding = {}) {
-    const direct = Array.isArray(finding?.evidence) ? finding.evidence : [];
-    const rows = direct.map(row => {
-        const source = row && typeof row === 'object' ? row : { detail: row };
-        const details = [
-            source.detail,
-            source.status ? `Status: ${source.status}` : '',
-            source.source ? `Source: ${source.source}` : ''
-        ].filter(Boolean).join(' | ');
-        return {
-            title: source.name || source.title || 'Evidence item',
-            detail: details || 'Evidence detail recorded in the latest report.',
-            severity: source.severity || '',
-            source: source.source || ''
+function unwrapSunbirdEvidenceRow(item) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return { value: item };
+    return ['evidenceRow', 'affectedEntity', 'data', 'entity', 'record', 'ProcessedEvidenceJson'].reduce((row, key) => {
+        const nested = row?.[key];
+        return nested && typeof nested === 'object' && !Array.isArray(nested) ? { ...row, ...nested } : row;
+    }, { ...item });
+}
+
+function isSunbirdOpaqueEvidenceValue(value) {
+    const text = String(value || '').trim();
+    return !text || /^\d+$/.test(text) || /^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(text)
+        || /(?:internalSourcePath|sourcePath|snapshotId|runId)/i.test(text);
+}
+
+function humanizeSunbirdEvidenceLabel(value) {
+    return String(value || '').replace(/[_-]+/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/\b\w/g, char => char.toUpperCase()).trim();
+}
+
+function formatSunbirdEvidenceText(value) {
+    return String(value ?? '').replace(/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z?\b/g, match => {
+        const formatted = formatSunbirdReportDate(match, true);
+        return formatted === 'Not yet' ? match : formatted;
+    }).trim();
+}
+function normalizeSunbirdLiveEvidenceRows(items = [], finding = {}) {
+    return (Array.isArray(items) ? items : []).map(item => {
+        const row = unwrapSunbirdEvidenceRow(item);
+        const title = [row.displayName, row.entityName, row.entityDisplayName, row.deviceName, row.entityDeviceName,
+            row.title, row.alertName, row.controlName, row.applicationName, row.profileName, row.activity, row.name,
+            row.userPrincipalName, row.entityEmail, row.mail, row.userEmail, row.user, row.actor, row.resource,
+            row.recipient, row.sender].map(value => String(value || '').trim()).find(value => value && !isSunbirdOpaqueEvidenceValue(value)) || '';
+        const fields = [];
+        const add = (label, value) => {
+            const text = formatSunbirdEvidenceText(Array.isArray(value) ? value.filter(Boolean).join(', ') : value);
+            if (!text || text.toLowerCase() === title.toLowerCase()) return;
+            const entry = label ? `${label}: ${text}` : text;
+            if (!fields.some(current => current.toLowerCase() === entry.toLowerCase())) fields.push(entry);
         };
+        add('User', row.entityEmail || row.mail || row.userPrincipalName || row.userEmail || row.user);
+        add('Sender', row.sender); add('Recipient', row.recipient);
+        add('Device', row.deviceName && row.deviceName !== title ? row.deviceName : row.entityDeviceName);
+        add('Operating system', [row.operatingSystem, row.osVersion].filter(Boolean).join(' '));
+        add('Compliance', row.complianceState || row.complianceStatus); add('Encryption', row.encryptionStatus); add('Management', row.managementAgent);
+        add('Publisher', row.publisherName); add('Application type', row.type); add('Roles', row.roles); add('Policies', row.policies);
+        add('Action', row.action || row.managementAction || row.remediationAction); add('Area', row.area); add('Owner', row.ownerStatus);
+        add('Control', row.controlName || row.policyName); add('Category', row.category); add('Status', row.status || row.state);
+        add('Severity', row.severity || row.riskLevel); add('Location', row.location); add('IP address', row.ipAddress); add('Failure reason', row.failureReason);
+        add('Files', row.files); add('Storage', row.storage); add('Role count', row.roleCount); add('User count', row.userCount); add('Scope count', row.scopeCount);
+        if (row.mfaEnabled != null) add('MFA', row.mfaEnabled ? 'Enabled' : 'Not enabled');
+        if (row.hasAdminRole != null) add('Administrator role', row.hasAdminRole ? 'Present' : 'Not present');
+        if (row.isExternal != null) add('External application', row.isExternal ? 'Yes' : 'No');
+        if (row.enabled != null) add('Enabled', row.enabled ? 'Yes' : 'No');
+        String(row.description || row.detail || row.validationReason || row.governanceIssue || row.auditImpact || row.evidenceSummary || '').split(/\s*\|\s*/).filter(Boolean).forEach(value => add('', value));
+        add('Last sign-in', typeof row.lastSignIn === 'string' ? row.lastSignIn : '');
+        add('Last sync', row.lastSyncDateTime); add('Event time', row.eventTime); add('Created', row.createdDateTime); add('Last seen', row.lastSeen); add('Last activity', row.lastActivity);
+        const findingTitle = String(finding.title || 'Finding').trim();
+        const fallbackDetail = [finding.evidenceSummary, finding.sourceMetric ? `Supported by ${humanizeSunbirdEvidenceLabel(finding.sourceMetric)} in the latest enterprise output.` : '',
+            finding.severity ? `Finding status: ${finding.severity}` : ''].filter(Boolean).join(' | ') || `The latest enterprise output supports ${findingTitle}.`;
+        const identity = [row.entityId, row.id, row.recordId, row.sourceAlertId, row.alertId, row.userPrincipalName, row.entityEmail,
+            row.mail, row.deviceName, row.controlName, row.applicationName, row.displayName, row.title, row.name]
+            .map(value => String(value || '').trim().toLowerCase()).find(Boolean) || `${title}|${fields.join('|')}`.toLowerCase();
+        return {
+            _identity: identity,
+            title: title || `${findingTitle} — validation summary`,
+            detail: fields.slice(0, 2).join(' · ') || fallbackDetail,
+            facts: fields.slice(2, 7),
+            severity: String(row.severity || row.riskLevel || row.priority || ''),
+            source: humanizeSunbirdEvidenceLabel(row.sourceMetric || row.evidenceSource || row.category || finding.sourceMetric || '')
+        };
+    }).filter(row => !isSunbirdTechnicalNoiseText(`${row.title} ${row.detail}`));
+}
+
+function mergeSunbirdDomainEvidenceRows(embedded = [], live = []) {
+    const merged = new Map();
+    [...embedded, ...live].forEach(row => {
+        const key = row._identity || `${row.title}|${row.detail}`.toLowerCase();
+        const previous = merged.get(key);
+        merged.set(key, previous ? {
+            ...previous,
+            ...row,
+            detail: String(row.detail || '').length > String(previous.detail || '').length ? row.detail : previous.detail,
+            severity: row.severity || previous.severity,
+            source: row.source || previous.source,
+            facts: (row.facts?.length || 0) > (previous.facts?.length || 0) ? row.facts : previous.facts
+        } : row);
     });
-    return rows.filter(row => !isSunbirdTechnicalNoiseText(`${row.title} ${row.detail}`));
+    return Array.from(merged.values());
+}
+
+function getSunbirdDomainFindingEvidenceCount(finding = {}) {
+    return getSunbirdDomainFindingEvidenceRows(finding).length;
+}
+
+function applySunbirdDomainEvidenceState(currentRows = [], liveRows = [], failed = false) {
+    const rows = liveRows.length ? mergeSunbirdDomainEvidenceRows(currentRows, liveRows) : currentRows;
+    return { rows, count: rows.length, status: failed ? 'saved' : liveRows.length ? 'enriched' : 'saved' };
+}
+function getSunbirdDomainFindingEvidenceRows(finding = {}) {
+    const embedded = ['evidence', 'evidenceRows', 'affectedEntities', 'evidenceRecords']
+        .flatMap(field => Array.isArray(finding?.[field]) ? finding[field] : []);
+    const rows = normalizeSunbirdLiveEvidenceRows(embedded, finding);
+    return rows.length ? mergeSunbirdDomainEvidenceRows([], rows) : normalizeSunbirdLiveEvidenceRows([{}], finding);
 }
 function getSunbirdDomainFindingEvidenceIds(finding = {}) {
     const fields = ['affectedEntityIds', 'recordIds', 'sourceAlertIds', 'evidenceIds', 'entityIds'];
     return [...new Set(fields.flatMap(field => Array.isArray(finding?.[field]) ? finding[field] : [])
-        .map(value => String(value || '').trim())
-        .filter(Boolean))];
+        .map(value => String(value || '').trim()).filter(Boolean))];
 }
 
 async function loadSunbirdDomainFindingLiveEvidence(payload = {}) {
     const domainKey = String(payload?.domainKey || '').trim();
     const evidenceIds = getSunbirdDomainFindingEvidenceIds(payload?.finding);
     if (!domainKey || !evidenceIds.length) return [];
-
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
     try {
         const params = new URLSearchParams({ domainKey, evidenceIds: evidenceIds.join(',') });
-        const response = await fetch('/api/sunbird/reports/live-evidence?' + params.toString(), {
-            cache: 'no-store',
-            headers: getSunbirdReportHeaders(),
-            signal: controller.signal
-        });
+        const response = await fetch('/api/sunbird/reports/live-evidence?' + params.toString(), { cache: 'no-store', headers: getSunbirdReportHeaders(), signal: controller.signal });
         const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.success) throw new Error(data.message || 'Evidence request failed (' + response.status + ')');
-        return normalizeSunbirdLiveEvidenceRows(data.evidence);
+        return normalizeSunbirdLiveEvidenceRows(data.evidence, payload.finding);
     } finally {
         clearTimeout(timeout);
     }
 }
-
-function normalizeSunbirdLiveEvidenceRows(items = []) {
-    return (Array.isArray(items) ? items : []).map(item => {
-        const row = item && typeof item === 'object' ? item : { value: item };
-        const title = row.entityName || row.displayName || row.entityDisplayName || row.userPrincipalName || row.entityEmail || row.mail
-            || row.entityDeviceName || row.deviceName || row.controlName || row.applicationName || row.name || row.title || row.value || 'Evidence item';
-        const fields = [
-            row.description || row.detail || row.evidenceSummary || row.validationReason || row.insight,
-            row.entityEmail || row.mail || row.userPrincipalName,
-            row.assignedUser ? `User: ${row.assignedUser}` : '',
-            row.complianceState ? `Compliance: ${row.complianceState}` : '',
-            row.status ? `Status: ${row.status}` : '',
-            row.location ? `Location: ${row.location}` : '',
-            row.device ? `Device: ${row.device}` : '',
-            row.lastSignIn?.location ? `Sign-in location: ${row.lastSignIn.location}` : '',
-            row.lastSignIn?.device ? `Sign-in device: ${row.lastSignIn.device}` : '',
-            row.lastSignIn?.daysSince == null || row.lastSignIn?.daysSince === '' ? '' : `${row.lastSignIn.daysSince} days since sign-in`,
-            row.evidenceSource ? `Source: ${row.evidenceSource}` : ''
-        ].filter(Boolean);
-        return {
-            title: String(title),
-            detail: fields.join(' | ') || 'Current enterprise evidence record.',
-            severity: String(row.severity || row.riskLevel || row.priority || ''),
-            source: String(row.sourceMetric || row.evidenceSource || '')
-        };
-    }).filter(row => !isSunbirdTechnicalNoiseText(`${row.title} ${row.detail}`));
-}
-
 function renderSunbirdDomainEvidenceRows(rows = []) {
     return rows.map(row => `
         <article class="sunbird-report-evidence-row">
             <div class="sunbird-report-evidence-main">
                 <strong>${escapeIdentityText(row.title)}</strong>
                 <span>${escapeIdentityText(row.detail)}</span>
+                ${row.facts?.length ? `<ul class="sunbird-report-evidence-facts">${row.facts.map(fact => `<li>${escapeIdentityText(fact)}</li>`).join('')}</ul>` : ''}
             </div>
             <div class="sunbird-report-evidence-meta">
                 ${row.severity ? `<em>${escapeIdentityText(row.severity)}</em>` : ''}
@@ -14133,7 +14185,7 @@ function openSunbirdDomainFindingEvidence(evidenceKey) {
     }
     closeSunbirdDomainFindingEvidence();
     const explicitEvidenceIds = getSunbirdDomainFindingEvidenceIds(payload.finding);
-    const rows = explicitEvidenceIds.length ? [] : getSunbirdDomainFindingEvidenceRows(payload.finding);
+    let rows = getSunbirdDomainFindingEvidenceRows(payload.finding);
     const tone = getSunbirdReportSeverityTone(payload.finding?.severity);
     const modal = document.createElement('div');
     modal.id = 'sunbird-report-domain-evidence-modal';
@@ -14151,10 +14203,10 @@ function openSunbirdDomainFindingEvidence(evidenceKey) {
             <div class="sunbird-id-evidence-summary sunbird-report-evidence-summary" id="sunbird-report-domain-evidence-summary">
                 <span id="sunbird-report-domain-evidence-count">${rows.length} explicitly linked evidence row${rows.length === 1 ? '' : 's'}</span>
                 <span>${escapeIdentityText(payload.finding?.severity || 'Observed')}</span>
-                <span>${escapeIdentityText(payload.finding?.sourceMetric || 'Latest report output')}</span>
+                <span>${escapeIdentityText(humanizeSunbirdEvidenceLabel(payload.finding?.sourceMetric) || 'Latest report output')}</span>
             </div>
             <div class="sunbird-id-evidence-list sunbird-report-evidence-list" id="sunbird-report-domain-evidence-list">
-                ${explicitEvidenceIds.length ? '<div class="sunbird-report-evidence-empty">Loading exact source evidence for this finding...</div>' : (rows.length ? renderSunbirdDomainEvidenceRows(rows) : '<div class="sunbird-report-evidence-empty">No specific source evidence was attached to this finding.</div>')}
+                ${renderSunbirdDomainEvidenceRows(rows)}
             </div>
             <div class="sunbird-id-modal-actions">
                 <button type="button" class="sunbird-id-evidence-btn" onclick="window.closeSunbirdDomainFindingEvidence()">Close</button>
@@ -14167,22 +14219,24 @@ function openSunbirdDomainFindingEvidence(evidenceKey) {
     // totalUsers is an aggregate, not a relationship to every record in a domain.
     if (explicitEvidenceIds.length) {
         const count = modal.querySelector('#sunbird-report-domain-evidence-count');
-        if (count) count.textContent = 'Loading explicitly linked evidence';
+        if (count) count.textContent = `${rows.length} embedded evidence row${rows.length === 1 ? '' : 's'} · checking for current details`;
         loadSunbirdDomainFindingLiveEvidence(payload).then(liveRows => {
             if (!document.body.contains(modal)) return;
             const currentCount = modal.querySelector('#sunbird-report-domain-evidence-count');
             const list = modal.querySelector('#sunbird-report-domain-evidence-list');
-            if (currentCount) currentCount.textContent = String(liveRows.length) + ' explicitly linked evidence row' + (liveRows.length === 1 ? '' : 's');
-            if (list) list.innerHTML = liveRows.length
-                ? renderSunbirdDomainEvidenceRows(liveRows)
-                : '<div class="sunbird-report-evidence-empty">No specific source evidence was attached to this finding.</div>';
+            const state = applySunbirdDomainEvidenceState(rows, liveRows);
+            rows = state.rows;
+            if (currentCount) currentCount.textContent = String(state.count) + ' linked evidence row' + (state.count === 1 ? '' : 's');
+            if (list) list.innerHTML = renderSunbirdDomainEvidenceRows(rows);
+            const cardCount = document.getElementById(`sunbird-report-domain-evidence-count-${key}`);
+            if (cardCount) cardCount.textContent = `Open evidence (${state.count})`;
         }).catch(error => {
             console.error('[Reports] Finding evidence load failed:', error);
             if (!document.body.contains(modal)) return;
+            const state = applySunbirdDomainEvidenceState(rows, [], true);
+            rows = state.rows;
             const currentCount = modal.querySelector('#sunbird-report-domain-evidence-count');
-            const list = modal.querySelector('#sunbird-report-domain-evidence-list');
-            if (currentCount) currentCount.textContent = 'Evidence could not be loaded';
-            if (list) list.innerHTML = '<div class="sunbird-report-evidence-empty">The specifically linked source evidence could not be loaded. Please try this finding again.</div>';
+            if (currentCount) currentCount.textContent = String(state.count) + ' saved evidence row' + (state.count === 1 ? '' : 's') + ' · current details unavailable';
         });
     }
 }
@@ -14234,7 +14288,7 @@ function renderSunbirdReportDomainBreakdown(data = {}) {
                         <article class="sunbird-report-domain-detail-card">
                             <header>
                                 <h3>${escapeIdentityText(domainName)}</h3>
-                                <small>${escapeIdentityText(domain.analysedAt ? `Last analysed ${formatSunbirdReportDate(domain.analysedAt, true)}${domain.runId ? ` · Run ${Number(domain.runId)}` : ''}` : 'Analysis time not returned')}</small>
+                                <small>${escapeIdentityText(domain.analysedAt ? `Last analysed ${formatSunbirdReportDate(domain.analysedAt, true)}` : 'Analysis time not returned')}</small>
                                 <div class="sunbird-report-domain-score-pills">
                                     <span class="tone-${getSunbirdReportScoreTone(domain.healthScore)}">Health ${domain.healthScore == null ? 'n/a' : `${Number(domain.healthScore)}%`}</span>
                                     <span class="tone-${getSunbirdReportScoreTone(100 - Number(domain.riskScore || 0))}">Risk ${domain.riskScore == null ? 'n/a' : `${Number(domain.riskScore)}%`}</span>
@@ -14258,7 +14312,7 @@ function renderSunbirdReportDomainBreakdown(data = {}) {
                                                 ${finding.impact ? `<p>${escapeIdentityText(finding.impact)}</p>` : ''}
                                                 ${finding.whyItMatters ? `<small>${escapeIdentityText(finding.whyItMatters)}</small>` : ''}
                                                 ${recommendation ? `<small class="sunbird-report-domain-recommend">Next: ${escapeIdentityText(recommendation)}</small>` : ''}
-                                                <span class="sunbird-report-domain-evidence-cta">Open evidence (${Number(finding.evidenceCount || finding.evidence?.length || 0)})</span>
+                                                <span class="sunbird-report-domain-evidence-cta" id="sunbird-report-domain-evidence-count-${evidenceKey}">Open evidence (${getSunbirdDomainFindingEvidenceCount(finding)})</span>
                                             </button>
                                         `;
                                     }).join('')}

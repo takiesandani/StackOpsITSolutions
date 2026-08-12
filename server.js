@@ -3643,8 +3643,15 @@ function buildSunbirdDomainBreakdownFromPayload(payload = {}) {
         const n = Number(value);
         return Number.isFinite(n) ? clampReportScore(n) : null;
     };
+    function unwrapEvidenceRecord(evidence) {
+        if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) return { value: evidence };
+        return ['evidenceRow', 'affectedEntity', 'data', 'entity', 'record', 'ProcessedEvidenceJson'].reduce((record, key) => {
+            const nested = record?.[key];
+            return nested && typeof nested === 'object' && !Array.isArray(nested) ? { ...record, ...nested } : record;
+        }, { ...evidence });
+    }
     const evidenceRecordKeys = evidence => {
-        const source = evidence && typeof evidence === 'object' ? evidence : {};
+        const source = unwrapEvidenceRecord(evidence);
         return [...new Set([
             source.entityId, source.id, source.recordId, source.sourceAlertId, source.alertId,
             source.SourceID, source.controlId, source.applicationId, source.deviceId, source.userId,
@@ -3654,7 +3661,7 @@ function buildSunbirdDomainBreakdownFromPayload(payload = {}) {
     };
     const evidenceRecordIdentity = evidence => evidenceRecordKeys(evidence)[0] || null;
     const evidenceStrongRecordKeys = evidence => {
-        const source = evidence && typeof evidence === 'object' ? evidence : {};
+        const source = unwrapEvidenceRecord(evidence);
         const entityId = asText(source.entityId);
         return [...new Set([
             source.id, source.recordId, source.sourceAlertId, source.alertId, source.SourceID,
@@ -3679,46 +3686,62 @@ function buildSunbirdDomainBreakdownFromPayload(payload = {}) {
         return merged;
     };
     const isAggregateEvidenceRecord = evidence => {
-        const source = evidence && typeof evidence === 'object' ? evidence : {};
+        const source = unwrapEvidenceRecord(evidence);
         const type = asText(source.entityType || source.evidenceType || source.kind).toLowerCase();
         const id = asText(source.entityId || source.id || source.recordId).toLowerCase();
         return /(?:summary|score|coverage)/.test(type) || /(?:summary|score)$/.test(id);
     };
-    const normalizeEvidence = evidence => {
-        const source = evidence && typeof evidence === 'object' ? evidence : { value: evidence };
-        const name = asText(
-            source.entityName || source.displayName || source.entityDisplayName || source.userPrincipalName || source.entityEmail || source.mail || source.deviceName || source.entityDeviceName || source.applicationName || source.controlName || source.alertName || source.label || source.title || source.name || source.entityId || source.id || source.value,
-            'Evidence item'
-        );
+    const isOpaqueEvidenceValue = value => {
+        const text = asText(value);
+        return !text || /^\d+$/.test(text) || /^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(text)
+            || /(?:internalSourcePath|sourcePath|snapshotId|runId)/i.test(text);
+    };
+    const humanizeEvidenceLabel = value => asText(value).replace(/[_-]+/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/\b\w/g, char => char.toUpperCase());
+    const normalizeEvidence = (evidence, finding = {}) => {
+        const source = unwrapEvidenceRecord(evidence);
+        const name = [source.displayName, source.entityName, source.entityDisplayName, source.deviceName, source.entityDeviceName,
+            source.title, source.alertName, source.controlName, source.applicationName, source.profileName, source.activity, source.name,
+            source.userPrincipalName, source.entityEmail, source.mail, source.userEmail, source.user, source.actor, source.resource,
+            source.recipient, source.sender].map(asText).find(value => value && !isOpaqueEvidenceValue(value)) || '';
         const signIn = source.lastSignIn && typeof source.lastSignIn === 'object'
-            ? [
-                source.lastSignIn.location ? `Sign-in location: ${source.lastSignIn.location}` : '',
-                source.lastSignIn.device ? `Sign-in device: ${source.lastSignIn.device}` : '',
+            ? [source.lastSignIn.location ? `Sign-in location: ${source.lastSignIn.location}` : '', source.lastSignIn.device ? `Sign-in device: ${source.lastSignIn.device}` : '',
                 source.lastSignIn.daysSince == null || source.lastSignIn.daysSince === '' ? '' : `${source.lastSignIn.daysSince} days since sign-in`,
-                source.lastSignIn.status ? `Sign-in status: ${source.lastSignIn.status}` : ''
-            ].filter(Boolean).join(' | ')
-            : asText(source.lastSignIn);
-        const detail = asText([
-            source.entityEmail || source.mail || source.userPrincipalName || source.email,
-            source.entityType ? `Type: ${source.entityType}` : '',
-            source.applicationName && source.applicationName !== name ? `Application: ${source.applicationName}` : '',
-            source.publisherName ? `Publisher: ${source.publisherName}` : '',
-            source.deviceName && source.deviceName !== name ? `Device: ${source.deviceName}` : '',
-            source.operatingSystem ? `OS: ${source.operatingSystem}` : '',
-            source.policyName ? `Control: ${source.policyName}` : '',
-            source.alertName && source.alertName !== name ? `Alert: ${source.alertName}` : '',
-            source.description || source.detail || source.evidenceSummary || source.reasoning || source.impact,
-            source.location ? `Location: ${source.location}` : '',
-            signIn,
-            source.status || source.state || source.complianceState ? `Status: ${source.status || source.state || source.complianceState}` : ''
-        ].filter(Boolean).join(' | '));
+                source.lastSignIn.status ? `Sign-in status: ${source.lastSignIn.status}` : ''].filter(Boolean).join(' | ')
+            : '';
+        const details = [];
+        const add = (label, value) => {
+            const text = Array.isArray(value) ? value.map(asText).filter(Boolean).join(', ') : asText(value);
+            if (!text || text.toLowerCase() === name.toLowerCase()) return;
+            const entry = label ? `${label}: ${text}` : text;
+            if (!details.some(current => current.toLowerCase() === entry.toLowerCase())) details.push(entry);
+        };
+        add('User', source.entityEmail || source.mail || source.userPrincipalName || source.userEmail || source.user);
+        add('Sender', source.sender); add('Recipient', source.recipient);
+        add('Device', source.deviceName && source.deviceName !== name ? source.deviceName : source.entityDeviceName);
+        add('Operating system', [source.operatingSystem, source.osVersion].filter(Boolean).join(' '));
+        add('Compliance', source.complianceState || source.complianceStatus); add('Encryption', source.encryptionStatus); add('Management', source.managementAgent);
+        add('Publisher', source.publisherName); add('Application type', source.type); add('Roles', source.roles); add('Policies', source.policies);
+        add('Action', source.action || source.managementAction || source.remediationAction); add('Area', source.area); add('Owner', source.ownerStatus);
+        add('Control', source.controlName || source.policyName); add('Category', source.category); add('Status', source.status || source.state);
+        add('Severity', source.severity || source.riskLevel); add('Location', source.location); add('IP address', source.ipAddress); add('Failure reason', source.failureReason);
+        add('Files', source.files); add('Storage', source.storage); add('Role count', source.roleCount); add('User count', source.userCount); add('Scope count', source.scopeCount);
+        if (source.mfaEnabled != null) add('MFA', source.mfaEnabled ? 'Enabled' : 'Not enabled');
+        if (source.hasAdminRole != null) add('Administrator role', source.hasAdminRole ? 'Present' : 'Not present');
+        if (source.isExternal != null) add('External application', source.isExternal ? 'Yes' : 'No');
+        if (source.enabled != null) add('Enabled', source.enabled ? 'Yes' : 'No');
+        add('', source.description || source.detail || source.validationReason || source.governanceIssue || source.auditImpact || source.evidenceSummary);
+        add('Last sign-in', typeof source.lastSignIn === 'string' ? source.lastSignIn : ''); if (signIn) add('', signIn);
+        add('Last sync', source.lastSyncDateTime); add('Event time', source.eventTime); add('Created', source.createdDateTime); add('Last seen', source.lastSeen); add('Last activity', source.lastActivity);
+        const fallbackTitle = asText(finding.title, 'Finding validation summary');
+        const fallbackDetail = [asText(finding.evidenceSummary), finding.sourceMetric ? `Supported by ${humanizeEvidenceLabel(finding.sourceMetric)} in the latest enterprise output.` : '',
+            finding.severity || finding.status ? `Finding status: ${asText(finding.severity || finding.status)}` : ''].filter(Boolean).join(' | ') || `The latest enterprise output supports ${fallbackTitle}.`;
         return {
             id: shortText(evidenceRecordIdentity(source) || '', 260),
-            name: shortText(name, 220),
-            detail: shortText(detail || asText(source.evidenceSource || source.source || source.sourceMetric || source.status || source.state, ''), 360),
+            name: shortText(name || `${fallbackTitle} — validation summary`, 220),
+            detail: shortText(details.join(' | ') || fallbackDetail, 520),
             severity: shortText(asText(source.severity || source.riskLevel || source.priority || ''), 80),
             status: shortText(asText(source.status || source.state || source.complianceState || ''), 120),
-            source: shortText(asText(source.sourceMetric || source.evidenceSource || source.source || source.category || ''), 160)
+            source: shortText(humanizeEvidenceLabel(source.sourceMetric || source.evidenceSource || source.category || finding.sourceMetric || ''), 160)
         };
     };
     // This view model is already field-bounded below. Do not pass it through the generic
@@ -3797,7 +3820,8 @@ function buildSunbirdDomainBreakdownFromPayload(payload = {}) {
                 // applications, alerts, or governance items whenever they are present.
                 const specificRecords = mergedRecords.filter(row => !isAggregateEvidenceRecord(row));
                 const displayRecords = specificRecords.length ? specificRecords : mergedRecords;
-                const uniqueEvidence = displayRecords.map(normalizeEvidence).filter(row => row.name && row.name !== 'Evidence item');
+                const uniqueEvidence = displayRecords.map(row => normalizeEvidence(row, item));
+                if (!uniqueEvidence.length) uniqueEvidence.push(normalizeEvidence({}, item));
                 return {
                     findingId: `${String(domain?.domainKey || domain?.domainName || 'domain').toLowerCase()}-${index + 1}`,
                     title: shortText(title, 260),
@@ -6567,13 +6591,19 @@ app.get('/api/sunbird/reports/live-evidence', authenticateToken, async (req, res
             .filter(([tableName]) => /evidence|entities|affected|control/i.test(tableName))
             .flatMap(([, table]) => Array.isArray(table) ? table : [])
             .filter(row => String(row?.domainKey || row?.DomainKey || '').toLowerCase() === String(domain.domainKey || '').toLowerCase());
-        const rowIds = row => [
-            row?.entityId, row?.id, row?.recordId, row?.sourceAlertId, row?.alertId,
-            row?.SourceID, row?.userId, row?.deviceId, row?.controlId, row?.applicationId,
-            row?.entityEmail, row?.mail, row?.userPrincipalName, row?.entityName,
-            row?.displayName, row?.deviceName, row?.controlName, row?.applicationName,
-            row?.alertName, row?.name, row?.title, row?.label
-        ].map(value => String(value || '').trim().toLowerCase()).filter(Boolean);
+        const rowIds = row => {
+            const source = ['evidenceRow', 'affectedEntity', 'data', 'entity', 'record', 'ProcessedEvidenceJson'].reduce((record, key) => {
+                const nested = record?.[key];
+                return nested && typeof nested === 'object' && !Array.isArray(nested) ? { ...record, ...nested } : record;
+            }, { ...(row || {}) });
+            return [
+                source.entityId, source.id, source.recordId, source.sourceAlertId, source.alertId,
+                source.SourceID, source.userId, source.deviceId, source.controlId, source.applicationId,
+                source.entityEmail, source.mail, source.userPrincipalName, source.entityName,
+                source.displayName, source.deviceName, source.controlName, source.applicationName,
+                source.alertName, source.name, source.title, source.label
+            ].map(value => String(value || '').trim().toLowerCase()).filter(Boolean);
+        };
         const seen = new Set();
         const evidence = [...categoryRows, ...tableRows].filter(row => {
             const matchedId = rowIds(row).find(id => evidenceIds.includes(id));
