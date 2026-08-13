@@ -3706,6 +3706,10 @@ function createScheduledPipelineFixture({
                 snapshotId: run.snapshotId
             };
         },
+        onCompletedEnterpriseRun: async ({ run }) => {
+            events.push('manual_report_persisted');
+            return { status: 'completed', reportId: 3002, runId: run.runId, snapshotId: run.snapshotId };
+        },
         logger: { info() {}, warn() {}, error() {} },
         wait: async () => {},
         config: { domainDelayMs: 0, maxRetries: 0 }
@@ -3729,6 +3733,17 @@ test('an active enterprise run is returned immediately without creating a second
     assert.equal(result.snapshotId, null);
     assert.equal(fixture.events.includes('snapshot_created'), false);
     assert.equal(fixture.writes.some(call => call.sql.includes('INSERT INTO StackCTRLEnterpriseReportRuns')), false);
+});
+
+test('a completed manual enterprise run automatically publishes its report record', async () => {
+    const fixture = createScheduledPipelineFixture();
+    const result = await fixture.service.runEnterpriseReport({
+        companyId: 1, snapshotId: 1501, domainKeys: ['identity'], includeSynthesis: false,
+        refreshSnapshot: false, publishReport: true
+    });
+    assert.equal(result.status, 'completed');
+    assert.equal(result.reportAutomation.reportId, 3002);
+    assert.ok(fixture.events.includes('manual_report_persisted'));
 });
 
 test('scheduled enterprise pipeline creates and verifies a fresh snapshot before analysis and report persistence', async () => {

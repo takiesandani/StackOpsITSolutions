@@ -4348,11 +4348,13 @@ function createEnterpriseIntelligenceService({
     schedulerService,
     intelligenceService = null,
     onScheduledRunCompleted = null,
+    onCompletedEnterpriseRun = null,
     logger = console,
     wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
     config = {}
 } = {}) {
     if (!pool || !azureOpenAI || !schedulerService) throw new Error('Enterprise Intelligence requires database, Azure, and historical scheduler services');
+    const completedRunPublisher = onCompletedEnterpriseRun || onScheduledRunCompleted;
 
     const configuredDomainDelayMs = Number(config.domainDelayMs ?? process.env.ENTERPRISE_AI_DOMAIN_DELAY_MS);
     const configuredMaxRetries = Number(config.maxRetries ?? process.env.ENTERPRISE_AI_MAX_RETRIES);
@@ -8298,7 +8300,7 @@ Return exactly these top-level fields:
         return { results, totals, rateLimited: Boolean(rateLimit), rateLimit, terminalError };
     }
 
-    async function runEnterpriseReport({ companyId, snapshotId = null, periodType = 'daily', referenceDate = new Date(), domainKeys = null, includeSynthesis = null, deduplicationKey = null, refreshSnapshot = null, user = null } = {}) {
+    async function runEnterpriseReport({ companyId, snapshotId = null, periodType = 'daily', referenceDate = new Date(), domainKeys = null, includeSynthesis = null, deduplicationKey = null, refreshSnapshot = null, user = null, publishReport = false } = {}) {
         const numericCompanyId = Number(companyId);
         if (!Number.isInteger(numericCompanyId) || numericCompanyId <= 0) throw new Error('A valid companyId is required');
         assertRateLimitCircuitClosed();
@@ -8604,14 +8606,34 @@ Return exactly these top-level fields:
                     status: finalStatus
                 });
                 logger.info('[StackCTRL Enterprise Pipeline]', {
-                    event: 'analysis_completed',
-                    enterpriseId: numericCompanyId,
-                    pipelineExecutionId: pipelineId,
-                    analysisExecutionId: run.id,
-                    snapshotId: Number(snapshot.ID),
-                    status: finalStatus,
-                    timestamp: new Date().toISOString()
+                    event: 'analysis_completed', enterpriseId: numericCompanyId,
+                    pipelineExecutionId: pipelineId, analysisExecutionId: run.id,
+                    snapshotId: Number(snapshot.ID), status: finalStatus, timestamp: new Date().toISOString()
                 });
+                if (publishReport && typeof completedRunPublisher === 'function') {
+                    try {
+                        logger.info('[StackCTRL Enterprise Pipeline]', {
+                            event: 'analysis_result_persistence_started', enterpriseId: numericCompanyId,
+                            analysisExecutionId: run.id, snapshotId: Number(snapshot.ID), pipelineExecutionId: pipelineId,
+                            timestamp: new Date().toISOString()
+                        });
+                        response.reportAutomation = await completedRunPublisher({
+                            companyId: numericCompanyId,
+                            run: { ...response, status: finalStatus },
+                            now: referenceDate,
+                            pipelineExecutionId: pipelineId,
+                            cadence: 'manual'
+                        });
+                        if (!response.reportAutomation?.reportId) throw new Error('Completed enterprise run did not publish an automated report.');
+                    } catch (reportError) {
+                        response.reportAutomation = { status: 'failed', reportId: null, error: String(reportError.message || reportError) };
+                        logger.error('[StackCTRL Enterprise Pipeline]', {
+                            event: 'analysis_result_persistence_failed', enterpriseId: numericCompanyId,
+                            analysisExecutionId: run.id, snapshotId: Number(snapshot.ID), pipelineExecutionId: pipelineId,
+                            error: response.reportAutomation.error, timestamp: new Date().toISOString()
+                        });
+                    }
+                }
             }
             return response;
         } catch (error) {
@@ -8649,6 +8671,27 @@ Return exactly these top-level fields:
             error.enterprisePipelineFailure = failure;
             throw error;
         }
+    }
+
+    async function publishCompletedRun({ companyId, runId, now = new Date(), pipelineExecutionId = null } = {}) {
+        if (typeof completedRunPublisher !== 'function') throw new Error('Completed enterprise report publication is not configured.');
+        const numericCompanyId = Number(companyId);
+        const numericRunId = Number(runId);
+        if (!Number.isInteger(numericCompanyId) || numericCompanyId <= 0 || !Number.isInteger(numericRunId) || numericRunId <= 0) throw new Error('A valid companyId and runId are required.');
+        const [rows] = await pool.query(
+            `SELECT ID, CompanyID, SnapshotID, Status, PeriodType, StartedAt, CompletedAt
+             FROM StackCTRLEnterpriseReportRuns WHERE ID = ? AND CompanyID = ? LIMIT 1`,
+            [numericRunId, numericCompanyId]
+        );
+        const row = rows[0];
+        if (!row) throw new Error('Enterprise run was not found for this company.');
+        const status = String(row.Status || '').toLowerCase();
+        if (!['completed', 'completed_with_warnings'].includes(status) || !row.SnapshotID) throw new Error('Only a completed enterprise run with a persisted snapshot can be published.');
+        return completedRunPublisher({
+            companyId: numericCompanyId,
+            run: { runId: Number(row.ID), snapshotId: Number(row.SnapshotID), status, periodType: row.PeriodType || 'daily' },
+            now, pipelineExecutionId, cadence: 'reconciliation'
+        });
     }
 
     async function runEnterpriseSynthesis({ companyId, runId }) {
@@ -10060,6 +10103,7 @@ Return exactly these top-level fields:
         buildDomainBatchPackage,
         runEnterpriseReport,
         runEnterpriseSynthesis,
+        publishCompletedRun,
         runRollupReport,
         runScheduledTick,
         runDailyAutomationTick,

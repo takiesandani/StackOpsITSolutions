@@ -286,6 +286,21 @@ function createAdminIntelligenceRouter({ authenticateToken, adminIntelligenceSer
         }
     });
 
+
+    router.post('/tenant/:companyId/enterprise/:runId/publish-report', async (req, res) => {
+        try {
+            if (!requireEnterprise(res)) return;
+            const companyId = companyIdFrom(req, res);
+            if (!companyId) return;
+            const runId = Number(req.params.runId);
+            if (!Number.isInteger(runId) || runId <= 0) return res.status(400).json({ success: false, message: 'A valid completed enterprise run ID is required' });
+            const result = await enterpriseIntelligenceService.publishCompletedRun({ companyId, runId });
+            res.status(201).json({ success: true, ...result });
+        } catch (error) {
+            sendError(res, error, 'Completed enterprise report publication failed');
+        }
+    });
+
     router.post('/tenant/:companyId/enterprise/synthesis', async (req, res) => {
         try {
             if (!requireEnterprise(res)) return;
