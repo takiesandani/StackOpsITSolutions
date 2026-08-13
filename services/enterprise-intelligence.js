@@ -6722,13 +6722,34 @@ Return exactly these top-level fields:
             );
         } catch (error) {
             if (error?.code !== 'ER_DUP_ENTRY' || !deduplicationKey) throw error;
-            const [rows] = await pool.query(`SELECT ID, Status FROM StackCTRLEnterpriseReportRuns WHERE DeduplicationKey = ? LIMIT 1`, [deduplicationKey]);
-            return { id: Number(rows[0]?.ID), ...window, mode, duplicate: true, status: rows[0]?.Status || 'duplicate' };
+            const [rows] = await pool.query(
+                `SELECT ID, SnapshotID, Status
+                 FROM StackCTRLEnterpriseReportRuns
+                 WHERE DeduplicationKey = ? LIMIT 1`,
+                [deduplicationKey]
+            );
+            const existing = rows[0] || {};
+            const existingStatus = String(existing.Status || 'duplicate').toLowerCase();
+            return {
+                id: Number(existing.ID),
+                snapshotId: existing.SnapshotID ? Number(existing.SnapshotID) : null,
+                ...window,
+                mode,
+                duplicate: true,
+                existingStatus
+            };
         }
         await pool.query(`UPDATE StackCTRLEnterpriseReportRuns SET Status = 'running' WHERE ID = ?`, [result.insertId]);
         return { id: Number(result.insertId), ...window, mode };
     }
 
+    async function recordPipelinePhase(runId, phase, metadata = {}) {
+        if (!runId) return;
+        await pool.query(
+            `UPDATE StackCTRLEnterpriseReportRuns SET ProgressJson = ? WHERE ID = ?`,
+            [JSON.stringify({ phase, ...metadata, timestamp: new Date().toISOString() }), Number(runId)]
+        );
+    }
     function buildRunProgress({
         run,
         domainKeys = [],
@@ -7750,7 +7771,7 @@ Return exactly these top-level fields:
                 });
             }
             
-            return {
+            const response = {
                 status: finalStatus,
                 domain,
                 domainIntelligenceId,
@@ -7775,6 +7796,7 @@ Return exactly these top-level fields:
                 rateLimited: batchResults.rateLimited,
                 recommendedRetryAfterMs: batchResults.recommendedRetryAfterMs
             };
+            return response;
         } catch (error) {
             logger.error(`[StackCTRL Enterprise] ${domain.name} analysis failed:`, error.message);
             const failureStatus = error.enterpriseStatus || classifyFailureStatus(error);
@@ -8246,16 +8268,100 @@ Return exactly these top-level fields:
         const isEnterpriseDeepRun = selectedKeys.length > 1;
         const shouldRefreshSnapshot = refreshSnapshot === true || (refreshSnapshot !== false && isEnterpriseDeepRun);
         const shouldIncludeSynthesis = includeSynthesis === true || (includeSynthesis !== false && isEnterpriseDeepRun);
+        const pipelineId = deduplicationKey || null;
+        const mode = isSingleDomainRun ? DOMAIN_BY_KEY[selectedKeys[0]].mode : 'enterprise_deep_reporting';
+        const run = await createRun({
+            companyId: numericCompanyId,
+            snapshotId: null,
+            periodType,
+            referenceDate,
+            mode,
+            deduplicationKey
+        });
+        if (run.duplicate) {
+            logger.info('[StackCTRL Enterprise Pipeline]', {
+                event: 'duplicate_trigger_ignored',
+                enterpriseId: numericCompanyId,
+                pipelineExecutionId: pipelineId,
+                analysisExecutionId: run.id,
+                snapshotId: run.snapshotId,
+                status: run.existingStatus,
+                timestamp: new Date().toISOString()
+            });
+            return {
+                status: 'duplicate',
+                existingStatus: run.existingStatus,
+                runId: run.id,
+                snapshotId: run.snapshotId,
+                periodType: run.periodType,
+                pipelineExecutionId: pipelineId
+            };
+        }
+
         let resolvedSnapshotId = snapshotId;
         let snapshotRefresh = null;
-        if (shouldRefreshSnapshot) {
-            snapshotRefresh = await refreshEnterpriseSnapshot(numericCompanyId, user);
-            resolvedSnapshotId = snapshotRefresh?.snapshotId || resolvedSnapshotId;
-        }
-        const snapshot = await loadSnapshot(numericCompanyId, resolvedSnapshotId);
-        const run = await createRun({ companyId: numericCompanyId, snapshotId: snapshot.ID, periodType, referenceDate, mode: isSingleDomainRun ? DOMAIN_BY_KEY[selectedKeys[0]].mode : 'enterprise_deep_reporting', deduplicationKey });
-        if (run.duplicate) return { status: 'duplicate', runId: run.id, snapshotId: snapshot.ID, periodType: run.periodType };
+        let snapshot = null;
+        let failureStage = shouldRefreshSnapshot ? 'SNAPSHOT_CREATION_FAILED' : 'SNAPSHOT_VERIFICATION_FAILED';
         try {
+            logger.info('[StackCTRL Enterprise Pipeline]', {
+                event: 'pipeline_started',
+                enterpriseId: numericCompanyId,
+                pipelineExecutionId: pipelineId,
+                analysisExecutionId: run.id,
+                timestamp: new Date().toISOString()
+            });
+            if (shouldRefreshSnapshot) {
+                logger.info('[StackCTRL Enterprise Pipeline]', {
+                    event: 'snapshot_creation_started',
+                    enterpriseId: numericCompanyId,
+                    pipelineExecutionId: pipelineId,
+                    analysisExecutionId: run.id,
+                    timestamp: new Date().toISOString()
+                });
+                snapshotRefresh = await refreshEnterpriseSnapshot(numericCompanyId, user);
+                if (snapshotRefresh?.snapshotId) {
+                    resolvedSnapshotId = snapshotRefresh.snapshotId;
+                } else if (!resolvedSnapshotId) {
+                    throw new Error('Enterprise snapshot creation did not return a persisted snapshot ID');
+                } else {
+                    failureStage = 'SNAPSHOT_VERIFICATION_FAILED';
+                }
+            }
+            snapshot = await loadSnapshot(numericCompanyId, resolvedSnapshotId);
+            if (!snapshot?.ID || Number(snapshot.CompanyID) !== numericCompanyId) {
+                throw new Error('The persisted enterprise snapshot does not belong to the requested enterprise');
+            }
+            await pool.query(`UPDATE StackCTRLEnterpriseReportRuns SET SnapshotID = ? WHERE ID = ?`, [snapshot.ID, run.id]);
+            await recordPipelinePhase(run.id, snapshotRefresh?.snapshotId ? 'SNAPSHOT_CREATED' : 'SNAPSHOT_VERIFIED', {
+                enterpriseId: numericCompanyId,
+                snapshotId: Number(snapshot.ID),
+                analysisExecutionId: run.id,
+                pipelineExecutionId: pipelineId
+            });
+            logger.info('[StackCTRL Enterprise Pipeline]', {
+                event: snapshotRefresh?.snapshotId ? 'snapshot_created' : 'snapshot_verified',
+                enterpriseId: numericCompanyId,
+                pipelineExecutionId: pipelineId,
+                analysisExecutionId: run.id,
+                snapshotId: Number(snapshot.ID),
+                timestamp: new Date().toISOString()
+            });
+
+            failureStage = 'ENTERPRISE_DEEP_ANALYSIS_FAILED';
+            await recordPipelinePhase(run.id, 'ANALYSIS_STARTED', {
+                enterpriseId: numericCompanyId,
+                snapshotId: Number(snapshot.ID),
+                analysisExecutionId: run.id,
+                pipelineExecutionId: pipelineId
+            });
+            logger.info('[StackCTRL Enterprise Pipeline]', {
+                event: 'analysis_started',
+                enterpriseId: numericCompanyId,
+                pipelineExecutionId: pipelineId,
+                analysisExecutionId: run.id,
+                snapshotId: Number(snapshot.ID),
+                timestamp: new Date().toISOString()
+            });
             const domains = await processDomains({ companyId: numericCompanyId, snapshot, run, domainKeys: selectedKeys, disabledDomainKeys: disabledDomains.map(domain => domain.domainKey), isSingleDomainRun });
             const runStatusBeforeSynthesis = rollupRunStatus(domains.results);
             const successfulDomains = domains.results.filter(result => isSuccessfulDomainStatus(result.status));
@@ -8321,6 +8427,24 @@ Return exactly these top-level fields:
                 }), domains.totals);
             }
             const finalStatus = synthesis?.status || runStatusBeforeSynthesis;
+            const pipelineSucceeded = ['completed', 'completed_with_warnings'].includes(String(finalStatus || '').toLowerCase());
+            const pipelineFailure = pipelineSucceeded ? null : {
+                phase: 'PIPELINE_FAILED',
+                failureStage: 'ENTERPRISE_DEEP_ANALYSIS_FAILED',
+                enterpriseId: numericCompanyId,
+                snapshotId: Number(snapshot.ID),
+                analysisExecutionId: run.id,
+                pipelineExecutionId: pipelineId,
+                timestamp: new Date().toISOString(),
+                error: domains.terminalError?.errorMessage || `Enterprise Deep Analysis ended with status ${finalStatus}`
+            };
+            if (pipelineFailure && pipelineId) {
+                await pool.query(
+                    `UPDATE StackCTRLEnterpriseReportRuns SET ErrorMessage = ?, ProgressJson = ? WHERE ID = ?`,
+                    [pipelineFailure.error.slice(0, 5000), JSON.stringify(pipelineFailure), run.id]
+                );
+                logger.error('[StackCTRL Enterprise Pipeline]', { event: 'pipeline_failed', ...pipelineFailure });
+            }
             const domainRunSummary = buildDomainRunSummary(
                 domains.results.map(result => ({
                     domainKey: result.domain.key,
@@ -8329,7 +8453,7 @@ Return exactly these top-level fields:
                 })),
                 selectedKeys
             );
-            return {
+            const response = {
                 status: finalStatus,
                 runId: run.id,
                 snapshotId: snapshot.ID,
@@ -8366,11 +8490,49 @@ Return exactly these top-level fields:
                 totals: domains.totals,
                 rateLimited: domains.rateLimited,
                 rateLimit: domains.rateLimit,
-                terminalError: domains.terminalError
+                terminalError: domains.terminalError,
+                pipelineExecutionId: pipelineId,
+                pipelineFailure
             };
+            if (pipelineSucceeded) {
+                await recordPipelinePhase(run.id, 'ANALYSIS_COMPLETED', {
+                    enterpriseId: numericCompanyId,
+                    snapshotId: Number(snapshot.ID),
+                    analysisExecutionId: run.id,
+                    pipelineExecutionId: pipelineId,
+                    status: finalStatus
+                });
+                logger.info('[StackCTRL Enterprise Pipeline]', {
+                    event: 'analysis_completed',
+                    enterpriseId: numericCompanyId,
+                    pipelineExecutionId: pipelineId,
+                    analysisExecutionId: run.id,
+                    snapshotId: Number(snapshot.ID),
+                    status: finalStatus,
+                    timestamp: new Date().toISOString()
+                });
+            }
+            return response;
         } catch (error) {
             captureRateLimit(error);
-            await pool.query(`UPDATE StackCTRLEnterpriseReportRuns SET Status = ?, CompletedAt = NOW(), ErrorMessage = ? WHERE ID = ?`, [error.enterpriseStatus || classifyFailureStatus(error), String(error.message).slice(0, 5000), run.id]);
+            const failure = {
+                phase: 'PIPELINE_FAILED',
+                failureStage,
+                enterpriseId: numericCompanyId,
+                snapshotId: snapshot?.ID || resolvedSnapshotId || null,
+                analysisExecutionId: run.id,
+                pipelineExecutionId: pipelineId,
+                timestamp: new Date().toISOString(),
+                error: String(error.message || error).slice(0, 5000)
+            };
+            await pool.query(
+                `UPDATE StackCTRLEnterpriseReportRuns
+                 SET Status = ?, CompletedAt = NOW(), ErrorMessage = ?, ProgressJson = ?
+                 WHERE ID = ?`,
+                [error.enterpriseStatus || classifyFailureStatus(error), failure.error, JSON.stringify(failure), run.id]
+            );
+            logger.error('[StackCTRL Enterprise Pipeline]', { event: 'pipeline_failed', ...failure });
+            error.enterprisePipelineFailure = failure;
             throw error;
         }
     }
@@ -8462,11 +8624,9 @@ Return exactly these top-level fields:
             return rows.map(row => Number(row.CompanyID)).filter(Boolean);
         }
     }
-    async function runScheduledTick({ now = new Date(), companyId = null, cadence = 'hourly', finalizeReport = true } = {}) {
+    async function runScheduledTick({ now = new Date(), companyId = null, cadence = 'hourly', finalizeReport = true, domainKeys = null, includeSynthesis = true } = {}) {
         const local = DateTime.fromJSDate(now instanceof Date ? now : new Date(now), { zone: 'utc' }).setZone('Africa/Johannesburg');
         const normalizedCadence = String(cadence || 'hourly').toLowerCase() === 'daily' ? 'daily' : 'hourly';
-        // The timer can tick more often than the intended cadence. This key makes
-        // retries and overlapping Cloud Run instances safe for every tenant.
         const scheduleKey = normalizedCadence === 'daily'
             ? local.toFormat('yyyyLLdd')
             : local.toFormat('yyyyLLddHH');
@@ -8474,43 +8634,168 @@ Return exactly these top-level fields:
         if (!companyIds.length) {
             companyIds = await loadScheduledEnterpriseCompanyIds();
         }
-        logger.info('[StackCTRL Enterprise] Scheduled tenant discovery', { cadence: normalizedCadence, scheduleKey, companyIds, count: companyIds.length });
+        logger.info('[StackCTRL Enterprise Pipeline]', {
+            event: 'scheduled_tenant_discovery',
+            cadence: normalizedCadence,
+            scheduleKey,
+            enterpriseIds: companyIds,
+            enterpriseCount: companyIds.length,
+            timestamp: new Date().toISOString()
+        });
+
         const results = [];
+        let hasFailure = false;
         for (const id of companyIds) {
+            const pipelineExecutionId = `${id}:enterprise:${normalizedCadence}:${scheduleKey}`;
             try {
                 const daily = await runEnterpriseReport({
                     companyId: id,
                     periodType: 'daily',
                     referenceDate: now,
-                    deduplicationKey: `${id}:enterprise:${normalizedCadence}:${scheduleKey}`,
+                    deduplicationKey: pipelineExecutionId,
                     refreshSnapshot: true,
-                    includeSynthesis: true
+                    domainKeys,
+                    includeSynthesis
                 });
-                const companyRuns = [{ periodType: 'daily', status: 'completed', ...daily }];
-                if (finalizeReport && daily.status !== 'duplicate' && typeof onScheduledRunCompleted === 'function') {
-                    try {
-                        companyRuns[0].reportAutomation = await onScheduledRunCompleted({ companyId: id, run: daily, now, localTime: local.toISO() });
-                    } catch (automationError) {
-                        logger.error(`[StackCTRL Enterprise] Hourly report finalization failed for company ${id}:`, automationError.message);
-                        companyRuns[0].reportAutomation = { status: 'failed', message: automationError.message };
-                    }
+                const companyRuns = [{ periodType: 'daily', ...daily }];
+                const effectiveStatus = daily.status === 'duplicate' ? daily.existingStatus : daily.status;
+                const analysisSucceeded = ['completed', 'completed_with_warnings'].includes(String(effectiveStatus || '').toLowerCase());
+
+                if (!analysisSucceeded) {
+                    hasFailure = true;
+                    logger.error('[StackCTRL Enterprise Pipeline]', {
+                        event: 'pipeline_failed',
+                        failureStage: daily.pipelineFailure?.failureStage || 'ENTERPRISE_DEEP_ANALYSIS_FAILED',
+                        enterpriseId: id,
+                        snapshotId: daily.snapshotId || null,
+                        analysisExecutionId: daily.runId || null,
+                        pipelineExecutionId,
+                        timestamp: new Date().toISOString(),
+                        error: daily.pipelineFailure?.error || `Enterprise Deep Analysis ended with status ${effectiveStatus || 'unknown'}`
+                    });
+                    results.push({ companyId: id, runs: companyRuns });
+                    continue;
                 }
+
+                if (finalizeReport && typeof onScheduledRunCompleted === 'function') {
+                    logger.info('[StackCTRL Enterprise Pipeline]', {
+                        event: 'analysis_result_persistence_started',
+                        enterpriseId: id,
+                        snapshotId: daily.snapshotId,
+                        analysisExecutionId: daily.runId,
+                        pipelineExecutionId,
+                        timestamp: new Date().toISOString()
+                    });
+                    companyRuns[0].reportAutomation = await onScheduledRunCompleted({
+                        companyId: id,
+                        run: { ...daily, status: effectiveStatus },
+                        now,
+                        localTime: local.toISO(),
+                        duplicateTrigger: daily.status === 'duplicate',
+                        cadence: normalizedCadence,
+                        pipelineExecutionId
+                    });
+                }
+
                 if (daily.rateLimited) {
                     results.push({ companyId: id, runs: companyRuns });
+                    hasFailure = true;
                     break;
                 }
-                if (local.weekday === 5) companyRuns.push({ periodType: 'weekly', status: 'completed', ...(await runRollupReport({ companyId: id, periodType: 'weekly', referenceDate: now, deduplicationKey: `${id}:enterprise:weekly:${local.weekNumber}:${local.weekYear}` })) });
-                if (isLastBusinessDay(local, 'month')) companyRuns.push({ periodType: 'monthly', status: 'completed', ...(await runRollupReport({ companyId: id, periodType: 'monthly', referenceDate: now, deduplicationKey: `${id}:enterprise:monthly:${local.toFormat('yyyyLL')}` })) });
-                if (isLastBusinessDay(local, 'year')) companyRuns.push({ periodType: 'yearly', status: 'completed', ...(await runRollupReport({ companyId: id, periodType: 'yearly', referenceDate: now, deduplicationKey: `${id}:enterprise:yearly:${local.year}` })) });
+
+                if (local.weekday === 5) {
+                    companyRuns.push({
+                        periodType: 'weekly',
+                        ...(await runRollupReport({
+                            companyId: id,
+                            periodType: 'weekly',
+                            referenceDate: now,
+                            deduplicationKey: `${id}:enterprise:weekly:${local.weekNumber}:${local.weekYear}`
+                        }))
+                    });
+                }
+                if (isLastBusinessDay(local, 'month')) {
+                    companyRuns.push({
+                        periodType: 'monthly',
+                        ...(await runRollupReport({
+                            companyId: id,
+                            periodType: 'monthly',
+                            referenceDate: now,
+                            deduplicationKey: `${id}:enterprise:monthly:${local.toFormat('yyyyLL')}`
+                        }))
+                    });
+                }
+                if (isLastBusinessDay(local, 'year')) {
+                    companyRuns.push({
+                        periodType: 'yearly',
+                        ...(await runRollupReport({
+                            companyId: id,
+                            periodType: 'yearly',
+                            referenceDate: now,
+                            deduplicationKey: `${id}:enterprise:yearly:${local.year}`
+                        }))
+                    });
+                }
+
+                await recordPipelinePhase(daily.runId, 'PIPELINE_COMPLETED', {
+                    enterpriseId: id,
+                    snapshotId: daily.snapshotId,
+                    analysisExecutionId: daily.runId,
+                    pipelineExecutionId,
+                    reportId: companyRuns[0].reportAutomation?.reportId || null,
+                    status: effectiveStatus
+                });
+                logger.info('[StackCTRL Enterprise Pipeline]', {
+                    event: 'pipeline_completed',
+                    enterpriseId: id,
+                    snapshotId: daily.snapshotId,
+                    analysisExecutionId: daily.runId,
+                    pipelineExecutionId,
+                    duplicateTrigger: daily.status === 'duplicate',
+                    timestamp: new Date().toISOString()
+                });
                 results.push({ companyId: id, runs: companyRuns });
             } catch (error) {
-                logger.error(`[StackCTRL Enterprise] Scheduled reporting failed for company ${id}:`, error.message);
-                results.push({ companyId: id, runs: [{ status: 'failed', message: error.message }] });
+                hasFailure = true;
+                const failure = error.enterprisePipelineFailure || {
+                    failureStage: 'REPORT_PERSISTENCE_FAILED',
+                    enterpriseId: id,
+                    snapshotId: null,
+                    analysisExecutionId: null,
+                    pipelineExecutionId,
+                    timestamp: new Date().toISOString(),
+                    error: String(error.message || error)
+                };
+                if (failure.analysisExecutionId) {
+                    await recordPipelinePhase(failure.analysisExecutionId, 'PIPELINE_FAILED', failure).catch(progressError => {
+                        logger.error('[StackCTRL Enterprise Pipeline]', {
+                            event: 'pipeline_failure_status_write_failed',
+                            enterpriseId: id,
+                            pipelineExecutionId,
+                            error: progressError.message
+                        });
+                    });
+                }
+                logger.error('[StackCTRL Enterprise Pipeline]', { event: 'pipeline_failed', ...failure });
+                results.push({
+                    companyId: id,
+                    runs: [{
+                        periodType: 'daily',
+                        status: 'failed',
+                        message: failure.error,
+                        pipelineFailure: failure
+                    }]
+                });
             }
         }
-        return { status: 'completed', cadence: normalizedCadence, scheduleKey, localTime: local.toISO(), companies: results };
+        return {
+            status: hasFailure ? 'failed' : 'completed',
+            cadence: normalizedCadence,
+            scheduleKey,
+            localTime: local.toISO(),
+            companies: results
+        };
     }
-
     async function runDailyAutomationTick({ now = new Date(), companyId = null, force = false } = {}) {
         const local = DateTime.fromJSDate(now instanceof Date ? now : new Date(now), { zone: 'utc' }).setZone('Africa/Johannesburg');
         const configuredHour = Math.min(23, Math.max(0, Number(process.env.ENTERPRISE_AI_DAILY_RUN_HOUR) || 0));
@@ -8520,7 +8805,7 @@ Return exactly these top-level fields:
         if (!force && local.hour < configuredHour) {
             return { status: 'not_due', cadence: 'daily', localTime: local.toISO(), scheduledHour: configuredHour, companies: [] };
         }
-        return runScheduledTick({ now, companyId, cadence: 'daily', finalizeReport: false });
+        return runScheduledTick({ now, companyId, cadence: 'daily', finalizeReport: true });
     }
 
     async function getAdminData(companyId, runId = null) {

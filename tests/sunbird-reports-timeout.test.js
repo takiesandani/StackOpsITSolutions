@@ -41,13 +41,17 @@ test('reports endpoint keeps live enrichment bounded and treats the view audit a
     assert.match(source, /traceId/);
     assert.match(source, /elapsedMs/);
 });
-test('enterprise hourly automation includes active report tenants and supports a protected Cloud Scheduler trigger', () => {
+test('enterprise daily automation includes active report tenants and supports a protected Cloud Scheduler trigger', () => {
     const enterpriseSource = fs.readFileSync('services/enterprise-intelligence.js', 'utf8');
     assert.match(enterpriseSource, /loadScheduledEnterpriseCompanyIds/);
     assert.match(enterpriseSource, /SELECT CompanyID FROM SunbirdReportSettings/);
-    assert.match(enterpriseSource, /Scheduled tenant discovery/);
+    assert.match(enterpriseSource, /event: 'scheduled_tenant_discovery'/);
     const serverSource = fs.readFileSync('server.js', 'utf8');
     assert.match(serverSource, /STACKCTRL_AUTOMATION_TRIGGER_SECRET/);
     assert.match(serverSource, /\/api\/internal\/automation\/enterprise-hourly/);
-    assert.match(serverSource, /enterprise_hourly_trigger/);
+    assert.match(serverSource, /enterprise_daily_trigger/);
+    assert.match(serverSource, /finalizeSunbirdDailyAutomation/);
+    assert.match(serverSource, /x-cloudscheduler-scheduletime/);
+    assert.match(serverSource, /responseStatus = result\?\.status === 'failed' \? 500 : 200/);
+    assert.match(serverSource, /ENTERPRISE_AI_AUTOMATION_ENABLED \|\| 'false'/);
 });

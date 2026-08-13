@@ -3605,3 +3605,211 @@ test('Security Alerts Power BI flattening keeps risk, recommendation, entity, an
     assert.equal(tables.AffectedEntityRows.length, 2);
     assert.equal(tables.EvidenceRows.length, 2);
 });
+
+function scheduledIdentitySnapshot(id = 1501) {
+    return {
+        ID: id,
+        CompanyID: 1,
+        TenantKey: 'sunbird',
+        SnapshotType: 'enterprise_pipeline',
+        CreatedAt: new Date('2026-08-13T00:00:00.000Z'),
+        DataCompletenessScore: 100,
+        MetricsJson: JSON.stringify({
+            stackctrl_risk: {
+                domainHealthScores: { identity: 90 },
+                domainRiskScores: { identity: 10 }
+            }
+        }),
+        ContextJson: JSON.stringify({
+            riskEngine: {
+                domainHealthScores: { identity: 90 },
+                domainRiskScores: { identity: 10 }
+            },
+            sources: [{
+                sourceKey: 'identity',
+                status: 'available',
+                isExpected: true,
+                metrics: { totalUsers: 1 },
+                evidence: [{ evidenceType: 'users', data: [{ id: 'user-1', displayName: 'Test User' }] }]
+            }]
+        })
+    };
+}
+
+function createScheduledPipelineFixture({
+    snapshot = scheduledIdentitySnapshot(),
+    snapshotError = null,
+    azureError = null,
+    duplicate = false
+} = {}) {
+    const events = [];
+    const writes = [];
+    let insertId = 2000;
+    let finalizationCount = 0;
+    const pool = {
+        async query(sql, params = []) {
+            writes.push({ sql, params });
+            if (sql.includes('INSERT INTO StackCTRLEnterpriseReportRuns')) {
+                events.push('pipeline_claimed');
+                if (duplicate) {
+                    const error = new Error('duplicate');
+                    error.code = 'ER_DUP_ENTRY';
+                    throw error;
+                }
+                return [{ insertId: 1901 }, []];
+            }
+            if (sql.includes('SELECT ID, SnapshotID, Status') && sql.includes('DeduplicationKey')) {
+                return [[{ ID: 1901, SnapshotID: snapshot.ID, Status: 'completed' }], []];
+            }
+            if (sql.includes('FROM StackCTRLTenantEvidenceSnapshots WHERE')) {
+                events.push('snapshot_verified');
+                return [[snapshot], []];
+            }
+            if (sql.includes('FROM StackCTRLKnowledgeBase')) return [[], []];
+            if (sql.includes('FROM StackCTRLTenantDomainIntelligence') && sql.includes('RunID <>')) return [[], []];
+            if (/^\s*INSERT/i.test(sql)) return [{ insertId: insertId++ }, []];
+            return [{ affectedRows: 1 }, []];
+        }
+    };
+    const service = createEnterpriseIntelligenceService({
+        pool,
+        intelligenceService: {
+            async createSnapshot() {
+                events.push('snapshot_created');
+                if (snapshotError) throw snapshotError;
+                return { snapshotId: snapshot.ID, companyId: 1 };
+            }
+        },
+        schedulerService: {
+            async getHistoricalSnapshotContext() {
+                return { comparisons: {} };
+            }
+        },
+        azureOpenAI: {
+            async createJsonCompletion() {
+                events.push('analysis_executed');
+                if (azureError) throw azureError;
+                return { data: domainResponse('identity'), requestSizeBytes: 1200, responseSizeBytes: 2400, retryCount: 0, usage: { input_tokens: 500, output_tokens: 250, total_tokens: 750 } };
+            }
+        },
+        onScheduledRunCompleted: async ({ run, duplicateTrigger }) => {
+            events.push(duplicateTrigger ? 'duplicate_finalization_checked' : 'report_persisted');
+            if (!duplicateTrigger) finalizationCount += 1;
+            return {
+                status: duplicateTrigger ? 'duplicate' : 'completed',
+                reportId: 3001,
+                runId: run.runId,
+                snapshotId: run.snapshotId
+            };
+        },
+        logger: { info() {}, warn() {}, error() {} },
+        wait: async () => {},
+        config: { domainDelayMs: 0, maxRetries: 0 }
+    });
+    return { service, events, writes, getFinalizationCount: () => finalizationCount };
+}
+
+test('scheduled enterprise pipeline creates and verifies a fresh snapshot before analysis and report persistence', async () => {
+    const fixture = createScheduledPipelineFixture();
+    const result = await fixture.service.runScheduledTick({
+        now: new Date('2026-08-13T00:00:00.000Z'),
+        companyId: 1,
+        cadence: 'daily',
+        domainKeys: ['identity'],
+        includeSynthesis: false,
+        finalizeReport: true
+    });
+
+    assert.equal(result.status, 'completed');
+    assert.deepEqual(
+        fixture.events.filter(event => ['snapshot_created', 'snapshot_verified', 'analysis_executed', 'report_persisted'].includes(event)),
+        ['snapshot_created', 'snapshot_verified', 'analysis_executed', 'report_persisted']
+    );
+    assert.equal(result.companies[0].runs[0].snapshotId, 1501);
+    assert.equal(result.companies[0].runs[0].reportAutomation.reportId, 3001);
+    assert.equal(fixture.getFinalizationCount(), 1);
+    const persistedPhases = fixture.writes
+        .filter(call => call.sql.includes('ProgressJson = ?'))
+        .flatMap(call => call.params)
+        .filter(value => typeof value === 'string' && value.startsWith('{'))
+        .map(value => JSON.parse(value).phase)
+        .filter(Boolean);
+    for (const phase of ['SNAPSHOT_CREATED', 'ANALYSIS_STARTED', 'ANALYSIS_COMPLETED', 'PIPELINE_COMPLETED']) {
+        assert.ok(persistedPhases.includes(phase), `Expected persisted phase ${phase}`);
+    }
+});
+
+test('scheduled enterprise pipeline stops after snapshot failure and persists the failure stage', async () => {
+    const fixture = createScheduledPipelineFixture({ snapshotError: new Error('snapshot source unavailable') });
+    const result = await fixture.service.runScheduledTick({
+        now: new Date('2026-08-13T00:00:00.000Z'),
+        companyId: 1,
+        cadence: 'daily',
+        domainKeys: ['identity'],
+        includeSynthesis: false,
+        finalizeReport: true
+    });
+
+    assert.equal(result.status, 'failed');
+    assert.equal(fixture.events.includes('analysis_executed'), false);
+    assert.equal(fixture.events.includes('report_persisted'), false);
+    const failureWrite = fixture.writes.find(call =>
+        call.sql.includes('ProgressJson = ?') &&
+        call.params.some(param => typeof param === 'string' && param.includes('SNAPSHOT_CREATION_FAILED'))
+    );
+    assert.ok(failureWrite);
+});
+
+test('scheduled enterprise pipeline reports analysis failure and does not publish a report', async () => {
+    const fixture = createScheduledPipelineFixture({ azureError: new Error('Azure analysis failed') });
+    const result = await fixture.service.runScheduledTick({
+        now: new Date('2026-08-13T00:00:00.000Z'),
+        companyId: 1,
+        cadence: 'daily',
+        domainKeys: ['identity'],
+        includeSynthesis: false,
+        finalizeReport: true
+    });
+
+    assert.equal(result.status, 'failed');
+    assert.equal(fixture.events.includes('snapshot_created'), true);
+    assert.equal(fixture.events.includes('analysis_executed'), true);
+    assert.equal(fixture.events.includes('report_persisted'), false);
+    assert.equal(result.companies[0].runs[0].pipelineFailure.failureStage, 'ENTERPRISE_DEEP_ANALYSIS_FAILED');
+});
+
+test('duplicate scheduled delivery reuses the existing run without another snapshot or analysis', async () => {
+    const fixture = createScheduledPipelineFixture({ duplicate: true });
+    const result = await fixture.service.runScheduledTick({
+        now: new Date('2026-08-13T00:00:00.000Z'),
+        companyId: 1,
+        cadence: 'daily',
+        domainKeys: ['identity'],
+        includeSynthesis: false,
+        finalizeReport: true
+    });
+
+    assert.equal(result.status, 'completed');
+    assert.equal(result.companies[0].runs[0].status, 'duplicate');
+    assert.equal(fixture.events.includes('snapshot_created'), false);
+    assert.equal(fixture.events.includes('analysis_executed'), false);
+    assert.equal(fixture.events.includes('duplicate_finalization_checked'), true);
+    assert.equal(fixture.getFinalizationCount(), 0);
+});
+
+test('manual Enterprise Deep Analysis still uses an explicitly selected snapshot without creating another one', async () => {
+    const fixture = createScheduledPipelineFixture();
+    const result = await fixture.service.runEnterpriseReport({
+        companyId: 1,
+        snapshotId: 1501,
+        domainKeys: ['identity'],
+        includeSynthesis: false,
+        refreshSnapshot: false
+    });
+
+    assert.equal(result.status, 'completed');
+    assert.equal(result.snapshotId, 1501);
+    assert.equal(fixture.events.includes('snapshot_created'), false);
+    assert.equal(fixture.events.includes('snapshot_verified'), true);
+    assert.equal(fixture.events.includes('analysis_executed'), true);
+});

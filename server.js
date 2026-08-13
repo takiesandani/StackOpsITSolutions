@@ -4638,17 +4638,49 @@ async function updateSunbirdHourlyAutomationState(companyId, state = {}) {
     await pool.query(`UPDATE SunbirdReportSettings SET LastHourlyAutomationAt = NOW(), LastHourlyAutomationStatus = ?, LastHourlyAutomationMessage = ?, LastHourlyAutomationRunID = ?, LastHourlyAutomationSnapshotID = ?, LastHourlyAutomationReportID = ? WHERE CompanyID = ?`, [String(state.status || 'unknown').slice(0, 30), String(state.message || '').slice(0, 1000) || null, state.runId || null, state.snapshotId || null, state.reportId || null, Number(companyId)]);
 }
 
-async function notifySunbirdHourlyAutomation({ companyId, report = null, run = {}, status, message }) {
+async function notifySunbirdHourlyAutomation({ companyId, report = null, run = {}, status, message, cadence = 'hourly' }) {
     const recipients = normalizeReportRecipientEmails(SUNBIRD_AUTOMATION_NOTIFICATION_EMAIL);
-    if (!recipients.length) throw new Error('No hourly automation notification recipient is configured');
+    if (!recipients.length) throw new Error(`No ${cadence} automation notification recipient is configured`);
     const companyName = report?.payload?.companyName || `Company #${companyId}`;
     const successful = status === 'completed' || status === 'completed_with_warnings';
-    const pdf = successful && report?.payload ? await Promise.race([generateSunbirdReportPdf(report.payload, report.id), new Promise((_, reject) => setTimeout(() => reject(new Error('Automatic PDF generation exceeded 60 seconds')), 60000))]) : null;
-    const html = renderCorporateEmail({ title: successful ? 'Hourly StackCTRL automation completed' : 'Hourly StackCTRL automation failed', greeting: 'Dear Maambelanduni,', bodyHtml: `<p>${successful ? escapeHtml(message || 'A latest per-domain StackCTRL report was generated.') : 'The hourly StackCTRL collection or Azure enterprise analysis did not complete.'}</p><p><strong>Company:</strong> ${escapeHtml(companyName)}<br><strong>Run:</strong> #${escapeHtml(run.runId || 'Not created')}<br><strong>Snapshot:</strong> #${escapeHtml(run.snapshotId || 'Not created')}<br><strong>Status:</strong> ${escapeHtml(status)}<br><strong>Detail:</strong> ${escapeHtml(message || 'No additional detail was supplied.')}</p>${successful ? '<p>A newly generated hourly PDF report is attached and is also available in the client report history.</p>' : '<p>The client dashboard retains its last verified report and shows this failure in Automation status.</p>'}` });
-    for (const recipient of recipients) await sendEmail(recipient, `StackCTRL hourly automation ${successful ? 'completed' : 'failed'} | ${companyName}`, html, true, pdf ? [{ name: `StackCTRL-Hourly-Report-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.pdf`, contentType: 'application/pdf', content: pdf }] : []);
+    const cadenceLabel = cadence === 'weekly' ? 'Weekly' : 'Hourly';
+    const pdf = successful && report?.payload
+        ? await Promise.race([
+            generateSunbirdReportPdf(report.payload, report.id),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Automatic PDF generation exceeded 60 seconds')), 60000))
+        ])
+        : null;
+    const html = renderCorporateEmail({
+        title: `${cadenceLabel} StackCTRL automation ${successful ? 'completed' : 'failed'}`,
+        greeting: 'Dear Maambelanduni,',
+        bodyHtml: [
+            `<p>${successful
+                ? escapeHtml(message || 'A latest per-domain StackCTRL report was generated.')
+                : 'The StackCTRL collection or Azure enterprise analysis did not complete.'}</p>`,
+            `<p><strong>Company:</strong> ${escapeHtml(companyName)}<br>`
+                + `<strong>Run:</strong> #${escapeHtml(run.runId || 'Not created')}<br>`
+                + `<strong>Snapshot:</strong> #${escapeHtml(run.snapshotId || 'Not created')}<br>`
+                + `<strong>Status:</strong> ${escapeHtml(status)}<br>`
+                + `<strong>Detail:</strong> ${escapeHtml(message || 'No additional detail was supplied.')}</p>`,
+            successful
+                ? `<p>A newly generated ${cadence} PDF report is attached and is also available in the client report history.</p>`
+                : '<p>The client dashboard retains its last verified report and shows this failure in Automation status.</p>'
+        ].join('')    });
+    for (const recipient of recipients) {
+        await sendEmail(
+            recipient,
+            `StackCTRL ${cadence} automation ${successful ? 'completed' : 'failed'} | ${companyName}`,
+            html,
+            true,
+            pdf ? [{
+                name: `StackCTRL-${cadenceLabel}-Report-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.pdf`,
+                contentType: 'application/pdf',
+                content: pdf
+            }] : []
+        );
+    }
     return { recipients, pdfBytes: pdf?.length || 0 };
 }
-
 async function finalizeSunbirdHourlyAutomation({ companyId, run = {}, now = new Date() } = {}) {
     const status = String(run.status || 'failed').toLowerCase();
     const success = ['completed', 'completed_with_warnings'].includes(status);
@@ -4679,6 +4711,150 @@ async function finalizeSunbirdHourlyAutomation({ companyId, run = {}, now = new 
         await writeSunbirdReportLog({ companyId, eventType: 'hourly_automation_failed', status: 'failed', message, metadata: { runId: state.runId, snapshotId: state.snapshotId } });
         try { await notifySunbirdHourlyAutomation({ companyId, run, status: 'failed', message }); } catch (_) {}
         await updateSunbirdHourlyAutomationState(companyId, { ...state, status: 'failed', message });
+        throw error;
+    }
+}
+async function finalizeSunbirdDailyAutomation({ companyId, run = {}, now = new Date(), pipelineExecutionId = null } = {}) {
+    const status = String(run.status || 'failed').toLowerCase();
+    if (!run.runId || !['completed', 'completed_with_warnings'].includes(status)) {
+        throw new Error(`Enterprise Deep Analysis did not complete successfully (status: ${status}).`);
+    }
+
+    const state = {
+        runId: Number(run.runId),
+        snapshotId: run.snapshotId ? Number(run.snapshotId) : null,
+        reportId: null
+    };
+    let report = null;
+    try {
+        const settings = await ensureSunbirdReportSettings(companyId, null);
+        const sameExecution = Number(settings?.LastHourlyAutomationRunID || 0) === state.runId;
+        if (sameExecution && settings?.LastHourlyAutomationReportID) {
+            const [rows] = await pool.query(
+                `SELECT ID, Payload, EmailStatus FROM SunbirdReports WHERE ID = ? AND CompanyID = ? LIMIT 1`,
+                [settings.LastHourlyAutomationReportID, Number(companyId)]
+            );
+            if (rows[0]) {
+                report = {
+                    id: Number(rows[0].ID),
+                    payload: parseReportJson(rows[0].Payload, {}),
+                    emailStatus: rows[0].EmailStatus || 'not-sent'
+                };
+                state.reportId = report.id;
+                if (['completed', 'completed_with_warnings'].includes(String(settings.LastHourlyAutomationStatus || '').toLowerCase())) {
+                    return { status: 'duplicate', ...state, reportId: report.id, notificationSent: report.emailStatus === 'sent' };
+                }
+            }
+        }
+
+        if (!report) {
+            report = await saveSunbirdReport(
+                companyId,
+                'daily',
+                new Date(new Date(now).getTime() - 24 * 60 * 60 * 1000),
+                now,
+                null,
+                true
+            );
+            state.reportId = Number(report.id);
+            await updateSunbirdHourlyAutomationState(companyId, {
+                ...state,
+                status: 'report_validation_pending',
+                message: 'The daily report was persisted and is being verified against the completed enterprise run.'
+            });
+        }
+
+        const domainManifest = Array.isArray(report.payload?.enterpriseRunManifest)
+            ? report.payload.enterpriseRunManifest
+            : [];
+        const refreshedDomains = domainManifest.filter(domain => Number(domain?.runId || 0) === state.runId);
+        if (!refreshedDomains.length) {
+            throw new Error(`Daily report contains no completed domain from enterprise run #${state.runId}.`);
+        }
+        await updateSunbirdHourlyAutomationState(companyId, {
+            ...state,
+            status: 'report_persisted',
+            message: 'Enterprise Deep Analysis completed and the daily dashboard report was persisted.'
+        });
+
+        const localWeekday = new Intl.DateTimeFormat('en-US', {
+            timeZone: SUNBIRD_REPORT_TIME_ZONE,
+            weekday: 'short'
+        }).format(new Date(now));
+        let notificationSent = report.emailStatus === 'sent';
+        if (localWeekday === 'Fri' && !notificationSent) {
+            const delivery = await notifySunbirdHourlyAutomation({
+                companyId,
+                report,
+                run,
+                status,
+                message: 'The weekly StackCTRL enterprise report completed successfully.',
+                cadence: 'weekly'
+            });
+            await pool.query(`UPDATE SunbirdReports SET EmailStatus = 'sent', SentAt = NOW() WHERE ID = ?`, [report.id]);
+            notificationSent = true;
+            await writeSunbirdReportLog({
+                companyId,
+                reportId: report.id,
+                eventType: 'weekly_enterprise_pdf_emailed',
+                status: 'success',
+                message: `Weekly PDF emailed to ${delivery.recipients.join(', ')}.`,
+                metadata: {
+                    runId: state.runId,
+                    snapshotId: state.snapshotId,
+                    pipelineExecutionId,
+                    pdfBytes: delivery.pdfBytes
+                }
+            });
+        }
+
+        const completionMessage = notificationSent
+            ? 'Enterprise Deep Reporting completed; the daily report was persisted and the Friday email was sent.'
+            : 'Enterprise Deep Reporting completed; the daily report was persisted. Weekly email remains scheduled for Friday.';
+        await updateSunbirdHourlyAutomationState(companyId, {
+            ...state,
+            status,
+            message: completionMessage
+        });
+        await writeSunbirdReportLog({
+            companyId,
+            reportId: report.id,
+            eventType: 'daily_enterprise_pipeline_completed',
+            status: 'success',
+            message: completionMessage,
+            metadata: {
+                runId: state.runId,
+                snapshotId: state.snapshotId,
+                pipelineExecutionId,
+                notificationSent
+            }
+        });
+        return { status, ...state, reportId: report.id, notificationSent };
+    } catch (error) {
+        const message = `Daily enterprise report finalization failed: ${error.message}`;
+        await writeSunbirdReportLog({
+            companyId,
+            reportId: state.reportId,
+            eventType: 'daily_enterprise_pipeline_failed',
+            status: 'failed',
+            message,
+            metadata: {
+                runId: state.runId,
+                snapshotId: state.snapshotId,
+                pipelineExecutionId,
+                failureStage: 'REPORT_PERSISTENCE_FAILED'
+            }
+        });
+        await updateSunbirdHourlyAutomationState(companyId, { ...state, status: 'failed', message });
+        error.enterprisePipelineFailure = {
+            failureStage: 'REPORT_PERSISTENCE_FAILED',
+            enterpriseId: Number(companyId),
+            snapshotId: state.snapshotId,
+            analysisExecutionId: state.runId,
+            pipelineExecutionId,
+            timestamp: new Date().toISOString(),
+            error: message
+        };
         throw error;
     }
 }
@@ -16404,7 +16580,7 @@ const enterpriseIntelligenceService = createEnterpriseIntelligenceService({
     azureOpenAI: azureOpenAIService,
     schedulerService: stackCTRLIntelligenceScheduler,
     intelligenceService: stackCTRLIntelligenceService,
-    onScheduledRunCompleted: finalizeSunbirdHourlyAutomation
+    onScheduledRunCompleted: finalizeSunbirdDailyAutomation
 });
 const stackCTRLIntelligenceAutomation = createStackCTRLServerAutomation({
     schedulerService: stackCTRLIntelligenceScheduler,
@@ -16417,7 +16593,7 @@ const enterpriseDailyIntelligenceScheduler = {
 };
 const enterpriseIntelligenceAutomation = createStackCTRLServerAutomation({
     schedulerService: enterpriseDailyIntelligenceScheduler,
-    enabled: !['false', '0', 'no'].includes(String(process.env.ENTERPRISE_AI_AUTOMATION_ENABLED || 'true').toLowerCase()),
+    enabled: ['true', '1', 'yes'].includes(String(process.env.ENTERPRISE_AI_AUTOMATION_ENABLED || 'false').toLowerCase()),
     intervalMs: process.env.ENTERPRISE_AI_AUTOMATION_INTERVAL_MS || (15 * 60 * 1000),
     startupDelayMs: process.env.ENTERPRISE_AI_AUTOMATION_STARTUP_DELAY_MS || (60 * 1000)
 });
@@ -16442,12 +16618,16 @@ app.post(['/api/internal/automation/enterprise-hourly', '/api/internal/automatio
         return res.status(403).json({ success: false, message: 'Invalid enterprise automation trigger.' });
     }
     const isExplicitDailyTrigger = req.path.endsWith('/enterprise-daily');
+    const scheduledTimeHeader = String(req.get('x-cloudscheduler-scheduletime') || '').trim();
+    const scheduledTime = scheduledTimeHeader ? new Date(scheduledTimeHeader) : new Date();
+    const triggerTime = Number.isFinite(scheduledTime.getTime()) ? scheduledTime : new Date();
     const operation = beginSunbirdOperation(req, 'enterprise_daily_trigger');
     try {
-        const result = await enterpriseIntelligenceService.runDailyAutomationTick({ now: new Date(), force: isExplicitDailyTrigger });
+        const result = await enterpriseIntelligenceService.runDailyAutomationTick({ now: triggerTime, force: isExplicitDailyTrigger });
         const companies = Array.isArray(result?.companies) ? result.companies : [];
-        operation.finish(200, { companies: companies.length, localTime: result?.localTime || null, status: result?.status || null });
-        return res.status(200).json({ success: true, ...result });
+        const responseStatus = result?.status === 'failed' ? 500 : 200;
+        operation.finish(responseStatus, { companies: companies.length, localTime: result?.localTime || null, status: result?.status || null });
+        return res.status(responseStatus).json({ success: responseStatus < 400, ...result });
     } catch (error) {
         operation.step('enterprise_daily_trigger_failed', { error: error.message, stack: String(error.stack || '').slice(0, 1800) });
         operation.finish(500, { error: error.message });
