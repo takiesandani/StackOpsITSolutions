@@ -55,6 +55,7 @@ const { createOperationsEvidenceAutomation } = require('./services/intelligence/
 const { createStackCTRLServerAutomation } = require('./services/intelligence/server-automation');
 const { createAdminIntelligenceService } = require('./services/admin-intelligence');
 const { createEnterpriseIntelligenceService } = require('./services/enterprise-intelligence');
+const { DateTime } = require('luxon');
 const { createStackCTRLIntelligenceRouter } = require('./routes/stackctrl-intelligence');
 const { createAdminIntelligenceRouter } = require('./routes/admin-intelligence');
 const { createPowerBIReportingService } = require('./services/powerbi-reporting');
@@ -2201,6 +2202,21 @@ async function ensureDatabaseSchema() {
             )
         `);
 
+        for (const [column, definition] of [
+            ['EnterpriseRunID', 'BIGINT DEFAULT NULL'],
+            ['EnterpriseSnapshotID', 'BIGINT DEFAULT NULL'],
+            ['IsCurrent', 'TINYINT(1) NOT NULL DEFAULT 0'],
+            ['PublishedAt', 'DATETIME DEFAULT NULL']
+        ]) {
+            const [existing] = await pool.query(`SHOW COLUMNS FROM SunbirdReports LIKE '${column}'`);
+            if (!existing.length) await pool.query(`ALTER TABLE SunbirdReports ADD COLUMN ${column} ${definition}`);
+        }
+        try {
+            await pool.query('CREATE INDEX idx_sunbird_reports_current ON SunbirdReports (CompanyID, ReportType, IsCurrent, PublishedAt, CreatedAt)');
+        } catch (error) {
+            if (error.code !== 'ER_DUP_KEYNAME') console.warn('[Database] Current Sunbird report index migration:', error.message);
+        }
+
         await pool.query(`
             CREATE TABLE IF NOT EXISTS SunbirdReportAuditLogs (
                 ID BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -3446,75 +3462,40 @@ function withSunbirdReportTimeout(task, timeoutMs, label) {
     return Promise.race([Promise.resolve().then(task), timeout]).finally(() => clearTimeout(timer));
 }
 
-async function fetchSunbirdPowerBIIntelligence(companyId, { domainTimeoutMs = SUNBIRD_REPORT_LIVE_DOMAIN_TIMEOUT_MS } = {}) {
-    if (!enterpriseIntelligenceService?.getPowerBIDomain) return null;
+async function fetchSunbirdPowerBIIntelligence(companyId, { domainTimeoutMs = SUNBIRD_REPORT_LIVE_DOMAIN_TIMEOUT_MS, runId = null } = {}) {
+    if (!enterpriseIntelligenceService?.getPowerBIIntelligenceRun) return null;
     try {
-        // Every domain remains independently current, but no individual database read
-        // is allowed to block the dashboard response indefinitely.
-        const definitions = (enterpriseIntelligenceService.domains || [])
-            .filter(domain => domain?.includedInCurrentPhase && domain?.selectable !== false);
-        const settled = await Promise.allSettled(definitions.map(async definition => ({
-            definition,
-            domain: (await withSunbirdReportTimeout(
-                () => enterpriseIntelligenceService.getPowerBIDomain(companyId, definition.key, { queryTimeoutMs: domainTimeoutMs }),
-                domainTimeoutMs,
-                `Live ${definition.name || definition.key} intelligence`
-            ))?.domain || null
-        })));
-        const byKey = new Map(settled
-            .filter(result => result.status === 'fulfilled' && result.value?.domain)
-            .map(result => [String(result.value.domain.domainKey || '').toLowerCase(), result.value.domain]));
-        const timedOutDomains = settled
-            .map((result, index) => result.status === 'rejected' && result.reason?.code === 'SUNBIRD_REPORT_TIMEOUT' ? definitions[index]?.key : null)
-            .filter(Boolean);
-        const domains = definitions
-            .map(definition => byKey.get(String(definition.key || '').toLowerCase()))
-            .filter(domain => domain && !['pending', 'temporarily_disabled'].includes(String(domain.status || domain.domainStatus || '').toLowerCase()));
+        // A dashboard report is an atomic enterprise execution. Never compose it
+        // from unrelated “latest” domain rows: that can leave an old completed run
+        // visible while a new daily execution is running or awaiting publication.
+        const intelligence = await withSunbirdReportTimeout(
+            () => enterpriseIntelligenceService.getPowerBIIntelligenceRun(companyId, runId || null, { publishedOnly: !runId }),
+            Math.max(domainTimeoutMs, 9000),
+            'Published enterprise intelligence'
+        );
+        const domains = Array.isArray(intelligence?.domains) ? intelligence.domains : [];
         if (!domains.length) return null;
-        const timestamp = domain => {
-            const value = new Date(domain?.createdAt || domain?.periodEnd || domain?.periodStart || 0).getTime();
-            return Number.isFinite(value) ? value : 0;
-        };
-        const newestDomain = domains.reduce((newest, domain) => timestamp(domain) > timestamp(newest) ? domain : newest, domains[0]);
         const domainManifest = domains.map(domain => ({
             domainKey: domain.domainKey,
             domainName: domain.domainName,
-            runId: Number(domain.runId || 0) || null,
+            runId: Number(domain.runId || intelligence.latestRunId || 0) || null,
             snapshotId: domain.snapshotId == null ? null : Number(domain.snapshotId),
             status: domain.status || 'available',
             analysedAt: domain.createdAt || null,
-            periodStart: domain.periodStart || null,
-            periodEnd: domain.periodEnd || null
+            periodStart: domain.periodStart || intelligence.periodStart || null,
+            periodEnd: domain.periodEnd || intelligence.periodEnd || null
         }));
-        const tables = typeof enterpriseIntelligenceService.flattenPowerBITables === 'function'
-            ? enterpriseIntelligenceService.flattenPowerBITables({ domains })
-            : {};
         return {
-            dataClassification: 'intelligent_azure_output',
-            companyId: Number(companyId),
-            latestSnapshotId: newestDomain.snapshotId == null ? null : Number(newestDomain.snapshotId),
-            latestRunId: Number(newestDomain.runId || 0) || null,
-            periodType: 'per_domain_latest',
-            periodStart: newestDomain.periodStart || null,
-            periodEnd: newestDomain.periodEnd || null,
-            createdAt: newestDomain.createdAt || null,
-            reportingPhase: 'per_domain_latest',
-            perDomainLatest: true,
-            domains,
+            ...intelligence,
+            latestRunId: Number(intelligence.latestRunId || 0) || null,
+            latestSnapshotId: intelligence.latestSnapshotId == null ? null : Number(intelligence.latestSnapshotId),
             domainManifest,
-            tables,
-            completeness: {
-                expectedDomains: definitions.length,
-                returnedDomains: domains.length,
-                successfulDomains: domains.length,
-                timedOutDomains,
-                independentlyRefreshed: true
-            },
-            source: 'enterprise_per_domain_intelligence',
+            perDomainLatest: false,
+            source: 'enterprise_published_run',
             available: true
         };
     } catch (error) {
-        console.warn('[Reports] Power BI intelligence unavailable:', error.message);
+        console.warn('[Reports] Published enterprise intelligence unavailable:', error.message);
         return null;
     }
 }
@@ -4276,7 +4257,7 @@ async function loadSunbirdReportEvidence(companyId) {
     };
 }
 
-async function buildSunbirdReportPayload(companyId, periodStart, periodEnd, includeAi = false) {
+async function buildSunbirdReportPayload(companyId, periodStart, periodEnd, includeAi = false, { enterpriseRunId = null } = {}) {
     const evidence = await loadSunbirdReportEvidence(companyId);
     const securitySummary = evidence.security.summary || {};
     const emailSummary = evidence.email.summary || {};
@@ -4470,12 +4451,16 @@ async function buildSunbirdReportPayload(companyId, periodStart, periodEnd, incl
         events: report.summary.totalEvents
     };
     report.previousDailyReport = await loadSunbirdLatestDailyReportSummary(companyId, periodEnd);
-    const powerBiIntelligence = includeAi ? await fetchSunbirdPowerBIIntelligence(companyId) : null;
+    const expectedEnterpriseRunId = Number(enterpriseRunId || 0) || null;
+    const powerBiIntelligence = includeAi ? await fetchSunbirdPowerBIIntelligence(companyId, { runId: expectedEnterpriseRunId }) : null;
+    if (expectedEnterpriseRunId && Number(powerBiIntelligence?.latestRunId || 0) !== expectedEnterpriseRunId) {
+        throw new Error(`Daily report could not be bound to enterprise run #${expectedEnterpriseRunId}.`);
+    }
     // Domain metrics and evidence remain pinned to each domain's newest completed
     // analysis. The executive narrative is taken from the latest completed enterprise
     // synthesis, rather than replaced with a fabricated per-domain placeholder.
     const powerBiFinal = includeAi
-        ? await fetchSunbirdPowerBIFinal(companyId, null, { timeoutMs: 12000 })
+        ? await fetchSunbirdPowerBIFinal(companyId, expectedEnterpriseRunId || powerBiIntelligence?.latestRunId || null, { timeoutMs: 12000 })
         : null;
     report.domainInsights = powerBiIntelligence;
     // A report may be a composite of independently completed domains. Persist the
@@ -4566,17 +4551,17 @@ async function loadSunbirdLatestDailyReportSummary(companyId, before) {
         events: Number(summary.totalEvents || payload.events?.length || 0)
     };
 }
-async function saveSunbirdReport(companyId, reportType, periodStart, periodEnd, generatedByUserId = null, includeAi = false) {
+async function saveSunbirdReport(companyId, reportType, periodStart, periodEnd, generatedByUserId = null, includeAi = false, { enterpriseRunId = null, publishCurrent = false } = {}) {
     await writeSunbirdReportLog({
         companyId,
         eventType: `${reportType}_report_generation_started`,
         status: 'started',
         message: `${reportType === 'daily' ? 'Daily evidence collection' : `${reportType} report generation`} started.`,
-        metadata: { periodStart, periodEnd, includeAi },
+        metadata: { periodStart, periodEnd, includeAi, enterpriseRunId: enterpriseRunId || null, publishCurrent: Boolean(publishCurrent) },
         actorUserId: generatedByUserId
     });
     try {
-        const payload = await buildSunbirdReportPayload(companyId, periodStart, periodEnd, includeAi);
+        const payload = await buildSunbirdReportPayload(companyId, periodStart, periodEnd, includeAi, { enterpriseRunId });
         payload.generatedWithAi = includeAi;
         const payloadJson = JSON.stringify(payload);
         console.log('[Reports Generate] payload prepared', JSON.stringify({
@@ -4589,8 +4574,8 @@ async function saveSunbirdReport(companyId, reportType, periodStart, periodEnd, 
         }));
         const [result] = await pool.query(
             `INSERT INTO SunbirdReports
-             (CompanyID, ReportType, PeriodStart, PeriodEnd, HealthScore, ReportStatus, Payload, GeneratedByUserID)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+             (CompanyID, ReportType, PeriodStart, PeriodEnd, HealthScore, ReportStatus, Payload, GeneratedByUserID, EnterpriseRunID, EnterpriseSnapshotID, IsCurrent, PublishedAt)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)`,
             [
                 companyId,
                 reportType,
@@ -4599,9 +4584,15 @@ async function saveSunbirdReport(companyId, reportType, periodStart, periodEnd, 
                 payload.summary.healthScore,
                 payload.summary.status,
                 payloadJson,
-                generatedByUserId
+                generatedByUserId,
+                Number(payload.enterpriseRunId || enterpriseRunId || 0) || null,
+                Number(payload.domainInsights?.latestSnapshotId || 0) || null
             ]
         );
+        if (publishCurrent && reportType === 'daily') {
+            await pool.query("UPDATE SunbirdReports SET IsCurrent = 0 WHERE CompanyID = ? AND ReportType = 'daily'", [companyId]);
+            await pool.query("UPDATE SunbirdReports SET IsCurrent = 1, PublishedAt = NOW() WHERE ID = ? AND CompanyID = ?", [result.insertId, companyId]);
+        }
         await writeSunbirdReportLog({
             companyId,
             reportId: result.insertId,
@@ -4754,7 +4745,8 @@ async function finalizeSunbirdDailyAutomation({ companyId, run = {}, now = new D
                 new Date(new Date(now).getTime() - 24 * 60 * 60 * 1000),
                 now,
                 null,
-                true
+                true,
+                { enterpriseRunId: state.runId, publishCurrent: true }
             );
             state.reportId = Number(report.id);
             await updateSunbirdHourlyAutomationState(companyId, {
@@ -6670,7 +6662,7 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
                         CASE WHEN JSON_VALID(Payload) THEN JSON_UNQUOTE(JSON_EXTRACT(Payload, '$.summary.totalEvents')) END AS SummaryTotalEvents
                  FROM SunbirdReports
                  WHERE CompanyID = ?
-                 ORDER BY CreatedAt DESC
+                 ORDER BY IsCurrent DESC, PublishedAt DESC, CreatedAt DESC
                  LIMIT ?`,
                 [context.companyId, limit]
             ),
@@ -6680,7 +6672,7 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
                         CASE WHEN OCTET_LENGTH(Payload) <= ? THEN Payload ELSE NULL END AS Payload
                  FROM SunbirdReports
                  WHERE CompanyID = ?
-                 ORDER BY CreatedAt DESC
+                 ORDER BY IsCurrent DESC, PublishedAt DESC, CreatedAt DESC
                  LIMIT 1`,
                 [SUNBIRD_REPORT_OVERVIEW_MAX_PAYLOAD_BYTES, context.companyId]
             ),
@@ -6690,7 +6682,7 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
                         CASE WHEN OCTET_LENGTH(Payload) <= ? THEN Payload ELSE NULL END AS Payload
                  FROM SunbirdReports
                  WHERE CompanyID = ?
-                 ORDER BY CreatedAt DESC
+                 ORDER BY IsCurrent DESC, PublishedAt DESC, CreatedAt DESC
                  LIMIT 8`,
                 [SUNBIRD_REPORT_DETAILS_MAX_PAYLOAD_BYTES, context.companyId]
             ),
@@ -16597,6 +16589,16 @@ const enterpriseIntelligenceAutomation = createStackCTRLServerAutomation({
     intervalMs: process.env.ENTERPRISE_AI_AUTOMATION_INTERVAL_MS || (15 * 60 * 1000),
     startupDelayMs: process.env.ENTERPRISE_AI_AUTOMATION_STARTUP_DELAY_MS || (60 * 1000)
 });
+function parseCloudSchedulerScheduleTime(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return new Date();
+    const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw);
+    const parsed = DateTime.fromISO(raw, hasZone
+        ? { setZone: true }
+        : { zone: SUNBIRD_REPORT_TIME_ZONE });
+    return parsed.isValid ? parsed.toUTC().toJSDate() : new Date();
+}
+
 function hasValidEnterpriseAutomationTrigger(req) {
     const expected = String(process.env.STACKCTRL_AUTOMATION_TRIGGER_SECRET || '');
     const provided = String(req.get('x-stackctrl-automation-key') || '');
@@ -16619,8 +16621,7 @@ app.post(['/api/internal/automation/enterprise-hourly', '/api/internal/automatio
     }
     const isExplicitDailyTrigger = req.path.endsWith('/enterprise-daily');
     const scheduledTimeHeader = String(req.get('x-cloudscheduler-scheduletime') || '').trim();
-    const scheduledTime = scheduledTimeHeader ? new Date(scheduledTimeHeader) : new Date();
-    const triggerTime = Number.isFinite(scheduledTime.getTime()) ? scheduledTime : new Date();
+    const triggerTime = parseCloudSchedulerScheduleTime(scheduledTimeHeader);
     const operation = beginSunbirdOperation(req, 'enterprise_daily_trigger');
     try {
         const result = await enterpriseIntelligenceService.runDailyAutomationTick({ now: triggerTime, force: isExplicitDailyTrigger });

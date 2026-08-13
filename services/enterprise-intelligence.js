@@ -4040,6 +4040,19 @@ function periodWindow(periodType, referenceDate = new Date()) {
     return { periodType: type, periodStart: start.toUTC().toJSDate(), periodEnd: end.toUTC().toJSDate() };
 }
 
+function johannesburgScheduleContext(referenceDate = new Date()) {
+    const parsed = referenceDate instanceof Date
+        ? DateTime.fromJSDate(referenceDate, { zone: 'utc' })
+        : DateTime.fromISO(String(referenceDate || ''), { setZone: true });
+    if (!parsed.isValid) throw new Error('A valid scheduler reference time is required');
+    const local = parsed.setZone('Africa/Johannesburg');
+    return {
+        instant: parsed.toUTC().toJSDate(),
+        local,
+        scheduleKey: local.toFormat('yyyyLLdd')
+    };
+}
+
 function jsonArray(value) {
     return JSON.stringify(array(value));
 }
@@ -8625,10 +8638,11 @@ Return exactly these top-level fields:
         }
     }
     async function runScheduledTick({ now = new Date(), companyId = null, cadence = 'hourly', finalizeReport = true, domainKeys = null, includeSynthesis = true } = {}) {
-        const local = DateTime.fromJSDate(now instanceof Date ? now : new Date(now), { zone: 'utc' }).setZone('Africa/Johannesburg');
+        const schedule = johannesburgScheduleContext(now);
+        const local = schedule.local;
         const normalizedCadence = String(cadence || 'hourly').toLowerCase() === 'daily' ? 'daily' : 'hourly';
         const scheduleKey = normalizedCadence === 'daily'
-            ? local.toFormat('yyyyLLdd')
+            ? schedule.scheduleKey
             : local.toFormat('yyyyLLddHH');
         let companyIds = companyId ? [Number(companyId)] : [];
         if (!companyIds.length) {
@@ -8677,6 +8691,9 @@ Return exactly these top-level fields:
                     continue;
                 }
 
+                if (finalizeReport && typeof onScheduledRunCompleted !== 'function') {
+                    throw new Error('Scheduled enterprise report finalization is not configured.');
+                }
                 if (finalizeReport && typeof onScheduledRunCompleted === 'function') {
                     logger.info('[StackCTRL Enterprise Pipeline]', {
                         event: 'analysis_result_persistence_started',
@@ -8695,6 +8712,10 @@ Return exactly these top-level fields:
                         cadence: normalizedCadence,
                         pipelineExecutionId
                     });
+                }
+
+                if (finalizeReport && !companyRuns[0].reportAutomation?.reportId) {
+                    throw new Error('Scheduled enterprise report finalization did not publish a report.');
                 }
 
                 if (daily.rateLimited) {
@@ -8745,6 +8766,21 @@ Return exactly these top-level fields:
                     reportId: companyRuns[0].reportAutomation?.reportId || null,
                     status: effectiveStatus
                 });
+                if (normalizedCadence === 'daily' && companyRuns[0].reportAutomation?.reportId) {
+                    logger.info('[StackCTRL Enterprise Pipeline]', {
+                        event: 'enterprise_daily_pipeline_completed',
+                        companyId: id,
+                        pipelineExecutionId,
+                        runId: daily.runId,
+                        snapshotId: daily.snapshotId,
+                        analysisExecutionId: daily.runId,
+                        scheduleKey,
+                        reportPublished: true,
+                        reportId: companyRuns[0].reportAutomation.reportId,
+                        localDate: local.toISODate(),
+                        localTime: local.toFormat('HH:mm:ss')
+                    });
+                }
                 logger.info('[StackCTRL Enterprise Pipeline]', {
                     event: 'pipeline_completed',
                     enterpriseId: id,
@@ -8797,7 +8833,7 @@ Return exactly these top-level fields:
         };
     }
     async function runDailyAutomationTick({ now = new Date(), companyId = null, force = false } = {}) {
-        const local = DateTime.fromJSDate(now instanceof Date ? now : new Date(now), { zone: 'utc' }).setZone('Africa/Johannesburg');
+        const local = johannesburgScheduleContext(now).local;
         const configuredHour = Math.min(23, Math.max(0, Number(process.env.ENTERPRISE_AI_DAILY_RUN_HOUR) || 0));
         // If the instance was asleep or restarting at the exact scheduled hour,
         // keep the run eligible for the rest of that Johannesburg day. The daily
@@ -9673,10 +9709,12 @@ Return exactly these top-level fields:
         };
     }
 
-    async function getPowerBIIntelligenceRun(companyId, runId = null, { periodType = null } = {}) {
+    async function getPowerBIIntelligenceRun(companyId, runId = null, { periodType = null, publishedOnly = false } = {}) {
         const numericCompanyId = Number(companyId);
         const params = [numericCompanyId];
         let where = 'runs.CompanyID = ?';
+        let reportJoin = '';
+        let orderBy = 'runs.ID DESC';
         if (runId) {
             where += ' AND runs.ID = ?';
             params.push(Number(runId));
@@ -9690,9 +9728,17 @@ Return exactly these top-level fields:
                              AND completedDomain.Status IN ('completed', 'completed_with_warnings', 'partial')
                        ) >= ?`;
             params.push(...ACTIVE_ENTERPRISE_DOMAIN_KEYS, ACTIVE_ENTERPRISE_DOMAIN_KEYS.length);
+            if (publishedOnly) {
+                reportJoin = ` JOIN SunbirdReports publishedReport
+                    ON publishedReport.CompanyID = runs.CompanyID
+                   AND publishedReport.EnterpriseRunID = runs.ID
+                   AND publishedReport.ReportType = 'daily'
+                   AND publishedReport.IsCurrent = 1 `;
+                orderBy = 'COALESCE(publishedReport.PublishedAt, publishedReport.CreatedAt) DESC, runs.ID DESC';
+            }
         }
         if (periodType) { where += ' AND runs.PeriodType = ?'; params.push(String(periodType)); }
-        const [runRows] = await pool.query(`SELECT runs.* FROM StackCTRLEnterpriseReportRuns runs WHERE ${where} ORDER BY runs.ID DESC LIMIT 1`, params);
+        const [runRows] = await pool.query(`SELECT runs.* FROM StackCTRLEnterpriseReportRuns runs${reportJoin} WHERE ${where} ORDER BY ${orderBy} LIMIT 1`, params);
         const run = runRows[0];
         if (!run) {
             const error = new Error('Enterprise intelligence run not found');
@@ -9969,5 +10015,6 @@ module.exports = {
     normalizeMysqlDate,
     normalizeEvidenceBackedItem,
     ensureItemEvidence,
-    normalizeDomainOutputForDisplay
+    normalizeDomainOutputForDisplay,
+    johannesburgScheduleContext
 };
