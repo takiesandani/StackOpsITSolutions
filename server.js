@@ -3691,6 +3691,11 @@ function buildSunbirdDomainBreakdownFromPayload(payload = {}) {
         const id = asText(source.entityId || source.id || source.recordId).toLowerCase();
         return /(?:summary|score|coverage)/.test(type) || /(?:summary|score)$/.test(id);
     };
+    const isManufacturedValidationRecord = evidence => {
+        const source = unwrapEvidenceRecord(evidence);
+        const label = [source.entityName, source.displayName, source.name, source.title, source.label].map(asText).join(' ');
+        return /validation summary|coverage validation/i.test(label);
+    };
     const isOpaqueEvidenceValue = value => {
         const text = asText(value);
         return !text || /^\d+$/.test(text) || /^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(text)
@@ -3699,10 +3704,14 @@ function buildSunbirdDomainBreakdownFromPayload(payload = {}) {
     const humanizeEvidenceLabel = value => asText(value).replace(/[_-]+/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/\b\w/g, char => char.toUpperCase());
     const normalizeEvidence = (evidence, finding = {}) => {
         const source = unwrapEvidenceRecord(evidence);
+        const auditActor = asText(source.actor?.email || source.actor?.id);
+        const auditAction = asText(source.action?.type || source.action);
+        const auditResource = asText(source.resource?.type || source.resource);
+        const auditLabel = auditActor && auditAction ? auditActor + ' — ' + humanizeEvidenceLabel(auditAction) : auditActor || auditAction || auditResource;
         const name = [source.displayName, source.entityName, source.entityDisplayName, source.deviceName, source.entityDeviceName,
-            source.title, source.alertName, source.controlName, source.applicationName, source.profileName, source.activity, source.name,
-            source.userPrincipalName, source.entityEmail, source.mail, source.userEmail, source.user, source.actor, source.resource,
-            source.recipient, source.sender].map(asText).find(value => value && !isOpaqueEvidenceValue(value)) || '';
+            source.title, source.alertName, source.controlName, source.applicationName, source.profileName, source.activity, source.endpointFamily, source.module, source.key, source.name,
+            source.userPrincipalName, source.entityEmail, source.mail, source.userEmail, source.user, auditLabel, source.actor, source.resource,
+            source.recipient, source.sender, source.entityId].map(asText).find(value => value && !isOpaqueEvidenceValue(value)) || '';
         const signIn = source.lastSignIn && typeof source.lastSignIn === 'object'
             ? [source.lastSignIn.location ? `Sign-in location: ${source.lastSignIn.location}` : '', source.lastSignIn.device ? `Sign-in device: ${source.lastSignIn.device}` : '',
                 source.lastSignIn.daysSince == null || source.lastSignIn.daysSince === '' ? '' : `${source.lastSignIn.daysSince} days since sign-in`,
@@ -3721,30 +3730,118 @@ function buildSunbirdDomainBreakdownFromPayload(payload = {}) {
         add('Operating system', [source.operatingSystem, source.osVersion].filter(Boolean).join(' '));
         add('Compliance', source.complianceState || source.complianceStatus); add('Encryption', source.encryptionStatus); add('Management', source.managementAgent);
         add('Publisher', source.publisherName); add('Application type', source.type); add('Roles', source.roles); add('Policies', source.policies);
-        add('Action', source.action || source.managementAction || source.remediationAction); add('Area', source.area); add('Owner', source.ownerStatus);
+        add('Actor', auditActor); add('Action', auditAction || source.managementAction || source.remediationAction); add('Resource', auditResource); add('Area', source.area); add('Owner', source.ownerStatus);
         add('Control', source.controlName || source.policyName); add('Category', source.category); add('Status', source.status || source.state);
         add('Severity', source.severity || source.riskLevel); add('Location', source.location); add('IP address', source.ipAddress); add('Failure reason', source.failureReason);
-        add('Files', source.files); add('Storage', source.storage); add('Role count', source.roleCount); add('User count', source.userCount); add('Scope count', source.scopeCount);
+        add('Files', source.files); add('Storage', source.storage); add('Role count', source.roleCount); add('User count', source.userCount); add('Scope count', source.scopeCount); add('Observed count', source.count);
         if (source.mfaEnabled != null) add('MFA', source.mfaEnabled ? 'Enabled' : 'Not enabled');
         if (source.hasAdminRole != null) add('Administrator role', source.hasAdminRole ? 'Present' : 'Not present');
         if (source.isExternal != null) add('External application', source.isExternal ? 'Yes' : 'No');
         if (source.enabled != null) add('Enabled', source.enabled ? 'Yes' : 'No');
         add('', source.description || source.detail || source.validationReason || source.governanceIssue || source.auditImpact || source.evidenceSummary);
         add('Last sign-in', typeof source.lastSignIn === 'string' ? source.lastSignIn : ''); if (signIn) add('', signIn);
-        add('Last sync', source.lastSyncDateTime); add('Event time', source.eventTime); add('Created', source.createdDateTime); add('Last seen', source.lastSeen); add('Last activity', source.lastActivity);
-        const fallbackTitle = asText(finding.title, 'Finding validation summary');
-        const fallbackDetail = [asText(finding.evidenceSummary), finding.sourceMetric ? `Supported by ${humanizeEvidenceLabel(finding.sourceMetric)} in the latest enterprise output.` : '',
-            finding.severity || finding.status ? `Finding status: ${asText(finding.severity || finding.status)}` : ''].filter(Boolean).join(' | ') || `The latest enterprise output supports ${fallbackTitle}.`;
+        add('Last sync', source.lastSyncDateTime); add('Event time', source.eventTime || source.when); add('Created', source.createdDateTime); add('Last seen', source.lastSeen); add('Last activity', source.lastActivity);
         return {
             id: shortText(evidenceRecordIdentity(source) || '', 260),
-            name: shortText(name || `${fallbackTitle} — validation summary`, 220),
-            detail: shortText(details.join(' | ') || fallbackDetail, 520),
+            name: shortText(name, 220),
+            detail: shortText(details.join(' | '), 520),
             severity: shortText(asText(source.severity || source.riskLevel || source.priority || ''), 80),
-            status: shortText(asText(source.status || source.state || source.complianceState || ''), 120),
+            status: shortText(asText(source.status || source.state || source.complianceState || (source.action?.result === true ? 'Successful' : '')), 120),
             source: shortText(humanizeEvidenceLabel(source.sourceMetric || source.evidenceSource || source.category || finding.sourceMetric || ''), 160)
         };
     };
-    // This view model is already field-bounded below. Do not pass it through the generic
+    const catalogCategoryAliases = (domainKey, item = {}) => {
+        const text = `${item.title || item.patternFound || item.description || ''}`.toLowerCase();
+        const aliases = [];
+        const add = value => { if (value && !aliases.includes(value)) aliases.push(value); };
+        if (domainKey === 'identity') {
+            if (/privileg|multiple (?:admin )?role/.test(text)) add('privilegedUsers');
+            else if (/admin.*(?:without|missing).*mfa|break.?glass/.test(text)) add('adminsWithoutMfa');
+            else if (/external|guest/.test(text)) add('externalUsers');
+            else if (/inactive|dormant/.test(text)) add('inactiveUsers');
+            else if (/unknown device|unknown location/.test(text)) add('unknownDeviceUsers');
+            else if (/high risk/.test(text)) add('highRiskUsers');
+            else if (/without mfa|missing mfa|mfa gap/.test(text)) add('usersWithoutMfa');
+        } else if (domainKey === 'devices') {
+            if (/non.?compliant/.test(text)) add('nonCompliantDevices');
+            if (/stale|dead|30 day/.test(text)) add('deadDevices');
+            if (/device|managed|encrypted/.test(text)) add('allDevices');
+        } else if (domainKey === 'email_security') {
+            if (/mailbox|mailflow|mail activity/.test(text)) add('mailActivityUsers');
+            else if (!/users? affected|targeting (?:key )?users?|affected users?/.test(text) && /alert|phish|junk|threat/.test(text)) add('alerts');
+        } else if (domainKey === 'security_alerts') {
+            if (/anonymous|sign.?in|ip address/.test(text)) add('signIns');
+            if (/threat indicator/.test(text)) add('threatIndicators');
+            if (!/repeated|pattern|affected users?/.test(text) && /alert|phish|threat/.test(text)) add('alerts');
+        } else if (domainKey === 'cloudflare_network_security') {
+            if (/permission|endpoint famil|api/.test(text)) add('permissionMatrix');
+            else if (/audit/.test(text)) add('auditLogs');
+            else if (/protected app|sso app|login app/.test(text)) add('accessApps');
+            else if (/registered warp/.test(text)) add('deviceRegistrations');
+            else if (/device|enrolled/.test(text)) add('devices');
+            else if (/gateway polic|gateway rule/.test(text)) add('gatewayRules');
+            else if (/dlp|data loss/.test(text)) add('dlpProfiles');
+            else if (/warp profile/.test(text)) add('warpProfiles');
+        } else if (domainKey === 'applications' && !/recommendation|governance score/.test(text) && /external|publisher|assigned users?|excessive permission|high.?access/.test(text)) add('applications');
+        else if (domainKey === 'backup' && /large|storage|data holder/.test(text)) add('users');
+        else if (domainKey === 'governance') add('governanceRows');
+        else if (domainKey === 'compliance') add('controls');
+        return aliases;
+    };
+    const filterCatalogRowsForFinding = (rows, item = {}, domainKey = '') => {
+        const text = `${item.title || ''} ${item.patternFound || ''} ${item.description || ''}`.toLowerCase();
+        let predicate = null;
+        if (domainKey === 'identity' && /multiple (?:privileged |admin )?roles/.test(text)) predicate = row => Array.isArray(row.roles) && row.roles.length > 1;
+        else if (domainKey === 'devices' && /all \d+ devices.*encrypted.*managed|encrypted and managed/.test(text)) predicate = row => (row.isEncrypted == null ? /encrypted/i.test(String(row.encryptionStatus || '')) && !/not encrypted/i.test(String(row.encryptionStatus || '')) : row.isEncrypted === true) && /mdm/i.test(String(row.managementAgent || ''));
+        else if (domainKey === 'devices' && /no unmanaged|no unknown compliance/.test(text)) predicate = row => !/unmanaged|unknown/i.test(String(row.managementAgent || '')) && Boolean(String(row.managementAgent || '').trim()) && !/unknown/i.test(String(row.complianceState || row.complianceStatus || '')) && Boolean(String(row.complianceState || row.complianceStatus || '').trim());
+        else if (domainKey === 'devices' && /not concentrated/.test(text)) predicate = () => false;
+        else if (domainKey === 'devices' && /high.?risk/.test(text)) predicate = row => /high/i.test(String(row.riskLevel || row.risk || ''));
+        else if (domainKey === 'devices' && /non.?compliant/.test(text)) predicate = row => /non.?compliant/i.test(String(row.complianceState || row.complianceStatus || ''));
+        else if (domainKey === 'devices' && /unmanaged|unknown compliance/.test(text)) predicate = row => /unmanaged|unknown/i.test(String(row.managementAgent || row.complianceState || row.complianceStatus || ''));
+
+        else if (domainKey === 'email_security' && /inactive mailbox/.test(text)) predicate = row => Number(row.readCount || 0) + Number(row.sendCount || 0) + Number(row.receiveCount || 0) === 0;
+        else if ((domainKey === 'email_security' || domainKey === 'security_alerts') && /no (?:critical|high.?severity)|critical alert/.test(text)) predicate = row => !/critical|high/i.test(String(row.severity || ''));
+        else if ((domainKey === 'email_security' || domainKey === 'security_alerts') && /low.?severity/.test(text)) predicate = row => /low/i.test(String(row.severity || '')) && (!/unresolved|ongoing|active|open/.test(text) || !/resolved|closed|dismissed/i.test(String(row.status || '')));
+        else if ((domainKey === 'email_security' || domainKey === 'security_alerts') && /unresolved|ongoing|active|open/.test(text)) predicate = row => !/resolved|closed|dismissed/i.test(String(row.status || ''));
+        else if (domainKey === 'applications' && /unknown publisher/.test(text)) predicate = row => /unknown/i.test(String(row.publisherName || ''));
+        else if (domainKey === 'applications' && /external/.test(text)) predicate = row => row.isExternal !== false;
+        else if (domainKey === 'applications' && /no assigned users|no users assigned/.test(text)) predicate = row => Number(row.userCount || row.assignmentCount || 0) === 0;
+        else if (domainKey === 'applications' && /no excessive permission|no high.?access/.test(text)) predicate = row => Number(row.roleCount) === 0 && Number(row.scopeCount) === 0 && row.roleCount != null && row.scopeCount != null;
+        else if (domainKey === 'governance' && /manual evidence.*excluded/.test(text)) predicate = () => false;
+        else if (domainKey === 'governance' && /management review/.test(text)) predicate = row => /attention required/i.test(String(row.status || ''));
+        else if (domainKey === 'governance' && /access reviews?.*users and roles/.test(text)) predicate = row => /access review|admin review/i.test(String(row.area || row.title || ''));
+        else if (domainKey === 'governance' && /missing ownership|no assigned owner|owner missing|without.*owner/.test(text)) predicate = row => /missing|unassigned|none/i.test(String(row.ownerStatus || row.owner || ''));
+        else if (domainKey === 'compliance' && /identity/.test(text)) predicate = row => /identity/i.test(String(row.area || row.category || row.controlName || row.title || '')) && (!/fail|critical/.test(text) || /fail|critical|non.?compliant/i.test(String(row.complianceStatus || row.status || row.severity || '')));
+        else if (domainKey === 'compliance' && /device/.test(text)) predicate = row => /device/i.test(String(row.area || row.category || row.controlName || row.title || '')) && (!/fail|critical/.test(text) || /fail|critical|non.?compliant/i.test(String(row.complianceStatus || row.status || row.severity || '')));
+        else if (domainKey === 'compliance' && /application|shadow it/.test(text)) predicate = row => /application/i.test(String(row.area || row.category || row.controlName || row.title || ''));
+        else if (domainKey === 'compliance' && /partial data visibility/.test(text)) predicate = row => /partial/i.test(String(row.complianceStatus || row.status || row.severity || ''));
+        else if (domainKey === 'compliance' && /fail|critical/.test(text)) predicate = row => /fail|critical|non.?compliant/i.test(String(row.complianceStatus || row.status || row.severity || ''));
+        else if (domainKey === 'cloudflare_network_security' && /audit/.test(text)) predicate = row => {
+            const actor = String(row.actor?.email || row.actor || '');
+            const action = String(row.action?.type || row.action || '');
+            return (!/support@stackopsit\.co\.za/.test(text) || /support@stackopsit\.co\.za/i.test(actor))
+                && (!/successful/.test(text) || row.action?.result === true)
+                && (!/update/.test(text) || /update/i.test(action));
+        };
+        else if (domainKey === 'cloudflare_network_security' && /active/.test(text)) predicate = row => !/inactive|disabled/i.test(String(row.status || row.enabled || ''));
+        if (domainKey === 'backup' && /large|storage|data holder/.test(text)) {
+            return [...rows].sort((a, b) => Number(unwrapEvidenceRecord(b).storage || unwrapEvidenceRecord(b).storageGB || 0) - Number(unwrapEvidenceRecord(a).storage || unwrapEvidenceRecord(a).storageGB || 0)).slice(0, 5);
+        }
+        return predicate ? rows.filter(value => predicate(unwrapEvidenceRecord(value))) : rows;
+    };
+    const resolveCatalogEvidence = (item, domainKey, categories) => {
+        const metric = asText(item?.sourceMetric).toLowerCase();
+        const exact = metric ? categories.filter(category => [category?.key, category?.sourceMetric].some(value => asText(value).toLowerCase() === metric)) : [];
+        const aliases = catalogCategoryAliases(domainKey, item);
+        const semantic = aliases.flatMap(alias => categories.filter(category => [category?.key, category?.sourceMetric].some(value => asText(value).toLowerCase() === alias.toLowerCase())));
+        const chosen = [...new Set([...semantic, ...exact])][0];
+        if (!chosen) return { resolved: false, rows: [] };
+        const rows = Array.isArray(chosen.entities) ? chosen.entities.filter(row => row && typeof row === 'object') : [];
+        if (rows.length) return { resolved: true, rows: filterCatalogRowsForFinding(rows, item, domainKey) };
+        const count = Number(chosen.count);
+        if (!Number.isFinite(count) || count <= 0) return { resolved: true, rows: [] };
+        return { resolved: true, rows: [{ name: chosen.label || humanizeEvidenceLabel(chosen.sourceMetric || chosen.key), count, sourceMetric: chosen.sourceMetric || chosen.key }] };
+    };    // This view model is already field-bounded below. Do not pass it through the generic
     // depth limiter: evidence and evidenceIds sit at depth four and were replaced by
     // "[Detail omitted]" for every domain before the modal could render them.
     return domains.map(domain => {
@@ -3775,12 +3872,18 @@ function buildSunbirdDomainBreakdownFromPayload(payload = {}) {
                     ...(Array.isArray(item?.affectedEntities) ? item.affectedEntities : []),
                     ...(Array.isArray(item?.evidence) ? item.evidence : []),
                     ...(Array.isArray(item?.evidenceRows) ? item.evidenceRows : [])
-                ];
+                ].filter(row => !isManufacturedValidationRecord(row));
                 // evidenceUsed is a descriptive fallback only. It must never widen a
                 // finding to a metric category or to the entire domain.
-                const evidencePool = explicitRecordRows.length
-                    ? explicitRecordRows
-                    : (Array.isArray(item?.evidenceUsed) ? item.evidenceUsed : []);
+                const catalogResolution = resolveCatalogEvidence(item, String(domain?.domainKey || '').toLowerCase(), evidenceCategories);
+                // A strong semantic/category match is authoritative because stored AI
+                // arrays may be capped or linked to a broad Azure metric. A category
+                // that resolves to zero is still an honest resolution and must not
+                // fall back to unrelated explicit rows. Finding-specific embedded
+                // subcategories remain intact when no catalog category applies.
+                const evidencePool = catalogResolution.resolved
+                    ? catalogResolution.rows
+                    : explicitRecordRows;
                 const evidenceIds = [...new Set([
                     ...(Array.isArray(item?.affectedEntityIds) ? item.affectedEntityIds : []),
                     ...(Array.isArray(item?.recordIds) ? item.recordIds : []),
@@ -3820,8 +3923,7 @@ function buildSunbirdDomainBreakdownFromPayload(payload = {}) {
                 // applications, alerts, or governance items whenever they are present.
                 const specificRecords = mergedRecords.filter(row => !isAggregateEvidenceRecord(row));
                 const displayRecords = specificRecords.length ? specificRecords : mergedRecords;
-                const uniqueEvidence = displayRecords.map(row => normalizeEvidence(row, item));
-                if (!uniqueEvidence.length) uniqueEvidence.push(normalizeEvidence({}, item));
+                const uniqueEvidence = displayRecords.map(row => normalizeEvidence(row, item)).filter(row => row.name);
                 return {
                     findingId: `${String(domain?.domainKey || domain?.domainName || 'domain').toLowerCase()}-${index + 1}`,
                     title: shortText(title, 260),
@@ -5668,7 +5770,8 @@ function generateSunbirdReportPdf(report, reportId = null) {
                             return namedRows.length ? namedRows : [...catalogEntities].filter(entry => Number(entry?.storage) > 0).sort((leftEntry, rightEntry) => Number(rightEntry.storage) - Number(leftEntry.storage)).slice(0, 5);
                         }
                         if (/coverage|external backup|restore/.test(evidenceText)) {
-                            return [{ entityName: 'Backup Coverage Validation', entityType: 'CoverageSummary', sourceMetric: 'backupCoverageScore', backupCoverageScore: lineageMetric('backupCoverageScore'), servicesCovered: lineageMetric('servicesCovered'), totalStorageGB: lineageMetric('totalStorageGB'), dataExposureRiskScore: lineageMetric('dataExposureRiskScore') }];
+                            const score = lineageMetric('backupCoverageScore');
+                            return score == null ? [] : [{ entityName: 'Backup coverage score', entityType: 'SourceMetric', metricName: 'backupCoverageScore', sourceMetric: 'backupCoverageScore', value: score, servicesCovered: lineageMetric('servicesCovered'), totalStorageGB: lineageMetric('totalStorageGB'), dataExposureRiskScore: lineageMetric('dataExposureRiskScore') }];
                         }
                         return null;
                     };
@@ -5679,8 +5782,11 @@ function generateSunbirdReportPdf(report, reportId = null) {
                             const requested = [[/incident review/i, /post-incident/i], [/sign-in logs/i, /sign-in logs/i], [/backup check/i, /backup check/i], [/policy review/i, /ca and compliance policies/i], [/data review/i, /sharepoint usage/i]];
                             return catalogEntities.filter(entry => requested.some(([needle, activity]) => needle.test(findingText) && activity.test(String(entry?.activity || ''))));
                         }
-                        if (/owner missing counts|governance summary/.test(findingText)) return [{ entityName: 'Governance Validation Summary', entityType: 'GovernanceSummary', sourceMetric: 'governanceRows', evidence: `${lineageMetric('attentionRequiredRows')} attention-required reviews; ${governanceEntities.filter(entry => /missing/i.test(String(entry?.ownerStatus || '')).length)} ownerless governance items.`, status: 'Observed' }];
-                        if (/manual evidence rows were excluded/.test(findingText)) return [{ entityName: 'Governance Evidence Limitation', entityType: 'EvidenceLimitation', sourceMetric: 'manualRowsExcluded', evidence: `${lineageMetric('manualRowsExcluded')} manual governance rows were excluded from the connected evidence set.`, status: 'Observed' }];
+                        if (/owner missing counts|governance summary/.test(findingText)) return catalogEntities.filter(entry => /missing|unassigned|none/i.test(String(entry?.ownerStatus || entry?.owner || '')));
+                        if (/manual evidence rows were excluded/.test(findingText)) {
+                            const count = lineageMetric('manualRowsExcluded');
+                            return count == null ? [] : [{ entityName: 'Manual governance rows excluded', entityType: 'SourceMetric', metricName: 'manualRowsExcluded', sourceMetric: 'manualRowsExcluded', value: count, status: 'Observed' }];
+                        }
                         const matchedLabels = catalogEntities.filter(entry => evidenceLabels.some(label => label.includes(String(entry?.activity || entry?.entityName || '').toLowerCase())));
                         if (matchedLabels.length) return matchedLabels;
                         const activityMatches = catalogEntities.filter(entry => String(entry?.activity || '').trim() && findingText.includes(String(entry.activity).toLowerCase()));

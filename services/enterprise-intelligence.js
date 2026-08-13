@@ -738,6 +738,8 @@ function compactEmailSecurityEvidenceRows(sourceEvidence, flattenedEvidence, cur
         .sort((a, b) => b.total - a.total)
         .slice(0, 10)
         .map((item, index) => mailboxRow(item, 'highVolumeMailboxes', 'totalMailActivity', index));
+    const mailActivityUsers = mailboxVolume
+        .map((item, index) => mailboxRow(item, 'mailActivityUsers', 'activeMailboxes', index));
     const inactiveMailboxes = mailboxVolume
         .filter(item => item.total === 0 || !item.mailbox.lastActivityDate)
         .slice(0, 10)
@@ -775,6 +777,7 @@ function compactEmailSecurityEvidenceRows(sourceEvidence, flattenedEvidence, cur
     return [
         ...securityAlerts,
         ...topTargetedUsers,
+        ...mailActivityUsers,
         ...highVolumeMailboxes,
         ...inactiveMailboxes,
         mailflowSummary,
@@ -1579,7 +1582,12 @@ function compactBackupEvidenceRows(flattenedEvidence, current = {}) {
         .slice(0, 10)
         .map((row, index) => compactBackupSite(row, index));
     const metrics = { ...(current.metrics || {}), ...(current.dashboardMetrics || {}) };
-    const serviceStorageSummary = {
+    const hasServiceStorageMetric = [
+        'totalStorageGB', 'oneDriveStorageGB', 'sharePointStorageGB', 'exchangeStorageGB',
+        'activeUsersCount', 'inactiveUsersCount', 'servicesCovered', 'backupCoverageScore',
+        'exposureRiskScore', 'dataExposureRiskScore'
+    ].some(name => numberOrNull(metrics[name]) !== null);
+    const serviceStorageSummary = hasServiceStorageMetric ? {
         internalSourcePath: 'backup.compact.serviceStorageSummary',
         sourceLabel: 'serviceStorageSummary',
         evidenceType: 'serviceStorageSummary',
@@ -1600,18 +1608,27 @@ function compactBackupEvidenceRows(flattenedEvidence, current = {}) {
             businessReason: 'Service storage totals summarize backup exposure context.',
             recommendation: 'Use service-level exposure to prioritize backup coverage and restore testing.'
         })
-    };
-    const backupCoverageGaps = [{
+    } : null;
+    const backupMetric = [
+        ['backupCoverageScore', 'Backup coverage score'],
+        ['servicesCovered', 'Services covered'],
+        ['totalStorageGB', 'Total storage'],
+        ['inactiveUsersCount', 'Inactive users']
+    ].map(([name, label]) => ({ name, label, value: numberOrNull(metrics[name]) }))
+        .find(metric => metric.value !== null) || null;
+    const backupCoverageGaps = backupMetric ? [{
         internalSourcePath: 'backup.compact.backupCoverageGaps',
         sourceLabel: 'backupCoverageGaps',
         evidenceType: 'backupCoverageGaps',
         evidenceCategory: 'backupCoverageGaps',
-        sourceMetric: 'backupCoverageScore',
-        entityKey: 'backupCoverageGaps',
+        sourceMetric: backupMetric.name,
+        entityKey: 'backup-metric-' + backupMetric.name,
         data: compactNonEmptyObject({
-            entityId: 'backupCoverageGaps',
-            entityName: 'Backup Coverage Validation',
-            entityType: 'CoverageSummary',
+            entityId: 'backup-metric-' + backupMetric.name,
+            entityName: backupMetric.label,
+            entityType: 'SourceMetric',
+            metricName: backupMetric.name,
+            value: backupMetric.value,
             backupCoverageScore: numberOrNull(metrics.backupCoverageScore),
             servicesCovered: numberOrNull(metrics.servicesCovered),
             externalBackupConfigured: metrics.externalBackupConfigured ?? metrics.backupConfigured ?? null,
@@ -1621,7 +1638,7 @@ function compactBackupEvidenceRows(flattenedEvidence, current = {}) {
             businessReason: 'Backup coverage controls are assessed at service level, not as individual mail/file events.',
             recommendation: 'Validate external backup coverage, retention, immutability, and restore testing.'
         })
-    }];
+    }] : [];
     const compactRecommendations = recommendations.map((row, index) => ({
         internalSourcePath: row.internalSourcePath || `backup.compact.recommendations[${index}]`,
         sourceLabel: 'recommendations',
@@ -1636,7 +1653,7 @@ function compactBackupEvidenceRows(flattenedEvidence, current = {}) {
         ...inactiveDataHolders,
         ...staleActivityUsers,
         ...topSharePointSites,
-        serviceStorageSummary,
+        ...(serviceStorageSummary ? [serviceStorageSummary] : []),
         ...backupCoverageGaps,
         ...compactRecommendations.slice(0, 5)
     ];
@@ -1735,7 +1752,7 @@ function compactGovernanceEvidenceRows(flattenedEvidence = [], current = {}) {
             String(row.evidenceType || row.sourceLabel || row.evidenceCategory || '')
         ));
 
-    const metrics = current?.dashboardMetrics || current?.metrics || {};
+    const metrics = { ...(current?.metrics || {}), ...(current?.dashboardMetrics || {}) };
     const sourceLineage = current?.source?.sourceLineage || current?.sourceLineage || {};
 
     const normalizedRows = rows.map((row, index) => {
@@ -1899,17 +1916,27 @@ function compactGovernanceEvidenceRows(flattenedEvidence = [], current = {}) {
             sourceMetric: 'connectedRows'
         }));
 
-    const summaryRow = {
+    const governanceMetric = [
+        ['governanceScore', 'Governance score'],
+        ['totalRows', 'Total governance rows'],
+        ['attentionRequiredRows', 'Attention-required rows'],
+        ['ownerMissingCount', 'Owner-missing rows'],
+        ['connectedRows', 'Connected rows']
+    ].map(([name, label]) => ({ name, label, value: numberOrNull(metrics[name]) }))
+        .find(metric => metric.value !== null) || null;
+    const summaryRow = governanceMetric ? {
         internalSourcePath: 'governance.compact.summaryMetrics',
         sourceLabel: 'summaryMetrics',
         evidenceType: 'summaryMetrics',
         evidenceCategory: 'summaryMetrics',
-        sourceMetric: 'governanceScore',
-        entityKey: 'governance-summary',
+        sourceMetric: governanceMetric.name,
+        entityKey: 'governance-metric-' + governanceMetric.name,
         data: compactNonEmptyObject({
-            entityId: 'governance-summary',
-            entityName: 'Governance Validation Summary',
-            entityType: 'GovernanceSummary',
+            entityId: 'governance-metric-' + governanceMetric.name,
+            entityName: governanceMetric.label,
+            entityType: 'SourceMetric',
+            metricName: governanceMetric.name,
+            value: governanceMetric.value,
             totalRows: numberOrNull(metrics.totalRows),
             apiConnectedRows: numberOrNull(metrics.apiConnectedRows),
             manualRowsExcluded: numberOrNull(metrics.manualRowsExcluded),
@@ -1925,10 +1952,10 @@ function compactGovernanceEvidenceRows(flattenedEvidence = [], current = {}) {
             governanceIssue: 'Governance summary provides management/accountability context across API-connected evidence.',
             managementAction: 'Use detailed findings to assign owners, schedule reviews, and record management decisions.'
         })
-    };
+    } : null;
 
     const compactRows = [
-        summaryRow,
+        ...(summaryRow ? [summaryRow] : []),
         ...attentionRequired,
         ...ownershipGaps,
         ...reviewItems,
@@ -1992,7 +2019,7 @@ function compactComplianceEvidenceRows(flattenedEvidence = [], current = {}) {
             String(row.evidenceType || row.sourceLabel || row.evidenceCategory || '')
         ));
 
-    const metrics = current?.dashboardMetrics || current?.metrics || {};
+    const metrics = { ...(current?.metrics || {}), ...(current?.dashboardMetrics || {}) };
     const sourceLineage = current?.source?.sourceLineage || current?.sourceLineage || {};
 
     const normalizedRows = rows.map((row, index) => {
@@ -2214,17 +2241,40 @@ function compactComplianceEvidenceRows(flattenedEvidence = [], current = {}) {
             sourceMetric: item.compact.sourceMetric
         }));
 
-    const summaryRow = {
+    const complianceMetric = [
+        ['complianceScore', 'Compliance score'],
+        ['totalControls', 'Total controls'],
+        ['failingControls', 'Failing controls'],
+        ['partialControls', 'Partial controls'],
+        ['passingControls', 'Passing controls'],
+        ['manualReviewControls', 'Manual-review controls']
+    ].map(([name, label]) => ({ name, label, value: numberOrNull(metrics[name]) }))
+        .find(metric => metric.value !== null) || null;
+    const failingCount = numberOrNull(metrics.failingControls);
+    const partialCount = numberOrNull(metrics.partialControls);
+    const manualReviewCount = numberOrNull(metrics.manualReviewControls);
+    const readinessCountsComplete = [failingCount, partialCount, manualReviewCount].every(value => value !== null);
+    const hasControlPopulation = numberOrNull(metrics.totalControls) !== null || numberOrNull(metrics.passingControls) !== null;
+    const auditReadinessStatus = failingCount !== null && failingCount > 0
+        ? 'not_ready'
+        : (partialCount !== null && partialCount > 0) || (manualReviewCount !== null && manualReviewCount > 0)
+            ? 'partially_ready'
+            : readinessCountsComplete && hasControlPopulation
+                ? 'ready'
+                : null;
+    const summaryRow = complianceMetric ? {
         internalSourcePath: 'compliance.compact.summaryMetrics',
         sourceLabel: 'summaryMetrics',
         evidenceType: 'summaryMetrics',
         evidenceCategory: 'summaryMetrics',
-        sourceMetric: 'complianceScore',
-        entityKey: 'compliance-summary',
+        sourceMetric: complianceMetric.name,
+        entityKey: 'compliance-metric-' + complianceMetric.name,
         data: compactNonEmptyObject({
-            entityId: 'compliance-summary',
-            entityName: 'Compliance Validation Summary',
-            entityType: 'ComplianceSummary',
+            entityId: 'compliance-metric-' + complianceMetric.name,
+            entityName: complianceMetric.label,
+            entityType: 'SourceMetric',
+            metricName: complianceMetric.name,
+            value: complianceMetric.value,
             totalControls: numberOrNull(metrics.totalControls),
             apiControls: numberOrNull(metrics.apiControls),
             manualControlsExcluded: numberOrNull(metrics.manualControlsExcluded),
@@ -2233,11 +2283,7 @@ function compactComplianceEvidenceRows(flattenedEvidence = [], current = {}) {
             passingControls: numberOrNull(metrics.passingControls),
             manualReviewControls: numberOrNull(metrics.manualReviewControls),
             complianceScore: numberOrNull(metrics.complianceScore),
-            auditReadinessStatus: numberOrNull(metrics.failingControls) > 0
-                ? 'not_ready'
-                : numberOrNull(metrics.partialControls) > 0 || numberOrNull(metrics.manualReviewControls) > 0
-                ? 'partially_ready'
-                : 'ready',
+            auditReadinessStatus,
             stackctrlRiskScore: numberOrNull(metrics.stackctrlRiskScore),
             stackctrlHealthScore: numberOrNull(metrics.stackctrlHealthScore),
             evidenceSnapshotId: sourceLineage.evidenceSnapshotId || null,
@@ -2246,10 +2292,10 @@ function compactComplianceEvidenceRows(flattenedEvidence = [], current = {}) {
             validationReason: 'Compliance summary provides audit-readiness context across API-connected compliance controls.',
             remediationAction: 'Use failed, partial, and manual-review controls to drive remediation and audit evidence collection.'
         })
-    };
+    } : null;
 
     return [
-        summaryRow,
+        ...(summaryRow ? [summaryRow] : []),
         ...failedControls,
         ...partialControls,
         ...manualReviewControls,
@@ -3297,8 +3343,36 @@ function itemSearchText(item) {
     ].map(value => String(value || '')).join(' ').toLowerCase();
 }
 
+function isManufacturedValidationEntity(value) {
+    const source = value?.data && typeof value.data === 'object' ? value.data : value || {};
+    const label = [source.entityName, source.displayName, source.name, source.title, source.label]
+        .map(item => String(item || '')).join(' ');
+    return /validation summary|coverage validation/i.test(label);
+}
+
 function inferSelectedDomainSourceMetric(item, domainKey) {
-    const text = itemSearchText(item);
+    const text = String(item?.title || item?.patternFound || item?.description || '').toLowerCase();
+    if (domainKey === 'identity') {
+        if (/privileg|multiple (?:admin )?role/.test(text)) return 'privilegedUsers';
+        if (/admin.*(?:without|missing).*mfa|break.?glass/.test(text)) return 'adminsWithoutMfa';
+        if (/external|guest/.test(text)) return 'externalUsers';
+        if (/inactive|dormant/.test(text)) return 'inactiveUsers';
+        if (/unknown device|unknown location/.test(text)) return 'unknownDeviceUsers';
+        if (/high risk/.test(text)) return 'highRiskUsers';
+        if (/without mfa|missing mfa|mfa gap/.test(text)) return 'usersWithoutMfa';
+    }
+    if (domainKey === 'devices') {
+        if (/non.?compliant/.test(text)) return 'nonCompliantDevices';
+        if (/stale|dead|30 day/.test(text)) return 'deadDevices';
+        if (/device|managed|encrypted/.test(text)) return 'totalDevices';
+    }
+    if (domainKey === 'email_security') {
+        if (/mailbox|mailflow|mail activity/.test(text)) return 'activeMailboxes';
+        if (/users? affected|targeting (?:key )?users?|affected users?/.test(text)) return null;
+        if (/alert|phish|junk|threat/.test(text)) return 'alerts';
+    }
+    if (domainKey === 'governance') return /owner|governance|management review|access review/.test(text) ? 'governanceRows' : null;
+    if (domainKey === 'compliance') return /control|compliance|audit|identity|device|application/.test(text) ? 'totalControls' : null;
     if (domainKey === 'security_alerts') {
         if (/anonymous|tor|proxy|vpn|ip address|risky ip|anonymous ip/.test(text)) return 'anonymousIpEvents';
         if (/sign[-\s]?in|credential|login/.test(text)) return 'suspiciousSignIns';
@@ -3312,13 +3386,12 @@ function inferSelectedDomainSourceMetric(item, domainKey) {
         if (/user|account|mail|upn/.test(text)) return 'affectedUsers';
     }
     if (domainKey === 'backup') {
-        if (/coverage|external backup|restore|immutab/.test(text)) return 'backupCoverageGaps';
+        if (/large|storage|data holder|holder/.test(text)) return 'topStorageUsers';
         if (/inactive|disabled/.test(text)) return 'inactiveDataHolders';
         if (/stale|activity/.test(text)) return 'staleActivityUsers';
         if (/sharepoint|site/.test(text)) return 'topSharePointSites';
-        if (/large|storage|data holder|holder/.test(text)) return 'topStorageUsers';
-    }
-    if (domainKey === 'applications') {
+        if (/coverage|external backup|restore|immutab/.test(text)) return 'backupCoverageGaps';
+    }    if (domainKey === 'applications') {
         if (/excessive|permission|scope|admin consent|directory\.|mail\.|files\./.test(text)) return 'excessivePermissionApps';
         if (/external|publisher|vendor|shadow/.test(text)) return 'externalApps';
         if (/high[-\s]?access|broad access/.test(text)) return 'highAccessApps';
@@ -3344,6 +3417,43 @@ function inferSelectedDomainSourceMetric(item, domainKey) {
     return null;
 }
 
+function filterSemanticEvidenceRows(rows, item, domainKey) {
+    const text = itemSearchText(item);
+    const data = row => row?.data && typeof row.data === 'object' ? row.data : row || {};
+    let predicate = null;
+    if (domainKey === 'identity' && /multiple (?:privileged |admin )?roles/.test(text)) predicate = value => Array.isArray(data(value).roles) && data(value).roles.length > 1;
+    else if (domainKey === 'devices' && /all \d+ devices.*encrypted.*managed|encrypted and managed/.test(text)) predicate = value => (data(value).isEncrypted == null ? /encrypted/i.test(String(data(value).encryptionStatus || '')) && !/not encrypted/i.test(String(data(value).encryptionStatus || '')) : data(value).isEncrypted === true) && /mdm/i.test(String(data(value).managementAgent || ''));
+    else if (domainKey === 'devices' && /no unmanaged|no unknown compliance/.test(text)) predicate = value => !/unmanaged|unknown/i.test(String(data(value).managementAgent || '')) && Boolean(String(data(value).managementAgent || '').trim()) && !/unknown/i.test(String(data(value).complianceState || data(value).complianceStatus || '')) && Boolean(String(data(value).complianceState || data(value).complianceStatus || '').trim());
+    else if (domainKey === 'devices' && /not concentrated/.test(text)) predicate = () => false;
+    else if (domainKey === 'devices' && /high.?risk/.test(text)) predicate = value => /high/i.test(String(data(value).riskLevel || data(value).risk || ''));
+    else if (domainKey === 'devices' && /non.?compliant/.test(text)) predicate = value => /non.?compliant/i.test(String(data(value).complianceState || data(value).complianceStatus || ''));
+    else if (domainKey === 'devices' && /unmanaged|unknown compliance/.test(text)) predicate = value => /unmanaged|unknown/i.test(String(data(value).managementAgent || data(value).complianceState || data(value).complianceStatus || ''));
+    else if (domainKey === 'email_security' && /inactive mailbox/.test(text)) predicate = value => Number(data(value).readCount || 0) + Number(data(value).sendCount || 0) + Number(data(value).receiveCount || 0) === 0;
+    else if ((domainKey === 'email_security' || domainKey === 'security_alerts') && /no (?:critical|high.?severity)|critical alert/.test(text)) predicate = value => !/critical|high/i.test(String(data(value).severity || ''));
+    else if ((domainKey === 'email_security' || domainKey === 'security_alerts') && /low.?severity/.test(text)) predicate = value => /low/i.test(String(data(value).severity || '')) && !/resolved|closed|dismissed/i.test(String(data(value).status || ''));
+    else if ((domainKey === 'email_security' || domainKey === 'security_alerts') && /unresolved|ongoing|active|open/.test(text)) predicate = value => !/resolved|closed|dismissed/i.test(String(data(value).status || ''));
+    else if (domainKey === 'applications' && /no excessive permission|no high.?access/.test(text)) predicate = value => Number(data(value).roleCount) === 0 && Number(data(value).scopeCount) === 0 && data(value).roleCount != null && data(value).scopeCount != null;
+    else if (domainKey === 'applications' && /unknown publisher/.test(text)) predicate = value => /unknown/i.test(String(data(value).publisherName || ''));
+    else if (domainKey === 'applications' && /external/.test(text)) predicate = value => data(value).isExternal !== false;
+    else if (domainKey === 'governance' && /manual evidence.*excluded/.test(text)) predicate = () => false;
+    else if (domainKey === 'governance' && /management review/.test(text)) predicate = value => /attention required/i.test(String(data(value).status || ''));
+    else if (domainKey === 'governance' && /access reviews?.*users and roles/.test(text)) predicate = value => /access review|admin review/i.test(String(data(value).area || data(value).title || ''));
+    else if (domainKey === 'governance' && /missing ownership|no assigned owner|owner missing|without.*owner/.test(text)) predicate = value => /missing|unassigned|none/i.test(String(data(value).ownerStatus || data(value).owner || ''));
+    else if (domainKey === 'cloudflare_network_security' && /audit/.test(text)) predicate = value => {
+        const row = data(value);
+        const actor = String(row.actor?.email || row.actor || '');
+        const action = String(row.action?.type || row.action || '');
+        return (!/support@stackopsit\.co\.za/.test(text) || /support@stackopsit\.co\.za/i.test(actor))
+            && (!/successful/.test(text) || row.action?.result === true)
+            && (!/update/.test(text) || /update/i.test(action));
+    };
+    else if (domainKey === 'compliance' && /identity/.test(text)) predicate = value => /identity/i.test(String(data(value).area || data(value).category || data(value).controlName || data(value).title || '')) && (!/fail|critical/.test(text) || /fail|critical|non.?compliant/i.test(String(data(value).complianceStatus || data(value).status || data(value).severity || '')));
+    else if (domainKey === 'compliance' && /device/.test(text)) predicate = value => /device/i.test(String(data(value).area || data(value).category || data(value).controlName || data(value).title || '')) && (!/fail|critical/.test(text) || /fail|critical|non.?compliant/i.test(String(data(value).complianceStatus || data(value).status || data(value).severity || '')));
+    else if (domainKey === 'compliance' && /application|shadow it/.test(text)) predicate = value => /application/i.test(String(data(value).area || data(value).category || data(value).controlName || data(value).title || ''));
+    else if (domainKey === 'compliance' && /partial data visibility/.test(text)) predicate = value => /partial/i.test(String(data(value).complianceStatus || data(value).status || data(value).severity || ''));
+    if (domainKey === 'backup' && /large|storage|data holder/.test(text)) return [...rows].sort((a, b) => Number(data(b).storage || data(b).storageGB || 0) - Number(data(a).storage || data(a).storageGB || 0)).slice(0, 5);
+    return predicate ? rows.filter(predicate) : rows;
+}
 function normalizeEvidenceBackedItem(item, domain, snapshotId) {
     const value = item && typeof item === 'object' && !Array.isArray(item) ? item : { title: String(item || '') };
     const sourceDomain = textOrNull(value.sourceDomain || domain.key, 80);
@@ -3354,10 +3464,12 @@ function normalizeEvidenceBackedItem(item, domain, snapshotId) {
 
     const suppliedEntityIds = compactReferences(value.affectedEntityIds);
     const affectedEntities = cleanEntitiesForDomain(uniqueEntities(array(value.affectedEntities)
-        .map((entity, index) => canonicalEntity(entity, { ...entityContext, entityId: suppliedEntityIds[index] }))), domain.key);
+        .map((entity, index) => canonicalEntity(entity, { ...entityContext, entityId: suppliedEntityIds[index] })))
+        .filter(entity => !isManufacturedValidationEntity(entity)), domain.key);
 
     const rawEvidenceRows = cleanEntitiesForDomain(uniqueEntities(array(value.evidenceRows)
-        .map(row => canonicalEntity(row, entityContext))), domain.key);
+        .map(row => canonicalEntity(row, entityContext)))
+        .filter(row => !isManufacturedValidationEntity(row)), domain.key);
 
     const evidenceRows = filterRowsToAffectedEntities(rawEvidenceRows, affectedEntities);
 
@@ -3460,10 +3572,8 @@ function ensureItemEvidence(item, domain, snapshotId, availableEvidence = []) {
     if (!availableEvidence.length) return normalized;
 
     const inferredSourceMetric = inferSelectedDomainSourceMetric(item, domain.key);
-    const cloudflareWeakMetric = domain.key === 'cloudflare_network_security' && normalized.sourceMetric === 'protectedApps' && inferredSourceMetric && inferredSourceMetric !== 'protectedApps';
-    if ((!normalized.sourceMetric && inferredSourceMetric) || cloudflareWeakMetric) normalized.sourceMetric = inferredSourceMetric;
+    if (inferredSourceMetric) normalized.sourceMetric = inferredSourceMetric;
     const requestedMetric = String(normalized.sourceMetric || '').toLowerCase();
-
     // sourceMetric describes an aggregate (for example totalUsers); it is not a
     // relationship to every record in that category. Resolve source rows only via
     // explicit entity/record/alert IDs, attached entity values, or source paths.
@@ -3488,7 +3598,14 @@ function ensureItemEvidence(item, domain, snapshotId, availableEvidence = []) {
         return candidateKeys.some(key => explicitReferenceKeys.has(key)) ||
             (candidatePath && explicitSourcePaths.has(candidatePath));
     });
-    const selected = matching;
+    const metricMatching = !requestedMetric ? [] : availableEvidence.filter(row => {
+        const metrics = [row?.sourceMetric, row?.evidenceType, row?.evidenceCategory, row?.sourceLabel]
+            .map(value => String(value || '').trim().toLowerCase()).filter(Boolean);
+        return metrics.includes(requestedMetric);
+    });
+    const filteredMetricRows = filterSemanticEvidenceRows(metricMatching, item, domain.key);
+    const semanticResolution = Boolean(inferredSourceMetric) && metricMatching.length > 0;
+    const selected = semanticResolution ? filteredMetricRows : matching.length ? matching : filteredMetricRows;
     const entityContext = {
         ...normalized,
         sourceDomain: normalized.sourceDomain || domain.key,
@@ -3503,6 +3620,11 @@ function ensureItemEvidence(item, domain, snapshotId, availableEvidence = []) {
         evidenceType: row?.evidenceType || null,
         data: row?.data ?? row
     }, entityContext))).filter(Boolean), domain.key);
+
+    if (semanticResolution) {
+        normalized.affectedEntities = rows;
+        normalized.evidenceRows = rows;
+    }
 
     const first = selected[0] || {};
 
@@ -3583,10 +3705,6 @@ function ensureItemEvidence(item, domain, snapshotId, availableEvidence = []) {
     normalized.recommendedActions = array(item?.recommendedActions).length
         ? array(item.recommendedActions)
         : [normalized.recommendedAction].filter(Boolean);
-
-    if (!normalized.evidenceSummary) {
-        normalized.evidenceSummary = `${normalized.evidenceRows.length} readable StackCTRL affected evidence row(s) support this item; complete source data remains available in the raw evidence endpoint.`;
-    }
 
     normalized.evidenceLinkVersion = 'explicit_v2';
     return normalized;
@@ -9553,6 +9671,9 @@ module.exports = {
     flattenDomainEvidence,
     filterDomainEvidence,
     buildEvidenceCatalog,
+    compactBackupEvidenceRows,
+    compactGovernanceEvidenceRows,
+    compactComplianceEvidenceRows,
     repairTruncatedJson,
     splitIntoBatches,
     securityAlertSemantics,
