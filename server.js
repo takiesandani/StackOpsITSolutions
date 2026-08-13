@@ -6697,6 +6697,37 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
         operation.step('report_context_resolved', { companyId: context.companyId });
         const range = getReportRange(req.query, settings.ActiveSince);
         const limit = Math.max(1, Math.min(50, Number(req.query.limit) || 12));
+        // Reconcile a real completed pipeline only when this tenant has no current
+        // published daily report. This restores pre-publication runs without fabricating data.
+        try {
+            const [currentRows] = await pool.query(
+                `SELECT ID FROM SunbirdReports WHERE CompanyID = ? AND ReportType = 'daily' AND IsCurrent = 1 LIMIT 1`,
+                [context.companyId]
+            );
+            if (!currentRows.length && typeof enterpriseIntelligenceService?.publishCompletedRun === 'function') {
+                const [completedRuns] = await pool.query(
+                    `SELECT ID, SnapshotID FROM StackCTRLEnterpriseReportRuns
+                     WHERE CompanyID = ? AND SnapshotID IS NOT NULL
+                       AND Status IN ('completed', 'completed_with_warnings')
+                     ORDER BY CompletedAt DESC, ID DESC LIMIT 1`,
+                    [context.companyId]
+                );
+                if (completedRuns[0]) {
+                    const publication = await enterpriseIntelligenceService.publishCompletedRun({
+                        companyId: context.companyId,
+                        runId: Number(completedRuns[0].ID)
+                    });
+                    operation.step('completed_pipeline_report_reconciled', {
+                        runId: Number(completedRuns[0].ID),
+                        snapshotId: Number(completedRuns[0].SnapshotID),
+                        reportId: publication.reportId || null
+                    });
+                }
+            }
+        } catch (reconciliationError) {
+            console.error('[Reports] Completed pipeline reconciliation failed:', reconciliationError.message);
+            operation.step('completed_pipeline_report_reconciliation_failed', { error: reconciliationError.message });
+        }
         // Load independent saved-data panels in parallel. Each read has its own SQL
         // and application deadline and returns an empty list on failure, so a slow
         // audit/payload query cannot take down the report dashboard.
