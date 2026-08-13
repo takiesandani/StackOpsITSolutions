@@ -16589,14 +16589,29 @@ const enterpriseIntelligenceAutomation = createStackCTRLServerAutomation({
     intervalMs: process.env.ENTERPRISE_AI_AUTOMATION_INTERVAL_MS || (15 * 60 * 1000),
     startupDelayMs: process.env.ENTERPRISE_AI_AUTOMATION_STARTUP_DELAY_MS || (60 * 1000)
 });
-function parseCloudSchedulerScheduleTime(value) {
+function parseCloudSchedulerScheduleTime(value, receivedAt = new Date()) {
+    const received = DateTime.fromJSDate(receivedAt instanceof Date ? receivedAt : new Date(receivedAt), { zone: 'utc' });
     const raw = String(value || '').trim();
-    if (!raw) return new Date();
+    if (!raw || !received.isValid) return received.isValid ? received.toJSDate() : new Date();
     const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw);
     const parsed = DateTime.fromISO(raw, hasZone
         ? { setZone: true }
         : { zone: SUNBIRD_REPORT_TIME_ZONE });
-    return parsed.isValid ? parsed.toUTC().toJSDate() : new Date();
+    if (!parsed.isValid) return received.toJSDate();
+    const scheduled = parsed.toUTC();
+    // A Scheduler retry carries its original time and is valid. A manual/forced
+    // request can carry a future nominal schedule time; never let that move a
+    // daily key into tomorrow. Use the actual received instant in that case.
+    if (scheduled > received.plus({ minutes: 5 })) {
+        console.warn('[StackCTRL Enterprise Pipeline]', {
+            event: 'future_scheduler_time_rejected',
+            scheduledTime: scheduled.toISO(),
+            receivedAt: received.toISO(),
+            timeZone: SUNBIRD_REPORT_TIME_ZONE
+        });
+        return received.toJSDate();
+    }
+    return scheduled.toJSDate();
 }
 
 function hasValidEnterpriseAutomationTrigger(req) {

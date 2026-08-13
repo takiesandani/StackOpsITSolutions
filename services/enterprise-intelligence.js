@@ -4370,7 +4370,8 @@ function createEnterpriseIntelligenceService({
         maxSynthesisOutputTokens: Math.max(2000, Number(config.maxSynthesisOutputTokens ?? process.env.ENTERPRISE_AI_MAX_OUTPUT_TOKENS_SYNTHESIS) || DEFAULT_SYNTHESIS_OUTPUT_TOKENS),
         maxTotalTokens: Math.max(10000, Number(config.maxTotalTokens ?? process.env.ENTERPRISE_AI_MAX_TOTAL_TOKENS) || DEFAULT_MAX_TOTAL_TOKENS),
         requestTimeoutMs: Math.max(60000, Number(config.requestTimeoutMs ?? process.env.ENTERPRISE_AI_REQUEST_TIMEOUT_MS) || 180000),
-        terminalStaleMs: Math.max(5 * 60 * 1000, Number(config.terminalStaleMs ?? process.env.ENTERPRISE_AI_TERMINAL_STALE_MS) || (30 * 60 * 1000))
+        terminalStaleMs: Math.max(5 * 60 * 1000, Number(config.terminalStaleMs ?? process.env.ENTERPRISE_AI_TERMINAL_STALE_MS) || (30 * 60 * 1000)),
+        snapshotTimeoutMs: Math.max(30 * 1000, Number(config.snapshotTimeoutMs ?? process.env.ENTERPRISE_AI_SNAPSHOT_TIMEOUT_MS) || (15 * 60 * 1000))
     });
     let rateLimitCircuitOpenUntil = 0;
 
@@ -7033,11 +7034,42 @@ Return exactly these top-level fields:
 
     async function refreshEnterpriseSnapshot(companyId, user = {}) {
         if (!intelligenceService?.createSnapshot) return null;
-        return intelligenceService.createSnapshot({
-            companyId: Number(companyId),
-            options: { snapshotType: 'enterprise_pipeline', refresh: true },
-            user
+        const timeoutMs = settings.snapshotTimeoutMs;
+        let timer = null;
+        const timeout = new Promise((_, reject) => {
+            timer = setTimeout(() => {
+                const error = new Error(`Enterprise snapshot creation exceeded ${timeoutMs}ms.`);
+                error.enterpriseStatus = 'failed_snapshot_timeout';
+                error.failureStage = 'SNAPSHOT_CREATION_FAILED';
+                error.code = 'ENTERPRISE_SNAPSHOT_TIMEOUT';
+                reject(error);
+            }, timeoutMs);
         });
+        try {
+            return await Promise.race([
+                intelligenceService.createSnapshot({
+                    companyId: Number(companyId),
+                    options: { snapshotType: 'enterprise_pipeline', refresh: true },
+                    user
+                }),
+                timeout
+            ]);
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+
+    async function bindSnapshotToRun(run, snapshot, phase, metadata = {}) {
+        const progress = { phase, ...metadata, timestamp: new Date().toISOString() };
+        const [result] = await pool.query(
+            `UPDATE StackCTRLEnterpriseReportRuns
+             SET SnapshotID = ?, ProgressJson = ?
+             WHERE ID = ? AND CompanyID = ? AND Status = 'running' AND SnapshotID IS NULL`,
+            [Number(snapshot.ID), JSON.stringify(progress), Number(run.id), Number(metadata.enterpriseId)]
+        );
+        if (Number(result?.affectedRows || 0) !== 1) {
+            throw new Error(`Enterprise run #${run.id} could not be atomically bound to snapshot #${snapshot.ID}.`);
+        }
     }
 
     function normalizedDomainResult(data, domain, current, snapshotId = null, availableEvidence = []) {
@@ -8282,6 +8314,7 @@ Return exactly these top-level fields:
         const shouldRefreshSnapshot = refreshSnapshot === true || (refreshSnapshot !== false && isEnterpriseDeepRun);
         const shouldIncludeSynthesis = includeSynthesis === true || (includeSynthesis !== false && isEnterpriseDeepRun);
         const pipelineId = deduplicationKey || null;
+        const scheduleKey = pipelineId ? String(pipelineId).split(':').at(-1) || null : null;
         const mode = isSingleDomainRun ? DOMAIN_BY_KEY[selectedKeys[0]].mode : 'enterprise_deep_reporting';
         const run = await createRun({
             companyId: numericCompanyId,
@@ -8326,8 +8359,11 @@ Return exactly these top-level fields:
             if (shouldRefreshSnapshot) {
                 logger.info('[StackCTRL Enterprise Pipeline]', {
                     event: 'snapshot_creation_started',
+                    companyId: numericCompanyId,
                     enterpriseId: numericCompanyId,
+                    runId: run.id,
                     pipelineExecutionId: pipelineId,
+                    scheduleKey,
                     analysisExecutionId: run.id,
                     timestamp: new Date().toISOString()
                 });
@@ -8344,8 +8380,7 @@ Return exactly these top-level fields:
             if (!snapshot?.ID || Number(snapshot.CompanyID) !== numericCompanyId) {
                 throw new Error('The persisted enterprise snapshot does not belong to the requested enterprise');
             }
-            await pool.query(`UPDATE StackCTRLEnterpriseReportRuns SET SnapshotID = ? WHERE ID = ?`, [snapshot.ID, run.id]);
-            await recordPipelinePhase(run.id, snapshotRefresh?.snapshotId ? 'SNAPSHOT_CREATED' : 'SNAPSHOT_VERIFIED', {
+            await bindSnapshotToRun(run, snapshot, snapshotRefresh?.snapshotId ? 'SNAPSHOT_CREATED' : 'SNAPSHOT_VERIFIED', {
                 enterpriseId: numericCompanyId,
                 snapshotId: Number(snapshot.ID),
                 analysisExecutionId: run.id,
@@ -8353,8 +8388,11 @@ Return exactly these top-level fields:
             });
             logger.info('[StackCTRL Enterprise Pipeline]', {
                 event: snapshotRefresh?.snapshotId ? 'snapshot_created' : 'snapshot_verified',
+                companyId: numericCompanyId,
                 enterpriseId: numericCompanyId,
+                runId: run.id,
                 pipelineExecutionId: pipelineId,
+                scheduleKey,
                 analysisExecutionId: run.id,
                 snapshotId: Number(snapshot.ID),
                 timestamp: new Date().toISOString()
@@ -8538,6 +8576,19 @@ Return exactly these top-level fields:
                 timestamp: new Date().toISOString(),
                 error: String(error.message || error).slice(0, 5000)
             };
+            if (String(failureStage).startsWith('SNAPSHOT_')) {
+                logger.error('[StackCTRL Enterprise Pipeline]', {
+                    event: 'snapshot_creation_failed',
+                    companyId: numericCompanyId,
+                    runId: run.id,
+                    analysisExecutionId: run.id,
+                    pipelineExecutionId: pipelineId,
+                    scheduleKey,
+                    failureStage,
+                    error: failure.error,
+                    timestamp: failure.timestamp
+                });
+            }
             await pool.query(
                 `UPDATE StackCTRLEnterpriseReportRuns
                  SET Status = ?, CompletedAt = NOW(), ErrorMessage = ?, ProgressJson = ?

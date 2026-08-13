@@ -70,6 +70,7 @@ test('daily publication persists a report/run/snapshot association and uses it f
     assert.match(source, /publishCurrent: true/);
     assert.match(source, /publishedOnly: !runId/);
     assert.match(source, /parseCloudSchedulerScheduleTime/);
+    assert.match(source, /future_scheduler_time_rejected/);
     const enterpriseSource = fs.readFileSync('services/enterprise-intelligence.js', 'utf8');
     assert.match(enterpriseSource, /event: 'enterprise_daily_pipeline_completed'/);
 });

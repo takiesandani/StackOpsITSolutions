@@ -3728,6 +3728,11 @@ test('scheduled enterprise pipeline creates and verifies a fresh snapshot before
     assert.equal(result.companies[0].runs[0].snapshotId, 1501);
     assert.equal(result.companies[0].runs[0].reportAutomation.reportId, 3001);
     assert.equal(fixture.getFinalizationCount(), 1);
+    const snapshotBindingWrite = fixture.writes.find(call => call.sql.includes('SET SnapshotID = ?, ProgressJson = ?'));
+    assert.ok(snapshotBindingWrite, 'fresh snapshot must be atomically bound to the running enterprise run');
+    assert.equal(snapshotBindingWrite.params[0], 1501);
+    assert.equal(snapshotBindingWrite.params.at(-2), 1901);
+
     const persistedPhases = fixture.writes
         .filter(call => call.sql.includes('ProgressJson = ?'))
         .flatMap(call => call.params)
@@ -3758,6 +3763,10 @@ test('scheduled enterprise pipeline stops after snapshot failure and persists th
         call.params.some(param => typeof param === 'string' && param.includes('SNAPSHOT_CREATION_FAILED'))
     );
     assert.ok(failureWrite);
+    const terminalRunWrite = fixture.writes.find(call => call.sql.includes("SET Status = ?, CompletedAt = NOW(), ErrorMessage = ?, ProgressJson = ?"));
+    assert.ok(terminalRunWrite, 'snapshot failure must record a terminal run status');
+    assert.notEqual(terminalRunWrite.params[0], 'running');
+
 });
 
 test('scheduled enterprise pipeline reports analysis failure and does not publish a report', async () => {
