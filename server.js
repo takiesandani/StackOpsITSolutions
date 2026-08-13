@@ -4180,6 +4180,35 @@ async function generateAiReportAnalysis(report, powerBiIntelligence = null) {
     }
 }
 
+let sunbirdReportsPublicationSchemaPromise = null;
+
+async function ensureSunbirdReportsPublicationSchema() {
+    if (sunbirdReportsPublicationSchemaPromise) return sunbirdReportsPublicationSchemaPromise;
+    sunbirdReportsPublicationSchemaPromise = (async () => {
+        for (const [column, definition] of [
+            ['EnterpriseRunID', 'BIGINT DEFAULT NULL'],
+            ['EnterpriseSnapshotID', 'BIGINT DEFAULT NULL'],
+            ['IsCurrent', 'TINYINT(1) NOT NULL DEFAULT 0'],
+            ['PublishedAt', 'DATETIME DEFAULT NULL']
+        ]) {
+            const [existing] = await pool.query(`SHOW COLUMNS FROM SunbirdReports LIKE '${column}'`);
+            if (!existing.length) {
+                await pool.query(`ALTER TABLE SunbirdReports ADD COLUMN ${column} ${definition}`);
+                console.log(`[Reports] Added missing SunbirdReports.${column} column.`);
+            }
+        }
+        try {
+            await pool.query('CREATE INDEX idx_sunbird_reports_current ON SunbirdReports (CompanyID, ReportType, IsCurrent, PublishedAt, CreatedAt)');
+        } catch (error) {
+            if (error.code !== 'ER_DUP_KEYNAME') throw error;
+        }
+    })().catch(error => {
+        sunbirdReportsPublicationSchemaPromise = null;
+        throw error;
+    });
+    return sunbirdReportsPublicationSchemaPromise;
+}
+
 async function ensureSunbirdReportSettings(companyId, recipientEmail = null) {
     await pool.query(
         `INSERT INTO SunbirdReportSettings (CompanyID, RecipientEmail)
@@ -6694,6 +6723,7 @@ app.get('/api/sunbird/reports', authenticateToken, async (req, res) => {
             return;
         }
         const { context, settings } = reportContext;
+        await ensureSunbirdReportsPublicationSchema();
         operation.step('report_context_resolved', { companyId: context.companyId });
         const range = getReportRange(req.query, settings.ActiveSince);
         const limit = Math.max(1, Math.min(50, Number(req.query.limit) || 12));
