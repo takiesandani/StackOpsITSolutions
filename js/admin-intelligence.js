@@ -977,6 +977,9 @@
         const partialDomain = (result?.domains || []).find(domain => domain.status === 'partial' || domain.status === 'completed_with_warnings');
         const snapshotText = result?.snapshotId ? ` · Snapshot #${number(result.snapshotId)}` : '';
         const runText = result?.runId ? ` · Run #${number(result.runId)}` : '';
+        if (status === 'already_running') {
+            return { className: 'action-status is-warning', toastType: 'success', text: 'An enterprise run is already in progress' + runText + snapshotText + '. The dashboard will continue showing its live status.' };
+        }
         if (isFailureStatus(status) || failedDomain) {
             return { className: 'action-status is-error', toastType: 'error', text: `${label} failed${runText}${snapshotText}: ${failedDomain?.errorMessage || result?.message || statusLabel(status)}` };
         }

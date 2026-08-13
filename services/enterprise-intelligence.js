@@ -4371,7 +4371,8 @@ function createEnterpriseIntelligenceService({
         maxTotalTokens: Math.max(10000, Number(config.maxTotalTokens ?? process.env.ENTERPRISE_AI_MAX_TOTAL_TOKENS) || DEFAULT_MAX_TOTAL_TOKENS),
         requestTimeoutMs: Math.max(60000, Number(config.requestTimeoutMs ?? process.env.ENTERPRISE_AI_REQUEST_TIMEOUT_MS) || 180000),
         terminalStaleMs: Math.max(5 * 60 * 1000, Number(config.terminalStaleMs ?? process.env.ENTERPRISE_AI_TERMINAL_STALE_MS) || (30 * 60 * 1000)),
-        snapshotTimeoutMs: Math.max(30 * 1000, Number(config.snapshotTimeoutMs ?? process.env.ENTERPRISE_AI_SNAPSHOT_TIMEOUT_MS) || (15 * 60 * 1000))
+        snapshotTimeoutMs: Math.max(30 * 1000, Number(config.snapshotTimeoutMs ?? process.env.ENTERPRISE_AI_SNAPSHOT_TIMEOUT_MS) || (15 * 60 * 1000)),
+        sourceRefreshTimeoutMs: Math.max(10 * 1000, Number(config.sourceRefreshTimeoutMs ?? process.env.STACKCTRL_SOURCE_REFRESH_TIMEOUT_MS) || (60 * 1000))
     });
     let rateLimitCircuitOpenUntil = 0;
 
@@ -6724,6 +6725,17 @@ Return exactly these top-level fields:
         };
     }
 
+    async function findActiveEnterpriseRun(companyId) {
+        const [rows] = await pool.query(
+            `SELECT ID, SnapshotID, Status, PeriodType, Mode, StartedAt
+             FROM StackCTRLEnterpriseReportRuns
+             WHERE CompanyID = ? AND Status IN ('queued', 'running')
+             ORDER BY ID DESC LIMIT 1`,
+            [Number(companyId)]
+        );
+        return rows[0] || null;
+    }
+
     async function createRun({ companyId, snapshotId, periodType, referenceDate, mode, deduplicationKey = null }) {
         const window = periodWindow(periodType, referenceDate);
         let result;
@@ -7049,7 +7061,11 @@ Return exactly these top-level fields:
             return await Promise.race([
                 intelligenceService.createSnapshot({
                     companyId: Number(companyId),
-                    options: { snapshotType: 'enterprise_pipeline', refresh: true },
+                    options: {
+                        snapshotType: 'enterprise_pipeline',
+                        refresh: true,
+                        refreshTimeoutMs: settings.sourceRefreshTimeoutMs
+                    },
                     user
                 }),
                 timeout
@@ -8311,6 +8327,26 @@ Return exactly these top-level fields:
         }
         const isSingleDomainRun = selectedKeys.length === 1;
         const isEnterpriseDeepRun = selectedKeys.length > 1;
+        const activeRun = await findActiveEnterpriseRun(numericCompanyId);
+        if (activeRun) {
+            logger.info('[StackCTRL Enterprise Pipeline]', {
+                event: 'active_run_reused',
+                companyId: numericCompanyId,
+                runId: Number(activeRun.ID),
+                snapshotId: activeRun.SnapshotID == null ? null : Number(activeRun.SnapshotID),
+                status: activeRun.Status,
+                timestamp: new Date().toISOString()
+            });
+            return {
+                status: 'already_running',
+                existingStatus: activeRun.Status,
+                runId: Number(activeRun.ID),
+                snapshotId: activeRun.SnapshotID == null ? null : Number(activeRun.SnapshotID),
+                periodType: activeRun.PeriodType || periodType,
+                mode: activeRun.Mode || null,
+                message: 'Enterprise run #' + activeRun.ID + ' is already in progress.'
+            };
+        }
         const shouldRefreshSnapshot = refreshSnapshot === true || (refreshSnapshot !== false && isEnterpriseDeepRun);
         const shouldIncludeSynthesis = includeSynthesis === true || (includeSynthesis !== false && isEnterpriseDeepRun);
         const pipelineId = deduplicationKey || null;
@@ -8357,6 +8393,12 @@ Return exactly these top-level fields:
                 timestamp: new Date().toISOString()
             });
             if (shouldRefreshSnapshot) {
+                await recordPipelinePhase(run.id, 'SNAPSHOT_CREATION_STARTED', {
+                    enterpriseId: numericCompanyId,
+                    analysisExecutionId: run.id,
+                    pipelineExecutionId: pipelineId,
+                    scheduleKey
+                });
                 logger.info('[StackCTRL Enterprise Pipeline]', {
                     event: 'snapshot_creation_started',
                     companyId: numericCompanyId,

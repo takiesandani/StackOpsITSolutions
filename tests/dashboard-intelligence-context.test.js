@@ -98,6 +98,31 @@ test('Cloudflare stored-evidence sort failure becomes a warning when live metric
     assert.match(result.warnings.join(' '), /stored evidence could not be loaded.*Out of sort memory/i);
 });
 
+test('a stalled source refresh becomes an explicit adapter error instead of blocking snapshot creation', async () => {
+    const result = await cloudflareNetworkSecurityAdapter({
+        pool: { query: async () => [[], []] },
+        companyId: 1,
+        refresh: true,
+        refreshTimeoutMs: 15,
+        capability: {
+            sourceKey: 'cloudflare_network_security',
+            displayName: 'Cloudflare Network Security',
+            isExpected: true,
+            isEnabled: true,
+            refreshMode: 'refresh_if_stale',
+            freshnessThresholdMinutes: 60,
+            configuration: {}
+        },
+        async refreshSource() {
+            return new Promise(() => {});
+        }
+    });
+
+    assert.equal(result.status, 'error');
+    assert.match(result.errorMessage, /source refresh exceeded 15ms/i);
+    assert.match(result.warnings.join(' '), /source refresh exceeded 15ms/i);
+});
+
 test('dashboard context builders include StackCTRL calculated metrics and evidence lists', () => {
     const identity = buildIdentityDashboardContext(source({
         evidence: [{

@@ -50,6 +50,28 @@ function getFreshness(records, thresholdMinutes) {
     };
 }
 
+async function refreshWithDeadline(refreshSource, sourceKey, companyId, timeoutMs) {
+    const deadlineMs = Math.max(0, Number(timeoutMs) || 0);
+    if (!deadlineMs) return refreshSource(sourceKey, companyId);
+
+    let timer = null;
+    const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => {
+            const error = new Error(sourceKey + ' source refresh exceeded ' + deadlineMs + 'ms.');
+            error.code = 'STACKCTRL_SOURCE_REFRESH_TIMEOUT';
+            error.sourceKey = sourceKey;
+            error.companyId = companyId;
+            reject(error);
+        }, deadlineMs);
+    });
+
+    try {
+        return await Promise.race([Promise.resolve().then(() => refreshSource(sourceKey, companyId)), timeout]);
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 
 function getLoadedFreshness(loaded, records, thresholdMinutes) {
     const recordFreshness = getFreshness(records, thresholdMinutes);
@@ -211,7 +233,7 @@ function blockedStoredEvidenceResult({
 }
 
 async function collectSource(context, definition) {
-    const { pool, companyId, capability, refresh, refreshSource } = context;
+    const { pool, companyId, capability, refresh, refreshSource, refreshTimeoutMs } = context;
     const notApplicable = notApplicableResult(capability);
     if (notApplicable) return notApplicable;
 
@@ -244,7 +266,12 @@ async function collectSource(context, definition) {
 
     if (shouldRefresh && typeof refreshSource === 'function') {
         try {
-            const refreshed = await refreshSource(capability.sourceKey, companyId);
+            const refreshed = await refreshWithDeadline(
+                refreshSource,
+                capability.sourceKey,
+                companyId,
+                refreshTimeoutMs
+            );
             if (refreshed) {
                 loaded = definition.fromRefresh
                     ? definition.fromRefresh(refreshed, loaded)

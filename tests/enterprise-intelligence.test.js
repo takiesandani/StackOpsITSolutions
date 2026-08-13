@@ -3640,7 +3640,8 @@ function createScheduledPipelineFixture({
     snapshot = scheduledIdentitySnapshot(),
     snapshotError = null,
     azureError = null,
-    duplicate = false
+    duplicate = false,
+    activeRun = null
 } = {}) {
     const events = [];
     const writes = [];
@@ -3657,6 +3658,9 @@ function createScheduledPipelineFixture({
                     throw error;
                 }
                 return [{ insertId: 1901 }, []];
+            }
+            if (sql.includes('SELECT ID, SnapshotID, Status, PeriodType, Mode, StartedAt') && sql.includes("Status IN ('queued', 'running')")) {
+                return [activeRun ? [activeRun] : [], []];
             }
             if (sql.includes('SELECT ID, SnapshotID, Status') && sql.includes('DeduplicationKey')) {
                 return [[{ ID: 1901, SnapshotID: snapshot.ID, Status: 'completed' }], []];
@@ -3708,6 +3712,24 @@ function createScheduledPipelineFixture({
     });
     return { service, events, writes, getFinalizationCount: () => finalizationCount };
 }
+
+test('an active enterprise run is returned immediately without creating a second run', async () => {
+    const fixture = createScheduledPipelineFixture({
+        activeRun: { ID: 133, SnapshotID: null, Status: 'running', PeriodType: 'daily', Mode: 'enterprise_deep_reporting' }
+    });
+    const result = await fixture.service.runEnterpriseReport({
+        companyId: 1,
+        domainKeys: ['identity'],
+        includeSynthesis: false,
+        refreshSnapshot: true
+    });
+
+    assert.equal(result.status, 'already_running');
+    assert.equal(result.runId, 133);
+    assert.equal(result.snapshotId, null);
+    assert.equal(fixture.events.includes('snapshot_created'), false);
+    assert.equal(fixture.writes.some(call => call.sql.includes('INSERT INTO StackCTRLEnterpriseReportRuns')), false);
+});
 
 test('scheduled enterprise pipeline creates and verifies a fresh snapshot before analysis and report persistence', async () => {
     const fixture = createScheduledPipelineFixture();

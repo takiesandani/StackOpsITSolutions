@@ -407,6 +407,10 @@ function createStackCTRLIntelligenceService({ pool, azureOpenAI, refreshSource =
         const [companies] = await pool.query('SELECT * FROM Companies WHERE ID = ? LIMIT 1', [numericCompanyId]);
         if (!companies.length) throw new Error('Company not found');
         const company = normalizeStoredRow(companies[0]);
+        const sourceRefreshTimeoutMs = Math.max(
+            10 * 1000,
+            Number(options.refreshTimeoutMs ?? process.env.STACKCTRL_SOURCE_REFRESH_TIMEOUT_MS) || 60 * 1000
+        );
         const capabilities = await loadClientCapabilities({
             pool,
             companyId: numericCompanyId,
@@ -424,6 +428,7 @@ function createStackCTRLIntelligenceService({ pool, azureOpenAI, refreshSource =
                 capability,
                 refresh: Boolean(options.refresh),
                 refreshSource,
+                refreshTimeoutMs: sourceRefreshTimeoutMs,
                 logger
             }));
         }
