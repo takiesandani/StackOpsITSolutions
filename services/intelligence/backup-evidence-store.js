@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { buildBackupDashboardSource } = require('./backup-dashboard-source');
 const { buildRiskEngine } = require('./risk-engine');
+const { runAbortableOperation, acquireConnectionWithDeadline, runDatabaseOperationWithDeadline } = require('./collector-runtime');
 
 const BACKUP_EVIDENCE_SCHEMA = [
     `CREATE TABLE IF NOT EXISTS StackCTRLBackupEvidenceSnapshots (
@@ -111,18 +112,21 @@ function createBackupEvidenceStore({ pool, logger = console, now = () => new Dat
         for (const statement of BACKUP_EVIDENCE_SCHEMA) await pool.query(statement);
         return { tables: ['StackCTRLBackupEvidenceSnapshots', 'StackCTRLBackupEvidence'] };
     }
-    async function persistProcessedEvidence({ companyId, tenantKey = 'sunbird', payload, collectionTrigger = 'scheduled_6_hour', sourceEndpoint = 'Microsoft Graph processed by StackCTRL Backup and Recovery' } = {}) {
+    async function persistProcessedEvidence({ companyId, tenantKey = 'sunbird', payload, collectionTrigger = 'scheduled_6_hour', sourceEndpoint = 'Microsoft Graph processed by StackCTRL Backup and Recovery', signal = null, timeoutMs = 30000 } = {}) {
         const numericCompanyId = Number(companyId);
         if (!Number.isFinite(numericCompanyId) || numericCompanyId <= 0) throw new Error('A valid companyId is required');
         const evidence = deriveBackupEvidence(payload);
         const collectedAt = now();
-        const connection = typeof pool.getConnection === 'function' ? await pool.getConnection() : pool;
+        const connection = typeof pool.getConnection === 'function'
+            ? await acquireConnectionWithDeadline(pool, { timeoutMs, signal, label: 'Backup evidence database connection' })
+            : pool;
         const ownsConnection = connection !== pool;
+        const db = (operation, label) => runDatabaseOperationWithDeadline({ connection, operation, timeoutMs, signal, label });
         let snapshotId = null;
         try {
-            if (typeof connection.beginTransaction === 'function') await connection.beginTransaction();
+            if (typeof connection.beginTransaction === 'function') await db(() => connection.beginTransaction(), 'Backup evidence transaction begin');
             const metrics = evidence.dashboardMetrics;
-            const [snapshotResult] = await connection.query(
+            const [snapshotResult] = await db(() => connection.query(
                 `INSERT INTO StackCTRLBackupEvidenceSnapshots
                  (CompanyID, TenantKey, CollectionTrigger, SourceEndpoint, CollectionStatus, IsComplete,
                   CollectedAt, SourceFetchedAt, EvidenceRecordCount, ExpectedRecordCount, OmittedRecordCount,
@@ -145,19 +149,19 @@ function createBackupEvidenceStore({ pool, logger = console, now = () => new Dat
                     crypto.createHash('sha256').update(JSON.stringify({ rows: evidence.evidenceRows, dashboardMetrics: metrics })).digest('hex'),
                     evidence.incompleteReason
                 ]
-            );
+            ), 'Backup evidence snapshot insert');
             snapshotId = snapshotResult.insertId;
             for (const row of evidence.evidenceRows) {
-                await connection.query(
+                await db(() => connection.query(
                     `INSERT INTO StackCTRLBackupEvidence
                      (SnapshotID, CompanyID, TenantKey, EvidenceKind, SourceID, Title, ServiceName, StorageGB, ActivityAgeDays, ProcessedEvidenceJson, CollectedAt)
                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                     [snapshotId, numericCompanyId, tenantKey, row.kind, row.sourceId, row.title, row.serviceName, row.storageGB, row.activityAgeDays, JSON.stringify(row.processed), mysqlDateTime(collectedAt)]
-                );
+                ), 'Backup evidence row insert');
             }
-            if (typeof connection.commit === 'function') await connection.commit();
+            if (typeof connection.commit === 'function') await db(() => connection.commit(), 'Backup evidence transaction commit');
         } catch (error) {
-            if (typeof connection.rollback === 'function') await connection.rollback();
+            if (error?.code !== 'STACKCTRL_OPERATION_TIMEOUT' && typeof connection.rollback === 'function') await db(() => connection.rollback(), 'Backup evidence transaction rollback').catch(() => {});
             throw error;
         } finally {
             if (ownsConnection && typeof connection.release === 'function') connection.release();
@@ -165,15 +169,29 @@ function createBackupEvidenceStore({ pool, logger = console, now = () => new Dat
         logger.log(`[Backup Evidence] Stored snapshot ${snapshotId} with ${evidence.evidenceRows.length} processed backup records.`);
         return { snapshotId, companyId: numericCompanyId, collectedAt: collectedAt.toISOString(), recordCount: evidence.evidenceRows.length, isComplete: evidence.isComplete, dashboardMetrics: evidence.dashboardMetrics };
     }
-    async function recordCollectionFailure({ companyId, tenantKey = 'sunbird', collectionTrigger = 'scheduled_6_hour', sourceEndpoint, error } = {}) {
-        const [result] = await pool.query(
-            `INSERT INTO StackCTRLBackupEvidenceSnapshots
-             (CompanyID, TenantKey, CollectionTrigger, SourceEndpoint, CollectionStatus, IsComplete, CollectedAt,
-              EvidenceRecordCount, ExpectedRecordCount, OmittedRecordCount, CompletenessPercent, DashboardMetricsJson, SourceAuditJson, IncompleteReason, ErrorMessage)
-             VALUES (?, ?, ?, ?, 'failed', 0, ?, 0, 0, 0, 0, ?, ?, ?, ?)`,
-            [Number(companyId), tenantKey, collectionTrigger, sourceEndpoint || 'Microsoft Graph processed by StackCTRL Backup and Recovery', mysqlDateTime(now()), JSON.stringify({}), JSON.stringify({ credentialSource: 'environment' }), 'Backup evidence collection did not complete.', String(error?.message || error).slice(0, 5000)]
-        );
-        return { snapshotId: result.insertId, companyId: Number(companyId), status: 'failed' };
+    async function recordCollectionFailure({ companyId, tenantKey = 'sunbird', collectionTrigger = 'scheduled_6_hour', sourceEndpoint, error, signal = null, timeoutMs = 30000 } = {}) {
+        const connection = typeof pool.getConnection === 'function'
+            ? await acquireConnectionWithDeadline(pool, { timeoutMs, signal, label: 'Backup failure database connection' })
+            : pool;
+        const ownsConnection = connection !== pool;
+        try {
+            const [result] = await runDatabaseOperationWithDeadline({
+                connection,
+                timeoutMs,
+                signal,
+                label: 'Backup failure record insert',
+                operation: () => connection.query(
+                    `INSERT INTO StackCTRLBackupEvidenceSnapshots
+                     (CompanyID, TenantKey, CollectionTrigger, SourceEndpoint, CollectionStatus, IsComplete, CollectedAt,
+                      EvidenceRecordCount, ExpectedRecordCount, OmittedRecordCount, CompletenessPercent, DashboardMetricsJson, SourceAuditJson, IncompleteReason, ErrorMessage)
+                     VALUES (?, ?, ?, ?, 'failed', 0, ?, 0, 0, 0, 0, ?, ?, ?, ?)`,
+                    [Number(companyId), tenantKey, collectionTrigger, sourceEndpoint || 'Microsoft Graph processed by StackCTRL Backup and Recovery', mysqlDateTime(now()), JSON.stringify({}), JSON.stringify({ credentialSource: 'environment' }), 'Backup evidence collection did not complete.', String(error?.message || error).slice(0, 5000)]
+                )
+            });
+            return { snapshotId: result.insertId, companyId: Number(companyId), status: 'failed' };
+        } finally {
+            if (ownsConnection && typeof connection.release === 'function') connection.release();
+        }
     }
     return { ensureSchema, persistProcessedEvidence, recordCollectionFailure, deriveBackupEvidence };
 }

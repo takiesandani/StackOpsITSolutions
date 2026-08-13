@@ -409,7 +409,7 @@ function createStackCTRLIntelligenceService({ pool, azureOpenAI, refreshSource =
         const company = normalizeStoredRow(companies[0]);
         const sourceRefreshTimeoutMs = Math.max(
             10 * 1000,
-            Number(options.refreshTimeoutMs ?? process.env.STACKCTRL_SOURCE_REFRESH_TIMEOUT_MS) || 60 * 1000
+            Number(options.refreshTimeoutMs ?? process.env.STACKCTRL_SOURCE_REFRESH_TIMEOUT_MS) || 180 * 1000
         );
         const capabilities = await loadClientCapabilities({
             pool,
@@ -429,6 +429,11 @@ function createStackCTRLIntelligenceService({ pool, azureOpenAI, refreshSource =
                 refresh: Boolean(options.refresh),
                 refreshSource,
                 refreshTimeoutMs: sourceRefreshTimeoutMs,
+                refreshContext: {
+                    ...(options.collectorContext || {}),
+                    signal: options.signal || null,
+                    sourceKey: capability.sourceKey
+                },
                 logger
             }));
         }
@@ -593,6 +598,7 @@ function createStackCTRLIntelligenceService({ pool, azureOpenAI, refreshSource =
     }
 
     async function persistBuiltSnapshot({ built, snapshotType, user }) {
+        const actor = user && typeof user === 'object' ? user : {};
         const connection = await pool.getConnection();
         let snapshotId;
         try {
@@ -614,8 +620,8 @@ function createStackCTRLIntelligenceService({ pool, azureOpenAI, refreshSource =
                     JSON.stringify(built.evidence),
                     JSON.stringify(built.context),
                     built.dataCompletenessScore,
-                    user.id || user.userId || null,
-                    user.email || null
+                    actor.id || actor.userId || null,
+                    actor.email || null
                 ]
             );
             snapshotId = result.insertId;

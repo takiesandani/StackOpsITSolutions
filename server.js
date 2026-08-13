@@ -36,6 +36,7 @@ const { createNetworkEvidenceStore } = require('./services/intelligence/network-
 const { createNetworkEvidenceAutomation } = require('./services/intelligence/network-evidence-automation');
 const { buildBackupDashboardPayload } = require('./services/intelligence/backup-dashboard-processor');
 const { createBackupEvidenceStore } = require('./services/intelligence/backup-evidence-store');
+const { createTrackedCollectorRegistry, runAbortableOperation, acquireConnectionWithDeadline, runDatabaseOperationWithDeadline } = require('./services/intelligence/collector-runtime');
 const { createBackupEvidenceAutomation } = require('./services/intelligence/backup-evidence-automation');
 const { buildApplicationsDashboardPayload } = require('./services/intelligence/applications-dashboard-processor');
 const { createApplicationsEvidenceStore } = require('./services/intelligence/applications-evidence-store');
@@ -89,6 +90,8 @@ let microsoftGraphTokenPromise = null;
 let microsoftGraphStartupWarningShown = false;
 const MICROSOFT_GRAPH_CREDENTIAL_TIMEOUT_MS = Math.max(3000, Number(process.env.MICROSOFT_GRAPH_CREDENTIAL_TIMEOUT_MS) || 12000);
 const MICROSOFT_GRAPH_TOKEN_TIMEOUT_MS = Math.max(3000, Number(process.env.MICROSOFT_GRAPH_TOKEN_TIMEOUT_MS) || 12000);
+const STACKCTRL_COLLECTOR_TIMEOUT_MS = Math.max(15000, Number(process.env.STACKCTRL_COLLECTOR_TIMEOUT_MS) || 180000);
+const BACKUP_DATABASE_TIMEOUT_MS = Math.max(5000, Number(process.env.BACKUP_DATABASE_TIMEOUT_MS) || 30000);
 const authMethodsCache = new Map();
 const AUTH_METHODS_CACHE_TTL_MS = 5 * 60 * 1000;
 let identityEvidenceService = null;
@@ -101,16 +104,6 @@ let securityEvidenceService = null;
 let governanceEvidenceService = null;
 let complianceEvidenceService = null;
 let operationsEvidenceService = null;
-const identityEvidenceCollectionPromises = new Map();
-const deviceEvidenceCollectionPromises = new Map();
-const emailEvidenceCollectionPromises = new Map();
-const networkEvidenceCollectionPromises = new Map();
-const backupEvidenceCollectionPromises = new Map();
-const applicationsEvidenceCollectionPromises = new Map();
-const securityEvidenceCollectionPromises = new Map();
-const governanceEvidenceCollectionPromises = new Map();
-const complianceEvidenceCollectionPromises = new Map();
-const operationsEvidenceCollectionPromises = new Map();
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -302,6 +295,61 @@ function runtimeSnapshot() {
 
 function logRuntimeOperation(event, details = {}) {
     console.log('[Runtime]', JSON.stringify({ event, at: new Date().toISOString(), ...runtimeSnapshot(), ...details }));
+}
+
+const collectorRuntimeLogger = {
+    info(_prefix, details) { logRuntimeOperation(details.event, details); }
+};
+const identityEvidenceCollectors = createTrackedCollectorRegistry({ logger: collectorRuntimeLogger, timeoutMs: STACKCTRL_COLLECTOR_TIMEOUT_MS });
+const deviceEvidenceCollectors = createTrackedCollectorRegistry({ logger: collectorRuntimeLogger, timeoutMs: STACKCTRL_COLLECTOR_TIMEOUT_MS });
+const emailEvidenceCollectors = createTrackedCollectorRegistry({ logger: collectorRuntimeLogger, timeoutMs: STACKCTRL_COLLECTOR_TIMEOUT_MS });
+const networkEvidenceCollectors = createTrackedCollectorRegistry({ logger: collectorRuntimeLogger, timeoutMs: STACKCTRL_COLLECTOR_TIMEOUT_MS });
+const backupEvidenceCollectors = createTrackedCollectorRegistry({ logger: collectorRuntimeLogger, timeoutMs: STACKCTRL_COLLECTOR_TIMEOUT_MS });
+const applicationsEvidenceCollectors = createTrackedCollectorRegistry({ logger: collectorRuntimeLogger, timeoutMs: STACKCTRL_COLLECTOR_TIMEOUT_MS });
+const securityEvidenceCollectors = createTrackedCollectorRegistry({ logger: collectorRuntimeLogger, timeoutMs: STACKCTRL_COLLECTOR_TIMEOUT_MS });
+const governanceEvidenceCollectors = createTrackedCollectorRegistry({ logger: collectorRuntimeLogger, timeoutMs: STACKCTRL_COLLECTOR_TIMEOUT_MS });
+const complianceEvidenceCollectors = createTrackedCollectorRegistry({ logger: collectorRuntimeLogger, timeoutMs: STACKCTRL_COLLECTOR_TIMEOUT_MS });
+const operationsEvidenceCollectors = createTrackedCollectorRegistry({ logger: collectorRuntimeLogger, timeoutMs: STACKCTRL_COLLECTOR_TIMEOUT_MS });
+
+async function fetchGraphResponseWithDeadline(url, token, { signal = null, collectorContext = {}, label = 'Microsoft Graph request' } = {}) {
+    const context = { companyId: Number(collectorContext.companyId) || null, runId: collectorContext.runId || null, pipelineExecutionId: collectorContext.pipelineExecutionId || null, sourceKey: collectorContext.sourceKey || null, label };
+    const startedAt = Date.now();
+    logRuntimeOperation('snapshot_source_http_started', context);
+    try {
+        const result = await runAbortableOperation({
+            timeoutMs: MICROSOFT_GRAPH_REQUEST_TIMEOUT_MS,
+            signal,
+            label,
+            operation: async ({ signal: requestSignal }) => {
+                const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` }, signal: requestSignal });
+                const body = await readBoundedResponseText(response, MICROSOFT_GRAPH_MAX_RESPONSE_BYTES, label);
+                return { response, body };
+            }
+        });
+        logRuntimeOperation('snapshot_source_http_completed', { ...context, elapsedMs: Date.now() - startedAt });
+        return result;
+    } catch (error) {
+        logRuntimeOperation(error?.code === 'STACKCTRL_OPERATION_TIMEOUT' ? 'snapshot_source_http_timeout' : 'snapshot_source_http_failed', { ...context, elapsedMs: Date.now() - startedAt, error: String(error?.message || error) });
+        throw error;
+    }
+}
+
+async function writeBackupRecoveryPayloadCache(companyId, payload, { signal = null, collectorContext = {} } = {}) {
+    const connection = typeof pool.getConnection === 'function'
+        ? await acquireConnectionWithDeadline(pool, { timeoutMs: BACKUP_DATABASE_TIMEOUT_MS, signal, label: 'BackupRecoveryPayloadCache connection' })
+        : pool;
+    const ownsConnection = connection !== pool;
+    try {
+        return await runDatabaseOperationWithDeadline({
+            connection,
+            timeoutMs: BACKUP_DATABASE_TIMEOUT_MS,
+            signal,
+            label: 'BackupRecoveryPayloadCache write',
+            operation: () => connection.query(`REPLACE INTO BackupRecoveryPayloadCache (CompanyID, Payload, LastUpdated) VALUES (?, ?, NOW())`, [companyId, JSON.stringify(payload)])
+        });
+    } finally {
+        if (ownsConnection && typeof connection.release === 'function') connection.release();
+    }
 }
 
 async function readBoundedResponseText(response, maxBytes, label) {
@@ -10574,16 +10622,17 @@ async function fetchEmailMetricsFromApi() {
     };
 }
 
-async function fetchEmailActivityReport(token) {
+async function fetchEmailActivityReport(token, { signal = null, collectorContext = {} } = {}) {
     try {
-        const response = await fetch("https://graph.microsoft.com/v1.0/reports/getEmailActivityUserDetail(period='D7')", {
-            headers: { 'Authorization': `Bearer ${token}` }
+        const { response, body: csv } = await fetchGraphResponseWithDeadline("https://graph.microsoft.com/v1.0/reports/getEmailActivityUserDetail(period='D7')", token, {
+            signal,
+            collectorContext,
+            label: 'Email activity Graph report'
         });
         if (!response.ok) {
             console.warn('[Email Security] Email activity report returned:', response.status);
             return { users: [], summary: {} };
         }
-        const csv = await response.text();
         const rows = parseGraphReportCSV(csv, 'Email Activity');
         const users = rows
             .filter(row => row['User Principal Name'])
@@ -10635,7 +10684,7 @@ function normalizeGraphCollectionPayload(value, preferredKey = null) {
     return [];
 }
 
-async function fetchEmailSecurityPayloadFromApi(tokenOverride = null) {
+async function fetchEmailSecurityPayloadFromApi(tokenOverride = null, { signal = null, collectorContext = {} } = {}) {
     const token = tokenOverride || await getMicrosoftGraphToken({ securityAlerts: true });
     const fetchedAt = new Date().toISOString();
 
@@ -10737,7 +10786,7 @@ async function fetchEmailSecurityPayloadFromApi(tokenOverride = null) {
 
     async function fetchEmailActivitySafe() {
         try {
-            const result = await fetchEmailActivityReport(token);
+            const result = await fetchEmailActivityReport(token, { signal, collectorContext });
             const users = Array.isArray(result?.users) ? result.users : [];
 
             return {
@@ -11064,22 +11113,22 @@ async function fetchEmailSecurityPayloadFromApi(tokenOverride = null) {
     };
 }
 
-async function fetchBackupRecoveryPayloadFromApi(tokenOverride = null) {
+async function fetchBackupRecoveryPayloadFromApi(tokenOverride = null, { signal = null, collectorContext = {} } = {}) {
     const token = tokenOverride || await getMicrosoftGraphToken();
 
     // Fetch OneDrive usage (returns CSV)
     const oneDriveUrl = 'https://graph.microsoft.com/v1.0/reports/getOneDriveUsageAccountDetail(period=\'D7\')';
-    const oneDriveCSV = await fetchGraphReportCSV(oneDriveUrl, token, 'OneDrive');
+    const oneDriveCSV = await fetchGraphReportCSV(oneDriveUrl, token, 'OneDrive', { signal, collectorContext });
     const oneDriveData = parseGraphReportCSV(oneDriveCSV, 'OneDrive');
 
     // Fetch SharePoint usage (returns CSV)
     const sharePointUrl = 'https://graph.microsoft.com/v1.0/reports/getSharePointSiteUsageDetail(period=\'D7\')';
-    const sharePointCSV = await fetchGraphReportCSV(sharePointUrl, token, 'SharePoint');
+    const sharePointCSV = await fetchGraphReportCSV(sharePointUrl, token, 'SharePoint', { signal, collectorContext });
     const sharePointData = parseGraphReportCSV(sharePointCSV, 'SharePoint');
 
     // Fetch Exchange (Mailbox) usage (returns CSV)
     const exchangeUrl = 'https://graph.microsoft.com/v1.0/reports/getMailboxUsageDetail(period=\'D7\')';
-    const exchangeCSV = await fetchGraphReportCSV(exchangeUrl, token, 'Exchange');
+    const exchangeCSV = await fetchGraphReportCSV(exchangeUrl, token, 'Exchange', { signal, collectorContext });
     const exchangeData = parseGraphReportCSV(exchangeCSV, 'Exchange');
 
     // Process OneDrive storage (in bytes)
@@ -12629,18 +12678,20 @@ app.get('/api/sunbird/compliance-controls', authenticateToken, async (req, res) 
 });
 
 // ============================================================================
-async function fetchOperationsPayloadFromApi() {
+async function fetchOperationsPayloadFromApi({ signal = null, collectorContext = {} } = {}) {
         const token = await getMicrosoftGraphToken();
         const tasks = [];
 
         // Helper function for Graph API calls
         const fetchGraph = async (endpoint) => {
             const version = endpoint.startsWith('/beta') ? '' : '/v1.0';
-            const response = await fetch(`https://graph.microsoft.com${version}${endpoint}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+            const { response, body } = await fetchGraphResponseWithDeadline(`https://graph.microsoft.com${version}${endpoint}`, token, {
+                signal,
+                collectorContext,
+                label: 'Operations Graph request'
             });
             if (!response.ok) return { value: [] };
-            return await response.json();
+            try { return JSON.parse(body); } catch (_) { return { value: [] }; }
         };
 
         const userBrief = user => ({
@@ -15348,14 +15399,13 @@ app.get('/api/email-security', authenticateToken, async (req, res) => {
  * Helper: Parse CSV response from Microsoft Graph Reports API
  * Handles both comma-separated and tab-separated formats
  */
-async function fetchGraphReportCSV(url, token, reportType = 'unknown') {
-    const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
-    const body = await response.text();
-
-    if (!response.ok) {
-        throw new Error(`${reportType} Graph report failed (${response.status}): ${body.slice(0, 240)}`);
-    }
-
+async function fetchGraphReportCSV(url, token, reportType = 'unknown', { signal = null, collectorContext = {} } = {}) {
+    const { response, body } = await fetchGraphResponseWithDeadline(url, token, {
+        signal,
+        collectorContext,
+        label: `${reportType} Graph report`
+    });
+    if (!response.ok) throw new Error(`${reportType} Graph report failed (${response.status}): ${body.slice(0, 240)}`);
     return body;
 }
 
@@ -15578,17 +15628,8 @@ async function performIdentityEvidenceCollection(companyId, collectionTrigger) {
     }
 }
 
-async function collectAndPersistIdentityEvidence(companyId, collectionTrigger = 'scheduled_30_minute') {
-    const key = String(companyId);
-    const existing = identityEvidenceCollectionPromises.get(key);
-    if (existing) return existing;
-    const collection = performIdentityEvidenceCollection(companyId, collectionTrigger);
-    identityEvidenceCollectionPromises.set(key, collection);
-    try {
-        return await collection;
-    } finally {
-        if (identityEvidenceCollectionPromises.get(key) === collection) identityEvidenceCollectionPromises.delete(key);
-    }
+async function collectAndPersistIdentityEvidence(companyId, collectionTrigger = 'scheduled_30_minute', collectorContext = {}) {
+    return identityEvidenceCollectors.run({ companyId, sourceKey: 'identity', collectionTrigger, runId: collectorContext.runId || null, pipelineExecutionId: collectorContext.pipelineExecutionId || null, signal: collectorContext.signal || null, timeout: collectorContext.timeoutMs || STACKCTRL_COLLECTOR_TIMEOUT_MS, execute: ({ signal }) => performIdentityEvidenceCollection(companyId, collectionTrigger, { ...collectorContext, signal }) });
 }
 
 async function collectIdentityEvidenceForConfiguredTenants({ trigger = 'scheduled_30_minute' } = {}) {
@@ -15658,17 +15699,8 @@ async function performDeviceEvidenceCollection(companyId, collectionTrigger) {
     }
 }
 
-async function collectAndPersistDeviceEvidence(companyId, collectionTrigger = 'scheduled_30_minute') {
-    const key = String(companyId);
-    const existing = deviceEvidenceCollectionPromises.get(key);
-    if (existing) return existing;
-    const collection = performDeviceEvidenceCollection(companyId, collectionTrigger);
-    deviceEvidenceCollectionPromises.set(key, collection);
-    try {
-        return await collection;
-    } finally {
-        if (deviceEvidenceCollectionPromises.get(key) === collection) deviceEvidenceCollectionPromises.delete(key);
-    }
+async function collectAndPersistDeviceEvidence(companyId, collectionTrigger = 'scheduled_30_minute', collectorContext = {}) {
+    return deviceEvidenceCollectors.run({ companyId, sourceKey: 'devices', collectionTrigger, runId: collectorContext.runId || null, pipelineExecutionId: collectorContext.pipelineExecutionId || null, signal: collectorContext.signal || null, timeout: collectorContext.timeoutMs || STACKCTRL_COLLECTOR_TIMEOUT_MS, execute: ({ signal }) => performDeviceEvidenceCollection(companyId, collectionTrigger, { ...collectorContext, signal }) });
 }
 
 async function collectDeviceEvidenceForConfiguredTenants({ trigger = 'scheduled_30_minute' } = {}) {
@@ -15693,11 +15725,11 @@ async function collectDeviceEvidenceForConfiguredTenants({ trigger = 'scheduled_
     return { companyCount: companies.length, results };
 }
 
-async function performEmailEvidenceCollection(companyId, collectionTrigger) {
+async function performEmailEvidenceCollection(companyId, collectionTrigger, collectorContext = {}) {
     if (!emailEvidenceService) throw new Error('Email evidence storage is not initialized');
     const sourceEndpoint = 'Microsoft Graph processed by StackCTRL Email Security';
     try {
-        const payload = await fetchEmailSecurityPayloadFromApi();
+        const payload = await fetchEmailSecurityPayloadFromApi(null, { signal: collectorContext.signal || null, collectorContext: { ...collectorContext, companyId, sourceKey: 'email_security' } });
         const dashboardPayload = buildEmailDashboardPayload({
             tenantKey: 'sunbird',
             payload
@@ -15741,17 +15773,8 @@ async function performEmailEvidenceCollection(companyId, collectionTrigger) {
     }
 }
 
-async function collectAndPersistEmailEvidence(companyId, collectionTrigger = 'scheduled_hourly') {
-    const key = String(companyId);
-    const existing = emailEvidenceCollectionPromises.get(key);
-    if (existing) return existing;
-    const collection = performEmailEvidenceCollection(companyId, collectionTrigger);
-    emailEvidenceCollectionPromises.set(key, collection);
-    try {
-        return await collection;
-    } finally {
-        if (emailEvidenceCollectionPromises.get(key) === collection) emailEvidenceCollectionPromises.delete(key);
-    }
+async function collectAndPersistEmailEvidence(companyId, collectionTrigger = 'scheduled_hourly', collectorContext = {}) {
+    return emailEvidenceCollectors.run({ companyId, sourceKey: 'email_security', collectionTrigger, runId: collectorContext.runId || null, pipelineExecutionId: collectorContext.pipelineExecutionId || null, signal: collectorContext.signal || null, timeout: collectorContext.timeoutMs || STACKCTRL_COLLECTOR_TIMEOUT_MS, execute: ({ signal }) => performEmailEvidenceCollection(companyId, collectionTrigger, { ...collectorContext, signal }) });
 }
 
 async function collectEmailEvidenceForConfiguredTenants({ trigger = 'scheduled_hourly' } = {}) {
@@ -15807,17 +15830,8 @@ async function performNetworkEvidenceCollection(companyId, collectionTrigger) {
     }
 }
 
-async function collectAndPersistNetworkEvidence(companyId, collectionTrigger = 'scheduled_hourly') {
-    const key = String(companyId);
-    const existing = networkEvidenceCollectionPromises.get(key);
-    if (existing) return existing;
-    const collection = performNetworkEvidenceCollection(companyId, collectionTrigger);
-    networkEvidenceCollectionPromises.set(key, collection);
-    try {
-        return await collection;
-    } finally {
-        if (networkEvidenceCollectionPromises.get(key) === collection) networkEvidenceCollectionPromises.delete(key);
-    }
+async function collectAndPersistNetworkEvidence(companyId, collectionTrigger = 'scheduled_hourly', collectorContext = {}) {
+    return networkEvidenceCollectors.run({ companyId, sourceKey: 'cloudflare_network_security', collectionTrigger, runId: collectorContext.runId || null, pipelineExecutionId: collectorContext.pipelineExecutionId || null, signal: collectorContext.signal || null, timeout: collectorContext.timeoutMs || STACKCTRL_COLLECTOR_TIMEOUT_MS, execute: ({ signal }) => performNetworkEvidenceCollection(companyId, collectionTrigger, { ...collectorContext, signal }) });
 }
 
 async function collectNetworkEvidenceForConfiguredTenants({ trigger = 'scheduled_hourly' } = {}) {
@@ -15842,26 +15856,22 @@ async function collectNetworkEvidenceForConfiguredTenants({ trigger = 'scheduled
     return { companyCount: companies.length, results };
 }
 
-async function performBackupEvidenceCollection(companyId, collectionTrigger) {
+async function performBackupEvidenceCollection(companyId, collectionTrigger, collectorContext = {}) {
     if (!backupEvidenceService) throw new Error('Backup evidence storage is not initialized');
     const sourceEndpoint = 'Microsoft Graph processed by StackCTRL Backup and Recovery';
     try {
-        const payload = await fetchBackupRecoveryPayloadFromApi();
+        const payload = await fetchBackupRecoveryPayloadFromApi(null, { signal: collectorContext.signal || null, collectorContext: { ...collectorContext, companyId, sourceKey: 'backup' } });
         const dashboardPayload = buildBackupDashboardPayload({ tenantKey: 'sunbird', payload });
-        await pool.query(`REPLACE INTO BackupRecoveryPayloadCache (CompanyID, Payload, LastUpdated) VALUES (?, ?, NOW())`, [companyId, JSON.stringify(dashboardPayload)]);
-        return backupEvidenceService.persistProcessedEvidence({ companyId, tenantKey: 'sunbird', payload: dashboardPayload, collectionTrigger, sourceEndpoint });
+        await writeBackupRecoveryPayloadCache(companyId, dashboardPayload, { signal: collectorContext.signal || null, collectorContext });
+        return backupEvidenceService.persistProcessedEvidence({ companyId, tenantKey: 'sunbird', payload: dashboardPayload, collectionTrigger, sourceEndpoint, signal: collectorContext.signal || null, timeoutMs: BACKUP_DATABASE_TIMEOUT_MS });
     } catch (error) {
-        await backupEvidenceService.recordCollectionFailure({ companyId, tenantKey: 'sunbird', collectionTrigger, sourceEndpoint, error }).catch(() => {});
+        await backupEvidenceService.recordCollectionFailure({ companyId, tenantKey: 'sunbird', collectionTrigger, sourceEndpoint, error, timeoutMs: BACKUP_DATABASE_TIMEOUT_MS }).catch(() => {});
         throw error;
     }
 }
 
-async function collectAndPersistBackupEvidence(companyId, collectionTrigger = 'scheduled_6_hour') {
-    const key = String(companyId);
-    if (backupEvidenceCollectionPromises.get(key)) return backupEvidenceCollectionPromises.get(key);
-    const collection = performBackupEvidenceCollection(companyId, collectionTrigger);
-    backupEvidenceCollectionPromises.set(key, collection);
-    try { return await collection; } finally { if (backupEvidenceCollectionPromises.get(key) === collection) backupEvidenceCollectionPromises.delete(key); }
+async function collectAndPersistBackupEvidence(companyId, collectionTrigger = 'scheduled_6_hour', collectorContext = {}) {
+    return backupEvidenceCollectors.run({ companyId, sourceKey: 'backup', collectionTrigger, runId: collectorContext.runId || null, pipelineExecutionId: collectorContext.pipelineExecutionId || null, signal: collectorContext.signal || null, timeout: collectorContext.timeoutMs || STACKCTRL_COLLECTOR_TIMEOUT_MS, execute: ({ signal }) => performBackupEvidenceCollection(companyId, collectionTrigger, { ...collectorContext, signal }) });
 }
 
 async function collectBackupEvidenceForConfiguredTenants({ trigger = 'scheduled_6_hour' } = {}) {
@@ -15889,12 +15899,8 @@ async function performApplicationsEvidenceCollection(companyId, collectionTrigge
     }
 }
 
-async function collectAndPersistApplicationsEvidence(companyId, collectionTrigger = 'scheduled_hourly') {
-    const key = String(companyId);
-    if (applicationsEvidenceCollectionPromises.get(key)) return applicationsEvidenceCollectionPromises.get(key);
-    const collection = performApplicationsEvidenceCollection(companyId, collectionTrigger);
-    applicationsEvidenceCollectionPromises.set(key, collection);
-    try { return await collection; } finally { if (applicationsEvidenceCollectionPromises.get(key) === collection) applicationsEvidenceCollectionPromises.delete(key); }
+async function collectAndPersistApplicationsEvidence(companyId, collectionTrigger = 'scheduled_hourly', collectorContext = {}) {
+    return applicationsEvidenceCollectors.run({ companyId, sourceKey: 'applications', collectionTrigger, runId: collectorContext.runId || null, pipelineExecutionId: collectorContext.pipelineExecutionId || null, signal: collectorContext.signal || null, timeout: collectorContext.timeoutMs || STACKCTRL_COLLECTOR_TIMEOUT_MS, execute: ({ signal }) => performApplicationsEvidenceCollection(companyId, collectionTrigger, { ...collectorContext, signal }) });
 }
 
 async function collectApplicationsEvidenceForConfiguredTenants({ trigger = 'scheduled_hourly' } = {}) {
@@ -15931,12 +15937,8 @@ async function performSecurityEvidenceCollection(companyId, collectionTrigger) {
     }
 }
 
-async function collectAndPersistSecurityEvidence(companyId, collectionTrigger = 'scheduled_hourly') {
-    const key = String(companyId);
-    if (securityEvidenceCollectionPromises.get(key)) return securityEvidenceCollectionPromises.get(key);
-    const collection = performSecurityEvidenceCollection(companyId, collectionTrigger);
-    securityEvidenceCollectionPromises.set(key, collection);
-    try { return await collection; } finally { if (securityEvidenceCollectionPromises.get(key) === collection) securityEvidenceCollectionPromises.delete(key); }
+async function collectAndPersistSecurityEvidence(companyId, collectionTrigger = 'scheduled_hourly', collectorContext = {}) {
+    return securityEvidenceCollectors.run({ companyId, sourceKey: 'security_alerts', collectionTrigger, runId: collectorContext.runId || null, pipelineExecutionId: collectorContext.pipelineExecutionId || null, signal: collectorContext.signal || null, timeout: collectorContext.timeoutMs || STACKCTRL_COLLECTOR_TIMEOUT_MS, execute: ({ signal }) => performSecurityEvidenceCollection(companyId, collectionTrigger, { ...collectorContext, signal }) });
 }
 
 async function collectSecurityEvidenceForConfiguredTenants({ trigger = 'scheduled_hourly' } = {}) {
@@ -15999,12 +16001,8 @@ async function performGovernanceEvidenceCollection(companyId, collectionTrigger)
     }
 }
 
-async function collectAndPersistGovernanceEvidence(companyId, collectionTrigger = 'scheduled_daily') {
-    const key = String(companyId);
-    if (governanceEvidenceCollectionPromises.get(key)) return governanceEvidenceCollectionPromises.get(key);
-    const collection = performGovernanceEvidenceCollection(companyId, collectionTrigger);
-    governanceEvidenceCollectionPromises.set(key, collection);
-    try { return await collection; } finally { if (governanceEvidenceCollectionPromises.get(key) === collection) governanceEvidenceCollectionPromises.delete(key); }
+async function collectAndPersistGovernanceEvidence(companyId, collectionTrigger = 'scheduled_daily', collectorContext = {}) {
+    return governanceEvidenceCollectors.run({ companyId, sourceKey: 'governance', collectionTrigger, runId: collectorContext.runId || null, pipelineExecutionId: collectorContext.pipelineExecutionId || null, signal: collectorContext.signal || null, timeout: collectorContext.timeoutMs || STACKCTRL_COLLECTOR_TIMEOUT_MS, execute: ({ signal }) => performGovernanceEvidenceCollection(companyId, collectionTrigger, { ...collectorContext, signal }) });
 }
 
 async function collectGovernanceEvidenceForConfiguredTenants({ trigger = 'scheduled_daily' } = {}) {
@@ -16031,12 +16029,8 @@ async function performComplianceEvidenceCollection(companyId, collectionTrigger)
     }
 }
 
-async function collectAndPersistComplianceEvidence(companyId, collectionTrigger = 'scheduled_daily') {
-    const key = String(companyId);
-    if (complianceEvidenceCollectionPromises.get(key)) return complianceEvidenceCollectionPromises.get(key);
-    const collection = performComplianceEvidenceCollection(companyId, collectionTrigger);
-    complianceEvidenceCollectionPromises.set(key, collection);
-    try { return await collection; } finally { if (complianceEvidenceCollectionPromises.get(key) === collection) complianceEvidenceCollectionPromises.delete(key); }
+async function collectAndPersistComplianceEvidence(companyId, collectionTrigger = 'scheduled_daily', collectorContext = {}) {
+    return complianceEvidenceCollectors.run({ companyId, sourceKey: 'compliance', collectionTrigger, runId: collectorContext.runId || null, pipelineExecutionId: collectorContext.pipelineExecutionId || null, signal: collectorContext.signal || null, timeout: collectorContext.timeoutMs || STACKCTRL_COLLECTOR_TIMEOUT_MS, execute: ({ signal }) => performComplianceEvidenceCollection(companyId, collectionTrigger, { ...collectorContext, signal }) });
 }
 
 async function collectComplianceEvidenceForConfiguredTenants({ trigger = 'scheduled_daily' } = {}) {
@@ -16063,12 +16057,8 @@ async function performOperationsEvidenceCollection(companyId, collectionTrigger)
     }
 }
 
-async function collectAndPersistOperationsEvidence(companyId, collectionTrigger = 'scheduled_hourly') {
-    const key = String(companyId);
-    if (operationsEvidenceCollectionPromises.get(key)) return operationsEvidenceCollectionPromises.get(key);
-    const collection = performOperationsEvidenceCollection(companyId, collectionTrigger);
-    operationsEvidenceCollectionPromises.set(key, collection);
-    try { return await collection; } finally { if (operationsEvidenceCollectionPromises.get(key) === collection) operationsEvidenceCollectionPromises.delete(key); }
+async function collectAndPersistOperationsEvidence(companyId, collectionTrigger = 'scheduled_hourly', collectorContext = {}) {
+    return operationsEvidenceCollectors.run({ companyId, sourceKey: 'operations', collectionTrigger, runId: collectorContext.runId || null, pipelineExecutionId: collectorContext.pipelineExecutionId || null, signal: collectorContext.signal || null, timeout: collectorContext.timeoutMs || STACKCTRL_COLLECTOR_TIMEOUT_MS, execute: ({ signal }) => performOperationsEvidenceCollection(companyId, collectionTrigger, { ...collectorContext, signal }) });
 }
 
 async function collectOperationsEvidenceForConfiguredTenants({ trigger = 'scheduled_hourly' } = {}) {
@@ -16081,12 +16071,12 @@ async function collectOperationsEvidenceForConfiguredTenants({ trigger = 'schedu
     return { companyCount: companies.length, results };
 }
 
-async function refreshStackCTRLIntelligenceSource(sourceKey, companyId) {
+async function refreshStackCTRLIntelligenceSource(sourceKey, companyId, collectorContext = {}) {
     switch (sourceKey) {
         case 'identity': {
             if (identityEvidenceService) {
                 try {
-                    await collectAndPersistIdentityEvidence(companyId, 'enterprise_refresh');
+                    await collectAndPersistIdentityEvidence(companyId, 'enterprise_refresh', { ...collectorContext, sourceKey });
                     // Returning null makes the source adapter reload the committed evidence snapshot.
                     return null;
                 } catch (error) {
@@ -16210,7 +16200,7 @@ async function refreshStackCTRLIntelligenceSource(sourceKey, companyId) {
         case 'devices': {
             if (deviceEvidenceService) {
                 try {
-                    await collectAndPersistDeviceEvidence(companyId, 'enterprise_refresh');
+                    await collectAndPersistDeviceEvidence(companyId, 'enterprise_refresh', { ...collectorContext, sourceKey });
                     return null;
                 } catch (error) {
                     console.error('[Device Evidence] Enterprise refresh failed:', error.message);
@@ -16243,7 +16233,7 @@ async function refreshStackCTRLIntelligenceSource(sourceKey, companyId) {
         case 'email_security': {
             if (emailEvidenceService) {
                 try {
-                    await collectAndPersistEmailEvidence(companyId, 'enterprise_refresh');
+                    await collectAndPersistEmailEvidence(companyId, 'enterprise_refresh', { ...collectorContext, sourceKey });
                     return null;
                 } catch (error) {
                     const refreshError = new Error(`Email evidence refresh failed: ${error.message}`);
@@ -16276,7 +16266,7 @@ async function refreshStackCTRLIntelligenceSource(sourceKey, companyId) {
         case 'security_alerts': {
             if (securityEvidenceService) {
                 try {
-                    await collectAndPersistSecurityEvidence(companyId, 'enterprise_refresh');
+                    await collectAndPersistSecurityEvidence(companyId, 'enterprise_refresh', { ...collectorContext, sourceKey });
                     return null;
                 } catch (error) {
                     const refreshError = new Error(`Security evidence refresh failed: ${error.message}`);
@@ -16293,7 +16283,7 @@ async function refreshStackCTRLIntelligenceSource(sourceKey, companyId) {
         case 'backup': {
             if (backupEvidenceService) {
                 try {
-                    await collectAndPersistBackupEvidence(companyId, 'enterprise_refresh');
+                    await collectAndPersistBackupEvidence(companyId, 'enterprise_refresh', { ...collectorContext, sourceKey });
                     return null;
                 } catch (error) {
                     const refreshError = new Error(`Backup evidence refresh failed: ${error.message}`);
@@ -16303,14 +16293,14 @@ async function refreshStackCTRLIntelligenceSource(sourceKey, companyId) {
                     throw refreshError;
                 }
             }
-            const payload = await fetchBackupRecoveryPayloadFromApi();
-            await pool.query(`REPLACE INTO BackupRecoveryPayloadCache (CompanyID, Payload, LastUpdated) VALUES (?, ?, NOW())`, [companyId, JSON.stringify(payload)]);
+            const payload = await fetchBackupRecoveryPayloadFromApi(null, { signal: collectorContext.signal || null, collectorContext: { ...collectorContext, companyId, sourceKey: 'backup' } });
+            await writeBackupRecoveryPayloadCache(companyId, payload, { signal: collectorContext.signal || null, collectorContext });
             return null;
         }
         case 'applications': {
             if (applicationsEvidenceService) {
                 try {
-                    await collectAndPersistApplicationsEvidence(companyId, 'enterprise_refresh');
+                    await collectAndPersistApplicationsEvidence(companyId, 'enterprise_refresh', { ...collectorContext, sourceKey });
                     return null;
                 } catch (error) {
                     const refreshError = new Error(`Applications evidence refresh failed: ${error.message}`);
@@ -16328,7 +16318,7 @@ async function refreshStackCTRLIntelligenceSource(sourceKey, companyId) {
         case 'cloudflare_network_security': {
             if (networkEvidenceService) {
                 try {
-                    await collectAndPersistNetworkEvidence(companyId, 'enterprise_refresh');
+                    await collectAndPersistNetworkEvidence(companyId, 'enterprise_refresh', { ...collectorContext, sourceKey });
                     return null;
                 } catch (error) {
                     const refreshError = new Error(`Network evidence refresh failed: ${error.message}`);
@@ -16343,7 +16333,7 @@ async function refreshStackCTRLIntelligenceSource(sourceKey, companyId) {
         case 'governance': {
             if (governanceEvidenceService) {
                 try {
-                    await collectAndPersistGovernanceEvidence(companyId, 'enterprise_refresh');
+                    await collectAndPersistGovernanceEvidence(companyId, 'enterprise_refresh', { ...collectorContext, sourceKey });
                     return null;
                 } catch (error) {
                     const refreshError = new Error(`Governance evidence refresh failed: ${error.message}`);
@@ -16360,7 +16350,7 @@ async function refreshStackCTRLIntelligenceSource(sourceKey, companyId) {
         case 'compliance': {
             if (complianceEvidenceService) {
                 try {
-                    await collectAndPersistComplianceEvidence(companyId, 'enterprise_refresh');
+                    await collectAndPersistComplianceEvidence(companyId, 'enterprise_refresh', { ...collectorContext, sourceKey });
                     return null;
                 } catch (error) {
                     const refreshError = new Error(`Compliance evidence refresh failed: ${error.message}`);
@@ -16377,7 +16367,7 @@ async function refreshStackCTRLIntelligenceSource(sourceKey, companyId) {
         case 'operations': {
             if (operationsEvidenceService) {
                 try {
-                    await collectAndPersistOperationsEvidence(companyId, 'enterprise_refresh');
+                    await collectAndPersistOperationsEvidence(companyId, 'enterprise_refresh', { ...collectorContext, sourceKey });
                     return null;
                 } catch (error) {
                     const refreshError = new Error(`Operations evidence refresh failed: ${error.message}`);
@@ -16387,7 +16377,7 @@ async function refreshStackCTRLIntelligenceSource(sourceKey, companyId) {
                     throw refreshError;
                 }
             }
-            const payload = await fetchOperationsPayloadFromApi();
+            const payload = await fetchOperationsPayloadFromApi({ signal: collectorContext.signal || null, collectorContext: { ...collectorContext, companyId, sourceKey: 'operations' } });
             await upsertSunbirdPayloadCache('SunbirdOperationsPayloadCache', companyId, payload);
             return null;
         }

@@ -100,7 +100,7 @@ test('bootstrap stores the snapshot, every source status, and normalized metrics
         azureOpenAI: { createJsonCompletion: async () => ({ data: {} }) }
     });
 
-    const result = await service.bootstrap({ companyId: 9, accessType: 'standard' });
+    const result = await service.bootstrap({ companyId: 9, accessType: 'standard', user: null });
 
     assert.equal(result.snapshotId, 80);
     assert.equal(result.dataCompleteness.score, 100);
@@ -109,6 +109,9 @@ test('bootstrap stores the snapshot, every source status, and normalized metrics
     assert.ok(writes.some(write => write.sql?.includes('StackCTRLIntelligenceMetrics')));
     assert.equal(writes.includes('commit'), true);
     assert.equal(writes.includes('rollback'), false);
+    const snapshotInsert = writes.find(write => write.sql?.includes('INSERT INTO StackCTRLTenantEvidenceSnapshots'));
+    assert.equal(snapshotInsert.params.at(-2), null);
+    assert.equal(snapshotInsert.params.at(-1), null);
 });
 
 test('analyseSnapshot stores outputs and normalized Power BI rows in one transaction', async () => {

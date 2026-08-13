@@ -4372,7 +4372,7 @@ function createEnterpriseIntelligenceService({
         requestTimeoutMs: Math.max(60000, Number(config.requestTimeoutMs ?? process.env.ENTERPRISE_AI_REQUEST_TIMEOUT_MS) || 180000),
         terminalStaleMs: Math.max(5 * 60 * 1000, Number(config.terminalStaleMs ?? process.env.ENTERPRISE_AI_TERMINAL_STALE_MS) || (30 * 60 * 1000)),
         snapshotTimeoutMs: Math.max(30 * 1000, Number(config.snapshotTimeoutMs ?? process.env.ENTERPRISE_AI_SNAPSHOT_TIMEOUT_MS) || (15 * 60 * 1000)),
-        sourceRefreshTimeoutMs: Math.max(10 * 1000, Number(config.sourceRefreshTimeoutMs ?? process.env.STACKCTRL_SOURCE_REFRESH_TIMEOUT_MS) || (60 * 1000))
+        sourceRefreshTimeoutMs: Math.max(10 * 1000, Number(config.sourceRefreshTimeoutMs ?? process.env.STACKCTRL_SOURCE_REFRESH_TIMEOUT_MS) || (180 * 1000))
     });
     let rateLimitCircuitOpenUntil = 0;
 
@@ -7044,9 +7044,10 @@ Return exactly these top-level fields:
         }, domain, packageResult.current, snapshot.ID, batchEvidence);
     }
 
-    async function refreshEnterpriseSnapshot(companyId, user = {}) {
+    async function refreshEnterpriseSnapshot(companyId, user = {}, collectorContext = {}) {
         if (!intelligenceService?.createSnapshot) return null;
         const timeoutMs = settings.snapshotTimeoutMs;
+        const controller = new AbortController();
         let timer = null;
         const timeout = new Promise((_, reject) => {
             timer = setTimeout(() => {
@@ -7054,6 +7055,7 @@ Return exactly these top-level fields:
                 error.enterpriseStatus = 'failed_snapshot_timeout';
                 error.failureStage = 'SNAPSHOT_CREATION_FAILED';
                 error.code = 'ENTERPRISE_SNAPSHOT_TIMEOUT';
+                controller.abort(error);
                 reject(error);
             }, timeoutMs);
         });
@@ -7064,7 +7066,9 @@ Return exactly these top-level fields:
                     options: {
                         snapshotType: 'enterprise_pipeline',
                         refresh: true,
-                        refreshTimeoutMs: settings.sourceRefreshTimeoutMs
+                        refreshTimeoutMs: settings.sourceRefreshTimeoutMs,
+                        signal: controller.signal,
+                        collectorContext
                     },
                     user
                 }),
@@ -8409,7 +8413,11 @@ Return exactly these top-level fields:
                     analysisExecutionId: run.id,
                     timestamp: new Date().toISOString()
                 });
-                snapshotRefresh = await refreshEnterpriseSnapshot(numericCompanyId, user);
+                snapshotRefresh = await refreshEnterpriseSnapshot(numericCompanyId, user, {
+                    runId: run.id,
+                    pipelineExecutionId: pipelineId,
+                    scheduleKey
+                });
                 if (snapshotRefresh?.snapshotId) {
                     resolvedSnapshotId = snapshotRefresh.snapshotId;
                 } else if (!resolvedSnapshotId) {

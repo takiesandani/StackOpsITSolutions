@@ -50,9 +50,12 @@ function getFreshness(records, thresholdMinutes) {
     };
 }
 
-async function refreshWithDeadline(refreshSource, sourceKey, companyId, timeoutMs) {
+async function refreshWithDeadline(refreshSource, sourceKey, companyId, timeoutMs, refreshContext = {}) {
     const deadlineMs = Math.max(0, Number(timeoutMs) || 0);
-    if (!deadlineMs) return refreshSource(sourceKey, companyId);
+    const controller = new AbortController();
+    const signals = [controller.signal, refreshContext?.signal].filter(Boolean);
+    const signal = signals.length === 1 ? signals[0] : AbortSignal.any(signals);
+    if (!deadlineMs) return refreshSource(sourceKey, companyId, { ...refreshContext, sourceKey, signal });
 
     let timer = null;
     const timeout = new Promise((_, reject) => {
@@ -61,12 +64,13 @@ async function refreshWithDeadline(refreshSource, sourceKey, companyId, timeoutM
             error.code = 'STACKCTRL_SOURCE_REFRESH_TIMEOUT';
             error.sourceKey = sourceKey;
             error.companyId = companyId;
+            controller.abort(error);
             reject(error);
         }, deadlineMs);
     });
 
     try {
-        return await Promise.race([Promise.resolve().then(() => refreshSource(sourceKey, companyId)), timeout]);
+        return await Promise.race([Promise.resolve().then(() => refreshSource(sourceKey, companyId, { ...refreshContext, sourceKey, signal })), timeout]);
     } finally {
         clearTimeout(timer);
     }
@@ -233,7 +237,7 @@ function blockedStoredEvidenceResult({
 }
 
 async function collectSource(context, definition) {
-    const { pool, companyId, capability, refresh, refreshSource, refreshTimeoutMs } = context;
+    const { pool, companyId, capability, refresh, refreshSource, refreshTimeoutMs, refreshContext = {} } = context;
     const notApplicable = notApplicableResult(capability);
     if (notApplicable) return notApplicable;
 
@@ -270,7 +274,8 @@ async function collectSource(context, definition) {
                 refreshSource,
                 capability.sourceKey,
                 companyId,
-                refreshTimeoutMs
+                refreshTimeoutMs,
+                refreshContext
             );
             if (refreshed) {
                 loaded = definition.fromRefresh
@@ -1837,6 +1842,7 @@ const SOURCE_ADAPTERS = {
 module.exports = {
     SOURCE_ADAPTERS,
     runSourceAdapter,
+    refreshWithDeadline,
     identityAdapter,
     devicesAdapter,
     emailSecurityAdapter,

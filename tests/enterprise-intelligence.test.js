@@ -3791,6 +3791,21 @@ test('scheduled enterprise pipeline stops after snapshot failure and persists th
 
 });
 
+test('collector timeout produces a terminal failed run with snapshot failure progress', async () => {
+    const timeout = new Error('backup collector exceeded 180000ms');
+    timeout.code = 'STACKCTRL_COLLECTOR_TIMEOUT';
+    const fixture = createScheduledPipelineFixture({ snapshotError: timeout });
+    const result = await fixture.service.runScheduledTick({
+        now: new Date('2026-08-13T00:00:00.000Z'), companyId: 1, cadence: 'daily', domainKeys: ['identity'], includeSynthesis: false, finalizeReport: true
+    });
+    assert.equal(result.status, 'failed');
+    const terminal = fixture.writes.find(call => call.sql.includes('SET Status = ?, CompletedAt = NOW(), ErrorMessage = ?, ProgressJson = ?'));
+    assert.ok(terminal, 'collector timeout must set a terminal status and completion timestamp');
+    const progress = JSON.parse(terminal.params[2]);
+    assert.equal(progress.failureStage, 'SNAPSHOT_CREATION_FAILED');
+    assert.match(progress.error, /backup collector exceeded/);
+});
+
 test('scheduled enterprise pipeline reports analysis failure and does not publish a report', async () => {
     const fixture = createScheduledPipelineFixture({ azureError: new Error('Azure analysis failed') });
     const result = await fixture.service.runScheduledTick({
