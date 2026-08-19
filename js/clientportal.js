@@ -14670,7 +14670,7 @@ function renderSunbirdReportDomainScores(scores = {}) {
 function renderSunbirdReportInsightList(items = [], tone = 'neutral', emptyText = 'Nothing recorded', key = '') {
     const filteredItems = filterSunbirdInsightItems(items);
     if (!filteredItems.length) return `<div class="sunbird-report-empty">${escapeIdentityText(emptyText)}</div>`;
-    return filteredItems.slice(0, 6).map(item => {
+    return filteredItems.map(item => {
         const ownerStatus = getSunbirdReportOwnerStatus(item, key);
         return `
             <article class="sunbird-report-insight tone-${tone}">
@@ -14753,7 +14753,6 @@ function renderSunbirdReportsCenter(data) {
     const successItems = filterSunbirdInsightItems(analysis.successes || overview.successes || []);
     const failureItems = filterSunbirdInsightItems(analysis.failures || overview.failures || []);
     const recommendationItems = filterSunbirdInsightItems(analysis.recommendations || overview.recommendations || []);
-    const domainScoreItems = Object.values(overview.domainScores || {}).filter(value => value != null);
     const visibleLogs = (Array.isArray(data.logs) ? data.logs : []).filter(log => !isSunbirdTechnicalNoiseText(`${log?.message || ''} ${log?.eventType || ''}`));
     const visibleEvents = filterSunbirdInsightItems(overview.events || []);
     const sectionCards = [
@@ -14779,12 +14778,6 @@ function renderSunbirdReportsCenter(data) {
                 <div class="sunbird-report-insight-list">
                     ${renderSunbirdReportInsightList(recommendationItems, 'neutral', 'No actions are required.', 'recommendations')}
                 </div>
-            </article>
-        ` : '',
-        domainScoreItems.length ? `
-            <article class="sunbird-report-section-card">
-                <div class="sunbird-report-card-title"><span>Domain health</span><small>Latest evidence</small></div>
-                <div class="sunbird-report-domains">${renderSunbirdReportDomainScores(overview.domainScores || {})}</div>
             </article>
         ` : ''
     ].filter(Boolean).join('');
