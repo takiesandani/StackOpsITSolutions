@@ -3884,10 +3884,16 @@ function buildSunbirdDomainBreakdownFromPayload(payload = {}) {
         const risks = Array.isArray(output.risks) ? output.risks : [];
         const keyFindings = Array.isArray(output.keyFindings) ? output.keyFindings : [];
         const explicitFindings = Array.isArray(output.findings) ? output.findings : [];
-        const rawFindings = [...explicitFindings, ...risks, ...keyFindings];
+        // Keep the source type so a low-priority risk is not presented as a
+        // positive outcome merely because of its severity label.
+        const rawFindings = [
+            ...explicitFindings.map(item => ({ item, findingType: 'finding' })),
+            ...risks.map(item => ({ item, findingType: 'risk' })),
+            ...keyFindings.map(item => ({ item, findingType: 'finding' }))
+        ];
         const dedupe = new Set();
         const findings = rawFindings
-            .map((item, index) => {
+            .map(({ item, findingType }, index) => {
                 const title = asText(item?.title || item?.patternFound || item?.controlName || item?.metricName, 'Domain finding');
                 const key = `${String(title).toLowerCase()}|${String(item?.description || item?.detail || '').toLowerCase()}`;
                 if (dedupe.has(key)) return null;
@@ -3957,6 +3963,8 @@ function buildSunbirdDomainBreakdownFromPayload(payload = {}) {
                     findingId: `${String(domain?.domainKey || domain?.domainName || 'domain').toLowerCase()}-${index + 1}`,
                     title: shortText(title, 260),
                     severity: shortText(asText(item?.severity || item?.priority || item?.riskLevel || item?.impact || 'Observed'), 80),
+                    status: shortText(asText(item?.status || item?.state || item?.outcome || ''), 80),
+                    findingType,
                     impact: shortText(asText(item?.impact || item?.businessImpact || item?.description || item?.detail), 900),
                     whyItMatters: shortText(asText(item?.whyItMatters || item?.reasoning || item?.businessImpact || item?.impact), 900),
                     recommendation: shortText(asText(item?.firstAction || item?.recommendedAction || item?.recommendation || item?.remediationAction || item?.detail), 900),
@@ -4051,8 +4059,31 @@ function buildSunbirdLiveIntelligenceSnapshot(intelligence = null, finalReport =
     const fullExecutiveSummary = executiveSummary
         ? executiveSummary
         : 'This executive view combines the newest completed Azure analysis for each active domain. Domains refresh independently and display their own analysis time and run ID; no older complete enterprise run is used as a substitute.';
-    const failures = findings.filter(finding => /critical|high|severe|failed/i.test(String(finding.severity || '')));
-    const successes = findings.filter(finding => /low|healthy|good|resolved|success/i.test(String(finding.severity || '')));
+    const failures = findings.filter(finding => finding.findingType === 'risk' || /critical|high|severe|failed/i.test(String(finding.severity || '')));
+    const positiveTerms = /healthy|good|passed|pass|compliant|resolved|remediated|closed|success|succeeded|complete|connected|enabled|operational/i;
+    const negativeTerms = /\b(no|not|missing|disabled|inactive|increase|risk|exposure|gap|fail|failed|attention|degraded|unavailable)\b/i;
+    const successes = findings
+        .filter(finding => finding.findingType !== 'risk')
+        .filter(finding => {
+            const text = `${finding.title || ''} ${finding.status || ''} ${finding.severity || ''}`;
+            return positiveTerms.test(text) && !negativeTerms.test(text);
+        })
+        .map(finding => ({ ...finding, source: finding.source || finding.domainName || 'Enterprise intelligence' }));
+    const domainSuccesses = domainBreakdown
+        .filter(domain => Number(domain.healthScore) >= 80)
+        .map(domain => ({
+            title: `${domain.domainName} health is strong`,
+            detail: `Latest collected evidence gives this domain a ${Math.round(Number(domain.healthScore))}% health score.`,
+            source: domain.domainName,
+            status: 'validated'
+        }));
+    const successKeys = new Set();
+    const allSuccesses = [...successes, ...domainSuccesses].filter(item => {
+        const key = `${String(item.title || '').trim().toLowerCase()}|${String(item.source || '').trim().toLowerCase()}`;
+        if (!key || successKeys.has(key)) return false;
+        successKeys.add(key);
+        return true;
+    });
     return {
         id: `enterprise-run-${Number(intelligence.latestRunId || 0)}`,
         enterpriseRunId: Number(intelligence.latestRunId || 0),
@@ -4065,7 +4096,7 @@ function buildSunbirdLiveIntelligenceSnapshot(intelligence = null, finalReport =
         summary: {
             healthScore,
             failures: failures.length,
-            successes: successes.length,
+            successes: allSuccesses.length,
             totalEvents: findings.length,
             status: failures.some(finding => /critical/i.test(String(finding.severity || '')))
                 ? 'critical'
@@ -4078,7 +4109,7 @@ function buildSunbirdLiveIntelligenceSnapshot(intelligence = null, finalReport =
             historicalChanges
         },
         failures,
-        successes,
+        successes: allSuccesses,
         recommendations,
         domainBreakdown
     };
