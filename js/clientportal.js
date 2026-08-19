@@ -13660,17 +13660,29 @@ function getSunbirdReportSummaryValue(report = {}, key) {
 }
 
 function getSunbirdReportDeltaMeta(current, previous, invert = false) {
-    if (!Number.isFinite(previous)) {
-        return { tone: 'neutral', icon: 'fa-minus', label: 'Baseline' };
-    }
     const delta = Number(current || 0) - Number(previous || 0);
-    if (delta === 0) return { tone: 'neutral', icon: 'fa-minus', label: 'No change' };
+    if (delta === 0) return { tone: 'neutral', icon: 'fa-equals', label: 'No change' };
     const improved = invert ? delta < 0 : delta > 0;
     return {
         tone: improved ? 'good' : 'bad',
         icon: delta > 0 ? 'fa-arrow-up' : 'fa-arrow-down',
         label: `${delta > 0 ? '+' : ''}${delta}`
     };
+}
+
+function getSunbirdReportCurrentMetricMeta(value, metric) {
+    const amount = Math.max(0, Number(value || 0));
+    if (metric === 'health') {
+        return { tone: getSunbirdReportScoreTone(amount), icon: 'fa-shield-heart', label: `${amount}% current health` };
+    }
+    if (metric === 'risks') {
+        return amount
+            ? { tone: amount >= 5 ? 'bad' : 'warn', icon: 'fa-triangle-exclamation', label: `${amount} active risk${amount === 1 ? '' : 's'}` }
+            : { tone: 'good', icon: 'fa-shield-check', label: 'No active risks' };
+    }
+    return amount
+        ? { tone: 'good', icon: 'fa-circle-check', label: `${amount} validated win${amount === 1 ? '' : 's'}` }
+        : { tone: 'neutral', icon: 'fa-circle-info', label: 'No validated wins yet' };
 }
 
 function getSunbirdReportResolvedCount(data = {}, buckets = getSunbirdReportEvidenceBuckets(data)) {
@@ -13738,11 +13750,12 @@ function getSunbirdReportIntelligence(data = {}, buckets = getSunbirdReportEvide
         health,
         failures,
         successes,
-        healthTrend: getSunbirdReportDeltaMeta(health, previousHealth),
-        failureTrend: getSunbirdReportDeltaMeta(failures, previousFailures, true),
-        successTrend: getSunbirdReportDeltaMeta(successes, previousSuccesses),
+        hasPreviousReport: Boolean(previousReport),
+        healthTrend: previousReport ? getSunbirdReportDeltaMeta(health, previousHealth) : getSunbirdReportCurrentMetricMeta(health, 'health'),
+        failureTrend: previousReport ? getSunbirdReportDeltaMeta(failures, previousFailures, true) : getSunbirdReportCurrentMetricMeta(failures, 'risks'),
+        successTrend: previousReport ? getSunbirdReportDeltaMeta(successes, previousSuccesses) : getSunbirdReportCurrentMetricMeta(successes, 'successes'),
         resolvedCount: getSunbirdReportResolvedCount(data, buckets),
-        topImpact: enterpriseBusinessImpact || (topSignal ? getSunbirdReportBusinessImpact(topSignal, buckets.problems[0] ? 'problems' : 'recommendations') : 'Business impact: evidence baseline is being established.')
+        topImpact: enterpriseBusinessImpact || (topSignal ? getSunbirdReportBusinessImpact(topSignal, buckets.problems[0] ? 'problems' : 'recommendations') : 'Business impact: this view will become more specific as additional evidence is collected.')
     };
 }
 
@@ -13782,22 +13795,22 @@ function renderSunbirdReportValuePanel(data = {}, buckets = getSunbirdReportEvid
                 <article>
                     <span>Health trend</span>
                     <strong>${renderSunbirdReportTrendBadge(intelligence.healthTrend)}</strong>
-                    <p>Security health compared with the previous generated report.</p>
+                    <p>${intelligence.hasPreviousReport ? 'Security health compared with the previous generated report.' : 'Latest reported security health from current evidence.'}</p>
                 </article>
                 <article>
                     <span>Risk movement</span>
                     <strong>${renderSunbirdReportTrendBadge(intelligence.failureTrend)}</strong>
-                    <p>Problem count movement since the last report.</p>
+                    <p>${intelligence.hasPreviousReport ? 'Problem count movement since the last report.' : 'Current evidence requiring attention.'}</p>
                 </article>
                 <article>
                     <span>Client wins</span>
                     <strong>${renderSunbirdReportTrendBadge(intelligence.successTrend)}</strong>
-                    <p>Confirmed successes added to the evidence record.</p>
+                    <p>${intelligence.hasPreviousReport ? 'Confirmed successes added to the evidence record.' : 'Validated positive outcomes in current evidence.'}</p>
                 </article>
                 <article>
-                    <span>Resolved since last report</span>
+                    <span>${intelligence.hasPreviousReport ? 'Resolved since last report' : 'Resolved in current report'}</span>
                     <strong>${Number(intelligence.resolvedCount || 0)}</strong>
-                    <p>Issues closed, remediated, or reduced from the previous baseline.</p>
+                    <p>${intelligence.hasPreviousReport ? 'Issues closed, remediated, or reduced from the previous report.' : 'Issues closed or remediated in the current report.'}</p>
                 </article>
             </div>
             <div class="sunbird-report-impact-banner">
