@@ -13568,16 +13568,30 @@ function renderSunbirdReportVisualPanel(data = {}, buckets = getSunbirdReportEvi
     const successesPct = Math.round((successes / totalPie) * 100);
     const actionsPct = Math.max(0, 100 - failuresPct - successesPct);
 
-    const trendPoints = reports
+    const currentHealthScore = Number(summary.healthScore ?? data.latestReport?.summary?.healthScore ?? data.latestReport?.healthScore);
+    const historicalTrendReports = reports
         .slice()
         .sort((left, right) => new Date(left.periodEnd || left.createdAt || 0) - new Date(right.periodEnd || right.createdAt || 0))
-        .slice(-8)
-        .map((report, index, all) => {
-            const score = Math.max(0, Math.min(100, Number(report.healthScore || report.summary?.healthScore || 0)));
-            const x = all.length === 1 ? 8 : (index / (all.length - 1)) * 92 + 4;
-            const y = 100 - score;
-            return { x: Number(x.toFixed(2)), y: Number(y.toFixed(2)), score, date: report.periodEnd || report.createdAt };
-        });
+        .slice(-8);
+    // A live report can be available before it has been saved into report history.
+    // Show that current score as the first chart point instead of implying no data.
+    const trendReports = historicalTrendReports.length
+        ? historicalTrendReports
+        : Number.isFinite(currentHealthScore)
+            ? [{ healthScore: currentHealthScore, createdAt: data.latestReport?.createdAt || new Date().toISOString(), isCurrentSnapshot: true }]
+            : [];
+    const trendPoints = trendReports.map((report, index, all) => {
+        const score = Math.max(0, Math.min(100, Number(report.healthScore || report.summary?.healthScore || 0)));
+        const x = all.length === 1 ? 50 : (index / (all.length - 1)) * 92 + 4;
+        const y = 100 - score;
+        return {
+            x: Number(x.toFixed(2)),
+            y: Number(y.toFixed(2)),
+            score,
+            date: report.periodEnd || report.createdAt,
+            isCurrentSnapshot: Boolean(report.isCurrentSnapshot)
+        };
+    });
 
     if (!domainRows.length && !trendPoints.length) return '';
 
@@ -13605,8 +13619,8 @@ function renderSunbirdReportVisualPanel(data = {}, buckets = getSunbirdReportEvi
                         ${trendPoints.map(point => `<circle cx="${point.x}" cy="${point.y}" r="2.4"><title>${escapeIdentityText(formatSunbirdReportDate(point.date))}: ${point.score}%</title></circle>`).join('')}
                     </svg>
                     <div class="sunbird-report-trend-meta">
-                        <span>Health trend (${trendPoints.length || 0} report${trendPoints.length === 1 ? '' : 's'})</span>
-                        <strong>${latestTrend ? `${latestTrend.score}%` : 'No data'}</strong>
+                        <span>${latestTrend?.isCurrentSnapshot ? 'Health trend (current snapshot)' : `Health trend (${trendPoints.length || 0} report${trendPoints.length === 1 ? '' : 's'})`}</span>
+                        <strong>${latestTrend ? `${latestTrend.score}%` : 'Awaiting health score'}</strong>
                     </div>
                 </article>
                 <article class="sunbird-report-domain-bars">
