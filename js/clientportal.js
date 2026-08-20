@@ -13779,10 +13779,11 @@ function renderSunbirdReportTrendBadge(meta) {
 
 function renderSunbirdReportValueStrip(data = {}, buckets = getSunbirdReportEvidenceBuckets(data)) {
     const intelligence = getSunbirdReportIntelligence(data, buckets);
+    const healthLabel = intelligence.hasPreviousReport ? 'Health trend' : 'Security health';
     return `
         <div class="sunbird-report-value-strip">
             <div class="sunbird-report-value-pill">
-                <span>Health trend</span>
+                <span>${healthLabel}</span>
                 <strong>${renderSunbirdReportTrendBadge(intelligence.healthTrend)}</strong>
             </div>
             <div class="sunbird-report-value-pill">

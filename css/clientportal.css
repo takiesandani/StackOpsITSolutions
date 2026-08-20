@@ -223,12 +223,12 @@
 
 .sunbird-report-value-strip {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 6px;
 }
 
 .sunbird-report-value-pill {
-  min-width: 0;
+  min-width: 180px;
   padding: 7px 8px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
@@ -242,7 +242,7 @@
 .sunbird-report-value-pill > span {
   color: #9fa9b5;
   font-size: 0.55rem;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .sunbird-report-value-pill > strong {
