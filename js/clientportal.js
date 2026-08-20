@@ -13803,7 +13803,7 @@ function renderSunbirdReportValuePanel(data = {}, buckets = getSunbirdReportEvid
     return `
         <section class="sunbird-report-value-panel">
             <div class="sunbird-report-card-title">
-                <span><i class="fas fa-chart-line"></i> Value intelligence</span>
+                <span><i class="fas fa-chart-bar"></i> Value intelligence</span>
                 <small>What changed, what matters, and what is now safer</small>
             </div>
             <div class="sunbird-report-value-grid">
@@ -14587,7 +14587,7 @@ async function renderSunbirdReportsView(forceRefresh = false) {
                     ${renderSunbirdReportValueStrip(data, evidenceBuckets)}
 
                     <div class="sunbird-report-ai-note">
-                        <span class="sunbird-report-ai-mark"><i class="fas fa-sparkles"></i></span>
+                        <span class="sunbird-report-ai-mark"><i class="fas fa-clipboard-check"></i></span>
                         <div>
                             <strong>Evidence summary</strong>
                             <p>${escapeIdentityText(analysis.executiveSummary || 'Dashboard evidence is being summarized into a focused operational report.')}</p>
